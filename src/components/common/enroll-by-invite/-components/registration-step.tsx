@@ -157,7 +157,7 @@ const RegistrationStep = ({
                             {(selectedPlan?.type.toLowerCase() === "one_time" ||
                                 selectedPlan?.type.toLowerCase() ===
                                     "upfront") && (
-                                <div className="flex flex-col gap-4 pl-8">
+                                <div className="flex w-full flex-wrap gap-4">
                                     {selectedPlan?.paymentOption && (
                                         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                                             {selectedPlan?.paymentOption?.map(
@@ -167,7 +167,7 @@ const RegistrationStep = ({
                                                     return (
                                                         <Card
                                                             key={idx}
-                                                            className="border border-gray-200 p-4 transition-colors hover:border-gray-300"
+                                                            className="w-full border border-gray-200 p-4 transition-colors hover:border-gray-300"
                                                         >
                                                             <div className="flex flex-col gap-3">
                                                                 {/* Title */}
@@ -254,7 +254,7 @@ const RegistrationStep = ({
                             )}
                             {selectedPlan?.type.toLowerCase() ===
                                 "subscription" && (
-                                <div className="flex w-fit flex-wrap gap-4 pl-8">
+                                <div className="flex w-full flex-wrap gap-4">
                                     {selectedPlan?.paymentOption?.map(
                                         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
                                         // @ts-expect-error
@@ -262,7 +262,7 @@ const RegistrationStep = ({
                                             return (
                                                 <Card
                                                     key={idx}
-                                                    className="border border-gray-200 p-8 py-6 transition-colors hover:border-gray-300"
+                                                    className="w-full border border-gray-200 p-8 py-6 transition-colors hover:border-gray-300"
                                                 >
                                                     <div className="flex flex-col gap-3">
                                                         {/* Title */}
@@ -346,9 +346,9 @@ const RegistrationStep = ({
                 )}
             <Card
                 id="registration-card"
-                className="overflow-hidden shadow-xl border-0 bg-white/80 backdrop-blur-sm w-full"
+                className="overflow-hidden shadow-lg border bg-white w-full"
             >
-                <CardContent className="p-6 sm:p-8">
+                <CardContent className="p-5 sm:p-6">
                     <div className="flex items-start gap-2 sm:gap-3 mb-6">
                         <div className="p-1.5 sm:p-2 bg-blue-100 rounded-lg flex-shrink-0">
                             <GraduationCap className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
@@ -366,9 +366,9 @@ const RegistrationStep = ({
                     <Separator className="mb-6" />
 
                     <div className="flex justify-center items-center w-full">
-                        <div className="flex justify-center items-start w-full flex-col bg-white rounded-xl p-4 py-0 mx-4 mb-4">
+                        <div className="flex justify-center items-start w-full flex-col bg-white rounded-xl py-0 mb-4">
                             <FormProvider {...form}>
-                                <form className="w-full flex flex-col gap-6 mt-4 max-h-full overflow-auto">
+                                <form className="w-full flex flex-col gap-4 mt-4 max-h-full overflow-auto">
                                     {Object.entries(form.getValues()).map(
                                         ([key, value]: [
                                             string,
@@ -480,7 +480,7 @@ const RegistrationStep = ({
                                                     value.is_mandatory &&
                                                     !value.value
                                             )}
-                                            className="w-full md:w-fit bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
+                                            className="w-full md:w-fit bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-2.5 px-5 rounded-md transition-all duration-200 shadow-sm hover:shadow-md"
                                         >
                                             <GraduationCap className="w-5 h-5 mr-2" />
                                             Register
@@ -503,9 +503,9 @@ const RegistrationStep = ({
             {courseData?.customHtml && (
                 <Card
                     id="registration-card"
-                    className="overflow-hidden shadow-xl border-0 bg-white/80 backdrop-blur-sm w-full"
+                    className="overflow-hidden shadow-lg border bg-white w-full"
                 >
-                    <CardContent className="p-6 sm:p-8">
+                    <CardContent className="p-5 sm:p-6">
                         <div className="flex items-start gap-2 sm:gap-3 mb-6">
                             <div
                                 className="w-full h-full"

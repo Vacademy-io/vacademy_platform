@@ -284,7 +284,7 @@
 }
 
 :root {
-  font-family: 'Inter', 'SF Pro Display', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Figtree', 'SF Pro Display', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   line-height: 1.6;
   font-weight: 400;
 
@@ -324,7 +324,7 @@ h1 {
 }
 
 button {
-  border-radius: 8px;
+  border-radius: var(--radius);
   border: 1px solid transparent;
   padding: 0.6em 1.2em;
   font-size: 1em;
@@ -674,13 +674,13 @@ button:focus-visible {
 
 /* Modern Typography */
 .font-display {
-  font-family: 'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif;
+  font-family: 'Figtree', 'SF Pro Display', system-ui, -apple-system, sans-serif;
   font-feature-settings: 'cv11', 'ss01';
   letter-spacing: -0.025em;
 }
 
 .font-body {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: 'Figtree', system-ui, sans-serif;
   font-feature-settings: 'cv11';
 }
 

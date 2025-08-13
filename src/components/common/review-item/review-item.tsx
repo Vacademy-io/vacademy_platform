@@ -130,9 +130,9 @@ export function ReviewItem({
     // Default variant (full review card)
     return (
         <>
-            <div className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm hover:shadow-lg transition-all duration-500 p-3 sm:p-4 group/review overflow-hidden">
+            <div className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group/review overflow-hidden">
                 {/* Background gradient overlay */}
-                <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover/review:opacity-100 transition-opacity duration-500 rounded-xl"></div>
+                <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover/review:opacity-100 transition-opacity duration-300 rounded-md"></div>
 
                 {/* Floating orb effect */}
                 <div className="absolute top-0 right-0 w-10 h-10 bg-primary-100/20 rounded-full blur-2xl opacity-0 group-hover/review:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3"></div>
@@ -239,7 +239,7 @@ export function ReviewItem({
                 </div>
 
                 {/* Progress indicator */}
-                <div className="absolute bottom-0 left-0 h-0.5 bg-gradient-to-r from-primary-400 to-primary-600 w-0 group-hover/review:w-full transition-all duration-700 ease-out rounded-b-xl"></div>
+                <div className="absolute bottom-0 left-0 h-0.5 bg-gradient-to-r from-primary-400 to-primary-600 w-0 group-hover/review:w-full transition-all duration-500 ease-out rounded-b-md"></div>
             </div>
 
             {/* Delete Confirmation Dialog */}

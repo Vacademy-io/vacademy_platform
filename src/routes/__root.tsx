@@ -23,6 +23,7 @@ import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { getSubdomain } from "@/helpers/helper";
+import { getStudentDisplaySettings } from "@/services/student-display-settings";
 
 // Define public routes that don't require authentication
 const PUBLIC_ROUTES = [
@@ -127,6 +128,8 @@ const RootComponent = () => {
 
         checkForUpdate();
         setPrimaryColorFromStorage();
+        // We intentionally skip deps here to avoid re-running in StrictMode
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     return (
@@ -142,20 +145,52 @@ export const Route = createRootRouteWithContext<{
 }>()({
     beforeLoad: async ({ location }) => {
         // Handle root path redirect
-        if (location.pathname === "/") {
-            // Special case: if subdomain is "code-circle", redirect to courses instead of login
-            const subdomain = getSubdomain(window.location.hostname);
-            if (subdomain === "code-circle") {
-                throw redirect({
-                    to: "/courses",
-                    search: { instituteId: "" },
-                });
-            }
-            
-            throw redirect({
-                to: "/login",
-            });
+    if (location.pathname === "/") {
+      try {
+        // If already authenticated, redirect to settings.postLoginRedirectRoute
+        const authenticated = await isAuthenticated();
+        if (authenticated) {
+          const settings = await getStudentDisplaySettings(true);
+          const route = settings?.postLoginRedirectRoute || "/dashboard";
+          console.log("[Root beforeLoad] Authenticated at '/'. Redirecting to:", route);
+          // Support external absolute URLs
+          if (/^https?:\/\//.test(route)) {
+            // Can't external-redirect from beforeLoad; fall back to internal default
+            throw redirect({ to: "/dashboard" });
+          }
+          throw redirect({ to: route as never });
         }
+      } catch {
+        // fallthrough to public handling
+      }
+
+      // Special case: if subdomain is "code-circle", redirect to courses instead of login
+      const subdomain = getSubdomain(window.location.hostname);
+      if (subdomain === "code-circle") {
+          throw redirect({
+              to: "/courses",
+          });
+      }
+
+      throw redirect({
+          to: "/login",
+      });
+        }
+
+    // If authenticated and directly on /dashboard, honor settings route
+    try {
+      const authenticated = await isAuthenticated();
+      if (authenticated && location.pathname === "/dashboard") {
+        const settings = await getStudentDisplaySettings(false);
+        const route = settings?.postLoginRedirectRoute || "/dashboard";
+        console.log("[Root beforeLoad] On '/dashboard'. Settings route:", route);
+        if (route !== "/dashboard" && !/^https?:\/\//.test(route)) {
+          throw redirect({ to: route as never });
+        }
+      }
+    } catch {
+        // ignore
+    }
 
         // Skip authentication check for public routes
         if (isPublicRoute(location.pathname)) {
@@ -170,7 +205,6 @@ export const Route = createRootRouteWithContext<{
             if (subdomain === "code-circle") {
                 throw redirect({
                     to: "/courses",
-                    search: { instituteId: "" },
                 });
             }
 

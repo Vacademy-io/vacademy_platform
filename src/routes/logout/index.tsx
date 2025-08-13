@@ -13,6 +13,7 @@ function RouteComponent() {
     const navigate = useNavigate();
 
     useEffect(() => {
+        // Remove naming settings but keep InstituteId
         localStorage.removeItem(NAMING_SETTINGS_KEY);
         removeTokensAndLogout();
 
@@ -21,7 +22,6 @@ function RouteComponent() {
         if (subdomain === "code-circle") {
             navigate({
                 to: "/courses",
-                search: { instituteId: "" },
             });
         } else {
             navigate({

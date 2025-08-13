@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { CreditCard, Heart } from "lucide-react";
+import { CreditCard, Heart, Check, X } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 
@@ -58,11 +58,16 @@ const PaymentSelectionStep = ({
 
     useEffect(() => {
         setIsDonation(paymentType === "DONATION");
-        if (paymentType === "DONATION" && donationMetadata && selectedPayment && !hasInitialized.current) {
+        if (
+            paymentType === "DONATION" &&
+            donationMetadata &&
+            selectedPayment &&
+            !hasInitialized.current
+        ) {
             // Set default amount to minimum amount for donations
             const defaultAmount = donationMetadata.minimumAmount || "0";
             setCustomAmount(defaultAmount);
-            
+
             // Update the selected payment with default amount only once
             const updatedPayment = {
                 ...selectedPayment,
@@ -70,7 +75,7 @@ const PaymentSelectionStep = ({
             };
             onPaymentSelect(updatedPayment);
             onAmountChange?.(parseInt(defaultAmount));
-            
+
             hasInitialized.current = true;
         }
     }, [paymentType, donationMetadata, selectedPayment]);
@@ -95,15 +100,17 @@ const PaymentSelectionStep = ({
 
     const handleCustomAmountChange = (value: string) => {
         // Only allow whole numbers (no decimals)
-        const wholeNumberValue = value.replace(/[^0-9]/g, '');
+        const wholeNumberValue = value.replace(/[^0-9]/g, "");
         setCustomAmount(wholeNumberValue);
-        
+
         // Update the selected payment with custom amount only if it's valid
         if (selectedPayment && isDonation) {
             const numValue = parseInt(wholeNumberValue);
-            const minAmount = donationMetadata ? parseInt(donationMetadata.minimumAmount) : 0;
-            
-            if (wholeNumberValue === "" || (numValue >= minAmount)) {
+            const minAmount = donationMetadata
+                ? parseInt(donationMetadata.minimumAmount)
+                : 0;
+
+            if (wholeNumberValue === "" || numValue >= minAmount) {
                 const finalAmount = numValue || minAmount;
                 const updatedPayment = {
                     ...selectedPayment,
@@ -116,10 +123,12 @@ const PaymentSelectionStep = ({
     };
 
     const handleSuggestedAmountClick = (amount: number) => {
-        const minAmount = donationMetadata ? parseInt(donationMetadata.minimumAmount) : 0;
+        const minAmount = donationMetadata
+            ? parseInt(donationMetadata.minimumAmount)
+            : 0;
         if (amount >= minAmount) {
             setCustomAmount(amount.toString());
-            
+
             // Update the selected payment with suggested amount
             if (selectedPayment && isDonation) {
                 const updatedPayment = {
@@ -134,18 +143,20 @@ const PaymentSelectionStep = ({
 
     const getSuggestedAmounts = (): number[] => {
         if (!donationMetadata?.suggestedAmounts) return [];
-        
+
         return donationMetadata.suggestedAmounts
             .split(",")
-            .map(amount => parseFloat(amount.trim()))
-            .filter(amount => !isNaN(amount))
+            .map((amount) => parseFloat(amount.trim()))
+            .filter((amount) => !isNaN(amount))
             .sort((a, b) => b - a); // Sort in descending order
     };
 
     const getFilteredSuggestedAmounts = (): number[] => {
         const amounts = getSuggestedAmounts();
-        const minAmount = donationMetadata ? parseInt(donationMetadata.minimumAmount) : 0;
-        return amounts.filter(amount => amount >= minAmount);
+        const minAmount = donationMetadata
+            ? parseInt(donationMetadata.minimumAmount)
+            : 0;
+        return amounts.filter((amount) => amount >= minAmount);
     };
 
     const renderDonationSection = () => {
@@ -183,15 +194,24 @@ const PaymentSelectionStep = ({
                             {filteredAmounts.map((amount, index) => (
                                 <Badge
                                     key={index}
-                                    variant={customAmount === amount.toString() ? "default" : "outline"}
+                                    variant={
+                                        customAmount === amount.toString()
+                                            ? "default"
+                                            : "outline"
+                                    }
                                     className={`cursor-pointer px-4 py-2 text-base font-medium ${
                                         customAmount === amount.toString()
                                             ? "bg-blue-600 text-white hover:bg-blue-700"
                                             : "bg-white text-gray-700 hover:bg-gray-50 border-gray-300"
                                     }`}
-                                    onClick={() => handleSuggestedAmountClick(amount)}
+                                    onClick={() =>
+                                        handleSuggestedAmountClick(amount)
+                                    }
                                 >
-                                    {getCurrencySymbol(selectedPayment?.currency || "GBP")}{amount}
+                                    {getCurrencySymbol(
+                                        selectedPayment?.currency || "GBP"
+                                    )}
+                                    {amount}
                                 </Badge>
                             ))}
                         </div>
@@ -206,12 +226,16 @@ const PaymentSelectionStep = ({
                         </h3>
                         <div className="relative">
                             <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 text-lg">
-                                {getCurrencySymbol(selectedPayment?.currency || "GBP")}
+                                {getCurrencySymbol(
+                                    selectedPayment?.currency || "GBP"
+                                )}
                             </span>
                             <input
                                 type="number"
                                 value={customAmount}
-                                onChange={(e) => handleCustomAmountChange(e.target.value)}
+                                onChange={(e) =>
+                                    handleCustomAmountChange(e.target.value)
+                                }
                                 min={minAmount}
                                 step="1"
                                 className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
@@ -219,7 +243,11 @@ const PaymentSelectionStep = ({
                             />
                         </div>
                         <p className="text-sm text-gray-600">
-                            Minimum donation amount: {getCurrencySymbol(selectedPayment?.currency || "GBP")}{minAmount}
+                            Minimum donation amount:{" "}
+                            {getCurrencySymbol(
+                                selectedPayment?.currency || "GBP"
+                            )}
+                            {minAmount}
                         </p>
                     </div>
                 )}
@@ -229,9 +257,14 @@ const PaymentSelectionStep = ({
                     <Card className="bg-blue-50 border-blue-200">
                         <CardContent className="p-4">
                             <div className="flex items-center justify-between">
-                                <span className="text-gray-700 font-medium">Your Donation:</span>
+                                <span className="text-gray-700 font-medium">
+                                    Your Donation:
+                                </span>
                                 <span className="text-xl font-bold text-blue-600">
-                                    {getCurrencySymbol(selectedPayment.currency)}{selectedPayment.amount}
+                                    {getCurrencySymbol(
+                                        selectedPayment.currency
+                                    )}
+                                    {selectedPayment.amount}
                                 </span>
                             </div>
                         </CardContent>
@@ -243,6 +276,15 @@ const PaymentSelectionStep = ({
 
     const renderRegularPaymentOptions = () => {
         if (isDonation) return null;
+
+        // Get all unique features from all payment options
+        const allFeatures = new Set<string>();
+        paymentOptions.forEach((option) => {
+            option.features?.forEach((feature: string) => {
+                allFeatures.add(feature);
+            });
+        });
+        const uniqueFeatures = Array.from(allFeatures);
 
         return (
             <>
@@ -276,49 +318,59 @@ const PaymentSelectionStep = ({
                             >
                                 <CardContent className="p-6">
                                     {/* Duration Heading */}
-                                    <div>
-                                        <h3 className="text-xl font-bold text-gray-900">
-                                            {payment.duration} Plan
-                                        </h3>
-                                    </div>
+                                    <h4 className="text-xl font-bold text-gray-900">
+                                        {payment.name}
+                                    </h4>
 
                                     {/* Price Information */}
                                     <div>
-                                        <div className=" text-gray-600 text-sm my-1">
+                                        <div className="text-xl font-bold text-primary-500 my-2">
                                             {getCurrencySymbol(
                                                 payment.currency
                                             )}
-                                            {payment.amount} /{" "}
-                                            {payment.duration}
+                                            {payment.amount}
+                                            <span className="text-sm font-normal text-gray-500">
+                                                &nbsp;/{payment.duration}
+                                            </span>
                                         </div>
                                     </div>
 
-                                    {/* Features */}
-                                    {payment.features &&
-                                        payment.features.length > 0 && (
+                                    {/* Features - Show all features with check/cross indicators */}
+                                    {uniqueFeatures.length > 0 && (
+                                        <div className="space-y-2">
                                             <div className="space-y-2">
-                                                <h4 className="font-medium text-gray-900 text-sm">
-                                                    Features:
-                                                </h4>
-                                                <ul className="space-y-1">
-                                                    {payment.features.map(
-                                                        (feature, index) => (
-                                                            <li
+                                                {uniqueFeatures.map(
+                                                    (feature, index) => {
+                                                        const isIncluded =
+                                                            payment.features?.includes(
+                                                                feature
+                                                            );
+                                                        return (
+                                                            <div
                                                                 key={index}
-                                                                className="flex items-center gap-2 text-sm text-gray-600"
+                                                                className="flex items-center gap-1.5 text-sm"
                                                             >
-                                                                <span className="text-blue-500">
-                                                                    •
-                                                                </span>
-                                                                <span>
+                                                                {isIncluded ? (
+                                                                    <Check className="size-3 shrink-0 text-emerald-500" />
+                                                                ) : (
+                                                                    <X className="size-3 shrink-0 text-gray-400" />
+                                                                )}
+                                                                <span
+                                                                    className={`${
+                                                                        isIncluded
+                                                                            ? "text-gray-700"
+                                                                            : "text-gray-400 line-through"
+                                                                    } leading-tight`}
+                                                                >
                                                                     {feature}
                                                                 </span>
-                                                            </li>
-                                                        )
-                                                    )}
-                                                </ul>
+                                                            </div>
+                                                        );
+                                                    }
+                                                )}
                                             </div>
-                                        )}
+                                        </div>
+                                    )}
                                 </CardContent>
                             </Card>
                         );
@@ -329,8 +381,8 @@ const PaymentSelectionStep = ({
     };
 
     return (
-        <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm w-full">
-            <CardContent className="p-6 sm:p-8">
+        <Card className="shadow-lg border bg-white w-full">
+            <CardContent className="p-5 sm:p-6">
                 {renderDonationSection()}
                 {renderRegularPaymentOptions()}
             </CardContent>

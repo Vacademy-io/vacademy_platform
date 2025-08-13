@@ -22,7 +22,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Otherwise, use the regular video element
   return (
-    <div className={`relative overflow-hidden rounded-xl shadow-2xl border border-white/20 bg-black/20 backdrop-blur-sm group ${className}`}>
+    <div className={`relative overflow-hidden rounded-md shadow-md border border-black/10 bg-black/20 group ${className}`}>
       <div className="relative aspect-video">
         <video
           src={src}
@@ -30,7 +30,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           controlsList="nodownload noremoteplayback"
           disablePictureInPicture
           disableRemotePlayback
-          className="w-full h-full object-cover rounded-xl"
+          className="w-full h-full object-cover rounded-md"
           onError={(e) => {
             e.currentTarget.style.display = "none";
             e.currentTarget.parentElement?.classList.add("bg-black");
@@ -40,7 +40,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         </video>
       </div>
       {/* Video overlay gradient */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none rounded-xl"></div>
+      <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none rounded-md"></div>
     </div>
   );
 }; 

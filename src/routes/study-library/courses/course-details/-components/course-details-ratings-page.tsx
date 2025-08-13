@@ -422,13 +422,13 @@ export function CourseDetailsRatingsComponent({
     if (isLoading || !packageSessionId) return <DashboardLoader />;
 
     return (
-        <div className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm hover:shadow-lg transition-all duration-500 p-3 sm:p-4 lg:p-6 group overflow-hidden">
+        <div className="relative bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md shadow-sm hover:shadow-md transition-all duration-200 p-3 sm:p-4 lg:p-5 group overflow-hidden">
             {/* Background gradient overlay */}
-            <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl"></div>
+            <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
 
             {/* Floating orb effects */}
-            <div className="absolute top-0 right-0 w-16 h-16 bg-primary-100/20 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-3 translate-x-6"></div>
-            <div className="absolute bottom-0 left-0 w-20 h-20 bg-yellow-100/20 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 translate-y-3 -translate-x-6"></div>
+            <div className="absolute top-0 right-0 w-16 h-16 bg-primary-100/20 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-500 -translate-y-3 translate-x-6"></div>
+            <div className="absolute bottom-0 left-0 w-20 h-20 bg-yellow-100/20 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-500 translate-y-3 -translate-x-6"></div>
 
             <div className="relative space-y-4 lg:space-y-6">
                 {/* Enhanced Header */}
@@ -455,8 +455,8 @@ export function CourseDetailsRatingsComponent({
                     </div>
                 </div>
 
-                <form className="mb-8 flex flex-col gap-4 rounded-xl border bg-gray-50 p-5">
-                    <label className="font-semibold text-neutral-700">
+                <form className="mb-6 flex flex-col gap-4 rounded-md border bg-gray-50 dark:bg-neutral-900 p-4">
+                    <label className="font-semibold text-neutral-700 dark:text-neutral-300">
                         Your Feedback
                     </label>
                     <Textarea
@@ -466,7 +466,7 @@ export function CourseDetailsRatingsComponent({
                         rows={3}
                         className="resize-none"
                     />
-                    <label className="font-semibold text-neutral-700">
+                    <label className="font-semibold text-neutral-700 dark:text-neutral-300">
                         Rating <span className="text-red-500">*</span>
                     </label>
                     <div className="space-y-2">
@@ -521,7 +521,7 @@ export function CourseDetailsRatingsComponent({
                         style={{ animationDelay: "0.1s" }}
                     >
                         {/* Enhanced Overall Rating Section */}
-                        <div className="relative bg-gradient-to-br from-yellow-50/80 to-orange-50/80 backdrop-blur-sm border border-yellow-200/60 rounded-xl p-3 sm:p-4 lg:p-6 overflow-hidden group/rating">
+                        <div className="relative bg-gradient-to-br from-yellow-50/80 to-orange-50/80 border border-yellow-200/60 rounded-md p-3 sm:p-4 lg:p-5 overflow-hidden group/rating">
                             {/* Background pattern */}
                             <div className="absolute inset-0 bg-gradient-to-br from-yellow-100/20 via-transparent to-orange-100/20 opacity-0 group-hover/rating:opacity-100 transition-opacity duration-500"></div>
 
@@ -619,12 +619,12 @@ export function CourseDetailsRatingsComponent({
                     style={{ animationDelay: "0.2s" }}
                 >
                     {isLoading ? (
-                        <div className="space-y-3">
-                            {[1, 2, 3].map((i) => (
-                                <div
-                                    key={i}
-                                    className="bg-white/60 rounded-xl p-3 sm:p-4 animate-pulse"
-                                >
+                                <div className="space-y-3">
+                                    {[1, 2, 3].map((i) => (
+                                        <div
+                                            key={i}
+                                            className="bg-white/60 rounded-md p-3 sm:p-4 animate-pulse"
+                                        >
                                     <div className="flex items-center space-x-3 mb-3">
                                         <div className="w-10 h-10 bg-gray-200 rounded-full"></div>
                                         <div className="flex-1 space-y-1.5">
@@ -640,12 +640,12 @@ export function CourseDetailsRatingsComponent({
                             ))}
                         </div>
                     ) : reviews.length === 0 ? (
-                        <div className="relative bg-white/60 backdrop-blur-sm border border-gray-200/60 rounded-xl p-6 sm:p-8 text-center overflow-hidden">
+                        <div className="relative bg-white/60 border border-gray-200/60 rounded-md p-6 sm:p-8 text-center overflow-hidden">
                             {/* Background pattern */}
                             <div className="absolute inset-0 bg-gradient-to-br from-gray-50/30 via-transparent to-primary-50/20 pointer-events-none"></div>
 
                             <div className="relative">
-                                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl mx-auto mb-3 sm:mb-4 flex items-center justify-center">
+                                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-br from-gray-100 to-gray-200 rounded-md mx-auto mb-3 sm:mb-4 flex items-center justify-center">
                                     <ChatCircle
                                         size={24}
                                         className="text-gray-500"
@@ -690,7 +690,7 @@ export function CourseDetailsRatingsComponent({
                             className="flex justify-center mt-4 lg:mt-6 animate-fade-in-up"
                             style={{ animationDelay: "0.5s" }}
                         >
-                            <div className="bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl shadow-sm p-2">
+                            <div className="bg-white border border-gray-200 rounded-md shadow-sm p-2">
                                 <MyPagination
                                     currentPage={page}
                                     totalPages={totalPages}

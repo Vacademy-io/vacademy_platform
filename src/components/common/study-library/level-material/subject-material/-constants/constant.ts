@@ -3,6 +3,7 @@ import { RoleTerms, SystemTerms } from "@/types/naming-settings";
 
 export enum TabType {
   OUTLINE = "OUTLINE",
+  CONTENT_STRUCTURE = "CONTENT_STRUCTURE",
   // SUBJECTS = "SUBJECTS",
   TEACHERS = "TEACHERS",
   ASSESSMENT = "ASSESSMENT",
@@ -13,14 +14,10 @@ export enum TabType {
 }
 export const tabs = [
   { label: "Outline", value: "OUTLINE" },
-  // { label: "Subjects", value: "SUBJECTS" },
+  { label: "Content Structure", value: "CONTENT_STRUCTURE" },
   {
     label: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher) + "s",
     value: "TEACHERS",
   },
   { label: "Assessment", value: "ASSESSMENT" },
-  // TODO: will after the feature is developed
-  // { label: "Assignment ", value: "ASSIGNMENT" },
-  // { label: "Grading ", value: "GRADING" },
-  // { label: "Announcements ", value: "ANNOUNCEMENT" },
 ];

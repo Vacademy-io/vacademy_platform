@@ -35,9 +35,9 @@ export function NotifcationCard({
     <div
       className={`relative ${
         isNew 
-          ? "bg-gradient-to-br from-primary-50/90 to-white/80 border-primary-200/70 shadow-lg shadow-primary-100/50" 
-          : "bg-gradient-to-br from-white/90 to-slate-50/80 border-slate-200/60 shadow-md"
-      } backdrop-blur-xl border rounded-2xl p-6 transition-all duration-500 hover:shadow-2xl hover:scale-[1.02] group cursor-pointer animate-fade-in-up overflow-hidden`}
+          ? "bg-gradient-to-br from-primary-50/90 to-white/80 border-primary-200/70 shadow-md" 
+          : "bg-gradient-to-br from-white/90 to-slate-50/80 border-slate-200/60 shadow-sm"
+      } border rounded-md p-5 transition-all duration-300 hover:shadow-md group cursor-pointer animate-fade-in-up overflow-hidden`}
     >
       {/* Animated Background Gradient */}
       <div className={`absolute inset-0 bg-gradient-to-br ${
@@ -53,8 +53,8 @@ export function NotifcationCard({
       
       <div className="relative z-10">
         {/* Title with Icon */}
-        <div className="flex items-start gap-3 mb-4">
-          <div className={`p-2 rounded-lg ${
+        <div className="flex items-start gap-3 mb-3">
+          <div className={`p-2 rounded-md ${
             isNew 
               ? 'bg-gradient-to-br from-primary-100 to-primary-200 text-primary-600' 
               : 'bg-gradient-to-br from-slate-100 to-slate-200 text-slate-600'
@@ -64,7 +64,7 @@ export function NotifcationCard({
             </svg>
           </div>
           <div className="flex-1">
-            <h3 className="text-lg font-bold text-slate-900 tracking-tight group-hover:text-slate-700 transition-colors duration-300 leading-tight">
+            <h3 className="text-base font-semibold text-slate-900 tracking-tight group-hover:text-slate-700 transition-colors duration-300 leading-tight">
         {title}
             </h3>
             {isNew && (
@@ -77,7 +77,7 @@ export function NotifcationCard({
       </div>
       
       {/* Description */}
-        <div className="text-slate-600 font-medium leading-relaxed mb-4 text-base line-clamp-3 group-hover:text-slate-700 transition-colors duration-300">
+        <div className="text-slate-600 leading-relaxed mb-3 text-sm line-clamp-3 group-hover:text-slate-700 transition-colors duration-300">
         {description}
       </div>
       
@@ -111,7 +111,7 @@ export function NotifcationCard({
         {/* Progress Bar Animation */}
         <div className={`absolute bottom-0 left-0 h-0.5 ${
           isNew ? 'bg-gradient-to-r from-primary-400 to-primary-600' : 'bg-gradient-to-r from-slate-300 to-slate-500'
-        } w-0 group-hover:w-full transition-all duration-1000 ease-out`}></div>
+        } w-0 group-hover:w-full transition-all duration-500 ease-out`}></div>
       </div>
     </div>
   );

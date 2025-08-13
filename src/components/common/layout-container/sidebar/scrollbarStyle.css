@@ -1,7 +1,7 @@
 /* Apply styles to sidebar scrollbars */
 .sidebar-content {
     scrollbar-width: thin; /* Firefox */
-    scrollbar-color: #fad6ae; /* Thumb and track color for Firefox */
+    scrollbar-color: #d1d5db #f3f4f6; /* default thumb and track */
 }
 
 /* For WebKit browsers (Chrome, Safari) */
@@ -16,5 +16,15 @@
 .sidebar-content::-webkit-scrollbar-thumb {
     background-color: #d1d5db; /* Scrollbar thumb color */
     border-radius: 2px;
-    border: 2px solid black; /* Optional border */
+}
+
+/* Dark mode */
+.dark .sidebar-content {
+    scrollbar-color: #4b5563 #111827; /* thumb and track for Firefox */
+}
+.dark .sidebar-content::-webkit-scrollbar-track {
+    background: #111827;
+}
+.dark .sidebar-content::-webkit-scrollbar-thumb {
+    background-color: #4b5563;
 }

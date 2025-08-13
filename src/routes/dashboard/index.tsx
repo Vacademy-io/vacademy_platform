@@ -5,6 +5,7 @@ import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore
 import { fetchStaticData } from "./-lib/utils";
 import { Helmet } from "react-helmet";
 import { useAnalytics } from "@/hooks/useAnalytics";
+import { useCallback } from "react";
 // import { fetchStudentDetails } from "@/services/studentDetails";
 // import { getUserId } from "@/constants/getUserId";
 // import { getInstituteId } from "@/constants/helper";
@@ -35,7 +36,6 @@ import {
   Trophy,
   Calendar,
   Play,
-  PencilSimple,
   Bell,
 } from "phosphor-react";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,9 @@ import { SessionStreamingServiceType } from "../register/live-class/-types/enum"
 import { toast } from "sonner";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { getStudentDisplaySettings } from "@/services/student-display-settings";
+import type { StudentDashboardWidgetConfig } from "@/types/student-display-settings";
+import { Card as DSCard } from "@/components/ui/card";
 
 export const Route = createFileRoute("/dashboard/")({
   component: () => {
@@ -62,9 +65,9 @@ export const Route = createFileRoute("/dashboard/")({
 // Loading skeleton component
 const StatCardSkeleton = () => (
   <div className="group relative overflow-hidden">
-    <div className="bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-6 transition-all duration-300">
+    <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md sm:rounded-lg p-3 sm:p-4 md:p-5 transition-all duration-200">
       <div className="flex items-center justify-between mb-2 sm:mb-3 md:mb-4">
-        <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-gray-200 rounded-lg sm:rounded-xl animate-pulse"></div>
+        <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-gray-200 rounded-md sm:rounded-lg animate-pulse"></div>
         <div className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 bg-gray-200 rounded animate-pulse"></div>
       </div>
       <div className="space-y-1 sm:space-y-2 md:space-y-3">
@@ -110,16 +113,16 @@ const StatCard = ({
     >
       {/* Background gradient overlay - Reduced on mobile for performance */}
       <div
-        className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl sm:rounded-2xl hidden sm:block`}
+        className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-md sm:rounded-lg hidden sm:block`}
       ></div>
 
       {/* Main card */}
-      <div className="relative bg-white/80 backdrop-blur-sm border border-gray-200/60 rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-6 shadow-sm hover:shadow-xl hover:border-primary-300/40 transition-all duration-500 group-hover:bg-white/90 h-full">
+      <div className="relative bg-white border border-gray-200 rounded-md sm:rounded-lg p-3 sm:p-4 md:p-5 shadow-sm hover:shadow-md transition-all duration-300 h-full">
         {/* Floating orb effect - Hidden on mobile for performance */}
         <div className="absolute top-0 right-0 w-12 h-12 md:w-20 md:h-20 bg-primary-100/30 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-2 md:-translate-y-4 translate-x-2 md:translate-x-4 hidden sm:block"></div>
 
         <div className="flex items-center justify-between mb-2 sm:mb-3 md:mb-5">
-          <div className="p-1.5 sm:p-2 md:p-3 bg-gradient-to-br from-primary-50 to-primary-100 rounded-lg sm:rounded-xl text-primary-600 group-hover:scale-110 transition-transform duration-300 shadow-sm">
+          <div className="p-1.5 sm:p-2 md:p-3 bg-gradient-to-br from-primary-50 to-primary-100 rounded-md sm:rounded-lg text-primary-600 group-hover:scale-110 transition-transform duration-300 shadow-sm">
             <Icon
               weight="duotone"
               size={18}
@@ -135,16 +138,16 @@ const StatCard = ({
         </div>
 
         <div className="space-y-1 sm:space-y-2">
-          <div className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 tracking-tight leading-tight">
+              <div className="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-neutral-100 tracking-tight leading-tight">
             {(count ?? 0).toLocaleString()}
           </div>
-          <div className="text-xs sm:text-sm font-medium text-gray-600 group-hover:text-gray-700 transition-colors duration-300 line-clamp-2 break-words">
+              <div className="text-xs sm:text-sm font-medium text-gray-600 dark:text-neutral-300 group-hover:text-gray-700 dark:group-hover:text-neutral-200 transition-colors duration-300 line-clamp-2 break-words">
             {title}
           </div>
         </div>
 
         {/* Progress indicator */}
-        <div className="absolute bottom-0 left-0 h-0.5 sm:h-1 bg-gradient-to-r from-primary-400 to-primary-600 w-0 group-hover:w-full transition-all duration-700 ease-out rounded-b-xl sm:rounded-b-2xl"></div>
+        <div className="absolute bottom-0 left-0 h-0.5 sm:h-1 bg-gradient-to-r from-primary-400 to-primary-600 w-0 group-hover:w-full transition-all duration-700 ease-out rounded-b-md sm:rounded-b-lg"></div>
       </div>
     </div>
   );
@@ -162,7 +165,7 @@ const ContinueLearningCard = ({
     return (
       <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-primary-50/80 via-white to-primary-100/30 shadow-sm hover:shadow-lg transition-all duration-500">
         <CardContent className="p-4 sm:p-6 md:p-8 text-center">
-          <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 bg-gradient-to-br from-primary-100 to-primary-200 rounded-xl sm:rounded-2xl flex items-center justify-center mx-auto mb-2 sm:mb-3 md:mb-4">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 bg-gradient-to-br from-primary-100 to-primary-200 rounded-md sm:rounded-lg flex items-center justify-center mx-auto mb-2 sm:mb-3 md:mb-4">
             <Target
               weight="duotone"
               size={20}
@@ -193,7 +196,7 @@ const ContinueLearningCard = ({
   }
 
   return (
-    <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-gray-50/80 via-white to-primary-50/30 shadow-sm hover:shadow-lg transition-all duration-500 continue-learning-card">
+    <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-gray-50/80 via-white to-primary-50/30 dark:from-neutral-900 dark:via-neutral-900 dark:to-neutral-800 shadow-sm hover:shadow-lg transition-all duration-500 continue-learning-card">
       <CardHeader className="pb-2 sm:pb-3 md:pb-4 px-3 sm:px-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 md:gap-4">
           <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
@@ -205,7 +208,7 @@ const ContinueLearningCard = ({
               />
             </div>
             <div className="min-w-0 flex-1">
-              <CardTitle className="text-base sm:text-lg md:text-xl font-semibold text-gray-900 truncate">
+              <CardTitle className="text-base sm:text-lg md:text-xl font-semibold text-gray-900 dark:text-neutral-100 truncate">
                 Continue Learning
               </CardTitle>
               <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1 truncate">
@@ -234,7 +237,7 @@ const ContinueLearningCard = ({
             <div
               key={slide.slide_id}
               onClick={() => onResumeClick(slide)}
-              className="group flex items-center gap-1.5 sm:gap-2 md:gap-3 p-2 sm:p-2.5 md:p-3 bg-white/70 backdrop-blur-sm border border-gray-200/60 rounded-lg sm:rounded-xl hover:bg-white hover:border-primary-300/60 transition-all duration-300 cursor-pointer hover:shadow-md active:scale-[0.98] w-full overflow-hidden min-h-[52px] sm:min-h-[56px] md:min-h-[64px] max-w-full"
+              className="group flex items-center gap-1.5 sm:gap-2 md:gap-3 p-2 sm:p-2.5 md:p-3 bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md sm:rounded-lg hover:bg-white dark:hover:bg-neutral-800 transition-all duration-200 cursor-pointer hover:shadow-md active:scale-[0.98] w-full overflow-hidden min-h-[52px] sm:min-h-[56px] md:min-h-[64px] max-w-full"
             >
               <div className="flex-shrink-0">
                 <div className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg flex items-center justify-center">
@@ -244,10 +247,10 @@ const ContinueLearningCard = ({
                 </div>
               </div>
               <div className="flex-1 min-w-0 overflow-hidden dashboard-flex-container">
-                <h4 className="font-medium text-gray-900 group-hover:text-primary-600 transition-colors duration-300 text-xs sm:text-sm leading-tight slide-title dashboard-card-text">
+                  <h4 className="font-medium text-gray-900 dark:text-neutral-100 group-hover:text-primary-600 dark:group-hover:text-neutral-100 transition-colors duration-300 text-xs sm:text-sm leading-tight slide-title dashboard-card-text">
                   {slide.slide_title}
                 </h4>
-                <p className="text-xs text-gray-500 mt-0.5 leading-tight slide-description dashboard-card-text">
+                  <p className="text-xs text-gray-500 dark:text-neutral-400 mt-0.5 leading-tight slide-description dashboard-card-text">
                   {slide.slide_description ||
                     "Continue from where you left off"}
                 </p>
@@ -301,8 +304,26 @@ export function DashboardComponent() {
 
   // Initialize analytics tracking
   const { trackPageView, track, trackLessonStarted } = useAnalytics();
+  const [widgetConfigs, setWidgetConfigs] = useState<StudentDashboardWidgetConfig[] | null>(null);
+  // If settings specify a different post-login route, redirect away from dashboard
+  useEffect(() => {
+    getStudentDisplaySettings(false)
+      .then((s) => {
+        const route = s?.postLoginRedirectRoute || "/dashboard";
+        if (
+          route !== "/dashboard" &&
+          !/^https?:\/\//.test(route) &&
+          route !== window.location.pathname
+        ) {
+          // prevent redirect loop and ignore external URLs
+          navigate({ to: route as never, replace: true });
+        }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const handleGetStudyLibraryData = async () => {
+  const handleGetStudyLibraryData = useCallback(async () => {
     try {
       const PackageSessionId = await getPackageSessionId();
       const data = await fetchStudyLibraryDetails(PackageSessionId);
@@ -310,7 +331,7 @@ export function DashboardComponent() {
     } catch (error) {
       console.error("Error fetching study library data:", error);
     }
-  };
+  }, [setStudyLibraryData]);
 
   const handleResumeClick = (slide: DashboardSlide) => {
     // Track lesson resumed
@@ -344,6 +365,9 @@ export function DashboardComponent() {
   };
 
   useEffect(() => {
+    // Force-refresh Student Display Settings on dashboard mount to update local cache
+    getStudentDisplaySettings(true).catch(() => {});
+
     const fetchBatchId = async () => {
       try {
         const id = await getPackageSessionId();
@@ -353,7 +377,26 @@ export function DashboardComponent() {
       }
     };
     fetchBatchId();
-  }, []);
+  }, [trackPageView, setNavHeading]);
+  // Load dashboard widget configurations
+  useEffect(() => {
+    getStudentDisplaySettings(false)
+      .then((s) => setWidgetConfigs(s?.dashboard?.widgets || []))
+      .catch(() => setWidgetConfigs(null));
+  }, [setNavHeading, trackPageView, handleGetStudyLibraryData]);
+
+  const isWidgetVisible = (id: StudentDashboardWidgetConfig["id"]) => {
+    const cfg = widgetConfigs?.find((w) => w.id === id);
+    return cfg ? cfg.visible !== false : true;
+  };
+
+  const getWidgetOrder = (id: StudentDashboardWidgetConfig["id"]) => {
+    const cfg = widgetConfigs?.find((w) => w.id === id);
+    return cfg?.order ?? Number.MAX_SAFE_INTEGER;
+  };
+
+  const customWidget = widgetConfigs?.find((w) => w.id === "custom" && w.visible !== false);
+
 
   useEffect(() => {
     if (batchId) {
@@ -389,7 +432,7 @@ export function DashboardComponent() {
       }
     };
     initializeDashboard();
-  }, []);
+  }, [handleGetStudyLibraryData, setNavHeading, trackPageView]);
 
   const handleJoinSession = async (session: SessionDetails) => {
     // Track live session join attempt
@@ -476,7 +519,7 @@ export function DashboardComponent() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 relative overflow-hidden w-full dashboard-container smooth-scroll">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-900 relative overflow-hidden w-full dashboard-container smooth-scroll">
       <Helmet>
         <title>Dashboard</title>
         <meta
@@ -498,21 +541,21 @@ export function DashboardComponent() {
         ></div>
       </div>
 
-      <div className="relative z-10 space-y-4 sm:space-y-6 md:space-y-8 p-3 sm:p-4 md:p-6 max-w-7xl mx-auto w-full">
+      <div className="relative z-10 space-y-3 sm:space-y-4 md:space-y-5 p-3 sm:p-4 md:p-5 max-w-7xl mx-auto w-full">
         {/* Enhanced Header Section */}
         <div className="animate-fade-in-down">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 sm:gap-4 lg:gap-6">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2.5 sm:gap-3.5 lg:gap-5">
             <div className="flex flex-col sm:flex-row sm:items-center space-y-3 sm:space-y-0 sm:space-x-3 md:space-x-4 min-w-0">
               <div className="relative flex-shrink-0">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg sm:rounded-xl md:rounded-2xl flex items-center justify-center shadow-lg">
-                  <span className="text-base sm:text-lg md:text-2xl font-bold text-primary-700">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 bg-gradient-to-br from-primary-100 to-primary-200 rounded-md sm:rounded-lg md:rounded-xl flex items-center justify-center shadow-md">
+                  <span className="text-base sm:text-lg font-semibold text-primary-700">
                     {username?.charAt(0)?.toUpperCase() || "U"}
                   </span>
                 </div>
                 <div className="absolute -bottom-0.5 -right-0.5 sm:-bottom-1 sm:-right-1 w-3 h-3 sm:w-4 sm:h-4 md:w-6 md:h-6 bg-success-500 rounded-full border-2 border-white shadow-sm animate-gentle-pulse"></div>
               </div>
               <div className="min-w-0 flex-1">
-                <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 tracking-tight leading-tight">
+                <h1 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900 dark:text-neutral-100 tracking-tight leading-tight">
                   {isLoading ? (
                     <div className="w-32 sm:w-40 md:w-48 h-5 sm:h-6 md:h-8 bg-gray-200 rounded animate-pulse"></div>
                   ) : (
@@ -549,8 +592,8 @@ export function DashboardComponent() {
             </div>
 
             <div className="flex items-center justify-center sm:justify-end">
-              <div className="bg-white/70 backdrop-blur-sm border border-gray-200 rounded-lg sm:rounded-xl px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 md:py-3 shadow-sm">
-                <div className="flex items-center space-x-1.5 sm:space-x-2 text-gray-600">
+              <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md sm:rounded-lg px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 md:py-3 shadow-sm">
+                <div className="flex items-center space-x-1.5 sm:space-x-2 text-gray-600 dark:text-neutral-300">
                   <Calendar
                     weight="duotone"
                     size={14}
@@ -571,73 +614,152 @@ export function DashboardComponent() {
 
         {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
           <>
-            {/* Enhanced Stats Grid */}
-            <div
-              className="animate-fade-in-up"
-              style={{ animationDelay: "0.2s" }}
-            >
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
-                <StatCard
-                  title={`${getTerminology(
-                    ContentTerms.Course,
-                    SystemTerms.Course
-                  )}s`}
-                  count={data?.courses || 0}
-                  icon={BookOpen}
-                  onClick={() => {
-                    track("Dashboard Card Clicked", {
-                      cardType: "Courses",
-                      count: data?.courses || 0,
-                    });
-                    navigate({ to: "/study-library/courses" });
-                  }}
-                  gradient="from-blue-500/10 to-primary-500/10"
-                  isLoading={isLoading}
-                />
-                <StatCard
-                  title="Assignments"
-                  count={homeworkAssignedCount}
-                  icon={PencilSimple}
-                  onClick={() => {
-                    track("Dashboard Card Clicked", {
-                      cardType: "Assignments",
-                      count: homeworkAssignedCount,
-                    });
-                    navigate({ to: "/homework/list" });
-                  }}
-                  gradient="from-green-500/10 to-emerald-500/10"
-                  isLoading={isLoading}
-                />
-                <StatCard
-                  title="Evaluations"
-                  count={testAssignedCount}
-                  icon={Trophy}
-                  onClick={() => {
-                    track("Dashboard Card Clicked", {
-                      cardType: "Evaluations",
-                      count: testAssignedCount,
-                    });
-                    navigate({ to: "/assessment/examination" });
-                  }}
-                  gradient="from-purple-500/10 to-pink-500/10"
-                  isLoading={isLoading}
-                />
+            {/* Stats and Widgets Grid - Enforced by Student Display Settings */}
+            <div className="animate-fade-in-up" style={{ animationDelay: "0.2s" }}>
+              <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fit,minmax(260px,1fr))] lg:grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-2.5 sm:gap-3.5 md:gap-5">
+                {[
+                  {
+                    id: "coursesStat" as const,
+                    className: "",
+                    render: (
+                      <StatCard
+                        title={`${getTerminology(ContentTerms.Course, SystemTerms.Course)}s`}
+                        count={data?.courses || 0}
+                        icon={BookOpen}
+                        onClick={() => {
+                          track("Dashboard Card Clicked", { cardType: "Courses", count: data?.courses || 0 });
+                          navigate({ to: "/study-library/courses" });
+                        }}
+                        gradient="from-blue-500/10 to-primary-500/10"
+                        isLoading={isLoading}
+                      />
+                    ),
+                  },
+                  {
+                    id: "assessmentsStat" as const,
+                    className: "",
+                    render: (
+                      <StatCard
+                        title="Assignments"
+                        count={homeworkAssignedCount}
+                        icon={Users}
+                        onClick={() => {
+                          track("Dashboard Card Clicked", { cardType: "Assignments", count: homeworkAssignedCount });
+                          navigate({ to: "/homework/list" });
+                        }}
+                        gradient="from-green-500/10 to-emerald-500/10"
+                        isLoading={isLoading}
+                      />
+                    ),
+                  },
+                  {
+                    id: "evaluationStat" as const,
+                    className: "",
+                    render: (
+                      <StatCard
+                        title="Evaluations"
+                        count={testAssignedCount}
+                        icon={Trophy}
+                        onClick={() => {
+                          track("Dashboard Card Clicked", { cardType: "Evaluations", count: testAssignedCount });
+                          navigate({ to: "/assessment/examination" });
+                        }}
+                        gradient="from-purple-500/10 to-pink-500/10"
+                        isLoading={isLoading}
+                      />
+                    ),
+                  },
+                  {
+                    id: "continueLearning" as const,
+                    className: "lg:col-span-2",
+                    render: (
+                      <ContinueLearningCard data={data} onResumeClick={handleResumeClick} />
+                    ),
+                  },
+                  {
+                    id: "learningAnalytics" as const,
+                    className: "lg:col-span-2 xl:col-span-3",
+                    render: (
+                      <div className="animate-fade-in-up" style={{ animationDelay: "0.6s" }}>
+                        <PastLearningInsights />
+                      </div>
+                    ),
+                  },
+                  {
+                    id: "dailyProgress" as const,
+                    className: "",
+                    render: null,
+                  },
+                  {
+                    id: "activityTrend" as const,
+                    className: "",
+                    render: null,
+                  },
+                  {
+                    id: "liveClasses" as const,
+                    className: "",
+                    render: null,
+                  },
+                  {
+                    id: "thisWeekAttendance" as const,
+                    className: "",
+                    render: null,
+                  },
+                  {
+                    id: "referAFriend" as const,
+                    className: "",
+                    render: null,
+                  },
+                  {
+                    id: "myClasses" as const,
+                    className: "",
+                    render: null,
+                  },
+                  {
+                    id: "custom" as const,
+                    className: "",
+                    render: customWidget ? (
+                      <DSCard className="border-0 bg-gradient-to-br from-white/80 to-primary-50/30 shadow-sm">
+                        <CardHeader className="pb-2 sm:pb-3 md:pb-4 px-3 sm:px-6">
+                          <CardTitle className="flex items-center space-x-2 text-sm sm:text-base md:text-lg">
+                            <span>{customWidget.title || "Custom Widget"}</span>
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="pt-0 px-3 sm:px-6">
+                          {customWidget.subTitle && (
+                            <p className="text-xs sm:text-sm text-gray-600 mb-3">{customWidget.subTitle}</p>
+                          )}
+                          {customWidget.link && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                const link = customWidget.link as string;
+                                if (/^https?:\/\//.test(link)) {
+                                  window.open(link, "_blank");
+                                } else {
+                                  navigate({ to: link as never });
+                                }
+                              }}
+                              className="hover:bg-primary-100 text-xs sm:text-sm"
+                            >
+                              Open <ChevronRight size={12} className="ml-1" />
+                            </Button>
+                          )}
+                        </CardContent>
+                      </DSCard>
+                    ) : null,
+                  },
+                ]
+                  .filter((w) => isWidgetVisible(w.id) && w.render)
+                  .sort((a, b) => getWidgetOrder(a.id) - getWidgetOrder(b.id))
+                  .map((w, idx) => (
+                    <div key={`${String(w.id)}-${idx}`} className={w.className}>{w.render}</div>
+                  ))}
               </div>
             </div>
 
-            {/* Enhanced Continue Learning Section */}
-            <ContinueLearningCard
-              data={data}
-              onResumeClick={handleResumeClick}
-            />
-
-            {/* Enhanced Analytics Section */}
-            <div
-              className="animate-fade-in-up"
-              style={{ animationDelay: "0.6s" }}
-            >
-              <PastLearningInsights />
-            </div>
+            {/* Above grid already includes Continue Learning and Analytics per settings */}
 
             {/* Developer Test Section - Only in development */}
             {process.env.NODE_ENV === "development" && (
@@ -735,7 +857,7 @@ export function DashboardComponent() {
                         return (
                           <div
                             key={day}
-                            className="flex flex-col items-center space-y-1 p-1.5 sm:p-2 md:p-3 bg-white/70 rounded-lg sm:rounded-xl border border-gray-200/50 min-w-0 flex-1"
+                            className="flex flex-col items-center space-y-1 p-1.5 sm:p-2 md:p-3 bg-white rounded-md sm:rounded-lg border border-gray-200 min-w-0 flex-1"
                           >
                             <Icon
                               size={14}
@@ -755,7 +877,7 @@ export function DashboardComponent() {
                 <Card className="border-0 bg-gradient-to-br from-white/80 to-blue-50/30 shadow-lg">
                   <CardContent className="p-3 sm:p-4 md:p-6">
                     <div className="flex items-center space-x-2 sm:space-x-3 md:space-x-4">
-                      <div className="p-1.5 sm:p-2 md:p-3 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg sm:rounded-xl flex-shrink-0">
+                      <div className="p-1.5 sm:p-2 md:p-3 bg-gradient-to-br from-blue-100 to-blue-200 rounded-md sm:rounded-lg flex-shrink-0">
                         <Users
                           weight="duotone"
                           size={16}
@@ -816,7 +938,7 @@ export function DashboardComponent() {
                       {[1, 2, 3].map((i) => (
                         <div
                           key={i}
-                          className="flex items-center space-x-2 sm:space-x-3 md:space-x-4 p-2.5 sm:p-3 md:p-4 bg-gray-100 rounded-lg sm:rounded-xl animate-pulse"
+                          className="flex items-center space-x-2 sm:space-x-3 md:space-x-4 p-2.5 sm:p-3 md:p-4 bg-gray-100 rounded-md sm:rounded-lg animate-pulse"
                         >
                           <div className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 bg-gray-200 rounded-lg flex-shrink-0"></div>
                           <div className="flex-1 space-y-1 sm:space-y-2 min-w-0">
@@ -832,7 +954,7 @@ export function DashboardComponent() {
                       {liveSessions?.live_sessions?.map((session, index) => (
                         <div
                           key={`live-${session.session_id}-${index}`}
-                          className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 md:gap-4 p-2.5 sm:p-3 md:p-4 bg-white/70 backdrop-blur-sm border border-gray-200/60 rounded-lg sm:rounded-xl hover:bg-white hover:border-green-300/60 transition-all duration-300 w-full min-h-[60px] sm:min-h-[64px] max-w-full overflow-hidden"
+                          className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 md:gap-4 p-2.5 sm:p-3 md:p-4 bg-white border border-gray-200 rounded-md sm:rounded-lg hover:bg-white transition-all duration-200 w-full min-h-[60px] sm:min-h-[64px] max-w-full overflow-hidden"
                         >
                           <div className="flex items-center space-x-1.5 sm:space-x-2 md:space-x-3 min-w-0 flex-1 overflow-hidden">
                             <div className="p-1 sm:p-1.5 md:p-2 bg-gradient-to-br from-green-100 to-green-200 rounded-lg flex-shrink-0">
@@ -880,7 +1002,7 @@ export function DashboardComponent() {
                         .map((session, index) => (
                           <div
                             key={`upcoming-${session.session_id}-${index}`}
-                            className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 md:gap-4 p-2.5 sm:p-3 md:p-4 bg-white/70 backdrop-blur-sm border border-gray-200/60 rounded-lg sm:rounded-xl hover:bg-white transition-all duration-300 w-full min-h-[60px] sm:min-h-[64px] max-w-full overflow-hidden"
+                          className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 md:gap-4 p-2.5 sm:p-3 md:p-4 bg-white border border-gray-200 rounded-md sm:rounded-lg hover:bg-white transition-all duration-200 w-full min-h-[60px] sm:min-h-[64px] max-w-full overflow-hidden"
                           >
                             <div className="flex items-center space-x-1.5 sm:space-x-2 md:space-x-3 min-w-0 flex-1 overflow-hidden">
                               <div className="p-1 sm:p-1.5 md:p-2 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg flex-shrink-0">
@@ -926,7 +1048,7 @@ export function DashboardComponent() {
                       {!liveSessions?.live_sessions?.length &&
                         !liveSessions?.upcoming_sessions?.length && (
                           <div className="text-center py-6 sm:py-8 md:py-12">
-                            <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl sm:rounded-2xl flex items-center justify-center mx-auto mb-2 sm:mb-3 md:mb-4">
+                            <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 bg-gradient-to-br from-gray-100 to-gray-200 rounded-md sm:rounded-lg flex items-center justify-center mx-auto mb-2 sm:mb-3 md:mb-4">
                               <BookOpen
                                 weight="duotone"
                                 size={20}

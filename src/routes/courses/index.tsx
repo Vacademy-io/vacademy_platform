@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import CourseCatalougePage from "./-component/CourseCatalougePage";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { handleGetInstituteIdBySubdomain } from "./-services/courses-services";
+import { handleGetInstituteIdWithLocalStorageCheck } from "./-services/courses-services";
 import { useEffect } from "react";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import RootNotFoundComponent from "@/components/core/default-not-found";
 import { Preferences } from "@capacitor/preferences";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
@@ -14,40 +14,21 @@ import { getSubdomain } from "@/helpers/helper";
 
 export const Route = createFileRoute("/courses/")({
     component: CoursesContainerComponent,
-    validateSearch: (search) => {
-        return {
-            instituteId: search.instituteId as string,
-        };
+    validateSearch: () => {
+        return {};
     },
 });
 
 function CoursesContainerComponent() {
     const navigate = useNavigate();
-    const search = useSearch({ from: "/courses/" });
     const subdomain = getSubdomain(window.location.hostname);
 
-    // Always call the hook, but only use result if needed
+    // Use the new function that checks localStorage first, then compares with API result
     const { data: apiResult, isLoading } = useSuspenseQuery(
-        handleGetInstituteIdBySubdomain({
-            subdomain: !search.instituteId ? subdomain || "" : "__skip__",
+        handleGetInstituteIdWithLocalStorageCheck({
+            subdomain: subdomain || "",
         })
     );
-    const shouldFetchInstituteId = !search.instituteId;
-
-    useEffect(() => {
-        if (
-            shouldFetchInstituteId &&
-            !isLoading &&
-            apiResult &&
-            apiResult !== "Data not found"
-        ) {
-            navigate({
-                to: "/courses",
-                search: { ...search, instituteId: apiResult },
-                replace: true,
-            });
-        }
-    }, [apiResult, isLoading, search, navigate, shouldFetchInstituteId]);
 
     useEffect(() => {
         const redirectToDashboardIfAuthenticated = async () => {
@@ -73,13 +54,14 @@ function CoursesContainerComponent() {
 
     if (isLoading) return <DashboardLoader />;
 
-    if (shouldFetchInstituteId && apiResult === "Data not found") {
+    // If we couldn't get any instituteId (neither from API nor localStorage), show not found
+    if (apiResult === "Data not found") {
         return <RootNotFoundComponent />;
     }
 
     return (
         <div className="min-h-screen bg-white">
-            <CourseCatalougePage />
+            <CourseCatalougePage instituteId={apiResult} />
         </div>
     );
 }

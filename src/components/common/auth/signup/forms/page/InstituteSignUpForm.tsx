@@ -490,7 +490,7 @@ export function InstituteSignUp({
                                 initial={{ y: 10, opacity: 0 }}
                                 animate={{ y: 0, opacity: 1 }}
                                 transition={{ delay: 0.1 }}
-                                className="p-4 bg-blue-50 border border-blue-200 rounded-lg"
+                                className="p-3 bg-blue-50 border border-blue-200 rounded-md"
                             >
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center space-x-3">

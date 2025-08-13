@@ -207,7 +207,7 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
         <div className="space-y-4">
             {/* Enhanced Header with Summary Stats */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6">
-                <div className="bg-gradient-to-br from-primary-50/50 to-white/80 rounded-lg p-3 sm:p-4 border border-primary-200/40">
+                <div className="bg-gradient-to-br from-primary-50/50 to-white/80 dark:from-neutral-800/40 dark:to-neutral-800 rounded-lg p-3 sm:p-4 border border-primary-200/40 dark:border-neutral-800">
                     <div className="flex items-center space-x-2 mb-2">
                         <div className="w-2 h-2 bg-primary-500 rounded-full"></div>
                         <span className="text-xs sm:text-sm font-semibold text-gray-900">Total Sessions</span>
@@ -220,7 +220,7 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
                     </div>
                 </div>
                 
-                <div className="bg-gradient-to-br from-success-50/50 to-white/80 rounded-lg p-3 sm:p-4 border border-success-200/40">
+                <div className="bg-gradient-to-br from-success-50/50 to-white/80 dark:from-neutral-800/40 dark:to-neutral-800 rounded-lg p-3 sm:p-4 border border-success-200/40 dark:border-neutral-800">
                     <div className="flex items-center space-x-2 mb-2">
                         <div className="w-2 h-2 bg-success-500 rounded-full"></div>
                         <span className="text-xs sm:text-sm font-semibold text-gray-900">Above Average</span>
@@ -233,7 +233,7 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
                     </div>
                 </div>
                 
-                <div className="bg-gradient-to-br from-info-50/50 to-white/80 rounded-lg p-3 sm:p-4 border border-info-200/40">
+                <div className="bg-gradient-to-br from-info-50/50 to-white/80 dark:from-neutral-800/40 dark:to-neutral-800 rounded-lg p-3 sm:p-4 border border-info-200/40 dark:border-neutral-800">
                     <div className="flex items-center space-x-2 mb-2">
                         <div className="w-2 h-2 bg-info-500 rounded-full"></div>
                         <span className="text-xs sm:text-sm font-semibold text-gray-900">Consistency</span>
@@ -248,7 +248,7 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
             </div>
 
             {/* Enhanced Table */}
-            <div className="relative overflow-hidden bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200/60 shadow-sm w-full max-w-full">
+            <div className="relative overflow-hidden bg-white rounded-md border border-gray-200 shadow-sm w-full max-w-full">
                 {/* Background pattern */}
                 <div className="absolute inset-0 bg-gradient-to-br from-gray-50/30 via-transparent to-primary-50/20 pointer-events-none"></div>
                 
@@ -257,7 +257,7 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
                     {/* Mobile Card View */}
                     <div className="block sm:hidden space-y-3">
                         {tableData.map((row, index) => (
-                            <div key={index} className="bg-white/70 backdrop-blur-sm border border-gray-200/60 rounded-lg p-4">
+                            <div key={index} className="bg-white border border-gray-200 rounded-md p-4">
                                 <div className="flex items-center justify-between mb-3">
                                     <div className="flex items-center space-x-2">
                                         <div className={`w-3 h-3 rounded-full ${
@@ -333,7 +333,7 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
                 </div>
                 
                 {/* Enhanced Footer */}
-                <div className="border-t border-gray-200/60 bg-gradient-to-r from-gray-50/50 to-primary-50/20 px-4 sm:px-6 py-3 sm:py-4">
+                <div className="border-t border-gray-200/60 bg-gradient-to-r from-gray-50/50 to-primary-50/20 px-3.5 sm:px-5 py-2.5 sm:py-3.5">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 text-xs sm:text-sm">
                         <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-gray-600">
                             <div className="flex items-center space-x-2">

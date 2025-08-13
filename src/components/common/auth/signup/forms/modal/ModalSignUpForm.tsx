@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -19,6 +19,7 @@ import {
 import { MyInput } from "@/components/design-system/input";
 import { getInstituteDetails, parseInstituteSettings, registerUser, getUserDetailsByEmail, handlePostSignupAuth, type InstituteDetails, type RegisterUserRequest } from "@/services/signup-api";
 import { SignupEmailOtpForm } from "../page/SignupEmailOtpForm";
+import { Preferences } from "@capacitor/preferences";
 
 const userDetailsSchema = z.object({
     fullName: z.string().min(2, "Full name must be at least 2 characters"),
@@ -65,23 +66,10 @@ export function ModalSignUpForm({
         },
     });
 
-    // Get URL parameters for institute ID
-    const urlParams = new URLSearchParams(window.location.search);
-    const urlInstituteId = urlParams.get('instituteId');
-    
-    // Use prop instituteId if provided, otherwise use URL parameter
-    const instituteId = propInstituteId || urlInstituteId;
+    // Get institute ID from props, URL parameters, or local storage
+    const [instituteId, setInstituteId] = useState<string | null>(null);
 
-    // Fetch institute details when component mounts (for modal signup)
-    useEffect(() => {
-        if (instituteId && !selectedInstitute) {
-            fetchInstituteDetails(instituteId);
-        } else if (!instituteId) {
-            // If no institute ID, show a message or handle accordingly
-        }
-    }, [instituteId, selectedInstitute]);
-
-    const fetchInstituteDetails = async (instituteId: string) => {
+    const fetchInstituteDetails = useCallback(async (instituteId: string) => {
         setIsFetchingInstitute(true);
         try {
             const instituteDetails = await getInstituteDetails(instituteId);
@@ -91,12 +79,55 @@ export function ModalSignUpForm({
             setSelectedInstitute(instituteDetails);
             setInstituteSettings(settings);
         } catch (error) {
-            console.error("Error fetching institute details:", error);
+            console.error("ModalSignUpForm: Error fetching institute details:", error);
             toast.error("Failed to fetch institute details. Please try again.");
         } finally {
             setIsFetchingInstitute(false);
         }
-    };
+    }, []);
+
+    // Fetch institute ID from local storage when component mounts
+    useEffect(() => {
+        const getInstituteIdFromStorage = async () => {
+            try {
+                // Priority: 1. Props, 2. URL params, 3. Local storage
+                if (propInstituteId) {
+                    setInstituteId(propInstituteId);
+                    return;
+                }
+
+                // Check URL parameters
+                const urlParams = new URLSearchParams(window.location.search);
+                const urlInstituteId = urlParams.get('instituteId');
+                if (urlInstituteId) {
+                    setInstituteId(urlInstituteId);
+                    return;
+                }
+
+                // Get from local storage using Capacitor Preferences
+                const { value } = await Preferences.get({ key: "InstituteId" });
+                if (value) {
+                    setInstituteId(value);
+                    return;
+                }
+
+                // If no institute ID found, show error
+                toast.error("No institute ID found. Please try again or contact support.");
+            } catch (error) {
+                console.error("ModalSignUpForm: Error getting institute ID:", error);
+                toast.error("Failed to get institute ID. Please try again.");
+            }
+        };
+
+        getInstituteIdFromStorage();
+    }, [propInstituteId]);
+
+    // Fetch institute details when institute ID is available
+    useEffect(() => {
+        if (instituteId && !selectedInstitute) {
+            fetchInstituteDetails(instituteId);
+        }
+    }, [instituteId, selectedInstitute, fetchInstituteDetails]);
 
     const handleUserDetailsCheck = async ({ email }: { email: string; response: unknown }) => {
         try {

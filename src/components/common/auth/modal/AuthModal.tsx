@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { ModalSpecificLoginForm } from "@/components/common/auth/login/forms/modal/ModalSpecificLoginForm";
 import { ModalSignUpForm } from "@/components/common/auth/signup/forms/modal/ModalSignUpForm";
 import { ModalForgotPasswordForm } from "@/components/common/auth/login/forms/modal/ModalForgotPasswordForm";
+import { Preferences } from "@capacitor/preferences";
 
 interface AuthModalProps {
     type?: string;
@@ -30,6 +31,7 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
     const [currentMode, setCurrentMode] = useState<'login' | 'signup' | 'forgot-password'>('login');
     const [isVisible, setIsVisible] = useState(false);
     const dialogRef = useRef<HTMLDivElement>(null);
+    const [instituteIdFromStorage, setInstituteIdFromStorage] = useState<string | null>(null);
 
     // Expose setIsOpen method to parent component
     useImperativeHandle(ref, () => ({
@@ -45,7 +47,7 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
         
         // If type and courseId are explicitly provided, use them
         if (type && courseId) {
-            return { type, courseId, instituteId: undefined };
+            return { type, courseId, instituteId: instituteIdFromStorage };
         }
         
         // Extract parameters from URL
@@ -54,6 +56,9 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
         const urlCourseId = urlParams.get('courseId');
         const urlInstituteId = urlParams.get('instituteId');
         
+        // Priority: 1. URL params, 2. Local storage, 3. Fallback
+        const finalInstituteId = urlInstituteId || instituteIdFromStorage;
+        
         // Otherwise, determine based on current route
         if (currentPath.includes("/courses/course-details")) {
             const courseIdFromUrl = urlParams.get("courseId");
@@ -61,14 +66,14 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
                 return { 
                     type: urlType || "courseDetailsPage", 
                     courseId: courseIdFromUrl,
-                    instituteId: urlInstituteId || undefined
+                    instituteId: finalInstituteId
                 };
             }
         } else if (currentPath.includes("/courses")) {
             return { 
                 type: urlType || "courseDetailsPage", 
                 courseId: urlCourseId || undefined,
-                instituteId: urlInstituteId || undefined
+                instituteId: finalInstituteId
             };
         }
         
@@ -76,9 +81,25 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
         return { 
             type: urlType || undefined, 
             courseId: urlCourseId || undefined,
-            instituteId: urlInstituteId || undefined
+            instituteId: finalInstituteId
         };
     };
+
+    // Get institute ID from local storage when component mounts
+    useEffect(() => {
+        const getInstituteIdFromStorage = async () => {
+            try {
+                const { value } = await Preferences.get({ key: "InstituteId" });
+                if (value) {
+                    setInstituteIdFromStorage(value);
+                }
+            } catch (error) {
+                console.error("Error getting institute ID from storage:", error);
+            }
+        };
+
+        getInstituteIdFromStorage();
+    }, []);
 
     // Listen for postMessage from OAuth tab to switch to signup modal
     useEffect(() => {
@@ -257,7 +278,18 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
         return () => document.removeEventListener('keydown', handleKeyDown);
     }, [isOpen]);
 
-    const handleSwitchToSignup = () => {
+    const handleSwitchToSignup = async () => {
+        
+        // Ensure we have the latest institute ID from storage when switching to signup
+        try {
+            const { value } = await Preferences.get({ key: "InstituteId" });
+            if (value && value !== instituteIdFromStorage) {
+                setInstituteIdFromStorage(value);
+            }
+        } catch (error) {
+            console.error("AuthModal: Error getting institute ID when switching to signup:", error);
+        }
+        
         setCurrentMode('signup');
     };
 
@@ -403,13 +435,18 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
                             onLoginSuccess={handleLoginSuccess}
                         />
                     ) : currentMode === 'signup' ? (
-                        <ModalSignUpForm 
-                            type={getCurrentRouteContext().type} 
-                            courseId={getCurrentRouteContext().courseId}
-                            instituteId={getCurrentRouteContext().instituteId}
-                            onSwitchToLogin={handleSwitchToLogin}
-                            onSignupSuccess={handleSignupSuccess}
-                        />
+                        (() => {
+                            const context = getCurrentRouteContext();
+                            return (
+                                <ModalSignUpForm 
+                                    type={context.type} 
+                                    courseId={context.courseId}
+                                    instituteId={context.instituteId || undefined}
+                                    onSwitchToLogin={handleSwitchToLogin}
+                                    onSignupSuccess={handleSignupSuccess}
+                                />
+                            );
+                        })()
                     ) : (
                         <ModalForgotPasswordForm 
                             onBackToLogin={handleSwitchToLogin}

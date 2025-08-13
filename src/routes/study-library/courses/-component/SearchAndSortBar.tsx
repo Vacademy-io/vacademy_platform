@@ -29,7 +29,7 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-3 sm:p-4 mb-3 sm:mb-4">
+    <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-lg shadow-sm p-3 sm:p-4 mb-3 sm:mb-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         {/* Search Section */}
         <div className="flex-1 min-w-0">
@@ -44,7 +44,7 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
                 ContentTerms.Course,
                 SystemTerms.Course
               ).toLocaleLowerCase()}s...`}
-              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-colors"
+              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-colors"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -55,7 +55,7 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
 
         {/* Sort Section */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 min-w-0">
-          <label className="text-sm font-medium text-gray-700 whitespace-nowrap">
+          <label className="text-sm font-medium text-gray-700 dark:text-neutral-300 whitespace-nowrap">
             Sort by:
           </label>
           <div className="relative w-full sm:w-auto">
@@ -64,7 +64,7 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
               onChange={(e: ChangeEvent<HTMLSelectElement>) =>
                 onSortChange(e.target.value)
               }
-              className="appearance-none bg-gray-50 border border-gray-200 rounded-md px-3 py-2.5 pr-8 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-colors cursor-pointer w-full sm:min-w-[140px]"
+              className="appearance-none bg-gray-50 dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md px-3 py-2.5 pr-8 text-sm font-medium text-gray-700 dark:text-neutral-300 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-colors cursor-pointer w-full sm:min-w-[140px]"
             >
               <option value="Newest">Newest First</option>
               <option value="Oldest">Oldest First</option>

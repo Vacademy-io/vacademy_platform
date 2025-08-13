@@ -422,7 +422,7 @@ export function CourseDetailsRatingsComponent({
     if (isLoading || !packageSessionId) return <DashboardLoader />;
 
     return (
-        <div className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-200 p-3 sm:p-4 lg:p-5 group overflow-hidden">
+        <div className="relative bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md shadow-sm hover:shadow-md transition-all duration-200 p-3 sm:p-4 lg:p-5 group overflow-hidden">
             {/* Background gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
 
@@ -455,8 +455,8 @@ export function CourseDetailsRatingsComponent({
                     </div>
                 </div>
 
-                <form className="mb-6 flex flex-col gap-4 rounded-md border bg-gray-50 p-4">
-                    <label className="font-semibold text-neutral-700">
+                <form className="mb-6 flex flex-col gap-4 rounded-md border bg-gray-50 dark:bg-neutral-900 p-4">
+                    <label className="font-semibold text-neutral-700 dark:text-neutral-300">
                         Your Feedback
                     </label>
                     <Textarea
@@ -466,7 +466,7 @@ export function CourseDetailsRatingsComponent({
                         rows={3}
                         className="resize-none"
                     />
-                    <label className="font-semibold text-neutral-700">
+                    <label className="font-semibold text-neutral-700 dark:text-neutral-300">
                         Rating <span className="text-red-500">*</span>
                     </label>
                     <div className="space-y-2">

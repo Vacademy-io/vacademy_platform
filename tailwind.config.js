@@ -24,19 +24,19 @@ module.exports = {
 			  'md-tablets': '769px',
 			  '2xl': '1400px'
 		  },
-		  fontFamily: {
-			  sans: [
-				  'Inter',
-				  'system-ui',
-				  '-apple-system',
-				  'BlinkMacSystemFont',
-				  'Segoe UI',
-				  'Roboto',
-				  'Helvetica Neue',
-				  'Arial',
-				  'sans-serif'
-			  ]
-		  },
+          fontFamily: {
+              sans: [
+                  'Figtree',
+                  'system-ui',
+                  '-apple-system',
+                  'BlinkMacSystemFont',
+                  'Segoe UI',
+                  'Roboto',
+                  'Helvetica Neue',
+                  'Arial',
+                  'sans-serif'
+              ]
+          },
 		  fontSize: {
 			  h1: [
 				  '30px',

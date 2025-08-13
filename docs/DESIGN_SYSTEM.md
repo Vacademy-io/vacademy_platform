@@ -17,7 +17,7 @@ All design decisions are based on systematic design tokens found in `src/constan
 
 ### Typography
 
-We use **Inter font** for optimal readability and modern appearance. Open Sans is available as an alternative.
+We use **Figtree** for optimal readability and modern appearance. Open Sans is available as an alternative.
 
 #### Font Scale
 ```typescript
@@ -526,8 +526,8 @@ export const SignupForm = () => {
 - [ModernInput](../src/components/design-system/modern-input.tsx)
 
 ### Additional Resources
-- [Tailwind CSS Documentation](https://tailwindcss.com/docs)
-- [Inter Font](https://fonts.google.com/specimen/Inter)
+ - [Tailwind CSS Documentation](https://tailwindcss.com/docs)
+ - [Figtree Font](https://fonts.google.com/specimen/Figtree)
 - [Phosphor Icons](https://phosphoricons.com/)
 - [WCAG 2.1 Guidelines](https://www.w3.org/WAI/WCAG21/quickref/)
 

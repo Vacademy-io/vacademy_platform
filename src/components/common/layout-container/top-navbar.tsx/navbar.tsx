@@ -59,7 +59,7 @@ export function Navbar() {
   // };
 
   return (
-    <div className="sticky top-0 z-[9999] border-b border-primary-200/40 flex h-14 items-center justify-between bg-gradient-to-r from-white via-primary-50/20 to-blue-50/20 px-4 md:px-5 py-2 transition-all duration-300 shadow-sm">
+    <div className="sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-14 items-center justify-between bg-gradient-to-r from-white via-primary-50/20 to-blue-50/20 dark:bg-gradient-to-r dark:from-neutral-900 dark:via-neutral-900 dark:to-neutral-900 px-4 md:px-5 py-2 transition-all duration-300 shadow-sm">
       <LogoutSidebar />
       
       {/* Left Section */}
@@ -68,9 +68,9 @@ export function Navbar() {
           <SidebarTrigger>
             <div 
               onClick={() => {}}
-              className="group flex items-center justify-center w-8 h-8 rounded-md border border-primary-200/50 bg-gradient-to-br from-white to-primary-50/40 hover:from-primary-50 hover:to-primary-100 hover:border-primary-300 transition-all duration-200"
+              className="group flex items-center justify-center w-8 h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-gradient-to-br from-white to-primary-50/40 dark:from-neutral-800 dark:to-neutral-700/40 hover:from-primary-50 hover:to-primary-100 hover:border-primary-300 dark:hover:from-neutral-700 dark:hover:to-neutral-600 dark:hover:border-neutral-600 transition-all duration-200"
             >
-              <FiSidebar className="w-4 h-4 text-primary-600 group-hover:text-primary-700 transition-colors duration-200" />
+              <FiSidebar className="w-4 h-4 text-primary-600 dark:text-neutral-300 group-hover:text-primary-700 dark:group-hover:text-neutral-200 transition-colors duration-200" />
             </div>
           </SidebarTrigger>
         )}
@@ -80,10 +80,10 @@ export function Navbar() {
           <div className="flex items-center gap-2">
             <div className="w-1 h-6 bg-gradient-to-b from-primary-500 via-primary-600 to-blue-600 rounded-full shadow-sm"></div>
             <div className="relative">
-              <h1 className="text-base font-semibold text-neutral-900 leading-tight">
+              <h1 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 leading-tight">
                 {navHeading}
               </h1>
-              <div className="absolute -bottom-0.5 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary-300/50 to-transparent"></div>
+              <div className="absolute -bottom-0.5 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary-300/50 dark:via-neutral-700 to-transparent"></div>
             </div>
           </div>
         </div>
@@ -107,18 +107,18 @@ export function Navbar() {
           )}
         </button> */}
 
-        <div className="w-px h-6 bg-gradient-to-b from-transparent via-primary-300/60 to-transparent"></div>
+        <div className="w-px h-6 bg-gradient-to-b from-transparent via-primary-300/60 dark:via-neutral-700 to-transparent"></div>
         
         {/* Menu Button (always visible) */}
         <button
-          className="group relative flex items-center justify-center w-9 h-9 rounded-md border border-primary-200/50 bg-gradient-to-br from-white to-primary-50/40 hover:from-primary-100 hover:to-primary-200 hover:border-primary-400 transition-all duration-200 overflow-hidden"
+          className="group relative flex items-center justify-center w-9 h-9 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-gradient-to-br from-white to-primary-50/40 dark:from-neutral-800 dark:to-neutral-700/40 hover:from-primary-100 hover:to-primary-200 hover:border-primary-400 dark:hover:from-neutral-700 dark:hover:to-neutral-600 dark:hover:border-neutral-600 transition-all duration-200 overflow-hidden"
           onClick={() => {
             setSidebarOpen();
           }}
         >
-          <div className="absolute inset-0 bg-gradient-to-br from-primary-400/0 to-primary-600/0 group-hover:from-primary-400/10 group-hover:to-primary-600/20 transition-all duration-300"></div>
-          <List className="relative w-4 h-4 text-primary-600 group-hover:text-primary-700 transition-colors duration-200" />
-          <div className="absolute inset-0 rounded-md bg-gradient-to-br from-white/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+          <div className="absolute inset-0 bg-gradient-to-br from-primary-400/0 to-primary-600/0 group-hover:from-primary-400/10 group-hover:to-primary-600/20 dark:group-hover:from-neutral-600/20 dark:group-hover:to-neutral-500/20 transition-all duration-300"></div>
+          <List className="relative w-4 h-4 text-primary-600 dark:text-neutral-300 group-hover:text-primary-700 dark:group-hover:text-neutral-200 transition-colors duration-200" />
+          <div className="absolute inset-0 rounded-md bg-gradient-to-br from-white/20 dark:from-neutral-700/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
         </button>
       </div>
     </div>

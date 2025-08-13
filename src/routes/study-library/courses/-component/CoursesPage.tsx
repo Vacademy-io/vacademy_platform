@@ -101,7 +101,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
     }, [courseData]);
 
     return (
-        <div ref={scrollRef} className="bg-gray-50 min-h-screen">
+        <div ref={scrollRef} className="bg-gray-50 dark:bg-neutral-950 min-h-screen">
             <div
                 className={`flex flex-col lg:flex-row ${showFilters ? "gap-4 lg:gap-6" : ""} p-2 sm:p-4 max-w-7xl mx-auto`}
             >
@@ -145,11 +145,11 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                     />
 
                     {courseData.content.length === 0 ? (
-                        <div className="bg-white border border-gray-200 rounded-md shadow-sm p-5 sm:p-6 text-center">
+                        <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md shadow-sm p-5 sm:p-6 text-center">
                             <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 rounded-md mx-auto mb-3 sm:mb-4 flex items-center justify-center">
                                 <Search size={20} className="text-gray-400 sm:w-6 sm:h-6" />
                             </div>
-                            <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">
+                            <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-neutral-100 mb-2">
                                 No{" "}
                                 {getTerminology(
                                     ContentTerms.Course,
@@ -157,7 +157,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                 ).toLocaleLowerCase()}
                                 s found found
                             </h3>
-                            <p className="text-gray-600 text-sm max-w-md mx-auto">
+                            <p className="text-gray-600 dark:text-neutral-300 text-sm max-w-md mx-auto">
                                 Try adjusting your search criteria or browse our
                                 popular categories to discover learning
                                 opportunities.
@@ -166,7 +166,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                     ) : (
                         <div className="space-y-3 sm:space-y-4">
                             {/* Results Summary */}
-                            <div className="bg-white border border-gray-200 rounded-md shadow-sm p-3 sm:p-4">
+                            <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md shadow-sm p-3 sm:p-4">
                                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                     <div className="flex items-center space-x-3">
                                         <div className="p-2 bg-primary-100 rounded-md">
@@ -176,7 +176,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                             />
                                         </div>
                                         <div>
-                                            <p className="text-sm font-semibold text-gray-900">
+                                            <p className="text-sm font-semibold text-gray-900 dark:text-neutral-100">
                                                 {courseData.totalElements}{" "}
                                                 {getTerminology(
                                                     ContentTerms.Course,
@@ -184,13 +184,13 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                                 ).toLocaleLowerCase()}
                                                 s found
                                             </p>
-                                            <p className="text-xs text-gray-500">
+                                            <p className="text-xs text-gray-500 dark:text-neutral-400">
                                                 Page {courseData.number + 1} of{" "}
                                                 {courseData.totalPages}
                                             </p>
                                         </div>
                                     </div>
-                                    <div className="text-xs text-gray-500 text-center sm:text-right">
+                                    <div className="text-xs text-gray-500 dark:text-neutral-400 text-center sm:text-right">
                                         Showing {courseData.numberOfElements} of{" "}
                                         {courseData.totalElements} results
                                     </div>

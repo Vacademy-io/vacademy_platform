@@ -116,9 +116,9 @@ export const MySidebar = ({
 
     return (
         <Sidebar side="left" collapsible="icon">
-            <SidebarContent className="sidebar-content flex flex-col bg-white border-r border-gray-200 py-3 transition-all duration-200 ease-in-out">
+            <SidebarContent className="sidebar-content flex flex-col bg-white dark:bg-neutral-900 border-r border-gray-200 dark:border-neutral-800 py-3 transition-all duration-200 ease-in-out">
                 <SidebarHeader
-                    className={`flex items-center px-3 pb-3 mb-3 border-b border-gray-100 transition-all duration-200 ${
+                    className={`flex items-center px-3 pb-3 mb-3 border-b border-gray-100 dark:border-neutral-800 transition-all duration-200 ${
                         isExpanded
                             ? "flex-row gap-2 justify-start"
                             : "flex-col gap-1 justify-center"
@@ -155,10 +155,10 @@ export const MySidebar = ({
                             className="flex-1 min-w-0 cursor-pointer"
                             onClick={() => navigate({ to: "/dashboard" })}
                         >
-                            <div className="text-sm font-semibold text-gray-900 truncate">
+                            <div className="text-sm font-semibold text-gray-900 dark:text-neutral-100 truncate">
                                 {instituteName}
                             </div>
-                            <p className="text-xs text-gray-500 truncate">
+                            <p className="text-xs text-gray-500 dark:text-neutral-400 truncate">
                                 Dashboard
                             </p>
                         </div>

@@ -30,7 +30,7 @@ export const SidebarItem = ({ icon, title, to, subItems }: SidebarItemProps) => 
                 <div
                     className={cn(
                         "group/menu-item relative w-full px-3",
-                        isActive ? "bg-white" : "bg-none"
+                        isActive ? "bg-white dark:bg-neutral-800" : "bg-none"
                     )}
                 >
                     <button

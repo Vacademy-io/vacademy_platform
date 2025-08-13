@@ -311,28 +311,28 @@ const CourseCatalougePage: React.FC = () => {
     }, []);
 
     return (
-        <div className="bg-gray-50 min-h-screen">
+        <div className="bg-gray-50 dark:bg-neutral-950 min-h-screen">
             {/* Hero Section */}
             <HeroSection
                 allowLeanersToCreateCourses={allowLeanersToCreateCourses}
             />
 
             {/* Main Content Container */}
-            <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-5">
+            <div className="max-w-7xl mx-auto px-2 sm:px-3 lg:px-4">
                 <Tabs
                     value={selectedTab}
                     onValueChange={setSelectedTab}
                     className="w-full"
                 >
                     {/* Tab Navigation */}
-                    <div className="bg-white border border-gray-200 rounded-md shadow-sm mb-4">
-                        <div className="p-3 sm:p-4">
-                            <TabsList className="bg-gray-50 justify-start p-1 w-full grid grid-cols-3 gap-1 sm:w-auto sm:flex sm:flex-row">
+                    <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md shadow-sm mb-3">
+                        <div className="p-2 sm:p-3">
+                            <TabsList className="bg-gray-50 dark:bg-neutral-900 justify-start p-0.5 w-full grid grid-cols-3 gap-0.5 sm:w-auto sm:flex sm:flex-row">
                                 {visibleTabs.map((t) => (
                                     <TabsTrigger
                                         key={t.value}
                                         value={t.value}
-                                        className="flex-1 sm:flex-none px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                                        className="flex-1 sm:flex-none px-1.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium data-[state=active]:bg-white dark:data-[state=active]:bg-neutral-800 data-[state=active]:shadow-sm"
                                     >
                                         {t.label ||
                                             (t.value === "ALL"

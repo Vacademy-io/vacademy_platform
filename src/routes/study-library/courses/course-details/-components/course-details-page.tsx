@@ -820,7 +820,7 @@ export const CourseDetailsPage = () => {
                         )}
 
                         {/* Enhanced gradient overlay */}
-                        <div className="absolute inset-0 z-10 bg-gradient-to-br from-black/40 via-black/30 to-transparent" />
+                        <div className="absolute inset-0 z-10 bg-gradient-to-br from-black/20 via-black/10 to-transparent dark:from-black/50 dark:via-black/40 dark:to-transparent" />
 
                         {/* Floating orb effects */}
                         <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-3xl opacity-70 -translate-y-2 translate-x-6"></div>
@@ -867,7 +867,7 @@ export const CourseDetailsPage = () => {
                                                     </div>
 
                                                     {/* Title */}
-                                                    <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold mb-2 sm:mb-3 leading-tight">
+                                                    <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold mb-2 sm:mb-3 leading-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">
                                                         {toTitleCase(
                                                             form.getValues(
                                                                 "courseData"
@@ -877,7 +877,7 @@ export const CourseDetailsPage = () => {
 
                                                     {/* Description */}
                                                     <div
-                                                        className="text-sm sm:text-base opacity-90 leading-relaxed line-clamp-2"
+                                                        className="text-sm sm:text-base opacity-90 leading-relaxed line-clamp-2 drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]"
                                                         dangerouslySetInnerHTML={{
                                                             __html:
                                                                 form.getValues(
@@ -932,7 +932,7 @@ export const CourseDetailsPage = () => {
                                                 </div>
 
                                                 {/* Title */}
-                                                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4 leading-tight">
+                                                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4 leading-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">
                                                     {toTitleCase(
                                                         form.getValues(
                                                             "courseData"

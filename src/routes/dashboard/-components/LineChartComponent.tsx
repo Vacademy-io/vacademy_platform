@@ -296,7 +296,7 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
             {/* Performance Insights */}
             {chartData.length > 0 && (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-                    <div className="bg-gradient-to-br from-primary-50/50 to-white/80 rounded-lg p-3 sm:p-4 border border-primary-200/40">
+                    <div className="bg-gradient-to-br from-primary-50/50 to-white/80 dark:from-neutral-800/40 dark:to-neutral-800 rounded-lg p-3 sm:p-4 border border-primary-200/40 dark:border-neutral-800">
                         <div className="flex items-center space-x-2 mb-2">
                             <TrendingUp size={14} className="text-primary-600" />
                             <span className="text-xs sm:text-sm font-semibold text-gray-900">Consistency</span>
@@ -306,7 +306,7 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                         </p>
                     </div>
                     
-                    <div className="bg-gradient-to-br from-success-50/50 to-white/80 rounded-lg p-3 sm:p-4 border border-success-200/40">
+                    <div className="bg-gradient-to-br from-success-50/50 to-white/80 dark:from-neutral-800/40 dark:to-neutral-800 rounded-lg p-3 sm:p-4 border border-success-200/40 dark:border-neutral-800">
                         <div className="flex items-center space-x-2 mb-2">
                             <Clock size={14} className="text-success-600" />
                             <span className="text-xs sm:text-sm font-semibold text-gray-900">Peak Day</span>
@@ -316,7 +316,7 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                         </p>
                     </div>
                     
-                    <div className="bg-gradient-to-br from-info-50/50 to-white/80 rounded-lg p-3 sm:p-4 border border-info-200/40">
+                    <div className="bg-gradient-to-br from-info-50/50 to-white/80 dark:from-neutral-800/40 dark:to-neutral-800 rounded-lg p-3 sm:p-4 border border-info-200/40 dark:border-neutral-800">
                         <div className="flex items-center space-x-2 mb-2">
                             <Users size={14} className="text-info-600" />
                             <span className="text-xs sm:text-sm font-semibold text-gray-900">Vs Batch</span>

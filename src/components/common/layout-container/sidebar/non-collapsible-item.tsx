@@ -21,8 +21,8 @@ export const NonCollapsibleItem = ({ icon, title, to }: SidebarItemProps) => {
             to={to}
             className={`flex w-[84%] gap-4 mx-auto cursor-pointer items-center rounded-lg px-3 py-2.5 transition-all duration-300 ease-in-out group relative overflow-hidden border ${
                 isActive 
-                    ? "bg-gradient-to-r from-primary-50 to-primary-100/80 text-primary-700 border border-primary-200" 
-                    : "hover:bg-gradient-to-r hover:from-neutral-50 hover:to-primary-50/30 text-neutral-600 hover:text-neutral-800 hover:border-primary-200/50 border border-transparent"
+                    ? "bg-gradient-to-r from-primary-50 to-primary-100/80 dark:from-neutral-800 dark:to-neutral-800 text-primary-700 dark:text-neutral-200 border border-primary-200 dark:border-neutral-700" 
+                    : "hover:bg-gradient-to-r hover:from-neutral-50 hover:to-primary-50/30 dark:hover:from-neutral-800 dark:hover:to-neutral-700/30 text-neutral-600 dark:text-neutral-300 hover:text-neutral-800 dark:hover:text-neutral-200 hover:border-primary-200/50 dark:hover:border-neutral-600 border border-transparent"
             }`}
             onMouseEnter={toggleHover}
             onMouseLeave={toggleHover}
@@ -54,10 +54,10 @@ export const NonCollapsibleItem = ({ icon, title, to }: SidebarItemProps) => {
                 <div
                     className={`!text-[1rem] !font-normal flex-1 min-w-0 text-left transition-all duration-300 relative z-10 ${
                         isActive 
-                            ? "text-primary-700 !font-normal" 
+                            ? "text-primary-700 dark:text-neutral-200 !font-normal" 
                             : hover 
-                                ? "text-neutral-800 font-medium" 
-                                : "text-neutral-600 font-medium"
+                                ? "text-neutral-800 dark:text-neutral-200 font-medium" 
+                                : "text-neutral-600 dark:text-neutral-300 font-medium"
                     } text-sm truncate`}
                 >
                     {title}
@@ -66,7 +66,7 @@ export const NonCollapsibleItem = ({ icon, title, to }: SidebarItemProps) => {
             
             {/* Active indicator */}
             {isActive && (
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-gradient-to-b from-primary-500 to-primary-600 rounded-r-full"></div>
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-gradient-to-b from-primary-500 to-primary-600 dark:from-neutral-600 dark:to-neutral-500 rounded-r-full"></div>
             )}
             
             {/* Hover glow effect */}

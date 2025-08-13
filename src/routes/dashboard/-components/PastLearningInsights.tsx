@@ -17,7 +17,7 @@ import { getTerminology } from "@/components/common/layout-container/sidebar/uti
 const AnalyticsLoadingSkeleton = () => (
   <div className="space-y-4 sm:space-y-5">
     {/* Header Skeleton */}
-    <div className="bg-white border border-gray-200 rounded-md sm:rounded-lg p-4 sm:p-5 animate-pulse">
+  <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md sm:rounded-lg p-4 sm:p-5 animate-pulse">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gray-200 rounded-lg sm:rounded-xl"></div>
@@ -31,14 +31,14 @@ const AnalyticsLoadingSkeleton = () => (
     </div>
 
     {/* Chart Skeleton */}
-    <div className="bg-white border border-gray-200 rounded-md sm:rounded-lg p-4 sm:p-5 animate-pulse">
+  <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md sm:rounded-lg p-4 sm:p-5 animate-pulse">
       <div className="w-32 h-5 sm:w-40 sm:h-6 bg-gray-200 rounded mb-3 sm:mb-4"></div>
       <div className="w-full h-48 sm:h-64 bg-gray-200 rounded-lg sm:rounded-xl"></div>
     </div>
 
     {/* Table Skeleton */}
-    <div className="bg-white border border-gray-200 rounded-md sm:rounded-lg animate-pulse">
-      <div className="p-4 sm:p-5 border-b border-gray-200">
+  <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md sm:rounded-lg animate-pulse">
+    <div className="p-4 sm:p-5 border-b border-gray-200 dark:border-neutral-800">
         <div className="w-36 h-5 sm:w-48 sm:h-6 bg-gray-200 rounded"></div>
       </div>
       <div className="p-4 sm:p-5 space-y-3 sm:space-y-4">
@@ -73,7 +73,7 @@ const StatsCard = ({
   description: string;
   gradient: string;
 }) => (
-  <Card className="relative overflow-hidden bg-white shadow-sm hover:shadow-md transition-all duration-300 group">
+<Card className="relative overflow-hidden bg-white dark:bg-neutral-900 shadow-sm hover:shadow-md transition-all duration-300 group">
     {/* Background gradient overlay */}
     <div
       className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-300`}
@@ -97,10 +97,10 @@ const StatsCard = ({
       </div>
 
       <div className="space-y-1 sm:space-y-2">
-        <div className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight leading-tight">
+  <div className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-neutral-100 tracking-tight leading-tight">
           {value}
         </div>
-        <div className="text-xs sm:text-sm font-medium text-gray-600 group-hover:text-gray-700 transition-colors">
+  <div className="text-xs sm:text-sm font-medium text-gray-600 dark:text-neutral-300 group-hover:text-gray-700 dark:group-hover:text-neutral-200 transition-colors">
           {title}
         </div>
         <div className="text-xs text-gray-500">{description}</div>
@@ -180,7 +180,7 @@ export const PastLearningInsights = () => {
   return (
   <div className="space-y-3 sm:space-y-4 animate-fade-in-up">
       {/* Enhanced Header Section */}
-      <Card className="relative overflow-hidden bg-gradient-to-br from-white/90 via-primary-50/30 to-white/80 shadow-sm hover:shadow-md transition-all duration-300 group">
+<Card className="relative overflow-hidden bg-gradient-to-br from-white/90 via-primary-50/30 to-white/80 dark:from-neutral-900 dark:via-neutral-900/60 dark:to-neutral-800 shadow-sm hover:shadow-md transition-all duration-300 group">
         {/* Animated background pattern */}
         <div className="absolute inset-0 opacity-5">
           <div className="absolute top-0 left-1/3 w-20 h-20 sm:w-32 sm:h-32 bg-primary-300 rounded-full blur-3xl animate-gentle-pulse"></div>
@@ -259,7 +259,7 @@ export const PastLearningInsights = () => {
       </div>
 
       {/* Enhanced Chart Section */}
-      <Card className="relative overflow-hidden bg-white shadow-sm hover:shadow-md transition-all duration-300">
+<Card className="relative overflow-hidden bg-white dark:bg-neutral-900 shadow-sm hover:shadow-md transition-all duration-300">
         <CardHeader className="border-b border-gray-100 pb-2.5 sm:pb-3.5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
             <div className="flex items-center space-x-3">
@@ -267,10 +267,10 @@ export const PastLearningInsights = () => {
                 <BarChart3 size={18} className="text-primary-600" />
               </div>
               <div className="min-w-0">
-                <CardTitle className="text-base sm:text-lg font-semibold text-gray-900">
+  <CardTitle className="text-base sm:text-lg font-semibold text-gray-900 dark:text-neutral-100">
                   Activity Trend
                 </CardTitle>
-                <p className="text-xs sm:text-sm text-gray-600 mt-1">
+  <p className="text-xs sm:text-sm text-gray-600 dark:text-neutral-300 mt-1">
                   Daily study time comparison with batch average
                 </p>
               </div>
@@ -289,18 +289,18 @@ export const PastLearningInsights = () => {
       </Card>
 
       {/* Enhanced Table Section */}
-      <Card className="relative overflow-hidden bg-white shadow-sm hover:shadow-md transition-all duration-300">
+<Card className="relative overflow-hidden bg-white dark:bg-neutral-900 shadow-sm hover:shadow-md transition-all duration-300">
         <CardHeader className="border-b border-gray-100 bg-gradient-to-r from-gray-50 to-primary-50/20 pb-2.5 sm:pb-3.5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
             <div className="flex items-center space-x-3">
               <div className="p-2 bg-gradient-to-br from-gray-100 to-gray-200 rounded-md">
-                <Target size={18} className="text-gray-600" />
+  <Target size={18} className="text-gray-600 dark:text-neutral-300" />
               </div>
               <div className="min-w-0">
-                <CardTitle className="text-base sm:text-lg font-semibold text-gray-900">
+  <CardTitle className="text-base sm:text-lg font-semibold text-gray-900 dark:text-neutral-100">
                   Daily Progress
                 </CardTitle>
-                <p className="text-xs sm:text-sm text-gray-600 mt-1">
+  <p className="text-xs sm:text-sm text-gray-600 dark:text-neutral-300 mt-1">
                   Detailed breakdown of your learning sessions
                 </p>
               </div>

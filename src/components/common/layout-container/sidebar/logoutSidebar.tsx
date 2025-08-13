@@ -12,6 +12,8 @@ import "./scrollbarStyle.css";
 import useStore from "./useSidebar";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { useEffect, useState } from "react";
+import { Switch } from "@/components/ui/switch";
+import { useTheme as useModeTheme } from "@/providers/theme-provider";
 
 export const LogoutSidebar = ({
   sidebarComponent,
@@ -20,6 +22,8 @@ export const LogoutSidebar = ({
 }) => {
   const { instituteName, instituteLogoFileUrl, sideBarOpen, setSidebarOpen } =
     useStore();
+  const { theme, setTheme } = useModeTheme();
+  const isDark = theme === "dark";
 
   const [filteredHamburgerItems, setFilteredHamburgerItems] = useState(
     HamBurgerSidebarItemsData
@@ -35,9 +39,9 @@ export const LogoutSidebar = ({
     <Sheet open={sideBarOpen} onOpenChange={setSidebarOpen}>
       <SheetContent
         side="right"
-        className="sidebar-content flex flex-col bg-white border-l border-neutral-200 p-0 w-80 transition-all duration-300 ease-in-out z-[9999] shadow-xl"
+        className="sidebar-content flex flex-col bg-white border-l border-neutral-200 dark:bg-neutral-900 dark:border-neutral-800 p-0 w-80 transition-all duration-300 ease-in-out z-[9999] shadow-xl"
       >
-        <SheetHeader className="px-5 py-5 border-b border-neutral-100 bg-gradient-to-r from-white to-neutral-50">
+        <SheetHeader className="px-5 py-5 border-b border-neutral-100 dark:border-neutral-800 bg-gradient-to-r from-white to-neutral-50 dark:from-neutral-900 dark:to-neutral-900">
           <div className="flex items-center gap-3">
             <div className="relative group">
               {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (
@@ -56,17 +60,25 @@ export const LogoutSidebar = ({
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <SheetDescription className="text-base font-bold text-neutral-900 truncate leading-tight">
+              <SheetDescription className="text-base font-bold text-neutral-900 dark:text-neutral-100 truncate leading-tight">
                 {instituteName}
               </SheetDescription>
-              <p className="text-xs font-medium text-neutral-500 uppercase tracking-wide mt-0.5">
+              <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mt-0.5">
                 Navigation Menu
               </p>
             </div>
           </div>
         </SheetHeader>
 
-        <div className="flex-1 px-3 py-4 overflow-y-auto bg-gradient-to-b from-white to-neutral-50/50">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-neutral-100 dark:border-neutral-800">
+          <div className="flex flex-col">
+            <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">Dark mode</span>
+            <span className="text-xs text-neutral-500 dark:text-neutral-400">Toggle appearance</span>
+          </div>
+          <Switch checked={isDark} onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")} />
+        </div>
+
+        <div className="flex-1 px-3 py-4 overflow-y-auto bg-gradient-to-b from-white to-neutral-50/50 dark:from-neutral-900 dark:to-neutral-900/50">
           <SidebarMenu className="space-y-1.5">
             {sidebarComponent
               ? sidebarComponent
@@ -83,9 +95,9 @@ export const LogoutSidebar = ({
                       <div className="absolute inset-0 bg-gradient-to-r from-primary-500/5 to-primary-600/5 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300 transform scale-95 group-hover:scale-100"></div>
                       <SidebarItem
                         icon={obj.icon}
-                        subItems={obj.subItems}
+                        subItems={obj.subItems as { subItem: string; subItemLink: string }[] | undefined}
                         title={obj.title}
-                        to={obj.to}
+                        to={(obj.to || "/") as string}
                       />
                     </div>
                   </div>
@@ -93,7 +105,7 @@ export const LogoutSidebar = ({
           </SidebarMenu>
         </div>
 
-        <div className="px-4 py-3 border-t border-neutral-100 bg-gradient-to-r from-neutral-50 to-white">
+        <div className="px-4 py-3 border-t border-neutral-100 dark:border-neutral-800 bg-gradient-to-r from-neutral-50 to-white dark:from-neutral-900 dark:to-neutral-900">
           <div className="flex items-center justify-center">
             <div className="flex items-center gap-2 text-xs text-neutral-400">
               <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></div>

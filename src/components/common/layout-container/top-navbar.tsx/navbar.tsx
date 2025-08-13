@@ -30,8 +30,6 @@ interface UserRole {
 }
 
 export function Navbar() {
-    const [allowLeanersToCreateCourses, setAllowLeanersToCreateCourses] =
-        useState<boolean>(false);
     const { data: userRoleDetails, isLoading } = useSuspenseQuery(
         handleFetchUserRoleDetails()
     );
@@ -85,26 +83,6 @@ export function Navbar() {
     const [showSidebarControls, setShowSidebarControls] = useState(true);
 
     useEffect(() => {
-        const fetchInstituteDetails = async () => {
-            const InstituteDetails = await Preferences.get({
-                key: "InstituteDetails",
-            });
-            const parsedInstituteDetails = JSON.parse(
-                InstituteDetails?.value || ""
-            );
-            const settingsJsonData = JSON.parse(
-                parsedInstituteDetails.institute_settings_json
-            );
-            setAllowLeanersToCreateCourses(
-                settingsJsonData.setting.COURSE_SETTING.data.permissions
-                    .allowLearnersToCreateCourses
-            );
-        };
-
-        fetchInstituteDetails();
-    }, []);
-
-    useEffect(() => {
         // setNotifications(true);
         fetch();
         // Load sidebar visibility from Student Display Settings (uses cache on dashboard refresh)
@@ -148,7 +126,7 @@ export function Navbar() {
 
             {/* Right Section */}
             <div className="flex items-center gap-3">
-                {allowLeanersToCreateCourses && hasTeacherAndStudentRole && (
+                {hasTeacherAndStudentRole && (
                     <Tooltip delayDuration={0}>
                         <TooltipTrigger>
                             <Button

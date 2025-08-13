@@ -8,6 +8,8 @@ import vacademy.io.notification_service.features.announcements.client.AuthServic
 import vacademy.io.notification_service.features.announcements.entity.AnnouncementRecipient;
 import vacademy.io.notification_service.features.announcements.enums.RecipientType;
 import vacademy.io.notification_service.features.announcements.repository.AnnouncementRecipientRepository;
+import vacademy.io.notification_service.features.announcements.repository.AnnouncementRepository;
+import vacademy.io.notification_service.features.announcements.entity.Announcement;
 import vacademy.io.common.auth.entity.User;
 
 import java.util.*;
@@ -21,6 +23,7 @@ public class RecipientResolutionService {
     private final AnnouncementRecipientRepository recipientRepository;
     private final AuthServiceClient authServiceClient;
     private final AdminCoreServiceClient adminCoreServiceClient;
+    private final AnnouncementRepository announcementRepository;
 
     /**
      * Resolves announcement recipients (roles, users, package_sessions) to actual user IDs
@@ -30,6 +33,17 @@ public class RecipientResolutionService {
         log.info("Resolving recipients for announcement: {}", announcementId);
         
         List<AnnouncementRecipient> recipients = recipientRepository.findByAnnouncementId(announcementId);
+        Announcement announcement = null;
+        String announcementInstituteId = null;
+        try {
+            announcement = announcementRepository.findById(announcementId)
+                    .orElse(null);
+            if (announcement != null) {
+                announcementInstituteId = announcement.getInstituteId();
+            }
+        } catch (Exception e) {
+            log.warn("Failed to fetch announcement {} while resolving recipients", announcementId, e);
+        }
         Set<String> resolvedUserIds = new HashSet<>(); // Using Set for automatic deduplication
         
         for (AnnouncementRecipient recipient : recipients) {
@@ -40,7 +54,7 @@ public class RecipientResolutionService {
                     break;
                     
                 case ROLE:
-                    Set<String> roleUsers = resolveRoleToUsers(recipient.getRecipientId());
+                    Set<String> roleUsers = resolveRoleToUsers(recipient.getRecipientId(), announcementInstituteId);
                     resolvedUserIds.addAll(roleUsers);
                     log.debug("Resolved role {} to {} users", recipient.getRecipientId(), roleUsers.size());
                     break;
@@ -66,18 +80,18 @@ public class RecipientResolutionService {
     /**
      * Resolves a role to list of user IDs by calling auth service
      */
-    private Set<String> resolveRoleToUsers(String roleId) {
-        log.debug("Resolving role: {} to users", roleId);
+    private Set<String> resolveRoleToUsers(String roleId, String fallbackInstituteId) {
+        log.debug("Resolving role: {} to users (fallback institute: {})", roleId, fallbackInstituteId);
         
         try {
-            // Extract institute ID from role ID if it contains it, otherwise we need it from context
-            // For now, we'll assume the roleId format might be "roleId:instituteId" or just "roleId"
+            // Prefer institute from Announcement, ignore any suffix in roleId. Still tolerate legacy "role:institute" format.
             String[] parts = roleId.split(":");
             String roleName = parts[0];
-            String instituteId = parts.length > 1 ? parts[1] : null;
-            
-            if (instituteId == null) {
-                log.warn("Institute ID not found in role ID: {}. Cannot resolve role to users.", roleId);
+            String instituteId = (fallbackInstituteId != null && !fallbackInstituteId.isBlank())
+                    ? fallbackInstituteId
+                    : (parts.length > 1 ? parts[1] : null);
+            if (instituteId == null || instituteId.isBlank()) {
+                log.warn("Institute ID unavailable for role resolution (roleId: {}).", roleId);
                 return new HashSet<>();
             }
             

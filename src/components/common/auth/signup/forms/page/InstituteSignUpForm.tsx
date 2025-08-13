@@ -64,7 +64,6 @@ export function InstituteSignUp({
         handleInstituteSelect,
         updateUserData,
         updateSelectedRole,
-        handleUserRegistration,
         resetState,
     } = useSignupFlow(false, type, courseId); // false for main signup page
 
@@ -467,8 +466,24 @@ export function InstituteSignUp({
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: 30 }}
                         transition={{ duration: 0.3 }}
-                        className="space-y-4"
+                        className="space-y-6"
                     >
+                        {/* Header */}
+                        <motion.div
+                            initial={{ y: 10, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            transition={{ delay: 0.1 }}
+                            className="text-center space-y-3"
+                        >
+                            <div className="space-y-1">
+                                <h3 className="text-lg font-semibold text-gray-900">
+                                    Create Your Account
+                                </h3>
+                                <p className="text-sm text-gray-600">
+                                    Join our learning community and start your journey
+                                </p>
+                            </div>
+                        </motion.div>
                         {/* Institute Display */}
                             {state.selectedInstitute && (
                             <motion.div
@@ -501,44 +516,12 @@ export function InstituteSignUp({
                             </motion.div>
                         )}
 
-                        {/* Email Verification using SignupEmailOtpForm component */}
-                        <SignupEmailOtpForm
-                            onUserDetailsCheck={handleUserDetailsCheck}
-                            onSwitchToLogin={onSwitchToLogin}
-                        />
-                    </motion.div>
-                ) : (
-                    <motion.div
-                        key="details"
-                        initial={{ opacity: 0, x: 30 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -30 }}
-                        transition={{ duration: 0.3 }}
-                        className="space-y-4"
-                    >
-                        {/* Header */}
-                        <motion.div
-                            initial={{ y: 10, opacity: 0 }}
-                            animate={{ y: 0, opacity: 1 }}
-                            transition={{ delay: 0.1 }}
-                            className="text-center space-y-3"
-                        >
-                            <div className="space-y-1">
-                                <h3 className="text-lg font-semibold text-gray-900">
-                                    Create Your Account
-                                </h3>
-                                <p className="text-sm text-gray-600">
-                                    Join our learning community and start your journey
-                                </p>
-                            </div>
-                        </motion.div>
-
-                        {/* OAuth Buttons */}
+                        {/* OAuth Buttons on Step One */}
                         <motion.div
                             initial={{ y: 10, opacity: 0 }}
                             animate={{ y: 0, opacity: 1 }}
                             transition={{ delay: 0.2 }}
-                            className="space-y-2 mb-6"
+                            className="space-y-2"
                         >
                             <motion.button
                                 whileHover={{ scale: 1.01 }}
@@ -573,7 +556,7 @@ export function InstituteSignUp({
                             initial={{ width: 0, opacity: 0 }}
                             animate={{ width: "100%", opacity: 1 }}
                             transition={{ delay: 0.3, duration: 0.3 }}
-                            className="relative my-5"
+                            className="relative"
                         >
                             <div className="absolute inset-0 flex items-center">
                                 <div className="w-full border-t border-gray-200" />
@@ -584,6 +567,73 @@ export function InstituteSignUp({
                                 </span>
                             </div>
                         </motion.div>
+
+                        {/* Email Verification using SignupEmailOtpForm component */}
+                        <SignupEmailOtpForm
+                            onUserDetailsCheck={handleUserDetailsCheck}
+                            onSwitchToLogin={onSwitchToLogin}
+                        />
+
+                        {/* Terms Agreement - also show on step one */}
+                        <motion.div
+                            initial={{ y: 10, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            transition={{ delay: 0.8 }}
+                            className="text-center text-xs text-gray-600"
+                        >
+                            <p>
+                                By creating an account, you agree to our{" "}
+                                <motion.button
+                                    type="button"
+                                    whileHover={{ scale: 1.02 }}
+                                    onClick={() =>
+                                        navigate({
+                                            to: "/terms-and-conditions",
+                                        })
+                                    }
+                                    className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
+                                >
+                                    Terms of Service
+                                </motion.button>{" "}
+                                and{" "}
+                                <motion.button
+                                    type="button"
+                                    whileHover={{ scale: 1.02 }}
+                                    onClick={() => navigate({ to: "/privacy-policy" })}
+                                    className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
+                                >
+                                    Privacy Policy
+                                </motion.button>
+                            </p>
+                        </motion.div>
+                    </motion.div>
+                ) : (
+                    <motion.div
+                        key="details"
+                        initial={{ opacity: 0, x: 30 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -30 }}
+                        transition={{ duration: 0.3 }}
+                        className="space-y-6"
+                    >
+                        {/* Header */}
+                        <motion.div
+                            initial={{ y: 10, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            transition={{ delay: 0.1 }}
+                            className="text-center space-y-3"
+                        >
+                            <div className="space-y-1">
+                                <h3 className="text-lg font-semibold text-gray-900">
+                                    Create Your Account
+                                </h3>
+                                <p className="text-sm text-gray-600">
+                                    Join our learning community and start your journey
+                                </p>
+                            </div>
+                        </motion.div>
+
+                        {/* OAuth buttons removed on details step */}
 
 
 

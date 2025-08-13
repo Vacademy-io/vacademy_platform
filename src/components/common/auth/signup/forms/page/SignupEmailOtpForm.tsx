@@ -214,17 +214,7 @@ export function SignupEmailOtpForm({
                     transition={{ duration: 0.3 }}
                     className="space-y-4"
                 >
-                    <div className="text-center space-y-2">
-                        <div className="flex justify-center mb-2">
-                            <Mail className="w-12 h-12 text-gray-600" />
-                        </div>
-                        <h3 className="text-lg font-semibold text-gray-900">
-                            Verify Your Email
-                        </h3>
-                        <p className="text-sm text-gray-600">
-                            Enter your email address to receive a verification code
-                        </p>
-                    </div>
+                    {/* Header removed per requirement */}
 
                     <Form {...emailForm}>
                         <form onSubmit={emailForm.handleSubmit(onEmailSubmit)} className="space-y-3">
@@ -246,7 +236,7 @@ export function SignupEmailOtpForm({
                                                     input={field.value}
                                                     onChangeFunction={field.onChange}
                                                 />
-                                                <Mail className="absolute right-3 bottom-3 w-4 h-4 text-gray-400" />
+                                                {/* Removed email icon per requirement */}
                                             </div>
                                         </FormControl>
                                     </FormItem>

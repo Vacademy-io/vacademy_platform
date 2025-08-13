@@ -390,7 +390,7 @@ export function UsernameLogin({
                     <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-700 transition-all duration-200 group-hover:w-full"></span>
                 </motion.button>
                 
-                <div className="text-xs text-gray-500">
+                {/* <div className="text-xs text-gray-500">
                     Don't have an account?{" "}
                     <motion.button
                         type="button"
@@ -400,7 +400,7 @@ export function UsernameLogin({
                     >
                         Sign up here
                     </motion.button>
-                </div>
+                </div> */}
             </motion.div>
         </div>
     );

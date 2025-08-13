@@ -26,7 +26,6 @@ import { Route as DeleteUserIndexRouteImport } from './routes/delete-user/index'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as CoursesIndexRouteImport } from './routes/courses/index'
 import { Route as ChangePasswordIndexRouteImport } from './routes/change-password/index'
-import { Route as SessionSelectionPageIndexRouteImport } from './routes/SessionSelectionPage/index'
 import { Route as UserProfileEditIndexRouteImport } from './routes/user-profile/edit/index'
 import { Route as StudyLibraryLiveClassIndexRouteImport } from './routes/study-library/live-class/index'
 import { Route as StudyLibraryCoursesIndexRouteImport } from './routes/study-library/courses/index'
@@ -143,12 +142,6 @@ const ChangePasswordIndexRoute = ChangePasswordIndexRouteImport.update({
   path: '/change-password/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SessionSelectionPageIndexRoute =
-  SessionSelectionPageIndexRouteImport.update({
-    id: '/SessionSelectionPage/',
-    path: '/SessionSelectionPage/',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const UserProfileEditIndexRoute = UserProfileEditIndexRouteImport.update({
   id: '/user-profile/edit/',
   path: '/user-profile/edit/',
@@ -320,7 +313,6 @@ const StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRoute =
   )
 
 export interface FileRoutesByFullPath {
-  '/SessionSelectionPage': typeof SessionSelectionPageIndexRoute
   '/change-password': typeof ChangePasswordIndexRoute
   '/courses': typeof CoursesIndexRoute
   '/dashboard': typeof DashboardIndexRoute
@@ -369,7 +361,6 @@ export interface FileRoutesByFullPath {
   '/study-library/courses/course-details/subjects/modules/chapters/slides': typeof StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRoute
 }
 export interface FileRoutesByTo {
-  '/SessionSelectionPage': typeof SessionSelectionPageIndexRoute
   '/change-password': typeof ChangePasswordIndexRoute
   '/courses': typeof CoursesIndexRoute
   '/dashboard': typeof DashboardIndexRoute
@@ -419,7 +410,6 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/SessionSelectionPage/': typeof SessionSelectionPageIndexRoute
   '/change-password/': typeof ChangePasswordIndexRoute
   '/courses/': typeof CoursesIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
@@ -470,7 +460,6 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    | '/SessionSelectionPage'
     | '/change-password'
     | '/courses'
     | '/dashboard'
@@ -519,7 +508,6 @@ export interface FileRouteTypes {
     | '/study-library/courses/course-details/subjects/modules/chapters/slides'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/SessionSelectionPage'
     | '/change-password'
     | '/courses'
     | '/dashboard'
@@ -568,7 +556,6 @@ export interface FileRouteTypes {
     | '/study-library/courses/course-details/subjects/modules/chapters/slides'
   id:
     | '__root__'
-    | '/SessionSelectionPage/'
     | '/change-password/'
     | '/courses/'
     | '/dashboard/'
@@ -618,7 +605,6 @@ export interface FileRouteTypes {
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  SessionSelectionPageIndexRoute: typeof SessionSelectionPageIndexRoute
   ChangePasswordIndexRoute: typeof ChangePasswordIndexRoute
   CoursesIndexRoute: typeof CoursesIndexRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
@@ -786,13 +772,6 @@ declare module '@tanstack/react-router' {
       path: '/change-password'
       fullPath: '/change-password'
       preLoaderRoute: typeof ChangePasswordIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/SessionSelectionPage/': {
-      id: '/SessionSelectionPage/'
-      path: '/SessionSelectionPage'
-      fullPath: '/SessionSelectionPage'
-      preLoaderRoute: typeof SessionSelectionPageIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/user-profile/edit/': {
@@ -1002,7 +981,6 @@ declare module '@tanstack/react-router' {
 }
 
 const rootRouteChildren: RootRouteChildren = {
-  SessionSelectionPageIndexRoute: SessionSelectionPageIndexRoute,
   ChangePasswordIndexRoute: ChangePasswordIndexRoute,
   CoursesIndexRoute: CoursesIndexRoute,
   DashboardIndexRoute: DashboardIndexRoute,

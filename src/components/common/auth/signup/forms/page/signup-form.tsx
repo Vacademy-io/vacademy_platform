@@ -1,4 +1,5 @@
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useEffect } from "react";
 import {
     Shield,
     BookOpen,
@@ -31,6 +32,47 @@ export function SignUpForm({
 
     // If coming from OAuth with openModal flag, force modal signup
     const shouldShowModal = finalType || openModal || fromOAuth;
+
+    // Prevent background scroll when showing signup modal variant on the signup page
+    useEffect(() => {
+        let scrollY = 0;
+        if (shouldShowModal) {
+            scrollY = window.scrollY;
+            document.body.classList.add("modal-open");
+            document.documentElement.classList.add("modal-open");
+            document.body.style.overflow = "hidden";
+            document.body.style.position = "fixed";
+            document.body.style.top = `-${scrollY}px`;
+            document.body.style.width = "100%";
+            document.body.style.height = "100%";
+            document.documentElement.style.overflow = "hidden";
+            document.documentElement.style.height = "100%";
+        } else {
+            document.body.style.overflow = "";
+            document.body.style.position = "";
+            document.body.style.top = "";
+            document.body.style.width = "";
+            document.body.style.height = "";
+            document.documentElement.style.overflow = "";
+            document.documentElement.style.height = "";
+            document.body.classList.remove("modal-open");
+            document.documentElement.classList.remove("modal-open");
+        }
+        return () => {
+            document.body.style.overflow = "";
+            document.body.style.position = "";
+            document.body.style.top = "";
+            document.body.style.width = "";
+            document.body.style.height = "";
+            document.documentElement.style.overflow = "";
+            document.documentElement.style.height = "";
+            document.body.classList.remove("modal-open");
+            document.documentElement.classList.remove("modal-open");
+            if (scrollY) {
+                window.scrollTo(0, scrollY);
+            }
+        };
+    }, [shouldShowModal]);
 
 
     return (

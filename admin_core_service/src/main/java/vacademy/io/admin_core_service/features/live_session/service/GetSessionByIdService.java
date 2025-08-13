@@ -180,7 +180,9 @@ public class GetSessionByIdService {
                         .attendanceEmailMessage(p.getAttendanceEmailMessage())
                         .coverFileId(p.getCoverFileId())
                         .subject(p.getSubject())
-                        .thumbnailFileId(p.getThumbnailFileId())
+                        .thumbnailFileId(p.getThumbnailFileId())                  // session-level
+                        .scheduleThumbnailFileId(p.getScheduleThumbnailFileId()) // schedule-level
+                        .allowPlayPause(p.getAllowPlayPause())                  // session-level
                         .backgroundScoreFileId(p.getBackgroundScoreFileId())
                         .status(p.getStatus())
                         .recurrenceType(p.getRecurrenceType())

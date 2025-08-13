@@ -36,6 +36,10 @@ public class GetSessionDetailsBySessionIdResponseDTO {
     private String coverFileId;
     private String subject;
     private String thumbnailFileId;
+    //new field added
+    private String scheduleThumbnailFileId;
+    private Boolean allowPlayPause;
+
     private String backgroundScoreFileId;
     private String status;
     private String allowRewind;

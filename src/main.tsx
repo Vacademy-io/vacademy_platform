@@ -6,7 +6,8 @@ import RootErrorComponent from "./components/core/deafult-error";
 import RootNotFoundComponent from "./components/core/default-not-found";
 import RootPendingComponent from "./components/core/default-pending";
 import "./index.css";
-import { ThemeProvider } from "./providers/theme/theme-provider";
+import { ThemeProvider as ColorThemeProvider } from "./providers/theme/theme-provider";
+import { ThemeProvider as ModeThemeProvider } from "./providers/theme-provider";
 import { SidebarProvider } from "./components/ui/sidebar";
 import { routeTree } from "./routeTree.gen";
 import "./i18n";
@@ -50,7 +51,8 @@ if (!rootElement.innerHTML) {
   const root = ReactDOM.createRoot(rootElement);
   root.render(
     <StrictMode>
-      <ThemeProvider>
+      <ModeThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
+      <ColorThemeProvider>
         <QueryClientProvider client={queryClient}>
           <NotificationInitializer>
             <SidebarProvider>
@@ -59,7 +61,8 @@ if (!rootElement.innerHTML) {
             </SidebarProvider>
           </NotificationInitializer>
         </QueryClientProvider>
-      </ThemeProvider>
+      </ColorThemeProvider>
+      </ModeThemeProvider>
     </StrictMode>
   );
 }

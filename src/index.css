@@ -154,7 +154,7 @@
     body {
         @apply bg-background text-foreground;
         color: hsl(var(--text-secondary));
-        font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+        font-family: 'Figtree', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
         font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
         font-variation-settings: normal;
     }
@@ -202,6 +202,62 @@
         -ms-overflow-scrollbar: none; /* For IE and Edge */
         scrollbar-width: none; /* For Firefox */
     }
+
+    /* Dark mode hardcoded-light overrides for legacy classes */
+    .dark .bg-white { background-color: hsl(var(--card)) !important; }
+    .dark .hover\:bg-white:hover { background-color: hsl(var(--card)) !important; }
+
+    /* Common translucent white backgrounds */
+    .dark .bg-white\/95 { background-color: hsl(var(--card) / 0.95) !important; }
+    .dark .bg-white\/80 { background-color: hsl(var(--card) / 0.8) !important; }
+    .dark .bg-white\/50 { background-color: hsl(var(--card) / 0.5) !important; }
+    .dark .bg-white\/30 { background-color: hsl(var(--card) / 0.3) !important; }
+    .dark .bg-white\/20 { background-color: hsl(var(--card) / 0.2) !important; }
+
+    /* Borders */
+    .dark .border-gray-200 { border-color: hsl(var(--border)) !important; }
+    .dark .border-neutral-100 { border-color: hsl(var(--border)) !important; }
+    .dark .border-neutral-200 { border-color: hsl(var(--border)) !important; }
+
+    /* Typography */
+    .dark .text-gray-900 { color: hsl(var(--foreground)) !important; }
+    .dark .text-gray-800 { color: hsl(var(--foreground)) !important; }
+    .dark .text-neutral-900 { color: hsl(var(--foreground)) !important; }
+    .dark .text-neutral-800 { color: hsl(var(--foreground)) !important; }
+    .dark .text-gray-700, .dark .text-neutral-700 { color: hsl(var(--text-secondary)) !important; }
+    .dark .text-gray-600, .dark .text-neutral-600 { color: hsl(var(--text-secondary)) !important; }
+    .dark .text-gray-500, .dark .text-neutral-500 { color: hsl(var(--text-muted)) !important; }
+    .dark .text-gray-400, .dark .text-neutral-400 { color: hsl(var(--text-muted)) !important; }
+
+    /* Primary badge remaps for dark mode (avoid too-light backgrounds) */
+    .dark .bg-primary-50 { background-color: hsl(var(--primary-500) / 0.08) !important; }
+    .dark .bg-primary-100 { background-color: hsl(var(--primary-500) / 0.15) !important; }
+    .dark .hover\:bg-primary-200:hover { background-color: hsl(var(--primary-500) / 0.25) !important; }
+    .dark .text-primary-700 { color: hsl(var(--primary-200)) !important; }
+    .dark .border-primary-200 { border-color: hsl(var(--primary-400)) !important; }
+
+    /* Gradients using white stops */
+    .dark .from-white { --tw-gradient-from: hsl(var(--card)) !important; --tw-gradient-to: rgb(255 255 255 / 0) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
+    .dark .to-white { --tw-gradient-to: hsl(var(--card)) !important; }
+    .dark .via-white { --tw-gradient-stops: var(--tw-gradient-from), hsl(var(--card)), var(--tw-gradient-to) !important; }
+
+    .dark .from-white\/90 { --tw-gradient-from: hsl(var(--card) / 0.9) !important; }
+    .dark .from-white\/80 { --tw-gradient-from: hsl(var(--card) / 0.8) !important; }
+    .dark .to-white\/80 { --tw-gradient-to: hsl(var(--card) / 0.8) !important; }
+    .dark .to-white\/30 { --tw-gradient-to: hsl(var(--card) / 0.3) !important; }
+
+    /* Primary gradients (light chips too bright in dark) */
+    .dark .from-primary-50 { --tw-gradient-from: hsl(var(--primary-500) / 0.12) !important; --tw-gradient-to: rgb(255 255 255 / 0) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
+    .dark .to-primary-50 { --tw-gradient-to: hsl(var(--primary-500) / 0.12) !important; }
+    .dark .from-primary-100 { --tw-gradient-from: hsl(var(--primary-500) / 0.18) !important; --tw-gradient-to: rgb(255 255 255 / 0) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
+    .dark .to-primary-100 { --tw-gradient-to: hsl(var(--primary-500) / 0.18) !important; }
+    .dark .via-primary-50 { --tw-gradient-stops: var(--tw-gradient-from), hsl(var(--primary-500) / 0.14), var(--tw-gradient-to) !important; }
+
+    /* Primary text remap for mid tones */
+    .dark .text-primary-600 { color: hsl(var(--primary-200)) !important; }
+
+    /* Note: We intentionally keep gradients enabled globally.
+       We only remap white stops in dark mode above to avoid bright patches. */
 }
 
 @layer components {

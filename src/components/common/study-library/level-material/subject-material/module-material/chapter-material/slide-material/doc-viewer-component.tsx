@@ -416,7 +416,7 @@ export const DocViewerComponent = forwardRef<DocViewerComponentRef, {
           
           <style>{`
             .markdown-content {
-              font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+              font-family: 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
               line-height: 1.7;
               color: #374151;
               max-width: none;
@@ -463,7 +463,7 @@ export const DocViewerComponent = forwardRef<DocViewerComponentRef, {
           <style>{`
             .docx-content .docx-viewer {
               padding: 2rem;
-              font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+              font-family: 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
               line-height: 1.6;
               color: #374151;
             }

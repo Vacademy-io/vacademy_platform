@@ -65,7 +65,7 @@ export const Route = createFileRoute("/dashboard/")({
 // Loading skeleton component
 const StatCardSkeleton = () => (
   <div className="group relative overflow-hidden">
-    <div className="bg-white border border-gray-200 rounded-md sm:rounded-lg p-3 sm:p-4 md:p-5 transition-all duration-200">
+    <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md sm:rounded-lg p-3 sm:p-4 md:p-5 transition-all duration-200">
       <div className="flex items-center justify-between mb-2 sm:mb-3 md:mb-4">
         <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-gray-200 rounded-md sm:rounded-lg animate-pulse"></div>
         <div className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 bg-gray-200 rounded animate-pulse"></div>
@@ -138,10 +138,10 @@ const StatCard = ({
         </div>
 
         <div className="space-y-1 sm:space-y-2">
-          <div className="text-xl sm:text-2xl font-semibold text-gray-900 tracking-tight leading-tight">
+              <div className="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-neutral-100 tracking-tight leading-tight">
             {(count ?? 0).toLocaleString()}
           </div>
-          <div className="text-xs sm:text-sm font-medium text-gray-600 group-hover:text-gray-700 transition-colors duration-300 line-clamp-2 break-words">
+              <div className="text-xs sm:text-sm font-medium text-gray-600 dark:text-neutral-300 group-hover:text-gray-700 dark:group-hover:text-neutral-200 transition-colors duration-300 line-clamp-2 break-words">
             {title}
           </div>
         </div>
@@ -196,7 +196,7 @@ const ContinueLearningCard = ({
   }
 
   return (
-    <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-gray-50/80 via-white to-primary-50/30 shadow-sm hover:shadow-lg transition-all duration-500 continue-learning-card">
+    <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-gray-50/80 via-white to-primary-50/30 dark:from-neutral-900 dark:via-neutral-900 dark:to-neutral-800 shadow-sm hover:shadow-lg transition-all duration-500 continue-learning-card">
       <CardHeader className="pb-2 sm:pb-3 md:pb-4 px-3 sm:px-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 md:gap-4">
           <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
@@ -208,7 +208,7 @@ const ContinueLearningCard = ({
               />
             </div>
             <div className="min-w-0 flex-1">
-              <CardTitle className="text-base sm:text-lg md:text-xl font-semibold text-gray-900 truncate">
+              <CardTitle className="text-base sm:text-lg md:text-xl font-semibold text-gray-900 dark:text-neutral-100 truncate">
                 Continue Learning
               </CardTitle>
               <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1 truncate">
@@ -237,7 +237,7 @@ const ContinueLearningCard = ({
             <div
               key={slide.slide_id}
               onClick={() => onResumeClick(slide)}
-              className="group flex items-center gap-1.5 sm:gap-2 md:gap-3 p-2 sm:p-2.5 md:p-3 bg-white border border-gray-200 rounded-md sm:rounded-lg hover:bg-white transition-all duration-200 cursor-pointer hover:shadow-md active:scale-[0.98] w-full overflow-hidden min-h-[52px] sm:min-h-[56px] md:min-h-[64px] max-w-full"
+              className="group flex items-center gap-1.5 sm:gap-2 md:gap-3 p-2 sm:p-2.5 md:p-3 bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md sm:rounded-lg hover:bg-white dark:hover:bg-neutral-800 transition-all duration-200 cursor-pointer hover:shadow-md active:scale-[0.98] w-full overflow-hidden min-h-[52px] sm:min-h-[56px] md:min-h-[64px] max-w-full"
             >
               <div className="flex-shrink-0">
                 <div className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg flex items-center justify-center">
@@ -247,10 +247,10 @@ const ContinueLearningCard = ({
                 </div>
               </div>
               <div className="flex-1 min-w-0 overflow-hidden dashboard-flex-container">
-                <h4 className="font-medium text-gray-900 group-hover:text-primary-600 transition-colors duration-300 text-xs sm:text-sm leading-tight slide-title dashboard-card-text">
+                  <h4 className="font-medium text-gray-900 dark:text-neutral-100 group-hover:text-primary-600 dark:group-hover:text-neutral-100 transition-colors duration-300 text-xs sm:text-sm leading-tight slide-title dashboard-card-text">
                   {slide.slide_title}
                 </h4>
-                <p className="text-xs text-gray-500 mt-0.5 leading-tight slide-description dashboard-card-text">
+                  <p className="text-xs text-gray-500 dark:text-neutral-400 mt-0.5 leading-tight slide-description dashboard-card-text">
                   {slide.slide_description ||
                     "Continue from where you left off"}
                 </p>
@@ -519,7 +519,7 @@ export function DashboardComponent() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 relative overflow-hidden w-full dashboard-container smooth-scroll">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-900 relative overflow-hidden w-full dashboard-container smooth-scroll">
       <Helmet>
         <title>Dashboard</title>
         <meta
@@ -555,7 +555,7 @@ export function DashboardComponent() {
                 <div className="absolute -bottom-0.5 -right-0.5 sm:-bottom-1 sm:-right-1 w-3 h-3 sm:w-4 sm:h-4 md:w-6 md:h-6 bg-success-500 rounded-full border-2 border-white shadow-sm animate-gentle-pulse"></div>
               </div>
               <div className="min-w-0 flex-1">
-                <h1 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900 tracking-tight leading-tight">
+                <h1 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900 dark:text-neutral-100 tracking-tight leading-tight">
                   {isLoading ? (
                     <div className="w-32 sm:w-40 md:w-48 h-5 sm:h-6 md:h-8 bg-gray-200 rounded animate-pulse"></div>
                   ) : (
@@ -592,8 +592,8 @@ export function DashboardComponent() {
             </div>
 
             <div className="flex items-center justify-center sm:justify-end">
-              <div className="bg-white border border-gray-200 rounded-md sm:rounded-lg px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 md:py-3 shadow-sm">
-                <div className="flex items-center space-x-1.5 sm:space-x-2 text-gray-600">
+              <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md sm:rounded-lg px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 md:py-3 shadow-sm">
+                <div className="flex items-center space-x-1.5 sm:space-x-2 text-gray-600 dark:text-neutral-300">
                   <Calendar
                     weight="duotone"
                     size={14}

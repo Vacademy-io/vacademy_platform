@@ -73,6 +73,8 @@ export interface SessionDetailsResponse {
   registrationFormLinkForPublicSessions: string | null;
   createdByUserId: string;
   title: string;
+  allowPlayPause: boolean;
+  allowRewind: string;
   descriptionHtml: string;
   notificationEmailMessage: string | null;
   attendanceEmailMessage: string | null;

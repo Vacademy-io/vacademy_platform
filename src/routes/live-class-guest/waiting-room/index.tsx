@@ -20,7 +20,7 @@ export const Route = createFileRoute("/live-class-guest/waiting-room/")({
 
 function GuestWaitingRoomComponent() {
   const [thumbnail, setThumbnail] = useState<string | null>(null);
-  const { sessionId, guestId   } = Route.useSearch();
+  const { sessionId, guestId } = Route.useSearch();
   const navigate = useNavigate();
   const { mutateAsync: markAttendance } = useMarkAttendance();
   const {
@@ -29,14 +29,14 @@ function GuestWaitingRoomComponent() {
     error,
   } = useSessionDetails(sessionId);
 
-  const fetchThumbnail = async () => {
-    if (sessionDetails?.thumbnailFileId) {
-      const thumbnailUrl = await getPublicUrl(sessionDetails.thumbnailFileId);
-      setThumbnail(thumbnailUrl);
-    }
-  };
-
   useEffect(() => {
+    const fetchThumbnail = async () => {
+      if (sessionDetails?.thumbnailFileId) {
+        const thumbnailUrl = await getPublicUrl(sessionDetails.thumbnailFileId);
+        setThumbnail(thumbnailUrl);
+      }
+    };
+
     if (sessionDetails?.thumbnailFileId) {
       fetchThumbnail();
     }
@@ -46,7 +46,6 @@ function GuestWaitingRoomComponent() {
   useEffect(() => {
     if (sessionDetails) {
       const checkSessionStatus = async () => {
-
         const now = new Date();
         const sessionDate = new Date(
           `${sessionDetails?.meetingDate}T${sessionDetails?.scheduleStartTime}`
@@ -118,12 +117,11 @@ function GuestWaitingRoomComponent() {
               }
             }
           }
-        }
-        else if(isInWaitingRoom){
-
+        } else if (isInWaitingRoom) {
+          // We are in the waiting room window, let the component render
         }
         // Case 2: It's too early for the waiting room.
-        else{
+        else {
           toast.info("The waiting room is not open yet.", {
             description: `It will open ${sessionDetails.waitingRoomTime} minutes before the session starts.`,
           });
@@ -143,7 +141,7 @@ function GuestWaitingRoomComponent() {
 
       return () => clearInterval(timer);
     }
-  }, [sessionDetails, navigate, markAttendance, sessionId]);
+  }, [sessionDetails, navigate, markAttendance, sessionId, guestId]);
 
   if (isLoading) {
     return <DashboardLoader />;
@@ -169,6 +167,74 @@ function GuestWaitingRoomComponent() {
             <CountdownTimer
               startTime={`${sessionDetails.meetingDate}T${sessionDetails.scheduleStartTime}`}
               waitingRoomTime={sessionDetails.waitingRoomTime}
+              onExpire={() => {
+                // Force an immediate check when countdown expires
+                const checkSessionStatus = async () => {
+                  const now = new Date();
+                  const sessionDate = new Date(
+                    `${sessionDetails?.meetingDate}T${sessionDetails?.scheduleStartTime}`
+                  );
+                  const isInMainSession = now >= sessionDate;
+
+                  if (isInMainSession && sessionDetails.defaultMeetLink) {
+                    try {
+                      // Mark attendance before redirecting
+                      await markAttendance({
+                        sessionId: sessionDetails.sessionId,
+                        scheduleId: sessionId,
+                        userSourceType: "EXTERNAL_USER",
+                        userSourceId: guestId,
+                        details: "Guest joined live class from waiting room",
+                      });
+
+                      if (
+                        sessionDetails.sessionStreamingServiceType ===
+                        SessionStreamingServiceType.EMBED
+                      ) {
+                        navigate({
+                          to: "/live-class-guest/embed",
+                          search: { sessionId },
+                        });
+                      } else {
+                        window.open(
+                          sessionDetails.defaultMeetLink,
+                          "_blank",
+                          "noopener,noreferrer"
+                        );
+                        // Navigate back to registration page
+                        navigate({
+                          to: "/register/live-class",
+                          search: { sessionId: sessionDetails.sessionId },
+                        });
+                      }
+                    } catch (error) {
+                      console.error("Failed to mark attendance:", error);
+                      toast.error("Failed to mark attendance");
+                      // Still proceed with redirection
+                      if (
+                        sessionDetails.sessionStreamingServiceType ===
+                        SessionStreamingServiceType.EMBED
+                      ) {
+                        navigate({
+                          to: "/live-class-guest/embed",
+                          search: { sessionId },
+                        });
+                      } else {
+                        window.open(
+                          sessionDetails.defaultMeetLink,
+                          "_blank",
+                          "noopener,noreferrer"
+                        );
+                        navigate({
+                          to: "/register/live-class",
+                          search: { sessionId: sessionDetails.sessionId },
+                        });
+                      }
+                    }
+                  }
+                };
+                checkSessionStatus();
+              }}
             />
           )}
         </div>
@@ -176,7 +242,7 @@ function GuestWaitingRoomComponent() {
           <img
             src={thumbnail}
             alt="Session Thumbnail"
-            className="w-full max-h-[300px] rounded-lg object-contain bg-gray-50"
+            className="w-full max-h-[300px] rounded-lg object-contain bg-red-50"
           />
         )}
         {sessionDetails && (

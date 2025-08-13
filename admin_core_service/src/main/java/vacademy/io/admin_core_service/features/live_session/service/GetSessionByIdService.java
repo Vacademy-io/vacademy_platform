@@ -233,6 +233,7 @@ public class GetSessionByIdService {
                         .scheduleLastEntryTime(p.getScheduleLastEntryTime())
                         .customMeetingLink(p.getCustomMeetingLink())
                         .customWaitingRoomMediaId(p.getCustomWaitingRoomMediaId())
+                        .allowRewind(p.getAllowRewind())
                         .build())
                 .orElseThrow(() -> new EntityNotFoundException("Schedule not found"));
     }

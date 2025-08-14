@@ -142,7 +142,7 @@ export function Navbar() {
                             className="bg-primary-400 text-white"
                             side="left"
                         >
-                            <p>Switch to Admin</p>
+                            <p>Switch to Teacher</p>
                         </TooltipContent>
                     </Tooltip>
                 )}

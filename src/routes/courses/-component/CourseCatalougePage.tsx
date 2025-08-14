@@ -23,6 +23,7 @@ import {
     AuthModalRef,
 } from "@/components/common/auth/modal/AuthModal.tsx";
 import { Preferences } from "@capacitor/preferences";
+import { useDomainRouting } from "@/hooks/use-domain-routing";
 
 interface CourseCatalougePageProps {
     instituteId: string;
@@ -33,6 +34,7 @@ const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }
     const { setCourseData, instituteData, setInstituteData, setInstructors } =
         useCatalogStore();
     const { setPrimaryColor } = useTheme();
+    const domainRouting = useDomainRouting();
     const [bannerImage, setBannerImage] = useState("");
     const [bannerText, setBannerText] = useState({
         heading: "",
@@ -90,6 +92,13 @@ const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }
             fetchPackages(searchTerm);
         }
     }, [searchTerm, sortOption, instituteId]);
+
+    // Apply domain routing theme if available
+    useEffect(() => {
+        if (domainRouting.instituteThemeCode) {
+            setPrimaryColor(domainRouting.instituteThemeCode);
+        }
+    }, [domainRouting.instituteThemeCode, setPrimaryColor]);
 
     const handleApplyFilters = async () => {
         try {

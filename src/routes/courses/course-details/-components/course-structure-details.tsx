@@ -1,5 +1,5 @@
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { PullToRefreshWrapper } from "@/components/design-system/pull-to-refresh";
 import { fetchStudyLibraryDetails } from "@/services/study-library/getStudyLibraryDetails";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -73,12 +73,14 @@ export const CourseStructureDetails = ({
   courseStructure,
   courseData,
   packageSessionId,
+  onModulesLoadingChange,
 }: {
   selectedSession: string;
   selectedLevel: string;
   courseStructure: number;
   courseData: CourseDetailsFormValues;
   packageSessionId: string;
+  onModulesLoadingChange?: (loading: boolean) => void;
 }) => {
   console.log(courseStructure);
   const { setNavHeading } = useNavHeadingStore();
@@ -91,6 +93,22 @@ export const CourseStructureDetails = ({
     {}
   );
   const [slidesMap, setSlidesMap] = useState<Record<string, Slide[]>>({});
+
+  // Loading state management
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Memoized callback for loading state changes
+  const handleLoadingChange = useCallback((loading: boolean) => {
+    setIsLoading(loading);
+    if (onModulesLoadingChange) {
+      onModulesLoadingChange(loading);
+    }
+  }, [onModulesLoadingChange]);
+
+  // Update loading state for parent component
+  useEffect(() => {
+    handleLoadingChange(isLoading);
+  }, [isLoading, handleLoadingChange]);
 
   const getSlidesWithChapterId = async (chapterId: string) => {
     // Avoid duplicate fetch
@@ -208,6 +226,7 @@ export const CourseStructureDetails = ({
   useEffect(() => {
     const loadModules = async () => {
       try {
+        setIsLoading(true);
         const modulesMap = await fetchModules({
           subjects: getSubjectDetails(
             courseData,
@@ -246,6 +265,8 @@ export const CourseStructureDetails = ({
       } catch (error) {
         console.error("Failed to fetch modules:", error);
         setSubjectModulesMap({});
+      } finally {
+        setIsLoading(false);
       }
     };
     loadModules();
@@ -292,7 +313,7 @@ export const CourseStructureDetails = ({
               ) : (
                 <>
                   <Folder size={14} className="mr-1.5" />
-                  Expand All
+                  Collapse All
                 </>
               )}
             </Button>
@@ -380,92 +401,77 @@ export const CourseStructureDetails = ({
                                   </span>
                                   <span
                                     className="truncate group-hover:text-blue-700 transition-colors"
-                                    title={mod.module.module_name}
+                                    title={toTitleCase(mod.module.module_name)}
                                   >
-                                    {mod.module.module_name}
+                                    {toTitleCase(mod.module.module_name)}
                                   </span>
                                 </div>
                               </CollapsibleTrigger>
-
                               <CollapsibleContent
-                                className={`py-1 ${moduleContentIndent}`}
+                                className={`pb-1 pt-2 ${moduleContentIndent}`}
                               >
-                                <div className="space-y-0.5 border-l-2 border-blue-200/40 pl-2.5 relative">
-                                  <div className="absolute left-0 top-0 w-0.5 h-full bg-gradient-to-b from-blue-300/60 to-transparent"></div>
-                                  {(mod.chapters ?? []).map((ch, chIdx) => {
-                                    const isChapterOpen = openChapters.has(
-                                      ch.id
-                                    );
-
+                                <div className="space-y-1 border-l-2 border-gradient-to-b from-blue-200/60 to-neutral-200/40 pl-3 relative">
+                                  <div className="absolute left-0 top-0 w-0.5 h-full bg-gradient-to-b from-blue-300/80 to-transparent"></div>
+                                  {mod.chapters.map((ch, chIdx) => {
+                                    const isChapterOpen = openChapters.has(ch.id);
+                                    const chapterContentIndent = `pl-[calc(16px+0.5rem+16px+0.5rem+1.5rem+1.5rem)]`;
                                     return (
                                       <Collapsible
                                         key={ch.id}
                                         open={isChapterOpen}
-                                        onOpenChange={() => {
-                                          toggleChapter(ch.id);
-                                          getSlidesWithChapterId(ch.id);
-                                        }}
+                                        onOpenChange={() => toggleChapter(ch.id)}
                                       >
-                                        <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2 py-1 text-left text-sm text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-green-50/70 hover:to-emerald-50/50 hover:border-green-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1">
-                                          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                                        <CollapsibleTrigger className="group flex w-full items-center rounded px-2 py-1 text-left text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-indigo-50/70 hover:to-purple-50/50 hover:border-indigo-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-1">
+                                          <div className="flex min-w-0 flex-1 items-center gap-2">
                                             {isChapterOpen ? (
                                               <CaretDown
                                                 size={14}
-                                                className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
+                                                className="shrink-0 text-neutral-500 group-hover:text-indigo-600 transition-colors"
                                               />
                                             ) : (
                                               <CaretRight
                                                 size={14}
-                                                className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
+                                                className="shrink-0 text-neutral-500 group-hover:text-indigo-600 transition-colors"
                                               />
                                             )}
-                                            <div className="flex items-center justify-center w-4 h-4 rounded bg-gradient-to-br from-green-500 to-green-600 text-white">
+                                            <div className="flex items-center justify-center w-4 h-4 rounded bg-gradient-to-br from-indigo-500 to-indigo-600 text-white">
                                               <PresentationChart size={10} />
                                             </div>
-                                            <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
+                                            <span className="w-5 shrink-0 text-center font-mono text-xs font-medium text-neutral-500 bg-neutral-100 rounded px-1">
                                               C{chIdx + 1}
                                             </span>
                                             <span
-                                              className="truncate group-hover:text-green-700 transition-colors text-xs"
-                                              title={toTitleCase(
-                                                ch.chapter_name
-                                              )}
+                                              className="truncate group-hover:text-indigo-700 transition-colors"
+                                              title={toTitleCase(ch.chapter_name)}
                                             >
                                               {toTitleCase(ch.chapter_name)}
                                             </span>
                                           </div>
                                         </CollapsibleTrigger>
-                                        <CollapsibleContent>
-                                          <div className="space-y-px ml-5 border-l border-green-200/50 py-1 pl-2 relative">
-                                            <div className="absolute left-0 top-0 w-px h-full bg-gradient-to-b from-green-300/50 to-transparent"></div>
-                                            {(slidesMap[ch.id] ?? []).length ===
-                                            0 ? (
-                                              <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
-                                                No slides in this chapter.
+                                        <CollapsibleContent
+                                          className={`pb-1 pt-2 ${chapterContentIndent}`}
+                                        >
+                                          <div className="space-y-1 border-l-2 border-gradient-to-b from-indigo-200/60 to-neutral-200/40 pl-3 relative">
+                                            <div className="absolute left-0 top-0 w-0.5 h-full bg-gradient-to-b from-indigo-300/80 to-transparent"></div>
+                                            {slidesMap[ch.id]?.map((slide, slideIdx) => (
+                                              <div
+                                                key={slide.id}
+                                                className="group/item flex items-center gap-2 px-2 py-1.5 rounded text-sm text-neutral-600 hover:bg-gradient-to-r hover:from-purple-50/70 hover:to-pink-50/50 hover:border-purple-200/60 border border-transparent transition-all duration-200 hover:shadow-sm"
+                                              >
+                                                <div className="flex items-center justify-center w-4 h-4 rounded bg-gradient-to-br from-purple-500 to-purple-600 text-white">
+                                                  {getIcon(slide, "4")}
+                                                </div>
+                                                <span className="w-5 shrink-0 text-center font-mono text-xs font-medium text-neutral-500 bg-neutral-100 rounded px-1">
+                                                  S{slideIdx + 1}
+                                                </span>
+                                                <span
+                                                  className="truncate group-hover/item:text-purple-700 transition-colors"
+                                                  title={toTitleCase(slide.title)}
+                                                >
+                                                  {toTitleCase(slide.title)}
+                                                </span>
                                               </div>
-                                            ) : (
-                                              (slidesMap[ch.id] ?? []).map(
-                                                (slide, sIdx) => (
-                                                  <div
-                                                    key={slide.id}
-                                                    className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40 border border-transparent transition-all duration-200"
-                                                  >
-                                                    <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
-                                                      S{sIdx + 1}
-                                                    </span>
-                                                    <div className="shrink-0 group-hover:scale-110 transition-transform">
-                                                      {getIcon(slide, "3")}
-                                                    </div>
-                                                    <span
-                                                      className="truncate group-hover:text-amber-700 transition-colors"
-                                                      title={slide.title}
-                                                    >
-                                                      {slide.title}
-                                                    </span>
-                                                  </div>
-                                                )
-                                              )
-                                            )}
+                                            ))}
                                           </div>
                                         </CollapsibleContent>
                                       </Collapsible>
@@ -482,335 +488,19 @@ export const CourseStructureDetails = ({
                 </Collapsible>
               );
             })}
-          {courseStructure === 4 &&
-            studyLibraryData?.map((subject: SubjectType) => {
-              const isSubjectOpen = openSubjects.has(subject.id);
-              return (
-                <Collapsible
-                  key={subject.id}
-                  open={isSubjectOpen}
-                  onOpenChange={() => toggleSubject(subject.id)}
-                >
-                  <CollapsibleContent className={`pb-1 pt-2 `}>
-                    <div className="space-y-1 relative">
-                      {(subjectModulesMap[subject.id] ?? []).map(
-                        (mod, modIdx) => {
-                          const isModuleOpen = openModules.has(mod.module.id);
-                          const moduleContentIndent = `pl-[calc(16px+0.5rem+16px+0.5rem+1.5rem)]`;
-                          return (
-                            <Collapsible
-                              key={mod.module.id}
-                              open={isModuleOpen}
-                              onOpenChange={() => toggleModule(mod.module.id)}
-                            >
-                              <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-blue-50/70 hover:to-indigo-50/50 hover:border-blue-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1">
-                                <div className="flex min-w-0 flex-1 items-center gap-2">
-                                  {isModuleOpen ? (
-                                    <CaretDown
-                                      size={16}
-                                      className="shrink-0 text-neutral-500 group-hover:text-blue-600 transition-colors"
-                                    />
-                                  ) : (
-                                    <CaretRight
-                                      size={16}
-                                      className="shrink-0 text-neutral-500 group-hover:text-blue-600 transition-colors"
-                                    />
-                                  )}
-                                  <div className="flex items-center justify-center w-5 h-5 rounded bg-gradient-to-br from-blue-500 to-blue-600 text-white">
-                                    <FileText size={12} />
-                                  </div>
-                                  <span className="w-6 shrink-0 text-center font-mono text-xs font-medium text-neutral-500 bg-neutral-100 rounded px-1">
-                                    M{modIdx + 1}
-                                  </span>
-                                  <span
-                                    className="truncate group-hover:text-blue-700 transition-colors"
-                                    title={mod.module.module_name}
-                                  >
-                                    {mod.module.module_name}
-                                  </span>
-                                </div>
-                              </CollapsibleTrigger>
-
-                              <CollapsibleContent
-                                className={`py-1 ${moduleContentIndent}`}
-                              >
-                                <div className="space-y-0.5 border-l-2 border-blue-200/40 pl-2.5 relative">
-                                  <div className="absolute left-0 top-0 w-0.5 h-full bg-gradient-to-b from-blue-300/60 to-transparent"></div>
-                                  {(mod.chapters ?? []).map((ch, chIdx) => {
-                                    const isChapterOpen = openChapters.has(
-                                      ch.id
-                                    );
-
-                                    return (
-                                      <Collapsible
-                                        key={ch.id}
-                                        open={isChapterOpen}
-                                        onOpenChange={() => {
-                                          toggleChapter(ch.id);
-                                          getSlidesWithChapterId(ch.id);
-                                        }}
-                                      >
-                                        <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2 py-1 text-left text-sm text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-green-50/70 hover:to-emerald-50/50 hover:border-green-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1">
-                                          <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                                            {isChapterOpen ? (
-                                              <CaretDown
-                                                size={14}
-                                                className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
-                                              />
-                                            ) : (
-                                              <CaretRight
-                                                size={14}
-                                                className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
-                                              />
-                                            )}
-                                            <div className="flex items-center justify-center w-4 h-4 rounded bg-gradient-to-br from-green-500 to-green-600 text-white">
-                                              <PresentationChart size={10} />
-                                            </div>
-                                            <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
-                                              C{chIdx + 1}
-                                            </span>
-                                            <span
-                                              className="truncate group-hover:text-green-700 transition-colors text-xs"
-                                              title={toTitleCase(
-                                                ch.chapter_name
-                                              )}
-                                            >
-                                              {toTitleCase(ch.chapter_name)}
-                                            </span>
-                                          </div>
-                                        </CollapsibleTrigger>
-                                        <CollapsibleContent>
-                                          <div className="space-y-px ml-5 border-l border-green-200/50 py-1 pl-2 relative">
-                                            <div className="absolute left-0 top-0 w-px h-full bg-gradient-to-b from-green-300/50 to-transparent"></div>
-                                            {(slidesMap[ch.id] ?? []).length ===
-                                            0 ? (
-                                              <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
-                                                No slides in this chapter.
-                                              </div>
-                                            ) : (
-                                              (slidesMap[ch.id] ?? []).map(
-                                                (slide, sIdx) => (
-                                                  <div
-                                                    key={slide.id}
-                                                    className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40 border border-transparent transition-all duration-200"
-                                                  >
-                                                    <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
-                                                      S{sIdx + 1}
-                                                    </span>
-                                                    <div className="shrink-0 group-hover:scale-110 transition-transform">
-                                                      {getIcon(slide, "3")}
-                                                    </div>
-                                                    <span
-                                                      className="truncate group-hover:text-amber-700 transition-colors"
-                                                      title={slide.title}
-                                                    >
-                                                      {slide.title}
-                                                    </span>
-                                                  </div>
-                                                )
-                                              )
-                                            )}
-                                          </div>
-                                        </CollapsibleContent>
-                                      </Collapsible>
-                                    );
-                                  })}
-                                </div>
-                              </CollapsibleContent>
-                            </Collapsible>
-                          );
-                        }
-                      )}
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
-              );
-            })}
-          {courseStructure === 3 &&
-            studyLibraryData?.map((subject: SubjectType) => {
-              const isSubjectOpen = openSubjects.has(subject.id);
-              return (
-                <Collapsible
-                  key={subject.id}
-                  open={isSubjectOpen}
-                  onOpenChange={() => toggleSubject(subject.id)}
-                >
-                  <CollapsibleContent className={`pb-1 pt-2 `}>
-                    <div className="space-y-1 relative">
-                      {(subjectModulesMap[subject.id] ?? []).map((mod) => {
-                        const isModuleOpen = openModules.has(mod.module.id);
-                        return (
-                          <Collapsible
-                            key={mod.module.id}
-                            open={isModuleOpen}
-                            onOpenChange={() => toggleModule(mod.module.id)}
-                          >
-                            <CollapsibleContent className={`py-1`}>
-                              <div className="space-y-0.5">
-                                {(mod.chapters ?? []).map((ch, chIdx) => {
-                                  const isChapterOpen = openChapters.has(ch.id);
-
-                                  return (
-                                    <Collapsible
-                                      key={ch.id}
-                                      open={isChapterOpen}
-                                      onOpenChange={() => {
-                                        toggleChapter(ch.id);
-                                        getSlidesWithChapterId(ch.id);
-                                      }}
-                                    >
-                                      <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2 py-1 text-left text-sm text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-green-50/70 hover:to-emerald-50/50 hover:border-green-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1">
-                                        <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                                          {isChapterOpen ? (
-                                            <CaretDown
-                                              size={14}
-                                              className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
-                                            />
-                                          ) : (
-                                            <CaretRight
-                                              size={14}
-                                              className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
-                                            />
-                                          )}
-                                          <div className="flex items-center justify-center w-4 h-4 rounded bg-gradient-to-br from-green-500 to-green-600 text-white">
-                                            <PresentationChart size={10} />
-                                          </div>
-                                          <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
-                                            C{chIdx + 1}
-                                          </span>
-                                          <span
-                                            className="truncate group-hover:text-green-700 transition-colors text-xs"
-                                            title={toTitleCase(ch.chapter_name)}
-                                          >
-                                            {toTitleCase(ch.chapter_name)}
-                                          </span>
-                                        </div>
-                                      </CollapsibleTrigger>
-                                      <CollapsibleContent>
-                                        <div className="space-y-px ml-5 border-l border-green-200/50 py-1 pl-2 relative">
-                                          <div className="absolute left-0 top-0 w-px h-full bg-gradient-to-b from-green-300/50 to-transparent"></div>
-                                          {(slidesMap[ch.id] ?? []).length ===
-                                          0 ? (
-                                            <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
-                                              No slides in this chapter.
-                                            </div>
-                                          ) : (
-                                            (slidesMap[ch.id] ?? []).map(
-                                              (slide, sIdx) => (
-                                                <div
-                                                  key={slide.id}
-                                                  className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40 border border-transparent transition-all duration-200"
-                                                >
-                                                  <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
-                                                    S{sIdx + 1}
-                                                  </span>
-                                                  <div className="shrink-0 group-hover:scale-110 transition-transform">
-                                                    {getIcon(slide, "3")}
-                                                  </div>
-                                                  <span
-                                                    className="truncate group-hover:text-amber-700 transition-colors"
-                                                    title={slide.title}
-                                                  >
-                                                    {slide.title}
-                                                  </span>
-                                                </div>
-                                              )
-                                            )
-                                          )}
-                                        </div>
-                                      </CollapsibleContent>
-                                    </Collapsible>
-                                  );
-                                })}
-                              </div>
-                            </CollapsibleContent>
-                          </Collapsible>
-                        );
-                      })}
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
-              );
-            })}
-
-          {courseStructure === 2 &&
-            studyLibraryData?.map((subject: SubjectType) => {
-              const isSubjectOpen = openSubjects.has(subject.id);
-              return (
-                <Collapsible
-                  key={subject.id}
-                  open={isSubjectOpen}
-                  onOpenChange={() => toggleSubject(subject.id)}
-                >
-                  <CollapsibleContent className={`pb-1 pt-2 `}>
-                    <div className="space-y-1 relative">
-                      {(subjectModulesMap[subject.id] ?? []).map((mod) => {
-                        const isModuleOpen = openModules.has(mod.module.id);
-                        return (
-                          <Collapsible
-                            key={mod.module.id}
-                            open={isModuleOpen}
-                            onOpenChange={() => toggleModule(mod.module.id)}
-                          >
-                            <CollapsibleContent className={`py-1`}>
-                              <div className="space-y-0.5">
-                                {(mod.chapters ?? []).map((ch) => {
-                                  const isChapterOpen = openChapters.has(ch.id);
-
-                                  return (
-                                    <Collapsible
-                                      key={ch.id}
-                                      open={isChapterOpen}
-                                      onOpenChange={() => {
-                                        toggleChapter(ch.id);
-                                        getSlidesWithChapterId(ch.id);
-                                      }}
-                                    >
-                                      <CollapsibleContent>
-                                        <div className="space-y-px pl-2 relative">
-                                          {(slidesMap[ch.id] ?? []).length ===
-                                          0 ? (
-                                            <div className="text-xs px-2 text-neutral-400 italic bg-neutral-50/50 rounded">
-                                              No slides in this chapter.
-                                            </div>
-                                          ) : (
-                                            (slidesMap[ch.id] ?? []).map(
-                                              (slide, sIdx) => (
-                                                <div
-                                                  key={slide.id}
-                                                  className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40 border border-transparent transition-all duration-200"
-                                                >
-                                                  <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
-                                                    S{sIdx + 1}
-                                                  </span>
-                                                  <div className="shrink-0 group-hover:scale-110 transition-transform">
-                                                    {getIcon(slide, "3")}
-                                                  </div>
-                                                  <span
-                                                    className="truncate group-hover:text-amber-700 transition-colors"
-                                                    title={slide.title}
-                                                  >
-                                                    {slide.title}
-                                                  </span>
-                                                </div>
-                                              )
-                                            )
-                                          )}
-                                        </div>
-                                      </CollapsibleContent>
-                                    </Collapsible>
-                                  );
-                                })}
-                              </div>
-                            </CollapsibleContent>
-                          </Collapsible>
-                        );
-                      })}
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
-              );
-            })}
+        </div>
+      </div>
+    ),
+    [TabType.CONTENT_STRUCTURE]: (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <TreeStructure size={18} className="text-primary-600" />
+          <span className="text-sm font-medium text-neutral-700">
+            Content Structure
+          </span>
+        </div>
+        <div className="text-sm text-neutral-600">
+          Content structure view will be implemented here.
         </div>
       </div>
     ),

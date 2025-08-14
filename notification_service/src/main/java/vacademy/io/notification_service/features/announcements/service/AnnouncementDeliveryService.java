@@ -239,8 +239,8 @@ public class AnnouncementDeliveryService {
                 message.setStatus(MessageStatus.SENT);
                 message.setSentAt(LocalDateTime.now());
                 
-                // Send push notification using existing service
-                pushNotificationService.sendNotificationToUser(message.getUserId(), title, body, customData);
+                // Send push notification using institute-specific Firebase
+                pushNotificationService.sendNotificationToUser(announcement.getInstituteId(), message.getUserId(), title, body, customData);
                 
                 message.setStatus(MessageStatus.DELIVERED);
                 message.setDeliveredAt(LocalDateTime.now());

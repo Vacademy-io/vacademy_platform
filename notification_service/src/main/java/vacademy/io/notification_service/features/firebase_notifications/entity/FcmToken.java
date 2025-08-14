@@ -24,6 +24,9 @@ public class FcmToken {
     @Column(name = "user_id", nullable = false)
     private String userId;
 
+    @Column(name = "institute_id")
+    private String instituteId;
+
     @Column(name = "token", nullable = false, columnDefinition = "TEXT")
     private String token;
 
@@ -44,6 +47,18 @@ public class FcmToken {
 
     public FcmToken(String userId, String token, String platform, String deviceId) {
         this.id = UUID.randomUUID().toString();
+        this.userId = userId;
+        this.token = token;
+        this.platform = platform;
+        this.deviceId = deviceId;
+        this.isActive = true;
+        this.createdAt = LocalDateTime.now();
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public FcmToken(String instituteId, String userId, String token, String platform, String deviceId) {
+        this.id = UUID.randomUUID().toString();
+        this.instituteId = instituteId;
         this.userId = userId;
         this.token = token;
         this.platform = platform;

@@ -83,7 +83,13 @@ class MediumDeliveryTest {
         Mockito.doNothing().when(emailService)
                 .sendHtmlEmail(ArgumentMatchers.anyString(), ArgumentMatchers.anyString(), ArgumentMatchers.anyString(), ArgumentMatchers.anyString());
         Mockito.doNothing().when(pushNotificationService)
-                .sendNotificationToUser(ArgumentMatchers.anyString(), ArgumentMatchers.anyString(), ArgumentMatchers.anyString(), ArgumentMatchers.anyMap());
+                .sendNotificationToUser(
+                        ArgumentMatchers.anyString(),
+                        ArgumentMatchers.anyString(),
+                        ArgumentMatchers.anyString(),
+                        ArgumentMatchers.anyString(),
+                        ArgumentMatchers.<String, String>anyMap()
+                );
 
         // Process delivery end-to-end (creates recipient_messages and sends via mediums)
         processingService.processAnnouncementDelivery(announcementId);
@@ -97,7 +103,13 @@ class MediumDeliveryTest {
         Mockito.verify(emailService, Mockito.atLeastOnce())
                 .sendHtmlEmail(ArgumentMatchers.eq("user@example.com"), ArgumentMatchers.anyString(), ArgumentMatchers.anyString(), ArgumentMatchers.anyString());
         Mockito.verify(pushNotificationService, Mockito.atLeastOnce())
-                .sendNotificationToUser(ArgumentMatchers.eq(userId), ArgumentMatchers.anyString(), ArgumentMatchers.anyString(), ArgumentMatchers.anyMap());
+                .sendNotificationToUser(
+                        ArgumentMatchers.eq("INST_MEDIUM"),
+                        ArgumentMatchers.eq(userId),
+                        ArgumentMatchers.anyString(),
+                        ArgumentMatchers.anyString(),
+                        ArgumentMatchers.<String, String>anyMap()
+                );
 
         // Optionally check logs exist (>=1, because entity does not track status)
         assertThat(notificationLogRepository.findAll().size()).isGreaterThanOrEqualTo(1);

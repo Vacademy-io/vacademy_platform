@@ -14,4 +14,4 @@ CREATE TABLE IF NOT EXISTS fcm_tokens (
 CREATE INDEX IF NOT EXISTS idx_fcm_tokens_user_id ON fcm_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_fcm_tokens_token ON fcm_tokens(token);
 CREATE INDEX IF NOT EXISTS idx_fcm_tokens_is_active ON fcm_tokens(is_active);
-CREATE INDEX IF NOT EXISTS idx_fcm_tokens_user_device ON fcm_tokens(user_id, device_id); 
+CREATE INDEX IF NOT EXISTS idx_fcm_tokens_user_device ON fcm_tokens(user_id, device_id);

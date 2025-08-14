@@ -260,6 +260,77 @@ Firebase Cloud Messaging:
 }
 ```
 
+### Push Notifications Setup (Multi-tenant Firebase)
+
+- If `firebase-service-account.json` is missing on classpath, global Firebase is skipped. Push sending will be disabled unless per-institute credentials are configured.
+- To enable push per institute, save the Firebase service account JSON in `InstituteAnnouncementSettings.settings.firebase.serviceAccountJson` (or Base64 in `serviceAccountJsonBase64`).
+
+Register FCM token:
+
+```http
+POST /notification-service/push-notifications/register
+Content-Type: application/json
+
+{
+  "instituteId": "INST_123",
+  "userId": "USER_1",
+  "token": "<FCM_TOKEN>",
+  "platform": "web",
+  "deviceId": "device-abc"
+}
+```
+
+Send test push:
+
+```http
+POST /notification-service/push-notifications/send-test
+Content-Type: application/json
+
+{
+  "instituteId": "INST_123",
+  "userId": "USER_1",
+  "title": "Hello",
+  "body": "This is a test"
+}
+```
+
+#### When to call /push-notifications/register
+
+- On first app start after user signs in and FCM permission is granted.
+- On every app start/resume where you can obtain an FCM token (safe to upsert; the API updates existing records by `userId + deviceId`).
+- Whenever FCM returns a new/rotated token (token refresh event).
+- After the user switches institute context (if your app supports multiple institutes) to ensure the token is stored with the correct `instituteId`.
+
+Recommended keys:
+- `instituteId`: institute under which notifications should be sent.
+- `userId`: authenticated user.
+- `deviceId`: a stable ID per device+app install (e.g., UUID stored in secure storage; do not use the FCM token as deviceId).
+- `platform`: see supported values below.
+
+Deactivate a token when appropriate (e.g., logout on shared device):
+
+```http
+POST /notification-service/push-notifications/deactivate?token=<FCM_TOKEN>
+```
+
+#### Supported platform values
+
+- `web`: Web app using FCM Web Push (service worker based).
+- `android`: Native Android app using Firebase Messaging.
+- `ios`: Native iOS app using Firebase Messaging/APNS.
+
+Notes:
+- These values are stored for observability and troubleshooting only; delivery uses the same API regardless of platform.
+- If you have variants (e.g., `web_pwa`, `web_desktop`), you may still submit `web` and track variants in your own analytics.
+
+#### Registration best practices
+
+- Always include `deviceId` so the same device updates its row instead of creating duplicates.
+- Retry with backoff on transient network errors.
+- Guard registration behind notification permission prompts on web/iOS.
+- On permission revocation, consider deactivating the token.
+- Handle UNREGISTERED/INVALID tokens on your client by re-registering when prompted.
+
 ### EMAIL
 Email delivery:
 ```json

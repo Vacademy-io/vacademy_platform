@@ -6,6 +6,7 @@ public class FcmTokenRequest {
     private String platform;
     private String deviceId;
     private String userId;
+    private String instituteId;
 
     // Constructors
     public FcmTokenRequest() {}
@@ -22,4 +23,7 @@ public class FcmTokenRequest {
 
     public String getUserId() { return userId; }
     public void setUserId(String userId) { this.userId = userId; }
+
+    public String getInstituteId() { return instituteId; }
+    public void setInstituteId(String instituteId) { this.instituteId = instituteId; }
 }

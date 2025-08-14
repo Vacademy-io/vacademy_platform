@@ -32,6 +32,7 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/open/**",
             "/admin-core-service/batch/v1/search",
             "/admin-core-service/public/**",
+            "/admin-core-service/public/domain-routing/v1/**",
             "/admin-core-service/live-presenter/v1/**", 
             "/admin-core-service/live-learner/v1/**", 
             "/admin-core-service/institute/open_learner/v1/**", 

@@ -30,7 +30,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import {
@@ -65,6 +65,7 @@ import { TokenKey } from "@/constants/auth/tokens";
 import { getSubjectDetails } from "@/routes/courses/course-details/-utils/helper";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
+import { DashboardLoader } from "@/components/core/dashboard-loader";
 
 type SlideType = {
     id: string;
@@ -230,11 +231,58 @@ export const CourseDetailsPage = () => {
         []
     );
 
+    // Loading state management
+    const [isLoading, setIsLoading] = useState(true);
+    const [loadingStates, setLoadingStates] = useState({
+        instituteDetails: false,
+        courseDetails: false,
+        slideCount: false,
+        modulesData: false,
+        ratingsData: false,
+        userData: false,
+    });
+
+    // Function to update loading states
+    const updateLoadingState = useCallback(
+        (key: keyof typeof loadingStates, value: boolean) => {
+            setLoadingStates((prev) => ({ ...prev, [key]: value }));
+        },
+        []
+    );
+
+    // Check if all loading states are complete
+    const isAllLoadingComplete = useMemo(() => {
+        return Object.values(loadingStates).every((state) => !state);
+    }, [loadingStates]);
+
+    // Update main loading state when all individual states are complete
+    useEffect(() => {
+        if (isAllLoadingComplete) {
+            setIsLoading(false);
+        }
+    }, [isAllLoadingComplete]);
+
+    // Memoized callback functions for child components
+    const handleModulesLoadingChange = useCallback(
+        (loading: boolean) => {
+            updateLoadingState("modulesData", loading);
+        },
+        [updateLoadingState]
+    );
+
+    const handleRatingsLoadingChange = useCallback(
+        (loading: boolean) => {
+            updateLoadingState("ratingsData", loading);
+        },
+        [updateLoadingState]
+    );
+
     // Get selectedTab from route params, default to "ALL" if not provided
     const selectedTab = searchParams.selectedTab || "ALL";
 
     useEffect(() => {
         const fetchInstituteAndUserId = async () => {
+            updateLoadingState("userData", true);
             const instituteResult = await Preferences.get({
                 key: "InstituteId",
             });
@@ -266,6 +314,7 @@ export const CourseDetailsPage = () => {
             if (token) {
                 setAuthToken(token);
             }
+            updateLoadingState("userData", false);
         };
 
         fetchInstituteAndUserId();
@@ -276,41 +325,59 @@ export const CourseDetailsPage = () => {
         setPackageSessionIdForCurrentLevel,
     ] = useState<string | null>(null);
 
-    // ✅ Fetch institute details
     useEffect(() => {
         const fetchInstituteDetails = async () => {
-            const instituteId = await getInstituteId();
+            console.log('Fetching institute details with:', { instituteId, selectedSession, selectedLevel, courseId: searchParams.courseId });
+            updateLoadingState("instituteDetails", true);
+            const fetchedInstituteId = await getInstituteId();
             try {
                 const response = await axios.get(
-                    `${urlInstituteDetails}/${instituteId}`
+                    `${urlInstituteDetails}/${fetchedInstituteId}`
                 );
+                console.log('Institute response:', response.data);
                 const packageSessionId = getIdByLevelAndSession(
                     response.data.batches_for_sessions,
                     selectedSession,
                     selectedLevel,
                     searchParams.courseId || ""
                 );
+                console.log('Package session ID:', packageSessionId);
                 setPackageSessionIdForCurrentLevel(packageSessionId);
             } catch (error) {
                 console.log(error);
+            } finally {
+                updateLoadingState("instituteDetails", false);
             }
         };
 
-        fetchInstituteDetails();
+        // Only fetch when we have the required dependencies
+        if (instituteId && selectedSession && selectedLevel) {
+            fetchInstituteDetails();
+        }
     }, [instituteId, selectedSession, selectedLevel]);
 
     // Only run the query if instituteId is available
-    const { data: studyLibraryData } = useSuspenseQuery(
-        handleGetAllCourseDetails({
-            instituteId: instituteId || "",
-        })
-    );
+    const { data: studyLibraryData, isLoading: isCourseDetailsLoading } =
+        useSuspenseQuery(
+            handleGetAllCourseDetails({
+                instituteId: instituteId || "",
+            })
+        );
+
+    // Update course details loading state
+    useEffect(() => {
+        updateLoadingState("courseDetails", isCourseDetailsLoading);
+    }, [isCourseDetailsLoading]);
 
     const courseDetailsData = useMemo(() => {
-        return studyLibraryData?.find(
+        const found = studyLibraryData?.find(
             (item: CourseStructureResponse) =>
                 item.course.id === searchParams.courseId
         );
+        console.log('Course details data found:', found);
+        console.log('Search params courseId:', searchParams.courseId);
+        console.log('Study library data:', studyLibraryData);
+        return found;
     }, [studyLibraryData, searchParams.courseId]);
 
     const form = useForm<CourseDetailsFormValues>({
@@ -354,6 +421,9 @@ export const CourseDetailsPage = () => {
     // Convert sessions to select options format - filter based on selectedTab
     const sessionOptions = useMemo(() => {
         const sessions = form.getValues("courseData")?.sessions || [];
+        console.log('Form sessions:', sessions);
+        console.log('Enrolled sessions:', enrolledSessions);
+        console.log('Selected tab:', selectedTab);
 
         // For PROGRESS and COMPLETED tabs, only show enrolled sessions
         // For ALL tab, show all available sessions
@@ -468,22 +538,29 @@ export const CourseDetailsPage = () => {
 
     // Set initial session and its levels - auto-select if only one option
     useEffect(() => {
+        console.log('Session options:', sessionOptions);
+        console.log('Selected session:', selectedSession);
+        console.log('Selected level:', selectedLevel);
+        
         if (
             sessionOptions.length > 0 &&
             !selectedSession &&
             sessionOptions[0]?.value
         ) {
             const initialSessionId = sessionOptions[0].value;
+            console.log('Setting initial session:', initialSessionId);
             handleSessionChange(initialSessionId);
         }
     }, [sessionOptions]);
 
     useEffect(() => {
         const loadCourseData = async () => {
+            console.log('Loading course data:', courseDetailsData);
             if (courseDetailsData?.course) {
                 try {
                     const transformedData =
                         await transformApiDataToCourseData(courseDetailsData);
+                    console.log('Transformed data:', transformedData);
                     if (transformedData) {
                         form.reset({
                             courseData: transformedData,
@@ -537,6 +614,11 @@ export const CourseDetailsPage = () => {
         ...handleGetSlideCountDetails(packageSessionIdForCurrentLevel || ""),
         enabled: !!packageSessionIdForCurrentLevel,
     });
+
+    // Update slide count loading state
+    useEffect(() => {
+        updateLoadingState("slideCount", slideCountQuery.isLoading);
+    }, [slideCountQuery.isLoading]);
 
     // Custom slide count calculation to handle special document types
     const processedSlideCounts = useMemo(() => {
@@ -769,6 +851,28 @@ export const CourseDetailsPage = () => {
         }
     };
 
+    // Debug logging
+    console.log('Loading states:', loadingStates);
+    console.log('isLoading:', isLoading);
+    console.log('instituteId:', instituteId);
+    console.log('studyLibraryData:', studyLibraryData);
+    console.log('packageSessionIdForCurrentLevel:', packageSessionIdForCurrentLevel);
+
+    // Show loading until all APIs are complete or until we have the required data
+    if (isLoading || !instituteId || !studyLibraryData || !packageSessionIdForCurrentLevel) {
+        return <DashboardLoader />;
+    }
+
+    // Debug logging for CourseStructureDetails props
+    console.log('Rendering CourseStructureDetails with props:', {
+        selectedSession,
+        selectedLevel,
+        courseStructure: form.getValues("courseData.courseStructure"),
+        packageSessionId: packageSessionIdForCurrentLevel,
+        selectedTab,
+        courseData: form.getValues()
+    });
+
     return (
         <>
             {/* Enrollment Payment Dialog */}
@@ -858,7 +962,7 @@ export const CourseDetailsPage = () => {
                                                                         key={
                                                                             index
                                                                         }
-                                   className="bg-white/20 border border-white/30 text-white px-2.5 py-1 rounded-md text-xs font-medium hover:bg-white/30 transition-all duration-200"
+                                                                        className="bg-white/20 border border-white/30 text-white px-2.5 py-1 rounded-md text-xs font-medium hover:bg-white/30 transition-all duration-200"
                                                                     >
                                                                         {tag}
                                                                     </span>
@@ -923,7 +1027,7 @@ export const CourseDetailsPage = () => {
                                                             (tag, index) => (
                                                                 <span
                                                                     key={index}
-                                                                   className="bg-white/20 border border-white/30 text-white px-3 py-1.5 rounded-md text-sm font-medium hover:bg-white/30 transition-all duration-200"
+                                                                    className="bg-white/20 border border-white/30 text-white px-3 py-1.5 rounded-md text-sm font-medium hover:bg-white/30 transition-all duration-200"
                                                                 >
                                                                     {tag}
                                                                 </span>
@@ -962,7 +1066,7 @@ export const CourseDetailsPage = () => {
                 {/* Video Player for non-lg screens */}
                 {form.watch("courseData").courseMediaId && (
                     <div className="lg:hidden relative z-10 max-w-[350px] px-3 sm:px-4 py-4">
-                       <div className="bg-white border border-gray-200 rounded-md shadow-sm p-3 sm:p-4">
+                        <div className="bg-white border border-gray-200 rounded-md shadow-sm p-3 sm:p-4">
                             <VideoPlayer
                                 src={form.watch("courseData").courseMediaId}
                             />
@@ -977,7 +1081,7 @@ export const CourseDetailsPage = () => {
                         <div className="xl:col-span-3 space-y-4 lg:space-y-6">
                             {/* Enhanced Session and Level Selectors */}
                             <div
-                               className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-200 p-3 sm:p-4 group animate-fade-in-up"
+                                className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-200 p-3 sm:p-4 group animate-fade-in-up"
                                 style={{ animationDelay: "0.1s" }}
                             >
                                 {/* Background gradient overlay */}
@@ -1030,7 +1134,7 @@ export const CourseDetailsPage = () => {
                                                         return (
                                                             <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                                                                 <div className="flex items-center space-x-2">
-                                    <div className="w-2 h-2 bg-blue-500 rounded-sm"></div>
+                                                                    <div className="w-2 h-2 bg-blue-500 rounded-sm"></div>
                                                                     <span className="text-sm font-medium text-blue-800">
                                                                         {getTerminology(
                                                                             ContentTerms.Course,
@@ -1224,29 +1328,30 @@ export const CourseDetailsPage = () => {
                             </div>
 
                             {/* Course Structure */}
-                            <div
-                                className="animate-fade-in-up"
-                                style={{ animationDelay: "0.2s" }}
-                            >
-                                <CourseStructureDetails
-                                    selectedSession={selectedSession}
-                                    selectedLevel={selectedLevel}
-                                    courseStructure={form.getValues(
-                                        "courseData.courseStructure"
-                                    )}
-                                    courseData={form.getValues()}
-                                    packageSessionId={
-                                        packageSessionIdForCurrentLevel || ""
-                                    }
-                                    selectedTab={selectedTab}
-                                    updateModuleStats={updateModuleStats}
-                                    isEnrolledInCourse={enrolledSessions.some(
-                                        (enrolledSession) =>
-                                            enrolledSession.package_dto.id ===
-                                            searchParams.courseId
-                                    )}
-                                />
-                            </div>
+                            {packageSessionIdForCurrentLevel && (
+                                <div
+                                    className="animate-fade-in-up"
+                                    style={{ animationDelay: "0.2s" }}
+                                >
+                                    <CourseStructureDetails
+                                        selectedSession={selectedSession}
+                                        selectedLevel={selectedLevel}
+                                        courseStructure={form.getValues(
+                                            "courseData.courseStructure"
+                                        )}
+                                        courseData={form.getValues()}
+                                        packageSessionId={packageSessionIdForCurrentLevel}
+                                        selectedTab={selectedTab}
+                                        updateModuleStats={updateModuleStats}
+                                        isEnrolledInCourse={enrolledSessions.some(
+                                            (enrolledSession) =>
+                                                enrolledSession.package_dto.id ===
+                                                searchParams.courseId
+                                        )}
+                                        onLoadingChange={handleModulesLoadingChange}
+                                    />
+                                </div>
+                            )}
 
                             {/* Content Sections */}
                             <div className="space-y-4">
@@ -1254,10 +1359,10 @@ export const CourseDetailsPage = () => {
                                 {form.getValues("courseData")
                                     .whatYoullLearn && (
                                     <div
-                                       className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
+                                        className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
                                         style={{ animationDelay: "0.3s" }}
                                     >
-                                       <div className="absolute inset-0 bg-gradient-to-br from-success-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
+                                        <div className="absolute inset-0 bg-gradient-to-br from-success-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
                                         <div className="relative">
                                             <div className="flex items-center space-x-2 mb-3">
                                                 <div className="p-1.5 bg-gradient-to-br from-success-100 to-success-200 rounded-lg shadow-sm">
@@ -1288,10 +1393,10 @@ export const CourseDetailsPage = () => {
                                 {form.getValues("courseData")
                                     .aboutTheCourse && (
                                     <div
-                                       className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
+                                        className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
                                         style={{ animationDelay: "0.4s" }}
                                     >
-                                       <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
+                                        <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
                                         <div className="relative">
                                             <div className="flex items-center space-x-2 mb-3">
                                                 <div className="p-1.5 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg shadow-sm">
@@ -1326,10 +1431,10 @@ export const CourseDetailsPage = () => {
                                 {form.getValues("courseData")
                                     .whoShouldLearn && (
                                     <div
-                                       className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
+                                        className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
                                         style={{ animationDelay: "0.5s" }}
                                     >
-                                       <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
+                                        <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
                                         <div className="relative">
                                             <div className="flex items-center space-x-2 mb-3">
                                                 <div className="p-1.5 bg-gradient-to-br from-purple-100 to-purple-200 rounded-lg shadow-sm">
@@ -1361,7 +1466,7 @@ export const CourseDetailsPage = () => {
                                     form.getValues("courseData").instructors
                                         .length > 0 && (
                                         <div
-                                           className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
+                                            className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
                                             style={{ animationDelay: "0.6s" }}
                                         >
                                             <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
@@ -1433,11 +1538,11 @@ export const CourseDetailsPage = () => {
                         <div className="xl:col-span-1">
                             <div className="sticky top-4 space-y-4">
                                 <div
-                                   className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
+                                    className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
                                     style={{ animationDelay: "0.7s" }}
                                 >
                                     {/* Background gradient overlay */}
-                                   <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
+                                    <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
 
                                     {/* Floating orb effect */}
                                     <div className="absolute top-0 right-0 w-12 h-12 bg-primary-100/20 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3"></div>
@@ -1743,14 +1848,17 @@ export const CourseDetailsPage = () => {
                     </div>
 
                     {/* Ratings Component */}
-                    <div
-                        className="mt-6 lg:mt-8 animate-fade-in-up"
-                        style={{ animationDelay: "0.8s" }}
-                    >
-                        <CourseDetailsRatingsComponent
-                            packageSessionId={packageSessionIdForCurrentLevel}
-                        />
-                    </div>
+                    {packageSessionIdForCurrentLevel && (
+                        <div
+                            className="mt-6 lg:mt-8 animate-fade-in-up"
+                            style={{ animationDelay: "0.8s" }}
+                        >
+                            <CourseDetailsRatingsComponent
+                                packageSessionId={packageSessionIdForCurrentLevel}
+                                onLoadingChange={handleRatingsLoadingChange}
+                            />
+                        </div>
+                    )}
                 </div>
             </div>
         </>

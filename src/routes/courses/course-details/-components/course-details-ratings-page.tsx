@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { MyPagination } from "@/components/design-system/pagination";
 import { AxiosError } from "axios";
 import { toast } from "sonner";
@@ -18,6 +18,8 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { ProgressBar } from "@/components/ui/custom-progress-bar";
 import { getPublicUrl } from "@/services/upload_file";
 import { ReviewItem, type Review } from "@/components/common/review-item";
+import { useRouter } from "@tanstack/react-router";
+import { getUserId } from "@/constants/getUserId";
 
 // Types for API Response
 interface User {
@@ -53,6 +55,7 @@ const transformRatingToReview = (rating: Rating): Review => {
     return {
         id: rating.id,
         user: {
+            id: rating.user.id,
             name: rating.user.full_name || rating.user.username,
             avatarUrl: rating.user.profile_pic_file_id || "",
         },
@@ -77,13 +80,33 @@ function timeAgo(dateString: string) {
 
 export function CourseDetailsRatingsComponent({
     packageSessionId,
+    onRatingsLoadingChange,
 }: {
     packageSessionId: string | null;
+    onRatingsLoadingChange?: (loading: boolean) => void;
 }) {
+    const router = useRouter();
+    const searchParams = router.state.location.search;
     const queryClient = useQueryClient();
     const [page, setPage] = useState(0);
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-    const { data: ratingData, isLoading } = useSuspenseQuery<PaginatedResponse>(
+    // Get current user ID on component mount
+    useEffect(() => {
+        const fetchCurrentUserId = async () => {
+            try {
+                const userId = await getUserId();
+                setCurrentUserId(userId);
+            } catch (error) {
+                console.error("Failed to get current user ID:", error);
+                setCurrentUserId(null);
+            }
+        };
+
+        fetchCurrentUserId();
+    }, []);
+
+    const { data: ratingData, isLoading: isRatingLoading } = useSuspenseQuery<PaginatedResponse>(
         handleGetRatingDetails({
             pageNo: page,
             pageSize: 10,
@@ -94,11 +117,24 @@ export function CourseDetailsRatingsComponent({
         })
     );
 
-    const { data: overallRatingData } = useSuspenseQuery(
+    const { data: overallRatingData, isLoading: isOverallRatingLoading } = useSuspenseQuery(
         handleGetOverAllRatingDetails({
             source_id: packageSessionId || "",
         })
     );
+
+    // Memoized callback for loading state changes
+    const handleLoadingChange = useCallback((loading: boolean) => {
+        if (onRatingsLoadingChange) {
+            onRatingsLoadingChange(loading);
+        }
+    }, [onRatingsLoadingChange]);
+
+    // Update loading state for parent component
+    useEffect(() => {
+        const isAnyLoading = isRatingLoading || isOverallRatingLoading;
+        handleLoadingChange(isAnyLoading);
+    }, [isRatingLoading, isOverallRatingLoading, handleLoadingChange]);
 
     // Transform API data to reviews format
     const reviews = ratingData?.content.map(transformRatingToReview) || [];
@@ -313,7 +349,7 @@ export function CourseDetailsRatingsComponent({
         }
     };
 
-    if (isLoading || !packageSessionId) return <DashboardLoader />;
+    if (isRatingLoading || isOverallRatingLoading || !packageSessionId) return <DashboardLoader />;
 
     return (
         <div className="flex flex-col gap-5">
@@ -429,7 +465,7 @@ export function CourseDetailsRatingsComponent({
             <div
                 className={`${reviews.length === 0 ? "mt-0" : "mt-8"} flex flex-col gap-4`}
             >
-                {isLoading ? (
+                {isRatingLoading || isOverallRatingLoading ? (
                     // Add loading skeleton here if needed
                     <div>Loading reviews...</div>
                 ) : reviews.length === 0 ? (

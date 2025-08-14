@@ -23,7 +23,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import {
@@ -184,6 +184,52 @@ export const CourseDetailsPage = () => {
     const searchParams = router.state.location.search;
     const subdomain = getSubdomain(window.location.hostname);
 
+    // Loading state management
+    const [isLoading, setIsLoading] = useState(true);
+    const [loadingStates, setLoadingStates] = useState({
+        instituteDetails: false,
+        courseDetails: false,
+        slideCount: false,
+        modulesData: false,
+        ratingsData: false,
+        userData: false,
+    });
+
+    // Function to update loading states
+    const updateLoadingState = useCallback(
+        (key: keyof typeof loadingStates, value: boolean) => {
+            setLoadingStates((prev) => ({ ...prev, [key]: value }));
+        },
+        []
+    );
+
+    // Check if all loading states are complete
+    const isAllLoadingComplete = useMemo(() => {
+        return Object.values(loadingStates).every((state) => !state);
+    }, [loadingStates]);
+
+    // Update main loading state when all individual states are complete
+    useEffect(() => {
+        if (isAllLoadingComplete) {
+            setIsLoading(false);
+        }
+    }, [isAllLoadingComplete]);
+
+    // Memoized callback functions for child components
+    const handleModulesLoadingChange = useCallback(
+        (loading: boolean) => {
+            updateLoadingState("modulesData", loading);
+        },
+        [updateLoadingState]
+    );
+
+    const handleRatingsLoadingChange = useCallback(
+        (loading: boolean) => {
+            updateLoadingState("ratingsData", loading);
+        },
+        [updateLoadingState]
+    );
+
     // Get instituteId from API using subdomain
     const { data: instituteIdFromApi, isLoading: isLoadingInstituteId } =
         useSuspenseQuery(
@@ -193,6 +239,11 @@ export const CourseDetailsPage = () => {
         );
 
     const instituteId = instituteIdFromApi;
+
+    // Update institute ID loading state
+    useEffect(() => {
+        updateLoadingState("userData", isLoadingInstituteId);
+    }, [isLoadingInstituteId, updateLoadingState]);
 
     const [
         packageSessionIdForCurrentLevel,
@@ -218,6 +269,7 @@ export const CourseDetailsPage = () => {
         if (!instituteId) return; // Don't fetch if instituteId is not available
 
         const fetchInstituteDetails = async () => {
+            updateLoadingState("instituteDetails", true);
             try {
                 const response = await axios.get(
                     `${urlInstituteDetails}/${instituteId}`
@@ -236,19 +288,26 @@ export const CourseDetailsPage = () => {
                 );
             } catch (error) {
                 console.log(error);
+            } finally {
+                updateLoadingState("instituteDetails", false);
             }
         };
 
         fetchInstituteDetails();
-    }, [instituteId, selectedSession, selectedLevel]);
+    }, [instituteId, selectedSession, selectedLevel, updateLoadingState]);
 
     // Only run the query if instituteId is available
-    const { data: studyLibraryData } = useQuery({
+    const { data: studyLibraryData, isLoading: isCourseDetailsLoading } = useQuery({
         ...handleGetAllCourseDetails({
             instituteId: instituteId || "",
         }),
         enabled: !!instituteId, // Only run query when instituteId is available
     });
+
+    // Update course details loading state
+    useEffect(() => {
+        updateLoadingState("courseDetails", isCourseDetailsLoading);
+    }, [isCourseDetailsLoading, updateLoadingState]);
 
     const courseDetailsData = useMemo(() => {
         return studyLibraryData?.find(
@@ -375,6 +434,11 @@ export const CourseDetailsPage = () => {
         ...handleGetSlideCountDetails(packageSessionIds || ""),
         enabled: !!packageSessionIds,
     });
+
+    // Update slide count loading state
+    useEffect(() => {
+        updateLoadingState("slideCount", slideCountQuery.isLoading);
+    }, [slideCountQuery.isLoading, updateLoadingState]);
 
     // Custom slide count calculation to handle special document types
     const processedSlideCounts = useMemo(() => {
@@ -601,8 +665,8 @@ export const CourseDetailsPage = () => {
         redirectToDashboardIfAuthenticated();
     }, [navigate]);
 
-    // Show loading while getting instituteId
-    if (isLoadingInstituteId || !instituteId) {
+    // Show loading until all APIs are complete or until we have the required data
+    if (isLoading || !instituteId || !studyLibraryData || !packageSessionIdForCurrentLevel) {
         return <DashboardLoader />;
     }
 
@@ -970,6 +1034,7 @@ export const CourseDetailsPage = () => {
                                 packageSessionId={
                                     packageSessionIdForCurrentLevel || ""
                                 }
+                                onModulesLoadingChange={handleModulesLoadingChange}
                             />
 
                             {/* What You'll Learn Section */}
@@ -1215,6 +1280,7 @@ export const CourseDetailsPage = () => {
                     </div>
                     <CourseDetailsRatingsComponent
                         packageSessionId={packageSessionIdForCurrentLevel}
+                        onRatingsLoadingChange={handleRatingsLoadingChange}
                     />
                 </div>
             </div>

@@ -378,15 +378,12 @@ public class VideoSlideService {
         if (StringUtils.hasText(dto.getTitle())) {
             videoSlide.setTitle(dto.getTitle());
         }
-        if (StringUtils.hasText(dto.getDescription())) {
-            videoSlide.setDescription(dto.getDescription());
-        }
+        videoSlide.setDescription(dto.getDescription());
         if (StringUtils.hasText(dto.getSourceType())) {
             videoSlide.setSourceType(dto.getSourceType());
         }
-        if (StringUtils.hasText(dto.getEmbeddedType())){
-            videoSlide.setEmbeddedType(dto.getEmbeddedType());
-        }
+        videoSlide.setEmbeddedData(dto.getEmbeddedData());
+        videoSlide.setEmbeddedType(dto.getEmbeddedType());
         SlideStatus slideStatus = SlideStatus.valueOf(status.toUpperCase());
 
         switch (slideStatus) {

@@ -64,21 +64,18 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
         if (encodedState == null || encodedState.trim().isEmpty()) {
             return fallbackUrl;
         }
+
         try {
-            // Step 1: URL-decode the input
-            String decodedState = URLDecoder.decode(encodedState, StandardCharsets.UTF_8);
-            log.debug("Decoded state parameter: {}", decodedState);
+            // Step 1: Base64 decode
+            byte[] decodedBytes = Base64.getUrlDecoder().decode(encodedState);
+            String decodedJson = new String(decodedBytes, StandardCharsets.UTF_8);
+            log.debug("Decoded Base64 state: {}", decodedJson);
 
-            // Step 2: If the decoded string is already a direct URL, return it
-            if (decodedState.startsWith("http://") || decodedState.startsWith("https://")) {
-                return decodedState;
-            }
-
-            // Step 3: Try parsing it as JSON
+            // Step 2: Parse JSON
             ObjectMapper mapper = new ObjectMapper();
-            JsonNode stateNode = mapper.readTree(decodedState);
+            JsonNode stateNode = mapper.readTree(decodedJson);
 
-            // Step 4: Extract "from" field if available
+            // Step 3: Extract "from" field if present and valid
             if (stateNode.has("from")) {
                 String fromUrl = stateNode.get("from").asText();
                 if (fromUrl != null && (fromUrl.startsWith("http://") || fromUrl.startsWith("https://"))) {
@@ -87,12 +84,13 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
             }
 
         } catch (Exception e) {
-            log.warn("Failed to decode or parse state parameter: {}", encodedState, e);
+            log.warn("Failed to decode Base64 state parameter: {}", encodedState, e);
         }
 
-        // Step 5: Fallback if nothing matched
+        // Step 4: Fallback
         return fallbackUrl;
     }
+
 
 
     private void processOAuth2User(OAuth2AuthenticationToken oauthToken, String redirectUrl,

@@ -12,6 +12,9 @@ import {
 import { motion } from "framer-motion";
 import { InstituteSignUp } from "./InstituteSignUpForm";
 import { ModalSignUpForm } from "../modal/ModalSignUpForm";
+import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { useTheme } from "@/providers/theme/theme-provider";
+import { AuthPageBranding } from "@/components/common/institute-branding";
 
 export function SignUpForm({
     type,
@@ -22,6 +25,8 @@ export function SignUpForm({
 }) {
     const navigate = useNavigate();
     const search = useSearch({ from: "/signup/" });
+    const domainRouting = useDomainRouting();
+    const { setPrimaryColor } = useTheme();
     
     // Use search parameters if not provided as props
     const finalType = type || (search as { type?: string; courseId?: string; openModal?: string; fromOAuth?: string; instituteId?: string }).type;
@@ -74,6 +79,12 @@ export function SignUpForm({
         };
     }, [shouldShowModal]);
 
+    // Apply domain routing theme if available
+    useEffect(() => {
+        if (domainRouting.instituteThemeCode) {
+            setPrimaryColor(domainRouting.instituteThemeCode);
+        }
+    }, [domainRouting.instituteThemeCode, setPrimaryColor]);
 
     return (
         <div

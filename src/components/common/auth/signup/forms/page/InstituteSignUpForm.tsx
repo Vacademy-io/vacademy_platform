@@ -22,6 +22,8 @@ import { MyInput } from "@/components/design-system/input";
 import { useSignupFlow } from "@/components/common/auth/signup/hooks/use-signup-flow";
 import { SignupEmailOtpForm } from "./SignupEmailOtpForm";
 import { getUserDetailsByEmail, registerUser, handlePostSignupAuth, type RegisterUserRequest } from "@/services/signup-api";
+import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { AuthPageBranding } from "@/components/common/institute-branding";
 
 const instituteSelectionSchema = z.object({
     instituteId: z.string().min(1, "Please select an institute"),
@@ -56,6 +58,7 @@ export function InstituteSignUp({
     const [currentStep, setCurrentStep] = useState<"selection" | "email" | "details">("selection");
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [verifiedEmail, setVerifiedEmail] = useState("");
+    const domainRouting = useDomainRouting();
     
     // Use the signup flow hook
     const {
@@ -318,6 +321,18 @@ export function InstituteSignUp({
                         transition={{ duration: 0.3 }}
                         className="space-y-4"
                     >
+                        {/* Institute Branding */}
+                        {domainRouting.instituteId && (
+                            <AuthPageBranding
+                                branding={{
+                                    instituteId: domainRouting.instituteId,
+                                    instituteName: domainRouting.instituteName,
+                                    instituteLogoFileId: domainRouting.instituteLogoFileId,
+                                    instituteThemeCode: domainRouting.instituteThemeCode,
+                                }}
+                            />
+                        )}
+
                         {/* Institute Selection Header */}
                         <motion.div
                             initial={{ y: 10, opacity: 0 }}
@@ -468,6 +483,18 @@ export function InstituteSignUp({
                         transition={{ duration: 0.3 }}
                         className="space-y-6"
                     >
+                        {/* Institute Branding */}
+                        {domainRouting.instituteId && (
+                            <AuthPageBranding
+                                branding={{
+                                    instituteId: domainRouting.instituteId,
+                                    instituteName: domainRouting.instituteName,
+                                    instituteLogoFileId: domainRouting.instituteLogoFileId,
+                                    instituteThemeCode: domainRouting.instituteThemeCode,
+                                }}
+                            />
+                        )}
+
                         {/* Header */}
                         <motion.div
                             initial={{ y: 10, opacity: 0 }}
@@ -616,6 +643,18 @@ export function InstituteSignUp({
                         transition={{ duration: 0.3 }}
                         className="space-y-6"
                     >
+                        {/* Institute Branding */}
+                        {domainRouting.instituteId && (
+                            <AuthPageBranding
+                                branding={{
+                                    instituteId: domainRouting.instituteId,
+                                    instituteName: domainRouting.instituteName,
+                                    instituteLogoFileId: domainRouting.instituteLogoFileId,
+                                    instituteThemeCode: domainRouting.instituteThemeCode,
+                                }}
+                            />
+                        )}
+
                         {/* Header */}
                         <motion.div
                             initial={{ y: 10, opacity: 0 }}

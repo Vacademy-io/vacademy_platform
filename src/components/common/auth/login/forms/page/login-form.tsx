@@ -33,6 +33,8 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
+import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { AuthPageBranding } from "@/components/common/institute-branding";
 
 export const getFromStorage = async (key: string) => {
     const result = await Preferences.get({ key });
@@ -60,6 +62,7 @@ export function LoginForm({
     const redirect = urlParams.get("redirect");
     const [isEmailLogin, setIsEmailLogin] = useState(isPublic === "true");
     const { setInstituteId } = useInstituteFeatureStore();
+    const domainRouting = useDomainRouting();
 
     useEffect(() => {
         const ssoLoginSuccess = handleSSOLogin();
@@ -85,6 +88,13 @@ export function LoginForm({
             handleSuccessfulLogin(accessToken, redirect);
         }
     }, [navigate]);
+
+    // Apply domain routing theme if available
+    useEffect(() => {
+        if (domainRouting.instituteThemeCode) {
+            setPrimaryColor(domainRouting.instituteThemeCode);
+        }
+    }, [domainRouting.instituteThemeCode, setPrimaryColor]);
 
     const handleSuccessfulLogin = async (
         accessToken: string,
@@ -427,20 +437,32 @@ export function LoginForm({
                             transition={{ delay: 0.3, duration: 0.4 }}
                             className={`bg-white rounded-md ${type ? "" : "shadow-md border border-gray-200 p-5 lg:p-6 xl:p-8"}  `}
                         >
-                            {/* Compact Header */}
-                            <motion.div
-                                initial={{ y: 10, opacity: 0 }}
-                                animate={{ y: 0, opacity: 1 }}
-                                transition={{ delay: 0.5 }}
-                                className="text-center mb-6"
-                            >
-                                <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">
-                                    Welcome Back
-                                </h2>
-                                <p className="text-gray-600 text-sm">
-                                    Sign in to continue your learning journey
-                                </p>
-                            </motion.div>
+                                                    {/* Institute Branding */}
+                        {domainRouting.instituteId && (
+                            <AuthPageBranding
+                                branding={{
+                                    instituteId: domainRouting.instituteId,
+                                    instituteName: domainRouting.instituteName,
+                                    instituteLogoFileId: domainRouting.instituteLogoFileId,
+                                    instituteThemeCode: domainRouting.instituteThemeCode,
+                                }}
+                            />
+                        )}
+
+                        {/* Compact Header */}
+                        <motion.div
+                            initial={{ y: 10, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            transition={{ delay: 0.5 }}
+                            className="text-center mb-6"
+                        >
+                            <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">
+                                Welcome Back
+                            </h2>
+                            <p className="text-gray-600 text-sm">
+                                Sign in to continue your learning journey
+                            </p>
+                        </motion.div>
 
                             {/* Compact OAuth Buttons */}
                             <motion.div

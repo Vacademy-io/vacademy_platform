@@ -11,6 +11,7 @@ import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { getSubdomain } from "@/helpers/helper";
+import { useDomainRouting } from "@/hooks/use-domain-routing";
 
 export const Route = createFileRoute("/courses/")({
     component: CoursesContainerComponent,
@@ -22,6 +23,7 @@ export const Route = createFileRoute("/courses/")({
 function CoursesContainerComponent() {
     const navigate = useNavigate();
     const subdomain = getSubdomain(window.location.hostname);
+    const domainRouting = useDomainRouting();
 
     // Use the new function that checks localStorage first, then compares with API result
     const { data: apiResult, isLoading } = useSuspenseQuery(
@@ -52,16 +54,16 @@ function CoursesContainerComponent() {
         redirectToDashboardIfAuthenticated();
     }, [navigate]);
 
-    if (isLoading) return <DashboardLoader />;
+    if (isLoading || domainRouting.isLoading) return <DashboardLoader />;
 
     // If we couldn't get any instituteId (neither from API nor localStorage), show not found
-    if (apiResult === "Data not found") {
+    if (apiResult === "Data not found" && !domainRouting.instituteId) {
         return <RootNotFoundComponent />;
     }
 
     return (
         <div className="min-h-screen bg-white">
-            <CourseCatalougePage instituteId={apiResult} />
+            <CourseCatalougePage instituteId={domainRouting.instituteId || apiResult} />
         </div>
     );
 }

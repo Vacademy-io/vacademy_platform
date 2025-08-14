@@ -24,6 +24,7 @@ import { TokenKey } from "@/constants/auth/tokens";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { getSubdomain } from "@/helpers/helper";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
+import { resolveDomainRouting, getCurrentDomainInfo } from "@/services/domain-routing";
 
 // Define public routes that don't require authentication
 const PUBLIC_ROUTES = [
@@ -164,17 +165,35 @@ export const Route = createRootRouteWithContext<{
         // fallthrough to public handling
       }
 
-      // Special case: if subdomain is "code-circle", redirect to courses instead of login
-      const subdomain = getSubdomain(window.location.hostname);
-      if (subdomain === "code-circle") {
-          throw redirect({
-              to: "/courses",
-          });
+      // New domain routing logic for unauthenticated users
+      try {
+        const { domain, subdomain } = getCurrentDomainInfo();
+        
+        // Use actual domain and subdomain (or "*" if no subdomain)
+        const testSubdomain = subdomain || "*";
+        
+        // Try to resolve domain routing
+        const domainRoutingResult = await resolveDomainRouting(domain, testSubdomain);
+        
+        if (domainRoutingResult) {
+          // API returned valid institute data, use the redirect field from API response
+          console.log("[Root beforeLoad] Domain routing resolved institute:", domainRoutingResult);
+          const redirectPath = domainRoutingResult.redirect || "/courses";
+          console.log("[Root beforeLoad] Redirecting to:", redirectPath);
+          throw redirect({ to: redirectPath as never });
+        }
+        
+        // Fallback to old logic for backward compatibility
+        const fallbackSubdomain = getSubdomain(window.location.hostname);
+        if (fallbackSubdomain === "code-circle") {
+          throw redirect({ to: "/courses" });
+        }
+      } catch (error) {
+        console.error("[Root beforeLoad] Domain routing error:", error);
+        // Continue to fallback logic
       }
 
-      throw redirect({
-          to: "/login",
-      });
+      throw redirect({ to: "/login" });
         }
 
     // If authenticated and directly on /dashboard, honor settings route
@@ -200,12 +219,32 @@ export const Route = createRootRouteWithContext<{
         // Check authentication for all other routes
         const authenticated = await isAuthenticated();
         if (!authenticated) {
-            // Special case: if subdomain is "code-circle", redirect to courses instead of login
-            const subdomain = getSubdomain(window.location.hostname);
-            if (subdomain === "code-circle") {
-                throw redirect({
-                    to: "/courses",
-                });
+            // New domain routing logic for unauthenticated users
+            try {
+                const { domain, subdomain } = getCurrentDomainInfo();
+                
+                // Use actual domain and subdomain (or "*" if no subdomain)
+                const testSubdomain = subdomain || "*";
+                
+                // Try to resolve domain routing
+                const domainRoutingResult = await resolveDomainRouting(domain, testSubdomain);
+                
+                if (domainRoutingResult) {
+                    // API returned valid institute data, use the redirect field from API response
+                    console.log("[Root beforeLoad] Domain routing resolved institute for protected route:", domainRoutingResult);
+                    const redirectPath = domainRoutingResult.redirect || "/courses";
+                    console.log("[Root beforeLoad] Redirecting to:", redirectPath);
+                    throw redirect({ to: redirectPath as never });
+                }
+                
+                // Fallback to old logic for backward compatibility
+                const fallbackSubdomain = getSubdomain(window.location.hostname);
+                if (fallbackSubdomain === "code-circle") {
+                    throw redirect({ to: "/courses" });
+                }
+            } catch (error) {
+                console.error("[Root beforeLoad] Domain routing error for protected route:", error);
+                // Continue to fallback logic
             }
 
             // Store the current path as redirect URL for after login

@@ -1,6 +1,11 @@
 import axios from "axios";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { getUserId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
+import { 
+  ENROLLMENT_PAYMENT_GATEWAY_DETAILS, 
+  ENROLLMENT_INVITE_DETAILS, 
+  ENROLLMENT_PAYMENT_INITIATION 
+} from "@/constants/urls";
 
 // TypeScript declarations for Stripe
 declare global {
@@ -142,7 +147,7 @@ export const fetchPaymentGatewayDetails = async (
 ): Promise<PaymentGatewayDetails> => {
   try {
     const response = await axios.get(
-      `https://backend-stage.vacademy.io/admin-core-service/open/v1/institute/payment-setting/payment-gateway-details`,
+      ENROLLMENT_PAYMENT_GATEWAY_DETAILS,
       {
         params: {
           instituteId,
@@ -178,7 +183,7 @@ export const fetchEnrollmentDetails = async (
 ): Promise<EnrollmentResponse> => {
   try {
     const response = await axios.get<EnrollmentResponse>(
-      `https://backend-stage.vacademy.io/admin-core-service/v1/enroll-invite/${inviteCode}/${instituteId}/${packageSessionId}`,
+      `${ENROLLMENT_INVITE_DETAILS}/${inviteCode}/${instituteId}/${packageSessionId}`,
       {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -776,7 +781,7 @@ export const initiatePaymentForEnrollment = async (
   try {
     // Use authenticated axios instance which handles token refresh automatically
     const response = await authenticatedAxiosInstance.post(
-      'https://backend-stage.vacademy.io/admin-core-service/v1/learner/enroll',
+      ENROLLMENT_PAYMENT_INITIATION,
       paymentData
     );
     return response.data;

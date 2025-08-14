@@ -41,6 +41,7 @@ public class DomainRoutingService {
                 .instituteLogoFileId(institute.getLogoFileId())
                 .instituteThemeCode(institute.getInstituteThemeCode())
                 .role(mapping.getRole())
+                .redirect(mapping.getRedirect())
                 .build();
         return Optional.of(response);
     }

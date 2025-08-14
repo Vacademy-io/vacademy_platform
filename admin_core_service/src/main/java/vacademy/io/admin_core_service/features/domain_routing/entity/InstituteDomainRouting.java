@@ -32,6 +32,9 @@ public class InstituteDomainRouting {
 
     @Column(name = "institute_id", nullable = false)
     private String instituteId;
+
+    @Column(name = "redirect")
+    private String redirect;
 }
 
 

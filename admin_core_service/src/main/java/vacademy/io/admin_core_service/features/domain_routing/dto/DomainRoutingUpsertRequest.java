@@ -8,6 +8,7 @@ public class DomainRoutingUpsertRequest {
     private String subdomain;
     private String role;
     private String instituteId;
+    private String redirect;
 }
 
 

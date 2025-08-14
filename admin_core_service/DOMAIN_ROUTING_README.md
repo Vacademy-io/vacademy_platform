@@ -9,6 +9,7 @@ Resolves incoming domain and subdomain to an institute and role so clients can r
 - role (varchar, required). Example: LEARNER, TEACHER, ADMIN
 - institute_id (varchar, required)
 - created_at, updated_at
+- redirect (varchar, optional) – client read to route unauth users to open pages (e.g., catalogue or login)
 
 Migration: `src/main/resources/db/migration/V6__create_institute_domain_routing.sql`
 
@@ -52,7 +53,7 @@ Base: `/admin-core-service/admin/domain-routing/v1`
 
 - POST `/` – create mapping
   ```json
-  { "domain": "example.com", "subdomain": "*", "role": "LEARNER", "instituteId": "uuid" }
+  { "domain": "example.com", "subdomain": "*", "role": "LEARNER", "instituteId": "uuid", "redirect": "/catalogue" }
   ```
 - PUT `/{id}` – update mapping
 - GET `/{id}` – get mapping by id

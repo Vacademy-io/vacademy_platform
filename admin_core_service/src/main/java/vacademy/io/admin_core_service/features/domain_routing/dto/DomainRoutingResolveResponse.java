@@ -15,6 +15,7 @@ public class DomainRoutingResolveResponse {
     private String instituteLogoFileId;
     private String instituteThemeCode;
     private String role;
+    private String redirect;
 }
 
 

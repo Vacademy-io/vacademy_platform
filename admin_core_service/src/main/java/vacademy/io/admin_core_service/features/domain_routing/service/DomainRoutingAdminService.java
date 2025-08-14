@@ -22,6 +22,7 @@ public class DomainRoutingAdminService {
                 .subdomain(request.getSubdomain().trim())
                 .role(request.getRole().trim())
                 .instituteId(request.getInstituteId().trim())
+                .redirect(request.getRedirect() == null ? null : request.getRedirect().trim())
                 .build();
         return repository.save(entity);
     }
@@ -37,6 +38,7 @@ public class DomainRoutingAdminService {
             existing.setSubdomain(request.getSubdomain().trim());
             existing.setRole(request.getRole().trim());
             existing.setInstituteId(request.getInstituteId().trim());
+            existing.setRedirect(request.getRedirect() == null ? null : request.getRedirect().trim());
             return repository.save(existing);
         });
     }

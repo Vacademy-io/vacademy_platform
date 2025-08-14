@@ -65,29 +65,35 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
             return fallbackUrl;
         }
         try {
-            // Decode the URL-encoded state
+            // Step 1: URL-decode the input
             String decodedState = URLDecoder.decode(encodedState, StandardCharsets.UTF_8);
+            log.debug("Decoded state parameter: {}", decodedState);
 
-            // If it's a plain URL
-            if (decodedState.startsWith("http")) {
+            // Step 2: If the decoded string is already a direct URL, return it
+            if (decodedState.startsWith("http://") || decodedState.startsWith("https://")) {
                 return decodedState;
             }
-            System.out.println(decodedState);
-            // Try parsing as JSON to extract "from"
+
+            // Step 3: Try parsing it as JSON
             ObjectMapper mapper = new ObjectMapper();
             JsonNode stateNode = mapper.readTree(decodedState);
 
+            // Step 4: Extract "from" field if available
             if (stateNode.has("from")) {
                 String fromUrl = stateNode.get("from").asText();
-                if (fromUrl != null && fromUrl.startsWith("http")) {
+                if (fromUrl != null && (fromUrl.startsWith("http://") || fromUrl.startsWith("https://"))) {
                     return fromUrl;
                 }
             }
+
         } catch (Exception e) {
             log.warn("Failed to decode or parse state parameter: {}", encodedState, e);
         }
+
+        // Step 5: Fallback if nothing matched
         return fallbackUrl;
     }
+
 
     private void processOAuth2User(OAuth2AuthenticationToken oauthToken, String redirectUrl,
             HttpServletResponse response, String encodedState) throws IOException {
@@ -208,49 +214,6 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
             redirectWithTokens(response, redirectUrl, jwtResponseDto);
             return;
         }
-        if(redirectUrl.contains("learner")) {
-            if (userInfo.instituteId != null) {
-                InstituteSignupPolicy signupPolicy = institutePolicyService.fetchSignupPolicy(userInfo.instituteId);
-
-                if (signupPolicy != null) {
-                    if ("manual".equalsIgnoreCase(signupPolicy.getPasswordStrategy())) {
-                        // Manual password strategy - return user data to frontend with error
-                        returnUserDataToFrontend(response, redirectUrl, userInfo, encodedState, isEmailVerified, true);
-                        return;
-                    } else {
-                        // Auto password strategy - create user and return token
-                        try {
-                            if (redirectUrl.contains("learner")) {
-                                jwtResponseDto = getLearnerOAuth2Manager().createUserAndLogin(userInfo.name, email,
-                                        userInfo.instituteId);
-                            } else {
-                                jwtResponseDto = getAdminOAuth2Manager().createUserAndLogin(userInfo.name, email);
-                            }
-
-                            if (jwtResponseDto != null) {
-                                redirectWithTokens(response, redirectUrl, jwtResponseDto);
-                                return;
-                            }
-                        } catch (Exception e) {
-                            log.error("Failed to create user during OAuth2 login", e);
-                            returnUserDataToFrontend(response, redirectUrl, userInfo, encodedState, isEmailVerified, true);
-                            return;
-                        }
-                    }
-                } else {
-                    // Institute policy not found - don't create user, return data to frontend
-                    returnUserDataToFrontend(response, redirectUrl, userInfo, encodedState, isEmailVerified, true);
-                    return;
-                }
-            } else {
-                // No institute ID - return user data to frontend
-                returnUserDataToFrontend(response, redirectUrl, userInfo, encodedState, isEmailVerified, true);
-                return;
-            }
-        }
-
-
-        // Fallback - return user data to frontend with error
         returnUserDataToFrontend(response, redirectUrl, userInfo, encodedState, isEmailVerified, true);
     }
 

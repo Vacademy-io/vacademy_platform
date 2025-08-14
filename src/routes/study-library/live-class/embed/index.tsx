@@ -38,12 +38,13 @@ function EmbedComponent() {
   const extractYouTubeVideoId = (url: string): string | null => {
     if (!url) return null;
     const regExp =
-      /(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/))([a-zA-Z0-9_-]{11})/;
+      /(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/|live\/))([a-zA-Z0-9_-]{11})/;
     const match = url.match(regExp);
     return match ? match[1] : null;
   };
 
-  const renderEmbeddedSession = () => { // Fixed typo: "Embeded" -> "Embedded"
+  const renderEmbeddedSession = () => {
+    // Fixed typo: "Embeded" -> "Embedded"
     if (!sessionDetails?.linkType) return null;
 
     // --- YouTube & recorded YouTube links ---
@@ -52,31 +53,21 @@ function EmbedComponent() {
       sessionDetails.linkType === LinkType.YOUTUBE_RECORDED
     ) {
       const videoId = extractYouTubeVideoId(sessionDetails.defaultMeetLink);
-      
+
       // Handle case where video ID extraction fails
       if (!videoId) {
         return (
           <div className="p-4 border border-red-200 rounded-lg bg-red-50 text-red-700">
             Invalid YouTube URL format
+            <a href={sessionDetails.defaultMeetLink} target="_blank">
+              Click here to view the live
+            </a>
           </div>
         );
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const sessionData = sessionDetails as any; // Consider creating proper types
-      const allowPlayPause = Boolean(
-        sessionData?.allowPlayPause ??
-        sessionData?.isPlayPauseEnabled ??
-        sessionData?.playPauseEnabled ??
-        sessionData?.enablePlayPause ??
-        true
-      );
-
-      // Normalize allowRewind to boolean
-      const rawAllowRewind = sessionData?.allowRewind ?? sessionData?.allow_rewind;
-      const allowRewind = rawAllowRewind !== undefined
-        ? (rawAllowRewind === true || rawAllowRewind === 'true')
-        : true;
+      const allowPlayPause = sessionDetails.allowPlayPause ?? true;
+      const allowRewind = sessionDetails.allowRewind === "true";
 
       return (
         <div className="w-full h-full">

@@ -462,8 +462,11 @@ export const ScratchProjectSlide: React.FC<ScratchProjectSlideProps> = ({
   }, [published_data]);
 
   const handleOpenInNewTab = () => {
-    if (projectData?.scratchUrl) {
-      window.open(projectData.scratchUrl, "_blank");
+    if (projectData?.projectId) {
+      const embedUrl = `https://scratch.mit.edu/projects/${
+        projectData.projectId
+      }/embed${projectData.autoStart ? "?autostart=true" : ""}`;
+      window.open(embedUrl, "_blank");
       // Track external access
       handleActionChange(3);
     }

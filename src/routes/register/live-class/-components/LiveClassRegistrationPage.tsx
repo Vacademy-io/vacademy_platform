@@ -1,7 +1,7 @@
 import { MyButton } from "@/components/design-system/button";
 import { MyDialog } from "@/components/design-system/dialog";
 import { MyInput } from "@/components/design-system/input";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useSessionCustomFields } from "../-hooks/useGetRegistrationFormData";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { generateZodSchema } from "../-types/registrationFormSchema";
@@ -46,6 +46,7 @@ import { useMarkAttendance } from "@/routes/live-class-guest/-hooks/useMarkAtten
 import { Storage } from "@capacitor/storage";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 
 export const verifyEmailSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -73,22 +74,36 @@ export default function LiveClassRegistrationPage() {
   const [registrationResponse, setRegistrationResponse] = useState<string>("");
   const { mutateAsync: registerGuestUser } = useLiveSessionGuestRegistration();
   const [verifiedEmail, setVerifiedEmail] = useState<string>("");
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isUserAlreadyRegistered, setIsUserAlreadyRegistered] =
     useState<boolean>(false);
+  const [alreadyRegisteredEmail, setAlreadyRegisteredEmail] =
+    useState<string>("");
+  const [currentTime, setCurrentTime] = useState(new Date());
 
   const { mutateAsync: markAttendance } = useMarkAttendance();
 
-  const fetchSessionDetail = async (id: string) => {
-    const response = await fetchSessionDetails(id);
-    setSessionDetails(response);
-  };
+  const fetchCoverFileUrl = useCallback(async () => {
+    const response = await getPublicFileUrl(data?.coverFileId || "");
+    setCoverFileUrl(response);
+  }, [data?.coverFileId]);
+
+  const fetchSessionDetail = useCallback(async (id: string) => {
+    try {
+      const response = await fetchSessionDetails(id);
+      setSessionDetails(response);
+    } catch (error) {
+      console.error("Failed to fetch session details:", error);
+    }
+  }, []);
 
   useEffect(() => {
     if (!sessionId) {
       router.navigate({ to: "/dashboard" });
+    } else {
+      const scheduleIdToUse = earliestScheduleId || sessionId;
+      fetchSessionDetail(scheduleIdToUse);
     }
-  }, [sessionId]);
+  }, [sessionId, earliestScheduleId, fetchSessionDetail, router]);
 
   useEffect(() => {
     if (data?.accessLevel === AccessLevel.PRIVATE) {
@@ -96,11 +111,21 @@ export default function LiveClassRegistrationPage() {
     } else {
       fetchCoverFileUrl();
     }
-  }, [data]);
+  }, [data, fetchCoverFileUrl, router]);
 
   useEffect(() => {
-    if (sessionDetails) {
-      const now = new Date();
+    setCurrentTime(new Date());
+
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 10000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (sessionDetails && registrationResponse) {
+      const now = currentTime;
       const sessionDate = new Date(
         `${sessionDetails?.meetingDate}T${sessionDetails?.scheduleStartTime}`
       );
@@ -165,14 +190,20 @@ export default function LiveClassRegistrationPage() {
         }
       };
 
-      handleSessionNavigation();
+      // Only auto-navigate if user is already registered
+      if (isUserAlreadyRegistered) {
+        handleSessionNavigation();
+      }
     }
-  }, [sessionDetails]);
-
-  const fetchCoverFileUrl = async () => {
-    const response = await getPublicFileUrl(data?.coverFileId || "");
-    setCoverFileUrl(response);
-  };
+  }, [
+    sessionDetails,
+    currentTime,
+    registrationResponse,
+    isUserAlreadyRegistered,
+    earliestScheduleId,
+    navigate,
+    markAttendance,
+  ]);
 
   const schema = generateZodSchema(data?.customFields);
   const form = useForm({
@@ -189,6 +220,7 @@ export default function LiveClassRegistrationPage() {
       form.setValue("email", verifiedEmail);
     }
   }, [verifiedEmail, form]);
+
   const verificationForm = useForm({
     resolver: zodResolver(verifyEmailSchema),
     defaultValues: {
@@ -233,15 +265,31 @@ export default function LiveClassRegistrationPage() {
         toast.success("Registration successful");
         fetchSessionDetail(earliestScheduleId || "");
       }
-    } catch (error) {
-      // The hook's onError will show a toast.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
       console.error("Registration API call failed:", error);
+
+      // Handle 511 - already registered case
+      if (error?.response?.status === 511) {
+        setIsUserAlreadyRegistered(true);
+        setAlreadyRegisteredEmail(email);
+        // Get stored guestId for this email if exists
+        const storedGuestId = await Storage.get({
+          key: "live-session-guestId",
+        });
+        if (storedGuestId?.value) {
+          setRegistrationResponse(storedGuestId.value);
+        }
+        fetchSessionDetail(earliestScheduleId || "");
+        return;
+      }
+
+      // For other errors, the hook's onError will show a toast
     }
   };
 
   const onError = (errors: FieldErrors<typeof schema>) => {
     console.log("Validation errors:", errors);
-    // You can show a toast or scroll to the first error here
   };
 
   const checkEmailRegistration = async (email: string) => {
@@ -258,13 +306,21 @@ export default function LiveClassRegistrationPage() {
 
       if (response.data === true) {
         setIsUserAlreadyRegistered(true);
-        toast.success("OTP successful - User already registered");
+        setAlreadyRegisteredEmail(email);
+        // Try to get stored guestId for this email
+        const storedGuestId = await Storage.get({
+          key: "live-session-guestId",
+        });
+        if (storedGuestId?.value) {
+          setRegistrationResponse(storedGuestId.value);
+        }
+        toast.success("Email already registered for this session");
         if (sessionId) {
           fetchSessionDetail(earliestScheduleId || "");
         }
       } else {
         setIsUserAlreadyRegistered(false);
-        toast.success("Email registered and OTP successful");
+        toast.success("Email verified successfully");
       }
     } catch (error) {
       console.error("Failed to check email registration:", error);
@@ -368,7 +424,11 @@ export default function LiveClassRegistrationPage() {
     index: number,
     e: React.KeyboardEvent<HTMLInputElement>
   ) => {
-    if (e.key === "Backspace" && !form.getValues("otp")[index] && index > 0) {
+    if (
+      e.key === "Backspace" &&
+      !verificationForm.getValues("otp")[index] &&
+      index > 0
+    ) {
       otpRefs.current[index - 1]?.focus();
     }
   };
@@ -433,13 +493,27 @@ export default function LiveClassRegistrationPage() {
             )}
           </div>
           <div>
-            <div className="size-[45vh]">
-              <img
-                src={RegistrationLogo}
-                alt="Registration Logo"
-                className="size-full"
+            {sessionDetails?.descriptionHtml &&
+            sessionDetails.descriptionHtml.trim() !== "" ? (
+              <div
+                className="w-full max-h-[45vh] overflow-auto p-4 bg-white rounded-lg shadow-sm border prose prose-sm max-w-none"
+                style={{
+                  // Custom CSS for better HTML content styling
+                  lineHeight: "1.6",
+                }}
+                dangerouslySetInnerHTML={{
+                  __html: sessionDetails.descriptionHtml,
+                }}
               />
-            </div>
+            ) : (
+              <div className="size-[45vh]">
+                <img
+                  src={RegistrationLogo}
+                  alt="Registration Logo"
+                  className="size-full"
+                />
+              </div>
+            )}
           </div>
           <div className="flex flex-col gap-1">
             <div className="font-bold">Live Class Details</div>
@@ -452,7 +526,7 @@ export default function LiveClassRegistrationPage() {
                 <div>End Time:</div>
                 <div>{formatDateTime(data?.lastEntryTime)}</div>
               </div>
-              {data?.subject && (
+              {!isNullOrEmptyOrUndefined(data?.subject) && (
                 <div className="flex flex-row gap-2">
                   <div>
                     {getTerminology(
@@ -470,84 +544,266 @@ export default function LiveClassRegistrationPage() {
         <div className="w-[35%] max-sm:w-full max-sm:mb-4 flex items-center justify-center">
           <div className="bg-white rounded-lg shadow-md ">
             <div className="flex flex-col gap-4">
-              <FormProvider {...form}>
-                <form
-                  onSubmit={handleSubmit(onSubmit, onError)}
-                  className="flex flex-col gap-4 justify-between m-6"
-                >
-                  <div className="font-bold">Registration Form</div>
-                  <div className="flex flex-col gap-4 overflow-auto h-[60vh]">
-                    {data?.customFields?.map((responseField) => (
-                      <div
-                        key={responseField.fieldKey}
-                        className="flex flex-col gap-4"
-                      >
-                        {responseField.fieldType.toLocaleLowerCase() ===
-                        "dropdown" ? (
-                          <SelectField
-                            label={responseField.fieldName}
-                            name={responseField.fieldKey}
-                            options={JSON.parse(responseField.config).map(
-                              (option: DropdownOption, idx: number) => ({
-                                value: option.name,
-                                label: option.label,
-                                _id: idx,
-                              })
-                            )}
-                            control={form.control}
-                            className="mt-[8px] w-full font-thin"
-                          />
-                        ) : (
-                          <FormField
-                            control={form.control}
-                            name={responseField.fieldKey}
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormControl>
-                                  <MyInput
-                                    inputType="text"
-                                    inputPlaceholder={field.name}
-                                    input={field.value}
-                                    labelStyle="font-thin"
-                                    onChangeFunction={field.onChange}
-                                    required={responseField.mandatory}
-                                    size="large"
-                                    label={responseField.fieldName}
-                                    disabled={
-                                      responseField.fieldKey === "email" &&
-                                      verifiedEmail !== ""
-                                    }
-                                    {...field}
-                                  />
-                                </FormControl>
-                                {responseField.fieldKey === "email" &&
-                                  verifiedEmail !== "" && (
-                                    <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                                      <span>✓</span> Email verified and
-                                      auto-filled
-                                    </p>
-                                  )}
-                              </FormItem>
-                            )}
-                          />
-                        )}
-
-                        {errors[responseField.fieldKey] && (
-                          <p style={{ color: "red" }}>
-                            {errors[
-                              responseField.fieldKey
-                            ]?.message?.toString()}
-                          </p>
-                        )}
-                      </div>
-                    ))}
+              {isUserAlreadyRegistered ? (
+                <div className="flex flex-col gap-6 justify-center items-center m-6 text-center">
+                  <div className="flex flex-col gap-4">
+                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                      <span className="text-2xl text-green-600">✓</span>
+                    </div>
+                    <div className="font-bold text-xl text-green-700">
+                      Already Registered!
+                    </div>
+                    <div className="text-gray-600">
+                      You're already registered for this session with email:
+                    </div>
+                    <div className="font-semibold text-primary-600 bg-primary-50 px-4 py-2 rounded-lg">
+                      {alreadyRegisteredEmail}
+                    </div>
                   </div>
 
-                  <MyButton buttonType="primary" type="submit" className="mt-4">
-                    Join Now
-                  </MyButton>
-                </form>
-              </FormProvider>
+                  {sessionDetails && (
+                    <div className="flex flex-col gap-4 w-full">
+                      <div className="flex justify-between items-center text-sm text-gray-500 border-t pt-4">
+                        <span>Session Details</span>
+                        <span className="text-xs text-gray-400">
+                          Status updates every 10s
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Start Time:</span>
+                          <span className="font-medium">
+                            {formatDateTime(
+                              `${sessionDetails.meetingDate}T${sessionDetails.scheduleStartTime}`
+                            )}
+                          </span>
+                        </div>
+                        {sessionDetails.waitingRoomTime && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">
+                              Waiting Room Opens:
+                            </span>
+                            <span className="font-medium">
+                              {formatDateTime(
+                                new Date(
+                                  new Date(
+                                    `${sessionDetails.meetingDate}T${sessionDetails.scheduleStartTime}`
+                                  ).getTime() -
+                                    sessionDetails.waitingRoomTime * 60 * 1000
+                                ).toISOString()
+                              )}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {(() => {
+                        const now = currentTime; // Use the state that updates every 30 seconds
+                        const sessionDate = new Date(
+                          `${sessionDetails.meetingDate}T${sessionDetails.scheduleStartTime}`
+                        );
+                        const waitingRoomStart = new Date(sessionDate);
+                        waitingRoomStart.setMinutes(
+                          waitingRoomStart.getMinutes() -
+                            (sessionDetails.waitingRoomTime ?? 0)
+                        );
+
+                        const isInWaitingRoom =
+                          now >= waitingRoomStart && now < sessionDate;
+                        const isInMainSession = now >= sessionDate;
+
+                        if (isInMainSession) {
+                          return (
+                            <div className="mt-4">
+                              <div className="text-green-600 text-sm mb-2">
+                                {getTerminology(
+                                  ContentTerms.Session,
+                                  SystemTerms.Session
+                                )}{" "}
+                                is Live!
+                              </div>
+                              <MyButton
+                                buttonType="primary"
+                                className="w-full"
+                                onClick={async () => {
+                                  if (
+                                    sessionDetails.sessionStreamingServiceType ===
+                                    SessionStreamingServiceType.EMBED
+                                  ) {
+                                    await markAttendance({
+                                      sessionId: sessionDetails.sessionId,
+                                      scheduleId: earliestScheduleId || "",
+                                      userSourceType: "EXTERNAL_USER",
+                                      userSourceId: registrationResponse || "",
+                                      details: "Guest joined live class",
+                                    });
+                                    navigate({
+                                      to: "/live-class-guest/embed",
+                                      search: {
+                                        sessionId: earliestScheduleId || "",
+                                      },
+                                    });
+                                  } else {
+                                    window.open(
+                                      sessionDetails.defaultMeetLink,
+                                      "_blank",
+                                      "noopener,noreferrer"
+                                    );
+                                  }
+                                }}
+                              >
+                                Join Live{" "}
+                                {getTerminology(
+                                  ContentTerms.Session,
+                                  SystemTerms.Session
+                                )}
+                              </MyButton>
+                            </div>
+                          );
+                        } else if (isInWaitingRoom) {
+                          return (
+                            <div className="mt-4">
+                              <div className="text-orange-600 text-sm mb-2">
+                                Waiting Room is Open
+                              </div>
+                              <MyButton
+                                buttonType="primary"
+                                className="w-full"
+                                onClick={() => {
+                                  navigate({
+                                    to: "/live-class-guest/waiting-room",
+                                    search: {
+                                      sessionId: earliestScheduleId || "",
+                                      guestId: registrationResponse || "",
+                                    },
+                                  });
+                                }}
+                              >
+                                Enter Waiting Room
+                              </MyButton>
+                            </div>
+                          );
+                        } else {
+                          return (
+                            <div className="mt-4">
+                              <div className="text-gray-500 text-sm mb-2">
+                                {getTerminology(
+                                  ContentTerms.Session,
+                                  SystemTerms.Session
+                                )}{" "}
+                                hasn't started yet
+                              </div>
+                              <MyButton
+                                buttonType="secondary"
+                                className="w-full"
+                                disabled
+                              >
+                                {getTerminology(
+                                  ContentTerms.Session,
+                                  SystemTerms.Session
+                                )}{" "}
+                                will start soon
+                              </MyButton>
+                            </div>
+                          );
+                        }
+                      })()}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                // Normal registration form
+                <FormProvider {...form}>
+                  <form
+                    onSubmit={handleSubmit(onSubmit, onError)}
+                    className="flex flex-col gap-4 justify-between m-6"
+                  >
+                    <div className="font-bold">Registration Form</div>
+                    <div className="flex flex-col gap-4 overflow-auto h-[60vh]">
+                      {data?.customFields?.map((responseField) => (
+                        <div
+                          key={responseField.fieldKey}
+                          className="flex flex-col gap-4"
+                        >
+                          {responseField.fieldType.toLocaleLowerCase() ===
+                          "dropdown" ? (
+                            <SelectField
+                              label={responseField.fieldName}
+                              name={responseField.fieldKey}
+                              options={JSON.parse(responseField.config).map(
+                                (option: DropdownOption, idx: number) => ({
+                                  value: option.name,
+                                  label: option.label,
+                                  _id: idx,
+                                })
+                              )}
+                              control={form.control}
+                              className="mt-[8px] w-full font-thin"
+                            />
+                          ) : (
+                            <FormField
+                              control={form.control}
+                              name={responseField.fieldKey}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormControl>
+                                    <MyInput
+                                      inputType="text"
+                                      inputPlaceholder={field.name}
+                                      input={field.value}
+                                      labelStyle="font-thin"
+                                      onChangeFunction={field.onChange}
+                                      required={responseField.mandatory}
+                                      size="large"
+                                      label={responseField.fieldName}
+                                      disabled={
+                                        responseField.fieldKey === "email" &&
+                                        verifiedEmail !== ""
+                                      }
+                                      {...field}
+                                    />
+                                  </FormControl>
+                                  {responseField.fieldKey === "email" &&
+                                    verifiedEmail !== "" && (
+                                      <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                                        <span>✓</span> Email verified and
+                                        auto-filled
+                                      </p>
+                                    )}
+                                </FormItem>
+                              )}
+                            />
+                          )}
+
+                          {typeof responseField.fieldKey === "string" &&
+                            !!errors &&
+                            Object.prototype.hasOwnProperty.call(
+                              errors,
+                              responseField.fieldKey
+                            ) &&
+                            (errors as Record<string, FieldErrors>)[
+                              responseField.fieldKey
+                            ] && (
+                              <p style={{ color: "red" }}>
+                                {(errors as Record<string, FieldErrors>)[
+                                  responseField.fieldKey
+                                ]?.message?.toString()}
+                              </p>
+                            )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <MyButton
+                      buttonType="primary"
+                      type="submit"
+                      className="mt-4"
+                    >
+                      Join Now
+                    </MyButton>
+                  </form>
+                </FormProvider>
+              )}
             </div>
           </div>
         </div>
@@ -630,8 +886,8 @@ export default function LiveClassRegistrationPage() {
           </div>
           {!isOtpSent && (
             <MyButton
-              buttonType="text"
-              className="text-primary-500 p-0 flex flex-row justify-start m-0"
+              // buttonType=""
+              className="text-primary-500"
               onClick={() => {
                 const email = verificationForm.getValues("email");
 

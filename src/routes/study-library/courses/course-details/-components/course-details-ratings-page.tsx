@@ -3,7 +3,7 @@ import {
     ChatCircle,
     TrendUp,
 } from "phosphor-react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { MyPagination } from "@/components/design-system/pagination";
 import { AxiosError } from "axios";
 import { toast } from "sonner";
@@ -77,8 +77,10 @@ const transformRatingToReview = (rating: Rating): Review => {
 
 export function CourseDetailsRatingsComponent({
     packageSessionId,
+    onLoadingChange,
 }: {
     packageSessionId: string | null;
+    onLoadingChange?: (loading: boolean) => void;
 }) {
     const router = useRouter();
     const searchParams = router.state.location.search;
@@ -101,7 +103,7 @@ export function CourseDetailsRatingsComponent({
         fetchCurrentUserId();
     }, []);
 
-    const { data: ratingData, isLoading } = useSuspenseQuery<PaginatedResponse>(
+    const { data: ratingData, isLoading: isRatingLoading } = useSuspenseQuery<PaginatedResponse>(
         handleGetRatingDetails({
             pageNo: page,
             pageSize: 10,
@@ -112,11 +114,24 @@ export function CourseDetailsRatingsComponent({
         })
     );
 
-    const { data: overallRatingData } = useSuspenseQuery(
+    const { data: overallRatingData, isLoading: isOverallRatingLoading } = useSuspenseQuery(
         handleGetOverAllRatingDetails({
             source_id: packageSessionId || "",
         })
     );
+
+    // Memoized callback for loading state changes
+    const handleLoadingChange = useCallback((loading: boolean) => {
+        if (onLoadingChange) {
+            onLoadingChange(loading);
+        }
+    }, [onLoadingChange]);
+
+    // Update loading state for parent component
+    useEffect(() => {
+        const isAnyLoading = isRatingLoading || isOverallRatingLoading;
+        handleLoadingChange(isAnyLoading);
+    }, [isRatingLoading, isOverallRatingLoading, handleLoadingChange]);
 
     // Transform API data to reviews format
     const reviews = ratingData?.content.map(transformRatingToReview) || [];
@@ -419,7 +434,7 @@ export function CourseDetailsRatingsComponent({
         });
     };
 
-    if (isLoading || !packageSessionId) return <DashboardLoader />;
+    // if (isRatingLoading || !packageSessionId) return <DashboardLoader />;
 
     return (
         <div className="relative bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md shadow-sm hover:shadow-md transition-all duration-200 p-3 sm:p-4 lg:p-5 group overflow-hidden">
@@ -618,7 +633,7 @@ export function CourseDetailsRatingsComponent({
                     className={`${reviews.length === 0 ? "mt-0" : "mt-4 lg:mt-6"} space-y-3 sm:space-y-4 animate-fade-in-up`}
                     style={{ animationDelay: "0.2s" }}
                 >
-                    {isLoading ? (
+                                            {isRatingLoading ? (
                                 <div className="space-y-3">
                                     {[1, 2, 3].map((i) => (
                                         <div

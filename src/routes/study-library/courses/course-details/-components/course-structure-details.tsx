@@ -1,5 +1,5 @@
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { PullToRefreshWrapper } from "@/components/design-system/pull-to-refresh";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toTitleCase } from "@/lib/utils";
@@ -83,6 +83,8 @@ export const CourseStructureDetails = ({
     packageSessionId,
     selectedTab,
     isEnrolledInCourse,
+    onLoadingChange,
+    updateModuleStats,
 }: {
     selectedSession: string;
     selectedLevel: string;
@@ -91,7 +93,18 @@ export const CourseStructureDetails = ({
     packageSessionId: string;
     selectedTab: string;
     isEnrolledInCourse?: boolean;
+    onLoadingChange?: (loading: boolean) => void;
+    updateModuleStats?: (modulesData: Record<string, Array<{ chapters?: Array<unknown> }>>) => void;
 }) => {
+    // Debug logging
+    console.log('CourseStructureDetails props:', {
+        selectedSession,
+        selectedLevel,
+        courseStructure,
+        packageSessionId,
+        selectedTab,
+        isEnrolledInCourse
+    });
     const router = useRouter();
     const searchParams = router.state.location.search;
     const navigateTo = (
@@ -166,11 +179,6 @@ export const CourseStructureDetails = ({
             setSelectedStructureTab(resolvedDefault);
         });
     }, []);
-
-    useEffect(() => {
-        console.log('[Course Details UI] filteredTabs changed:', filteredTabs);
-        console.log('[Course Details UI] selectedStructureTab:', selectedStructureTab);
-    }, [filteredTabs, selectedStructureTab]);
 
     const renderTabs = useMemo(() => {
         const priorityOrder = [TabType.OUTLINE, TabType.CONTENT_STRUCTURE];
@@ -344,6 +352,13 @@ export const CourseStructureDetails = ({
 
     const { mutateAsync: fetchModules } = useModulesMutation();
 
+    // Memoized callback for loading state changes
+    const handleLoadingChange = useCallback((loading: boolean) => {
+        if (onLoadingChange) {
+            onLoadingChange(loading);
+        }
+    }, [onLoadingChange]);
+
     const refreshData = async () => {
         if (!packageSessionId) {
             console.warn(
@@ -361,6 +376,11 @@ export const CourseStructureDetails = ({
                 ),
             });
             setSubjectModulesMap(modulesMap);
+
+            // Update module stats for parent component
+            if (updateModuleStats) {
+                updateModuleStats(modulesMap);
+            }
         } catch (error) {
             console.error("Failed to refresh data:", error);
         }
@@ -1593,6 +1613,12 @@ export const CourseStructureDetails = ({
 
     useEffect(() => {
         const loadModules = async () => {
+            // Debug logging
+            console.log('Loading modules with packageSessionId:', packageSessionId);
+            console.log('Course data:', courseData);
+            console.log('Selected session:', selectedSession);
+            console.log('Selected level:', selectedLevel);
+            
             // Ensure packageSessionId is available before making API calls
             if (!packageSessionId) {
                 console.warn(
@@ -1602,14 +1628,20 @@ export const CourseStructureDetails = ({
                 return;
             }
 
+            handleLoadingChange(true);
+
             try {
+                const subjects = getSubjectDetails(
+                    courseData,
+                    selectedSession,
+                    selectedLevel
+                );
+                console.log('Subjects to fetch modules for:', subjects);
+                
                 const modulesMap = await fetchModules({
-                    subjects: getSubjectDetails(
-                        courseData,
-                        selectedSession,
-                        selectedLevel
-                    ),
+                    subjects: subjects,
                 });
+                console.log('Modules map result:', modulesMap);
                 setSubjectModulesMap(modulesMap);
 
                 // Auto-expand all sections by default
@@ -1637,21 +1669,29 @@ export const CourseStructureDetails = ({
                 setOpenSubjects(allSubjectIds);
                 setOpenModules(allModuleIds);
                 setOpenChapters(allChapterIds);
+
+                // Update module stats for parent component
+                if (updateModuleStats) {
+                    updateModuleStats(modulesMap);
+                }
             } catch (error) {
                 console.error(
                     "Failed to fetch modules or study library details:",
                     error
                 );
                 setSubjectModulesMap({});
+            } finally {
+                handleLoadingChange(false);
             }
         };
         loadModules();
-    }, [packageSessionId, fetchModules]);
+    }, [packageSessionId, fetchModules, handleLoadingChange]);
 
     // Trigger module loading when session or level changes
     useEffect(() => {
         if (packageSessionId) {
             const loadModules = async () => {
+                handleLoadingChange(true);
                 try {
                     const modulesMap = await fetchModules({
                         subjects: getSubjectDetails(
@@ -1684,29 +1724,37 @@ export const CourseStructureDetails = ({
                         });
                     });
 
-                    setOpenSubjects(allSubjectIds);
-                    setOpenModules(allModuleIds);
-                    setOpenChapters(allChapterIds);
-                } catch (error) {
-                    console.error(
-                        "Failed to fetch modules or study library details:",
-                        error
-                    );
-                    setSubjectModulesMap({});
+                                    setOpenSubjects(allSubjectIds);
+                setOpenModules(allModuleIds);
+                setOpenChapters(allChapterIds);
+
+                // Update module stats for parent component
+                if (updateModuleStats) {
+                    updateModuleStats(modulesMap);
                 }
+            } catch (error) {
+                console.error(
+                    "Failed to fetch modules or study library details:",
+                    error
+                );
+                setSubjectModulesMap({});
+            } finally {
+                handleLoadingChange(false);
+            }
             };
             loadModules();
         }
-    }, [selectedSession, selectedLevel, packageSessionId]);
+    }, [selectedSession, selectedLevel, packageSessionId, handleLoadingChange]);
 
     useEffect(() => {
-    const studyLibraryData = getSubjectDetails(
+        const studyLibraryData = getSubjectDetails(
             courseData,
             selectedSession,
             selectedLevel
         );
+        console.log('Study library data:', studyLibraryData);
         setStudyLibraryData(studyLibraryData);
-    }, [selectedSession, selectedLevel]);
+    }, [selectedSession, selectedLevel, courseData]);
 
     // Prefetch thumbnails for modules/chapters when at their depth
     useEffect(() => {
@@ -1881,6 +1929,14 @@ export const CourseStructureDetails = ({
             </div>
         );
     }, []);
+
+    // Debug logging for render
+    console.log('Rendering CourseStructureDetails with:', {
+        studyLibraryData,
+        subjectModulesMap,
+        filteredTabs,
+        selectedStructureTab
+    });
 
     return (
         <PullToRefreshWrapper onRefresh={refreshData}>

@@ -25,7 +25,7 @@ function GuestEmbedComponent() {
   const extractYouTubeVideoId = (url: string): string | null => {
     if (!url) return null;
     const regExp =
-      /(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/))([a-zA-Z0-9_-]{11})/;
+      /(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/|live\/))([a-zA-Z0-9_-]{11})/;
     const match = url.match(regExp);
     return match ? match[1] : null;
   };
@@ -42,16 +42,15 @@ function GuestEmbedComponent() {
         extractYouTubeVideoId(sessionDetails.defaultMeetLink) ||
         sessionDetails.defaultMeetLink;
 
-      const allowPlayPause = (
-        (sessionDetails as any)?.allowPlayPause ??
-        (sessionDetails as any)?.isPlayPauseEnabled ??
-        (sessionDetails as any)?.playPauseEnabled ??
-        (sessionDetails as any)?.enablePlayPause ??
-        true
-      );
+      const allowPlayPause = sessionDetails.allowPlayPause ?? true;
+      const allowRewind = sessionDetails.allowRewind === "true";
       return (
         <div className="w-full h-full">
-          <YouTubePlayerWrapper videoId={videoId} allowPlayPause={allowPlayPause} />
+          <YouTubePlayerWrapper
+            videoId={videoId}
+            allowPlayPause={allowPlayPause}
+            allowRewind={allowRewind}
+          />
         </div>
       );
     }

@@ -10,7 +10,12 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "clear-cache": "rm -rf .vite node_modules/.vite node_modules/.cache dist .tsbuildinfo tsconfig.tsbuildinfo && pnpm store prune",
-    "fresh-start": "pnpm clear-cache && pnpm install && pnpm dev"
+    "fresh-start": "pnpm clear-cache && pnpm install && pnpm dev",
+    "build:web:seven_cs": "vite build --mode seven_cs",
+    "android:assemble:seven_cs:debug": "cd android && ./gradlew assembleSeven_csDebug",
+    "android:assemble:seven_cs:release": "cd android && ./gradlew assembleSeven_csRelease",
+    "electron:build:seven_cs:win": "electron-builder -c electron/electron-builder.seven_cs.json -w",
+    "electron:build:seven_cs:mac": "electron-builder -c electron/electron-builder.seven_cs.json -m"
   },
   "dependencies": {
     "@amplitude/analytics-browser": "^2.19.0",

@@ -7,6 +7,6 @@ export const Route = createFileRoute("/login/")({
 });
 
 function RouteComponent() {
-  return <div className="w-full h-full"><LoginForm /></div>;
+  return <div className="w-full min-h-screen bg-background"><LoginForm /></div>;
 }
 

@@ -35,6 +35,7 @@ import { getSubjectDetails } from "../-utils/helper";
 import { CourseDetailsFormValues } from "./course-details-schema";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+  import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 
 export interface Chapter {
   id: string;
@@ -91,6 +92,7 @@ export const CourseStructureDetails = ({
     {}
   );
   const [slidesMap, setSlidesMap] = useState<Record<string, Slide[]>>({});
+  const [thumbUrlById, setThumbUrlById] = useState<Record<string, string>>({});
 
   const getSlidesWithChapterId = async (chapterId: string) => {
     // Avoid duplicate fetch
@@ -251,6 +253,123 @@ export const CourseStructureDetails = ({
     loadModules();
   }, [studyLibraryData, packageSessionId, fetchModules]);
 
+  // Prefetch thumbnails for subjects, modules, and chapters
+  useEffect(() => {
+    const prefetchThumbnails = async () => {
+      try {
+        console.log("[thumb] prefetch start", {
+          subjects: (studyLibraryData ?? []).map((s) => ({ id: s.id, thumbnail_id: s.thumbnail_id })),
+          subjectModulesMapKeys: Object.keys(subjectModulesMap),
+        });
+        const updates: Record<string, string> = {};
+
+        // Subjects
+        for (const subject of studyLibraryData ?? []) {
+          const key = `subject:${subject.id}`;
+          const fileId = subject.thumbnail_id ?? undefined;
+          console.log("[thumb] subject candidate", { key, fileId, hasUrl: Boolean(thumbUrlById[key]) });
+          if (fileId && !thumbUrlById[key]) {
+            try {
+              const url = await getPublicUrlWithoutLogin(fileId);
+              console.log("[thumb] subject url fetched", { key, fileId, url });
+              if (url) updates[key] = url;
+            } catch (err) {
+              console.debug("prefetchThumbnails: subject thumbnail fetch failed", err);
+            }
+          }
+        }
+
+        // Apply subject URL updates immediately
+        if (Object.keys(updates).length > 0) {
+          console.log("[thumb] subject urls applying", updates);
+          setThumbUrlById((prev) => ({ ...prev, ...updates }));
+        }
+
+        // Modules and Chapters
+        Object.values(subjectModulesMap).forEach((mods) => {
+          for (const mod of mods ?? []) {
+            // Module thumbnail
+            const moduleKey = `module:${mod.module.id}`;
+            const moduleFileId = (mod.module as { thumbnail_id?: string | null })
+              .thumbnail_id ?? undefined;
+            console.log("[thumb] module candidate", { moduleKey, moduleFileId, hasUrl: Boolean(thumbUrlById[moduleKey]) });
+            if (moduleFileId && !thumbUrlById[moduleKey]) {
+              updates[moduleKey] = updates[moduleKey] || ""; // mark to fetch
+            }
+
+            // Chapters thumbnails
+            for (const ch of mod.chapters ?? []) {
+              const chapterKey = `chapter:${ch.id}`;
+              const chapterFileId = ch.file_id ?? undefined;
+              console.log("[thumb] chapter candidate", { chapterKey, chapterFileId, hasUrl: Boolean(thumbUrlById[chapterKey]) });
+              if (chapterFileId && !thumbUrlById[chapterKey]) {
+                updates[chapterKey] = updates[chapterKey] || ""; // mark to fetch
+              }
+            }
+          }
+        });
+
+        // Actually fetch pending updates
+        const fetchPairs: Array<{ key: string; fileId: string }> = [];
+
+        // Add module and chapter fetches
+        Object.values(subjectModulesMap).forEach((mods) => {
+          for (const mod of mods ?? []) {
+            const moduleKey = `module:${mod.module.id}`;
+            const moduleFileId = (mod.module as { thumbnail_id?: string | null })
+              .thumbnail_id ?? undefined;
+            if (moduleFileId && !thumbUrlById[moduleKey]) {
+              fetchPairs.push({ key: moduleKey, fileId: moduleFileId });
+            }
+
+            for (const ch of mod.chapters ?? []) {
+              const chapterKey = `chapter:${ch.id}`;
+              const chapterFileId = ch.file_id ?? undefined;
+              if (chapterFileId && !thumbUrlById[chapterKey]) {
+                fetchPairs.push({ key: chapterKey, fileId: chapterFileId });
+              }
+            }
+          }
+        });
+
+        // Deduplicate by key
+        const seen = new Set<string>();
+        const uniquePairs = fetchPairs.filter(({ key }) => {
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+
+        const results = await Promise.all(
+          uniquePairs.map(async ({ key, fileId }) => {
+            try {
+              const url = await getPublicUrlWithoutLogin(fileId);
+              console.log("[thumb] fetched", { key, fileId, url });
+              return { key, url } as const;
+            } catch (err) {
+              console.debug("prefetchThumbnails: module/chapter thumbnail fetch failed", err);
+              return { key, url: "" } as const;
+            }
+          })
+        );
+
+        const finalUpdates: Record<string, string> = {};
+        for (const { key, url } of results) {
+          if (url) finalUpdates[key] = url;
+        }
+
+        if (Object.keys(finalUpdates).length > 0) {
+          console.log("[thumb] applying", finalUpdates);
+          setThumbUrlById((prev) => ({ ...prev, ...finalUpdates }));
+        }
+      } catch (err) {
+        console.debug("prefetchThumbnails: unexpected error", err);
+      }
+    };
+
+    prefetchThumbnails();
+  }, [studyLibraryData, subjectModulesMap]);
+
   useEffect(() => {
     setStudyLibraryData(
       getSubjectDetails(courseData, selectedSession, selectedLevel)
@@ -265,7 +384,15 @@ export const CourseStructureDetails = ({
     );
   }, []);
 
-  const tabContent: Record<TabType, React.ReactNode> = {
+  // Mount/unmount logs to verify component is active
+  useEffect(() => {
+    console.log('[thumb] CourseStructureDetails (courses) mounted');
+    return () => {
+      console.log('[thumb] CourseStructureDetails (courses) unmounted');
+    };
+  }, []);
+
+  const tabContent: Partial<Record<TabType, React.ReactNode>> = {
     [TabType.OUTLINE]: (
       <div className="space-y-4">
         {/* Expand/Collapse Controls */}
@@ -333,6 +460,18 @@ export const CourseStructureDetails = ({
                           <Folder size={12} />
                         )}
                       </div>
+                       {thumbUrlById[`subject:${subject.id}`] && (
+                         <img
+                           src={thumbUrlById[`subject:${subject.id}`]}
+                           alt=""
+                           className="w-6 h-6 rounded-sm object-cover border border-neutral-200"
+                           onLoad={() => console.log('[thumb] subject img load', { id: subject.id })}
+                           onError={(e) => {
+                             console.warn('[thumb] subject img error', { id: subject.id, src: e.currentTarget.src });
+                             e.currentTarget.style.display = 'none';
+                           }}
+                         />
+                       )}
                       <span className="w-7 shrink-0 text-center font-mono text-xs font-semibold text-neutral-500 bg-neutral-100 rounded px-1 py-0.5">
                         S{idx + 1}
                       </span>
@@ -375,6 +514,18 @@ export const CourseStructureDetails = ({
                                   <div className="flex items-center justify-center w-5 h-5 rounded bg-gradient-to-br from-blue-500 to-blue-600 text-white">
                                     <FileText size={12} />
                                   </div>
+                                  {thumbUrlById[`module:${mod.module.id}`] && (
+                                    <img
+                                      src={thumbUrlById[`module:${mod.module.id}`]}
+                                      alt=""
+                                      className="w-5 h-5 rounded-sm object-cover border border-neutral-200"
+                                      onLoad={() => console.log('[thumb] module img load', { id: mod.module.id })}
+                                      onError={(e) => {
+                                        console.warn('[thumb] module img error', { id: mod.module.id, src: e.currentTarget.src });
+                                        e.currentTarget.style.display = 'none';
+                                      }}
+                                    />
+                                  )}
                                   <span className="w-6 shrink-0 text-center font-mono text-xs font-medium text-neutral-500 bg-neutral-100 rounded px-1">
                                     M{modIdx + 1}
                                   </span>
@@ -422,6 +573,18 @@ export const CourseStructureDetails = ({
                                             <div className="flex items-center justify-center w-4 h-4 rounded bg-gradient-to-br from-green-500 to-green-600 text-white">
                                               <PresentationChart size={10} />
                                             </div>
+                                            {thumbUrlById[`chapter:${ch.id}`] && (
+                                              <img
+                                                src={thumbUrlById[`chapter:${ch.id}`]}
+                                                alt=""
+                                                className="w-4 h-4 rounded-sm object-cover border border-neutral-200"
+                                                onLoad={() => console.log('[thumb] chapter img load', { id: ch.id })}
+                                                onError={(e) => {
+                                                  console.warn('[thumb] chapter img error', { id: ch.id, src: e.currentTarget.src });
+                                                  e.currentTarget.style.display = 'none';
+                                                }}
+                                              />
+                                            )}
                                             <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
                                               C{chIdx + 1}
                                             </span>
@@ -519,6 +682,13 @@ export const CourseStructureDetails = ({
                                   <div className="flex items-center justify-center w-5 h-5 rounded bg-gradient-to-br from-blue-500 to-blue-600 text-white">
                                     <FileText size={12} />
                                   </div>
+                                  {thumbUrlById[`module:${mod.module.id}`] && (
+                                    <img
+                                      src={thumbUrlById[`module:${mod.module.id}`]}
+                                      alt=""
+                                      className="w-5 h-5 rounded-sm object-cover border border-neutral-200"
+                                    />
+                                  )}
                                   <span className="w-6 shrink-0 text-center font-mono text-xs font-medium text-neutral-500 bg-neutral-100 rounded px-1">
                                     M{modIdx + 1}
                                   </span>
@@ -566,6 +736,13 @@ export const CourseStructureDetails = ({
                                             <div className="flex items-center justify-center w-4 h-4 rounded bg-gradient-to-br from-green-500 to-green-600 text-white">
                                               <PresentationChart size={10} />
                                             </div>
+                                            {thumbUrlById[`chapter:${ch.id}`] && (
+                                              <img
+                                                src={thumbUrlById[`chapter:${ch.id}`]}
+                                                alt=""
+                                                className="w-4 h-4 rounded-sm object-cover border border-neutral-200"
+                                              />
+                                            )}
                                             <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
                                               C{chIdx + 1}
                                             </span>
@@ -927,7 +1104,9 @@ export const CourseStructureDetails = ({
             value={selectedTab}
             className="mt-4 rounded-lg bg-white border border-neutral-200/60 p-4"
           >
-            {tabContent[selectedTab as TabType]}
+            {(selectedTab as TabType) === TabType.CONTENT_STRUCTURE
+              ? tabContent[TabType.OUTLINE]
+              : tabContent[selectedTab as TabType]}
           </TabsContent>
         </Tabs>
       </div>

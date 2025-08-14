@@ -1,24 +1,27 @@
 import { initializeApp } from 'firebase/app';
-import { getMessaging, getToken, onMessage } from 'firebase/messaging';
-import { getAnalytics } from 'firebase/analytics';
+import { getMessaging, getToken, onMessage, type Messaging, type MessagePayload } from 'firebase/messaging';
+import { getAnalytics, type Analytics } from 'firebase/analytics';
 import { Capacitor } from '@capacitor/core';
 
-// Your Firebase configuration
+type EnvMap = { [key: string]: string | undefined };
+const ENV: EnvMap = (import.meta as unknown as { env: EnvMap }).env || {};
+
+// Your Firebase configuration (env-driven with sensible defaults)
 const firebaseConfig = {
-  apiKey: "AIzaSyA-HYoXjokDTbPbrd5QT7Poe395TlmvHXw",
-  authDomain: "vacademy-app.firebaseapp.com",
-  projectId: "vacademy-app",
-  storageBucket: "vacademy-app.firebasestorage.app",
-  messagingSenderId: "117550803134",
-  appId: "1:117550803134:web:38c7763a12ef4f43bdd6ef",
-  measurementId: "G-CNY0GNB6Y4"
+  apiKey: ENV.VITE_FIREBASE_API_KEY || "AIzaSyA-HYoXjokDTbPbrd5QT7Poe395TlmvHXw",
+  authDomain: ENV.VITE_FIREBASE_AUTH_DOMAIN || "vacademy-app.firebaseapp.com",
+  projectId: ENV.VITE_FIREBASE_PROJECT_ID || "vacademy-app",
+  storageBucket: ENV.VITE_FIREBASE_STORAGE_BUCKET || "vacademy-app.firebasestorage.app",
+  messagingSenderId: ENV.VITE_FIREBASE_MESSAGING_SENDER_ID || "117550803134",
+  appId: ENV.VITE_FIREBASE_APP_ID || "1:117550803134:web:38c7763a12ef4f43bdd6ef",
+  measurementId: ENV.VITE_FIREBASE_MEASUREMENT_ID || "G-CNY0GNB6Y4"
 };
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
 // Initialize Firebase Analytics (only for web)
-let analytics: any = null;
+let analytics: Analytics | null = null;
 if (Capacitor.getPlatform() === 'web') {
   try {
     analytics = getAnalytics(app);
@@ -28,7 +31,7 @@ if (Capacitor.getPlatform() === 'web') {
 }
 
 // Initialize Firebase Cloud Messaging and get a reference to the service
-let messaging: any = null;
+let messaging: Messaging | null = null;
 
 // Only initialize messaging for web platform
 if (Capacitor.getPlatform() === 'web') {
@@ -41,10 +44,13 @@ if (Capacitor.getPlatform() === 'web') {
 
 export { messaging, analytics, app };
 
+// Expose sender ID for server-side mapping (useful in multi-client setups)
+export const FIREBASE_MESSAGING_SENDER_ID = firebaseConfig.messagingSenderId;
+
 // VAPID key for web push notifications
 // Get this from Firebase Console > Project Settings > Cloud Messaging > Web configuration > Web push certificates
 // Generate a new key pair and copy the key here
-export const VAPID_KEY = "BCeQVrW8MTGLjYifcNnFDmP8dTYJQaGjCiZWY-N0wCbHkNwIM5udkr8l2WlIG7YeZx4b2sqe9tl0qaHNIOxb8a8";
+export const VAPID_KEY = ENV.VITE_FIREBASE_VAPID_KEY || "BCeQVrW8MTGLjYifcNnFDmP8dTYJQaGjCiZWY-N0wCbHkNwIM5udkr8l2WlIG7YeZx4b2sqe9tl0qaHNIOxb8a8";
 
 // Get FCM token for web
 export const getFirebaseToken = async (): Promise<string | null> => {
@@ -87,7 +93,7 @@ export const getFirebaseToken = async (): Promise<string | null> => {
 };
 
 // Listen for foreground messages (web only)
-export const onFirebaseMessage = (callback: (payload: any) => void) => {
+export const onFirebaseMessage = (callback: (payload: MessagePayload) => void) => {
   if (!messaging || Capacitor.getPlatform() !== 'web') {
     return () => {};
   }

@@ -33,7 +33,7 @@ public class UserController {
     public ResponseEntity<UserDTO> createUser(@RequestBody UserDTO userDTO,
             @RequestParam("instituteId") String instituteId) {
         try {
-            User user = authService.createUser(userDTO, instituteId);
+            User user = authService.createUser(userDTO, instituteId,true);
             return ResponseEntity.ok(new UserDTO(user));
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());
@@ -45,7 +45,7 @@ public class UserController {
     public ResponseEntity<UserDTO> createUserOrGetExisting(@RequestBody UserDTO userDTO,
             @RequestParam(name = "instituteId", required = false) String instituteId) {
         try {
-            User user = authService.createUser(userDTO, instituteId);
+            User user = authService.createUser(userDTO, instituteId,true);
             return ResponseEntity.ok(new UserDTO(user));
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());

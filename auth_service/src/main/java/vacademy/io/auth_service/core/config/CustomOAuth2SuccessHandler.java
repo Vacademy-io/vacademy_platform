@@ -39,17 +39,26 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
 
     @Autowired
     private InstitutePolicyService institutePolicyService;
+    private static class DecodedState {
+        String fromUrl;
+        String instituteId;
+    }
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request,
-            HttpServletResponse response,
-            Authentication authentication) throws IOException {
+                                        HttpServletResponse response,
+                                        Authentication authentication) throws IOException {
 
         String encodedState = request.getParameter("state");
-        String redirectUrl = "https://dash.vacademy.io"; // base fallback
-        redirectUrl = decodeState(encodedState, redirectUrl, response);
-        if (redirectUrl == null)
-            return;
+
+        // Base fallback values
+        String fallbackUrl = "https://dash.vacademy.io";
+        DecodedState state = decodeState(encodedState, fallbackUrl);
+
+        String redirectUrl = state.fromUrl != null ? state.fromUrl : fallbackUrl;
+        String instituteId = state.instituteId;
+
+        if (redirectUrl == null) return;
 
         if (!(authentication instanceof OAuth2AuthenticationToken oauthToken)) {
             log.error("Authentication is not OAuth2AuthenticationToken");
@@ -57,12 +66,15 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
             return;
         }
 
-        processOAuth2User(oauthToken, redirectUrl, response, encodedState);
+        processOAuth2User(oauthToken, redirectUrl, response, encodedState, instituteId);
     }
 
-    private String decodeState(String encodedState, String fallbackUrl, HttpServletResponse response) throws IOException {
+    private DecodedState decodeState(String encodedState, String fallbackUrl) {
+        DecodedState result = new DecodedState();
+        result.fromUrl = fallbackUrl; // default
+
         if (encodedState == null || encodedState.trim().isEmpty()) {
-            return fallbackUrl;
+            return result;
         }
 
         try {
@@ -75,32 +87,36 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
             ObjectMapper mapper = new ObjectMapper();
             JsonNode stateNode = mapper.readTree(decodedJson);
 
-            // Step 3: Extract "from" field if present and valid
+            // Step 3: Extract "from" if present
             if (stateNode.has("from")) {
                 String fromUrl = stateNode.get("from").asText();
                 if (fromUrl != null && (fromUrl.startsWith("http://") || fromUrl.startsWith("https://"))) {
-                    return fromUrl;
+                    result.fromUrl = fromUrl;
                 }
+            }
+
+            // Step 4: Extract "institute_id" if present
+            if (stateNode.has("institute_id")) {
+                result.instituteId = stateNode.get("institute_id").asText(null);
             }
 
         } catch (Exception e) {
             log.warn("Failed to decode Base64 state parameter: {}", encodedState, e);
         }
 
-        // Step 4: Fallback
-        return fallbackUrl;
+        return result;
     }
 
 
 
     private void processOAuth2User(OAuth2AuthenticationToken oauthToken, String redirectUrl,
-            HttpServletResponse response, String encodedState) throws IOException {
+            HttpServletResponse response, String encodedState,String instituteId) throws IOException {
         try {
             OAuth2User oauthUser = oauthToken.getPrincipal();
             Map<String, Object> attributes = oauthUser.getAttributes();
             String provider = oauthToken.getAuthorizedClientRegistrationId();
 
-            UserInfo userInfo = extractUserInfo(attributes, provider, response, redirectUrl);
+            UserInfo userInfo = extractUserInfo(attributes, provider, response, redirectUrl,instituteId);
             if (userInfo == null)
                 return;
 
@@ -250,20 +266,18 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
     }
 
     private UserInfo extractUserInfo(Map<String, Object> attributes, String provider, HttpServletResponse response,
-            String redirectUrl) throws IOException {
+            String redirectUrl,String instituteId) throws IOException {
         String email = null;
         String name = null;
         String picture = null;
         String sub = null; // unique user ID
         String providerId = provider; // provider name: "google", "github", etc.
-        String instituteId = null;
 
         if ("google".equals(provider)) {
             email = (String) attributes.get("email");
             name = (String) attributes.get("name");
             picture = (String) attributes.get("picture");
             sub = (String) attributes.get("sub"); // Google's unique user ID
-            instituteId = (String) attributes.get("instituteId");
             log.info("Google user logged in: {} ({})", name, email);
         } else if ("github".equals(provider)) {
             email = (String) attributes.get("email");
@@ -273,7 +287,6 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
             }
             picture = (String) attributes.get("avatar_url");
             sub = String.valueOf(attributes.get("id")); // GitHub's unique user ID
-            instituteId = (String) attributes.get("instituteId");
             log.info("GitHub user logged in: {} ({})", name, email);
         } else {
             log.warn("Unsupported OAuth2 provider: {}", provider);

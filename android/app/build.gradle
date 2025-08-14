@@ -15,6 +15,11 @@ android {
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
+
+		// Default manifest placeholders (can be overridden per flavor)
+		manifestPlaceholders = [
+			DEEP_LINK_HOST: "learner.vacademy.io"
+		]
     }
     buildTypes {
         release {
@@ -22,6 +27,28 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+
+	// White-label flavors
+	flavorDimensions "client"
+	productFlavors {
+		ssdc {
+			dimension "client"
+			applicationId "io.vacademy.student.app"
+			// App name override
+			resValue "string", "app_name", "Vacademy Learner"
+			// Deep link host for this client
+			manifestPlaceholders.DEEP_LINK_HOST = "learner.vacademy.io"
+		}
+
+		seven_cs {
+			dimension "client"
+			applicationId "com.sevencs.learner"
+			// Change app name for Seven CS
+			resValue "string", "app_name", "Seven CS Learner"
+			// Set the deep link host for Seven CS (adjust to your domain)
+			manifestPlaceholders.DEEP_LINK_HOST = "seven-cs.example.com"
+		}
+	}
 }
 
 repositories {
@@ -43,12 +70,4 @@ dependencies {
 }
 
 apply from: 'capacitor.build.gradle'
-
-try {
-    def servicesJSON = file('google-services.json')
-    if (servicesJSON.text) {
-        apply plugin: 'com.google.gms.google-services'
-    }
-} catch(Exception e) {
-    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
-}
+apply plugin: 'com.google.gms.google-services'

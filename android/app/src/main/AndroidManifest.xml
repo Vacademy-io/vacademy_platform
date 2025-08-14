@@ -27,12 +27,12 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:scheme="https"
-                    android:host="learner.vacademy.io"
+                    android:host="${DEEP_LINK_HOST}"
                     android:pathPrefix="/assessment/examination"
                 />
                 <data
                     android:scheme="https"
-                    android:host="learner.vacademy.io"
+                    android:host="${DEEP_LINK_HOST}"
                     android:pathPrefix="/assessment/reports"
                 />
             </intent-filter>

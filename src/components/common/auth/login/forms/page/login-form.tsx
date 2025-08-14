@@ -207,7 +207,7 @@ export function LoginForm({
             <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="min-h-screen bg-gray-50 flex flex-col items-center justify-center relative overflow-hidden"
+                className="min-h-screen bg-background flex flex-col items-center justify-center relative overflow-hidden"
             >
                 {/* Subtle Background Elements */}
                 <div className="absolute inset-0 bg-grid-gray-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] -z-10" />
@@ -279,7 +279,7 @@ export function LoginForm({
 
     return (
         <div
-            className={`${type ? "h-[400px] overflow-auto" : "min-h-screen overflow-hidden"}  bg-gray-50 relative `}
+            className={`${type ? "h-[400px] overflow-auto" : "min-h-screen overflow-hidden"} bg-background relative `}
         >
             {/* Subtle Background Pattern */}
             <div className="absolute inset-0 bg-grid-gray-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] -z-10" />

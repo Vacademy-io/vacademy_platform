@@ -5,7 +5,7 @@ import { Preferences } from '@capacitor/preferences';
 export interface NotificationPayload {
   title: string;
   body: string;
-  data?: Record<string, any>;
+  data?: Record<string, unknown>;
   imageUrl?: string;
   actionUrl?: string;
 }
@@ -16,11 +16,11 @@ declare global {
     electronAPI?: {
       showNotification: (notification: NotificationPayload) => void;
       checkNotificationPermission: () => Promise<string>;
-      getNotificationSettings: () => Promise<any>;
+      getNotificationSettings: () => Promise<unknown>;
       setBadgeCount: (count: number) => Promise<boolean>;
       clearBadge: () => Promise<boolean>;
       onNotification: (callback: (notification: NotificationPayload) => void) => void;
-      onNotificationClicked: (callback: (data: any) => void) => void;
+      onNotificationClicked: (callback: (data: Record<string, unknown>) => void) => void;
       removeAllListeners: (channel: string) => void;
     };
   }
@@ -69,11 +69,11 @@ class PushNotificationService {
         console.log('Push registration success, token: ' + token.value);
         this.currentToken = token.value;
         await this.saveTokenToStorage(token.value);
-        await this.sendTokenToServer(token.value);
+        await this.registerStoredToken();
       });
 
       // Listen for registration errors
-      PushNotifications.addListener('registrationError', (error: any) => {
+      PushNotifications.addListener('registrationError', (error: unknown) => {
         console.error('Error on registration: ' + JSON.stringify(error));
       });
 
@@ -114,7 +114,7 @@ class PushNotificationService {
           if (token) {
             this.currentToken = token;
             await this.saveTokenToStorage(token);
-            await this.sendTokenToServer(token);
+            await this.registerStoredToken();
             console.log('FCM token retrieved and stored:', token);
             
             // Setup foreground message listener
@@ -151,7 +151,7 @@ class PushNotificationService {
         console.log('Electron notification permission:', permission);
         
         // Setup notification click handler
-        window.electronAPI.onNotificationClicked((data: any) => {
+        window.electronAPI.onNotificationClicked((data: Record<string, unknown>) => {
           this.notifyListeners({
             title: 'Notification clicked',
             body: '',
@@ -186,38 +186,98 @@ class PushNotificationService {
       const platform = Capacitor.getPlatform() as 'android' | 'ios' | 'web' | 'electron';
       const deviceId = await this.getDeviceId();
 
-      const tokenData: PushNotificationToken = {
-        token,
-        platform,
-        deviceId
-      };
+      // Resolve user and institute
+      const [{ getUserId }, { PUSH_REGISTER_URL }, appInfoOrNull, webSenderIdOrNull] = await Promise.all([
+        import('@/constants/getUserId'),
+        import('@/constants/urls'),
+        // Attempt to fetch app info (native only)
+        (async () => {
+          try {
+            const { App } = await import('@capacitor/app');
+            const info = await App.getInfo();
+            return info;
+          } catch {
+            return null;
+          }
+        })(),
+        // Provide sender id for web to help server select FCM project
+        (async () => {
+          try {
+            if (platform === 'web') {
+              const { FIREBASE_MESSAGING_SENDER_ID } = await import('@/services/firebase-config');
+              return FIREBASE_MESSAGING_SENDER_ID as string;
+            }
+            return null;
+          } catch {
+            return null;
+          }
+        })()
+      ]);
 
-      // Check if we're in development mode
-      const isDevelopment = import.meta.env.DEV || window.location.hostname === 'localhost';
-      
-      if (isDevelopment) {
-        // In development, just log the token instead of sending to server
-        console.log('Development mode: Push token would be registered:', tokenData);
+      const [userId, instituteIdPref] = await Promise.all([
+        getUserId(),
+        Preferences.get({ key: 'InstituteId' }),
+      ]);
+
+      const instituteId = instituteIdPref.value || null;
+
+      // Guard: ensure we have both userId and instituteId before registering
+      if (!userId || !instituteId) {
+        console.warn('[Push] Skipping registration: missing userId or instituteId', { userId, instituteId });
         return;
       }
 
-      // Send to your backend API
-      const response = await fetch('/api/push-notifications/register', {
+      const body = {
+        instituteId,
+        userId,
+        token,
+        platform: platform === 'electron' ? 'web' : platform,
+        deviceId,
+        clientContext: {
+          appId: appInfoOrNull?.id || null, // bundleId/packageName on native
+          appName: appInfoOrNull?.name || null,
+          version: appInfoOrNull?.version || null,
+          build: appInfoOrNull?.build || null,
+          webHost: platform === 'web' ? (typeof window !== 'undefined' ? window.location.host : null) : null,
+          webOrigin: platform === 'web' ? (typeof window !== 'undefined' ? window.location.origin : null) : null,
+          firebaseSenderId: webSenderIdOrNull || null,
+        }
+      };
+
+      // Use plain fetch: do not send auth token for push endpoints
+      const response = await fetch(PUSH_REGISTER_URL, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          // Add your auth headers here
-        },
-        body: JSON.stringify(tokenData)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
       });
-
       if (!response.ok) {
-        throw new Error('Failed to register push token');
+        throw new Error(`Push token registration failed with status ${response.status}`);
       }
-
       console.log('Push token registered successfully');
     } catch (error) {
       console.error('Error registering push token:', error);
+    }
+  }
+
+  async deactivateToken(token?: string): Promise<void> {
+    try {
+      const { PUSH_DEACTIVATE_URL } = await import('@/constants/urls');
+      const tokenToDeactivate = token || this.currentToken || (await this.getStoredToken());
+      if (!tokenToDeactivate) return;
+      // Use plain fetch: do not send auth token for push endpoints
+      await fetch(`${PUSH_DEACTIVATE_URL}?token=${encodeURIComponent(tokenToDeactivate)}`, {
+        method: 'POST'
+      });
+    } catch (err) {
+      console.error('Failed to deactivate push token', err);
+    }
+  }
+
+  // Public method to upsert currently stored token (useful after institute switch)
+  async registerStoredToken(): Promise<void> {
+    const stored = await this.getStoredToken();
+    if (stored) {
+      await this.sendTokenToServer(stored);
     }
   }
 

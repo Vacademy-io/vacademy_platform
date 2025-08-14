@@ -99,6 +99,14 @@ export const fetchAndStoreInstituteDetails = async (
       value: JSON.stringify(instituteDetails), // Convert object to string before storing
     });
 
+    // Re-register push token for the new institute context
+    try {
+      const { pushNotificationService } = await import('@/services/push-notifications/push-notification-service');
+      await pushNotificationService.registerStoredToken();
+    } catch (e) {
+      console.warn('Push token re-registration after institute switch failed', e);
+    }
+
     return instituteDetails;
   } catch (error) {
     console.error("Failed to fetch institute details:", error);

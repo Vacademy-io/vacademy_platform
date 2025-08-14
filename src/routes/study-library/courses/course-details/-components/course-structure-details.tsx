@@ -35,8 +35,7 @@ import {
 import { getIcon } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/chapter-sidebar-slides";
 import { CourseDetailsFormValues } from "./course-details-schema";
 import { getSubjectDetails } from "@/routes/courses/course-details/-utils/helper";
-import { getPublicUrl } from "@/services/upload_file";
-// import { getPublicUrl } from "@/services/upload_file";
+import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { useRouter } from "@tanstack/react-router";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
@@ -203,6 +202,46 @@ export const CourseStructureDetails = ({
     const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
     const [thumbUrlById, setThumbUrlById] = useState<Record<string, string>>({});
 // const [thumbUrlById, setThumbUrlById] = useState<Record<string, string>>({});
+
+    // Helpers to safely extract optional thumbnail IDs without using any
+    const getSubjectThumbnailId = (subject: SubjectType): string | undefined => {
+        return (subject as unknown as { thumbnail_id?: string | null })
+            .thumbnail_id || undefined;
+    };
+    const getModuleThumbnailId = (mod: Module): string | undefined => {
+        return (mod as unknown as { thumbnail_id?: string | null })
+            .thumbnail_id || undefined;
+    };
+
+    // Ensure subject thumbnails are fetched for Content Structure top level
+    useEffect(() => {
+        const prefetchTopLevelSubjects = async () => {
+            if (selectedSubjectId) return; // already drilled down
+            const subjects = studyLibraryData ?? [];
+            if (subjects.length === 0) return;
+
+            const pending = subjects
+                .map((s) => ({ key: `subject:${s.id}`, fileId: getSubjectThumbnailId(s) }))
+                .filter(({ key, fileId }) => Boolean(fileId) && !thumbUrlById[key]) as Array<{ key: string; fileId: string }>;
+            if (pending.length === 0) return;
+
+            const results = await Promise.all(
+                pending.map(async ({ key, fileId }) => {
+                    try {
+                        const url = await getPublicUrlWithoutLogin(fileId);
+                        return { key, url } as const;
+                    } catch {
+                        return { key, url: '' } as const;
+                    }
+                })
+            );
+            const updates: Record<string, string> = {};
+            for (const { key, url } of results) if (url) updates[key] = url;
+            if (Object.keys(updates).length > 0) setThumbUrlById((prev) => ({ ...prev, ...updates }));
+        };
+        prefetchTopLevelSubjects();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedSubjectId, studyLibraryData, thumbUrlById]);
 
     const handleSlideNavigation = (
         subjectId: string,
@@ -484,13 +523,28 @@ export const CourseStructureDetails = ({
                                                         className="shrink-0 text-neutral-500 group-hover:text-primary-600 transition-colors"
                                                     />
                                                 )}
-                                               <div className="flex items-center justify-center w-6 h-6 rounded-md bg-gradient-to-br from-primary-500 to-primary-600 text-white text-xs font-bold shrink-0">
+                                                <div className="flex items-center justify-center w-6 h-6 rounded-md bg-gradient-to-br from-primary-500 to-primary-600 text-white text-xs font-bold shrink-0">
                                                     {isSubjectOpen ? (
                                                         <FolderOpen size={12} />
                                                     ) : (
                                                         <Folder size={12} />
                                                     )}
                                                 </div>
+                                                {thumbUrlById[`subject:${subject.id}`] && (
+                                                    <img
+                                                        src={thumbUrlById[`subject:${subject.id}`]}
+                                                        alt={toTitleCase(subject.subject_name)}
+                                                        className="w-6 h-6 rounded-sm object-cover border border-neutral-200"
+                                                        crossOrigin="anonymous"
+                                                        referrerPolicy="no-referrer"
+                                                        loading="eager"
+                                                        onLoad={() => console.log('[thumb] (study-library) subject img load', { id: subject.id })}
+                                                        onError={(e) => {
+                                                            console.warn('[thumb] (study-library) subject img error', { id: subject.id, src: e.currentTarget.src });
+                                                            e.currentTarget.classList.add('border-red-400');
+                                                        }}
+                                                    />
+                                                )}
                                                 <span className="w-7 shrink-0 text-center font-mono text-xs font-semibold text-neutral-500 bg-neutral-100 rounded px-1 py-0.5">
                                                     S{idx + 1}
                                                 </span>
@@ -556,6 +610,21 @@ export const CourseStructureDetails = ({
                                                                             }
                                                                         />
                                                                     </div>
+                                                                    {thumbUrlById[`module:${mod.module.id}`] && (
+                                                                        <img
+                                                                            src={thumbUrlById[`module:${mod.module.id}`]}
+                                                                            alt={mod.module.module_name}
+                                                                            className="w-5 h-5 rounded-sm object-cover border border-neutral-200"
+                                                                            crossOrigin="anonymous"
+                                                                            referrerPolicy="no-referrer"
+                                                                            loading="eager"
+                                                                            onLoad={() => console.log('[thumb] (study-library) module img load', { id: mod.module.id })}
+                                                                            onError={(e) => {
+                                                                                console.warn('[thumb] (study-library) module img error', { id: mod.module.id, src: e.currentTarget.src });
+                                                                                e.currentTarget.classList.add('border-red-400');
+                                                                            }}
+                                                                        />
+                                                                    )}
                                                                     <span className="w-6 shrink-0 text-center font-mono text-xs font-medium text-neutral-500 bg-neutral-100 rounded px-1">
                                                                         M
                                                                         {modIdx +
@@ -637,6 +706,21 @@ export const CourseStructureDetails = ({
                                                                                                     }
                                                                                                 />
                                                                                             </div>
+                                                                                            {thumbUrlById[`chapter:${ch.id}`] && (
+                                                                                                <img
+                                                                                                    src={thumbUrlById[`chapter:${ch.id}`]}
+                                                                                                    alt={toTitleCase(ch.chapter_name)}
+                                                                                                    className="w-4 h-4 rounded-sm object-cover border border-neutral-200"
+                                                                                                    crossOrigin="anonymous"
+                                                                                                    referrerPolicy="no-referrer"
+                                                                                                    loading="eager"
+                                                                                                    onLoad={() => console.log('[thumb] (study-library) chapter img load', { id: ch.id })}
+                                                                                                    onError={(e) => {
+                                                                                                        console.warn('[thumb] (study-library) chapter img error', { id: ch.id, src: e.currentTarget.src });
+                                                                                                        e.currentTarget.classList.add('border-red-400');
+                                                                                                    }}
+                                                                                                />
+                                                                                            )}
                                                                                             <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
                                                                                                 C
                                                                                                 {chIdx +
@@ -1371,7 +1455,23 @@ export const CourseStructureDetails = ({
                             <div key={subject.id} className="rounded-md border border-neutral-200 bg-white p-3 shadow-sm hover:shadow cursor-pointer" onClick={() => { setSelectedSubjectId(subject.id); }}>
                                 <div className="flex items-center gap-3">
                                     <div className="w-12 h-12 rounded-md bg-neutral-100 flex items-center justify-center overflow-hidden">
-                                        <Folder size={20} className="text-neutral-500" />
+                                        {thumbUrlById[`subject:${subject.id}`] ? (
+                                            <img
+                                                src={thumbUrlById[`subject:${subject.id}`]}
+                                                alt={toTitleCase(subject.subject_name)}
+                                                className="w-full h-full object-cover"
+                                                crossOrigin="anonymous"
+                                                referrerPolicy="no-referrer"
+                                                loading="eager"
+                                                onLoad={() => console.log('[thumb] (study-library) subject grid img load', { id: subject.id })}
+                                                onError={(e) => {
+                                                    console.warn('[thumb] (study-library) subject grid img error', { id: subject.id, src: e.currentTarget.src });
+                                                    e.currentTarget.classList.add('border-red-400');
+                                                }}
+                                            />
+                                        ) : (
+                                            <Folder size={20} className="text-neutral-500" />
+                                        )}
                                     </div>
                                     <div className="min-w-0">
                                         <div className="text-sm font-medium text-neutral-800 truncate" title={toTitleCase(subject.subject_name)}>{toTitleCase(subject.subject_name)}</div>
@@ -1388,7 +1488,23 @@ export const CourseStructureDetails = ({
                             <div key={m.module.id} className="rounded-md border border-neutral-200 bg-white p-3 shadow-sm hover:shadow cursor-pointer" onClick={() => { setSelectedModuleId(m.module.id); }}>
                                 <div className="flex items-center gap-3">
                                     <div className="w-12 h-12 rounded-md bg-neutral-100 flex items-center justify-center overflow-hidden">
-                                        <Folder size={20} className="text-neutral-500" />
+                                        {thumbUrlById[`module:${m.module.id}`] ? (
+                                            <img
+                                                src={thumbUrlById[`module:${m.module.id}`]}
+                                                alt={m.module.module_name}
+                                                className="w-full h-full object-cover"
+                                                crossOrigin="anonymous"
+                                                referrerPolicy="no-referrer"
+                                                loading="eager"
+                                                onLoad={() => console.log('[thumb] (study-library) module grid img load', { id: m.module.id })}
+                                                onError={(e) => {
+                                                    console.warn('[thumb] (study-library) module grid img error', { id: m.module.id, src: e.currentTarget.src });
+                                                    e.currentTarget.classList.add('border-red-400');
+                                                }}
+                                            />
+                                        ) : (
+                                            <Folder size={20} className="text-neutral-500" />
+                                        )}
                                     </div>
                                     <div className="min-w-0">
                                         <div className="text-sm font-medium text-neutral-800 truncate" title={m.module.module_name}>{m.module.module_name}</div>
@@ -1408,7 +1524,23 @@ export const CourseStructureDetails = ({
                                 <div key={ch.id} className="rounded-md border border-neutral-200 bg-white p-3 shadow-sm hover:shadow cursor-pointer" onClick={async () => { setSelectedChapterId(ch.id); await getSlidesWithChapterId(ch.id); }}>
                                     <div className="flex items-center gap-3">
                                         <div className="w-12 h-12 rounded-md bg-neutral-100 flex items-center justify-center overflow-hidden">
-                                            <FileText size={18} className="text-neutral-500" />
+                                            {thumbUrlById[`chapter:${ch.id}`] ? (
+                                                <img
+                                                    src={thumbUrlById[`chapter:${ch.id}`]}
+                                                    alt={toTitleCase(ch.chapter_name)}
+                                                    className="w-full h-full object-cover"
+                                                    crossOrigin="anonymous"
+                                                    referrerPolicy="no-referrer"
+                                                    loading="eager"
+                                                    onLoad={() => console.log('[thumb] (study-library) chapter grid img load', { id: ch.id })}
+                                                    onError={(e) => {
+                                                        console.warn('[thumb] (study-library) chapter grid img error', { id: ch.id, src: e.currentTarget.src });
+                                                        e.currentTarget.classList.add('border-red-400');
+                                                    }}
+                                                />
+                                            ) : (
+                                                <FileText size={18} className="text-neutral-500" />
+                                            )}
                                         </div>
                                         <div className="min-w-0">
                                             <div className="text-sm font-medium text-neutral-800 truncate" title={ch.chapter_name}>{ch.chapter_name}</div>
@@ -1635,9 +1767,9 @@ export const CourseStructureDetails = ({
                         fileId = (m.module as { thumbnail_id?: string }).thumbnail_id;
                     }
                     const key = `module:${m.module.id}`;
-                    if (fileId && !thumbUrlById[key]) {
+                        if (fileId && !thumbUrlById[key]) {
                         try {
-                            const url = await getPublicUrl(fileId);
+                            const url = await getPublicUrlWithoutLogin(fileId);
                             setThumbUrlById((prev) => ({ ...prev, [key]: url }));
                         } catch (err) {
                             console.debug('prefetch module thumbnail failed', err);
@@ -1653,7 +1785,7 @@ export const CourseStructureDetails = ({
                     const key = `chapter:${ch.id}`;
                     if (fileId && !thumbUrlById[key]) {
                         try {
-                            const url = await getPublicUrl(fileId);
+                            const url = await getPublicUrlWithoutLogin(fileId);
                             setThumbUrlById((prev) => ({ ...prev, [key]: url }));
                         } catch (err) {
                             console.debug('prefetch chapter thumbnail failed', err);
@@ -1665,6 +1797,94 @@ export const CourseStructureDetails = ({
         prefetch();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedSubjectId, selectedModuleId, selectedChapterId, subjectModulesMap]);
+
+    // Mount/unmount logs to verify which component is active
+    useEffect(() => {
+        console.log('[thumb] CourseStructureDetails (study-library) mounted');
+        return () => {
+            console.log('[thumb] CourseStructureDetails (study-library) unmounted');
+        };
+    }, []);
+
+    // Global prefetch thumbnails for all subjects/modules/chapters
+    useEffect(() => {
+        const prefetchAll = async () => {
+            try {
+                const subjectsArr = studyLibraryData ?? [];
+                const moduleMapKeys = Object.keys(subjectModulesMap || {});
+                const hasSubjects = subjectsArr.length > 0;
+                const hasModules = moduleMapKeys.length > 0;
+                // Avoid work/logs when nothing to prefetch yet
+                if (!hasSubjects && !hasModules) return;
+
+                console.log('[thumb] (study-library) prefetch start', {
+                    subjects: subjectsArr.map((s) => ({ id: s.id, thumbnail_id: getSubjectThumbnailId(s) })),
+                    subjectModulesMapKeys: moduleMapKeys,
+                });
+
+                const pending: Array<{ key: string; fileId: string }> = [];
+
+                // subjects
+                for (const s of subjectsArr) {
+                    const key = `subject:${s.id}`;
+                    const fileId = getSubjectThumbnailId(s);
+                    if (fileId && !thumbUrlById[key]) {
+                        console.log('[thumb] (study-library) subject candidate', { key, fileId, hasUrl: Boolean(thumbUrlById[key]) });
+                        pending.push({ key, fileId });
+                    }
+                }
+
+                // modules + chapters
+                Object.values(subjectModulesMap || {}).forEach((mods) => {
+                    for (const m of mods || []) {
+                        const moduleKey = `module:${m.module.id}`;
+                        const moduleFileId = getModuleThumbnailId(m.module);
+                        if (moduleFileId && !thumbUrlById[moduleKey]) {
+                            console.log('[thumb] (study-library) module candidate', { moduleKey, moduleFileId, hasUrl: Boolean(thumbUrlById[moduleKey]) });
+                            pending.push({ key: moduleKey, fileId: moduleFileId });
+                        }
+
+                        for (const ch of m.chapters || []) {
+                            const chapterKey = `chapter:${ch.id}`;
+                            const chapterFileId = ch.file_id ?? undefined;
+                            if (chapterFileId && !thumbUrlById[chapterKey]) {
+                                console.log('[thumb] (study-library) chapter candidate', { chapterKey, chapterFileId, hasUrl: Boolean(thumbUrlById[chapterKey]) });
+                                pending.push({ key: chapterKey, fileId: chapterFileId });
+                            }
+                        }
+                    }
+                });
+
+                if (pending.length === 0) return;
+                // dedupe
+                const seen = new Set<string>();
+                const unique = pending.filter(({ key }) => (seen.has(key) ? false : (seen.add(key), true)));
+                const results = await Promise.all(
+                    unique.map(async ({ key, fileId }) => {
+                        try {
+                            const url = await getPublicUrlWithoutLogin(fileId);
+                            console.log('[thumb] (study-library) fetched', { key, fileId, url });
+                            return { key, url } as const;
+                        } catch (err) {
+                            console.debug('[thumb] (study-library) fetch failed', { key, fileId, err });
+                            return { key, url: '' } as const;
+                        }
+                    })
+                );
+
+                const updates: Record<string, string> = {};
+                for (const { key, url } of results) if (url) updates[key] = url;
+                if (Object.keys(updates).length > 0) {
+                    console.log('[thumb] (study-library) applying', updates);
+                    setThumbUrlById((prev) => ({ ...prev, ...updates }));
+                }
+            } catch (err) {
+                console.debug('[thumb] (study-library) unexpected error', err);
+            }
+        };
+        prefetchAll();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [studyLibraryData, subjectModulesMap]);
 
   // Ensure Content Structure starts at correct depth based on courseStructure once data is ready
   useEffect(() => {

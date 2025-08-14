@@ -1,10 +1,8 @@
 package vacademy.io.auth_service.feature.auth.service;
 
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -39,8 +37,6 @@ public class AuthService {
     @Autowired
     UserRepository userRepository;
     @Autowired
-    AuthenticationManager authenticationManager;
-    @Autowired
     JwtService jwtService;
     @Autowired
     RefreshTokenService refreshTokenService;
@@ -59,6 +55,7 @@ public class AuthService {
 
     @Autowired
     private UserRoleRepository userRoleRepository;
+
     @Transactional
     public User createUser(RegisterRequest registerRequest, Set<UserRole> roles) {
         boolean isAlreadyPresent = false;
@@ -96,9 +93,8 @@ public class AuthService {
         return user;
     }
 
-
     @Transactional
-    public User createUser(UserDTO registerRequest, String instituteId) {
+    public User createUser(UserDTO registerRequest, String instituteId, boolean sendWelcomeMail) {
         Optional<User> optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(registerRequest.getEmail());
         boolean isAlreadyPresent = optionalUser.isPresent();
 
@@ -107,10 +103,10 @@ public class AuthService {
         if (isAlreadyPresent) {
             user = optionalUser.get();
         } else {
-            if(!StringUtils.hasText(registerRequest.getUsername())){
+            if (!StringUtils.hasText(registerRequest.getUsername())) {
                 registerRequest.setUsername(UsernameGenerator.generateUsername(registerRequest.getFullName()));
             }
-            if(!StringUtils.hasText(registerRequest.getPassword())) {
+            if (!StringUtils.hasText(registerRequest.getPassword())) {
                 registerRequest.setPassword(UsernameGenerator.generatePassword(8));
             }
             user = User.builder()
@@ -150,15 +146,15 @@ public class AuthService {
         return user;
     }
 
-
     private List<Role> getAllUserRoles(List<String> userRoles) {
         return roleRepository.findByNameIn(userRoles);
     }
 
     public JwtResponseDto generateJwtTokenForUser(User user, RefreshToken refreshToken, List<UserRole> userRoles) {
 
-        List<String>userPermissions = userPermissionRepository.findByUserId(user.getId()).stream().map(UserPermission::getPermissionId).toList();
-        String accessToken = jwtService.generateToken(user, userRoles,userPermissions);
+        List<String> userPermissions = userPermissionRepository.findByUserId(user.getId()).stream()
+                .map(UserPermission::getPermissionId).toList();
+        String accessToken = jwtService.generateToken(user, userRoles, userPermissions);
 
         // Return a JwtResponseDto with access token and refresh token
         return JwtResponseDto.builder()
@@ -170,7 +166,8 @@ public class AuthService {
     public void sendWelcomeMailToUser(User user) {
         GenericEmailRequest genericEmailRequest = new GenericEmailRequest();
         genericEmailRequest.setTo(user.getEmail());
-        genericEmailRequest.setBody(NotificationEmailBody.createWelcomeEmailBody("Vacademy", user.getFullName(), user.getUsername(), user.getPassword()));
+        genericEmailRequest.setBody(NotificationEmailBody.createWelcomeEmailBody("Vacademy", user.getFullName(),
+                user.getUsername(), user.getPassword()));
         genericEmailRequest.setSubject("Welcome to Vacademy");
         notificationService.sendGenericHtmlMail(genericEmailRequest);
     }
@@ -182,14 +179,14 @@ public class AuthService {
 
         String fullName = user.getFullName() != null ? user.getFullName() : "User";
         String username = user.getUsername() != null ? user.getUsername() : "N/A";
-        String password = user.getPassword() != null ? user.getPassword() : "N/A"; // You might want to avoid sending passwords in email
+        String password = user.getPassword() != null ? user.getPassword() : "N/A"; // You might want to avoid sending
+                                                                                   // passwords in email
 
         String body = NotificationEmailBody.createCredentialsFoundEmailBody(
                 "Vacademy",
                 fullName,
                 username,
-                password
-        );
+                password);
 
         GenericEmailRequest emailRequest = new GenericEmailRequest();
         emailRequest.setTo(user.getEmail());
@@ -198,6 +195,5 @@ public class AuthService {
 
         notificationService.sendGenericHtmlMail(emailRequest);
     }
-
 
 }

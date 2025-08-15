@@ -7,8 +7,11 @@ import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInviteService;
+import vacademy.io.admin_core_service.features.institute.service.InstituteService;
+import vacademy.io.admin_core_service.features.learner.utility.TemplateReader;
 import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.PaymentOptionOperationFactory;
 import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.PaymentOptionOperationStrategy;
+import vacademy.io.admin_core_service.features.notification_service.service.SendUniqueLinkService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
@@ -21,6 +24,7 @@ import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollRequestDTO;
+import vacademy.io.common.institute.entity.Institute;
 
 import java.util.Map;
 import java.util.Optional;
@@ -46,6 +50,9 @@ public class LearnerEnrollRequestService {
     @Autowired
     private AuthService authService;
 
+    @Autowired
+    private SendUniqueLinkService service;
+
     @Transactional
     public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
         LearnerPackageSessionsEnrollDTO enrollDTO = learnerEnrollRequestDTO.getLearnerPackageSessionEnroll();
@@ -53,6 +60,13 @@ public class LearnerEnrollRequestService {
             UserDTO user = authService.createUserFromAuthService(learnerEnrollRequestDTO.getUser(), learnerEnrollRequestDTO.getInstituteId());
             learnerEnrollRequestDTO.setUser(user);
         }
+        String instituteId=learnerEnrollRequestDTO.getInstituteId();
+        UserDTO user=learnerEnrollRequestDTO.getUser();
+
+        //by email and whatsapp
+        service.sendUniqueLinkByEmail(instituteId,user);
+        service.sendUniqueLinkByWhatsApp(instituteId,user);
+
         EnrollInvite enrollInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
         PaymentOption paymentOption = getValidatedPaymentOption(enrollDTO.getPaymentOptionId());
         PaymentPlan paymentPlan = getOptionalPaymentPlan(enrollDTO.getPlanId());

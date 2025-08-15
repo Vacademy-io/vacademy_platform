@@ -130,7 +130,7 @@ public class AnnouncementDeliveryService {
                 String userEmail = forceToEmail != null && !forceToEmail.isBlank() ? forceToEmail : resolveUserEmail(message.getUserId());
                 if (userEmail != null) {
                     // Send email using existing service
-                    emailService.sendHtmlEmail(userEmail, subject, "announcement-service", content.getContent());
+                    emailService.sendHtmlEmail(userEmail, subject, "announcement-service", content.getContent(),null);
                     
                     message.setStatus(MessageStatus.DELIVERED);
                     message.setDeliveredAt(LocalDateTime.now());
@@ -190,7 +190,7 @@ public class AnnouncementDeliveryService {
                     // Send WhatsApp using existing service
                     // Note: This is a simplified call - actual implementation would need proper parameter mapping
                     Map<String, Map<String, String>> bodyParams = Map.of(userPhone, userSpecificValues);
-                    whatsAppService.sendWhatsappMessages(templateName, List.of(bodyParams), null, "en", null);
+                    whatsAppService.sendWhatsappMessages(templateName, List.of(bodyParams), null, "en", null,null);
                     
                     message.setStatus(MessageStatus.DELIVERED);
                     message.setDeliveredAt(LocalDateTime.now());

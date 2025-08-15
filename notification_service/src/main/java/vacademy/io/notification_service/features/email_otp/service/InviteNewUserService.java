@@ -11,11 +11,20 @@ public class InviteNewUserService {
     EmailService emailService;
 
 
-    public Boolean sendEmail(String to, String subject, String service, String body) {
+    public Boolean sendEmail(String to, String subject, String service, String body,String instituteId) {
         try {
-            emailService.sendHtmlEmail(to, subject, service, body);
+            emailService.sendHtmlEmail(to, subject, service, body,instituteId);
         } catch (Exception e) {
             return false;
+        }
+        return true;
+    }
+
+    public Boolean sendTextEmail(String to,String subject ,String body,String instituteId){
+        try{
+            emailService.sendEmail(to,subject,body,instituteId);
+        } catch (Exception e) {
+            throw new RuntimeException("Email not send");
         }
         return true;
     }

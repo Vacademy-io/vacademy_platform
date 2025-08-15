@@ -2,6 +2,7 @@ package vacademy.io.notification_service.features.email_otp.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.notification_service.service.EmailService;
 
 @Service
@@ -24,7 +25,7 @@ public class InviteNewUserService {
         try{
             emailService.sendEmail(to,subject,body,instituteId);
         } catch (Exception e) {
-            throw new RuntimeException("Email not send");
+            throw new VacademyException("Email not send");
         }
         return true;
     }

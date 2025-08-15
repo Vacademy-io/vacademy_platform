@@ -42,13 +42,13 @@ public class TemplateReader {
             }
 
             if (templateNode.isMissingNode() || templateNode.asText().isEmpty()) {
-                throw new RuntimeException("Email template not found in settings.");
+                throw new VacademyException("Email template not found in settings.");
             }
 
             template = templateNode.asText();
 
         } catch (Exception e) {
-            throw new RuntimeException("Error parsing email settings: " + e.getMessage(), e);
+            throw new VacademyException("Error parsing email settings: ");
         }
 
         // Replace placeholders

@@ -230,8 +230,8 @@ public class GetLiveSessionService {
         } else if (Objects.equals(type, "schedule")) {
 
             for (String scheduleId : ids) {
-                String sessionId = scheduleRepository.findSessionIdByScheduleId(scheduleId);
-                int activeSchedules = scheduleRepository.countActiveSchedulesBySessionId(sessionId);
+                String sessionId = scheduleRepository.findSessionIdByScheduleId(scheduleId,"DELETED");
+                int activeSchedules = scheduleRepository.countActiveSchedulesBySessionId(sessionId,"DELETED");
 
                 if (activeSchedules == 1) {
                     scheduleRepository.softDeleteScheduleByIdIn(List.of(scheduleId));

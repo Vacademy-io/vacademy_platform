@@ -3,10 +3,7 @@ package vacademy.io.notification_service.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import vacademy.io.common.notification.dto.EmailOTPRequest;
 import vacademy.io.notification_service.features.email_otp.service.OTPService;
 
@@ -19,8 +16,8 @@ public class OtpInternalController {
 
 
     @PostMapping("/send-email-otp")
-    public ResponseEntity<String> sendEmailOtp(@RequestBody EmailOTPRequest request) {
-        otpService.sendEmailOtp(request.getTo(), request.getSubject(), request.getService(), request.getName());
+    public ResponseEntity<String> sendEmailOtp(@RequestBody EmailOTPRequest request, @RequestParam(name = "instituteId",required = false)String instituteId) {
+        otpService.sendEmailOtp(request.getTo(), request.getSubject(), request.getService(), request.getName(),instituteId);
         return ResponseEntity.ok("Email OTP sent successfully");
     }
 

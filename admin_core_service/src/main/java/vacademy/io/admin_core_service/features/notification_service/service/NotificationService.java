@@ -9,13 +9,16 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.notification.constants.NotificationConstant;
+import vacademy.io.admin_core_service.features.notification.dto.EmailRequest;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
+import vacademy.io.admin_core_service.features.notification.dto.WhatsappRequest;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.notification.dto.AttachmentNotificationDTO;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
 
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class NotificationService {
@@ -39,6 +42,20 @@ public class NotificationService {
                 notificationDTO
         );
         return response.getBody();
+    }
+    public Boolean sendTextEmail(EmailRequest request,String instituteId) {
+        String url=NotificationConstant.SEND_TEXT_EMAIL+"?instituteId="+instituteId;
+
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(), notificationServerBaseUrl, url, request);
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        try {
+            Boolean isMailSent = objectMapper.readValue(response.getBody(), new TypeReference<Boolean>() {
+            });
+            return isMailSent;
+        } catch (JsonProcessingException e) {
+            throw new VacademyException(e.getMessage());
+        }
     }
 
     public Boolean sendGenericHtmlMail(GenericEmailRequest request) {
@@ -71,4 +88,27 @@ public class NotificationService {
         }
     }
 
+    public List<Map<String, Boolean>> sendWhatsappToUsers(WhatsappRequest request,String instituteId) {
+        // Call notification microservice via HMAC request
+        String url=NotificationConstant.SEND_WHATSAPP_TO_USER+"?instituteId="+instituteId;
+        System.out.println("url is:"+url);
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                clientName,
+                HttpMethod.POST.name(),
+                notificationServerBaseUrl,
+                url,
+                request
+        );
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        try {
+            // Parse the response body into the expected return type
+            return objectMapper.readValue(
+                    response.getBody(),
+                    new TypeReference<List<Map<String, Boolean>>>() {}
+            );
+        } catch (JsonProcessingException e) {
+            throw new VacademyException("Error parsing WhatsApp send response: " + e.getMessage());
+        }
+    }
 }

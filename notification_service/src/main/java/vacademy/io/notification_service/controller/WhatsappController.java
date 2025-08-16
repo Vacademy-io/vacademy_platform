@@ -2,10 +2,7 @@ package vacademy.io.notification_service.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import vacademy.io.common.notification.dto.EmailOTPRequest;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
 import vacademy.io.notification_service.dto.EmailRequest;
@@ -32,8 +29,8 @@ public class WhatsappController {
     }
 
     @PostMapping("/send-template-whatsapp")
-    public ResponseEntity<List<Map<String, Boolean>>> sendWhatsappMessages(@RequestBody WhatsappRequest request) {
-        return ResponseEntity.ok(whatsAppService.sendWhatsappMessages(request.getTemplateName(), request.getUserDetails(), request.getHeaderParams(), request.getLanguageCode(), request.getHeaderType()));
+    public ResponseEntity<List<Map<String, Boolean>>> sendWhatsappMessages(@RequestBody WhatsappRequest request , @RequestParam(name="instituteId", required = false)String instituteId) {
+        return ResponseEntity.ok(whatsAppService.sendWhatsappMessages(request.getTemplateName(), request.getUserDetails(), request.getHeaderParams(), request.getLanguageCode(), request.getHeaderType(),instituteId));
     }
 
 }

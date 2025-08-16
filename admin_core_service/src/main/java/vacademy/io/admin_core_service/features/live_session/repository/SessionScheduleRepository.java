@@ -160,4 +160,10 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
     @Query(value = "UPDATE session_schedules SET status = 'DELETED' WHERE session_id =:id", nativeQuery = true)
     int softDeleteScheduleBySessionId(@Param("id") String id);
 
+    @Query(value = "SELECT session_id FROM session_schedules WHERE id = :scheduleId AND status <> 'DELETED'", nativeQuery = true)
+    String findSessionIdByScheduleId(@Param("scheduleId") String scheduleId);
+
+    @Query(value = "SELECT COUNT(*) FROM session_schedules WHERE session_id = :sessionId AND status <> 'DELETED'", nativeQuery = true)
+    int countActiveSchedulesBySessionId(@Param("sessionId") String sessionId);
+
 }

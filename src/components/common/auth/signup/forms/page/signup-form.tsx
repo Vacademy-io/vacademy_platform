@@ -23,6 +23,8 @@ export function SignUpForm({
 }) {
     const navigate = useNavigate();
     const search = useSearch({ from: "/signup/" });
+    const domainRouting = useDomainRouting();
+    const { setPrimaryColor } = useTheme();
     
     // Use search parameters if not provided as props
     const finalType = type || (search as { type?: string; courseId?: string; instituteId?: string }).type;

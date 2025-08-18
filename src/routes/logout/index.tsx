@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { removeTokensAndLogout } from "@/lib/auth/sessionUtility";
+import { pushNotificationService } from "@/services/push-notifications/push-notification-service";
 import { useNavigate } from "@tanstack/react-router";
 import { NAMING_SETTINGS_KEY } from "@/types/naming-settings";
 import { getSubdomain } from "@/helpers/helper";
@@ -15,6 +16,8 @@ function RouteComponent() {
     useEffect(() => {
         // Remove naming settings but keep InstituteId
         localStorage.removeItem(NAMING_SETTINGS_KEY);
+        // Deactivate push token for this device on logout
+        pushNotificationService.deactivateToken().catch(() => {});
         removeTokensAndLogout();
 
         // Special case: if subdomain is "code-circle", redirect to courses instead of login

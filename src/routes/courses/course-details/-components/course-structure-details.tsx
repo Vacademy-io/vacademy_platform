@@ -1,5 +1,5 @@
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { PullToRefreshWrapper } from "@/components/design-system/pull-to-refresh";
 import { fetchStudyLibraryDetails } from "@/services/study-library/getStudyLibraryDetails";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -35,6 +35,7 @@ import { getSubjectDetails } from "../-utils/helper";
 import { CourseDetailsFormValues } from "./course-details-schema";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+  import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 
 export interface Chapter {
   id: string;
@@ -73,12 +74,14 @@ export const CourseStructureDetails = ({
   courseStructure,
   courseData,
   packageSessionId,
+  onModulesLoadingChange,
 }: {
   selectedSession: string;
   selectedLevel: string;
   courseStructure: number;
   courseData: CourseDetailsFormValues;
   packageSessionId: string;
+  onModulesLoadingChange?: (loading: boolean) => void;
 }) => {
   console.log(courseStructure);
   const { setNavHeading } = useNavHeadingStore();
@@ -91,6 +94,23 @@ export const CourseStructureDetails = ({
     {}
   );
   const [slidesMap, setSlidesMap] = useState<Record<string, Slide[]>>({});
+  const [thumbUrlById, setThumbUrlById] = useState<Record<string, string>>({});
+
+  // Loading state management
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Memoized callback for loading state changes
+  const handleLoadingChange = useCallback((loading: boolean) => {
+    setIsLoading(loading);
+    if (onModulesLoadingChange) {
+      onModulesLoadingChange(loading);
+    }
+  }, [onModulesLoadingChange]);
+
+  // Update loading state for parent component
+  useEffect(() => {
+    handleLoadingChange(isLoading);
+  }, [isLoading, handleLoadingChange]);
 
   const getSlidesWithChapterId = async (chapterId: string) => {
     // Avoid duplicate fetch
@@ -208,6 +228,7 @@ export const CourseStructureDetails = ({
   useEffect(() => {
     const loadModules = async () => {
       try {
+        setIsLoading(true);
         const modulesMap = await fetchModules({
           subjects: getSubjectDetails(
             courseData,
@@ -246,10 +267,129 @@ export const CourseStructureDetails = ({
       } catch (error) {
         console.error("Failed to fetch modules:", error);
         setSubjectModulesMap({});
+      } finally {
+        setIsLoading(false);
       }
     };
     loadModules();
   }, [studyLibraryData, packageSessionId, fetchModules]);
+
+  // Prefetch thumbnails for subjects, modules, and chapters
+  useEffect(() => {
+    const prefetchThumbnails = async () => {
+      try {
+        console.log("[thumb] prefetch start", {
+          subjects: (studyLibraryData ?? []).map((s) => ({ id: s.id, thumbnail_id: s.thumbnail_id })),
+          subjectModulesMapKeys: Object.keys(subjectModulesMap),
+        });
+        const updates: Record<string, string> = {};
+
+        // Subjects
+        for (const subject of studyLibraryData ?? []) {
+          const key = `subject:${subject.id}`;
+          const fileId = subject.thumbnail_id ?? undefined;
+          console.log("[thumb] subject candidate", { key, fileId, hasUrl: Boolean(thumbUrlById[key]) });
+          if (fileId && !thumbUrlById[key]) {
+            try {
+              const url = await getPublicUrlWithoutLogin(fileId);
+              console.log("[thumb] subject url fetched", { key, fileId, url });
+              if (url) updates[key] = url;
+            } catch (err) {
+              console.debug("prefetchThumbnails: subject thumbnail fetch failed", err);
+            }
+          }
+        }
+
+        // Apply subject URL updates immediately
+        if (Object.keys(updates).length > 0) {
+          console.log("[thumb] subject urls applying", updates);
+          setThumbUrlById((prev) => ({ ...prev, ...updates }));
+        }
+
+        // Modules and Chapters
+        Object.values(subjectModulesMap).forEach((mods) => {
+          for (const mod of mods ?? []) {
+            // Module thumbnail
+            const moduleKey = `module:${mod.module.id}`;
+            const moduleFileId = (mod.module as { thumbnail_id?: string | null })
+              .thumbnail_id ?? undefined;
+            console.log("[thumb] module candidate", { moduleKey, moduleFileId, hasUrl: Boolean(thumbUrlById[moduleKey]) });
+            if (moduleFileId && !thumbUrlById[moduleKey]) {
+              updates[moduleKey] = updates[moduleKey] || ""; // mark to fetch
+            }
+
+            // Chapters thumbnails
+            for (const ch of mod.chapters ?? []) {
+              const chapterKey = `chapter:${ch.id}`;
+              const chapterFileId = ch.file_id ?? undefined;
+              console.log("[thumb] chapter candidate", { chapterKey, chapterFileId, hasUrl: Boolean(thumbUrlById[chapterKey]) });
+              if (chapterFileId && !thumbUrlById[chapterKey]) {
+                updates[chapterKey] = updates[chapterKey] || ""; // mark to fetch
+              }
+            }
+          }
+        });
+
+        // Actually fetch pending updates
+        const fetchPairs: Array<{ key: string; fileId: string }> = [];
+
+        // Add module and chapter fetches
+        Object.values(subjectModulesMap).forEach((mods) => {
+          for (const mod of mods ?? []) {
+            const moduleKey = `module:${mod.module.id}`;
+            const moduleFileId = (mod.module as { thumbnail_id?: string | null })
+              .thumbnail_id ?? undefined;
+            if (moduleFileId && !thumbUrlById[moduleKey]) {
+              fetchPairs.push({ key: moduleKey, fileId: moduleFileId });
+            }
+
+            for (const ch of mod.chapters ?? []) {
+              const chapterKey = `chapter:${ch.id}`;
+              const chapterFileId = ch.file_id ?? undefined;
+              if (chapterFileId && !thumbUrlById[chapterKey]) {
+                fetchPairs.push({ key: chapterKey, fileId: chapterFileId });
+              }
+            }
+          }
+        });
+
+        // Deduplicate by key
+        const seen = new Set<string>();
+        const uniquePairs = fetchPairs.filter(({ key }) => {
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+
+        const results = await Promise.all(
+          uniquePairs.map(async ({ key, fileId }) => {
+            try {
+              const url = await getPublicUrlWithoutLogin(fileId);
+              console.log("[thumb] fetched", { key, fileId, url });
+              return { key, url } as const;
+            } catch (err) {
+              console.debug("prefetchThumbnails: module/chapter thumbnail fetch failed", err);
+              return { key, url: "" } as const;
+            }
+          })
+        );
+
+        const finalUpdates: Record<string, string> = {};
+        for (const { key, url } of results) {
+          if (url) finalUpdates[key] = url;
+        }
+
+        if (Object.keys(finalUpdates).length > 0) {
+          console.log("[thumb] applying", finalUpdates);
+          setThumbUrlById((prev) => ({ ...prev, ...finalUpdates }));
+        }
+      } catch (err) {
+        console.debug("prefetchThumbnails: unexpected error", err);
+      }
+    };
+
+    prefetchThumbnails();
+  }, [studyLibraryData, subjectModulesMap]);
 
   useEffect(() => {
     setStudyLibraryData(
@@ -265,7 +405,21 @@ export const CourseStructureDetails = ({
     );
   }, []);
 
-  const tabContent: Record<TabType, React.ReactNode> = {
+  // Mount/unmount logs to verify component is active
+  useEffect(() => {
+    console.log('[thumb] CourseStructureDetails (courses) mounted');
+    return () => {
+      console.log('[thumb] CourseStructureDetails (courses) unmounted');
+    };
+  }, []);
+
+  useEffect(() => {
+    setStudyLibraryData(
+      getSubjectDetails(courseData, selectedSession, selectedLevel)
+    );
+  }, [selectedSession, selectedLevel]);
+
+  const tabContent: Partial<Record<TabType, React.ReactNode>> = {
     [TabType.OUTLINE]: (
       <div className="space-y-4">
         {/* Expand/Collapse Controls */}
@@ -292,7 +446,7 @@ export const CourseStructureDetails = ({
               ) : (
                 <>
                   <Folder size={14} className="mr-1.5" />
-                  Expand All
+                  Collapse All
                 </>
               )}
             </Button>
@@ -333,6 +487,18 @@ export const CourseStructureDetails = ({
                           <Folder size={12} />
                         )}
                       </div>
+                       {thumbUrlById[`subject:${subject.id}`] && (
+                         <img
+                           src={thumbUrlById[`subject:${subject.id}`]}
+                           alt=""
+                           className="w-6 h-6 rounded-sm object-cover border border-neutral-200"
+                           onLoad={() => console.log('[thumb] subject img load', { id: subject.id })}
+                           onError={(e) => {
+                             console.warn('[thumb] subject img error', { id: subject.id, src: e.currentTarget.src });
+                             e.currentTarget.style.display = 'none';
+                           }}
+                         />
+                       )}
                       <span className="w-7 shrink-0 text-center font-mono text-xs font-semibold text-neutral-500 bg-neutral-100 rounded px-1 py-0.5">
                         S{idx + 1}
                       </span>
@@ -375,97 +541,106 @@ export const CourseStructureDetails = ({
                                   <div className="flex items-center justify-center w-5 h-5 rounded bg-gradient-to-br from-blue-500 to-blue-600 text-white">
                                     <FileText size={12} />
                                   </div>
+                                  {thumbUrlById[`module:${mod.module.id}`] && (
+                                    <img
+                                      src={thumbUrlById[`module:${mod.module.id}`]}
+                                      alt=""
+                                      className="w-5 h-5 rounded-sm object-cover border border-neutral-200"
+                                      onLoad={() => console.log('[thumb] module img load', { id: mod.module.id })}
+                                      onError={(e) => {
+                                        console.warn('[thumb] module img error', { id: mod.module.id, src: e.currentTarget.src });
+                                        e.currentTarget.style.display = 'none';
+                                      }}
+                                    />
+                                  )}
                                   <span className="w-6 shrink-0 text-center font-mono text-xs font-medium text-neutral-500 bg-neutral-100 rounded px-1">
                                     M{modIdx + 1}
                                   </span>
                                   <span
                                     className="truncate group-hover:text-blue-700 transition-colors"
-                                    title={mod.module.module_name}
+                                    title={toTitleCase(mod.module.module_name)}
                                   >
-                                    {mod.module.module_name}
+                                    {toTitleCase(mod.module.module_name)}
                                   </span>
                                 </div>
                               </CollapsibleTrigger>
-
                               <CollapsibleContent
-                                className={`py-1 ${moduleContentIndent}`}
+                                className={`pb-1 pt-2 ${moduleContentIndent}`}
                               >
-                                <div className="space-y-0.5 border-l-2 border-blue-200/40 pl-2.5 relative">
-                                  <div className="absolute left-0 top-0 w-0.5 h-full bg-gradient-to-b from-blue-300/60 to-transparent"></div>
-                                  {(mod.chapters ?? []).map((ch, chIdx) => {
-                                    const isChapterOpen = openChapters.has(
-                                      ch.id
-                                    );
-
+                                <div className="space-y-1 border-l-2 border-gradient-to-b from-blue-200/60 to-neutral-200/40 pl-3 relative">
+                                  <div className="absolute left-0 top-0 w-0.5 h-full bg-gradient-to-b from-blue-300/80 to-transparent"></div>
+                                  {mod.chapters.map((ch, chIdx) => {
+                                    const isChapterOpen = openChapters.has(ch.id);
+                                    const chapterContentIndent = `pl-[calc(16px+0.5rem+16px+0.5rem+1.5rem+1.5rem)]`;
                                     return (
                                       <Collapsible
                                         key={ch.id}
                                         open={isChapterOpen}
-                                        onOpenChange={() => {
-                                          toggleChapter(ch.id);
-                                          getSlidesWithChapterId(ch.id);
-                                        }}
+                                        onOpenChange={() => toggleChapter(ch.id)}
                                       >
-                                        <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2 py-1 text-left text-sm text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-green-50/70 hover:to-emerald-50/50 hover:border-green-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1">
-                                          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                                        <CollapsibleTrigger className="group flex w-full items-center rounded px-2 py-1 text-left text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-indigo-50/70 hover:to-purple-50/50 hover:border-indigo-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-1">
+                                          <div className="flex min-w-0 flex-1 items-center gap-2">
                                             {isChapterOpen ? (
                                               <CaretDown
                                                 size={14}
-                                                className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
+                                                className="shrink-0 text-neutral-500 group-hover:text-indigo-600 transition-colors"
                                               />
                                             ) : (
                                               <CaretRight
                                                 size={14}
-                                                className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
+                                                className="shrink-0 text-neutral-500 group-hover:text-indigo-600 transition-colors"
                                               />
                                             )}
-                                            <div className="flex items-center justify-center w-4 h-4 rounded bg-gradient-to-br from-green-500 to-green-600 text-white">
+                                            <div className="flex items-center justify-center w-4 h-4 rounded bg-gradient-to-br from-indigo-500 to-indigo-600 text-white">
                                               <PresentationChart size={10} />
                                             </div>
+                                            {thumbUrlById[`chapter:${ch.id}`] && (
+                                              <img
+                                                src={thumbUrlById[`chapter:${ch.id}`]}
+                                                alt=""
+                                                className="w-4 h-4 rounded-sm object-cover border border-neutral-200"
+                                                onLoad={() => console.log('[thumb] chapter img load', { id: ch.id })}
+                                                onError={(e) => {
+                                                  console.warn('[thumb] chapter img error', { id: ch.id, src: e.currentTarget.src });
+                                                  e.currentTarget.style.display = 'none';
+                                                }}
+                                              />
+                                            )}
                                             <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
                                               C{chIdx + 1}
                                             </span>
                                             <span
-                                              className="truncate group-hover:text-green-700 transition-colors text-xs"
-                                              title={toTitleCase(
-                                                ch.chapter_name
-                                              )}
+                                              className="truncate group-hover:text-indigo-700 transition-colors"
+                                              title={toTitleCase(ch.chapter_name)}
                                             >
                                               {toTitleCase(ch.chapter_name)}
                                             </span>
                                           </div>
                                         </CollapsibleTrigger>
-                                        <CollapsibleContent>
-                                          <div className="space-y-px ml-5 border-l border-green-200/50 py-1 pl-2 relative">
-                                            <div className="absolute left-0 top-0 w-px h-full bg-gradient-to-b from-green-300/50 to-transparent"></div>
-                                            {(slidesMap[ch.id] ?? []).length ===
-                                            0 ? (
-                                              <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
-                                                No slides in this chapter.
+                                        <CollapsibleContent
+                                          className={`pb-1 pt-2 ${chapterContentIndent}`}
+                                        >
+                                          <div className="space-y-1 border-l-2 border-gradient-to-b from-indigo-200/60 to-neutral-200/40 pl-3 relative">
+                                            <div className="absolute left-0 top-0 w-0.5 h-full bg-gradient-to-b from-indigo-300/80 to-transparent"></div>
+                                            {slidesMap[ch.id]?.map((slide, slideIdx) => (
+                                              <div
+                                                key={slide.id}
+                                                className="group/item flex items-center gap-2 px-2 py-1.5 rounded text-sm text-neutral-600 hover:bg-gradient-to-r hover:from-purple-50/70 hover:to-pink-50/50 hover:border-purple-200/60 border border-transparent transition-all duration-200 hover:shadow-sm"
+                                              >
+                                                <div className="flex items-center justify-center w-4 h-4 rounded bg-gradient-to-br from-purple-500 to-purple-600 text-white">
+                                                  {getIcon(slide, "4")}
+                                                </div>
+                                                <span className="w-5 shrink-0 text-center font-mono text-xs font-medium text-neutral-500 bg-neutral-100 rounded px-1">
+                                                  S{slideIdx + 1}
+                                                </span>
+                                                <span
+                                                  className="truncate group-hover/item:text-purple-700 transition-colors"
+                                                  title={toTitleCase(slide.title)}
+                                                >
+                                                  {toTitleCase(slide.title)}
+                                                </span>
                                               </div>
-                                            ) : (
-                                              (slidesMap[ch.id] ?? []).map(
-                                                (slide, sIdx) => (
-                                                  <div
-                                                    key={slide.id}
-                                                    className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40 border border-transparent transition-all duration-200"
-                                                  >
-                                                    <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
-                                                      S{sIdx + 1}
-                                                    </span>
-                                                    <div className="shrink-0 group-hover:scale-110 transition-transform">
-                                                      {getIcon(slide, "3")}
-                                                    </div>
-                                                    <span
-                                                      className="truncate group-hover:text-amber-700 transition-colors"
-                                                      title={slide.title}
-                                                    >
-                                                      {slide.title}
-                                                    </span>
-                                                  </div>
-                                                )
-                                              )
-                                            )}
+                                            ))}
                                           </div>
                                         </CollapsibleContent>
                                       </Collapsible>
@@ -519,6 +694,13 @@ export const CourseStructureDetails = ({
                                   <div className="flex items-center justify-center w-5 h-5 rounded bg-gradient-to-br from-blue-500 to-blue-600 text-white">
                                     <FileText size={12} />
                                   </div>
+                                  {thumbUrlById[`module:${mod.module.id}`] && (
+                                    <img
+                                      src={thumbUrlById[`module:${mod.module.id}`]}
+                                      alt=""
+                                      className="w-5 h-5 rounded-sm object-cover border border-neutral-200"
+                                    />
+                                  )}
                                   <span className="w-6 shrink-0 text-center font-mono text-xs font-medium text-neutral-500 bg-neutral-100 rounded px-1">
                                     M{modIdx + 1}
                                   </span>
@@ -566,6 +748,13 @@ export const CourseStructureDetails = ({
                                             <div className="flex items-center justify-center w-4 h-4 rounded bg-gradient-to-br from-green-500 to-green-600 text-white">
                                               <PresentationChart size={10} />
                                             </div>
+                                            {thumbUrlById[`chapter:${ch.id}`] && (
+                                              <img
+                                                src={thumbUrlById[`chapter:${ch.id}`]}
+                                                alt=""
+                                                className="w-4 h-4 rounded-sm object-cover border border-neutral-200"
+                                              />
+                                            )}
                                             <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
                                               C{chIdx + 1}
                                             </span>
@@ -814,6 +1003,19 @@ export const CourseStructureDetails = ({
         </div>
       </div>
     ),
+    [TabType.CONTENT_STRUCTURE]: (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <TreeStructure size={18} className="text-primary-600" />
+          <span className="text-sm font-medium text-neutral-700">
+            Content Structure
+          </span>
+        </div>
+        <div className="text-sm text-neutral-600">
+          Content structure view will be implemented here.
+        </div>
+      </div>
+    ),
     [TabType.TEACHERS]: (
       <div className="rounded-lg bg-gradient-to-br from-white to-neutral-50/50 border border-neutral-200 p-6 text-sm text-neutral-600">
         <div className="flex items-center gap-3 mb-3">
@@ -843,63 +1045,6 @@ export const CourseStructureDetails = ({
     ),
   };
 
-  useEffect(() => {
-    const loadModules = async () => {
-      try {
-        const modulesMap = await fetchModules({
-          subjects: getSubjectDetails(
-            courseData,
-            selectedSession,
-            selectedLevel
-          ),
-        });
-        setSubjectModulesMap(modulesMap);
-
-        // Auto-expand all sections by default
-        const allSubjectIds = new Set<string>(
-          getSubjectDetails(courseData, selectedSession, selectedLevel).map(
-            (s: SubjectType) => s.id
-          )
-        );
-        const allModuleIds = new Set<string>();
-        const allChapterIds = new Set<string>();
-
-        Object.values(modulesMap).forEach((modules) => {
-          modules.forEach((mod) => {
-            allModuleIds.add(mod.module.id);
-            mod.chapters.forEach((ch) => {
-              allChapterIds.add(ch.id);
-              // Load slides for each chapter
-              getSlidesWithChapterId(ch.id);
-            });
-          });
-        });
-
-        setOpenSubjects(allSubjectIds);
-        setOpenModules(allModuleIds);
-        setOpenChapters(allChapterIds);
-      } catch (error) {
-        console.error("Failed to fetch modules:", error);
-        setSubjectModulesMap({});
-      }
-    };
-    loadModules();
-  }, [studyLibraryData, packageSessionId, fetchModules]);
-
-  useEffect(() => {
-    setStudyLibraryData(
-      getSubjectDetails(courseData, selectedSession, selectedLevel)
-    );
-  }, [selectedSession, selectedLevel]);
-
-  useEffect(() => {
-    setNavHeading(
-      <div className="flex items-center gap-2">
-        <div>Study Materials</div>
-      </div>
-    );
-  }, []);
-
   return (
     <PullToRefreshWrapper onRefresh={refreshData}>
       <div className="flex size-full flex-col gap-4 rounded-lg bg-gradient-to-br from-neutral-50/50 to-white py-4 text-neutral-700">
@@ -927,7 +1072,9 @@ export const CourseStructureDetails = ({
             value={selectedTab}
             className="mt-4 rounded-lg bg-white border border-neutral-200/60 p-4"
           >
-            {tabContent[selectedTab as TabType]}
+            {(selectedTab as TabType) === TabType.CONTENT_STRUCTURE
+              ? tabContent[TabType.OUTLINE]
+              : tabContent[selectedTab as TabType]}
           </TabsContent>
         </Tabs>
       </div>

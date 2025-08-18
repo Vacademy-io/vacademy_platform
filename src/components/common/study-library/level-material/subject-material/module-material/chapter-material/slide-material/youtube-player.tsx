@@ -77,6 +77,8 @@ interface YouTubePlayerProps {
   }>;
   allowPlayPause?: boolean; // If false, play/pause controls are disabled
   allowRewind?: boolean; // If false, rewind controls are disabled
+  isLiveStream?: boolean; // If true, indicates this is a live stream
+  liveTimestamp?: number; // Current live timestamp in seconds (for live streams)
 }
 
 export const formatTime = (timeInSeconds: number) => {
@@ -92,6 +94,8 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   questions = [],
   allowPlayPause = true,
   allowRewind = true,
+  isLiveStream = false,
+  liveTimestamp = 0,
 }) => {
   const { activeItem } = useContentStore();
   // Subscribe only to addActivity to avoid re-render on every trackingData update
@@ -144,18 +148,24 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   // UI control states
   const [showControls, setShowControls] = useState(true);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [showSeekAnimation, setShowSeekAnimation] = useState<{ side: 'left' | 'right', show: boolean }>({ side: 'left', show: false });
+  const [showSeekAnimation, setShowSeekAnimation] = useState<{
+    side: "left" | "right";
+    show: boolean;
+  }>({ side: "left", show: false });
 
   // Question state
   const [currentQuestion, setCurrentQuestion] = useState<any>(null);
   const [showQuestion, setShowQuestion] = useState(false);
   const [answeredQuestions, setAnsweredQuestions] = useState<
-    Record<string, {
-      answered: boolean;
-      selectedOptions: string | string[];
-      isCorrect?: boolean;
-      timestamp: number;
-    }>
+    Record<
+      string,
+      {
+        answered: boolean;
+        selectedOptions: string | string[];
+        isCorrect?: boolean;
+        timestamp: number;
+      }
+    >
   >({});
 
   // Verification state
@@ -176,8 +186,15 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   );
   const [concentrationScore, setConcentrationScore] = useState(100); // Start with perfect score
 
+  // Live stream state
+  const [isBehindLive, setIsBehindLive] = useState(false);
+  const [wasPausedByTabSwitch, setWasPausedByTabSwitch] = useState(false);
+
   // Memoize questions to prevent unnecessary re-renders
-  const memoizedQuestions = useMemo(() => questions, [JSON.stringify(questions)]);
+  const memoizedQuestions = useMemo(
+    () => questions,
+    [JSON.stringify(questions)]
+  );
 
   // Memoize timeToQuestionMap to prevent recreating it unnecessarily
   const timeToQuestionMap = useMemo(() => {
@@ -189,11 +206,15 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     }
     return [];
   }, [memoizedQuestions]);
-  
+
   // Subscribe only to setter functions to avoid re-render on store updates
-  const setCurrentYoutubeTime = useMediaRefsStore(state => state.setCurrentYoutubeTime);
-  const setCurrentYoutubeVideoLength = useMediaRefsStore(state => state.setCurrentYoutubeVideoLength);
-  
+  const setCurrentYoutubeTime = useMediaRefsStore(
+    (state) => state.setCurrentYoutubeTime
+  );
+  const setCurrentYoutubeVideoLength = useMediaRefsStore(
+    (state) => state.setCurrentYoutubeVideoLength
+  );
+
   useEffect(() => {
     setCurrentYoutubeTime(currentTime);
   }, [currentTime, setCurrentYoutubeTime]);
@@ -228,12 +249,17 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       const currentTimeMs = currentTime * 1000;
 
       const questionToShow = timeToQuestionMap.find(({ time, question }) => {
-        if (answeredQuestions && answeredQuestions[question.id]?.answered) return false;
+        if (answeredQuestions && answeredQuestions[question.id]?.answered)
+          return false;
         return Math.abs(currentTimeMs - time) < 500;
       });
 
       if (questionToShow && !showQuestion) {
-        console.log("Question detected at time:", currentTimeMs, "- Force pausing video");
+        console.log(
+          "Question detected at time:",
+          currentTimeMs,
+          "- Force pausing video"
+        );
         // Use the force pause function for immediate pause
         player.pauseVideo();
         setIsPlayed(false);
@@ -256,14 +282,14 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     const isCorrect = true; // This should be based on actual evaluation logic
 
     // Mark question as answered with detailed info
-    setAnsweredQuestions(prev => ({
+    setAnsweredQuestions((prev) => ({
       ...prev,
       [currentQuestion.id]: {
         answered: true,
         selectedOptions: selectedOption,
         isCorrect,
-        timestamp: Date.now()
-      }
+        timestamp: Date.now(),
+      },
     }));
 
     // Return mock response (in a real app, this would come from the server)
@@ -278,14 +304,14 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   const handleQuestionClose = () => {
     // Mark question as skipped only if it's skippable
     if (currentQuestion && currentQuestion.can_skip) {
-      setAnsweredQuestions(prev => ({
+      setAnsweredQuestions((prev) => ({
         ...prev,
         [currentQuestion.id]: {
           answered: true,
           selectedOptions: [],
           isCorrect: false,
-          timestamp: Date.now()
-        }
+          timestamp: Date.now(),
+        },
       }));
     }
 
@@ -352,7 +378,14 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     } catch (error) {
       console.error("Error saving concentration metrics:", error);
     }
-  }, [tabSwitchCount, wrongAnswerCount, missedAnswerCount, pauseCount, answerTimesInSeconds, concentrationScore]);
+  }, [
+    tabSwitchCount,
+    wrongAnswerCount,
+    missedAnswerCount,
+    pauseCount,
+    answerTimesInSeconds,
+    concentrationScore,
+  ]);
 
   // Save verification time to Capacitor preferences
   const saveVerificationTime = async (time: number) => {
@@ -386,7 +419,13 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
     setConcentrationScore(newScore);
     saveConcentrationMetrics();
-  }, [tabSwitchCount, wrongAnswerCount, missedAnswerCount, pauseCount, saveConcentrationMetrics]);
+  }, [
+    tabSwitchCount,
+    wrongAnswerCount,
+    missedAnswerCount,
+    pauseCount,
+    saveConcentrationMetrics,
+  ]);
 
   // Generate verification numbers
   const generateVerificationNumbers = useCallback(() => {
@@ -553,45 +592,55 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   }, []);
 
   // Function to check if user can navigate to a specific time
-  const canNavigateToTime = useCallback((targetTimeSeconds: number) => {
-    const targetTimeMs = targetTimeSeconds * 1000;
-    
-    // Find all questions that come before or at the target time
-    const previousQuestions = timeToQuestionMap.filter(({ time }) => time <= targetTimeMs);
-    
-    // Check if all previous questions that cannot be skipped are answered
-    for (const { question } of previousQuestions) {
-      if (!question.can_skip && !answeredQuestions[question.id]?.answered) {
-        return false; // Cannot navigate forward past unanswered required questions
+  const canNavigateToTime = useCallback(
+    (targetTimeSeconds: number) => {
+      const targetTimeMs = targetTimeSeconds * 1000;
+
+      // Find all questions that come before or at the target time
+      const previousQuestions = timeToQuestionMap.filter(
+        ({ time }) => time <= targetTimeMs
+      );
+
+      // Check if all previous questions that cannot be skipped are answered
+      for (const { question } of previousQuestions) {
+        if (!question.can_skip && !answeredQuestions[question.id]?.answered) {
+          return false; // Cannot navigate forward past unanswered required questions
+        }
       }
-    }
-    
-    return true;
-  }, [timeToQuestionMap, answeredQuestions]);
+
+      return true;
+    },
+    [timeToQuestionMap, answeredQuestions]
+  );
 
   // Function to handle question marker click
-  const handleQuestionMarkerClick = useCallback((questionData: any) => {
-    // Check if we can navigate to this question's time
-    const questionTimeSeconds = questionData.question_time_in_millis / 1000;
-    
-    if (!canNavigateToTime(questionTimeSeconds)) {
-      // Show a message that they need to answer previous questions first
-      console.log("Cannot navigate: Please answer previous required questions first");
-      return;
-    }
+  const handleQuestionMarkerClick = useCallback(
+    (questionData: any) => {
+      // Check if we can navigate to this question's time
+      const questionTimeSeconds = questionData.question_time_in_millis / 1000;
 
-    // Set the current question and show overlay
-    setCurrentQuestion(questionData);
-    setShowQuestion(true);
-    
-    // Pause the video
-    if (player) {
-      player.pauseVideo();
-      setIsPlayed(false);
-      stopProgressTracking();
-      stopTimer();
-    }
-  }, [canNavigateToTime, player, stopProgressTracking, stopTimer]);
+      if (!canNavigateToTime(questionTimeSeconds)) {
+        // Show a message that they need to answer previous questions first
+        console.log(
+          "Cannot navigate: Please answer previous required questions first"
+        );
+        return;
+      }
+
+      // Set the current question and show overlay
+      setCurrentQuestion(questionData);
+      setShowQuestion(true);
+
+      // Pause the video
+      if (player) {
+        player.pauseVideo();
+        setIsPlayed(false);
+        stopProgressTracking();
+        stopTimer();
+      }
+    },
+    [canNavigateToTime, player, stopProgressTracking, stopTimer]
+  );
 
   // Pause video when tab is switched
   useEffect(() => {
@@ -600,9 +649,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         // Tab switched away
         setTabSwitchCount((prev) => prev + 1);
 
-        if (player) {
+        if (player && isPlayed) {
           player.pauseVideo();
           setIsPlayed(false);
+          setWasPausedByTabSwitch(true); // Mark that video was paused by tab switch
         }
 
         // Close the verification dialog if it's open
@@ -615,6 +665,17 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
             verificationTimerRef.current = null;
           }
         }
+      } else {
+        // Tab is back in focus
+        // Auto-play if allowPlayPause is false and video was paused by tab switch
+        if (player && wasPausedByTabSwitch && !allowPlayPause) {
+          setTimeout(() => {
+            player.playVideo();
+            setIsPlayed(true);
+            setWasPausedByTabSwitch(false);
+            console.log("Auto-resumed video after returning from tab switch");
+          }, 500); // Small delay to ensure tab is fully focused
+        }
       }
     };
 
@@ -623,7 +684,13 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [player, showVerification]);
+  }, [
+    player,
+    showVerification,
+    isPlayed,
+    wasPausedByTabSwitch,
+    allowPlayPause,
+  ]);
 
   // Get duration when player is ready
   useEffect(() => {
@@ -651,13 +718,19 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       try {
         const time = await safeGetNumber(player.getCurrentTime());
         setCurrentTime(time);
+
+        // Check if user is behind live for live streams
+        if (isLiveStream && liveTimestamp > 0) {
+          const timeDifference = liveTimestamp - time;
+          setIsBehindLive(timeDifference > 30); // Consider behind if more than 30 seconds
+        }
       } catch (error) {
         console.error("Error getting current time:", error);
       }
     }, 1000);
 
     return () => clearInterval(updateTimeInterval);
-  }, [player, isPlayed]);
+  }, [player, isPlayed, isLiveStream, liveTimestamp]);
 
   // Activity tracking effect
   useEffect(() => {
@@ -865,7 +938,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         stopTimer();
         console.log("VideoQuestionOverlay: Video force paused successfully");
       } catch (error) {
-        console.error("VideoQuestionOverlay: Error force pausing video:", error);
+        console.error(
+          "VideoQuestionOverlay: Error force pausing video:",
+          error
+        );
       }
     } else {
       console.warn("VideoQuestionOverlay: Player not ready for force pause");
@@ -952,7 +1028,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       if (isNowFullscreen) {
         // Entering fullscreen - show fullscreen controls
         setShowFullscreenControls(true);
-        
+
         // Hide controls after 3 seconds
         if (fullscreenControlsTimeoutRef.current) {
           clearTimeout(fullscreenControlsTimeoutRef.current);
@@ -965,7 +1041,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         // Exiting fullscreen - show regular controls
         setShowFullscreenControls(false);
         setShowControls(true);
-        
+
         // Hide regular controls after 3 seconds
         if (controlsTimeoutRef.current) {
           clearTimeout(controlsTimeoutRef.current);
@@ -1061,13 +1137,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         setIsFirstPlay(false);
 
         if (!updateIntervalRef.current) {
-          updateIntervalRef.current = setInterval(
-            () => {
-              console.log("integrate update video activity api now");
-              syncVideoTrackingData();
-            },
-            60 * 1000
-          );
+          updateIntervalRef.current = setInterval(() => {
+            console.log("integrate update video activity api now");
+            syncVideoTrackingData();
+          }, 60 * 1000);
         }
       }
 
@@ -1113,8 +1186,17 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     }
   };
 
-  const seekToTimestamp = async (targetTimeInSeconds?: number, forceSeek = false) => {
+  const seekToTimestamp = async (
+    targetTimeInSeconds?: number,
+    forceSeek = false
+  ) => {
     if (!player || !playerReady) return false;
+
+    // Block manual seeking if rewind is not allowed (unless it's a forced seek like initial ms prop)
+    if (!forceSeek && !allowRewind) {
+      console.log("Manual seeking blocked: Navigation controls are disabled");
+      return false;
+    }
 
     let totalSecondsToSeek: number;
 
@@ -1128,7 +1210,9 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
     // Check navigation restrictions unless forced (e.g., for initial seek with ms prop)
     if (!forceSeek && !canNavigateToTime(totalSecondsToSeek)) {
-      console.log("Navigation blocked: Please answer previous required questions first");
+      console.log(
+        "Navigation blocked: Please answer previous required questions first"
+      );
       // You could show a toast notification here
       return false;
     }
@@ -1204,93 +1288,140 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   }, []);
 
   // Function to change playback speed
-  const changePlaybackSpeed = useCallback((speed: number) => {
-    if (player && playerReady) {
-      try {
-        player.setPlaybackRate(speed);
-        setPlaybackSpeed(speed);
-        setShowSpeedOptions(false);
-        console.log(`Playback speed changed to ${speed}x`);
-      } catch (error) {
-        console.error("Error changing playback speed:", error);
+  const changePlaybackSpeed = useCallback(
+    (speed: number) => {
+      // Block speed changes if rewind is not allowed
+      if (!allowRewind) {
+        console.log("Speed change blocked: Navigation controls are disabled");
+        return;
       }
-    }
-  }, [player, playerReady]);
+
+      if (player && playerReady) {
+        try {
+          player.setPlaybackRate(speed);
+          setPlaybackSpeed(speed);
+          setShowSpeedOptions(false);
+          console.log(`Playback speed changed to ${speed}x`);
+        } catch (error) {
+          console.error("Error changing playback speed:", error);
+        }
+      }
+    },
+    [player, playerReady, allowRewind]
+  );
 
   // Handle volume change
-  const handleVolumeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const newVolume = parseInt(e.target.value, 10);
-    setVolume(newVolume);
-    if (player) {
-      try {
-        player.setVolume(newVolume);
-      } catch (err) {
-        console.error("Error setting volume", err);
+  const handleVolumeChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const newVolume = parseInt(e.target.value, 10);
+      setVolume(newVolume);
+      if (player) {
+        try {
+          player.setVolume(newVolume);
+        } catch (err) {
+          console.error("Error setting volume", err);
+        }
       }
-    }
-  }, [player]);
+    },
+    [player]
+  );
 
   // Toggle speed options dropdown
   const toggleSpeedOptions = useCallback(() => {
-    setShowSpeedOptions(prev => !prev);
-  }, []);
+    // Only allow toggling if rewind is allowed
+    if (!allowRewind) {
+      console.log("Speed control blocked: Navigation controls are disabled");
+      return;
+    }
+    setShowSpeedOptions((prev) => !prev);
+  }, [allowRewind]);
+
+  // Go to live timestamp (for live streams)
+  const goToLive = useCallback(async () => {
+    if (!player || !playerReady || !isLiveStream || liveTimestamp <= 0) return;
+
+    try {
+      player.seekTo(liveTimestamp, true);
+      setCurrentTime(liveTimestamp);
+      setIsBehindLive(false);
+      console.log(`Jumped to live timestamp: ${liveTimestamp}s`);
+    } catch (error) {
+      console.error("Error seeking to live timestamp:", error);
+    }
+  }, [player, playerReady, isLiveStream, liveTimestamp]);
 
   // Close speed options when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
-      if (showSpeedOptions && !target.closest('.speed-control-container')) {
+      if (showSpeedOptions && !target.closest(".speed-control-container")) {
         setShowSpeedOptions(false);
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [showSpeedOptions]);
 
   // Handle double-click to seek
-  const handleDoubleClick = useCallback(async (event: React.MouseEvent<HTMLDivElement>) => {
-    if (!player || !playerReady) return;
+  const handleDoubleClick = useCallback(
+    async (event: React.MouseEvent<HTMLDivElement>) => {
+      if (!player || !playerReady) return;
 
-    const rect = event.currentTarget.getBoundingClientRect();
-    const clickX = event.clientX - rect.left;
-    const isRightSide = clickX > rect.width / 2;
-
-    try {
-      const currentTime = await safeGetNumber(player.getCurrentTime());
-      const duration = await safeGetNumber(player.getDuration());
-      
-      let newTime: number;
-      if (isRightSide) {
-        // Forward 10 seconds
-        newTime = Math.min(currentTime + 10, duration);
-        setShowSeekAnimation({ side: 'right', show: true });
-      } else {
-        // Backward 10 seconds
-        newTime = Math.max(currentTime - 10, 0);
-        setShowSeekAnimation({ side: 'left', show: true });
-      }
-
-      // Check if navigation is allowed (only for forward seeks)
-      if (isRightSide && !canNavigateToTime(newTime)) {
-        console.log("Navigation blocked: Please answer previous required questions first");
-        setShowSeekAnimation({ side: 'right', show: false });
+      // Block double-click seeking if rewind is not allowed
+      if (!allowRewind) {
+        console.log(
+          "Double-click seeking blocked: Navigation controls are disabled"
+        );
         return;
       }
 
-      player.seekTo(newTime, true);
-      setCurrentTime(newTime);
+      const rect = event.currentTarget.getBoundingClientRect();
+      const clickX = event.clientX - rect.left;
+      const isRightSide = clickX > rect.width / 2;
 
-      // Hide animation after 1 second
-      setTimeout(() => {
-        setShowSeekAnimation({ side: isRightSide ? 'right' : 'left', show: false });
-      }, 1000);
-    } catch (error) {
-      console.error("Error seeking on double click:", error);
-    }
-  }, [player, playerReady, canNavigateToTime]);
+      try {
+        const currentTime = await safeGetNumber(player.getCurrentTime());
+        const duration = await safeGetNumber(player.getDuration());
+
+        let newTime: number;
+        if (isRightSide) {
+          // Forward 10 seconds
+          newTime = Math.min(currentTime + 10, duration);
+          setShowSeekAnimation({ side: "right", show: true });
+        } else {
+          // Backward 10 seconds
+          newTime = Math.max(currentTime - 10, 0);
+          setShowSeekAnimation({ side: "left", show: true });
+        }
+
+        // Check if navigation is allowed (only for forward seeks)
+        if (isRightSide && !canNavigateToTime(newTime)) {
+          console.log(
+            "Navigation blocked: Please answer previous required questions first"
+          );
+          setShowSeekAnimation({ side: "right", show: false });
+          return;
+        }
+
+        player.seekTo(newTime, true);
+        setCurrentTime(newTime);
+
+        // Hide animation after 1 second
+        setTimeout(() => {
+          setShowSeekAnimation({
+            side: isRightSide ? "right" : "left",
+            show: false,
+          });
+        }, 1000);
+      } catch (error) {
+        console.error("Error seeking on double click:", error);
+      }
+    },
+    [player, playerReady, canNavigateToTime, allowRewind]
+  );
 
   // Toggle play / pause on SINGLE click anywhere on the video (but ignore clicks on inner controls)
   const handleSingleClick = useCallback(
@@ -1311,16 +1442,16 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     },
     [player, playerReady, isPlayed, togglePause, togglePlay, allowPlayPause]
   );
- 
+
   // Handle mouse movement to show/hide controls
   const handleMouseMoveOnVideo = useCallback(() => {
     console.log("Mouse move detected, isFullscreen:", isFullscreen);
-    
+
     if (isFullscreen) {
       // Handle fullscreen controls
       console.log("Showing fullscreen controls");
       setShowFullscreenControls(true);
-      
+
       // Clear existing fullscreen timeout
       if (fullscreenControlsTimeoutRef.current) {
         clearTimeout(fullscreenControlsTimeoutRef.current);
@@ -1334,7 +1465,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     } else {
       // Handle regular controls
       setShowControls(true);
-      
+
       // Clear existing timeout
       if (controlsTimeoutRef.current) {
         clearTimeout(controlsTimeoutRef.current);
@@ -1342,7 +1473,8 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
       // Set timeout to hide controls after 3 seconds of inactivity
       controlsTimeoutRef.current = setTimeout(() => {
-        if (!showSpeedOptions) { // Don't hide if speed menu is open
+        if (!showSpeedOptions) {
+          // Don't hide if speed menu is open
           setShowControls(false);
         }
       }, 3000);
@@ -1364,13 +1496,19 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     console.log("Fullscreen controls state changed:", {
       isFullscreen,
       showFullscreenControls,
-      showControls
+      showControls,
     });
   }, [isFullscreen, showFullscreenControls, showControls]);
 
   // Handle progress bar click for seeking
   const handleProgressBarClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!player || !playerReady || duration <= 0) return;
+
+    // Block seeking if rewind is not allowed
+    if (!allowRewind) {
+      console.log("Seeking blocked: Navigation controls are disabled");
+      return;
+    }
 
     const progressBar = e.currentTarget;
     const rect = progressBar.getBoundingClientRect();
@@ -1379,7 +1517,9 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
     // Check if navigation is allowed
     if (!canNavigateToTime(seekTime)) {
-      console.log("Navigation blocked: Please answer previous required questions first");
+      console.log(
+        "Navigation blocked: Please answer previous required questions first"
+      );
       return;
     }
 
@@ -1470,7 +1610,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
         {/* Invisible fullscreen mouse capture overlay */}
         {isFullscreen && (
-          <div 
+          <div
             className="absolute inset-0 z-[9998] pointer-events-auto"
             onMouseMove={handleMouseMoveOnVideo}
             onMouseEnter={handleMouseMoveOnVideo}
@@ -1507,7 +1647,11 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                   }
                 }}
                 disabled={!allowRewind}
-                className={`p-3 rounded-full bg-black/60 text-white shadow-lg backdrop-blur-sm border border-white/10 ${allowRewind ? 'hover:bg-black/80 transition-all hover:scale-105' : 'opacity-50 cursor-not-allowed'}`}
+                className={`p-3 rounded-full bg-black/60 text-white shadow-lg backdrop-blur-sm border border-white/10 ${
+                  allowRewind
+                    ? "hover:bg-black/80 transition-all hover:scale-105"
+                    : "opacity-50 cursor-not-allowed"
+                }`}
                 aria-label="Rewind 10 seconds"
               >
                 <Rewind size={22} weight="bold" />
@@ -1516,7 +1660,11 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
               {isPlayed ? (
                 <button
                   onClick={togglePause}
-                  className={`p-4 rounded-full bg-black/60 text-white transition-all shadow-lg backdrop-blur-sm border border-white/10 ${allowPlayPause ? 'hover:bg-black/80 hover:scale-105' : 'opacity-50 cursor-not-allowed'}`}
+                  className={`p-4 rounded-full bg-black/60 text-white transition-all shadow-lg backdrop-blur-sm border border-white/10 ${
+                    allowPlayPause
+                      ? "hover:bg-black/80 hover:scale-105"
+                      : "opacity-50 cursor-not-allowed"
+                  }`}
                   disabled={!allowPlayPause}
                   aria-label="Pause"
                 >
@@ -1525,28 +1673,46 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
               ) : (
                 <button
                   onClick={togglePlay}
-                  className={`p-4 rounded-full bg-black/60 text-white transition-all shadow-lg backdrop-blur-sm border border-white/10 ${allowPlayPause ? 'hover:bg-black/80 hover:scale-105' : 'opacity-50 cursor-not-allowed'}`}
+                  className={`p-4 rounded-full bg-black/60 text-white transition-all shadow-lg backdrop-blur-sm border border-white/10 ${
+                    allowPlayPause
+                      ? "hover:bg-black/80 hover:scale-105"
+                      : "opacity-50 cursor-not-allowed"
+                  }`}
                   disabled={!allowPlayPause}
                   aria-label="Play"
                 >
                   <Play size={28} weight="bold" />
                 </button>
               )}
-
             </div>
           </div>
         )}
 
         {/* Seek animation overlays */}
         {showSeekAnimation.show && (
-          <div className={`absolute inset-0 flex items-center justify-center pointer-events-none z-[1000]`}>
-            <div className={`flex items-center gap-2 bg-black/70 backdrop-blur-sm rounded-lg px-4 py-2 text-white animate-in fade-in zoom-in duration-300 ${
-              showSeekAnimation.side === 'right' ? 'flex-row' : 'flex-row-reverse'
-            }`}>
+          <div
+            className={`absolute inset-0 flex items-center justify-center pointer-events-none z-[1000]`}
+          >
+            <div
+              className={`flex items-center gap-2 bg-black/70 backdrop-blur-sm rounded-lg px-4 py-2 text-white animate-in fade-in zoom-in duration-300 ${
+                showSeekAnimation.side === "right"
+                  ? "flex-row"
+                  : "flex-row-reverse"
+              }`}
+            >
               <div className="flex gap-1">
-                {[...Array(showSeekAnimation.side === 'right' ? 2 : 2)].map((_, i) => (
-                  <FastForward key={i} size={20} weight="fill" className={showSeekAnimation.side === 'right' ? '' : 'rotate-180'} />
-                ))}
+                {[...Array(showSeekAnimation.side === "right" ? 2 : 2)].map(
+                  (_, i) => (
+                    <FastForward
+                      key={i}
+                      size={20}
+                      weight="fill"
+                      className={
+                        showSeekAnimation.side === "right" ? "" : "rotate-180"
+                      }
+                    />
+                  )
+                )}
               </div>
               <span className="text-sm font-medium">10s</span>
             </div>
@@ -1555,9 +1721,13 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
         {/* Top Progress Bar */}
         {!isFullscreen && (
-          <div className={`absolute top-0 left-0 right-0 z-[999] transition-all duration-300 ${
-            showControls ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'
-          }`}>
+          <div
+            className={`absolute top-0 left-0 right-0 z-[999] transition-all duration-300 ${
+              showControls
+                ? "opacity-100 translate-y-0"
+                : "opacity-0 -translate-y-2"
+            }`}
+          >
             <div className="bg-gradient-to-b from-black/80 via-black/40 to-transparent p-4 pb-8">
               {/* Professional Video Controls Overlay */}
               <div className="flex items-center justify-between mb-4">
@@ -1567,7 +1737,11 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                   {isPlayed ? (
                     <button
                       onClick={togglePause}
-                      className={`p-2 rounded-full text-white transition-all backdrop-blur-sm ${allowPlayPause ? 'bg-white/20 hover:bg-white/30' : 'bg-white/10 opacity-50 cursor-not-allowed'}`}
+                      className={`p-2 rounded-full text-white transition-all backdrop-blur-sm ${
+                        allowPlayPause
+                          ? "bg-white/20 hover:bg-white/30"
+                          : "bg-white/10 opacity-50 cursor-not-allowed"
+                      }`}
                       disabled={!allowPlayPause}
                     >
                       <Pause size={20} weight="fill" />
@@ -1575,7 +1749,11 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                   ) : (
                     <button
                       onClick={togglePlay}
-                      className={`p-2 rounded-full text-white transition-all backdrop-blur-sm ${allowPlayPause ? 'bg-white/20 hover:bg-white/30' : 'bg-white/10 opacity-50 cursor-not-allowed'}`}
+                      className={`p-2 rounded-full text-white transition-all backdrop-blur-sm ${
+                        allowPlayPause
+                          ? "bg-white/20 hover:bg-white/30"
+                          : "bg-white/10 opacity-50 cursor-not-allowed"
+                      }`}
                       disabled={!allowPlayPause}
                     >
                       <Play size={20} weight="fill" />
@@ -1587,23 +1765,40 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                     onClick={() => {
                       if (!allowRewind) return;
                       if (player) {
-                        safeGetNumber(player.getCurrentTime()).then((currentTime) => {
-                          const newTime = Math.max(currentTime - 10, 0);
-                          player.seekTo(newTime, true);
-                          setCurrentTime(newTime);
-                        });
+                        safeGetNumber(player.getCurrentTime()).then(
+                          (currentTime) => {
+                            const newTime = Math.max(currentTime - 10, 0);
+                            player.seekTo(newTime, true);
+                            setCurrentTime(newTime);
+                          }
+                        );
                       }
                     }}
                     disabled={!allowRewind}
-                    className={`p-2 rounded-full text-white backdrop-blur-sm ${allowRewind ? 'bg-white/20 hover:bg-white/30 transition-all hover:scale-105' : 'bg-white/10 opacity-50 cursor-not-allowed'}`}
+                    className={`p-2 rounded-full text-white backdrop-blur-sm ${
+                      allowRewind
+                        ? "bg-white/20 hover:bg-white/30 transition-all hover:scale-105"
+                        : "bg-white/10 opacity-50 cursor-not-allowed"
+                    }`}
                   >
                     <Rewind size={18} weight="fill" />
                   </button>
-
                 </div>
 
                 {/* Right Controls */}
                 <div className="flex items-center gap-3">
+                  {/* Go Live Button - Only show for live streams when behind */}
+                  {isLiveStream && isBehindLive && (
+                    <button
+                      onClick={goToLive}
+                      className="flex items-center gap-1 px-3 py-1 rounded-full bg-red-500 hover:bg-red-600 text-white text-sm font-medium transition-all hover:scale-105 backdrop-blur-sm animate-pulse"
+                      title="Go to live stream"
+                    >
+                      <div className="w-2 h-2 bg-white rounded-full"></div>
+                      LIVE
+                    </button>
+                  )}
+
                   {/* Volume Slider */}
                   <div className="flex items-center gap-1">
                     <input
@@ -1620,8 +1815,12 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                   <div className="relative speed-control-container">
                     <button
                       onClick={toggleSpeedOptions}
-                      className="relative p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
-                      disabled={!playerReady}
+                      className={`relative p-2 rounded-full text-white transition-all backdrop-blur-sm ${
+                        allowRewind && playerReady
+                          ? "bg-white/20 hover:bg-white/30 hover:scale-105"
+                          : "bg-white/10 opacity-50 cursor-not-allowed"
+                      }`}
+                      disabled={!playerReady || !allowRewind}
                     >
                       <Gauge size={18} weight="fill" />
                       {playbackSpeed !== 1 && (
@@ -1630,9 +1829,9 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                         </span>
                       )}
                     </button>
-                    
-                    {/* Speed Options Dropdown */}
-                    {showSpeedOptions && (
+
+                    {/* Speed Options Dropdown - Only show if allowRewind is true */}
+                    {showSpeedOptions && allowRewind && (
                       <div className="absolute top-full right-0 mt-2 bg-black/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 py-2 z-50 min-w-[80px]">
                         <div className="px-3 py-1 text-xs font-medium text-white/70 border-b border-white/20 mb-1">
                           Speed
@@ -1642,8 +1841,8 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                             key={speed}
                             onClick={() => changePlaybackSpeed(speed)}
                             className={`w-full px-3 py-2 text-sm text-left hover:bg-white/20 transition-colors ${
-                              playbackSpeed === speed 
-                                ? "text-primary-400 bg-white/10 font-medium" 
+                              playbackSpeed === speed
+                                ? "text-primary-400 bg-white/10 font-medium"
                                 : "text-white"
                             }`}
                           >
@@ -1668,50 +1867,74 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
               {/* Progress Bar */}
               <div className="relative w-full">
                 <div
-                  className="w-full h-1 bg-white/30 rounded-full cursor-pointer group"
+                  className={`w-full h-1 bg-white/30 rounded-full group ${
+                    allowRewind ? "cursor-pointer" : "cursor-not-allowed"
+                  }`}
                   onClick={handleProgressBarClick}
                 >
                   <div
                     className="h-full bg-white rounded-full transition-all duration-150 group-hover:h-1.5"
                     style={{
-                      width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
+                      width: `${
+                        duration > 0 ? (currentTime / duration) * 100 : 0
+                      }%`,
                     }}
                   ></div>
                 </div>
-                
+
                 {/* Question Markers */}
                 {timeToQuestionMap.map(({ time, question }, index) => {
-                  const position = duration > 0 ? (time / 1000 / duration) * 100 : 0;
+                  const position =
+                    duration > 0 ? (time / 1000 / duration) * 100 : 0;
                   const isAnswered = answeredQuestions[question.id]?.answered;
                   const canSkip = question.can_skip;
-                  
+
                   return (
                     <button
                       key={question.id}
-                      className={`absolute w-3 h-3 rounded-full transform -translate-x-1/2 -translate-y-1 top-0 border-2 border-white shadow-lg transition-all hover:scale-125 z-10 ${
+                      className={`absolute w-3 h-3 rounded-full transform -translate-x-1/2 -translate-y-1 top-0 border-2 border-white shadow-lg transition-all z-10 ${
                         isAnswered
-                          ? "bg-green-500 hover:bg-green-600"
+                          ? "bg-green-500"
                           : canSkip
-                            ? "bg-yellow-500 hover:bg-yellow-600"
-                            : "bg-red-500 hover:bg-red-600"
+                          ? "bg-yellow-500"
+                          : "bg-red-500"
+                      } ${
+                        allowRewind
+                          ? "hover:scale-125 cursor-pointer hover:bg-green-600"
+                          : "cursor-not-allowed opacity-75"
                       }`}
-                      style={{ left: `${Math.max(1.5, Math.min(98.5, position))}%` }}
+                      style={{
+                        left: `${Math.max(1.5, Math.min(98.5, position))}%`,
+                      }}
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleQuestionMarkerClick(question);
+                        if (allowRewind) {
+                          handleQuestionMarkerClick(question);
+                        }
                       }}
-                      title={`Question ${index + 1}${isAnswered ? " (Answered)" : canSkip ? " (Skippable)" : " (Required)"}`}
+                      disabled={!allowRewind}
+                      title={`Question ${index + 1}${
+                        isAnswered
+                          ? " (Answered)"
+                          : canSkip
+                          ? " (Skippable)"
+                          : " (Required)"
+                      }${!allowRewind ? " (Navigation disabled)" : ""}`}
                     >
                       {isAnswered ? (
-                        <span className="text-white text-xs font-bold flex items-center justify-center w-full h-full">✓</span>
+                        <span className="text-white text-xs font-bold flex items-center justify-center w-full h-full">
+                          ✓
+                        </span>
                       ) : (
-                        <span className="text-white text-xs font-bold flex items-center justify-center w-full h-full">?</span>
+                        <span className="text-white text-xs font-bold flex items-center justify-center w-full h-full">
+                          ?
+                        </span>
                       )}
                     </button>
                   );
                 })}
               </div>
-              
+
               {/* Time Display */}
               <div className="flex justify-between text-white text-xs mt-2 font-medium">
                 <span>{formatTime(currentTime)}</span>
@@ -1739,13 +1962,17 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
             onSubmit={handleQuestionSubmit}
             onClose={handleQuestionClose}
             onPause={forcePause}
-            previousAnswer={currentQuestion ? answeredQuestions[currentQuestion.id]?.selectedOptions : undefined}
+            previousAnswer={
+              currentQuestion
+                ? answeredQuestions[currentQuestion.id]?.selectedOptions
+                : undefined
+            }
           />
         )}
       </div>
 
-      {/* Custom Time Jump Input - Compact Design */}
-      {!isFullscreen && (
+      {/* Custom Time Jump Input - Compact Design - Only show if rewind is allowed */}
+      {!isFullscreen && allowRewind && (
         <div className="flex items-center justify-center gap-2 mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
           <span className="text-sm text-gray-600 font-medium">Jump to:</span>
           <MyInput
@@ -1805,13 +2032,26 @@ interface YouTubePlayerWrapperProps {
   ms?: number;
   allowPlayPause?: boolean;
   allowRewind?: boolean;
+  isLiveStream?: boolean;
+  liveTimestamp?: number;
 }
 
 // This is a wrapper component that exposes the YouTube player methods
 const YouTubePlayerWrapper = forwardRef<any, YouTubePlayerWrapperProps>(
-  ({ videoId, onTimeUpdate, questions, ms, allowPlayPause, allowRewind }, ref) => {
+  (
+    {
+      videoId,
+      onTimeUpdate,
+      questions,
+      ms,
+      allowPlayPause,
+      allowRewind,
+      isLiveStream,
+      liveTimestamp,
+    },
+    ref
+  ) => {
     const playerRef = useRef<any>(null);
-
     // Expose methods to parent component
     useImperativeHandle(ref, () => ({
       playVideo: () => {
@@ -1858,6 +2098,8 @@ const YouTubePlayerWrapper = forwardRef<any, YouTubePlayerWrapperProps>(
         ms={ms}
         allowPlayPause={allowPlayPause}
         allowRewind={allowRewind}
+        isLiveStream={isLiveStream}
+        liveTimestamp={liveTimestamp}
       />
     );
   }

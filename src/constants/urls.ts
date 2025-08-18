@@ -108,3 +108,12 @@ export const LIVE_SESSION_ATTENDANCE_REPORT_BY_BATCH = `${BASE_URL}/admin-core-s
 export const LIVE_SESSION_ATTENDANCE_REPORT_BY_STUDENT = `${BASE_URL}/admin-core-service/live-session-report/student-report`;
 
 export const GET_BATCH_LIST = `${BASE_URL}/admin-core-service/batch/v1/batches-by-session`;
+
+// Push notifications
+export const PUSH_REGISTER_URL = `${BASE_URL}/notification-service/push-notifications/register`;
+export const PUSH_DEACTIVATE_URL = `${BASE_URL}/notification-service/push-notifications/deactivate`;
+
+// Enrollment API URLs
+export const ENROLLMENT_PAYMENT_GATEWAY_DETAILS = `${BASE_URL}/admin-core-service/open/v1/institute/payment-setting/payment-gateway-details`;
+export const ENROLLMENT_INVITE_DETAILS = `${BASE_URL}/admin-core-service/v1/enroll-invite`;
+export const ENROLLMENT_PAYMENT_INITIATION = `${BASE_URL}/admin-core-service/v1/learner/enroll`;

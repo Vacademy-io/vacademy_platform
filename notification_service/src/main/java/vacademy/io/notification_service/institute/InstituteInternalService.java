@@ -21,7 +21,7 @@ public class InstituteInternalService {
     @Value("${admin.core.service.baseurl}")
     private String adminCoreServerBaseUrl;
 
-    public InstituteDTO getInstituteByInstituteId(String instituteId) {
+    public InstituteInfoDTO getInstituteByInstituteId(String instituteId) {
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                 clientName,
                 HttpMethod.GET.name(),
@@ -35,7 +35,7 @@ public class InstituteInternalService {
         }
         try {
             ObjectMapper mapper = new ObjectMapper();
-            return mapper.readValue(response.getBody(), InstituteDTO.class);
+            return mapper.readValue(response.getBody(), InstituteInfoDTO.class);
         } catch (Exception e) {
             throw new VacademyException("Failed to parse institute data: " + e.getMessage());
         }

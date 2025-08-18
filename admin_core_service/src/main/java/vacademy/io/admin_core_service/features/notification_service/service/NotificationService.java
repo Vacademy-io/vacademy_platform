@@ -32,32 +32,18 @@ public class NotificationService {
     @Value("${notification.server.baseurl}")
     private String notificationServerBaseUrl;
 
-    public String sendEmailToUsers(NotificationDTO notificationDTO) {
+    public String sendEmailToUsers(NotificationDTO notificationDTO,String instituteId) {
         // Removed the redundant 'clientName' parameter, we can use the injected clientName field here
+        String url=NotificationConstant.EMAIL_TO_USERS+"?instituteId="+instituteId;
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                 clientName, // Directly use the injected 'clientName'
                 HttpMethod.POST.name(),
                 notificationServerBaseUrl,
-                NotificationConstant.EMAIL_TO_USERS,
+                url,
                 notificationDTO
         );
         return response.getBody();
     }
-    public Boolean sendTextEmail(EmailRequest request,String instituteId) {
-        String url=NotificationConstant.SEND_TEXT_EMAIL+"?instituteId="+instituteId;
-
-        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(), notificationServerBaseUrl, url, request);
-
-        ObjectMapper objectMapper = new ObjectMapper();
-        try {
-            Boolean isMailSent = objectMapper.readValue(response.getBody(), new TypeReference<Boolean>() {
-            });
-            return isMailSent;
-        } catch (JsonProcessingException e) {
-            throw new VacademyException(e.getMessage());
-        }
-    }
-
     public Boolean sendGenericHtmlMail(GenericEmailRequest request) {
 
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(), notificationServerBaseUrl, NotificationConstant.SEND_HTML_EMAIL, request);

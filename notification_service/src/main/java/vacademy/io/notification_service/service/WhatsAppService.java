@@ -9,7 +9,7 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import vacademy.io.notification_service.constants.NotificationConstants;
-import vacademy.io.notification_service.institute.InstituteDTO;
+import vacademy.io.notification_service.institute.InstituteInfoDTO;
 import vacademy.io.notification_service.institute.InstituteInternalService;
 
 import java.util.*;
@@ -76,7 +76,7 @@ public class WhatsAppService {
                                                            Map<String, Map<String, String>> headerParams, String languageCode, String headerType,String instituteId) {
 
         if(instituteId!=null){
-            InstituteDTO instituteDTO=internalService.getInstituteByInstituteId(instituteId);
+            InstituteInfoDTO instituteDTO=internalService.getInstituteByInstituteId(instituteId);
             String jsonString=instituteDTO.getSetting();
             System.out.println(instituteDTO);
 

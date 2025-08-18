@@ -27,7 +27,5 @@ public final class TemplateConstants {
     // -------------------- Default values --------------------
     public static final String DEFAULT_LANGUAGE = "en";
 
-    // -------------------- Placeholders --------------------
-    public static final String PLACEHOLDER_NAME = "{name}";
-    public static final String PLACEHOLDER_UNIQUE_LINK = "{unique_link}";
+
 }

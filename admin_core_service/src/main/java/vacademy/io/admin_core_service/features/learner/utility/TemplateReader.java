@@ -23,7 +23,7 @@ public class TemplateReader {
     @Autowired
     private NotificationService notificationService;
 
-    public String getEmailBody(String jsonSetting, String name, String uniqueLink) {
+    public String getEmailBody(String jsonSetting) {
         String template;
         try {
             JsonNode root = objectMapper.readTree(jsonSetting);
@@ -52,8 +52,7 @@ public class TemplateReader {
         }
 
         // Replace placeholders
-        return template.replace(TemplateConstants.PLACEHOLDER_NAME, name)
-                .replace(TemplateConstants.PLACEHOLDER_UNIQUE_LINK, uniqueLink);
+        return template;
     }
 
     public String sendWhatsAppMessage(String jsonSetting, UserDTO user, String uniqueLink,String instituteId) {

@@ -26,10 +26,6 @@ public class EmailInternalController {
     public ResponseEntity<Boolean> sendEmail(@RequestBody GenericEmailRequest request,@RequestParam(name = "instituteId" , required = false)String instituteId) {
         return ResponseEntity.ok(inviteNewUserService.sendEmail(request.getTo(), request.getSubject(), request.getService(), request.getBody(),instituteId));
     }
-    @PostMapping("/send-text-email")
-    public ResponseEntity<Boolean> sendTextEmail(@RequestBody EmailRequest request, @RequestParam(name = "instituteId" , required = false)String instituteId) {
-        return ResponseEntity.ok(inviteNewUserService.sendTextEmail(request.getTo(), request.getSubject(), request.getText(),instituteId));
-    }
 
     @PostMapping("/send-email-to-users")
     public ResponseEntity<String> sendEmailsToUsers(@RequestBody NotificationDTO emailToUsersDTO,@RequestParam(name = "instituteId" , required = false)String instituteId) {

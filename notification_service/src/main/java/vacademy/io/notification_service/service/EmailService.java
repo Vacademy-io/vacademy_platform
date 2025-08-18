@@ -22,7 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.notification_service.constants.NotificationConstants;
-import vacademy.io.notification_service.institute.InstituteDTO;
+import vacademy.io.notification_service.institute.InstituteInfoDTO;
 import vacademy.io.notification_service.institute.InstituteInternalService;
 
 import java.util.AbstractMap;
@@ -73,7 +73,7 @@ public class EmailService {
         String fromToUse = from;
 
         if (StringUtils.hasText(instituteId)) {
-            InstituteDTO institute = internalService.getInstituteByInstituteId(instituteId);
+            InstituteInfoDTO institute = internalService.getInstituteByInstituteId(instituteId);
             try {
                 if (institute != null && institute.getSetting() != null) {
                     JsonNode settings = objectMapper.readTree(institute.getSetting());

@@ -91,11 +91,11 @@ public class AnnouncementDeliveryService {
         
         switch (medium.getMediumType()) {
             case EMAIL:
-                deliverViaEmail(announcement, content, medium, pendingMessages);
+                deliverViaEmail(announcement, content, medium, pendingMessages,announcement.getInstituteId());
                 break;
                 
             case WHATSAPP:
-                deliverViaWhatsApp(announcement, content, medium, pendingMessages);
+                deliverViaWhatsApp(announcement, content, medium, pendingMessages,announcement.getInstituteId());
                 break;
                 
             case PUSH_NOTIFICATION:
@@ -111,7 +111,7 @@ public class AnnouncementDeliveryService {
      * Deliver via Email using existing EmailService
      */
     private void deliverViaEmail(Announcement announcement, RichTextData content, 
-                                AnnouncementMedium medium, List<RecipientMessage> pendingMessages) {
+                                AnnouncementMedium medium, List<RecipientMessage> pendingMessages,String instituteId) {
         
         Map<String, Object> emailConfig = medium.getMediumConfig();
         String subject = (String) emailConfig.getOrDefault("subject", announcement.getTitle());
@@ -130,7 +130,7 @@ public class AnnouncementDeliveryService {
                 String userEmail = forceToEmail != null && !forceToEmail.isBlank() ? forceToEmail : resolveUserEmail(message.getUserId());
                 if (userEmail != null) {
                     // Send email using existing service
-                    emailService.sendHtmlEmail(userEmail, subject, "announcement-service", content.getContent(),null);
+                    emailService.sendHtmlEmail(userEmail, subject, "announcement-service", content.getContent(),instituteId);
                     
                     message.setStatus(MessageStatus.DELIVERED);
                     message.setDeliveredAt(LocalDateTime.now());
@@ -161,7 +161,7 @@ public class AnnouncementDeliveryService {
      * Deliver via WhatsApp using existing WhatsAppService
      */
     private void deliverViaWhatsApp(Announcement announcement, RichTextData content, 
-                                   AnnouncementMedium medium, List<RecipientMessage> pendingMessages) {
+                                   AnnouncementMedium medium, List<RecipientMessage> pendingMessages,String instituteId) {
         
         Map<String, Object> whatsAppConfig = medium.getMediumConfig();
         String templateName = (String) whatsAppConfig.get("template_name");
@@ -190,7 +190,7 @@ public class AnnouncementDeliveryService {
                     // Send WhatsApp using existing service
                     // Note: This is a simplified call - actual implementation would need proper parameter mapping
                     Map<String, Map<String, String>> bodyParams = Map.of(userPhone, userSpecificValues);
-                    whatsAppService.sendWhatsappMessages(templateName, List.of(bodyParams), null, "en", null,null);
+                    whatsAppService.sendWhatsappMessages(templateName, List.of(bodyParams), null, "en", null,instituteId);
                     
                     message.setStatus(MessageStatus.DELIVERED);
                     message.setDeliveredAt(LocalDateTime.now());

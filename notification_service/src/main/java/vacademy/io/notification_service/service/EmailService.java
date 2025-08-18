@@ -21,6 +21,7 @@ import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.notification_service.constants.NotificationConstants;
 import vacademy.io.notification_service.institute.InstituteDTO;
 import vacademy.io.notification_service.institute.InstituteInternalService;
 
@@ -51,10 +52,10 @@ public class EmailService {
 
     private JavaMailSenderImpl createCustomMailSender(JsonNode emailSettings) {
         JavaMailSenderImpl mailSender = new JavaMailSenderImpl();
-        mailSender.setHost(emailSettings.path("host").asText());
-        mailSender.setPort(emailSettings.path("port").asInt(587));
-        mailSender.setUsername(emailSettings.path("username").asText());
-        mailSender.setPassword(emailSettings.path("password").asText());
+        mailSender.setHost(emailSettings.path(NotificationConstants.HOST).asText());
+        mailSender.setPort(emailSettings.path(NotificationConstants.PORT).asInt(587));
+        mailSender.setUsername(emailSettings.path(NotificationConstants.USERNAME).asText());
+        mailSender.setPassword(emailSettings.path(NotificationConstants.PASSWORD).asText());
 
         Properties props = mailSender.getJavaMailProperties();
         props.put("mail.transport.protocol", "smtp");
@@ -77,14 +78,14 @@ public class EmailService {
                 if (institute != null && institute.getSetting() != null) {
                     JsonNode settings = objectMapper.readTree(institute.getSetting());
                     JsonNode utilityEmailSettings = settings
-                            .path("setting")
-                            .path("EMAIL_SETTING")
-                            .path("data")
-                            .path("UTILITY_EMAIL");
+                            .path(NotificationConstants.SETTING)
+                            .path(NotificationConstants.EMAIL_SETTING)
+                            .path(NotificationConstants.DATA)
+                            .path(NotificationConstants.UTILITY_EMAIL);
 
                     if (!utilityEmailSettings.isMissingNode()) {
                         mailSenderToUse = createCustomMailSender(utilityEmailSettings);
-                        fromToUse = utilityEmailSettings.path("from").asText(from);
+                        fromToUse = utilityEmailSettings.path(NotificationConstants.FROM).asText(from);
                         logger.info("Using custom SMTP settings for institute: {}", instituteId);
                     } else {
                         logger.info("No custom SMTP settings found, using default SMTP");

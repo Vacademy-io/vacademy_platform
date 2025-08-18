@@ -5,10 +5,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import vacademy.io.notification_service.constants.NotificationConstants;
 import vacademy.io.notification_service.institute.InstituteDTO;
 import vacademy.io.notification_service.institute.InstituteInternalService;
 
@@ -83,13 +83,13 @@ public class WhatsAppService {
             try{
                 JsonNode root = objectMapper.readTree(jsonString);
                 // Navigate to WhatsApp Utility Setting
-                JsonNode whatsappSetting = root.path("setting")
-                        .path("WHATSAPP_SETTING")
-                        .path("data")
-                        .path("UTILITY_WHATSAPP");
+                JsonNode whatsappSetting = root.path(NotificationConstants.SETTING)
+                        .path(NotificationConstants.WHATSAPP_SETTING)
+                        .path(NotificationConstants.DATA)
+                        .path(NotificationConstants.UTILITY_WHATSAPP);
 
-                appId=whatsappSetting.path("appId").asText();
-                accessToken=whatsappSetting.path("accessToken").asText();
+                appId=whatsappSetting.path(NotificationConstants.APP_ID).asText();
+                accessToken=whatsappSetting.path(NotificationConstants.ACCESS_TOKEN).asText();
 
 
             }catch (Exception e){

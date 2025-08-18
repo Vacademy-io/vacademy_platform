@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import vacademy.io.admin_core_service.features.learner.constants.TemplateConstants;
 import vacademy.io.admin_core_service.features.notification.dto.WhatsappRequest;
 import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -30,17 +31,16 @@ public class TemplateReader {
             // Log the root to debug
             System.out.println(root.toPrettyString());
 
-            JsonNode welcomeMailDataNode = root.path("setting")
-                    .path("WELCOME_MAIL_SETTING")
-                    .path("data");
+            JsonNode welcomeMailDataNode = root.path(TemplateConstants.SETTING)
+                    .path(TemplateConstants.WELCOME_MAIL_SETTING)
+                    .path(TemplateConstants.DATA);
 
-            boolean allowUniqueLink = welcomeMailDataNode.path("allowUniqueLink").asBoolean(false);
-
+            boolean allowUniqueLink = welcomeMailDataNode.path(TemplateConstants.ALLOW_UNIQUE_LINK)
+                    .asBoolean(false);
             JsonNode templateNode = null;
             if (allowUniqueLink) {
-                templateNode = welcomeMailDataNode.path("template");
+                templateNode = welcomeMailDataNode.path(TemplateConstants.TEMPLATE);
             }
-
             if (templateNode.isMissingNode() || templateNode.asText().isEmpty()) {
                 throw new VacademyException("Email template not found in settings.");
             }
@@ -52,31 +52,30 @@ public class TemplateReader {
         }
 
         // Replace placeholders
-        return template.replace("{name}", name)
-                .replace("{unique_link}", uniqueLink);
+        return template.replace(TemplateConstants.PLACEHOLDER_NAME, name)
+                .replace(TemplateConstants.PLACEHOLDER_UNIQUE_LINK, uniqueLink);
     }
-
 
     public String sendWhatsAppMessage(String jsonSetting, UserDTO user, String uniqueLink,String instituteId) {
         try {
             JsonNode whatsappNode = objectMapper.readTree(jsonSetting)
-                    .path("setting")
-                    .path("WHATSAPP_WELCOME_SETTING")
-                    .path("data");
+                    .path(TemplateConstants.SETTING)
+                    .path(TemplateConstants.WHATSAPP_WELCOME_SETTING)
+                    .path(TemplateConstants.DATA);
 
             if (whatsappNode.isMissingNode()) {
                 throw new VacademyException("WHATSAPP_WELCOME_SETTING not found in settings");
             }
 
-            boolean allowUniqueLink = whatsappNode.path("allowUniqueLink").asBoolean(false);
+            boolean allowUniqueLink = whatsappNode.path(TemplateConstants.ALLOW_UNIQUE_LINK).asBoolean(false);
             if (!allowUniqueLink) {
                 return "WhatsApp sending skipped because allowUniqueLink is false";
             }
             // Create request
             WhatsappRequest request = new WhatsappRequest();
-            request.setTemplateName(whatsappNode.path("templateName").asText());
-            request.setLanguageCode(whatsappNode.path("languageCode").asText("en")); // default "en"
-
+            request.setTemplateName(whatsappNode.path(TemplateConstants.TEMPLATE_NAME).asText());
+            request.setLanguageCode(whatsappNode.path(TemplateConstants.LANGUAGE_CODE)
+                    .asText(TemplateConstants.DEFAULT_LANGUAGE));
             // Prepare placeholders
             List<Map<String, Map<String, String>>> bodyParams = new ArrayList<>();
             Map<String, String> params = new HashMap<>();

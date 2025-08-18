@@ -60,12 +60,9 @@ public class LearnerEnrollRequestService {
             UserDTO user = authService.createUserFromAuthService(learnerEnrollRequestDTO.getUser(), learnerEnrollRequestDTO.getInstituteId());
             learnerEnrollRequestDTO.setUser(user);
         }
-        String instituteId=learnerEnrollRequestDTO.getInstituteId();
-        UserDTO user=learnerEnrollRequestDTO.getUser();
-
         //by email and whatsapp
-        service.sendUniqueLinkByEmail(instituteId,user);
-        service.sendUniqueLinkByWhatsApp(instituteId,user);
+        service.sendUniqueLinkByEmail(learnerEnrollRequestDTO.getInstituteId(),learnerEnrollRequestDTO.getUser());
+        service.sendUniqueLinkByWhatsApp(learnerEnrollRequestDTO.getInstituteId(),learnerEnrollRequestDTO.getUser());
 
         EnrollInvite enrollInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
         PaymentOption paymentOption = getValidatedPaymentOption(enrollDTO.getPaymentOptionId());

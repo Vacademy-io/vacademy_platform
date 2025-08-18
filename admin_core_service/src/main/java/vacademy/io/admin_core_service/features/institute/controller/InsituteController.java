@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import vacademy.io.admin_core_service.features.institute.dto.InstituteDTO;
 import vacademy.io.admin_core_service.features.institute.service.InstituteService;
 import vacademy.io.common.institute.entity.Institute;
 
@@ -16,8 +17,8 @@ public class InsituteController {
     private InstituteService service;
 
     @GetMapping("/{instituteId}")
-    public ResponseEntity<Institute> getInstituteById(@PathVariable String instituteId) {
-        Institute institute = service.findById(instituteId);
+    public ResponseEntity<InstituteDTO> getInstituteById(@PathVariable String instituteId) {
+        InstituteDTO institute = service.getInstituteById(instituteId);
         return ResponseEntity.ok(institute);
     }
 }

@@ -1,12 +1,16 @@
 package vacademy.io.notification_service.service;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import vacademy.io.notification_service.constants.NotificationConstants;
+import vacademy.io.notification_service.institute.InstituteInfoDTO;
+import vacademy.io.notification_service.institute.InstituteInternalService;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -18,8 +22,10 @@ public class WhatsAppService {
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
 
-    @Value("${whatsapp.access-token}")
-    private String accessToken;
+    String appId=null;
+    String accessToken=null;
+    @Autowired
+    private InstituteInternalService internalService;
 
     public WhatsAppService() {
 
@@ -65,11 +71,38 @@ public class WhatsAppService {
         return new Parameter("date_time", null, null, null, null,
                 new DateTime(fallbackValue, timestamp));
     }
-
     public List<Map<String, Boolean>> sendWhatsappMessages(String templateName,
                                                            List<Map<String, Map<String, String>>> bodyParams,
-                                                           Map<String, Map<String, String>> headerParams,
-                                                           String languageCode, String headerType) {
+                                                           Map<String, Map<String, String>> headerParams, String languageCode, String headerType,String instituteId) {
+
+        if(instituteId!=null){
+            InstituteInfoDTO instituteDTO=internalService.getInstituteByInstituteId(instituteId);
+            String jsonString=instituteDTO.getSetting();
+            System.out.println(instituteDTO);
+
+            try{
+                JsonNode root = objectMapper.readTree(jsonString);
+                // Navigate to WhatsApp Utility Setting
+                JsonNode whatsappSetting = root.path(NotificationConstants.SETTING)
+                        .path(NotificationConstants.WHATSAPP_SETTING)
+                        .path(NotificationConstants.DATA)
+                        .path(NotificationConstants.UTILITY_WHATSAPP);
+
+                appId=whatsappSetting.path(NotificationConstants.APP_ID).asText();
+                accessToken=whatsappSetting.path(NotificationConstants.ACCESS_TOKEN).asText();
+
+
+            }catch (Exception e){
+                System.out.println("Exception occur"+e);
+                return null;
+            }
+
+
+        }else{
+            System.out.println("missing instituteId");
+            return null;
+        }
+
 
         // Deduplicate based on phone number, retaining the first occurrence
         Map<String, Map<String, String>> uniqueUsers = bodyParams.stream()
@@ -110,7 +143,7 @@ public class WhatsAppService {
                                 phoneNumber,
                                 templateName,
                                 languageCode,
-                                (headerComponent == null) ? List.of(bodyComponent) : List.of(bodyComponent, headerComponent)
+                                (headerComponent == null) ? List.of(bodyComponent) : List.of(bodyComponent, headerComponent),accessToken,appId
                         );
 
                         log.info("Whatsapp Response: " + response.getBody());
@@ -124,7 +157,7 @@ public class WhatsAppService {
     }
 
     public ResponseEntity<String> sendTemplateMessage(String toNumber, String templateName,
-                                                      String languageCode, List<Component> components) {
+                                                      String languageCode, List<Component> components,String accessToken,String appId) {
         try {
             // Create request body
             WhatsAppMessageRequest request = new WhatsAppMessageRequest(
@@ -150,7 +183,7 @@ public class WhatsAppService {
             HttpEntity<String> entity = new HttpEntity<>(jsonRequest, headers);
 
             // Send request
-            return restTemplate.exchange("https://graph.facebook.com/v22.0/" + "697982273396412" + "/messages", HttpMethod.POST, entity, String.class);
+            return restTemplate.exchange("https://graph.facebook.com/v22.0/" + appId+ "/messages", HttpMethod.POST, entity, String.class);
         } catch (Exception e) {
             throw new RuntimeException("Failed to send WhatsApp message", e);
         }

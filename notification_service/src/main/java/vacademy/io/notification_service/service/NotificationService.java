@@ -25,7 +25,7 @@ public class NotificationService {
     private final EmailService emailSenderService;
 
     @Transactional
-    public String sendNotification(NotificationDTO notificationDTO) {
+    public String sendNotification(NotificationDTO notificationDTO,String instituteId) {
         List<NotificationToUserDTO> users = notificationDTO.getUsers();
         List<NotificationLog> notificationLogs = new ArrayList<>(); // List to store all logs
 
@@ -42,7 +42,7 @@ public class NotificationService {
             // Send notification based on type
             switch (notificationType.toUpperCase()) {
                 case "EMAIL":
-                    emailSenderService.sendHtmlEmail(channelId, notificationDTO.getSubject(), "email-service", parsedBody);
+                    emailSenderService.sendHtmlEmail(channelId, notificationDTO.getSubject(), "email-service", parsedBody,instituteId);
                     break;
                 default:
                     throw new IllegalArgumentException("Unsupported notification type: " + notificationType);
@@ -75,7 +75,7 @@ public class NotificationService {
     }
 
     @Transactional
-    public Boolean sendAttachmentNotification(List<AttachmentNotificationDTO> attachmentNotificationDTOs) {
+    public Boolean sendAttachmentNotification(List<AttachmentNotificationDTO> attachmentNotificationDTOs,String instituteId) {
         List<NotificationLog> notificationLogs = new ArrayList<>();
 
         try {
@@ -111,7 +111,8 @@ public class NotificationService {
                                 attachmentNotificationDTO.getSubject(),
                                 "email-service",
                                 parsedBody,
-                                base64AttachmentNameAndAttachment
+                                base64AttachmentNameAndAttachment,
+                                instituteId
                         );
                     } else {
                         throw new IllegalArgumentException("Unsupported notification type: " + notificationType);

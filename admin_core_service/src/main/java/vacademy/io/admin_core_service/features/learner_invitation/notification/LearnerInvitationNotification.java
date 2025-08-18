@@ -40,7 +40,7 @@ public class LearnerInvitationNotification {
                 }).toList();
 
                 notificationDTO.setUsers(users);
-                notificationService.sendEmailToUsers(notificationDTO);
+                notificationService.sendEmailToUsers(notificationDTO,instituteId);
             } catch (Exception e) {
                 System.err.println("Error sending invitation emails: " + e.getMessage());
             }
@@ -81,7 +81,7 @@ public class LearnerInvitationNotification {
                 }).toList();
 
                 notificationDTO.setUsers(users);
-                notificationService.sendEmailToUsers(notificationDTO);
+                notificationService.sendEmailToUsers(notificationDTO,instituteId);
             } catch (Exception e) {
                 System.err.println("Error sending invitation emails: " + e.getMessage());
             }

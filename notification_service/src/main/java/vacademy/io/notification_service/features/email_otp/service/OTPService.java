@@ -27,10 +27,10 @@ public class OTPService {
         return otp.toString();
     }
 
-    public Boolean sendEmailOtp(String to, String subject, String service, String name) {
+    public Boolean sendEmailOtp(String to, String subject, String service, String name,String instituteId) {
         EmailOtp otp = createNewOTP(to, service);
         try {
-            emailService.sendEmailOtp(to, subject, service, name, otp.getOtp());
+            emailService.sendEmailOtp(to, subject, service, name, otp.getOtp(),instituteId);
         } catch (Exception e) {
             return false;
         }

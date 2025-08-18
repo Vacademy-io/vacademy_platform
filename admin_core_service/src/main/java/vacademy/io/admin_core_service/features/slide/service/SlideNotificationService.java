@@ -38,7 +38,7 @@ public class SlideNotificationService {
         List<NotificationToUserDTO> notificationUsers = prepareNotificationUsers(students, chapter, institute);
         NotificationDTO notificationDTO = prepareNotificationDTO(slide, notificationUsers);
 
-        notificationService.sendEmailToUsers(notificationDTO);
+        notificationService.sendEmailToUsers(notificationDTO,instituteId);
     }
 
 

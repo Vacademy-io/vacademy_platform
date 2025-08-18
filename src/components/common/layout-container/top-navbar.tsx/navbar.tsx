@@ -20,6 +20,7 @@ import { handleFetchUserRoleDetails } from "@/routes/study-library/courses/-serv
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { getTokenFromCookie } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
+import { SystemAlertsBar } from "@/components/announcements";
 
 interface UserRole {
     id: string;
@@ -126,6 +127,9 @@ export function Navbar() {
 
             {/* Right Section */}
             <div className="flex items-center gap-3">
+                {/* System Alerts */}
+                <SystemAlertsBar />
+                
                 {hasTeacherAndStudentRole && (
                     <Tooltip delayDuration={0}>
                         <TooltipTrigger>

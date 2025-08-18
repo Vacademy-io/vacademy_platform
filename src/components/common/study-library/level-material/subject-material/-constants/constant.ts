@@ -7,6 +7,7 @@ export enum TabType {
   // SUBJECTS = "SUBJECTS",
   TEACHERS = "TEACHERS",
   ASSESSMENT = "ASSESSMENT",
+  COURSE_DISCUSSION = "COURSE_DISCUSSION",
   // TODO: will add after the feature is developed
   // ASSIGNMENT = "ASSIGNMENT",
   // GRADING = "GRADING",
@@ -20,4 +21,5 @@ export const tabs = [
     value: "TEACHERS",
   },
   { label: "Assessment", value: "ASSESSMENT" },
+  { label: "Course Discussion", value: "COURSE_DISCUSSION" },
 ];

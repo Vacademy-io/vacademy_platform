@@ -40,19 +40,13 @@ export function SignUpForm({
       const signupDataParam = urlParams.get("signupData");
       const stateParam = urlParams.get("state");
       
-      console.log("SignupForm: OAuth callback parameter extraction", {
-        signupDataParam: !!signupDataParam,
-        stateParam: !!stateParam,
-        currentInstituteId: instituteId
-      });
+
       
       if (signupDataParam && stateParam) {
         try {
           const decodedState = JSON.parse(atob(stateParam));
-          console.log("SignupForm: Decoded OAuth state", decodedState);
           
           if (decodedState?.institute_id) {
-            console.log("SignupForm: Setting institute ID from OAuth", decodedState.institute_id);
             setFinalInstituteId(decodedState.institute_id);
             return;
           }
@@ -63,10 +57,8 @@ export function SignUpForm({
       
       // Fallback to instituteId from search params
       if (instituteId) {
-        console.log("SignupForm: Using institute ID from search params", instituteId);
         setFinalInstituteId(instituteId);
       } else {
-        console.log("SignupForm: No institute ID available");
         setFinalInstituteId(null);
       }
     }, [instituteId]);

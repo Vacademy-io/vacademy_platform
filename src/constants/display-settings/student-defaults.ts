@@ -62,7 +62,7 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
   dashboard: { widgets: defaultDashboardWidgets() },
   signup: {
     providers: { google: true, github: false, usernamePassword: true, emailOtp: false, defaultProvider: "google" },
-    usernameStrategy: "email",
+    usernameStrategy: "manual",
     passwordStrategy: "manual",
     passwordDelivery: "none",
   },

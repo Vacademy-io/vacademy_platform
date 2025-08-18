@@ -12,6 +12,7 @@ import { ArrowRight, Shield } from "lucide-react";
 import { LOGIN_URL_GOOGLE_GITHUB, LIVE_SESSION_REQUEST_OTP } from "@/constants/urls";
 import axios from "axios";
 import { toast } from "sonner";
+import { registerUser } from "@/services/signup-api";
 
 interface ModularDynamicSignupContainerProps {
   instituteId?: string;
@@ -49,12 +50,12 @@ export function ModularDynamicSignupContainer({
     googleSignupMode: "askCredentials",
     githubSignupMode: "askCredentials",
     emailOtpSignupMode: "askCredentials",
-    usernameStrategy: "email",
+    usernameStrategy: "manual",
     passwordStrategy: "manual",
     passwordDelivery: "none",
   };
 
-  // Debug logging
+  // Debug logging - Keep this to see how component is rendering
   console.log("ModularDynamicSignupContainer: Current state", {
     hasSettings: !!settings,
     hasInstituteId: !!instituteId,
@@ -133,7 +134,6 @@ export function ModularDynamicSignupContainer({
       // Listen for OAuth completion message from popup
       const messageHandler = (event: MessageEvent) => {
         if (event.data.type === 'oauth_success') {
-          console.log('[OAuth] Success response received:', event.data.data);
           handleOAuthSuccess(event.data.data);
           window.removeEventListener('message', messageHandler);
         } else if (event.data.type === 'oauth_error') {
@@ -215,8 +215,6 @@ export function ModularDynamicSignupContainer({
 
 
   const handleOAuthSuccess = async (oauthData: any) => {
-    console.log('[OAuth] Processing OAuth success:', oauthData);
-    
     try {
       const { signupData, state, emailVerified } = oauthData;
       
@@ -227,11 +225,8 @@ export function ModularDynamicSignupContainer({
       const needsUsername = effectiveSettings.usernameStrategy === "manual" || effectiveSettings.usernameStrategy === " ";
       const needsPassword = effectiveSettings.passwordStrategy === "manual" || effectiveSettings.passwordStrategy === " ";
       
-      console.log('[OAuth] Credential requirements:', { needsUsername, needsPassword, emailVerified, provider: signupData.provider });
-      
       // GitHub with private email - always need email OTP verification
       if (signupData.provider === "github" && !signupData.email) {
-        console.log('[OAuth] GitHub private email - showing Email Input for verification');
         setCurrentStep("emailInput");
         setSelectedProvider("oauth");
         return;
@@ -239,24 +234,19 @@ export function ModularDynamicSignupContainer({
       
       // Google or GitHub with public email - skip email OTP (already verified)
       if (signupData.provider === "google" || (signupData.provider === "github" && signupData.email)) {
-        console.log('[OAuth] Public email provider - email already verified, checking credentials');
-        
         // If we need credentials, show credentials form
         if (needsUsername || needsPassword) {
-          console.log('[OAuth] Showing credentials form for verified email');
           setCurrentStep("credentials");
           setSelectedProvider("oauth");
           return;
         }
         
         // If no credentials needed, proceed with direct registration
-        console.log('[OAuth] No credentials needed - proceeding with direct registration');
         await handleDirectRegistration(signupData);
         return;
       }
       
       // Fallback - should not reach here
-      console.log('[OAuth] Fallback - showing credentials form');
       setCurrentStep("credentials");
       setSelectedProvider("oauth");
       
@@ -268,8 +258,6 @@ export function ModularDynamicSignupContainer({
 
   const handleDirectRegistration = async (signupData: any) => {
     try {
-      console.log('[OAuth] Starting direct registration:', signupData);
-      
       // Here you would call your registration API
       // For now, we'll simulate success
       toast.success("Account created successfully!");
@@ -288,8 +276,6 @@ export function ModularDynamicSignupContainer({
   };
 
   const handleOtpVerificationSuccess = async (email: string, fullName?: string) => {
-    console.log('[OTP Verification] Success - checking next step:', { email, fullName, currentProvider: selectedProvider });
-    
     // Check if we need credentials form
     const needsUsername = effectiveSettings.usernameStrategy === "manual" || effectiveSettings.usernameStrategy === " ";
     const needsPassword = effectiveSettings.passwordStrategy === "manual" || effectiveSettings.passwordStrategy === " ";
@@ -307,10 +293,8 @@ export function ModularDynamicSignupContainer({
     }
 
     if (needsUsername || needsPassword) {
-      console.log('[OTP Verification] Credentials needed - showing credentials form');
       setCurrentStep("credentials");
     } else {
-      console.log('[OTP Verification] No credentials needed - proceeding with direct registration');
       // Direct registration - this would need to be implemented
       setCurrentStep("success");
       setTimeout(() => {
@@ -546,8 +530,9 @@ export function ModularDynamicSignupContainer({
             onBack={handleBackToProviders}
             isOAuth={selectedProvider === "oauth"}
             hideFullName={
-              selectedProvider === "oauth" && 
-              oauthData?.signupData?.provider === "github" && 
+              // GitHub with private email: ask only for email (hide full name) before OTP
+              selectedProvider === "oauth" &&
+              oauthData?.signupData?.provider === "github" &&
               !oauthData?.signupData?.email
             }
             privateEmailMessage={
@@ -580,16 +565,42 @@ export function ModularDynamicSignupContainer({
               } : {}),
             }}
             onSubmit={async (data) => {
-              console.log('[Credentials] Form submitted:', data);
-              // Handle credentials submission
-              setCurrentStep("success");
-              setTimeout(() => {
-                onSignupSuccess?.();
-              }, 1500);
+              try {
+                // Call the register API
+                const registerData = {
+                  user: {
+                    username: data.username || data.email, // Use username if provided, otherwise use email
+                    email: emailForOtp,
+                    full_name: data.fullName || fullNameForOtp,
+                    password: data.password,
+                    roles: ["LEARNER"],
+                    root_user: false,
+                  },
+                  institute_id: instituteId!,
+                };
+
+                await registerUser(registerData);
+                
+                toast.success("Account created successfully!");
+                
+                // Move to success step
+                setCurrentStep("success");
+                setTimeout(() => {
+                  onSignupSuccess?.();
+                }, 1500);
+              } catch (error) {
+                console.error("Registration failed:", error);
+                toast.error("Failed to create account. Please try again.");
+              }
             }}
             onBack={handleBackToProviders}
             isOAuth={selectedProvider === "oauth"}
             oauthProvider={selectedProvider === "oauth" && oauthData?.signupData?.provider ? oauthData.signupData.provider : ""}
+            hideFullName={
+              // For OAuth (Google/GitHub): show full name field (prefilled) even if strategy would hide it
+              // For Email OTP: never hide full name (always ask for it after OTP verification)
+              false // Always show full name field for now to ensure it's visible and prefilled
+            }
           />
         )}
         

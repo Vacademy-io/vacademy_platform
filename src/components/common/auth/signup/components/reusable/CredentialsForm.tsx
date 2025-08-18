@@ -25,13 +25,16 @@ interface CredentialsFormProps {
   className?: string;
   isOAuth?: boolean;
   oauthProvider?: string;
+  hideFullName?: boolean;
 }
 
 // Dynamic schema based on signup settings
-const createCredentialsSchema = (settings: SignupSettings) => {
-  const baseSchema = {
-    fullName: z.string().min(2, "Full name must be at least 2 characters"),
-  };
+const createCredentialsSchema = (settings: SignupSettings, hideFullName: boolean = false) => {
+  const baseSchema: any = {};
+  
+  if (!hideFullName) {
+    baseSchema.fullName = z.string().min(2, "Full name must be at least 2 characters");
+  }
 
   if (settings.usernameStrategy === "manual" || settings.usernameStrategy === " ") {
     baseSchema.username = z.string().min(3, "Username must be at least 3 characters");
@@ -62,26 +65,20 @@ export function CredentialsForm({
   onBack,
   className = "",
   isOAuth = false,
-  oauthProvider = ""
+  oauthProvider = "",
+  hideFullName = false
 }: CredentialsFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  console.log("CredentialsForm rendered with:", {
-    settings,
-    initialData,
-    isOAuth,
-    oauthProvider,
-    needsUsername: settings.usernameStrategy === "manual" || settings.usernameStrategy === " ",
-    needsPassword: settings.passwordStrategy === "manual" || settings.passwordStrategy === " "
-  });
 
-  const schema = createCredentialsSchema(settings);
+
+  const schema = createCredentialsSchema(settings, hideFullName);
   const form = useForm<CredentialsFormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      fullName: initialData.fullName || "",
+      ...(hideFullName ? {} : { fullName: initialData.fullName || "" }),
       username: initialData.username || "",
       password: initialData.password || "",
       confirmPassword: initialData.confirmPassword || "",
@@ -125,25 +122,27 @@ export function CredentialsForm({
       <Form {...form}>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
           {/* Full Name */}
-          <FormField
-            control={form.control}
-            name="fullName"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel className="text-sm font-medium text-gray-700">
-                  Full Name *
-                </FormLabel>
-                <FormControl>
-                  <Input
-                    {...field}
-                    placeholder="Enter your full name"
-                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          {!hideFullName && (
+            <FormField
+              control={form.control}
+              name="fullName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-sm font-medium text-gray-700">
+                    Full Name *
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder="Enter your full name"
+                      className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )}
 
           {/* Username (if required) */}
           {needsUsername && (

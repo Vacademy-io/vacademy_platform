@@ -137,19 +137,16 @@ export function EmailOtpForm({
   };
 
   const handleOtpSubmit = async () => {
-    console.log("[EmailOtpForm] handleOtpSubmit called");
     if (!formData) {
       console.error("[EmailOtpForm] No formData available");
       return;
     }
 
     try {
-      console.log("[EmailOtpForm] Starting OTP verification");
       setCurrentStep("verifying");
       
       // Use local OTP state instead of form state
       const otpString = otpValues.join("");
-      console.log("[EmailOtpForm] OTP string:", otpString, "OTP array:", otpValues);
 
       // Check if OTP is complete
       if (otpString.length !== 6) {
@@ -159,14 +156,12 @@ export function EmailOtpForm({
       }
 
       // Verify OTP
-      console.log("[EmailOtpForm] Calling verify OTP API");
       await axios.post(LIVE_SESSION_VERIFY_OTP, {
         to: formData.email,
         otp: otpString,
         service: "signup",
       });
 
-      console.log("[EmailOtpForm] OTP verified successfully, calling callback");
       // OTP verified, call the callback
       // Use initialFullName as fallback when fullName is not provided (for GitHub private email case)
       const fullNameToPass = formData.fullName || initialFullName || "User";
@@ -199,8 +194,6 @@ export function EmailOtpForm({
   };
 
   const handleOtpChange = (index: number, value: string) => {
-    console.log(`[EmailOtpForm] handleOtpChange: index=${index}, value=${value}`);
-    
     // Only allow single digit
     if (value.length > 1) {
       value = value[0];
@@ -213,8 +206,6 @@ export function EmailOtpForm({
     
     // Also update form state for compatibility
     otpForm.setValue("otp", newOtpValues);
-    
-    console.log(`[EmailOtpForm] Updated OTP array:`, newOtpValues);
 
     // Auto-focus next input
     if (value && index < 5) {
@@ -240,12 +231,10 @@ export function EmailOtpForm({
   const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault();
     const pastedData = e.clipboardData.getData("text/plain").replace(/\D/g, "").slice(0, 6);
-    console.log("[EmailOtpForm] Pasting OTP:", pastedData);
     
     if (pastedData.length > 0) {
       // Create OTP array with pasted data + empty strings for remaining slots
       const otpArray = pastedData.split("").concat(Array(6 - pastedData.length).fill(""));
-      console.log("[EmailOtpForm] Setting OTP array:", otpArray);
       
       setOtpValues(otpArray);
       otpForm.setValue("otp", otpArray);

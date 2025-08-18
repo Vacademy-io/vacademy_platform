@@ -1,6 +1,6 @@
 export type StudentSignupProvider = 'google' | 'github' | 'emailOtp';
 export type StudentDefaultProvider = StudentSignupProvider;
-export type UsernameStrategy = 'email' | 'random' | 'manual' | ' ';
+export type UsernameStrategy = 'email' | 'random' | 'manual' |  "both"|' ';
 export type PasswordStrategy = 'manual' | 'autoRandom' | ' ';
 export type PasswordDelivery = 'showOnScreen' | 'sendEmail' | ' ' | 'none';
 
@@ -14,7 +14,7 @@ export const defaultSignupSettings = {
   googleSignupMode: "askCredentials" as const, // Retained for compatibility, but logic now uses username/passwordStrategy
   githubSignupMode: "askCredentials" as const, // Retained for compatibility, but logic now uses username/passwordStrategy
   emailOtpSignupMode: "askCredentials" as const, // Retained for compatibility, but logic now uses username/passwordStrategy
-  usernameStrategy: "email" as UsernameStrategy,
+  usernameStrategy: "manual" as UsernameStrategy,
   passwordStrategy: "manual" as PasswordStrategy,
   passwordDelivery: "none" as PasswordDelivery,
 };

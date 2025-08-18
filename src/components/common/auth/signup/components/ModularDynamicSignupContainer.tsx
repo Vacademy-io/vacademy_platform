@@ -13,10 +13,12 @@ import { LOGIN_URL_GOOGLE_GITHUB, LIVE_SESSION_REQUEST_OTP } from "@/constants/u
 import axios from "axios";
 import { toast } from "sonner";
 import { registerUser } from "@/services/signup-api";
+import { parseInstituteSettings } from "@/services/signup-api";
 
 interface ModularDynamicSignupContainerProps {
   instituteId?: string;
   settings?: SignupSettings;
+  instituteDetails?: any; // Add institute details prop
   onSignupSuccess?: () => void;
   onBackToProviders?: () => void;
   className?: string;
@@ -27,6 +29,7 @@ type SignupStep = "providers" | "emailInput" | "otpVerification" | "credentials"
 export function ModularDynamicSignupContainer({
   instituteId,
   settings,
+  instituteDetails,
   onSignupSuccess,
   onBackToProviders,
   className = ""
@@ -38,6 +41,7 @@ export function ModularDynamicSignupContainer({
   const [oauthData, setOAuthData] = useState<any>(null);
   const [emailForOtp, setEmailForOtp] = useState("");
   const [fullNameForOtp, setFullNameForOtp] = useState("");
+  const [instituteSettings, setInstituteSettings] = useState<any>(null);
 
   // If settings are not available, use default settings
   const effectiveSettings = settings || {
@@ -63,6 +67,18 @@ export function ModularDynamicSignupContainer({
     currentStep,
     effectiveSettings
   });
+
+  // Parse institute settings to check for allowLearnersToCreateCourses
+  useEffect(() => {
+    if (instituteDetails?.setting) {
+      try {
+        const parsedSettings = parseInstituteSettings(instituteDetails.setting);
+        setInstituteSettings(parsedSettings);
+      } catch (error) {
+        console.error("Failed to parse institute settings:", error);
+      }
+    }
+  }, [instituteDetails]);
 
   // If no institute ID, show error
   if (!instituteId) {
@@ -566,6 +582,17 @@ export function ModularDynamicSignupContainer({
             }}
             onSubmit={async (data) => {
               try {
+                // Determine roles based on institute settings
+                const roles = instituteSettings?.learnersCanCreateCourses 
+                  ? ["LEARNER", "TEACHER"] 
+                  : ["LEARNER"];
+                
+                console.log("Registration roles:", {
+                  learnersCanCreateCourses: instituteSettings?.learnersCanCreateCourses,
+                  roles,
+                  instituteSettings
+                });
+
                 // Call the register API
                 const registerData = {
                   user: {
@@ -573,7 +600,7 @@ export function ModularDynamicSignupContainer({
                     email: emailForOtp,
                     full_name: data.fullName || fullNameForOtp,
                     password: data.password,
-                    roles: ["LEARNER"],
+                    roles,
                     root_user: false,
                   },
                   institute_id: instituteId!,

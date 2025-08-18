@@ -465,6 +465,7 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
                                                                  <ModularDynamicSignupContainer 
                                     instituteId={context.instituteId || signupState.selectedInstitute?.id}
                                     settings={getSignupSettings()}
+                                    instituteDetails={signupState.selectedInstitute ? { setting: signupState.selectedInstitute.setting } : undefined}
                                     onSignupSuccess={handleSignupSuccess}
                                     onBackToProviders={handleSwitchToLogin}
                                 />

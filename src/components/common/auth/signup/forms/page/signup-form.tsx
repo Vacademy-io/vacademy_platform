@@ -64,7 +64,7 @@ export function SignUpForm({
     }, [instituteId]);
     
     // Use the modular signup flow hook only if we have an institute ID
-    const { settings, isLoading, error } = useModularSignupFlow({ 
+    const { settings, isLoading, error, instituteDetails } = useModularSignupFlow({ 
       instituteId: finalInstituteId || "" 
     });
     
@@ -197,6 +197,7 @@ export function SignUpForm({
                             <ModularDynamicSignupContainer
                                 instituteId={finalInstituteId}
                                 settings={settings!}
+                                instituteDetails={instituteDetails}
                                 onSignupSuccess={() => navigate({ to: "/dashboard" })}
                                 onBackToProviders={() => navigate({ to: "/login" })}
                             />

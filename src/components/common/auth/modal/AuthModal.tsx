@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from "react";
 import { createPortal } from "react-dom";
 import { ModalSpecificLoginForm } from "@/components/common/auth/login/forms/modal/ModalSpecificLoginForm";
-import { ModalSignUpForm } from "@/components/common/auth/signup/forms/modal/ModalSignUpForm";
+import { ModularDynamicSignupContainer } from "@/components/common/auth/signup/components/ModularDynamicSignupContainer";
 import { ModalForgotPasswordForm } from "@/components/common/auth/login/forms/modal/ModalForgotPasswordForm";
 import { Preferences } from "@capacitor/preferences";
+import { useSignupFlow } from "@/components/common/auth/signup/hooks/use-signup-flow";
+import { resolveInstituteIdFromLocalOrSubdomain } from "@/services/institute-resolver";
 
 interface AuthModalProps {
     type?: string;
@@ -32,6 +34,10 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
     const [isVisible, setIsVisible] = useState(false);
     const dialogRef = useRef<HTMLDivElement>(null);
     const [instituteIdFromStorage, setInstituteIdFromStorage] = useState<string | null>(null);
+    const lastPrefetchedInstituteIdRef = useRef<string | null>(null);
+    
+    // Use the signup flow hook to get institute details and signup settings
+    const { state: signupState, handleInstituteSelect, getSignupSettings } = useSignupFlow(false, type, courseId);
 
     // Expose setIsOpen method to parent component
     useImperativeHandle(ref, () => ({
@@ -85,21 +91,36 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
         };
     };
 
-    // Get institute ID from local storage when component mounts
+    // Resolve instituteId on mount (Preferences → subdomain) and prefetch
     useEffect(() => {
-        const getInstituteIdFromStorage = async () => {
+        let cancelled = false;
+        (async () => {
             try {
-                const { value } = await Preferences.get({ key: "InstituteId" });
-                if (value) {
-                    setInstituteIdFromStorage(value);
+                const resolved = await resolveInstituteIdFromLocalOrSubdomain();
+                if (!cancelled && resolved) {
+                    setInstituteIdFromStorage(resolved);
+                    // Prefetch once per institute per modal open
+                    if (lastPrefetchedInstituteIdRef.current !== resolved) {
+                        lastPrefetchedInstituteIdRef.current = resolved;
+                        handleInstituteSelect(resolved);
+                    }
                 }
-            } catch (error) {
-                console.error("Error getting institute ID from storage:", error);
+            } catch (e) {
+                console.error("AuthModal: institute resolution failed", e);
             }
-        };
+        })();
+        return () => { cancelled = true; };
+    }, [handleInstituteSelect]);
 
-        getInstituteIdFromStorage();
-    }, []);
+    // If user switches to signup and details aren't ready, prefetch (guarded against duplicate)
+    useEffect(() => {
+        if (currentMode === 'signup' && instituteIdFromStorage && !signupState.selectedInstitute) {
+            if (lastPrefetchedInstituteIdRef.current !== instituteIdFromStorage) {
+                lastPrefetchedInstituteIdRef.current = instituteIdFromStorage;
+                handleInstituteSelect(instituteIdFromStorage);
+            }
+        }
+    }, [currentMode, instituteIdFromStorage, signupState.selectedInstitute, handleInstituteSelect]);
 
     // Listen for postMessage from OAuth tab to switch to signup modal
     useEffect(() => {
@@ -279,17 +300,20 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
     }, [isOpen]);
 
     const handleSwitchToSignup = async () => {
-        
-        // Ensure we have the latest institute ID from storage when switching to signup
+        // Resolve again (cheap if already in Preferences), then prefetch if needed
         try {
-            const { value } = await Preferences.get({ key: "InstituteId" });
-            if (value && value !== instituteIdFromStorage) {
-                setInstituteIdFromStorage(value);
+            const resolved = await resolveInstituteIdFromLocalOrSubdomain();
+            if (resolved && resolved !== instituteIdFromStorage) {
+                setInstituteIdFromStorage(resolved);
+            }
+            const effectiveId = resolved || instituteIdFromStorage;
+            if (effectiveId && lastPrefetchedInstituteIdRef.current !== effectiveId) {
+                lastPrefetchedInstituteIdRef.current = effectiveId;
+                handleInstituteSelect(effectiveId);
             }
         } catch (error) {
-            console.error("AuthModal: Error getting institute ID when switching to signup:", error);
+            console.error("AuthModal: Error selecting institute on signup:", error);
         }
-        
         setCurrentMode('signup');
     };
 
@@ -434,19 +458,18 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
                             onSwitchToForgotPassword={handleSwitchToForgotPassword}
                             onLoginSuccess={handleLoginSuccess}
                         />
-                    ) : currentMode === 'signup' ? (
-                        (() => {
-                            const context = getCurrentRouteContext();
-                            return (
-                                <ModalSignUpForm 
-                                    type={context.type} 
-                                    courseId={context.courseId}
-                                    instituteId={context.instituteId || undefined}
-                                    onSwitchToLogin={handleSwitchToLogin}
+                                         ) : currentMode === 'signup' ? (
+                         (() => {
+                             const context = getCurrentRouteContext();
+                             return (
+                                                                 <ModularDynamicSignupContainer 
+                                    instituteId={context.instituteId || signupState.selectedInstitute?.id}
+                                    settings={getSignupSettings()}
                                     onSignupSuccess={handleSignupSuccess}
+                                    onBackToProviders={handleSwitchToLogin}
                                 />
-                            );
-                        })()
+                             );
+                         })()
                     ) : (
                         <ModalForgotPasswordForm 
                             onBackToLogin={handleSwitchToLogin}

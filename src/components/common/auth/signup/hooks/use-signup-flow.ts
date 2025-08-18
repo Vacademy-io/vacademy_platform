@@ -6,12 +6,14 @@ import {
   getInstituteDetails, 
   registerUser, 
   parseInstituteSettings,
+  parseSignupSettings,
   handlePostSignupAuth,
   type InstituteSearchResult,
   type InstituteDetails,
   type InstituteSettings,
   type RegisterUserRequest
 } from "@/services/signup-api";
+import { mapSignupSettings, type SignupSettings } from "@/config/signup/mapSignupSettings";
 
 interface SignupState {
   // Institute search and selection
@@ -20,6 +22,7 @@ interface SignupState {
   isSearching: boolean;
   selectedInstitute: InstituteDetails | null;
   instituteSettings: InstituteSettings | null;
+  signupSettings: SignupSettings | null;
   isFetchingInstituteDetails: boolean;
   
   // User data
@@ -42,6 +45,7 @@ const initialState: SignupState = {
   isSearching: false,
   selectedInstitute: null,
   instituteSettings: null,
+  signupSettings: null,
   isFetchingInstituteDetails: false,
   userData: {
     email: "",
@@ -97,6 +101,11 @@ export const useSignupFlow = (isModalSignup?: boolean, type?: string, courseId?:
       
       // Parse the settings to determine available roles
       const settings = parseInstituteSettings(instituteDetails.setting);
+      
+      // Parse signup settings from institute settings and merge with defaults
+      const rawSignupSettings = settings.signup || parseSignupSettings(instituteDetails);
+      const signupSettings = mapSignupSettings(rawSignupSettings);
+      
       // Determine the available role based on settings
       let availableRole: "learner" | "teacher" | null = null;
       if (settings.allowLearnerSignup && settings.allowTeacherSignup) {
@@ -110,10 +119,11 @@ export const useSignupFlow = (isModalSignup?: boolean, type?: string, courseId?:
         ...prev,
         selectedInstitute: instituteDetails,
         instituteSettings: settings,
+        signupSettings: signupSettings,
         selectedRole: availableRole,
         isFetchingInstituteDetails: false,
       }));
-      toast.success(`Selected: ${instituteDetails.institute_name}`);
+      // Removed toast for institute selection to keep UX quiet
     } catch (error) {
       console.error("Error fetching institute details:", error);
       toast.error("Failed to fetch institute details. Please try again.");
@@ -219,5 +229,7 @@ export const useSignupFlow = (isModalSignup?: boolean, type?: string, courseId?:
     updateSelectedRole,
     handleUserRegistration,
     resetState,
+    // Getter for signup settings
+    getSignupSettings: () => state.signupSettings,
   };
 }; 

@@ -142,12 +142,40 @@ export interface InstituteDetails {
     setting: string;
     cover_image_file_id: string;
     cover_text_json: string;
+    signup?: {
+        providers?: {
+            google?: boolean;
+            github?: boolean;
+            emailOtp?: boolean;
+            defaultProvider?: "google" | "github" | "emailOtp";
+        };
+        googleSignupMode?: "direct" | "askCredentials";
+        githubSignupMode?: "direct" | "askCredentials";
+        emailOtpSignupMode?: "direct" | "askCredentials";
+        usernameStrategy?: "email" | "username" | "both";
+        passwordStrategy?: "manual" | "auto" | "none";
+        passwordDelivery?: "email" | "sms" | "none";
+    };
 }
 
 export interface InstituteSettings {
     allowLearnerSignup: boolean;
     allowTeacherSignup: boolean;
     learnersCanCreateCourses: boolean;
+    signup?: {
+        providers?: {
+            google?: boolean;
+            github?: boolean;
+            emailOtp?: boolean;
+            defaultProvider?: "google" | "github" | "emailOtp";
+        };
+        googleSignupMode?: "direct" | "askCredentials";
+        githubSignupMode?: "direct" | "askCredentials";
+        emailOtpSignupMode?: "direct" | "askCredentials";
+        usernameStrategy?: "email" | "username" | "both";
+        passwordStrategy?: "manual" | "auto" | "none";
+        passwordDelivery?: "email" | "sms" | "none";
+    } | null;
 }
 
 export interface RegisterUserRequest {
@@ -324,10 +352,23 @@ export const parseInstituteSettings = (
         const learnersCanCreateCourses =
             allowLearnersToCreateCourses ||
             (settings.learnersCanCreateCourses ?? false);
+        // Extract signup settings from STUDENT_DISPLAY_SETTINGS
+        let signupSettings = null;
+        if (settings.setting && typeof settings.setting === "object") {
+            if (
+                settings.setting.STUDENT_DISPLAY_SETTINGS &&
+                settings.setting.STUDENT_DISPLAY_SETTINGS.data &&
+                settings.setting.STUDENT_DISPLAY_SETTINGS.data.signup
+            ) {
+                signupSettings = settings.setting.STUDENT_DISPLAY_SETTINGS.data.signup;
+            }
+        }
+
         return {
             allowLearnerSignup,
             allowTeacherSignup,
             learnersCanCreateCourses,
+            signup: signupSettings, // Include parsed signup settings
         };
     } catch (error) {
         return {
@@ -336,6 +377,11 @@ export const parseInstituteSettings = (
             learnersCanCreateCourses: false,
         };
     }
+};
+
+// Utility function to parse signup settings from institute details
+export const parseSignupSettings = (instituteDetails: InstituteDetails) => {
+    return instituteDetails.signup || null;
 };
 
 // Utility function to handle post-signup authentication and redirect

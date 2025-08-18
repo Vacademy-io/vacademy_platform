@@ -48,6 +48,15 @@ public class Institute {
     @Column(name = "website_url")
     private String websiteUrl;
 
+    @Column(name = "learner_portal_base_url")
+    private String learnerPortalBaseUrl;
+
+    @Column(name = "teacher_portal_base_url")
+    private String teacherPortalBaseUrl;
+
+    @Column(name = "admin_portal_base_url")
+    private String adminPortalBaseUrl;
+
     @Column(name = "description")
     private String description;
 

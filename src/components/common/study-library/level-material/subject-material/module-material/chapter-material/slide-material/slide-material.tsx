@@ -23,6 +23,7 @@ import { SplitScreenVideoSlide } from "./split-screen-video-slide";
 import { useDoubtSidebarStore } from "@/stores/study-library/doubt-sidebar-store";
 import QuizViewer from "./quiz-viewer";
 import { Slide } from "@/hooks/study-library/use-slides";
+import { getStudentDisplaySettings } from "@/services/student-display-settings";
 
 export const SlideMaterial = () => {
   const { activeItem } = useContentStore();
@@ -524,28 +525,7 @@ export const SlideMaterial = () => {
 
         <div className="flex items-center gap-2 pr-4">
           <div className="h-6 w-px bg-neutral-200"></div>
-          <div className="animate-in fade-in slide-in-from-right-4 duration-500 delay-100">
-            <MyButton
-              scale="medium"
-              onClick={() => {
-                const { openSidebar } = useDoubtSidebarStore.getState();
-                openSidebar();
-              }}
-              className="flex items-center gap-2 px-3 py-2 font-medium transition-all duration-300 hover:scale-[1.02] bg-white border border-neutral-300 hover:border-primary-400 rounded-lg backdrop-blur-sm hover:bg-primary-50"
-              buttonType="secondary"
-            >
-              <span className="text-neutral-700 font-medium text-sm">
-                Doubts
-              </span>
-              <div className="relative">
-                <ChatText
-                  size={16}
-                  className="text-neutral-600 transition-all duration-300 group-hover:text-primary-600"
-                />
-                <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-primary-500 rounded-full animate-pulse"></div>
-              </div>
-            </MyButton>
-          </div>
+          <AskDoubtButton />
         </div>
       </div>
 
@@ -597,6 +577,35 @@ export const SlideMaterial = () => {
       )}
 
       <DoubtResolutionSidebar />
+    </div>
+  );
+};
+
+const AskDoubtButton = () => {
+  const [enabled, setEnabled] = useState(true);
+  useEffect(() => {
+    getStudentDisplaySettings(false)
+      .then((s) => setEnabled(s?.courseDetails?.slidesView?.canAskDoubt !== false))
+      .catch(() => setEnabled(true));
+  }, []);
+  if (!enabled) return null;
+  return (
+    <div className="animate-in fade-in slide-in-from-right-4 duration-500 delay-100">
+      <MyButton
+        scale="medium"
+        onClick={() => {
+          const { openSidebar } = useDoubtSidebarStore.getState();
+          openSidebar();
+        }}
+        className="flex items-center gap-2 px-3 py-2 font-medium transition-all duration-300 hover:scale-[1.02] bg-white border border-neutral-300 hover:border-primary-400 rounded-lg backdrop-blur-sm hover:bg-primary-50"
+        buttonType="secondary"
+      >
+        <span className="text-neutral-700 font-medium text-sm">Doubts</span>
+        <div className="relative">
+          <ChatText size={16} className="text-neutral-600 transition-all duration-300 group-hover:text-primary-600" />
+          <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-primary-500 rounded-full animate-pulse"></div>
+        </div>
+      </MyButton>
     </div>
   );
 };

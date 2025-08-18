@@ -85,10 +85,17 @@ function mergeWithDefaults(incoming?: Partial<StudentDisplaySettingsData> | null
       defaultTab: incoming?.courseDetails?.defaultTab ?? d.courseDetails.defaultTab,
       outlineMode: incoming?.courseDetails?.outlineMode ?? d.courseDetails.outlineMode,
       ratingsAndReviewsVisible: incoming?.courseDetails?.ratingsAndReviewsVisible ?? d.courseDetails.ratingsAndReviewsVisible,
-      courseOverview: { showSlidesData: incoming?.courseDetails?.courseOverview?.showSlidesData ?? d.courseDetails.courseOverview.showSlidesData },
+      // New flags with defaults
+      showCourseConfiguration: incoming?.courseDetails?.showCourseConfiguration ?? d.courseDetails.showCourseConfiguration,
+      showCourseContentPrefixes: incoming?.courseDetails?.showCourseContentPrefixes ?? d.courseDetails.showCourseContentPrefixes,
+      courseOverview: {
+        visible: incoming?.courseDetails?.courseOverview?.visible ?? d.courseDetails.courseOverview.visible,
+        showSlidesData: incoming?.courseDetails?.courseOverview?.showSlidesData ?? d.courseDetails.courseOverview.showSlidesData,
+      },
       slidesView: {
         showLearningPath: incoming?.courseDetails?.slidesView?.showLearningPath ?? d.courseDetails.slidesView.showLearningPath,
         feedbackVisible: incoming?.courseDetails?.slidesView?.feedbackVisible ?? d.courseDetails.slidesView.feedbackVisible,
+        canAskDoubt: incoming?.courseDetails?.slidesView?.canAskDoubt ?? d.courseDetails.slidesView.canAskDoubt,
       },
     },
     allCourses: {
@@ -99,6 +106,11 @@ function mergeWithDefaults(incoming?: Partial<StudentDisplaySettingsData> | null
         visible: t.visible ?? d.allCourses.tabs.find((x) => x.id === t.id)?.visible ?? true,
       })),
       defaultTab: incoming?.allCourses?.defaultTab ?? d.allCourses.defaultTab,
+    },
+    notifications: {
+      allowSystemAlerts: incoming?.notifications?.allowSystemAlerts ?? d.notifications.allowSystemAlerts,
+      allowDashboardPins: incoming?.notifications?.allowDashboardPins ?? d.notifications.allowDashboardPins,
+      allowBatchStream: incoming?.notifications?.allowBatchStream ?? d.notifications.allowBatchStream,
     },
     postLoginRedirectRoute: incoming?.postLoginRedirectRoute ?? d.postLoginRedirectRoute,
   };

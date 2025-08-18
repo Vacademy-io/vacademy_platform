@@ -81,8 +81,11 @@ export interface StudentCourseDetailsSettings {
   defaultTab: StudentCourseDetailsTabId;
   outlineMode: OutlineMode;
   ratingsAndReviewsVisible: boolean;
-  courseOverview: { showSlidesData: boolean };
-  slidesView: { showLearningPath: boolean; feedbackVisible: boolean };
+  // New flags
+  showCourseConfiguration: boolean;
+  showCourseContentPrefixes: boolean;
+  courseOverview: { visible: boolean; showSlidesData: boolean };
+  slidesView: { showLearningPath: boolean; feedbackVisible: boolean; canAskDoubt: boolean };
 }
 
 // All Courses page
@@ -107,6 +110,13 @@ export interface StudentPermissions {
   canDeleteProfile: boolean;
 }
 
+// Notifications
+export interface StudentNotificationSettings {
+  allowSystemAlerts: boolean;
+  allowDashboardPins: boolean;
+  allowBatchStream: boolean;
+}
+
 // Root
 export interface StudentDisplaySettingsData {
   sidebar: { visible: boolean; tabs: StudentSidebarTabConfig[] };
@@ -115,6 +125,7 @@ export interface StudentDisplaySettingsData {
   permissions: StudentPermissions;
   courseDetails: StudentCourseDetailsSettings;
   allCourses: StudentAllCoursesSettings;
+  notifications: StudentNotificationSettings;
   postLoginRedirectRoute: string;
 }
 

@@ -51,6 +51,7 @@ import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import type { StudentDashboardWidgetConfig } from "@/types/student-display-settings";
 import { Card as DSCard } from "@/components/ui/card";
+import { DashboardPinsPanel } from "@/components/announcements";
 
 export const Route = createFileRoute("/dashboard/")({
   component: () => {
@@ -610,6 +611,11 @@ export function DashboardComponent() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Dashboard Pins Panel */}
+        <div className="animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
+          <DashboardPinsPanel maxPins={3} />
         </div>
 
         {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (

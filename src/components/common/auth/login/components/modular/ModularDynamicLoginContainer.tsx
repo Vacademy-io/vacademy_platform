@@ -57,27 +57,28 @@ export function ModularDynamicLoginContainer({
   
   // State to track current provider being shown
   const [currentProvider, setCurrentProvider] = useState<string>(() => {
-    // Priority: 1. Default provider from settings, 2. Email OTP if available, 3. First enabled provider
+    // Always use the default provider from settings if it's enabled
     if (enabledProviders.includes(defaultProvider)) {
       return defaultProvider;
     }
-    // If email OTP is enabled, prefer it as default
-    if (effectiveSettings.providers.emailOtp) {
-      return "emailOtp";
-    }
-    // Fallback to first enabled provider or usernamePassword as last resort
+    // Only fallback if default provider is not available
     return enabledProviders[0] || "usernamePassword";
   });
 
   // Always show at least one provider, even if only one is enabled
   const shouldShowProviderSelection = enabledProviders.length > 0;
 
-  // Update current provider if settings change and current provider is disabled
+  // Update current provider only if current provider is disabled AND default provider is not available
   useEffect(() => {
     if (!enabledProviders.includes(currentProvider) && enabledProviders.length > 0) {
-      setCurrentProvider(enabledProviders[0]);
+      // Try to use default provider first, then fallback to first available
+      if (enabledProviders.includes(defaultProvider)) {
+        setCurrentProvider(defaultProvider);
+      } else {
+        setCurrentProvider(enabledProviders[0]);
+      }
     }
-  }, [enabledProviders, currentProvider]);
+  }, [enabledProviders, currentProvider, defaultProvider]);
 
   const handleOAuthLogin = (provider: "google" | "github") => {
     try {
@@ -254,6 +255,8 @@ export function ModularDynamicLoginContainer({
                   showEmailSwitch={false} // Disable built-in switching since we handle it in container
                 />
               ) : null}
+
+
 
               {/* Provider Switching Links - Only show if both username and email OTP are enabled */}
               {effectiveSettings.providers.emailOtp && effectiveSettings.providers.usernamePassword && (

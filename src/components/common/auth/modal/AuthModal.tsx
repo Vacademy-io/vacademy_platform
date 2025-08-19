@@ -476,6 +476,7 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
                 <div className="mt-8 w-full pb-4">
                     {currentMode === 'login' ? (
                         <ModularDynamicLoginContainer
+                            key={`login-${currentMode}-${instituteIdFromStorage}`}
                             instituteId={instituteIdFromStorage || ""}
                             settings={loginSettings}
                             type={getCurrentRouteContext().type} 

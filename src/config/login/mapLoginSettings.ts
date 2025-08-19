@@ -43,11 +43,6 @@ export const mapLoginSettings = (
     }
   });
 
-  // Handle defaultProvider mapping - if signup has "emailOtp" but we need "usernamePassword" for login
-  if (apiSettings.providers?.defaultProvider === "emailOtp" && mergedProviders.usernamePassword) {
-    mergedProviders.defaultProvider = "usernamePassword";
-  }
-  
   // Ensure at least one provider is enabled by checking if any are true
   const enabledProviders = Object.entries(mergedProviders)
     .filter(([key, value]) => key !== "defaultProvider" && value === true)

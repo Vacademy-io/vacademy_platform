@@ -363,7 +363,7 @@ export function ModularDynamicSignupContainer({
       </SignupStep>
 
       {/* Divider */}
-      {enabledProviders.length > 1 && (
+      {effectiveSettings.providers.emailOtp && (
         <SignupStep delay={0.4}>
           <div className="relative my-5">
             <div className="absolute inset-0 flex items-center">

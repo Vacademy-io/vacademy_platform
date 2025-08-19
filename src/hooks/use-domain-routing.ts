@@ -207,6 +207,16 @@ export const useDomainRouting = () => {
       console.log("[Domain Routing] Redirecting to resolved path:", state.redirectPath);
       navigate({ to: state.redirectPath as never });
     } else if (state.instituteId) {
+      // Don't automatically redirect to courses if we're on a public route
+      const currentPath = window.location.pathname;
+      const publicRoutes = ['/login', '/signup', '/register', '/privacy-policy', '/terms-and-conditions'];
+      const isOnPublicRoute = publicRoutes.some(route => currentPath.startsWith(route));
+      
+      if (isOnPublicRoute) {
+        console.log("[Domain Routing] Skipping automatic redirect to courses on public route:", currentPath);
+        return;
+      }
+      
       console.log("[Domain Routing] Redirecting to courses catalog for institute:", state.instituteId);
       navigate({ to: "/courses" });
     } else {
@@ -223,6 +233,17 @@ export const useDomainRouting = () => {
   useEffect(() => {
     if (!state.isLoading && state.redirectPath) {
       console.log("[Domain Routing] State updated, redirecting to:", state.redirectPath);
+      
+      // Don't redirect if we're on public routes
+      const currentPath = window.location.pathname;
+      const publicRoutes = ['/login', '/signup', '/register', '/privacy-policy', '/terms-and-conditions'];
+      const isOnPublicRoute = publicRoutes.some(route => currentPath.startsWith(route));
+      
+      if (isOnPublicRoute) {
+        console.log("[Domain Routing] Skipping redirect on public route:", currentPath);
+        return;
+      }
+      
       // Only redirect if we're not on the root route (to avoid conflicts with root route logic)
       if (window.location.pathname !== "/") {
         console.log("[Domain Routing] Executing redirect to:", state.redirectPath);

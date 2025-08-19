@@ -90,7 +90,7 @@ export function CredentialsForm({
       setIsSubmitting(true);
       await onSubmit(data);
     } catch (error) {
-      console.error("Form submission error:", error);
+      // Handle error silently
     } finally {
       setIsSubmitting(false);
     }

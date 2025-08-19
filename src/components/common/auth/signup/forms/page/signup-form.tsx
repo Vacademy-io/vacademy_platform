@@ -51,7 +51,7 @@ export function SignUpForm({
             return;
           }
         } catch (error) {
-          console.error("Failed to decode OAuth state:", error);
+          // Silently handle OAuth state decoding errors
         }
       }
       
@@ -68,16 +68,7 @@ export function SignUpForm({
       instituteId: finalInstituteId || "" 
     });
     
-    // Debug logging
-    console.log("SignupForm: Institute ID extraction", {
-      searchParams: window.location.search,
-      extractedInstituteId: instituteId,
-      finalInstituteId,
-      hasOAuthParams: !!(search.signupData && search.state),
-      settings,
-      isLoading,
-      error
-    });
+
 
     // Removed modal-specific logic - using unified signup flow
 
@@ -198,7 +189,11 @@ export function SignUpForm({
                                 instituteId={finalInstituteId}
                                 settings={settings!}
                                 instituteDetails={instituteDetails}
-                                onSignupSuccess={() => navigate({ to: "/dashboard" })}
+                                onSignupSuccess={() => {
+                                    // Use settings-based redirect route, fallback to dashboard
+                                    const redirectRoute = settings?.postLoginRedirectRoute || "/dashboard";
+                                    navigate({ to: redirectRoute as never });
+                                }}
                                 onBackToProviders={() => navigate({ to: "/login" })}
                             />
                         )}

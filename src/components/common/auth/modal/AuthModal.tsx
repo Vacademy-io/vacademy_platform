@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from "react";
 import { createPortal } from "react-dom";
-import { ModalSpecificLoginForm } from "@/components/common/auth/login/forms/modal/ModalSpecificLoginForm";
+import { ModularDynamicLoginContainer } from "@/components/common/auth/login/components/modular/ModularDynamicLoginContainer";
 import { ModularDynamicSignupContainer } from "@/components/common/auth/signup/components/ModularDynamicSignupContainer";
 import { ModalForgotPasswordForm } from "@/components/common/auth/login/forms/modal/ModalForgotPasswordForm";
 import { Preferences } from "@capacitor/preferences";
 import { useSignupFlow } from "@/components/common/auth/signup/hooks/use-signup-flow";
+import { useModularLoginFlow } from "@/components/common/auth/login/hooks/modular/use-modular-login-flow";
+import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { resolveInstituteIdFromLocalOrSubdomain } from "@/services/institute-resolver";
 
 interface AuthModalProps {
@@ -36,8 +38,19 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
     const [instituteIdFromStorage, setInstituteIdFromStorage] = useState<string | null>(null);
     const lastPrefetchedInstituteIdRef = useRef<string | null>(null);
     
+    // Use domain routing hook for institute ID resolution
+    const domainRouting = useDomainRouting();
+    
     // Use the signup flow hook to get institute details and signup settings
     const { state: signupState, handleInstituteSelect, getSignupSettings } = useSignupFlow(false, type, courseId);
+    
+    // Use the login flow hook to get login settings - prioritize domain routing, then storage
+    const effectiveInstituteId = domainRouting.instituteId || instituteIdFromStorage || "";
+    const { settings: loginSettings, isLoading: isLoadingLoginSettings, instituteDetails: loginInstituteDetails } = useModularLoginFlow({ 
+        instituteId: effectiveInstituteId
+    });
+
+
 
     // Expose setIsOpen method to parent component
     useImperativeHandle(ref, () => ({
@@ -96,6 +109,17 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
         let cancelled = false;
         (async () => {
             try {
+                // First try domain routing
+                if (domainRouting.instituteId && !cancelled) {
+                    setInstituteIdFromStorage(domainRouting.instituteId);
+                    if (lastPrefetchedInstituteIdRef.current !== domainRouting.instituteId) {
+                        lastPrefetchedInstituteIdRef.current = domainRouting.instituteId;
+                        handleInstituteSelect(domainRouting.instituteId);
+                    }
+                    return;
+                }
+                
+                // Fallback to local storage and subdomain lookup
                 const resolved = await resolveInstituteIdFromLocalOrSubdomain();
                 if (!cancelled && resolved) {
                     setInstituteIdFromStorage(resolved);
@@ -110,7 +134,7 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
             }
         })();
         return () => { cancelled = true; };
-    }, [handleInstituteSelect]);
+    }, [handleInstituteSelect, domainRouting.instituteId]);
 
     // If user switches to signup and details aren't ready, prefetch (guarded against duplicate)
     useEffect(() => {
@@ -451,7 +475,9 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
                 {/* Content */}
                 <div className="mt-8 w-full pb-4">
                     {currentMode === 'login' ? (
-                        <ModalSpecificLoginForm 
+                        <ModularDynamicLoginContainer
+                            instituteId={instituteIdFromStorage || ""}
+                            settings={loginSettings}
                             type={getCurrentRouteContext().type} 
                             courseId={getCurrentRouteContext().courseId}
                             onSwitchToSignup={handleSwitchToSignup}

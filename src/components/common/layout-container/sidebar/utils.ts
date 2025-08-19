@@ -232,3 +232,26 @@ export async function filterHamburgerMenuItems(
     );
   }
 }
+
+// New function to filter menu items based on permissions
+export async function filterHamburgerMenuItemsWithPermissions(
+  HamBurgerSidebarItemsData: SidebarItemsType[],
+  permissions: { canViewProfile: boolean; canEditProfile: boolean; canDeleteProfile: boolean }
+) {
+  let filteredItems = await filterHamburgerMenuItems(HamBurgerSidebarItemsData);
+  
+  // Filter based on permissions
+  if (!permissions.canViewProfile) {
+    filteredItems = filteredItems.filter(item => item.title !== "View Profile Details");
+  }
+  
+  if (!permissions.canEditProfile) {
+    filteredItems = filteredItems.filter(item => item.title !== "Change Password");
+  }
+  
+  if (!permissions.canDeleteProfile) {
+    filteredItems = filteredItems.filter(item => item.title !== "Delete Account");
+  }
+  
+  return filteredItems;
+}

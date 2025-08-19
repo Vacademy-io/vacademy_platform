@@ -145,75 +145,76 @@ export const Route = createRootRouteWithContext<{
     queryClient: QueryClient;
 }>()({
     beforeLoad: async ({ location }) => {
-        // Handle root path redirect
-    if (location.pathname === "/") {
-      try {
-        // If already authenticated, redirect to settings.postLoginRedirectRoute
-        const authenticated = await isAuthenticated();
-        if (authenticated) {
-          const settings = await getStudentDisplaySettings(true);
-          const route = settings?.postLoginRedirectRoute || "/dashboard";
-          console.log("[Root beforeLoad] Authenticated at '/'. Redirecting to:", route);
-          // Support external absolute URLs
-          if (/^https?:\/\//.test(route)) {
-            // Can't external-redirect from beforeLoad; fall back to internal default
-            throw redirect({ to: "/dashboard" });
-          }
-          throw redirect({ to: route as never });
-        }
-      } catch {
-        // fallthrough to public handling
-      }
-
-      // New domain routing logic for unauthenticated users
-      try {
-        const { domain, subdomain } = getCurrentDomainInfo();
-        
-        // Use actual domain and subdomain (or "*" if no subdomain)
-        const testSubdomain = subdomain || "*";
-        
-        // Try to resolve domain routing
-        const domainRoutingResult = await resolveDomainRouting(domain, testSubdomain);
-        
-        if (domainRoutingResult) {
-          // API returned valid institute data, use the redirect field from API response
-          console.log("[Root beforeLoad] Domain routing resolved institute:", domainRoutingResult);
-          const redirectPath = domainRoutingResult.redirect || "/courses";
-          console.log("[Root beforeLoad] Redirecting to:", redirectPath);
-          throw redirect({ to: redirectPath as never });
-        }
-        
-        // Fallback to old logic for backward compatibility
-        const fallbackSubdomain = getSubdomain(window.location.hostname);
-        if (fallbackSubdomain === "code-circle") {
-          throw redirect({ to: "/courses" });
-        }
-      } catch (error) {
-        console.error("[Root beforeLoad] Domain routing error:", error);
-        // Continue to fallback logic
-      }
-
-      throw redirect({ to: "/login" });
-        }
-
-    // If authenticated and directly on /dashboard, honor settings route
-    try {
-      const authenticated = await isAuthenticated();
-      if (authenticated && location.pathname === "/dashboard") {
-        const settings = await getStudentDisplaySettings(false);
-        const route = settings?.postLoginRedirectRoute || "/dashboard";
-        console.log("[Root beforeLoad] On '/dashboard'. Settings route:", route);
-        if (route !== "/dashboard" && !/^https?:\/\//.test(route)) {
-          throw redirect({ to: route as never });
-        }
-      }
-    } catch {
-        // ignore
-    }
-
-        // Skip authentication check for public routes
+        // Skip all logic for public routes - they should work without any redirects
         if (isPublicRoute(location.pathname)) {
+            console.log("[Root beforeLoad] Public route detected:", location.pathname, "- skipping all logic");
             return;
+        }
+
+        // Handle root path redirect
+        if (location.pathname === "/") {
+            try {
+                // If already authenticated, redirect to settings.postLoginRedirectRoute
+                const authenticated = await isAuthenticated();
+                if (authenticated) {
+                    const settings = await getStudentDisplaySettings(true);
+                    const route = settings?.postLoginRedirectRoute || "/dashboard";
+                    console.log("[Root beforeLoad] Authenticated at '/'. Redirecting to:", route);
+                    // Support external absolute URLs
+                    if (/^https?:\/\//.test(route)) {
+                        // Can't external-redirect from beforeLoad; fall back to internal default
+                        throw redirect({ to: "/dashboard" });
+                    }
+                    throw redirect({ to: route as never });
+                }
+            } catch {
+                // fallthrough to public handling
+            }
+
+            // New domain routing logic for unauthenticated users
+            try {
+                const { domain, subdomain } = getCurrentDomainInfo();
+                
+                // Use actual domain and subdomain (or "*" if no subdomain)
+                const testSubdomain = subdomain || "*";
+                
+                // Try to resolve domain routing
+                const domainRoutingResult = await resolveDomainRouting(domain, testSubdomain);
+                
+                if (domainRoutingResult) {
+                    // API returned valid institute data, use the redirect field from API response
+                    console.log("[Root beforeLoad] Domain routing resolved institute:", domainRoutingResult);
+                    const redirectPath = domainRoutingResult.redirect || "/courses";
+                    console.log("[Root beforeLoad] Redirecting to:", redirectPath);
+                    throw redirect({ to: redirectPath as never });
+                }
+                
+                // Fallback to old logic for backward compatibility
+                const fallbackSubdomain = getSubdomain(window.location.hostname);
+                if (fallbackSubdomain === "code-circle") {
+                    throw redirect({ to: "/courses" });
+                }
+            } catch (error) {
+                console.error("[Root beforeLoad] Domain routing error:", error);
+                // Continue to fallback logic
+            }
+
+            throw redirect({ to: "/login" });
+        }
+
+        // If authenticated and directly on /dashboard, honor settings route
+        try {
+            const authenticated = await isAuthenticated();
+            if (authenticated && location.pathname === "/dashboard") {
+                const settings = await getStudentDisplaySettings(false);
+                const route = settings?.postLoginRedirectRoute || "/dashboard";
+                console.log("[Root beforeLoad] On '/dashboard'. Settings route:", route);
+                if (route !== "/dashboard" && !/^https?:\/\//.test(route)) {
+                    throw redirect({ to: route as never });
+                }
+            }
+        } catch {
+            // ignore
         }
 
         // Check authentication for all other routes

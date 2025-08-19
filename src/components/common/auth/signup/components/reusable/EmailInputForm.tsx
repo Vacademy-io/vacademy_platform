@@ -80,7 +80,6 @@ export function EmailInputForm({
       toast.success("OTP sent successfully to your email");
       onOtpSent(data.email, data.fullName);
     } catch (error) {
-      console.error("Failed to send OTP:", error);
       toast.error("Failed to send OTP. Please try again.");
     } finally {
       setIsSubmitting(false);

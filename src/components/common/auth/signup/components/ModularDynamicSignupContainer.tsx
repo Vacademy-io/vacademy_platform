@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,7 +42,7 @@ export function ModularDynamicSignupContainer({
   const [fullNameForOtp, setFullNameForOtp] = useState("");
   const [instituteSettings, setInstituteSettings] = useState<any>(null);
 
-  // If settings are not available, use default settings
+  // Use backend settings if available, otherwise fall back to defaults
   const effectiveSettings = settings || {
     providers: {
       google: true,
@@ -59,14 +58,7 @@ export function ModularDynamicSignupContainer({
     passwordDelivery: "none",
   };
 
-  // Debug logging - Keep this to see how component is rendering
-  console.log("ModularDynamicSignupContainer: Current state", {
-    hasSettings: !!settings,
-    hasInstituteId: !!instituteId,
-    instituteId,
-    currentStep,
-    effectiveSettings
-  });
+
 
   // Parse institute settings to check for allowLearnersToCreateCourses
   useEffect(() => {
@@ -75,7 +67,7 @@ export function ModularDynamicSignupContainer({
         const parsedSettings = parseInstituteSettings(instituteDetails.setting);
         setInstituteSettings(parsedSettings);
       } catch (error) {
-        console.error("Failed to parse institute settings:", error);
+        // Silently handle parsing errors
       }
     }
   }, [instituteDetails]);
@@ -102,8 +94,10 @@ export function ModularDynamicSignupContainer({
     .filter(([key, value]) => key !== "defaultProvider" && value === true)
     .map(([key]) => key);
 
-  // Check if we should show the provider selection step
-  const shouldShowProviderSelection = enabledProviders.length > 1;
+  // Always show provider selection step, even if only one provider is enabled
+  const shouldShowProviderSelection = enabledProviders.length > 0;
+
+
 
   const handleOAuthSignUp = (provider: "google" | "github") => {
     try {
@@ -153,7 +147,6 @@ export function ModularDynamicSignupContainer({
           handleOAuthSuccess(event.data.data);
           window.removeEventListener('message', messageHandler);
         } else if (event.data.type === 'oauth_error') {
-          console.error('[OAuth] Error response received:', event.data.data);
           toast.error(event.data.data.message || 'OAuth authentication failed');
           window.removeEventListener('message', messageHandler);
         }
@@ -170,7 +163,6 @@ export function ModularDynamicSignupContainer({
       }, 1000);
 
     } catch (error) {
-      console.error('OAuth signup error:', error);
       toast.error("Failed to initiate signup. Please try again.");
     }
   };
@@ -267,7 +259,6 @@ export function ModularDynamicSignupContainer({
       setSelectedProvider("oauth");
       
     } catch (error) {
-      console.error('[OAuth] Error handling OAuth success:', error);
       toast.error("Failed to process OAuth response. Please try again.");
     }
   };
@@ -284,7 +275,6 @@ export function ModularDynamicSignupContainer({
       }, 1500);
       
     } catch (error) {
-      console.error('[OAuth] Direct registration failed:', error);
       toast.error("Failed to create account. Please try again.");
       // Fallback to credentials form
       setCurrentStep("credentials");
@@ -477,52 +467,8 @@ export function ModularDynamicSignupContainer({
     </div>
   );
 
-  // If only one provider is enabled, skip provider selection
-  if (!shouldShowProviderSelection && enabledProviders.length === 1) {
-    const singleProvider = enabledProviders[0];
-    
-    switch (singleProvider) {
-      case "google":
-        // Immediately initiate OAuth for Google
-        handleOAuthSignUp("google");
-        return (
-          <div className={`flex items-center justify-center p-8 ${className}`}>
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
-              <p className="text-gray-600">Opening Google OAuth...</p>
-            </div>
-          </div>
-        );
-      case "github":
-        // Immediately initiate OAuth for GitHub
-        handleOAuthSignUp("github");
-        return (
-          <div className={`flex items-center justify-center p-8 ${className}`}>
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
-              <p className="text-gray-600">Opening GitHub OAuth...</p>
-            </div>
-          </div>
-        );
-      case "emailOtp":
-        return (
-          <div className={className}>
-            <EmailInputForm
-              settings={effectiveSettings}
-              initialEmail=""
-              initialFullName=""
-              onOtpSent={handleEmailInputSuccess}
-              onBack={handleBackToProviders}
-              isOAuth={false}
-              hideFullName={false}
-              privateEmailMessage=""
-            />
-          </div>
-        );
-      default:
-        return null;
-    }
-  }
+  // Always show provider selection step, even if only one provider is enabled
+  // This prevents automatic auth process from starting
 
   return (
     <div className={className}>
@@ -587,11 +533,7 @@ export function ModularDynamicSignupContainer({
                   ? ["LEARNER", "TEACHER"] 
                   : ["LEARNER"];
                 
-                console.log("Registration roles:", {
-                  learnersCanCreateCourses: instituteSettings?.learnersCanCreateCourses,
-                  roles,
-                  instituteSettings
-                });
+
 
                 // Call the register API
                 const registerData = {
@@ -616,7 +558,6 @@ export function ModularDynamicSignupContainer({
                   onSignupSuccess?.();
                 }, 1500);
               } catch (error) {
-                console.error("Registration failed:", error);
                 toast.error("Failed to create account. Please try again.");
               }
             }}
@@ -639,7 +580,7 @@ export function ModularDynamicSignupContainer({
               </svg>
             </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Account Created Successfully!</h3>
-            <p className="text-gray-600">Redirecting to dashboard...</p>
+            <p className="text-gray-600">Redirecting to your learning center...</p>
           </div>
         )}
       </AnimatePresence>

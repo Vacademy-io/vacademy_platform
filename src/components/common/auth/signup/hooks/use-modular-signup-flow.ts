@@ -22,7 +22,6 @@ export function useModularSignupFlow({ instituteId }: UseModularSignupFlowProps)
   useEffect(() => {
     // If no institute ID, use default settings
     if (!instituteId || instituteId.trim() === "") {
-      console.log("useModularSignupFlow: No institute ID, using default settings");
       setSettings(mapSignupSettings(null));
       setError(null);
       setIsLoading(false);
@@ -31,29 +30,15 @@ export function useModularSignupFlow({ instituteId }: UseModularSignupFlowProps)
 
     if (instituteDetails) {
       try {
-        console.log("useModularSignupFlow: Institute details received", {
-          instituteDetails,
-          hasSetting: !!instituteDetails.setting,
-          settingType: typeof instituteDetails.setting
-        });
-        
         // Parse institute settings to extract signup configuration
         const instituteSettings = parseInstituteSettings(instituteDetails.setting);
         const signupSettings = instituteSettings.signup;
         
-        console.log("useModularSignupFlow: Parsed settings", {
-          instituteSettings,
-          signupSettings,
-          hasSignupSettings: !!signupSettings
-        });
-        
         const mappedSettings = mapSignupSettings(signupSettings);
-        console.log("useModularSignupFlow: Mapped settings", mappedSettings);
         
         setSettings(mappedSettings);
         setError(null);
       } catch (err) {
-        console.error("Failed to parse signup settings:", err);
         setError("Failed to load signup configuration");
         // Fallback to default settings
         setSettings(mapSignupSettings(null));

@@ -5,12 +5,13 @@ export interface InstituteSignupSettings {
     google?: boolean;
     github?: boolean;
     emailOtp?: boolean;
+    usernamePassword?: boolean; // Backend uses this name
     defaultProvider?: "google" | "github" | "emailOtp";
   };
   googleSignupMode?: "direct" | "askCredentials";
   githubSignupMode?: "direct" | "askCredentials";
   emailOtpSignupMode?: "direct" | "askCredentials";
-  usernameStrategy?: "email" | "username" | "both";
+  usernameStrategy?: "email" | "username" | "both" | "manual";
   passwordStrategy?: "manual" | "auto" | "none";
   passwordDelivery?: "email" | "sms" | "none";
 }
@@ -22,10 +23,16 @@ export const mapSignupSettings = (
     return defaultSignupSettings;
   }
 
-  // Merge providers with defaults
+
+
+  // Merge providers with defaults, handling backend property name differences
+  // Note: Signup never includes usernamePassword provider - only emailOtp
   const mergedProviders = {
     ...defaultSignupSettings.providers,
     ...apiSettings.providers,
+    // For signup: use emailOtp directly, or fallback to usernamePassword if emailOtp not provided
+    // This ensures emailOtp: true is respected when backend sends it
+    emailOtp: apiSettings.providers?.emailOtp ?? apiSettings.providers?.usernamePassword ?? defaultSignupSettings.providers.emailOtp,
   };
 
   // Ensure all provider flags are boolean
@@ -48,7 +55,7 @@ export const mapSignupSettings = (
     }
   }
 
-  return {
+  const result = {
     providers: mergedProviders as SignupSettings["providers"],
     googleSignupMode: apiSettings.googleSignupMode || defaultSignupSettings.googleSignupMode,
     githubSignupMode: apiSettings.githubSignupMode || defaultSignupSettings.githubSignupMode,
@@ -57,4 +64,8 @@ export const mapSignupSettings = (
     passwordStrategy: apiSettings.passwordStrategy || defaultSignupSettings.passwordStrategy,
     passwordDelivery: apiSettings.passwordDelivery || defaultSignupSettings.passwordDelivery,
   };
+
+
+
+  return result;
 };

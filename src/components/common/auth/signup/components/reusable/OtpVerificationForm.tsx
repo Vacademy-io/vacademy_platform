@@ -93,7 +93,6 @@ export function OtpVerificationForm({
       // OTP verified, call the callback
       await onOtpVerified(email, fullName);
     } catch (error) {
-      console.error("OTP verification failed:", error);
       toast.error("Invalid OTP. Please try again.");
     } finally {
       setIsVerifying(false);
@@ -115,7 +114,6 @@ export function OtpVerificationForm({
       startTimer();
       toast.success("OTP resent successfully");
     } catch (error) {
-      console.error("Failed to resend OTP:", error);
       toast.error("Failed to resend OTP. Please try again.");
     }
   };

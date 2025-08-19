@@ -44,9 +44,11 @@ export function ModalUsernameLogin({
     onSwitchToSignup,
     onSwitchToForgotPassword,
     onLoginSuccess,
+    showEmailSwitch = true,
 }: ModalUsernameLoginProps & {
     onSwitchToSignup?: () => void;
     onSwitchToForgotPassword?: () => void;
+    showEmailSwitch?: boolean;
 }) {
     // Extract instituteId from current URL
     const urlParams = new URLSearchParams(window.location.search);
@@ -410,27 +412,19 @@ export function ModalUsernameLogin({
                 transition={{ delay: 0.4 }}
                 className="text-center pt-3 space-y-2"
             >
-                <motion.button
-                    type="button"
-                    whileHover={{ scale: 1.02 }}
-                    className="text-sm text-gray-500 hover:text-gray-700 transition-colors duration-200 relative group font-medium"
-                    onClick={onSwitchToEmail}
-                >
-                    Prefer email login?
-                    <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-700 transition-all duration-200 group-hover:w-full"></span>
-                </motion.button>
-                
-                <div className="text-xs text-gray-500">
-                    Don't have an account?{" "}
+                {showEmailSwitch && (
                     <motion.button
                         type="button"
                         whileHover={{ scale: 1.02 }}
-                        onClick={onSwitchToSignup}
-                        className="text-gray-700 hover:text-gray-900 font-medium underline cursor-pointer"
+                        className="text-sm text-gray-500 hover:text-gray-700 transition-colors duration-200 relative group font-medium"
+                        onClick={onSwitchToEmail}
                     >
-                        Sign up here
+                        Prefer emailotp login?
+                        <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-700 transition-all duration-200 group-hover:w-full"></span>
                     </motion.button>
-                </div>
+                )}
+                
+
             </motion.div>
         </div>
     );

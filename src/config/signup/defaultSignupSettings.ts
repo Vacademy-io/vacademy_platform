@@ -5,6 +5,8 @@ export type PasswordStrategy = 'manual' | 'autoRandom' | ' ';
 export type PasswordDelivery = 'showOnScreen' | 'sendEmail' | ' ' | 'none';
 
 export const defaultSignupSettings = {
+  // Note: Signup flow only supports OAuth and Email OTP
+  // Username/Password provider is not available in signup
   providers: {
     google: true,
     github: true,

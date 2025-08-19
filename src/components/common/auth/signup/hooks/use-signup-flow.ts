@@ -81,7 +81,6 @@ export const useSignupFlow = (isModalSignup?: boolean, type?: string, courseId?:
         isSearching: false 
       }));
     } catch (error) {
-      console.error("Error searching institutes:", error);
       toast.error("Failed to search institutes. Please try again.");
       setState(prev => ({ 
         ...prev, 
@@ -125,7 +124,6 @@ export const useSignupFlow = (isModalSignup?: boolean, type?: string, courseId?:
       }));
       // Removed toast for institute selection to keep UX quiet
     } catch (error) {
-      console.error("Error fetching institute details:", error);
       toast.error("Failed to fetch institute details. Please try again.");
       setState(prev => ({ 
         ...prev, 
@@ -176,11 +174,7 @@ export const useSignupFlow = (isModalSignup?: boolean, type?: string, courseId?:
         userRoles.push("TEACHER");
       }
       
-      console.log("User registration - Roles assigned:", {
-        learnersCanCreateCourses: state.instituteSettings?.learnersCanCreateCourses,
-        assignedRoles: userRoles,
-        instituteSettings: state.instituteSettings
-      });
+
 
       // Prepare registration payload
       const registrationData: RegisterUserRequest = {

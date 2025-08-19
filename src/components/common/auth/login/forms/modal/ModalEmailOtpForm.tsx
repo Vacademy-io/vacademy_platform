@@ -42,6 +42,7 @@ export function ModalEmailLogin({
     onSwitchToSignup,
     onEmailVerificationSuccess,
     onLoginSuccess,
+    showUsernameSwitch = true,
 }: {
     onSwitchToUsername: () => void;
     type?: string;
@@ -49,6 +50,7 @@ export function ModalEmailLogin({
     onSwitchToSignup?: () => void;
     onEmailVerificationSuccess?: (email: string) => void;
     onLoginSuccess?: () => void;
+    showUsernameSwitch?: boolean;
 }) {
     // Extract instituteId from current URL
     const urlParams = new URLSearchParams(window.location.search);
@@ -685,27 +687,19 @@ export function ModalEmailLogin({
                 transition={{ delay: 0.8 }}
                 className="text-center pt-3 space-y-2"
             >
-                <motion.button
-                    type="button"
-                    whileHover={{ scale: 1.02 }}
-                    className="text-sm text-gray-500 hover:text-gray-700 transition-colors duration-200 relative group font-medium"
-                    onClick={onSwitchToUsername}
-                >
-                    Prefer username login?
-                    <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-700 transition-all duration-200 group-hover:w-full"></span>
-                </motion.button>
-                
-                <div className="text-xs text-gray-500">
-                    Don't have an account?{" "}
+                {showUsernameSwitch && (
                     <motion.button
                         type="button"
                         whileHover={{ scale: 1.02 }}
-                        onClick={onSwitchToSignup}
-                        className="text-gray-700 hover:text-gray-900 font-medium underline cursor-pointer"
+                        className="text-sm text-gray-500 hover:text-gray-700 transition-colors duration-200 relative group font-medium"
+                        onClick={onSwitchToUsername}
                     >
-                        Sign up here
+                        Prefer username login?
+                        <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-700 transition-all duration-200 group-hover:w-full"></span>
                     </motion.button>
-                </div>
+                )}
+                
+
             </motion.div>
                 </form>
             </Form>

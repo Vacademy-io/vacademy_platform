@@ -129,7 +129,6 @@ export function EmailOtpForm({
       startTimer();
       toast.success("OTP sent successfully to your email");
     } catch (error) {
-      console.error("Failed to send OTP:", error);
       toast.error("Failed to send OTP. Please try again.");
     } finally {
       setIsSubmitting(false);
@@ -138,7 +137,6 @@ export function EmailOtpForm({
 
   const handleOtpSubmit = async () => {
     if (!formData) {
-      console.error("[EmailOtpForm] No formData available");
       return;
     }
 
@@ -167,7 +165,6 @@ export function EmailOtpForm({
       const fullNameToPass = formData.fullName || initialFullName || "User";
       await onOtpVerified(formData.email, fullNameToPass);
     } catch (error) {
-      console.error("[EmailOtpForm] OTP verification failed:", error);
       toast.error("Invalid OTP. Please try again.");
       setCurrentStep("otp");
     }
@@ -188,7 +185,6 @@ export function EmailOtpForm({
       startTimer();
       toast.success("OTP resent successfully");
     } catch (error) {
-      console.error("Failed to resend OTP:", error);
       toast.error("Failed to resend OTP. Please try again.");
     }
   };

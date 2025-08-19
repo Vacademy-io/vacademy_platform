@@ -10,7 +10,7 @@ import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
 import vacademy.io.admin_core_service.features.notification_service.enums.CommunicationType;
 import vacademy.io.admin_core_service.features.notification_service.enums.NotificationSourceEnum;
-import vacademy.io.admin_core_service.features.notification_service.service.EmailNotificationService;
+import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
 import vacademy.io.admin_core_service.features.slide.entity.Slide;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
@@ -29,7 +29,7 @@ public class SlideNotificationService {
     @Autowired
     private InstituteStudentRepository instituteStudentRepository;
     @Autowired
-    private EmailNotificationService notificationService;
+    private NotificationService notificationService;
 
     public void sendNotificationForAddingSlide(String instituteId, Chapter chapter, Slide slide) {
         Institute institute = instituteRepository.findById(instituteId).orElseThrow(() -> new VacademyException("Institute not found"));

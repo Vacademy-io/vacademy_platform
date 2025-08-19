@@ -7,7 +7,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
-import vacademy.io.admin_core_service.features.notification_service.service.EmailNotificationService;
+import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -18,7 +18,7 @@ public class NotificationClientImpl implements NotificationClient {
 
     private final RestTemplate restTemplate;
 
-    private final EmailNotificationService emailNotificationService;
+    private final NotificationService notificationService;
 
     @Override
     public Map<String, Object> sendWhatsApp(Map<String, Object> item, String body) {
@@ -39,7 +39,7 @@ public class NotificationClientImpl implements NotificationClient {
 
     @Override
     public Map<String, Object> sendEmail(NotificationDTO notificationDTO) {
-      String response =  emailNotificationService.sendEmailToUsers(notificationDTO);
+      String response =  notificationService.sendEmailToUsers(notificationDTO,null);
       return Map.of("success", true, "response", response);
     }
 }

@@ -13,13 +13,13 @@ import java.util.*;
 @Service
 @RequiredArgsConstructor
 public class QueryServiceImpl implements QueryNodeHandler.QueryService {
-    
+
     private final StudentSessionInstituteGroupMappingRepository ssigmRepo;
 
     @Override
     public Map<String, Object> execute(String prebuiltKey, Map<String, Object> params) {
         log.info("Executing query with key: {}, params: {}", prebuiltKey, params);
-        
+
         switch (prebuiltKey) {
             case "fetch_ssigm_by_package":
                 return fetchSSIGMByPackage(params);
@@ -30,19 +30,19 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return Map.of("error", "Unknown query key: " + prebuiltKey);
         }
     }
-    
+
     private Map<String, Object> fetchSSIGMByPackage(Map<String, Object> params) {
         try {
             List<String> packageSessionIds = (List<String>) params.get("package_session_ids");
             List<String> statusList = (List<String>) params.get("status_list");
-            
+
             if (packageSessionIds == null || statusList == null) {
                 return Map.of("error", "Missing required parameters");
             }
-            
+
             List<Object[]> rows = ssigmRepo.findMappingsWithStudentContacts(packageSessionIds, statusList);
             List<Map<String, Object>> ssigmList = new ArrayList<>();
-            
+
             for (Object[] row : rows) {
                 Map<String, Object> mapping = new HashMap<>();
                 mapping.put("mapping_id", String.valueOf(row[0]));
@@ -54,30 +54,29 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 mapping.put("package_session_id", String.valueOf(row[6]));
                 ssigmList.add(mapping);
             }
-            
+
             return Map.of(
-                "ssigm_list", ssigmList,
-                "mapping_count", ssigmList.size()
-            );
-            
+                    "ssigm_list", ssigmList,
+                    "mapping_count", ssigmList.size());
+
         } catch (Exception e) {
             log.error("Error executing fetch_ssigm_by_package query", e);
             return Map.of("error", e.getMessage());
         }
     }
-    
+
     private Map<String, Object> getSSIGMByStatusAndSessions(Map<String, Object> params) {
         try {
             List<String> packageSessionIds = (List<String>) params.get("package_session_ids");
             List<String> statusList = (List<String>) params.get("status_list");
-            
+
             if (packageSessionIds == null || statusList == null) {
                 return Map.of("error", "Missing required parameters");
             }
-            
+
             List<Object[]> rows = ssigmRepo.findMappingsWithStudentContacts(packageSessionIds, statusList);
             List<Map<String, Object>> ssigmList = new ArrayList<>();
-            
+
             for (Object[] row : rows) {
                 Map<String, Object> mapping = new HashMap<>();
                 mapping.put("mapping_id", String.valueOf(row[0]));
@@ -89,12 +88,11 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 mapping.put("package_session_id", String.valueOf(row[6]));
                 ssigmList.add(mapping);
             }
-            
+
             return Map.of(
-                "ssigm_list", ssigmList,
-                "mapping_count", ssigmList.size()
-            );
-            
+                    "ssigm_list", ssigmList,
+                    "mapping_count", ssigmList.size());
+
         } catch (Exception e) {
             log.error("Error executing get_ssigm_by_status_and_sessions query", e);
             return Map.of("error", e.getMessage());

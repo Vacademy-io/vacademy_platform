@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.institute_learner.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.hibernate.annotations.UuidGenerator;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -14,6 +15,7 @@ import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSt
 import vacademy.io.admin_core_service.features.institute_learner.manager.StudentRegistrationManager;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
+import vacademy.io.admin_core_service.features.institute_learner.dto.BulkLearnerApprovalRequestDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.GuestRegistrationRequestDTO;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.common.dto.CustomFieldValueDTO;
@@ -23,6 +25,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Service
+@Slf4j
 public class LearnerBatchEnrollService {
 
     @Autowired
@@ -78,5 +81,86 @@ public class LearnerBatchEnrollService {
                 );
             }
         }
+    }
+
+    /**
+     * Process bulk learner approval requests
+     * @param request The bulk approval request containing multiple items
+     * @return A result object with success count and total count
+     */
+    public BulkApprovalResult processBulkLearnerApproval(BulkLearnerApprovalRequestDTO request) {
+        log.info("Processing bulk learner approval request with {} items", request != null ? request.getItems().size() : 0);
+        
+        if (request == null || request.getItems() == null || request.getItems().isEmpty()) {
+            log.warn("Bulk approval request is null or empty");
+            return new BulkApprovalResult(0, 0, "Request cannot be null or empty");
+        }
+        
+        int successCount = 0;
+        int totalCount = request.getItems().size();
+        
+        // Process each item in the bulk request
+        for (BulkLearnerApprovalRequestDTO.LearnerApprovalItem item : request.getItems()) {
+            try {
+                // Validate individual item
+                if (item.getPackageSessionIds() == null || item.getPackageSessionIds().isEmpty() || 
+                    item.getUserId() == null || item.getUserId().trim().isEmpty() ||
+                    item.getEnrollInviteId() == null || item.getEnrollInviteId().trim().isEmpty()) {
+                    log.warn("Skipping invalid item: userId={}, enrollInviteId={}, packageSessionIds={}", 
+                            item.getUserId(), item.getEnrollInviteId(), item.getPackageSessionIds());
+                    continue; // Skip invalid items
+                }
+                
+                log.debug("Processing item: userId={}, enrollInviteId={}, packageSessionIds={}", 
+                         item.getUserId(), item.getEnrollInviteId(), item.getPackageSessionIds());
+                
+                shiftLearnerFromPendingForApprovalToActivePackageSessions(
+                    item.getPackageSessionIds(), 
+                    item.getUserId(), 
+                    item.getEnrollInviteId()
+                );
+                successCount++;
+                log.debug("Successfully processed item for userId: {}", item.getUserId());
+            } catch (Exception e) {
+                // Log error but continue processing other items
+                log.error("Error processing item for userId: {}, enrollInviteId: {}, error: {}", 
+                         item.getUserId(), item.getEnrollInviteId(), e.getMessage(), e);
+                continue;
+            }
+        }
+        
+        String message;
+        if (successCount == 0) {
+            message = "No items were processed successfully";
+        } else if (successCount < totalCount) {
+            message = String.format("Bulk approval partially successful: %d/%d items processed", successCount, totalCount);
+        } else {
+            message = String.format("Bulk approval successful: %d items processed", successCount);
+        }
+        
+        log.info("Bulk approval completed: {}/{} items processed successfully", successCount, totalCount);
+        return new BulkApprovalResult(successCount, totalCount, message);
+    }
+    
+    /**
+     * Result class for bulk approval operations
+     */
+    public static class BulkApprovalResult {
+        private final int successCount;
+        private final int totalCount;
+        private final String message;
+        
+        public BulkApprovalResult(int successCount, int totalCount, String message) {
+            this.successCount = successCount;
+            this.totalCount = totalCount;
+            this.message = message;
+        }
+        
+        public int getSuccessCount() { return successCount; }
+        public int getTotalCount() { return totalCount; }
+        public String getMessage() { return message; }
+        public boolean isFullySuccessful() { return successCount == totalCount; }
+        public boolean isPartiallySuccessful() { return successCount > 0 && successCount < totalCount; }
+        public boolean isFailed() { return successCount == 0; }
     }
 }

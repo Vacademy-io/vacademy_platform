@@ -72,4 +72,16 @@ export const AnalyticsEvents = {
   LESSON_COMPLETED: 'Lesson Completed',
   ASSESSMENT_STARTED: 'Assessment Started',
   ASSESSMENT_COMPLETED: 'Assessment Completed',
+  // Announcement events
+  SYSTEM_ALERT_VIEWED: 'System Alert Viewed',
+  SYSTEM_ALERT_MARKED_READ: 'System Alert Marked as Read',
+  SYSTEM_ALERT_DISMISSED: 'System Alert Dismissed',
+  DASHBOARD_PIN_CLICKED: 'Dashboard Pin Clicked',
+  STREAM_MESSAGE_VIEWED: 'Stream Message Viewed',
+  STREAM_MESSAGE_MARKED_READ: 'Stream Message Marked as Read',
+  COMMUNITY_MESSAGE_VIEWED: 'Community Message Viewed',
+  COMMUNITY_MESSAGE_MARKED_READ: 'Community Message Marked as Read',
+  STREAM_MESSAGES_LOAD_MORE: 'Stream Messages Load More',
+  COMMUNITY_MESSAGES_LOAD_MORE: 'Community Messages Load More',
+  REPLY_POSTED: 'Reply Posted',
 } as const; 

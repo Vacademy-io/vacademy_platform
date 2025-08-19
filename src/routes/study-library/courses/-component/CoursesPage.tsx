@@ -101,7 +101,10 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
     }, [courseData]);
 
     return (
-        <div ref={scrollRef} className="bg-gray-50 dark:bg-neutral-950 min-h-screen">
+        <div
+            ref={scrollRef}
+            className="bg-gray-50 dark:bg-neutral-950 min-h-screen"
+        >
             <div
                 className={`flex flex-col lg:flex-row ${showFilters ? "gap-4 lg:gap-6" : ""} p-2 sm:p-4 max-w-7xl mx-auto`}
             >
@@ -147,7 +150,10 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                     {courseData.content.length === 0 ? (
                         <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md shadow-sm p-5 sm:p-6 text-center">
                             <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 rounded-md mx-auto mb-3 sm:mb-4 flex items-center justify-center">
-                                <Search size={20} className="text-gray-400 sm:w-6 sm:h-6" />
+                                <Search
+                                    size={20}
+                                    className="text-gray-400 sm:w-6 sm:h-6"
+                                />
                             </div>
                             <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-neutral-100 mb-2">
                                 No{" "}
@@ -243,6 +249,9 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                                 course.percentage_completed || 0
                                             }
                                             selectedTab={selectedTab}
+                                            readTimeInMinutes={
+                                                course.read_time_in_minutes || 0
+                                            }
                                         />
                                     );
                                 })}

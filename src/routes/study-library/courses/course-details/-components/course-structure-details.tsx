@@ -43,6 +43,7 @@ import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 // import { getInstituteId } from "@/constants/helper";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import type { StudentCourseDetailsTabId } from "@/types/student-display-settings";
+import { PackageSessionMessages } from "@/components/announcements";
 
 export interface Chapter {
     id: string;
@@ -114,12 +115,53 @@ export const CourseStructureDetails = ({
     const { setNavHeading } = useNavHeadingStore();
 
     const [studyLibraryData, setStudyLibraryData] = useState<SubjectType[]>([]);
+    const [showContentPrefixes, setShowContentPrefixes] = useState<boolean>(true);
+    // Helper: format video duration from millis to h:mm:ss or m:ss
+    const formatDuration = (millis?: number | null): string => {
+        if (!millis || millis <= 0) return "";
+        const totalSeconds = Math.round(millis / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        if (hours > 0) {
+            return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+        }
+        return `${minutes}:${String(seconds).padStart(2, "0")}`;
+    };
+
+    // Helper: compute short meta text for a slide
+    const getSlideMetaText = (slide: Slide): string => {
+        // Prefer document/video/question/assignment specifics
+        if (slide.document_slide) {
+            const pages: number | undefined =
+                (slide.document_slide as { published_document_total_pages?: number }).published_document_total_pages ??
+                slide.document_slide.total_pages;
+            if (typeof pages === "number" && pages > 0) return `${pages} pages`;
+        }
+        if (slide.video_slide) {
+            const ms: number | undefined =
+                (slide.video_slide as { published_video_length_in_millis?: number }).published_video_length_in_millis ??
+                slide.video_slide.video_length_in_millis;
+            const text = formatDuration(ms);
+            if (text) return text;
+        }
+        if (slide.question_slide) {
+            const qType = slide.question_slide.question_type;
+            if (qType) return qType;
+        }
+        if (slide.assignment_slide) {
+            const end = slide.assignment_slide.end_date;
+            if (end) return `Due ${end}`;
+        }
+        return "";
+    };
     type LocalTab = { label: string; value: string };
     const [filteredTabs, setFilteredTabs] = useState<LocalTab[]>([]);
 
     const [selectedStructureTab, setSelectedStructureTab] = useState<string>(
         TabType.OUTLINE
     );
+    // const [showCourseDiscussion, setShowCourseDiscussion] = useState(false);
     const handleTabChange = (value: string) => setSelectedStructureTab(value);
     // Enforce Course Details tabs (visibility/order/default) from settings
     useEffect(() => {
@@ -150,11 +192,17 @@ export const CourseStructureDetails = ({
                     value: mapSettingIdToValue(t.id),
                 }));
 
+            // Check if course discussion should be shown based on student display settings
+            const shouldShowCourseDiscussion = settings?.notifications?.allowBatchStream === true;
+            // setShowCourseDiscussion(shouldShowCourseDiscussion);
+
             // Debug logs for visibility enforcement
             console.group('[Course Details Settings] Visible tabs resolved');
             console.log('Raw settings tabs:', settings?.courseDetails?.tabs);
             console.log('Mapped & ordered visible tabs:', ordered);
+            console.log('Should show course discussion:', shouldShowCourseDiscussion);
             console.groupEnd();
+            
             // Fallback: ensure CONTENT_STRUCTURE appears if visible in settings but mapping missed
             const hasContentStructureSetting = tabsSetting.some((t) => t.id === 'CONTENT_STRUCTURE' && t.visible !== false);
             const hasContentStructureMapped = ordered.some((t) => t.value === TabType.CONTENT_STRUCTURE);
@@ -162,8 +210,19 @@ export const CourseStructureDetails = ({
             if (hasContentStructureSetting && !hasContentStructureMapped) {
                 finalTabs.push({ label: 'Content Structure', value: TabType.CONTENT_STRUCTURE });
             }
+            
+            // Add course discussion tab if enabled
+            if (shouldShowCourseDiscussion) {
+                finalTabs.push({ label: 'Course Discussion', value: TabType.COURSE_DISCUSSION });
+            }
+            
             console.log('[Course Details Settings] finalTabs to render:', finalTabs);
             if (finalTabs.length) setFilteredTabs(finalTabs as typeof tabs);
+
+            // New: respect content prefix visibility
+            const resolvedShowPrefixes = settings?.courseDetails?.showCourseContentPrefixes !== false;
+            console.log('[Course Details Settings] showCourseContentPrefixes resolved:', resolvedShowPrefixes);
+            setShowContentPrefixes(resolvedShowPrefixes);
 
             const defaultTabId = settings?.courseDetails?.defaultTab || "OUTLINE";
             const defaultValue = mapSettingIdToValue(defaultTabId);
@@ -181,7 +240,7 @@ export const CourseStructureDetails = ({
     }, []);
 
     const renderTabs = useMemo(() => {
-        const priorityOrder = [TabType.OUTLINE, TabType.CONTENT_STRUCTURE];
+        const priorityOrder = [TabType.OUTLINE, TabType.CONTENT_STRUCTURE, TabType.COURSE_DISCUSSION];
         const byValue = new Map(filteredTabs.map((t) => [t.value, t]));
         const prioritized = priorityOrder
             .filter((v) => byValue.has(v))
@@ -271,22 +330,25 @@ export const CourseStructureDetails = ({
     };
 
     // Helper function to get slide styling based on clickability
-    const getSlideStyling = () => {
+    const getSlideStyling = (textSize: "xs" | "sm" = "xs") => {
+        const sizeClass = textSize === "sm" ? "text-sm" : "text-xs";
         if (isSlideClickable()) {
-            return "group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40 border border-transparent transition-all duration-200";
+            return `group flex cursor-pointer items-center gap-1.5 px-2 py-1 ${sizeClass} text-neutral-500 rounded hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40 border border-transparent transition-all duration-200`;
         } else {
-            return "group flex items-center gap-1.5 px-2 py-1 text-xs text-neutral-400 rounded bg-neutral-50/50 border border-transparent";
+            return `group flex items-center gap-1.5 px-2 py-1 ${sizeClass} text-neutral-400 rounded bg-neutral-50/50 border border-transparent`;
         }
     };
 
     const getSlidesWithChapterId = async (chapterId: string) => {
         // Avoid duplicate fetch
         if (slidesMap[chapterId]) {
+            console.log('[Slides Debug] Skipping fetch, slides already loaded for chapter:', chapterId, 'count:', (slidesMap[chapterId] || []).length);
             return;
         }
 
         try {
             const slides = await fetchSlidesByChapterId(chapterId);
+            console.log('[Slides Debug] Fetched slides for chapter:', chapterId, 'count:', slides?.length || 0);
             setSlidesMap((prev) => ({ ...prev, [chapterId]: slides }));
         } catch (err) {
             console.error(
@@ -489,7 +551,19 @@ export const CourseStructureDetails = ({
                         </Button>
                     </div>
                 </div>
-                <div className="max-w-2xl space-y-1.5">
+                <div className="w-full space-y-1.5">
+                    {(() => {
+                        const subjects = studyLibraryData || [];
+                        const summary = subjects.map((subject) => {
+                            const modules = subjectModulesMap[subject.id] || [];
+                            const chapters = modules.flatMap((m) => m.chapters || []);
+                            const slidesCounts = chapters.map((ch) => (slidesMap[ch.id] || []).length);
+                            const totalSlides = slidesCounts.reduce((a, b) => a + b, 0);
+                            return { subjectId: subject.id, modules: modules.length, chapters: chapters.length, totalSlides };
+                        });
+                        console.log('[Slides Debug] subject summary:', summary);
+                        return null;
+                    })()}
                     {courseStructure === 5 &&
                         studyLibraryData?.map(
                             (subject: SubjectType, idx: number) => {
@@ -545,9 +619,11 @@ export const CourseStructureDetails = ({
                                                         }}
                                                     />
                                                 )}
-                                                <span className="w-7 shrink-0 text-center font-mono text-xs font-semibold text-neutral-500 bg-neutral-100 rounded px-1 py-0.5">
-                                                    S{idx + 1}
-                                                </span>
+                                                {showContentPrefixes && (
+                                                    <span className="w-7 shrink-0 text-center font-mono text-xs font-semibold text-neutral-500 bg-neutral-100 rounded px-1 py-0.5">
+                                                        S{idx + 1}
+                                                    </span>
+                                                )}
                                                 <span
                                                     className="truncate font-medium group-hover:text-primary-700 transition-colors"
                                                     title={toTitleCase(
@@ -625,11 +701,12 @@ export const CourseStructureDetails = ({
                                                                             }}
                                                                         />
                                                                     )}
-                                                                    <span className="w-6 shrink-0 text-center font-mono text-xs font-medium text-neutral-500 bg-neutral-100 rounded px-1">
-                                                                        M
-                                                                        {modIdx +
-                                                                            1}
-                                                                    </span>
+                                                                    {showContentPrefixes && (
+                                                                        <span className="w-6 shrink-0 text-center font-mono text-xs font-medium text-neutral-500 bg-neutral-100 rounded px-1">
+                                                                            M
+                                                                            {modIdx + 1}
+                                                                        </span>
+                                                                    )}
                                                                     <span
                                                                         className="truncate group-hover:text-blue-700 transition-colors"
                                                                         title={
@@ -721,11 +798,12 @@ export const CourseStructureDetails = ({
                                                                                                     }}
                                                                                                 />
                                                                                             )}
-                                                                                            <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
-                                                                                                C
-                                                                                                {chIdx +
-                                                                                                    1}
-                                                                                            </span>
+                                                                                            {showContentPrefixes && (
+                                                                                                <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
+                                                                                                    C
+                                                                                                    {chIdx + 1}
+                                                                                                </span>
+                                                                                            )}
                                                                                             <span
                                                                                                 className="truncate group-hover:text-green-700 transition-colors text-xs"
                                                                                                 title={toTitleCase(
@@ -781,11 +859,12 @@ export const CourseStructureDetails = ({
                                                                                                                     );
                                                                                                                 } : undefined}
                                                                                                             >
-                                                                                                                <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
-                                                                                                                    S
-                                                                                                                    {sIdx +
-                                                                                                                        1}
-                                                                                                                </span>
+                                                                                                                {showContentPrefixes && (
+                                                                                                                    <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
+                                                                                                                        S
+                                                                                                                        {sIdx + 1}
+                                                                                                                    </span>
+                                                                                                                )}
                                                                                                                 <div className="shrink-0 group-hover:scale-110 transition-transform">
                                                                                                                     {getIcon(
                                                                                                                         slide,
@@ -794,14 +873,18 @@ export const CourseStructureDetails = ({
                                                                                                                 </div>
                                                                                                                 <span
                                                                                                                     className="truncate group-hover:text-amber-700 transition-colors"
-                                                                                                                    title={
-                                                                                                                        slide.title
-                                                                                                                    }
+                                                                                                                    title={slide.title}
                                                                                                                 >
-                                                                                                                    {
-                                                                                                                        slide.title
-                                                                                                                    }
+                                                                                                                    {slide.title}
                                                                                                                 </span>
+                                                                                                                {(() => {
+                                                                                                                    const meta = getSlideMetaText(slide);
+                                                                                                                    return meta ? (
+                                                                                                                        <span className="ml-2 shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600 border border-neutral-200">
+                                                                                                                            {meta}
+                                                                                                                        </span>
+                                                                                                                    ) : null;
+                                                                                                                })()}
                                                                                                             </div>
                                                                                                         )
                                                                                                     )
@@ -882,10 +965,12 @@ export const CourseStructureDetails = ({
                                                                         }
                                                                     />
                                                                 </div>
-                                                                <span className="w-6 shrink-0 text-center font-mono text-xs font-medium text-neutral-500 bg-neutral-100 rounded px-1">
-                                                                    M
-                                                                    {modIdx + 1}
-                                                                </span>
+                                                                {showContentPrefixes && (
+                                                                    <span className="w-6 shrink-0 text-center font-mono text-xs font-medium text-neutral-500 bg-neutral-100 rounded px-1">
+                                                                        M
+                                                                        {modIdx + 1}
+                                                                    </span>
+                                                                )}
                                                                 <span
                                                                     className="truncate group-hover:text-blue-700 transition-colors"
                                                                     title={toTitleCase(
@@ -962,11 +1047,12 @@ export const CourseStructureDetails = ({
                                                                                                 }
                                                                                             />
                                                                                         </div>
-                                                                                        <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
-                                                                                            C
-                                                                                            {chIdx +
-                                                                                                1}
-                                                                                        </span>
+                                                                                        {showContentPrefixes && (
+                                                                                            <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
+                                                                                                C
+                                                                                                {chIdx + 1}
+                                                                                            </span>
+                                                                                        )}
                                                                                         <span
                                                                                             className="truncate group-hover:text-green-700 transition-colors text-xs"
                                                                                             title={toTitleCase(
@@ -1026,11 +1112,12 @@ export const CourseStructureDetails = ({
                                                                                                             );
                                                                                                         } : undefined}
                                                                                                     >
-                                                                                                        <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
-                                                                                                            S
-                                                                                                            {sIdx +
-                                                                                                                1}
-                                                                                                        </span>
+                                                                                                        {showContentPrefixes && (
+                                                                                                            <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
+                                                                                                                S
+                                                                                                                {sIdx + 1}
+                                                                                                            </span>
+                                                                                                        )}
                                                                                                         <div className="shrink-0 group-hover:scale-110 transition-transform">
                                                                                                             {getIcon(
                                                                                                                 slide,
@@ -1039,14 +1126,18 @@ export const CourseStructureDetails = ({
                                                                                                         </div>
                                                                                                         <span
                                                                                                             className="truncate group-hover:text-amber-700 transition-colors"
-                                                                                                            title={
-                                                                                                                slide.title
-                                                                                                            }
+                                                                                                            title={slide.title}
                                                                                                         >
-                                                                                                            {
-                                                                                                                slide.title
-                                                                                                            }
+                                                                                                            {slide.title}
                                                                                                         </span>
+                                                                                                        {(() => {
+                                                                                                            const meta = getSlideMetaText(slide);
+                                                                                                            return meta ? (
+                                                                                                                <span className="ml-2 shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600 border border-neutral-200">
+                                                                                                                    {meta}
+                                                                                                                </span>
+                                                                                                            ) : null;
+                                                                                                        })()}
                                                                                                     </div>
                                                                                                 )
                                                                                             )
@@ -1158,13 +1249,14 @@ export const CourseStructureDetails = ({
                                                                                                 }
                                                                                             />
                                                                                         </div>
-                                                                                        <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
-                                                                                            C
-                                                                                            {chIdx +
-                                                                                                1}
-                                                                                        </span>
+                                                                                        {showContentPrefixes && (
+                                                                                            <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
+                                                                                                C
+                                                                                                {chIdx + 1}
+                                                                                            </span>
+                                                                                        )}
                                                                                         <span
-                                                                                            className="truncate group-hover:text-green-700 transition-colors text-xs"
+                                                                                            className="truncate group-hover:text-green-700 transition-colors text-sm"
                                                                                             title={toTitleCase(
                                                                                                 ch.chapter_name
                                                                                             )}
@@ -1222,11 +1314,12 @@ export const CourseStructureDetails = ({
                                                                                                             );
                                                                                                         } : undefined}
                                                                                                     >
-                                                                                                        <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
-                                                                                                            S
-                                                                                                            {sIdx +
-                                                                                                                1}
-                                                                                                        </span>
+                                                                                                        {showContentPrefixes && (
+                                                                                                            <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
+                                                                                                                S
+                                                                                                                {sIdx + 1}
+                                                                                                            </span>
+                                                                                                        )}
                                                                                                         <div className="shrink-0 group-hover:scale-110 transition-transform">
                                                                                                             {getIcon(
                                                                                                                 slide,
@@ -1235,14 +1328,18 @@ export const CourseStructureDetails = ({
                                                                                                         </div>
                                                                                                         <span
                                                                                                             className="truncate group-hover:text-amber-700 transition-colors"
-                                                                                                            title={
-                                                                                                                slide.title
-                                                                                                            }
+                                                                                                            title={slide.title}
                                                                                                         >
-                                                                                                            {
-                                                                                                                slide.title
-                                                                                                            }
+                                                                                                            {slide.title}
                                                                                                         </span>
+                                                                                                        {(() => {
+                                                                                                            const meta = getSlideMetaText(slide);
+                                                                                                            return meta ? (
+                                                                                                                <span className="ml-2 shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600 border border-neutral-200">
+                                                                                                                    {meta}
+                                                                                                                </span>
+                                                                                                            ) : null;
+                                                                                                        })()}
                                                                                                     </div>
                                                                                                 )
                                                                                             )
@@ -1361,7 +1458,7 @@ export const CourseStructureDetails = ({
                                                                                                     key={
                                                                                                         slide.id
                                                                                                     }
-                                                                                                    className={`group flex items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded border border-transparent transition-all duration-200 ${
+                                                                                                    className={`group flex items-center gap-1.5 px-2 py-1 text-sm text-neutral-500 rounded border border-transparent transition-all duration-200 ${
                                                                                                         selectedTab ===
                                                                                                             "PROGRESS" ||
                                                                                                         selectedTab ===
@@ -1380,11 +1477,12 @@ export const CourseStructureDetails = ({
                                                                                                         );
                                                                                                     }}
                                                                                                 >
-                                                                                                    <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
-                                                                                                        S
-                                                                                                        {sIdx +
-                                                                                                            1}
-                                                                                                    </span>
+                                                                                                    {showContentPrefixes && (
+                                                                                                        <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
+                                                                                                            S
+                                                                                                            {sIdx + 1}
+                                                                                                        </span>
+                                                                                                    )}
                                                                                                     <div className="shrink-0 group-hover:scale-110 transition-transform">
                                                                                                         {getIcon(
                                                                                                             slide,
@@ -1393,14 +1491,18 @@ export const CourseStructureDetails = ({
                                                                                                     </div>
                                                                                                     <span
                                                                                                         className="truncate group-hover:text-amber-700 transition-colors"
-                                                                                                        title={
-                                                                                                            slide.title
-                                                                                                        }
+                                                                                                        title={slide.title}
                                                                                                     >
-                                                                                                        {
-                                                                                                            slide.title
-                                                                                                        }
+                                                                                                        {slide.title}
                                                                                                     </span>
+                                                                                                    {(() => {
+                                                                                                        const meta = getSlideMetaText(slide);
+                                                                                                        return meta ? (
+                                                                                                            <span className="ml-2 shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600 border border-neutral-200">
+                                                                                                                {meta}
+                                                                                                            </span>
+                                                                                                        ) : null;
+                                                                                                    })()}
                                                                                                 </div>
                                                                                             )
                                                                                         )
@@ -1605,6 +1707,29 @@ export const CourseStructureDetails = ({
                 <p className="text-neutral-500">
                     Assessment content coming soon.
                 </p>
+            </div>
+        ),
+        [TabType.COURSE_DISCUSSION]: (
+            <div className="space-y-4">
+                {packageSessionId ? (
+                    <PackageSessionMessages
+                        packageSessionId={packageSessionId}
+                    />
+                ) : (
+                    <div className="rounded-md bg-gradient-to-br from-white to-neutral-50/50 border border-neutral-200 p-5 text-sm text-neutral-600">
+                        <div className="flex items-center gap-3 mb-3">
+                            <div className="w-8 h-8 rounded-md bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+                                <span className="text-white text-xs font-bold">D</span>
+                            </div>
+                            <span className="font-medium text-neutral-700">
+                                Course Discussion
+                            </span>
+                        </div>
+                        <p className="text-neutral-500">
+                            Course discussion will be available once you enroll in this course.
+                        </p>
+                    </div>
+                )}
             </div>
         ),
     };
@@ -1946,24 +2071,26 @@ export const CourseStructureDetails = ({
                     onValueChange={handleTabChange}
                     className="w-full"
                 >
-                    <TabsList className="h-auto border-b border-neutral-200/80 bg-transparent p-0 flex flex-row flex-wrap items-center justify-start gap-2 overflow-x-auto w-full">
-                        {renderTabs.map((tab: { label: string; value: string }) => (
-                            <TabsTrigger
-                                key={tab.value}
-                                value={tab.value}
-                                className={`inline-flex items-center data-[state=active]:text-primary data-[state=active]:border-primary hover:text-primary -mb-px px-3 whitespace-nowrap 
-                                py-2 text-sm font-medium transition-all duration-200 
-                                hover:bg-gradient-to-r hover:from-primary-50/60 hover:to-blue-50/40 focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:ring-offset-1
-                                data-[state=active]:rounded-t-lg data-[state=active]:border-b-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-white data-[state=active]:to-primary-50/30 data-[state=inactive]:text-neutral-500 data-[state=inactive]:hover:rounded-t-lg`}
-                            >
-                                {tab.label}
-                            </TabsTrigger>
-                        ))}
-                    </TabsList>
+                    {renderTabs.length > 1 && (
+                        <TabsList className="h-auto border-b border-neutral-200/80 bg-transparent p-0 flex flex-row flex-wrap items-center justify-start gap-2 overflow-x-auto w-full">
+                            {renderTabs.map((tab: { label: string; value: string }) => (
+                                <TabsTrigger
+                                    key={tab.value}
+                                    value={tab.value}
+                                    className={`inline-flex items-center data-[state=active]:text-primary data-[state=active]:border-primary hover:text-primary -mb-px px-3 whitespace-nowrap 
+                                    py-2 text-sm font-medium transition-all duration-200 
+                                    hover:bg-gradient-to-r hover:from-primary-50/60 hover:to-blue-50/40 focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:ring-offset-1
+                                    data-[state=active]:rounded-t-lg data-[state=active]:border-b-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-white data-[state=active]:to-primary-50/30 data-[state=inactive]:text-neutral-500 data-[state=inactive]:hover:rounded-t-lg`}
+                                >
+                                    {tab.label}
+                                </TabsTrigger>
+                            ))}
+                        </TabsList>
+                    )}
                     <TabsContent
                         key={selectedStructureTab}
                         value={selectedStructureTab}
-                        className="mt-4 rounded-lg bg-white border border-neutral-200/60 p-4"
+                        className={`${renderTabs.length > 1 ? 'mt-4' : ''} rounded-lg bg-white border border-neutral-200/60 p-4`}
                     >
                         {tabContent[selectedStructureTab as TabType]}
                     </TabsContent>

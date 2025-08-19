@@ -134,7 +134,7 @@ const HeroSection = ({
                     </div>
                 </div>
 
-                {/* Image Section */}
+                {/* Actions Section (image removed) */}
                 <div
                     className={`w-full lg:w-1/3 flex items-center justify-center p-0.5 sm:p-1 animate-fade-in-up ${
                         allowLeanersToCreateCourses
@@ -153,21 +153,6 @@ const HeroSection = ({
                             </MyButton>
                         </>
                     )}
-                    <div className="relative group">
-                        {/* Floating orb effect */}
-                        <div className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 w-4 h-4 sm:w-6 sm:h-6 md:w-8 md:h-8 bg-primary-100/30 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
-
-                        <div className="relative bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md p-1 sm:p-2 shadow-sm hover:shadow-md transition-all duration-300 hover:scale-[1.02]">
-                            <img
-                                src="/images/Group.png"
-                                alt="Illustration of diverse people learning"
-                                className="w-full max-w-[120px] sm:max-w-[150px] md:max-w-[180px] object-contain rounded-lg"
-                            />
-
-                            {/* Progress indicator */}
-                            <div className="absolute bottom-0 left-0 h-1 bg-gradient-to-r from-primary-400 to-primary-600 w-0 group-hover:w-full transition-all duration-700 ease-out rounded-b-lg sm:rounded-b-xl"></div>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>

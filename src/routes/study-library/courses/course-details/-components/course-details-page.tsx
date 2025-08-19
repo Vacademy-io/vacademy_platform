@@ -1,5 +1,5 @@
 import { Steps } from "@phosphor-icons/react";
-import { useNavigate, useRouter } from "@tanstack/react-router";
+import { useRouter } from "@tanstack/react-router";
 import {
     ChalkboardTeacher,
     Code,
@@ -66,6 +66,7 @@ import { getSubjectDetails } from "@/routes/courses/course-details/-utils/helper
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
+import { getStudentDisplaySettings } from "@/services/student-display-settings";
 
 type SlideType = {
     id: string;
@@ -215,12 +216,11 @@ interface EnrolledSession {
 }
 
 export const CourseDetailsPage = () => {
-    const navigate = useNavigate();
     const { setNavHeading } = useNavHeadingStore();
 
     useEffect(() => {
         setNavHeading(heading);
-    }, []);
+    }, [setNavHeading]);
 
     const [selectedSession, setSelectedSession] = useState<string>("");
     const [selectedLevel, setSelectedLevel] = useState<string>("");
@@ -318,7 +318,7 @@ export const CourseDetailsPage = () => {
         };
 
         fetchInstituteAndUserId();
-    }, []);
+    }, [updateLoadingState]);
 
     const [
         packageSessionIdForCurrentLevel,
@@ -354,7 +354,7 @@ export const CourseDetailsPage = () => {
         if (instituteId && selectedSession && selectedLevel) {
             fetchInstituteDetails();
         }
-    }, [instituteId, selectedSession, selectedLevel]);
+    }, [instituteId, selectedSession, selectedLevel, searchParams.courseId, updateLoadingState]);
 
     // Only run the query if instituteId is available
     const { data: studyLibraryData, isLoading: isCourseDetailsLoading } =
@@ -367,7 +367,7 @@ export const CourseDetailsPage = () => {
     // Update course details loading state
     useEffect(() => {
         updateLoadingState("courseDetails", isCourseDetailsLoading);
-    }, [isCourseDetailsLoading]);
+    }, [isCourseDetailsLoading, updateLoadingState]);
 
     const courseDetailsData = useMemo(() => {
         const found = studyLibraryData?.find(
@@ -418,9 +418,12 @@ export const CourseDetailsPage = () => {
         { _id: string; value: string; label: string }[]
     >([]);
 
+    // Watch sessions so memo recomputes when form.reset updates course data
+    const watchedSessions = form.watch("courseData.sessions") || [];
+
     // Convert sessions to select options format - filter based on selectedTab
     const sessionOptions = useMemo(() => {
-        const sessions = form.getValues("courseData")?.sessions || [];
+        const sessions = watchedSessions || [];
         console.log('Form sessions:', sessions);
         console.log('Enrolled sessions:', enrolledSessions);
         console.log('Selected tab:', selectedTab);
@@ -457,10 +460,10 @@ export const CourseDetailsPage = () => {
                 label: toTitleCase(session.sessionDetails.session_name),
             }));
         }
-    }, [form.watch("courseData.sessions"), enrolledSessions, selectedTab]);
+    }, [enrolledSessions, selectedTab, watchedSessions]);
 
     // Update level options when session changes - filter based on selectedTab
-    const handleSessionChange = (sessionId: string) => {
+    const handleSessionChange = useCallback((sessionId: string) => {
         setSelectedSession(sessionId);
         const sessions = form.getValues("courseData")?.sessions || [];
         const selectedSessionData = sessions.find(
@@ -529,7 +532,7 @@ export const CourseDetailsPage = () => {
                 setSelectedLevel("");
             }
         }
-    };
+    }, [enrolledSessions, form, selectedTab]);
 
     // Handle level change - clear expanded items and reset state
     const handleLevelChange = (levelId: string) => {
@@ -551,7 +554,7 @@ export const CourseDetailsPage = () => {
             console.log('Setting initial session:', initialSessionId);
             handleSessionChange(initialSessionId);
         }
-    }, [sessionOptions]);
+    }, [sessionOptions, selectedSession, selectedLevel, handleSessionChange]);
 
     useEffect(() => {
         const loadCourseData = async () => {
@@ -574,7 +577,7 @@ export const CourseDetailsPage = () => {
         };
 
         loadCourseData();
-    }, [courseDetailsData]);
+    }, [courseDetailsData, form]);
 
     // Calculate module statistics
     useEffect(() => {
@@ -591,10 +594,11 @@ export const CourseDetailsPage = () => {
         // Calculate modules and chapters for non-depth-5 courses
         if (form.getValues("courseData.courseStructure") !== 5) {
             currentSubjects.forEach((subject) => {
-                if (subject.modules) {
-                    totalModules += subject.modules.length;
-                    subject.modules.forEach((module) => {
-                        if (module.chapters) {
+                const subj = subject as unknown as { modules?: Array<{ chapters?: Array<unknown> }> };
+                if (Array.isArray(subj.modules)) {
+                    totalModules += subj.modules.length;
+                    subj.modules.forEach((module) => {
+                        if (Array.isArray(module.chapters)) {
                             totalChapters += module.chapters.length;
                         }
                     });
@@ -607,7 +611,7 @@ export const CourseDetailsPage = () => {
             totalChapters,
             totalSubjects,
         });
-    }, [selectedSession, selectedLevel, form.watch("courseData")]);
+    }, [selectedSession, selectedLevel, form]);
 
     // Add this with other queries at the top level of the component
     const slideCountQuery = useQuery({
@@ -618,7 +622,7 @@ export const CourseDetailsPage = () => {
     // Update slide count loading state
     useEffect(() => {
         updateLoadingState("slideCount", slideCountQuery.isLoading);
-    }, [slideCountQuery.isLoading]);
+    }, [slideCountQuery.isLoading, updateLoadingState]);
 
     // Custom slide count calculation to handle special document types
     const processedSlideCounts = useMemo(() => {
@@ -722,6 +726,40 @@ export const CourseDetailsPage = () => {
         totalChapters: 0,
         totalSubjects: 0,
     });
+
+    // Student display settings flags
+    const [showCourseConfiguration, setShowCourseConfiguration] = useState<boolean>(true);
+    const [overviewVisible, setOverviewVisible] = useState<boolean>(true);
+
+    useEffect(() => {
+        getStudentDisplaySettings(false)
+            .then((settings) => {
+                console.log('Student Display Settings:', settings);
+                const cd = settings?.courseDetails;
+                console.log('Student Display Settings - courseDetails:', cd);
+                if (cd) {
+                    const resolvedShowCourseConfiguration = cd.showCourseConfiguration ?? true;
+                    const resolvedOverviewVisible = cd.courseOverview?.visible ?? true;
+                    const resolvedShowCourseContentPrefixes = cd.showCourseContentPrefixes ?? true;
+                    console.log('Student Display Settings - resolved flags:', {
+                        showCourseConfiguration: resolvedShowCourseConfiguration,
+                        overviewVisible: resolvedOverviewVisible,
+                        showCourseContentPrefixes: resolvedShowCourseContentPrefixes,
+                    });
+                    setShowCourseConfiguration(resolvedShowCourseConfiguration);
+                    setOverviewVisible(resolvedOverviewVisible);
+                } else {
+                    console.log('Student Display Settings - courseDetails not found, using defaults');
+                }
+            })
+            .catch((error) => {
+                console.log('Failed to load Student Display Settings, using defaults. Error:', error);
+                setShowCourseConfiguration(true);
+                setOverviewVisible(true);
+            });
+    }, []);
+
+    const hasRightSidebar = overviewVisible;
 
     // Function to update module statistics for depth 5 courses
     const updateModuleStats = (
@@ -857,9 +895,10 @@ export const CourseDetailsPage = () => {
     console.log('instituteId:', instituteId);
     console.log('studyLibraryData:', studyLibraryData);
     console.log('packageSessionIdForCurrentLevel:', packageSessionIdForCurrentLevel);
+    console.log('Student Display Settings flags:', { showCourseConfiguration, overviewVisible });
 
-    // Show loading until all APIs are complete or until we have the required data
-    if (isLoading || !instituteId || !studyLibraryData || !packageSessionIdForCurrentLevel) {
+    // Show loading until essential data is ready; defer packageSessionId-dependent UI below
+    if (isLoading || !instituteId || !studyLibraryData) {
         return <DashboardLoader />;
     }
 
@@ -895,7 +934,7 @@ export const CourseDetailsPage = () => {
                     ></div>
                 </div>
 
-                {/* Enhanced Top Banner */}
+                {/* Enhanced Top Banner (always visible) */}
                 <div className="relative overflow-hidden animate-fade-in-up">
                     <div className="relative h-[200px] sm:h-[250px] lg:h-[280px]">
                         {/* Background with overlay */}
@@ -932,10 +971,10 @@ export const CourseDetailsPage = () => {
 
                         {/* Content Container */}
                         <div className="relative z-20 h-full">
-                            <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 h-full flex items-center">
+                            <div className="max-w-7xl mx-auto px-2 sm:px-3 lg:px-4 h-full flex items-center">
                                 {form.watch("courseData").courseMediaId ? (
                                     // Layout with video - 3/5 and 2/5 split
-                                    <div className="w-full grid grid-cols-1 lg:grid-cols-5 gap-4 lg:gap-6 items-center">
+                                    <div className="w-full grid grid-cols-1 lg:grid-cols-5 gap-3 lg:gap-4 items-center">
                                         {/* Left side - Course Info (3/5) */}
                                         <div className="lg:col-span-3 text-white animate-fade-in-up">
                                             {!form.watch("courseData").title ? (
@@ -948,7 +987,7 @@ export const CourseDetailsPage = () => {
                                             ) : (
                                                 <>
                                                     {/* Tags */}
-                                                    <div className="mb-2 sm:mb-3 flex flex-wrap gap-1.5">
+                                                    <div className="mb-1.5 sm:mb-2 flex flex-wrap gap-1.5">
                                                         {form
                                                             .getValues(
                                                                 "courseData"
@@ -971,7 +1010,7 @@ export const CourseDetailsPage = () => {
                                                     </div>
 
                                                     {/* Title */}
-                                                    <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold mb-2 sm:mb-3 leading-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">
+                                                    <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold mb-1.5 sm:mb-2 leading-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">
                                                         {toTitleCase(
                                                             form.getValues(
                                                                 "courseData"
@@ -1011,7 +1050,7 @@ export const CourseDetailsPage = () => {
                                     // Layout without video - full width
                                     <div className="w-full text-center text-white animate-fade-in-up">
                                         {!form.watch("courseData").title ? (
-                                            <div className="space-y-4 max-w-3xl mx-auto">
+                                            <div className="space-y-3 max-w-3xl mx-auto">
                                                 <div className="h-6 w-32 animate-pulse rounded bg-white/20 mx-auto" />
                                                 <div className="h-8 sm:h-10 w-3/4 animate-pulse rounded bg-white/20 mx-auto" />
                                                 <div className="h-4 w-full animate-pulse rounded bg-white/20" />
@@ -1020,7 +1059,7 @@ export const CourseDetailsPage = () => {
                                         ) : (
                                             <div className="max-w-4xl mx-auto">
                                                 {/* Tags */}
-                                                <div className="mb-3 sm:mb-4 flex flex-wrap gap-2 justify-center">
+                                                <div className="mb-2 sm:mb-3 flex flex-wrap gap-2 justify-center">
                                                     {form
                                                         .getValues("courseData")
                                                         .tags.map(
@@ -1036,7 +1075,7 @@ export const CourseDetailsPage = () => {
                                                 </div>
 
                                                 {/* Title */}
-                                                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4 leading-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">
+                                                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2 sm:mb-3 leading-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">
                                                     {toTitleCase(
                                                         form.getValues(
                                                             "courseData"
@@ -1063,10 +1102,10 @@ export const CourseDetailsPage = () => {
                     </div>
                 </div>
 
-                {/* Video Player for non-lg screens */}
+                {/* Video Player for non-lg screens (always visible if course has media) */}
                 {form.watch("courseData").courseMediaId && (
-                    <div className="lg:hidden relative z-10 max-w-[350px] px-3 sm:px-4 py-4">
-                        <div className="bg-white border border-gray-200 rounded-md shadow-sm p-3 sm:p-4">
+                    <div className="lg:hidden relative z-10 max-w-[350px] px-2 sm:px-3 py-3">
+                        <div className="bg-white border border-gray-200 rounded-md shadow-sm p-2 sm:p-3">
                             <VideoPlayer
                                 src={form.watch("courseData").courseMediaId}
                             />
@@ -1075,11 +1114,12 @@ export const CourseDetailsPage = () => {
                 )}
 
                 {/* Main Content Container */}
-                <div className="relative z-10 max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-4 lg:py-6">
-                    <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 lg:gap-6">
+                <div className="relative z-10 max-w-7xl mx-auto px-2 sm:px-3 lg:px-4 py-3 lg:py-4">
+                    <div className={`grid grid-cols-1 ${hasRightSidebar ? 'lg:grid-cols-4' : ''} gap-3 lg:gap-4`}>
                         {/* Left Column - Course Content (3/4) */}
-                        <div className="xl:col-span-3 space-y-4 lg:space-y-6">
+                        <div className={`${hasRightSidebar ? 'lg:col-span-3' : ''} space-y-3 lg:space-y-4`}>
                             {/* Enhanced Session and Level Selectors */}
+                            {showCourseConfiguration && (
                             <div
                                 className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-200 p-3 sm:p-4 group animate-fade-in-up"
                                 style={{ animationDelay: "0.1s" }}
@@ -1326,32 +1366,56 @@ export const CourseDetailsPage = () => {
                                     )}
                                 </div>
                             </div>
-
-                            {/* Course Structure */}
-                            {packageSessionIdForCurrentLevel && (
-                                <div
-                                    className="animate-fade-in-up"
-                                    style={{ animationDelay: "0.2s" }}
-                                >
-                                    <CourseStructureDetails
-                                        selectedSession={selectedSession}
-                                        selectedLevel={selectedLevel}
-                                        courseStructure={form.getValues(
-                                            "courseData.courseStructure"
-                                        )}
-                                        courseData={form.getValues()}
-                                        packageSessionId={packageSessionIdForCurrentLevel}
-                                        selectedTab={selectedTab}
-                                        updateModuleStats={updateModuleStats}
-                                        isEnrolledInCourse={enrolledSessions.some(
-                                            (enrolledSession) =>
-                                                enrolledSession.package_dto.id ===
-                                                searchParams.courseId
-                                        )}
-                                        onLoadingChange={handleModulesLoadingChange}
-                                    />
-                                </div>
                             )}
+
+                            {/* Course Structure (always rendered; internal logic will adapt to enrollment/public) */}
+                            <div
+                                className="animate-fade-in-up"
+                                style={{ animationDelay: "0.2s" }}
+                            >
+                                <CourseStructureDetails
+                                    selectedSession={selectedSession}
+                                    selectedLevel={selectedLevel}
+                                    courseStructure={form.getValues(
+                                        "courseData.courseStructure"
+                                    )}
+                                    courseData={form.getValues()}
+                                    packageSessionId={packageSessionIdForCurrentLevel || ""}
+                                    selectedTab={selectedTab}
+                                    updateModuleStats={updateModuleStats}
+                                    isEnrolledInCourse={enrolledSessions.some(
+                                        (enrolledSession) =>
+                                            enrolledSession.package_dto.id ===
+                                            searchParams.courseId
+                                    )}
+                                    onLoadingChange={handleModulesLoadingChange}
+                                />
+                            </div>
+
+                            {/* Inline Enroll card when sidebar is hidden */}
+                            {!hasRightSidebar && selectedTab === "ALL" && (() => {
+                                if (!selectedSession || !selectedLevel) return null;
+                                const isAlreadyEnrolled = enrolledSessions.some((enrolledSession) => (
+                                    enrolledSession.package_dto.id === searchParams.courseId &&
+                                    enrolledSession.session.id === selectedSession &&
+                                    enrolledSession.level.id === selectedLevel
+                                ));
+                                if (isAlreadyEnrolled) return null;
+                                return (
+                                    <div className="relative bg-white border border-gray-200 rounded-md shadow-sm p-2 sm:p-3">
+                                        <MyButton
+                                            type="button"
+                                            scale="large"
+                                            buttonType="primary"
+                                            layoutVariant="default"
+                                            className="!min-w-full !w-full text-xs h-8"
+                                            onClick={() => setEnrollmentDialogOpen(true)}
+                                        >
+                                            Enroll
+                                        </MyButton>
+                                    </div>
+                                );
+                            })()}
 
                             {/* Content Sections */}
                             <div className="space-y-4">
@@ -1535,8 +1599,10 @@ export const CourseDetailsPage = () => {
                         </div>
 
                         {/* Right Column - Course Stats Sidebar (1/4) */}
-                        <div className="xl:col-span-1">
+                        {hasRightSidebar && (
+                        <div className="lg:col-span-1">
                             <div className="sticky top-4 space-y-4">
+                                {overviewVisible && (
                                 <div
                                     className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
                                     style={{ animationDelay: "0.7s" }}
@@ -1843,8 +1909,35 @@ export const CourseDetailsPage = () => {
                                             })()}
                                     </div>
                                 </div>
+                                )}
+
+                                {/* Enrollment card within sidebar (when visible) */}
+                                {hasRightSidebar && selectedTab === "ALL" && (() => {
+                                    if (!selectedSession || !selectedLevel) return null;
+                                    const isAlreadyEnrolled = enrolledSessions.some((enrolledSession) => (
+                                        enrolledSession.package_dto.id === searchParams.courseId &&
+                                        enrolledSession.session.id === selectedSession &&
+                                        enrolledSession.level.id === selectedLevel
+                                    ));
+                                    if (isAlreadyEnrolled) return null;
+                                    return (
+                                        <div className="relative bg-white border border-gray-200 rounded-md shadow-sm p-2 sm:p-3">
+                                            <MyButton
+                                                type="button"
+                                                scale="large"
+                                                buttonType="primary"
+                                                layoutVariant="default"
+                                                className="!min-w-full !w-full text-xs h-8"
+                                                onClick={() => setEnrollmentDialogOpen(true)}
+                                            >
+                                                Enroll
+                                            </MyButton>
+                                        </div>
+                                    );
+                                })()}
                             </div>
                         </div>
+                        )}
                     </div>
 
                     {/* Ratings Component */}
@@ -1859,6 +1952,8 @@ export const CourseDetailsPage = () => {
                             />
                         </div>
                     )}
+
+
                 </div>
             </div>
         </>

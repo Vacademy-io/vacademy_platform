@@ -25,6 +25,8 @@ import {
 } from "@/components/ui/tooltip";
 import { BookOpen, Code, Gamepad2 } from "lucide-react";
 import { useDoubtSidebarStore } from "@/stores/study-library/doubt-sidebar-store";
+import { useEffect, useState } from "react";
+import { getStudentDisplaySettings } from "@/services/student-display-settings";
 
 // Helper function to get responsive truncation length
 const getResponsiveTruncationLength = () => {
@@ -257,6 +259,15 @@ const SlideItem = ({
             openSidebar();
         }, 100);
     };
+    const [canAskDoubt, setCanAskDoubt] = useState<boolean>(true);
+    useEffect(() => {
+        getStudentDisplaySettings(false)
+            .then((s) => {
+                const val = s?.courseDetails?.slidesView?.canAskDoubt !== false;
+                setCanAskDoubt(val);
+            })
+            .catch(() => setCanAskDoubt(true));
+    }, []);
 
     return (
         <TooltipProvider>
@@ -366,6 +377,7 @@ const SlideItem = ({
                                 </div>
 
                                 {/* Ask Doubt Button - appears on hover */}
+                                {canAskDoubt && (
                                 <div className="flex items-center justify-center w-6 h-6 opacity-0 group-hover/slide:opacity-100 transition-opacity duration-200">
                                     <TooltipProvider>
                                         <Tooltip>
@@ -389,6 +401,7 @@ const SlideItem = ({
                                         </Tooltip>
                                     </TooltipProvider>
                                 </div>
+                                )}
 
                                 {/* Status indicator */}
                                 <div className="shrink-0">

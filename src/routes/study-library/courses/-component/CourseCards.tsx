@@ -265,14 +265,19 @@ const CourseCard: React.FC<CourseCardProps> = ({
                                 </span>
                             </div>
                         )}
-                        <div className="flex items-center space-x-1">
-                            <Clock size={12} className="sm:w-3.5 sm:h-3.5" />
-                            <span className="font-medium">
-                                {readTimeInMinutes >= 60
-                                    ? `${Math.floor(readTimeInMinutes / 60)}h ${readTimeInMinutes % 60}m`
-                                    : `${readTimeInMinutes % 60}m`}
-                            </span>
-                        </div>
+                        {readTimeInMinutes && (
+                            <div className="flex items-center space-x-1">
+                                <Clock
+                                    size={12}
+                                    className="sm:w-3.5 sm:h-3.5"
+                                />
+                                <span className="font-medium">
+                                    {readTimeInMinutes >= 60
+                                        ? `${Math.floor(readTimeInMinutes / 60)}h ${readTimeInMinutes % 60}m`
+                                        : `${readTimeInMinutes % 60}m`}
+                                </span>
+                            </div>
+                        )}
                     </div>
                 </div>
 

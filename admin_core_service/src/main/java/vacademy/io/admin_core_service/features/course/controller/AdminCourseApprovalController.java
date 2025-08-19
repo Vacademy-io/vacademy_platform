@@ -21,7 +21,7 @@ public class AdminCourseApprovalController {
     /**
      * Approve a course submitted by teacher
      */
-    @PostMapping("/approve")
+    @PostMapping("/aapprove")
     public ResponseEntity<String> approveCourse(
             @RequestParam String courseId,
             @RequestAttribute("user") CustomUserDetails admin) {

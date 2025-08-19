@@ -9,7 +9,7 @@ import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
 import vacademy.io.admin_core_service.features.notification_service.enums.CommunicationType;
 import vacademy.io.admin_core_service.features.notification_service.enums.NotificationSourceEnum;
-import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
+import vacademy.io.admin_core_service.features.notification_service.service.EmailNotificationService;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 
@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class LearnerEnrollmentNotificationService {
 
-    private final NotificationService notificationService;
+    private final EmailNotificationService notificationService;
     private final InstituteRepository instituteRepository;
     private final ExecutorService executor = Executors.newFixedThreadPool(10);
 

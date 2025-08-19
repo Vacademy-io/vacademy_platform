@@ -16,7 +16,7 @@ import vacademy.io.admin_core_service.features.notification_service.enums.Notifi
 import vacademy.io.admin_core_service.features.notification_service.enums.NotificationSourceEnum;
 import vacademy.io.admin_core_service.features.notification_service.enums.NotificationType;
 import vacademy.io.admin_core_service.features.notification.repository.NotificationSettingRepository;
-import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
+import vacademy.io.admin_core_service.features.notification_service.service.EmailNotificationService;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.notification.dto.AttachmentNotificationDTO;
@@ -46,7 +46,7 @@ public class LmsReportNotificationSchedulerService {
     private LearnerReportService learnerReportService;
 
     @Autowired
-    private NotificationService notificationService;
+    private EmailNotificationService notificationService;
 
 
     public Boolean sendDailyReport() {

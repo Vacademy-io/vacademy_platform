@@ -5,7 +5,7 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
 import vacademy.io.admin_core_service.features.notification_service.enums.CommunicationType;
-import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
+import vacademy.io.admin_core_service.features.notification_service.service.EmailNotificationService;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
 
 import java.util.HashMap;
@@ -15,9 +15,9 @@ import java.util.concurrent.CompletableFuture;
 @Service
 public class LearnerInvitationNotification {
 
-    private final NotificationService notificationService;
+    private final EmailNotificationService notificationService;
 
-    public LearnerInvitationNotification(NotificationService notificationService) {
+    public LearnerInvitationNotification(EmailNotificationService notificationService) {
         this.notificationService = notificationService;
     }
 

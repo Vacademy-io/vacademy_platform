@@ -124,7 +124,6 @@ public class StudentListManager {
                     filter.getName(),
                     filter.getInstituteIds(),
                     filter.getStatuses(),
-                    filter.getDestinationPackageSessionIds(),
                     filter.getPaymentStatuses(),
                     List.of(StatusEnum.ACTIVE.name()),
                     pageable);
@@ -137,7 +136,6 @@ public class StudentListManager {
                     filter.getInstituteIds(),
                     filter.getGroupIds(),
                     filter.getPackageSessionIds(),
-                    filter.getDestinationPackageSessionIds(),
                     filter.getPaymentStatuses(),
                     List.of(StatusEnum.ACTIVE.name()),
                     pageable);
@@ -191,7 +189,7 @@ public class StudentListManager {
             dto.setPaymentPlan(JsonUtil.fromJson(p.getPaymentPlanJson(), PaymentPlanDTO.class));
             dto.setPaymentOption(JsonUtil.fromJson(p.getPaymentOptionJson(), PaymentOptionDTO.class));
             dto.setCustomFields(parseCustomFields(mapper, p.getCustomFieldsJson()));
-
+            dto.setEnrollInviteId(p.getEnrollInviteId());
             dtos.add(dto);
         }
 

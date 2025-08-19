@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
@@ -13,15 +14,11 @@ import vacademy.io.admin_core_service.features.chapter.repository.ChapterToSlide
 import vacademy.io.admin_core_service.features.learner_tracking.service.LearnerTrackingAsyncService;
 import vacademy.io.admin_core_service.features.common.constants.ValidStatusListConstants;
 import vacademy.io.admin_core_service.features.slide.dto.*;
-import vacademy.io.admin_core_service.features.slide.entity.DocumentSlide;
-import vacademy.io.admin_core_service.features.slide.entity.Slide;
-import vacademy.io.admin_core_service.features.slide.entity.VideoSlide;
+import vacademy.io.admin_core_service.features.slide.entity.*;
 import vacademy.io.admin_core_service.features.slide.enums.QuestionStatusEnum;
 import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 import vacademy.io.admin_core_service.features.slide.enums.SlideTypeEnum;
-import vacademy.io.admin_core_service.features.slide.repository.DocumentSlideRepository;
-import vacademy.io.admin_core_service.features.slide.repository.SlideRepository;
-import vacademy.io.admin_core_service.features.slide.repository.VideoSlideRepository;
+import vacademy.io.admin_core_service.features.slide.repository.*;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -32,6 +29,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class SlideService {
 
     private final SlideRepository slideRepository;
@@ -39,6 +37,10 @@ public class SlideService {
     private final ChapterToSlidesRepository chapterToSlidesRepository;
     private final DocumentSlideRepository documentSlideRepository;
     private final VideoSlideRepository videoSlideRepository;
+    private final QuestionSlideRepository questionSlideRepository;
+    private final AssignmentSlideRepository assignmentSlideRepository;
+    private final QuizSlideRepository quizSlideRepository;
+    private final VideoSlideQuestionRepository videoSlideQuestionRepository;
     private final SlideNotificationService slideNotificationService;
     private final ObjectMapper objectMapper;
     private final LearnerTrackingAsyncService learnerTrackingAsyncService;
@@ -264,26 +266,91 @@ public class SlideService {
         Slide slide = getSlideById(slideId);
         Chapter chapter = getChapterById(newChapterId);
 
-        Slide newSlide;
-        if (slide.getSourceType().equalsIgnoreCase(SlideTypeEnum.DOCUMENT.name())) {
-            newSlide = copyDocumentSlide(slide);
-        } else {
-            newSlide = copyVideoSlide(slide);
-        }
+        Slide newSlide = copySlideByType(slide);
 
         chapterToSlidesRepository.save(new ChapterToSlides(chapter, newSlide, null, SlideStatus.DRAFT.name()));
-        if (slide.getSourceType().equalsIgnoreCase(SlideTypeEnum.DOCUMENT.name())) {
+
+        // Update learner tracking for all slide types
+        updateLearnerTrackingForSlide(slide, oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId,
+                newChapterId, newModuleId, newSubjectId, newPackageSessionId);
+
+        return "Slide copied successfully.";
+    }
+
+    /**
+     * Copy slide based on its type using appropriate service methods
+     */
+    private Slide copySlideByType(Slide slide) {
+        String sourceType = slide.getSourceType();
+        
+        if (sourceType.equalsIgnoreCase(SlideTypeEnum.DOCUMENT.name())) {
+            String newSourceId = copyDocumentSlideSource(slide.getSourceId());
+            return createNewSlide(slide, newSourceId);
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.VIDEO.name())) {
+            String newSourceId = copyVideoSlideSource(slide.getSourceId());
+            return createNewSlide(slide, newSourceId);
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.QUESTION.name())) {
+            String newSourceId = copyQuestionSlideSource(slide.getSourceId());
+            return createNewSlide(slide, newSourceId);
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.ASSIGNMENT.name())) {
+            String newSourceId = copyAssignmentSlideSource(slide.getSourceId());
+            return createNewSlide(slide, newSourceId);
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.QUIZ.name())) {
+            String newSourceId = copyQuizSlideSource(slide.getSourceId());
+            return createNewSlide(slide, newSourceId);
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.VIDEO_QUESTION.name())) {
+            String newSourceId = copyVideoSlideQuestionSource(slide.getSourceId());
+            return createNewSlide(slide, newSourceId);
+        } else {
+            throw new VacademyException("Unsupported slide type for copying: " + sourceType);
+        }
+    }
+
+    /**
+     * Update learner tracking for slide operations
+     */
+    private void updateLearnerTrackingForSlide(Slide slide, String oldChapterId, String oldModuleId,
+            String oldSubjectId, String oldPackageSessionId, String newChapterId, String newModuleId,
+            String newSubjectId, String newPackageSessionId) {
+
+        String sourceType = slide.getSourceType();
+        String slideId = slide.getId();
+
+        if (sourceType.equalsIgnoreCase(SlideTypeEnum.DOCUMENT.name())) {
             learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.DOCUMENT.name(),
                     oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
             learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.DOCUMENT.name(),
                     newChapterId, newModuleId, newSubjectId, newPackageSessionId);
-        } else if (slide.getSourceType().equalsIgnoreCase(SlideTypeEnum.VIDEO.name())) {
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.VIDEO.name())) {
             learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.VIDEO.name(),
                     oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
             learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.VIDEO.name(),
+                    newChapterId, newModuleId, newSubjectId, newPackageSessionId);
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.QUESTION.name())) {
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.QUESTION.name(),
+                    oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.QUESTION.name(),
+                    newChapterId, newModuleId, newSubjectId, newPackageSessionId);
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.ASSIGNMENT.name())) {
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId,
+                    SlideTypeEnum.ASSIGNMENT.name(),
+                    oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId,
+                    SlideTypeEnum.ASSIGNMENT.name(),
+                    newChapterId, newModuleId, newSubjectId, newPackageSessionId);
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.QUIZ.name())) {
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.QUIZ.name(),
+                    oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.QUIZ.name(),
+                    newChapterId, newModuleId, newSubjectId, newPackageSessionId);
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.VIDEO_QUESTION.name())) {
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId,
+                    SlideTypeEnum.VIDEO_QUESTION.name(),
+                    oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId,
+                    SlideTypeEnum.VIDEO_QUESTION.name(),
                     newChapterId, newModuleId, newSubjectId, newPackageSessionId);
         }
-        return "Slide copied successfully.";
     }
 
     @Transactional
@@ -305,18 +372,12 @@ public class SlideService {
         chapterToSlidesRepository.save(newMapping);
 
         deleteMapping(slideId, oldChapterId);
-        Slide slide = existingMapping.getSlide();
-        if (slide.getSourceType().equalsIgnoreCase(SlideTypeEnum.DOCUMENT.name())) {
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.DOCUMENT.name(),
-                    oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.DOCUMENT.name(),
-                    newChapterId, newModuleId, newSubjectId, newPackageSessionId);
-        } else if (slide.getSourceType().equalsIgnoreCase(SlideTypeEnum.VIDEO.name())) {
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.VIDEO.name(),
-                    oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.VIDEO.name(),
-                    newChapterId, newModuleId, newSubjectId, newPackageSessionId);
-        }
+
+        // Update learner tracking for all slide types
+        updateLearnerTrackingForSlide(existingMapping.getSlide(), oldChapterId, oldModuleId, oldSubjectId,
+                oldPackageSessionId,
+                newChapterId, newModuleId, newSubjectId, newPackageSessionId);
+
         return "Slide moved successfully.";
     }
 
@@ -325,41 +386,6 @@ public class SlideService {
         chapterToSlides.setStatus(SlideStatus.DELETED.name());
         chapterToSlidesRepository.save(chapterToSlides);
         return "Slide deleted successfully.";
-    }
-
-    private Slide copyDocumentSlide(Slide slide) {
-        DocumentSlide documentSlide = documentSlideRepository.findById(slide.getSourceId())
-                .orElseThrow(() -> new VacademyException("No content found for slide"));
-
-        DocumentSlide newDocumentSlide = new DocumentSlide();
-        newDocumentSlide.setId(UUID.randomUUID().toString());
-        newDocumentSlide.setType(documentSlide.getType());
-        newDocumentSlide.setData(documentSlide.getData());
-        newDocumentSlide.setTitle(documentSlide.getTitle());
-        newDocumentSlide.setTotalPages(documentSlide.getTotalPages());
-        newDocumentSlide.setCoverFileId(documentSlide.getCoverFileId());
-        newDocumentSlide.setPublishedDocumentTotalPages(documentSlide.getPublishedDocumentTotalPages());
-        newDocumentSlide.setPublishedData(documentSlide.getPublishedData());
-        newDocumentSlide = documentSlideRepository.save(newDocumentSlide);
-
-        return createNewSlide(slide, newDocumentSlide.getId());
-    }
-
-    private Slide copyVideoSlide(Slide slide) {
-        VideoSlide videoSlide = videoSlideRepository.findById(slide.getSourceId())
-                .orElseThrow(() -> new VacademyException("No content found for slide"));
-
-        VideoSlide newVideoSlide = new VideoSlide();
-        newVideoSlide.setTitle(videoSlide.getTitle());
-        newVideoSlide.setUrl(videoSlide.getUrl());
-        newVideoSlide.setDescription(videoSlide.getDescription());
-        newVideoSlide.setVideoLengthInMillis(videoSlide.getVideoLengthInMillis());
-        newVideoSlide.setId(UUID.randomUUID().toString());
-        newVideoSlide.setPublishedUrl(videoSlide.getPublishedUrl());
-        newVideoSlide.setPublishedVideoLengthInMillis(videoSlide.getPublishedVideoLengthInMillis());
-        newVideoSlide = videoSlideRepository.save(newVideoSlide);
-
-        return createNewSlide(slide, newVideoSlide.getId());
     }
 
     private Slide createNewSlide(Slide slide, String newSourceId) {
@@ -470,63 +496,197 @@ public class SlideService {
         // ChapterToSlides
         for (ChapterToSlides chapterToSlide : chapterToSlides) {
             Slide slide = chapterToSlide.getSlide();
-            Slide newSlide = new Slide();
-            newSlide.setTitle(slide.getTitle());
-            newSlide.setStatus(slide.getStatus());
-            newSlide.setImageFileId(slide.getImageFileId());
-            newSlide.setSourceType(slide.getSourceType());
-            newSlide.setDescription(slide.getDescription());
-            newSlide.setId(UUID.randomUUID().toString());
+            Slide newSlide = createBasicSlideCopy(slide);
             newSlides.add(newSlide);
         }
 
         // Save slides to make sure they are managed entities
         List<Slide> persistedSlides = slideRepository.saveAll(newSlides);
 
-        // Now, process dependent entities (DocumentSlide/VideoSlide)
+        // Now, process dependent entities (DocumentSlide/VideoSlide/etc.) with proper
+        // copying
         for (int i = 0; i < chapterToSlides.size(); i++) {
             Slide oldSlide = chapterToSlides.get(i).getSlide();
-            Slide newSlide = persistedSlides.get(i); // Ensure we're using the persisted entity
+            Slide newSlide = persistedSlides.get(i);
 
-            if (oldSlide.getSourceType().equalsIgnoreCase(SlideTypeEnum.DOCUMENT.name())) {
-                DocumentSlide documentSlide = documentSlideRepository.findById(oldSlide.getSourceId()).orElse(null);
-                if (documentSlide != null) {
-                    DocumentSlide newDocumentSlide = new DocumentSlide();
-                    newDocumentSlide.setData(documentSlide.getData());
-                    newDocumentSlide.setTotalPages(documentSlide.getTotalPages());
-                    newDocumentSlide.setType(documentSlide.getType());
-                    newDocumentSlide.setTitle(documentSlide.getTitle());
-                    newDocumentSlide.setPublishedData(documentSlide.getPublishedData());
-                    newDocumentSlide.setCoverFileId(documentSlide.getCoverFileId());
-                    newDocumentSlide.setPublishedDocumentTotalPages(documentSlide.getPublishedDocumentTotalPages());
-                    newDocumentSlide.setId(UUID.randomUUID().toString());
-                    newDocumentSlide = documentSlideRepository.save(newDocumentSlide); // Save first
-                    newSlide.setSourceId(newDocumentSlide.getId()); // Now set reference
-                }
-            } else {
-                VideoSlide videoSlide = videoSlideRepository.findById(oldSlide.getSourceId()).orElse(null);
-                if (videoSlide != null) {
-                    VideoSlide newVideoSlide = new VideoSlide();
-                    newVideoSlide.setUrl(videoSlide.getUrl());
-                    newVideoSlide.setVideoLengthInMillis(videoSlide.getVideoLengthInMillis());
-                    newVideoSlide.setId(UUID.randomUUID().toString());
-                    newVideoSlide.setPublishedUrl(videoSlide.getPublishedUrl());
-                    newVideoSlide.setPublishedVideoLengthInMillis(videoSlide.getPublishedVideoLengthInMillis());
-                    newVideoSlide = videoSlideRepository.save(newVideoSlide); // Save first
-                    newSlide.setSourceId(newVideoSlide.getId()); // Now set reference
-                }
-            }
+            String newSourceId = copySlideSourceByType(oldSlide);
+            newSlide.setSourceId(newSourceId);
 
-            // Ensure the Slide object is fully persisted before creating ChapterToSlides
-            newChapterToSlides.add(new ChapterToSlides(newChapter, newSlide, chapterToSlides.get(i).getSlideOrder(),
+            // Create ChapterToSlides mapping
+            newChapterToSlides.add(new ChapterToSlides(newChapter, newSlide,
+                    chapterToSlides.get(i).getSlideOrder(),
                     chapterToSlides.get(i).getStatus()));
         }
 
-        // Now save ChapterToSlides
+        // Update slides with source IDs and save ChapterToSlides
+        slideRepository.saveAll(persistedSlides);
         chapterToSlidesRepository.saveAll(newChapterToSlides);
+
+        // log.info("Copied {} slides from chapter {} to chapter {}",
+        // newSlides.size(), oldChapter.getId(), newChapter.getId());
     }
 
-    public Slide saveSlide(String slideId, String sourceId, String sourceType, String status, String title,
+    /**
+     * Create a basic copy of a slide without the source content
+     */
+    private Slide createBasicSlideCopy(Slide slide) {
+        Slide newSlide = new Slide();
+        newSlide.setTitle(slide.getTitle());
+        newSlide.setStatus(slide.getStatus());
+        newSlide.setImageFileId(slide.getImageFileId());
+        newSlide.setSourceType(slide.getSourceType());
+        newSlide.setDescription(slide.getDescription());
+        newSlide.setId(UUID.randomUUID().toString());
+        return newSlide;
+    }
+
+    /**
+     * Copy slide source content based on slide type
+     */
+    private String copySlideSourceByType(Slide oldSlide) {
+        String sourceType = oldSlide.getSourceType();
+
+        if (sourceType.equalsIgnoreCase(SlideTypeEnum.DOCUMENT.name())) {
+            return copyDocumentSlideSource(oldSlide.getSourceId());
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.VIDEO.name())) {
+            return copyVideoSlideSource(oldSlide.getSourceId());
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.QUESTION.name())) {
+            return copyQuestionSlideSource(oldSlide.getSourceId());
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.ASSIGNMENT.name())) {
+            return copyAssignmentSlideSource(oldSlide.getSourceId());
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.QUIZ.name())) {
+            return copyQuizSlideSource(oldSlide.getSourceId());
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.VIDEO_QUESTION.name())) {
+            return copyVideoSlideQuestionSource(oldSlide.getSourceId());
+        } else {
+            log.warn("Unknown slide type: {}, copying source ID as-is", sourceType);
+            return oldSlide.getSourceId();
+        }
+    }
+
+    /**
+     * Copy document slide source and return new source ID
+     */
+    private String copyDocumentSlideSource(String sourceId) {
+        DocumentSlide documentSlide = documentSlideRepository.findById(sourceId).orElse(null);
+        if (documentSlide != null) {
+            DocumentSlide newDocumentSlide = new DocumentSlide();
+            newDocumentSlide.setId(UUID.randomUUID().toString());
+            newDocumentSlide.setData(documentSlide.getData());
+            newDocumentSlide.setTotalPages(documentSlide.getTotalPages());
+            newDocumentSlide.setType(documentSlide.getType());
+            newDocumentSlide.setTitle(documentSlide.getTitle());
+            newDocumentSlide.setPublishedData(documentSlide.getPublishedData());
+            newDocumentSlide.setCoverFileId(documentSlide.getCoverFileId());
+            newDocumentSlide.setPublishedDocumentTotalPages(documentSlide.getPublishedDocumentTotalPages());
+            newDocumentSlide = documentSlideRepository.save(newDocumentSlide);
+            return newDocumentSlide.getId();
+        }
+        return sourceId;
+    }
+
+    /**
+     * Copy video slide source and return new source ID
+     */
+    private String copyVideoSlideSource(String sourceId) {
+        VideoSlide videoSlide = videoSlideRepository.findById(sourceId).orElse(null);
+        if (videoSlide != null) {
+            VideoSlide newVideoSlide = new VideoSlide();
+            newVideoSlide.setId(UUID.randomUUID().toString());
+            newVideoSlide.setTitle(videoSlide.getTitle());
+            newVideoSlide.setUrl(videoSlide.getUrl());
+            newVideoSlide.setDescription(videoSlide.getDescription());
+            newVideoSlide.setVideoLengthInMillis(videoSlide.getVideoLengthInMillis());
+            newVideoSlide.setPublishedUrl(videoSlide.getPublishedUrl());
+            newVideoSlide.setPublishedVideoLengthInMillis(videoSlide.getPublishedVideoLengthInMillis());
+            newVideoSlide = videoSlideRepository.save(newVideoSlide);
+            return newVideoSlide.getId();
+        }
+        return sourceId;
+    }
+
+    /**
+     * Copy question slide source and return new source ID
+     */
+    private String copyQuestionSlideSource(String sourceId) {
+        QuestionSlide questionSlide = questionSlideRepository.findById(sourceId).orElse(null);
+        if (questionSlide != null) {
+            QuestionSlide newQuestionSlide = new QuestionSlide();
+            newQuestionSlide.setId(UUID.randomUUID().toString());
+            newQuestionSlide.setMediaId(questionSlide.getMediaId());
+            newQuestionSlide.setQuestionResponseType(questionSlide.getQuestionResponseType());
+            newQuestionSlide.setQuestionType(questionSlide.getQuestionType());
+            newQuestionSlide.setAccessLevel(questionSlide.getAccessLevel());
+            newQuestionSlide.setAutoEvaluationJson(questionSlide.getAutoEvaluationJson());
+            newQuestionSlide.setEvaluationType(questionSlide.getEvaluationType());
+            newQuestionSlide.setDefaultQuestionTimeMins(questionSlide.getDefaultQuestionTimeMins());
+            newQuestionSlide.setReAttemptCount(questionSlide.getReAttemptCount());
+            newQuestionSlide.setPoints(questionSlide.getPoints());
+            newQuestionSlide.setSourceType(questionSlide.getSourceType());
+            newQuestionSlide = questionSlideRepository.save(newQuestionSlide);
+            return newQuestionSlide.getId();
+        }
+        return sourceId;
+    }
+
+    /**
+     * Copy assignment slide source and return new source ID
+     */
+    private String copyAssignmentSlideSource(String sourceId) {
+        AssignmentSlide assignmentSlide = assignmentSlideRepository.findById(sourceId).orElse(null);
+        if (assignmentSlide != null) {
+            AssignmentSlide newAssignmentSlide = new AssignmentSlide();
+            newAssignmentSlide.setId(UUID.randomUUID().toString());
+            newAssignmentSlide.setLiveDate(assignmentSlide.getLiveDate());
+            newAssignmentSlide.setEndDate(assignmentSlide.getEndDate());
+            newAssignmentSlide.setReAttemptCount(assignmentSlide.getReAttemptCount());
+            newAssignmentSlide.setCommaSeparatedMediaIds(assignmentSlide.getCommaSeparatedMediaIds());
+            newAssignmentSlide = assignmentSlideRepository.save(newAssignmentSlide);
+            return newAssignmentSlide.getId();
+        }
+        return sourceId;
+    }
+
+    /**
+     * Copy quiz slide source and return new source ID
+     */
+    private String copyQuizSlideSource(String sourceId) {
+        QuizSlide quizSlide = quizSlideRepository.findById(sourceId).orElse(null);
+        if (quizSlide != null) {
+            QuizSlide newQuizSlide = new QuizSlide();
+            newQuizSlide.setId(UUID.randomUUID().toString());
+            newQuizSlide.setTitle(quizSlide.getTitle());
+            newQuizSlide = quizSlideRepository.save(newQuizSlide);
+            return newQuizSlide.getId();
+        }
+        return sourceId;
+    }
+
+    /**
+     * Copy video slide question source and return new source ID
+     */
+    private String copyVideoSlideQuestionSource(String sourceId) {
+        VideoSlideQuestion videoSlideQuestion = videoSlideQuestionRepository.findById(sourceId).orElse(null);
+        if (videoSlideQuestion != null) {
+            VideoSlideQuestion newVideoSlideQuestion = new VideoSlideQuestion();
+            newVideoSlideQuestion.setId(UUID.randomUUID().toString());
+            newVideoSlideQuestion.setMediaId(videoSlideQuestion.getMediaId());
+            newVideoSlideQuestion.setCanSkip(videoSlideQuestion.isCanSkip());
+            newVideoSlideQuestion.setQuestionResponseType(videoSlideQuestion.getQuestionResponseType());
+            newVideoSlideQuestion.setQuestionType(videoSlideQuestion.getQuestionType());
+            newVideoSlideQuestion.setAccessLevel(videoSlideQuestion.getAccessLevel());
+            newVideoSlideQuestion.setAutoEvaluationJson(videoSlideQuestion.getAutoEvaluationJson());
+            newVideoSlideQuestion.setEvaluationType(videoSlideQuestion.getEvaluationType());
+            newVideoSlideQuestion.setQuestionOrder(videoSlideQuestion.getQuestionOrder());
+            newVideoSlideQuestion.setQuestionTimeInMillis(videoSlideQuestion.getQuestionTimeInMillis());
+            newVideoSlideQuestion.setStatus(videoSlideQuestion.getStatus());
+            newVideoSlideQuestion = videoSlideQuestionRepository.save(newVideoSlideQuestion);
+            return newVideoSlideQuestion.getId();
+        }
+        return sourceId;
+    }
+
+    public String saveSlide(String slideId, String sourceId, String sourceType, String status, String title,
             String description, String imageFileId, Integer slideOrder, String chapterId) {
         Slide slide = new Slide();
         slide.setId(slideId);
@@ -541,7 +701,7 @@ public class SlideService {
         }
         slide = slideRepository.save(slide);
         saveChapterSlideMapping(chapterId, slide, slideOrder, status);
-        return slide;
+        return slide.getId();
     }
 
     public void saveChapterSlideMapping(String chapterId, Slide slide, Integer slideOrder, String status) {

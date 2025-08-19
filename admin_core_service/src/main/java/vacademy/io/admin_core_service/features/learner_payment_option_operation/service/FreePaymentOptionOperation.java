@@ -64,7 +64,8 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
                         new Date(),
                         null,
                         enrollInvite.getLearnerAccessDays() != null ? enrollInvite.getLearnerAccessDays().toString() : null,
-                        packageSessionId
+                        packageSessionId,
+                        userPlan.getId()
                 );
                 instituteStudentDetails.add(detail);
             }
@@ -73,7 +74,7 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
             Integer accessDays = enrollInvite.getLearnerAccessDays();
             List<String>packageSessionIds = learnerPackageSessionsEnrollDTO.getPackageSessionIds();
             for (String packageSessionId : packageSessionIds) {
-                InstituteStudentDetails instituteStudentDetail = new InstituteStudentDetails(instituteId, packageSessionId, null, status, new Date(), null, (accessDays != null ? accessDays.toString() : null),null);
+                InstituteStudentDetails instituteStudentDetail = new InstituteStudentDetails(instituteId, packageSessionId, null, status, new Date(), null, (accessDays != null ? accessDays.toString() : null),null,userPlan.getId());
                 instituteStudentDetails.add(instituteStudentDetail);
             }
         }

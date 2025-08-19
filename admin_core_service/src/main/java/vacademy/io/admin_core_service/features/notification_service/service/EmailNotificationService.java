@@ -18,7 +18,7 @@ import vacademy.io.common.notification.dto.GenericEmailRequest;
 import java.util.List;
 
 @Service
-public class NotificationService {
+public class EmailNotificationService {
 
     @Autowired
     private InternalClientUtils internalClientUtils;
@@ -70,5 +70,4 @@ public class NotificationService {
             throw new VacademyException(e.getMessage());
         }
     }
-
 }

@@ -24,7 +24,7 @@ public class PaymentNotificatonService {
     private InstituteService instituteService;
 
     @Autowired
-    private NotificationService notificationService;
+    private EmailNotificationService notificationService;
 
     @Autowired
     private MediaService mediaService;

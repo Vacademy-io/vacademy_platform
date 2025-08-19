@@ -16,7 +16,7 @@ public class JsonUtil {
             return objectMapper.writeValueAsString(object);
         } catch (JsonProcessingException e) {
             e.printStackTrace();
-            throw new VacademyException("Failed to convert object to JSON");
+            return null;
         }
     }
 
@@ -28,7 +28,7 @@ public class JsonUtil {
             return objectMapper.readValue(json, clazz);
         } catch (JsonProcessingException e) {
             e.printStackTrace();
-            throw new VacademyException("Failed to parse JSON to object");
+            return null;
         }
     }
 }

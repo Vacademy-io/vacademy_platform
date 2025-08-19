@@ -83,7 +83,7 @@ public class VideoSlideService {
             saveVideoSlideQuestionAndOptions(videoSlideDTO.getQuestions(), videoSlide);
         }
 
-       Slide slide = slideService.saveSlide(
+       return slideService.saveSlide(
                 slideDTO.getId(),
                 videoSlide.getId(),
                 SlideTypeEnum.VIDEO.name(),
@@ -95,7 +95,6 @@ public class VideoSlideService {
                 chapterId
         );
 
-        return slide.getId();
     }
 
     public String updateVideoSlide(SlideDTO slideDTO, String chapterId,String moduleId,String subjectId,String packageSessionId) {

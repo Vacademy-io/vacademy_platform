@@ -50,7 +50,7 @@ public class StudentV2DTO {
     private PaymentPlanDTO paymentPlan;
     private PaymentOptionDTO paymentOption;
     private String destinationPackageSessionId;
-
+    private String enrollInviteId;
     // Custom fields as Map<customFieldId, value>
     private Map<String, String> customFields;
 }

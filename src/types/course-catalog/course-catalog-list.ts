@@ -37,6 +37,7 @@ export interface CoursePackage {
     level_name: string;
     instructors: Instructor[];
     level_ids: string[];
+    read_time_in_minutes: number;
 }
 
 interface Pageable {

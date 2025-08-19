@@ -141,7 +141,7 @@ public class AuthManager {
             String username = authRequestDTO.getUserName();
 
             Optional<User> userOptional = userRepository.findByUsername(username);
-            if (userOptional.isEmpty() || !userOptional.get().isRootUser()) {
+            if (userOptional.isEmpty()) {
                 throw new UsernameNotFoundException("invalid user request..!!");
             }
 
@@ -149,17 +149,20 @@ public class AuthManager {
 
             User user = userOptional.get();
 
-            List<UserRole> userRoles = userRoleRepository.findUserRolesByUserIdAndStatusesAndRoleNames(
-                    user.getId(),
-                    List.of(UserRoleStatus.ACTIVE.name(),UserRoleStatus.INVITED.name()),
-                    AuthConstants.VALID_ROLES_FOR_ADMIN_PORTAL
-            );
+            List<UserRole> allUserRoles = userRoleRepository.findByUser(user);
+            Optional<UserRole> nonStudentRole = allUserRoles.stream()
+                    .filter(ur -> List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()).contains(ur.getStatus()))
+                    .filter(ur -> ur.getRole() != null && ur.getRole().getName() != null && !AuthConstants.STUDENT_ROLE.equals(ur.getRole().getName()))
+                    .findFirst();
 
-            // there is problem, we have to mark as accepted invitation based on Institute
-
-            if (!userRoles.isEmpty()) {
-                userRoleRepository.updateUserRoleStatusByInstituteIdAndUserId(UserRoleStatus.ACTIVE.name(), userRoles.get(0).getInstituteId(), List.of(user.getId()));
-            }else{
+            // mark as accepted invitation based on Institute for the first eligible non-student role
+            if (nonStudentRole.isPresent()) {
+                userRoleRepository.updateUserRoleStatusByInstituteIdAndUserId(
+                        UserRoleStatus.ACTIVE.name(),
+                        nonStudentRole.get().getInstituteId(),
+                        List.of(user.getId())
+                );
+            } else {
                 throw new UsernameNotFoundException("invalid user request..!!");
             }
 

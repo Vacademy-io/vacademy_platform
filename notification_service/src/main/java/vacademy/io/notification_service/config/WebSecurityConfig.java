@@ -22,7 +22,37 @@ import vacademy.io.common.auth.provider.ServiceAuthProvider;
 @Configuration
 public class WebSecurityConfig {
 
-    private static final String[] ALLOWED_PATHS = {"/notification-service/push-notifications/**","/notification-service/whatsapp/v1/send-template-whatsapp","/auth/**", "/notification-service/v1/send-email","/notification-service/actuator/**", "/actuator/**", "/notification-service/internal/**","/notification-service/v1/send-email-to-users-public", "/internal/**", "/verify/id", "/notification-service/swagger-ui.html", "/notification-service/api-docs/**", "/swagger-ui.html", "/notification-service/swagger-ui/index.html", "/notification-service/v3/api-docs/**", "/notification-service/swagger-ui/**", "/notification-service/webjars/swagger-ui/**", "notification-service/v1/**"};
+    private static final String[] ALLOWED_PATHS = {
+            // Existing notification service paths
+            "/notification-service/push-notifications/**",
+            "/notification-service/whatsapp/v1/send-template-whatsapp",
+            "/auth/**", 
+            "/notification-service/v1/send-email",
+            "/notification-service/actuator/**", 
+            "/actuator/**", 
+            "/notification-service/internal/**",
+            "/notification-service/v1/send-email-to-users-public", 
+            "/internal/**", 
+            "/verify/id",
+            
+            // Swagger and documentation
+            "/notification-service/swagger-ui.html", 
+            "/notification-service/api-docs/**", 
+            "/swagger-ui.html", 
+            "/notification-service/swagger-ui/index.html", 
+            "/notification-service/v3/api-docs/**", 
+            "/notification-service/swagger-ui/**", 
+            "/notification-service/webjars/swagger-ui/**", 
+            "notification-service/v1/**",
+            
+            // Announcement system APIs - OPEN for internal service communication
+            "/notification-service/v1/announcements/**",
+            "/notification-service/v1/user-messages/**",
+            "/notification-service/v1/message-replies/**",
+            "/notification-service/v1/institute-settings/**",
+            // SSE streaming endpoints
+            "/notification-service/v1/sse/**"
+    };
 
     @Autowired
     private JwtAuthFilter jwtAuthFilter; // Inject JwtAuthFilter dependency

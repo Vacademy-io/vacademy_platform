@@ -105,5 +105,11 @@ public interface FacultySubjectPackageSessionMappingRepository extends JpaReposi
     @Query("SELECT fspm FROM FacultySubjectPackageSessionMapping fspm WHERE fspm.packageSessionId = :packageSessionId")
     List<FacultySubjectPackageSessionMapping> findByPackageSessionId(@Param("packageSessionId") String packageSessionId);
 
+    /**
+     * Get distinct user IDs by package session ID and active statuses - for notification service
+     */
+    @Query("SELECT DISTINCT fspm.userId FROM FacultySubjectPackageSessionMapping fspm WHERE fspm.packageSessionId = :packageSessionId AND fspm.status IN :activeStatuses")
+    List<String> findUserIdsByPackageSessionId(@Param("packageSessionId") String packageSessionId, @Param("activeStatuses") List<String> activeStatuses);
+
 //WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%')))
 }

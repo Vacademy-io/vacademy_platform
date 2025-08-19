@@ -41,6 +41,13 @@ public class SessionSchedule {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Date updatedAt;
 
+    private String status;
+
+    @Column(name="thumbnail_file_id")
+    private String thumbnailFileId;
+    @Column(name="daily_attendance")
+    private boolean dailyAttendance;
+
     // Getters, Setters, etc.
 }
 

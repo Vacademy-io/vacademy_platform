@@ -15,6 +15,8 @@ public interface FcmTokenRepository extends JpaRepository<FcmToken, String> {
 
     List<FcmToken> findByUserIdAndIsActiveTrue(String userId);
 
+    List<FcmToken> findByUserIdAndInstituteIdAndIsActiveTrue(String userId, String instituteId);
+
     Optional<FcmToken> findByTokenAndIsActiveTrue(String token);
 
     Optional<FcmToken> findByUserIdAndDeviceIdAndIsActiveTrue(String userId, String deviceId);
@@ -30,4 +32,6 @@ public interface FcmTokenRepository extends JpaRepository<FcmToken, String> {
     void deactivateTokenByToken(@Param("token") String token);
 
     List<FcmToken> findByIsActiveTrue();
+
+    List<FcmToken> findByInstituteIdAndIsActiveTrue(String instituteId);
 }

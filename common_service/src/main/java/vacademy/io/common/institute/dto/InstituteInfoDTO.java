@@ -26,6 +26,9 @@ public class InstituteInfoDTO {
     private String phone;
     private String email;
     private String websiteUrl;
+    private String learnerPortalBaseUrl;
+    private String teacherPortalBaseUrl;
+    private String adminPortalBaseUrl;
     private String instituteLogoFileId;
     private String instituteThemeCode;
     private String language;

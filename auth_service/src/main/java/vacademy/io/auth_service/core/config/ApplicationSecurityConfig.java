@@ -57,7 +57,11 @@ public class ApplicationSecurityConfig {
             "/auth-service/v1/request-otp",
             "/auth-service/v1/login-otp",
             "/auth-service/v1/login",
-            "/auth-service/open/**"
+            "/auth-service/open/**",
+            
+            // User Resolution APIs for notification service - OPEN for internal communication
+            "/auth-service/v1/users/by-role",
+            "/auth-service/v1/users/by-ids"
     };
 
     @Autowired

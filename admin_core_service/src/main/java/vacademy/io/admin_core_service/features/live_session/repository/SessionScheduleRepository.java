@@ -1,22 +1,19 @@
 package vacademy.io.admin_core_service.features.live_session.repository;
 
-
 import jakarta.transaction.Transactional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
-import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep1RequestDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.ScheduleDTO;
 import vacademy.io.admin_core_service.features.live_session.entity.SessionSchedule;
-import vacademy.io.admin_core_service.features.presentation_mode.learner.dto.LiveSessionDto;
 
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.sql.Date;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 @Repository
 public interface SessionScheduleRepository extends JpaRepository<SessionSchedule, String> {
@@ -45,7 +42,7 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
         String getAttendanceEmailMessage();
         String getCoverFileId();
         String getSubject();
-        String getThumbnailFileId();
+        String getThumbnailFileId();      // already existed for live_session
         String getBackgroundScoreFileId();
         String getStatus();
         String getAllowRewind();
@@ -57,8 +54,11 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
         Time getScheduleLastEntryTime();
         String getCustomMeetingLink();
         String getCustomWaitingRoomMediaId();
-    }
+        String getScheduleThumbnailFileId(); // NEW — from session_schedules
+        Boolean getDailyAttendance();        // NEW — from session_schedules
+        Boolean getAllowPlayPause();
 
+    }
 
     @Query(value = """
     SELECT
@@ -89,15 +89,16 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
         s.attendance_email_message AS attendanceEmailMessage,
         s.cover_file_id AS coverFileId,
         s.thumbnail_file_id AS thumbnailFileId,
-        s.background_score_file_id AS backgroundScoreFileId
+        s.background_score_file_id AS backgroundScoreFileId,
+        ss.thumbnail_file_id AS scheduleThumbnailFileId,  -- NEW
+        ss.daily_attendance AS dailyAttendance            -- NEW
     FROM live_session s
     LEFT JOIN session_schedules ss ON s.id = ss.session_id
     WHERE s.id = :sessionId
 """, nativeQuery = true)
     List<ScheduleDTO> findSchedulesBySessionId(@Param("sessionId") String sessionId);
 
-
-        @Query(value = """
+    @Query(value = """
         SELECT
             s.id AS sessionId,
             ss.id AS scheduleId,
@@ -129,14 +130,16 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
             ss.start_time AS scheduleStartTime,
             ss.last_entry_time AS scheduleLastEntryTime,
             ss.custom_meeting_link AS customMeetingLink,
-            ss.custom_waiting_room_media_id AS customWaitingRoomMediaId
+            ss.custom_waiting_room_media_id AS customWaitingRoomMediaId,
+            ss.thumbnail_file_id AS scheduleThumbnailFileId,  -- NEW
+            ss.daily_attendance AS dailyAttendance,           -- NEW
+            s.allow_play_pause As allowPlayPause
         FROM session_schedules ss
         JOIN live_session s ON ss.session_id = s.id
         WHERE ss.id = :scheduleId
         LIMIT 1
     """, nativeQuery = true)
-        Optional<ScheduleDetailsProjection> findScheduleDetailsById(@Param("scheduleId") String scheduleId);
-
+    Optional<ScheduleDetailsProjection> findScheduleDetailsById(@Param("scheduleId") String scheduleId);
 
     @Query(value = """
         SELECT id
@@ -146,4 +149,21 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
         LIMIT 1
     """, nativeQuery = true)
     String findEarliestScheduleIdBySessionId(@Param("sessionId") String sessionId);
+
+    @Modifying
+    @Transactional
+    @Query(value = "UPDATE session_schedules SET status = 'DELETED' WHERE id IN (:ids)", nativeQuery = true)
+    int softDeleteScheduleByIdIn(@Param("ids") List<String> ids);
+
+    @Modifying
+    @Transactional
+    @Query(value = "UPDATE session_schedules SET status = 'DELETED' WHERE session_id =:id", nativeQuery = true)
+    int softDeleteScheduleBySessionId(@Param("id") String id);
+
+    @Query(value = "SELECT session_id FROM session_schedules WHERE id = :scheduleId AND status <> :status", nativeQuery = true)
+    String findSessionIdByScheduleId(@Param("scheduleId") String scheduleId,@Param("status") String status);
+
+    @Query(value = "SELECT COUNT(*) FROM session_schedules WHERE session_id = :sessionId AND status <> :status", nativeQuery = true)
+    int countActiveSchedulesBySessionId(@Param("sessionId") String sessionId,@Param("status") String status);
+
 }

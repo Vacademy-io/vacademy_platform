@@ -52,10 +52,11 @@ public class AdminOAuth2Manager {
     @Autowired
     private UserPermissionRepository userPermissionRepository;
 
-
     public JwtResponseDto loginUserByEmail(String email) {
-        Optional<User> userOptional = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(email, List.of(UserRoleStatus.ACTIVE.name(),UserRoleStatus.INVITED.name()), AuthConstants.VALID_ROLES_FOR_ADMIN_PORTAL);
-        if (userOptional.isEmpty() || !userOptional.get().isRootUser()) {
+        Optional<User> userOptional = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(email,
+                List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
+                AuthConstants.VALID_ROLES_FOR_ADMIN_PORTAL);
+        if (userOptional.isEmpty()) {
             throw new UsernameNotFoundException("invalid user request..!!");
         }
 
@@ -66,14 +67,17 @@ public class AdminOAuth2Manager {
         List<UserRole> userRoles = userRoleRepository.findByUser(user);
 
         if (!userRoles.isEmpty()) {
-            userRoleRepository.updateUserRoleStatusByInstituteIdAndUserId(UserRoleStatus.ACTIVE.name(), userRoles.get(0).getInstituteId(), List.of(user.getId()));
+            userRoleRepository.updateUserRoleStatusByInstituteIdAndUserId(UserRoleStatus.ACTIVE.name(),
+                    userRoles.get(0).getInstituteId(), List.of(user.getId()));
         }
-        List<String>userPermissions = userPermissionRepository.findByUserId(user.getId()).stream().map(UserPermission::getPermissionId).toList();
+        List<String> userPermissions = userPermissionRepository.findByUserId(user.getId()).stream()
+                .map(UserPermission::getPermissionId).toList();
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getUsername(), "oauth2-client");
-        return JwtResponseDto.builder().accessToken(jwtService.generateToken(user, userRoles,userPermissions)).refreshToken(refreshToken.getToken()).build();
+        return JwtResponseDto.builder().accessToken(jwtService.generateToken(user, userRoles, userPermissions))
+                .refreshToken(refreshToken.getToken()).build();
     }
 
-    public JwtResponseDto registerRootUser(String fullName,String email) {
+    public JwtResponseDto registerRootUser(String fullName, String email) {
         String userName = RandomCredentialGenerator.generateRandomUsername(fullName);
         String password = RandomCredentialGenerator.generateRandomPassword();
         RegisterRequest registerRequest = new RegisterRequest();
@@ -116,30 +120,53 @@ public class AdminOAuth2Manager {
 
     public JwtResponseDto generateJwtTokenForUser(User user, RefreshToken refreshToken, List<UserRole> userRoles) {
 
-        // Check if the user is a root user
-        if (user.isRootUser()) {
-            List<String>userPermissions = userPermissionRepository.findByUserId(user.getId()).stream().map(UserPermission::getPermissionId).toList();
-            String accessToken = jwtService.generateToken(user, userRoles,userPermissions);
+        List<String> userPermissions = userPermissionRepository.findByUserId(user.getId()).stream()
+                .map(UserPermission::getPermissionId).toList();
+        String accessToken = jwtService.generateToken(user, userRoles, userPermissions);
 
-            // Return a JwtResponseDto with access token and refresh token
-            return JwtResponseDto.builder()
-                    .accessToken(accessToken)
-                    .refreshToken(refreshToken.getToken())
-                    .build();
-        }
-
-        // If the user is not a root user, you can handle other logic or throw an exception
-        throw new VacademyException(HttpStatus.BAD_REQUEST, "Non-root user is not allowed to generate token.");
+        return JwtResponseDto.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken.getToken())
+                .build();
     }
-
-
 
     public void sendWelcomeMailToUser(User user) {
         GenericEmailRequest genericEmailRequest = new GenericEmailRequest();
         genericEmailRequest.setTo(user.getEmail());
-        genericEmailRequest.setBody(NotificationEmailBody.createWelcomeEmailBody("Vacademy", user.getFullName(), user.getUsername(), user.getPassword()));
+        genericEmailRequest.setBody(NotificationEmailBody.createWelcomeEmailBody("Vacademy", user.getFullName(),
+                user.getUsername(), user.getPassword()));
         genericEmailRequest.setSubject("Welcome to Vacademy");
         notificationService.sendGenericHtmlMail(genericEmailRequest);
     }
 
+    /**
+     * Creates a new admin user and logs them in during OAuth2 flow
+     * 
+     * @param fullName User's full name
+     * @param email    User's email
+     * @return JWT response with tokens
+     * @throws Exception if user creation or login fails
+     */
+    public JwtResponseDto createUserAndLogin(String fullName, String email) throws Exception {
+        // For admin users, always create with auto-generated credentials
+        String userName = RandomCredentialGenerator.generateRandomUsername(fullName);
+        String password = RandomCredentialGenerator.generateRandomPassword();
+
+        RegisterRequest registerRequest = new RegisterRequest();
+        registerRequest.setEmail(email);
+        registerRequest.setFullName(fullName);
+        registerRequest.setPassword(password);
+        registerRequest.setUserName(userName);
+
+        Set<UserRole> userRoleSet = new HashSet<>();
+        User newUser = createUser(registerRequest, userRoleSet);
+
+        // Generate a refresh token
+        RefreshToken refreshToken = refreshTokenService.createRefreshToken(userName, "oauth2-client");
+
+        // Send welcome email with credentials
+        sendWelcomeMailToUser(newUser);
+
+        return generateJwtTokenForUser(newUser, refreshToken, userRoleSet.stream().toList());
+    }
 }

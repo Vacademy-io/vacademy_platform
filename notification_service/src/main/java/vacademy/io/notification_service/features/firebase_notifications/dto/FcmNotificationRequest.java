@@ -1,6 +1,7 @@
 package vacademy.io.notification_service.features.firebase_notifications.dto;
 public class FcmNotificationRequest {
     private String userId;
+    private String instituteId;
     private String title;
     private String body;
 
@@ -16,4 +17,7 @@ public class FcmNotificationRequest {
 
     public String getBody() { return body; }
     public void setBody(String body) { this.body = body; }
+
+    public String getInstituteId() { return instituteId; }
+    public void setInstituteId(String instituteId) { this.instituteId = instituteId; }
 }

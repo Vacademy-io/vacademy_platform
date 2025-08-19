@@ -18,8 +18,8 @@ public class PushNotificationService {
 
     private static final Logger logger = LoggerFactory.getLogger(PushNotificationService.class);
 
-    @Autowired(required = false)
-    private FirebaseMessaging firebaseMessaging;
+    @Autowired
+    private MultiTenantFirebaseManager multiTenantFirebaseManager;
 
     @Autowired
     private FcmTokenRepository fcmTokenRepository;
@@ -27,13 +27,22 @@ public class PushNotificationService {
     /**
      * Send push notification to a specific user
      */
-    public void sendNotificationToUser(String userId, String title, String body, Map<String, String> data) {
-        if (firebaseMessaging == null) {
-            logger.warn("Firebase is not initialized. Cannot send push notification to user: {}", userId);
+    public void sendNotificationToUser(String instituteId, String userId, String title, String body, Map<String, String> data) {
+        var messagingOpt = multiTenantFirebaseManager.getMessagingForInstitute(instituteId);
+        if (messagingOpt.isEmpty()) {
+            logger.warn("Firebase is not initialized for institute {}. Cannot send push notification to user: {}", instituteId, userId);
             return;
         }
-        
-        List<FcmToken> userTokens = fcmTokenRepository.findByUserIdAndIsActiveTrue(userId);
+
+        List<FcmToken> userTokens;
+        if (instituteId != null && !instituteId.isBlank()) {
+            userTokens = fcmTokenRepository.findByUserIdAndInstituteIdAndIsActiveTrue(userId, instituteId);
+            if (userTokens.isEmpty()) {
+                userTokens = fcmTokenRepository.findByUserIdAndIsActiveTrue(userId);
+            }
+        } else {
+            userTokens = fcmTokenRepository.findByUserIdAndIsActiveTrue(userId);
+        }
         
         if (userTokens.isEmpty()) {
             logger.warn("No active FCM tokens found for user: {}", userId);
@@ -41,18 +50,14 @@ public class PushNotificationService {
         }
 
         for (FcmToken fcmToken : userTokens) {
-            sendNotificationToToken(fcmToken.getToken(), title, body, data);
+            sendNotificationToToken(messagingOpt.get(), fcmToken.getToken(), title, body, data);
         }
     }
 
     /**
      * Send push notification to a specific FCM token
      */
-    public void sendNotificationToToken(String fcmToken, String title, String body, Map<String, String> data) {
-        if (firebaseMessaging == null) {
-            logger.warn("Firebase is not initialized. Cannot send push notification to token: {}", fcmToken);
-            return;
-        }
+    public void sendNotificationToToken(FirebaseMessaging firebaseMessaging, String fcmToken, String title, String body, Map<String, String> data) {
         
         try {
             Message.Builder messageBuilder = Message.builder()
@@ -96,20 +101,28 @@ public class PushNotificationService {
     /**
      * Send notification to multiple users
      */
-    public void sendNotificationToUsers(List<String> userIds, String title, String body, Map<String, String> data) {
+    public void sendNotificationToUsers(String instituteId, List<String> userIds, String title, String body, Map<String, String> data) {
         for (String userId : userIds) {
-            sendNotificationToUser(userId, title, body, data);
+            sendNotificationToUser(instituteId, userId, title, body, data);
         }
     }
 
     /**
      * Send broadcast notification to all active users
      */
-    public void sendBroadcastNotification(String title, String body, Map<String, String> data) {
-        List<FcmToken> allTokens = fcmTokenRepository.findByIsActiveTrue();
-        
+    public void sendBroadcastNotification(String instituteId, String title, String body, Map<String, String> data) {
+        var messagingOpt = multiTenantFirebaseManager.getMessagingForInstitute(instituteId);
+        if (messagingOpt.isEmpty()) {
+            logger.warn("Firebase is not initialized for institute {}. Cannot send broadcast.", instituteId);
+            return;
+        }
+
+        List<FcmToken> allTokens = (instituteId == null || instituteId.isBlank())
+            ? fcmTokenRepository.findByIsActiveTrue()
+            : fcmTokenRepository.findByInstituteIdAndIsActiveTrue(instituteId);
+
         for (FcmToken fcmToken : allTokens) {
-            sendNotificationToToken(fcmToken.getToken(), title, body, data);
+            sendNotificationToToken(messagingOpt.get(), fcmToken.getToken(), title, body, data);
         }
     }
 
@@ -123,6 +136,7 @@ public class PushNotificationService {
         data.put("action", "view_assignment");
 
         sendNotificationToUser(
+            null,
             userId,
             "📚 New Assignment",
             "New assignment: " + assignmentTitle,
@@ -144,7 +158,7 @@ public class PushNotificationService {
             className + " is starting now!" : 
             className + " starts in " + minutesUntilStart + " minutes";
 
-        sendNotificationToUser(userId, title, body, data);
+        sendNotificationToUser(null, userId, title, body, data);
     }
 
     /**
@@ -157,6 +171,7 @@ public class PushNotificationService {
         data.put("action", "view_achievements");
 
         sendNotificationToUser(
+            null,
             userId,
             "🏆 Achievement Unlocked!",
             achievementTitle + " (+" + points + " points)",
@@ -167,12 +182,12 @@ public class PushNotificationService {
     /**
      * Send announcement notification
      */
-    public void sendAnnouncementNotification(List<String> userIds, String title, String message, String announcementId) {
+    public void sendAnnouncementNotification(String instituteId, List<String> userIds, String title, String message, String announcementId) {
         Map<String, String> data = new HashMap<>();
         data.put("type", "announcement");
         data.put("announcementId", announcementId);
         data.put("action", "view_announcement");
 
-        sendNotificationToUsers(userIds, "📢 " + title, message, data);
+        sendNotificationToUsers(instituteId, userIds, "📢 " + title, message, data);
     }
 }

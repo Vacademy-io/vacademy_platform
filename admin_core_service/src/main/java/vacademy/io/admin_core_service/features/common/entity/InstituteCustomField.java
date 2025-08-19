@@ -10,6 +10,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
+import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 
 import java.sql.Date;
 
@@ -59,6 +60,8 @@ public class InstituteCustomField {
         this.groupName = instituteCustomFieldDTO.getGroupName();
         if (instituteCustomFieldDTO.getStatus() != null) {
             this.status = instituteCustomFieldDTO.getStatus();
+        }else{
+            this.status = StatusEnum.ACTIVE.name();
         }
     }
 }

@@ -4,9 +4,9 @@ package vacademy.io.common.auth.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import org.hibernate.annotations.Where;
 import vacademy.io.common.auth.dto.UserTopLevelDto;
-
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Date;
@@ -31,25 +31,20 @@ public class User {
     private String username;
     @Column(name = "email")
     private String email;
+    @JsonIgnore
     @Column(name = "password_hash")
     private String password;
     @Column(name = "full_name")
     private String fullName;
-
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @Where(clause = "status IN ('ACTIVE', 'INVITED')")
     private Set<UserRole> roles;
-
-
     @Column(name = "address_line")
     private String addressLine;
-
     @Column(name = "city")
     private String city;
-
     @Column(name = "pin_code")
     private String pinCode;
-
     @Column(name = "mobile_number")
     private String mobileNumber;
 

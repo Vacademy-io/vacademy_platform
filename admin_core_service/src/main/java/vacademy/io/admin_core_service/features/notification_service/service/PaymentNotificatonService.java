@@ -56,7 +56,7 @@ public class PaymentNotificatonService {
         notificationToUserDTO.setChannelId(userDTO.getEmail());
         notificationToUserDTO.setPlaceholders(Map.of());
         notificationDTO.setUsers(List.of(notificationToUserDTO));
-        notificationService.sendEmailToUsers(notificationDTO);
+        notificationService.sendEmailToUsers(notificationDTO,instituteId);
         return true;
     }
 
@@ -87,7 +87,7 @@ public class PaymentNotificatonService {
         notificationToUserDTO.setChannelId(userDTO.getEmail());
         notificationToUserDTO.setPlaceholders(Map.of());
         notificationDTO.setUsers(List.of(notificationToUserDTO));
-        notificationService.sendEmailToUsers(notificationDTO);
+        notificationService.sendEmailToUsers(notificationDTO,instituteId);
         return true;
     }
 
@@ -123,7 +123,6 @@ public class PaymentNotificatonService {
                 institute.getInstituteThemeCode()
         );
     }
-
     /**
      * Builds the HTML for the payment confirmation email.
      */

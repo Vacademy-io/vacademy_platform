@@ -44,6 +44,7 @@ public class PushNotificationController {
                 FcmToken token = existingToken.get();
                 token.setToken(request.getToken());
                 token.setPlatform(request.getPlatform());
+                token.setInstituteId(request.getInstituteId());
                 fcmTokenRepository.save(token);
                 
                 response.put("success", true);
@@ -52,6 +53,7 @@ public class PushNotificationController {
             } else {
                 // Create new token
                 FcmToken newToken = new FcmToken(
+                    request.getInstituteId(),
                     request.getUserId(),
                     request.getToken(),
                     request.getPlatform(),
@@ -87,6 +89,7 @@ public class PushNotificationController {
             data.put("timestamp", String.valueOf(System.currentTimeMillis()));
 
             pushNotificationService.sendNotificationToUser(
+                request.getInstituteId(),
                 request.getUserId(),
                 request.getTitle(),
                 request.getBody(),

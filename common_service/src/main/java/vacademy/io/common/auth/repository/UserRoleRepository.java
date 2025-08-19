@@ -90,4 +90,20 @@ public interface UserRoleRepository extends CrudRepository<UserRole, String> {
             @Param("roleNames") List<String> roleNames
     );
 
+    /**
+     * Get users by institute and role name - for notification service user resolution
+     */
+    @Query("""
+    SELECT ur.user 
+    FROM UserRole ur 
+    JOIN ur.role r 
+    WHERE ur.instituteId = :instituteId 
+      AND r.name = :roleName 
+      AND ur.status = 'ACTIVE'
+""")
+    List<User> findUsersByInstituteIdAndRoleName(
+            @Param("instituteId") String instituteId, 
+            @Param("roleName") String roleName
+    );
+
 }

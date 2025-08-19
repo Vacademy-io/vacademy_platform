@@ -85,7 +85,7 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
                         new Date(),
                         null,
                         enrollInvite.getLearnerAccessDays() != null ? enrollInvite.getLearnerAccessDays().toString() : null,
-                        packageSessionId
+                        packageSessionId,userPlan.getId()
                 );
                 instituteStudentDetails.add(detail);
             }
@@ -94,7 +94,7 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
             Integer accessDays = enrollInvite.getLearnerAccessDays();
             List<String>packageSessionIds = learnerPackageSessionsEnrollDTO.getPackageSessionIds();
             for (String packageSessionId : packageSessionIds) {
-                InstituteStudentDetails instituteStudentDetail = new InstituteStudentDetails(instituteId, packageSessionId, null, status, new Date(), null, (accessDays != null ? accessDays.toString() : null),null);
+                InstituteStudentDetails instituteStudentDetail = new InstituteStudentDetails(instituteId, packageSessionId, null, status, new Date(), null, (accessDays != null ? accessDays.toString() : null),null,userPlan.getId());
                 instituteStudentDetails.add(instituteStudentDetail);
             }
         }

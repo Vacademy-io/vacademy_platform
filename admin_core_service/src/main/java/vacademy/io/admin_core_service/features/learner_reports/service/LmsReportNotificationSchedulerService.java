@@ -48,7 +48,6 @@ public class LmsReportNotificationSchedulerService {
     @Autowired
     private NotificationService notificationService;
 
-
     public Boolean sendDailyReport() {
         return sendReports("DAILY");
     }
@@ -67,17 +66,14 @@ public class LmsReportNotificationSchedulerService {
                     frequency,
                     List.of(
                             PackageSessionStatusEnum.ACTIVE.name(),
-                            PackageSessionStatusEnum.HIDDEN.name()
-                    ),
+                            PackageSessionStatusEnum.HIDDEN.name()),
                     List.of(
                             NotificationType.LEARNER_PROGRESS_REPORT.name(),
                             NotificationType.BATCH_PROGRESS_REPORT.name(),
                             NotificationType.BATCH_PROGRESS_REPORT_FOR_PARENT.name(),
-                            NotificationType.LEARNER_PROGRESS_REPORT_FOR_PARENT.name()
-                    ),
+                            NotificationType.LEARNER_PROGRESS_REPORT_FOR_PARENT.name()),
                     List.of(LearnerStatusEnum.ACTIVE.name()),
-                    List.of(NotificationSettingStatusEnum.ACTIVE.name())
-            );
+                    List.of(NotificationSettingStatusEnum.ACTIVE.name()));
 
             List<LmsReportNotificationDetailsDTO> dtoList = new ArrayList<>();
             for (Object[] row : result) {
@@ -125,7 +121,6 @@ public class LmsReportNotificationSchedulerService {
         return true;
     }
 
-
     private LmsReportNotificationDetailsDTO buildReportDTO(Object[] row) {
         try {
             LmsReportNotificationDetailsDTO dto = new LmsReportNotificationDetailsDTO();
@@ -134,8 +129,7 @@ public class LmsReportNotificationSchedulerService {
 
             if (row[2] != null) {
                 dto.setInstituteData(
-                        objectMapper.readValue(row[2].toString(), LmsReportNotificationDetailsDTO.InstituteData.class)
-                );
+                        objectMapper.readValue(row[2].toString(), LmsReportNotificationDetailsDTO.InstituteData.class));
             }
 
             return dto;
@@ -143,7 +137,6 @@ public class LmsReportNotificationSchedulerService {
             throw new RuntimeException("Failed to parse institute data row", e);
         }
     }
-
 
     private byte[] generatePdf(String html) {
         ByteArrayOutputStream pdfOutputStream = new ByteArrayOutputStream();
@@ -155,7 +148,8 @@ public class LmsReportNotificationSchedulerService {
         return pdfBytes;
     }
 
-    public ProgressReportDTO getBatchProgressReportInRange(String packageSessionId, Date startDate, Date endDate, CustomUserDetails userDetails) {
+    public ProgressReportDTO getBatchProgressReportInRange(String packageSessionId, Date startDate, Date endDate,
+            CustomUserDetails userDetails) {
         ReportFilterDTO reportFilterDTO = new ReportFilterDTO();
         reportFilterDTO.setPackageSessionId(packageSessionId);
         reportFilterDTO.setStartDate(startDate);
@@ -168,7 +162,8 @@ public class LmsReportNotificationSchedulerService {
         return learnerReportService.getLearnerProgressReport(filterDTO, userDetails);
     }
 
-    public ReportFilterDTO getFilterDTO(String userId, String packageSessionId, Date startDate, Date endDate, CustomUserDetails userDetails) {
+    public ReportFilterDTO getFilterDTO(String userId, String packageSessionId, Date startDate, Date endDate,
+            CustomUserDetails userDetails) {
         ReportFilterDTO reportFilterDTO = new ReportFilterDTO();
         reportFilterDTO.setPackageSessionId(packageSessionId);
         reportFilterDTO.setStartDate(startDate);
@@ -177,28 +172,37 @@ public class LmsReportNotificationSchedulerService {
         return reportFilterDTO;
     }
 
-    public Boolean sendProgressReport(LmsReportNotificationDetailsDTO details, Date startDate, Date endDate, CustomUserDetails userDetails, String reportType) {
-        if (!isValidDetails(details)) return false;
+    public Boolean sendProgressReport(LmsReportNotificationDetailsDTO details, Date startDate, Date endDate,
+            CustomUserDetails userDetails, String reportType) {
+        if (!isValidDetails(details))
+            return false;
 
         String dateRange = formatDateRange(startDate, endDate);
         Set<String> instituteSettingNotificationTypes = extractInstituteNotificationTypes(details);
 
-        for (LmsReportNotificationDetailsDTO.InstituteData.PackageSessionData packageSessionData : details.getInstituteData().getPackageSessions()) {
-            if (packageSessionData == null) continue;
+        for (LmsReportNotificationDetailsDTO.InstituteData.PackageSessionData packageSessionData : details
+                .getInstituteData().getPackageSessions()) {
+            if (packageSessionData == null)
+                continue;
 
-            ProgressReportDTO batchReport = getBatchProgressReportInRange(packageSessionData.getPackageSessionId(), startDate, endDate, userDetails);
+            ProgressReportDTO batchReport = getBatchProgressReportInRange(packageSessionData.getPackageSessionId(),
+                    startDate, endDate, userDetails);
             String pdfBatchBase64 = generateBatchReportPdf(details, dateRange, packageSessionData, batchReport);
 
-            Map<String, AttachmentNotificationDTO> notificationMap = buildNotificationTemplates(details.getInstituteId(), reportType);
+            Map<String, AttachmentNotificationDTO> notificationMap = buildNotificationTemplates(
+                    details.getInstituteId(), reportType);
             Map<String, List<AttachmentUsersDTO>> userGroups = initializeUserGroups();
 
-            for (LmsReportNotificationDetailsDTO.InstituteData.PackageSessionData.StudentData studentData :
-                    Optional.ofNullable(packageSessionData.getStudents()).orElse(Collections.emptyList())) {
+            for (LmsReportNotificationDetailsDTO.InstituteData.PackageSessionData.StudentData studentData : Optional
+                    .ofNullable(packageSessionData.getStudents()).orElse(Collections.emptyList())) {
 
-                ReportFilterDTO filterDTO = getFilterDTO(studentData.getUserId(), packageSessionData.getPackageSessionId(), startDate, endDate, userDetails);
+                ReportFilterDTO filterDTO = getFilterDTO(studentData.getUserId(),
+                        packageSessionData.getPackageSessionId(), startDate, endDate, userDetails);
                 ProgressReportDTO learnerReport = getLearnerProgressReportInRange(filterDTO, userDetails);
-                List<SlideProgressDateWiseDTO> slideProgressDTOS = getSlideProgressDTOsOfLearner(filterDTO, userDetails);
-                String pdfLearnerBase64 = generateLearnerReportPdf(details, packageSessionData, studentData, batchReport, learnerReport, slideProgressDTOS);
+                List<SlideProgressDateWiseDTO> slideProgressDTOS = getSlideProgressDTOsOfLearner(filterDTO,
+                        userDetails);
+                String pdfLearnerBase64 = generateLearnerReportPdf(details, packageSessionData, studentData,
+                        batchReport, learnerReport, slideProgressDTOS);
 
                 Set<String> types = extractStudentNotificationTypes(studentData, instituteSettingNotificationTypes);
                 categorizeAndAddUser(types, userGroups, studentData, pdfBatchBase64, pdfLearnerBase64);
@@ -211,7 +215,8 @@ public class LmsReportNotificationSchedulerService {
     }
 
     private boolean isValidDetails(LmsReportNotificationDetailsDTO details) {
-        return details != null && details.getInstituteData() != null && details.getInstituteData().getPackageSessions() != null;
+        return details != null && details.getInstituteData() != null
+                && details.getInstituteData().getPackageSessions() != null;
     }
 
     private String formatDateRange(Date startDate, Date endDate) {
@@ -230,21 +235,26 @@ public class LmsReportNotificationSchedulerService {
     }
 
     private String generateBatchReportPdf(LmsReportNotificationDetailsDTO details, String dateRange,
-                                          LmsReportNotificationDetailsDTO.InstituteData.PackageSessionData session,
-                                          ProgressReportDTO batchReport) {
-        String html = HtmlBuilderService.buildStyledHtmlReport("Batch Report", session.getBatch(), details.getInstituteName(), dateRange,
-                batchReport.getPercentageCourseCompleted() != null ? String.valueOf(batchReport.getPercentageCourseCompleted()) : "0.00",
+            LmsReportNotificationDetailsDTO.InstituteData.PackageSessionData session,
+            ProgressReportDTO batchReport) {
+        String html = HtmlBuilderService.buildStyledHtmlReport("Batch Report", session.getBatch(),
+                details.getInstituteName(), dateRange,
+                batchReport.getPercentageCourseCompleted() != null
+                        ? String.valueOf(batchReport.getPercentageCourseCompleted())
+                        : "0.00",
                 batchReport.getAvgTimeSpentInMinutes(),
-                batchReport.getPercentageConcentrationScore() != null ? String.valueOf(batchReport.getPercentageConcentrationScore()) : "0.00",
+                batchReport.getPercentageConcentrationScore() != null
+                        ? String.valueOf(batchReport.getPercentageConcentrationScore())
+                        : "0.00",
                 batchReport.getDailyTimeSpent());
         return Base64.getEncoder().encodeToString(generatePdf(html));
     }
 
     private String generateLearnerReportPdf(LmsReportNotificationDetailsDTO details,
-                                            LmsReportNotificationDetailsDTO.InstituteData.PackageSessionData session,
-                                            LmsReportNotificationDetailsDTO.InstituteData.PackageSessionData.StudentData student,
-                                            ProgressReportDTO batchReport, ProgressReportDTO learnerReport,
-                                            List<SlideProgressDateWiseDTO> slides) {
+            LmsReportNotificationDetailsDTO.InstituteData.PackageSessionData session,
+            LmsReportNotificationDetailsDTO.InstituteData.PackageSessionData.StudentData student,
+            ProgressReportDTO batchReport, ProgressReportDTO learnerReport,
+            List<SlideProgressDateWiseDTO> slides) {
         String html = HtmlBuilderService.buildEmailBodyForLearnerProgressReport("Learner Report", student.getFullName(),
                 details.getInstituteName(), session.getBatch(),
                 LocalDate.now().format(DateTimeFormatter.ofPattern("dd MMM yyyy")),
@@ -257,33 +267,42 @@ public class LmsReportNotificationSchedulerService {
         Map<String, AttachmentNotificationDTO> map = new HashMap<>();
 
         map.put("BatchAndLearnerToLearner", baseNotify(
-                LmsReportNotificationEmailBody.buildEmailBody("Your " + reportType + " Report", "Your " + reportType + " Batch & Self Report",
-                        "Dear Learner, Your batch and individual performance reports are attached.", reportType, reportDate),
+                LmsReportNotificationEmailBody.buildEmailBody("Your " + reportType + " Report",
+                        "Your " + reportType + " Batch & Self Report",
+                        "Dear Learner, Your batch and individual performance reports are attached.", reportType,
+                        reportDate),
                 NotificationSourceEnum.LMS_REPORT.name(), instituteId, CommunicationType.EMAIL.name()));
 
         map.put("BatchToLearner", baseNotify(
-                LmsReportNotificationEmailBody.buildEmailBody("Your " + reportType + " Report", "Your Batch Progress Report",
+                LmsReportNotificationEmailBody.buildEmailBody("Your " + reportType + " Report",
+                        "Your Batch Progress Report",
                         "Dear Learner, Attached is your batch-level performance report.", reportType, reportDate),
                 NotificationSourceEnum.LMS_REPORT.name(), instituteId, CommunicationType.EMAIL.name()));
 
         map.put("LearnerToLearner", baseNotify(
-                LmsReportNotificationEmailBody.buildEmailBody("Your " + reportType + " Report", "Your " + reportType + " Learning Report",
+                LmsReportNotificationEmailBody.buildEmailBody("Your " + reportType + " Report",
+                        "Your " + reportType + " Learning Report",
                         "Dear Learner, Attached is your learning progress report.", reportType, reportDate),
                 NotificationSourceEnum.LMS_REPORT.name(), instituteId, CommunicationType.EMAIL.name()));
 
         map.put("BatchAndLearnerToParent", baseNotify(
-                LmsReportNotificationEmailBody.buildEmailBody("Your Ward's " + reportType + " Report", "Ward's Batch & Self Report",
-                        "Dear Parent, Your ward's batch and individual progress reports are attached.", reportType, reportDate),
+                LmsReportNotificationEmailBody.buildEmailBody("Your Ward's " + reportType + " Report",
+                        "Ward's Batch & Self Report",
+                        "Dear Parent, Your ward's batch and individual progress reports are attached.", reportType,
+                        reportDate),
                 NotificationSourceEnum.LMS_REPORT.name(), instituteId, CommunicationType.EMAIL.name()));
 
         map.put("BatchToParent", baseNotify(
-                LmsReportNotificationEmailBody.buildEmailBody("Your Ward's " + reportType + " Report", "Ward's Batch Progress Report",
+                LmsReportNotificationEmailBody.buildEmailBody("Your Ward's " + reportType + " Report",
+                        "Ward's Batch Progress Report",
                         "Dear Parent, Please find the batch progress report for your ward.", reportType, reportDate),
                 NotificationSourceEnum.LMS_REPORT.name(), instituteId, CommunicationType.EMAIL.name()));
 
         map.put("LearnerToParent", baseNotify(
-                LmsReportNotificationEmailBody.buildEmailBody("Your Ward's " + reportType + " Report", "Ward's Learning Report",
-                        "Dear Parent, Please find your ward's individual progress report attached.", reportType, reportDate),
+                LmsReportNotificationEmailBody.buildEmailBody("Your Ward's " + reportType + " Report",
+                        "Ward's Learning Report",
+                        "Dear Parent, Please find your ward's individual progress report attached.", reportType,
+                        reportDate),
                 NotificationSourceEnum.LMS_REPORT.name(), instituteId, CommunicationType.EMAIL.name()));
 
         return map;
@@ -296,12 +315,12 @@ public class LmsReportNotificationSchedulerService {
                 "LearnerToLearner", new ArrayList<>(),
                 "BatchAndLearnerToParent", new ArrayList<>(),
                 "BatchToParent", new ArrayList<>(),
-                "LearnerToParent", new ArrayList<>()
-        );
+                "LearnerToParent", new ArrayList<>());
     }
 
-    private Set<String> extractStudentNotificationTypes(LmsReportNotificationDetailsDTO.InstituteData.PackageSessionData.StudentData studentData,
-                                                        Set<String> instituteDefaultTypes) {
+    private Set<String> extractStudentNotificationTypes(
+            LmsReportNotificationDetailsDTO.InstituteData.PackageSessionData.StudentData studentData,
+            Set<String> instituteDefaultTypes) {
         Set<String> types = Optional.ofNullable(studentData.getNotificationSettings())
                 .orElse(Collections.emptyList())
                 .stream()
@@ -311,25 +330,31 @@ public class LmsReportNotificationSchedulerService {
     }
 
     private void categorizeAndAddUser(Set<String> types, Map<String, List<AttachmentUsersDTO>> groupMap,
-                                      LmsReportNotificationDetailsDTO.InstituteData.PackageSessionData.StudentData student,
-                                      String batchPdf, String learnerPdf) {
+            LmsReportNotificationDetailsDTO.InstituteData.PackageSessionData.StudentData student,
+            String batchPdf, String learnerPdf) {
         if (types.contains("LEARNER_PROGRESS_REPORT") && types.contains("BATCH_PROGRESS_REPORT")) {
-            groupMap.get("BatchAndLearnerToLearner").add(buildUserAttachment(student.getUserId(), student.getFullName(), student.getParentEmail(),
-                    Map.of("BatchReport.pdf", batchPdf, "LearnerReport.pdf", learnerPdf)));
+            groupMap.get("BatchAndLearnerToLearner")
+                    .add(buildUserAttachment(student.getUserId(), student.getFullName(), student.getParentEmail(),
+                            Map.of("BatchReport.pdf", batchPdf, "LearnerReport.pdf", learnerPdf)));
         } else if (types.contains("LEARNER_PROGRESS_REPORT")) {
-            groupMap.get("LearnerToLearner").add(buildUserAttachment(student.getUserId(), student.getFullName(), student.getParentEmail(),
-                    Map.of("LearnerReport.pdf", learnerPdf)));
+            groupMap.get("LearnerToLearner")
+                    .add(buildUserAttachment(student.getUserId(), student.getFullName(), student.getParentEmail(),
+                            Map.of("LearnerReport.pdf", learnerPdf)));
         } else if (types.contains("BATCH_PROGRESS_REPORT")) {
-            groupMap.get("BatchToLearner").add(buildUserAttachment(student.getUserId(), student.getFullName(), student.getParentEmail(),
-                    Map.of("BatchReport.pdf", batchPdf)));
+            groupMap.get("BatchToLearner")
+                    .add(buildUserAttachment(student.getUserId(), student.getFullName(), student.getParentEmail(),
+                            Map.of("BatchReport.pdf", batchPdf)));
         }
 
-        if (types.contains("LEARNER_PROGRESS_REPORT_FOR_PARENT") && types.contains("BATCH_PROGRESS_REPORT_FOR_PARENT")) {
-            groupMap.get("BatchAndLearnerToParent").add(buildUserAttachment(null, student.getFullName(), student.getParentEmail(),
-                    Map.of("BatchReport.pdf", batchPdf, "LearnerReport.pdf", learnerPdf)));
+        if (types.contains("LEARNER_PROGRESS_REPORT_FOR_PARENT")
+                && types.contains("BATCH_PROGRESS_REPORT_FOR_PARENT")) {
+            groupMap.get("BatchAndLearnerToParent")
+                    .add(buildUserAttachment(null, student.getFullName(), student.getParentEmail(),
+                            Map.of("BatchReport.pdf", batchPdf, "LearnerReport.pdf", learnerPdf)));
         } else if (types.contains("LEARNER_PROGRESS_REPORT_FOR_PARENT")) {
-            groupMap.get("LearnerToParent").add(buildUserAttachment(null, student.getFullName(), student.getParentEmail(),
-                    Map.of("LearnerReport.pdf", learnerPdf)));
+            groupMap.get("LearnerToParent")
+                    .add(buildUserAttachment(null, student.getFullName(), student.getParentEmail(),
+                            Map.of("LearnerReport.pdf", learnerPdf)));
         } else if (types.contains("BATCH_PROGRESS_REPORT_FOR_PARENT")) {
             groupMap.get("BatchToParent").add(buildUserAttachment(null, student.getFullName(), student.getParentEmail(),
                     Map.of("BatchReport.pdf", batchPdf)));
@@ -337,15 +362,17 @@ public class LmsReportNotificationSchedulerService {
     }
 
     private void attachUsersToNotifications(Map<String, AttachmentNotificationDTO> notifyMap,
-                                            Map<String, List<AttachmentUsersDTO>> groupMap) {
+            Map<String, List<AttachmentUsersDTO>> groupMap) {
         groupMap.forEach((key, users) -> notifyMap.get(key).setUsers(users));
     }
 
-    private List<SlideProgressDateWiseDTO> getSlideProgressDTOsOfLearner(ReportFilterDTO filterDTO, CustomUserDetails userDetails) {
+    private List<SlideProgressDateWiseDTO> getSlideProgressDTOsOfLearner(ReportFilterDTO filterDTO,
+            CustomUserDetails userDetails) {
         return learnerReportService.getSlideProgressForLearner(filterDTO, userDetails);
     }
 
-    private AttachmentUsersDTO buildUserAttachment(String userId, String fullName, String email, Map<String, String> base64AttachmentAndName) {
+    private AttachmentUsersDTO buildUserAttachment(String userId, String fullName, String email,
+            Map<String, String> base64AttachmentAndName) {
         AttachmentUsersDTO dto = new AttachmentUsersDTO();
         dto.setUserId(userId);
         dto.setChannelId(email);
@@ -374,6 +401,5 @@ public class LmsReportNotificationSchedulerService {
         SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMdd");
         return dateFormat.format(date1).equals(dateFormat.format(date2));
     }
-
 
 }

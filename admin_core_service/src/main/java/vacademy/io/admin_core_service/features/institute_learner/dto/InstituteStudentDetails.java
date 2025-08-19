@@ -26,4 +26,5 @@ public class InstituteStudentDetails {
     private String groupId;
     private String accessDays;
     private String destinationPackageSessionId;
+    private String userPlanId;
 }

@@ -21,6 +21,7 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { getTokenFromCookie } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { SystemAlertsBar } from "@/components/announcements";
+import { BASE_URL_LEARNER_DASHBOARD } from "@/constants/urls";
 
 interface UserRole {
     id: string;
@@ -54,7 +55,7 @@ export function Navbar() {
     const handleNavigateToAdmin = () => {
         const accessToken = getTokenFromCookie(TokenKey.accessToken);
         const refreshToken = getTokenFromCookie(TokenKey.refreshToken);
-        window.location.href = `https://dash.vacademy.io/auth-transfer?accessToken=${accessToken}&refreshToken=${refreshToken}`;
+        window.location.href = `${BASE_URL_LEARNER_DASHBOARD.replace(/\/$/, "")}/auth-transfer?accessToken=${accessToken}&refreshToken=${refreshToken}`;
     };
 
     async function fetch() {

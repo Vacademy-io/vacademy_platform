@@ -1,5 +1,6 @@
 // src/lib/excalidrawUtils.ts
 import axios from 'axios';
+import { GET_PUBLIC_URL_PUBLIC as GET_PUBLIC_URL_PUBLIC_CONST } from '@/constants/urls';
 
 // Define the type locally with proper typing
 export interface ExcalidrawSceneData {
@@ -54,7 +55,7 @@ const MOCKED_EXCALIDRAW_DATA: Record<string, ExcalidrawSceneData> = {
     }
 };
 
-export const GET_PUBLIC_URL_PUBLIC = `https://backend-stage.vacademy.io/media-service/public/get-public-url`;
+export const GET_PUBLIC_URL_PUBLIC = GET_PUBLIC_URL_PUBLIC_CONST;
 
 export const getPublicUrl = async (fileId: string | undefined | null): Promise<string> => {
     const response = await axios.get(GET_PUBLIC_URL_PUBLIC, {

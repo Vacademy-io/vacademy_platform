@@ -27,6 +27,7 @@ import {
   GET_ASSESSMENT_MARKS,
 } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+import { GET_QUESTIONS_OF_SECTIONS } from "@/constants/urls";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { MarksStatusIndicator } from "./marks-chip";
 import { FileText } from "lucide-react";
@@ -56,7 +57,7 @@ const fetchQuestionsData = async (
 ) => {
   try {
     const response = await authenticatedAxiosInstance.get(
-      "https://backend-stage.vacademy.io/assessment-service/assessment/add-questions/create/v1/questions-of-sections",
+      GET_QUESTIONS_OF_SECTIONS,
       {
         params: {
           assessmentId,

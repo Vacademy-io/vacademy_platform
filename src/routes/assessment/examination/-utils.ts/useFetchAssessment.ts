@@ -13,15 +13,14 @@ import {
   SectionDto,
 } from "@/types/assessment";
 import { Storage } from "@capacitor/storage";
+import { safeJsonParse } from "@/utils/safe-json-parse";
 
 export const getStoredDetails = async () => {
   const studentData = await Preferences.get({ key: "StudentDetails" });
   const instituteData = await Preferences.get({ key: "InstituteDetails" });
 
-  const student = studentData.value ? JSON.parse(studentData.value) : null;
-  const institute = instituteData.value
-    ? JSON.parse(instituteData.value)
-    : null;
+  const student = safeJsonParse(studentData.value);
+  const institute = safeJsonParse(instituteData.value);
 
   return { student, institute };
 };

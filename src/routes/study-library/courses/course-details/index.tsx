@@ -4,6 +4,7 @@ import { LayoutContainer } from "@/components/common/layout-container/layout-con
 interface CourseSearchParams {
     courseId: string;
     selectedTab?: string;
+    percentageCompleted?: number;
 }
 
 export const Route = createFileRoute("/study-library/courses/course-details/")({
@@ -13,9 +14,19 @@ export const Route = createFileRoute("/study-library/courses/course-details/")({
         </LayoutContainer>
     ),
     validateSearch: (search: Record<string, unknown>): CourseSearchParams => {
+        const s = search as { [k: string]: unknown };
+        const rawPct = s["percentageCompleted"] ?? s["percentage_completed"];
+        const parsedPct =
+            typeof rawPct === "string"
+                ? Number(rawPct)
+                : typeof rawPct === "number"
+                ? rawPct
+                : undefined;
         return {
             courseId: search.courseId as string,
             selectedTab: search.selectedTab as string,
+            percentageCompleted:
+                typeof parsedPct === "number" && Number.isFinite(parsedPct) ? parsedPct : undefined,
         };
     },
 });

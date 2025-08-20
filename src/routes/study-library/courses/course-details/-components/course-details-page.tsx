@@ -58,7 +58,6 @@ import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore
 import { CourseStructureDetails } from "./course-structure-details";
 import { CourseStructureResponse } from "@/types/institute-details/course-details-interface";
 import { getIdByLevelAndSession } from "@/routes/courses/course-details/-utils/helper";
-import { MyButton } from "@/components/design-system/button";
 import { EnrollmentPaymentDialog } from "./payment-dialogs";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
@@ -67,6 +66,12 @@ import { getTerminology } from "@/components/common/layout-container/sidebar/uti
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
+import { generateCertificateWithCache, getCachedCertificateStatus } from "@/services/certificates";
+import { toast } from "sonner";
+import confetti from "canvas-confetti";
+import LocalStorageUtils from "@/utils/localstorage";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { MyButton } from "@/components/design-system/button";
 
 type SlideType = {
     id: string;
@@ -230,6 +235,17 @@ export const CourseDetailsPage = () => {
     const [enrolledSessions, setEnrolledSessions] = useState<EnrolledSession[]>(
         []
     );
+    const [certificateUrl, setCertificateUrl] = useState<string | null>(null);
+    const [showConfetti, setShowConfetti] = useState<boolean>(false);
+    const [certificateDialogOpen, setCertificateDialogOpen] = useState<boolean>(false);
+
+    // Log certificate-related state changes
+    useEffect(() => {
+        console.debug("[certificates] state: certificateUrl", certificateUrl);
+    }, [certificateUrl]);
+    useEffect(() => {
+        console.debug("[certificates] state: showConfetti", showConfetti);
+    }, [showConfetti]);
 
     // Loading state management
     const [isLoading, setIsLoading] = useState(true);
@@ -320,6 +336,8 @@ export const CourseDetailsPage = () => {
         fetchInstituteAndUserId();
     }, [updateLoadingState]);
 
+    
+
     const [
         packageSessionIdForCurrentLevel,
         setPackageSessionIdForCurrentLevel,
@@ -379,6 +397,139 @@ export const CourseDetailsPage = () => {
         console.log('Study library data:', studyLibraryData);
         return found;
     }, [studyLibraryData, searchParams.courseId]);
+
+    // Trigger certificate generation after entering this page once essentials are available
+    useEffect(() => {
+        const tryGenerateCertificate = async () => {
+            try {
+                const settings = await getStudentDisplaySettings(false);
+                const threshold = settings.certificates?.generationThresholdPercent ?? 80;
+                // percent can come from query param (carried over from list) or course data
+                const pctFromQuery = ((): number | undefined => {
+                    const raw = (searchParams as { [k: string]: unknown }).percentageCompleted ??
+                                (searchParams as { [k: string]: unknown }).percentage_completed;
+                    if (typeof raw === "number") return raw;
+                    if (typeof raw === "string") {
+                        const n = Number(raw);
+                        return Number.isFinite(n) ? n : undefined;
+                    }
+                    return undefined;
+                })();
+                const pctFromCourse = courseDetailsData?.course?.percentage_completed;
+                const pctFromLocal = (() => {
+                    const key = `COURSE_PCT_${searchParams.courseId}`;
+                    const saved = LocalStorageUtils.get<{ value: number; ts: number }>(key);
+                    return saved?.value;
+                })();
+                const percentageCompleted =
+                    typeof pctFromQuery === "number" && !Number.isNaN(pctFromQuery)
+                        ? pctFromQuery
+                        : typeof pctFromCourse === "number"
+                        ? pctFromCourse
+                        : typeof pctFromLocal === "number"
+                        ? pctFromLocal
+                        : undefined;
+                console.log("[certificates] inputs", {
+                    threshold,
+                    percentageCompleted,
+                    pctFromQuery,
+                    pctFromCourse,
+                    pctFromLocal,
+                    rawSearch: searchParams,
+                });
+                const userDetailsRaw = await Preferences.get({ key: "StudentDetails" });
+                const user = userDetailsRaw.value ? JSON.parse(userDetailsRaw.value) : null;
+                const userId: string | null = user?.user_id || user?.id || null;
+
+                if (!userId || !packageSessionIdForCurrentLevel) return;
+
+                // Always surface cached certificate if present
+                const cached = getCachedCertificateStatus(userId, packageSessionIdForCurrentLevel);
+                if (cached?.url) {
+                    setCertificateUrl(cached.url);
+                }
+
+                if (percentageCompleted == null) return;
+
+                if (typeof percentageCompleted === "number" && percentageCompleted >= threshold) {
+                    const celebrationKey = `CERTIFICATE_CELEBRATED_${userId}_${packageSessionIdForCurrentLevel}`;
+                    const alreadyCelebrated = !!LocalStorageUtils.get<boolean>(celebrationKey);
+
+                    const res = await generateCertificateWithCache({
+                        user_id: userId,
+                        package_session_id: packageSessionIdForCurrentLevel,
+                    });
+
+                    setCertificateUrl(res.url || null);
+                    console.log("[certificates] response", res);
+
+                    if (res.status === 200 && !alreadyCelebrated) {
+                        // Enhanced multi-burst confetti (professional feel)
+                        try {
+                            const colors = ["#0ea5e9", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6"];
+                            const defaults = { colors, origin: { y: 0.6 } } as const;
+
+                            function fire(particleRatio: number, opts: { [K in keyof import("canvas-confetti").Options]?: import("canvas-confetti").Options[K] } = {}) {
+                                confetti({
+                                    ...defaults,
+                                    particleCount: Math.floor(220 * particleRatio),
+                                    ...opts,
+                                });
+                            }
+
+                            // Central bursts
+                            fire(0.25, { spread: 26, startVelocity: 55 });
+                            fire(0.2, { spread: 60 });
+                            fire(0.35, { spread: 100, decay: 0.91, scalar: 0.9 });
+                            fire(0.1, { spread: 120, startVelocity: 25, decay: 0.92, scalar: 1.2 });
+                            fire(0.1, { spread: 120, startVelocity: 45 });
+
+                            // Side cannons
+                            confetti({ ...defaults, particleCount: 60, angle: 60, spread: 55, origin: { x: 0 }, gravity: 0.9 });
+                            confetti({ ...defaults, particleCount: 60, angle: 120, spread: 55, origin: { x: 1 }, gravity: 0.9 });
+
+                            // Subtle fireworks loop for 2s
+                            const end = Date.now() + 2000;
+                            (function frame() {
+                                confetti({
+                                    ...defaults,
+                                    particleCount: 3,
+                                    startVelocity: 40,
+                                    ticks: 60,
+                                    origin: { x: Math.random(), y: Math.random() * 0.4 + 0.2 },
+                                });
+                                if (Date.now() < end) requestAnimationFrame(frame);
+                            })();
+                        } catch (e) {
+                            console.log("[certificates] confetti error", e);
+                        }
+                        setShowConfetti(true);
+                        setTimeout(() => setShowConfetti(false), 3000);
+                        // Show professional modal after confetti
+                        setTimeout(() => setCertificateDialogOpen(true), 3200);
+                        toast.success("Certificate generated successfully!", {
+                            description: "You can now view your certificate.",
+                        });
+                        // Mark celebration as shown to avoid repeating confetti on future visits
+                        LocalStorageUtils.set(celebrationKey, true);
+                    }
+                }
+            } catch (err) {
+                console.error("Certificate generation failed", err);
+                toast.error("Failed to generate certificate. Please try again later.");
+            }
+        };
+
+        // Only attempt after we have course data and package session id
+        if (packageSessionIdForCurrentLevel && courseDetailsData) {
+            console.log("[certificates] trigger conditions met", {
+                packageSessionIdForCurrentLevel,
+                courseId: courseDetailsData?.course?.id,
+                pct: courseDetailsData?.course?.percentage_completed,
+            });
+            tryGenerateCertificate();
+        }
+    }, [packageSessionIdForCurrentLevel, courseDetailsData, searchParams.percentageCompleted]);
 
     const form = useForm<CourseDetailsFormValues>({
         resolver: zodResolver(courseDetailsSchema),
@@ -1044,6 +1195,7 @@ export const CourseDetailsPage = () => {
                                                         .courseMediaId
                                                 }
                                             />
+                                            {/* Certificate CTA moved to Course Configuration section */}
                                         </div>
                                     </div>
                                 ) : (
@@ -1093,6 +1245,8 @@ export const CourseDetailsPage = () => {
                                                             ).description || "",
                                                     }}
                                                 />
+
+                                                {/* Certificate CTA moved to Course Configuration section */}
                                             </div>
                                         )}
                                     </div>
@@ -1102,6 +1256,85 @@ export const CourseDetailsPage = () => {
                     </div>
                 </div>
 
+                {/* Lightweight confetti placeholder overlay (replace with library later) */}
+                {showConfetti && (
+                    <div className="pointer-events-none fixed inset-0 z-[1000] overflow-hidden">
+                        <div className="absolute inset-0 bg-transparent animate-pulse" />
+                    </div>
+                )}
+
+                {/* Certificate Modal */}
+                <Dialog open={certificateDialogOpen} onOpenChange={setCertificateDialogOpen}>
+                    <DialogContent className="max-w-md p-0 overflow-hidden">
+                        <div
+                            className="bg-gradient-to-r from-primary-600 to-primary-500 text-white px-5 py-4 flex items-center gap-3"
+                            style={{
+                                background:
+                                    "linear-gradient(to right, var(--color-primary-600, #2563eb), var(--color-primary-500, #3b82f6))",
+                                color: "#fff",
+                            }}
+                        >
+                            <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                                <GraduationCap size={18} className="text-white" />
+                            </div>
+                            <div>
+                                <div className="text-base font-semibold">Course Completed</div>
+                                <div className="text-xs opacity-90">Congratulations! You’ve earned a certificate.</div>
+                            </div>
+                        </div>
+                        <div className="px-5 py-4">
+                            {(() => {
+                                const sessionLabel = (sessionOptions || []).find((o) => o.value === selectedSession)?.label;
+                                const levelLabel = (levelOptions || []).find((o) => o.value === selectedLevel)?.label;
+                                const isSessionVisible = !!sessionLabel && sessionLabel.toLowerCase() !== "default";
+                                const isLevelVisible = !!levelLabel && levelLabel.toLowerCase() !== "default";
+                                return (
+                                    <div className="space-y-2 text-sm">
+                                        <div>
+                                            <span className="font-medium text-gray-700">Course:</span>
+                                            <span className="ml-2">{toTitleCase(form.getValues("courseData").title)}</span>
+                                        </div>
+                                        {isSessionVisible && (
+                                            <div>
+                                                <span className="font-medium text-gray-700">Session:</span>
+                                                <span className="ml-2">{toTitleCase(sessionLabel || "")}</span>
+                                            </div>
+                                        )}
+                                        {isLevelVisible && (
+                                            <div>
+                                                <span className="font-medium text-gray-700">Level:</span>
+                                                <span className="ml-2">{toTitleCase(levelLabel || "")}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
+                            <div className="mt-4 -mx-5 px-5 py-3 bg-gray-50 dark:bg-neutral-900/50 border-t border-gray-200 dark:border-neutral-800 flex items-center justify-end gap-2">
+                                <MyButton
+                                    buttonType="secondary"
+                                    scale="medium"
+                                    onClick={() => setCertificateDialogOpen(false)}
+                                >
+                                    Close
+                                </MyButton>
+                                <MyButton
+                                    asChild
+                                    buttonType="primary"
+                                    scale="medium"
+                                >
+                                    <a
+                                        href={certificateUrl || undefined}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={() => setCertificateDialogOpen(false)}
+                                    >
+                                        View Certificate
+                                    </a>
+                                </MyButton>
+                            </div>
+                        </div>
+                    </DialogContent>
+                </Dialog>
                 {/* Video Player for non-lg screens (always visible if course has media) */}
                 {form.watch("courseData").courseMediaId && (
                     <div className="lg:hidden relative z-10 max-w-[350px] px-2 sm:px-3 py-3">
@@ -1118,6 +1351,34 @@ export const CourseDetailsPage = () => {
                     <div className={`grid grid-cols-1 ${hasRightSidebar ? 'lg:grid-cols-4' : ''} gap-3 lg:gap-4`}>
                         {/* Left Column - Course Content (3/4) */}
                         <div className={`${hasRightSidebar ? 'lg:col-span-3' : ''} space-y-3 lg:space-y-4`}>
+                            {/* Certificate Card (separate from Course Configuration) */}
+                            {certificateUrl && (
+                                <div
+                                    className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-200 p-3 sm:p-4 group animate-fade-in-up"
+                                    style={{ animationDelay: "0.05s" }}
+                                >
+                                    <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
+                                    <div className="relative flex items-start justify-between gap-3">
+                                        <div className="flex items-center gap-2">
+                                            <div className="p-1.5 bg-gradient-to-br from-emerald-100 to-emerald-200 rounded-md shadow-sm">
+                                                <GraduationCap size={18} className="text-emerald-600" weight="duotone" />
+                                            </div>
+                                            <div>
+                                                <div className="text-sm font-bold text-gray-900">Certificate available</div>
+                                                <div className="text-xs text-gray-600">You can view or download your certificate now.</div>
+                                            </div>
+                                        </div>
+                                        <a
+                                            href={certificateUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-2 bg-emerald-600 text-white hover:bg-emerald-700 px-3 py-1.5 rounded-md text-xs font-medium shadow"
+                                        >
+                                            View Certificate
+                                        </a>
+                                    </div>
+                                </div>
+                            )}
                             {/* Enhanced Session and Level Selectors */}
                             {showCourseConfiguration && (
                             <div

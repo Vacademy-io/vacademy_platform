@@ -33,7 +33,7 @@ public class LearnerEnrollmentNotificationService {
             try {
                 Institute institute = fetchInstitute(instituteId);
                 NotificationDTO notificationDTO = createNotificationDTO(institute, students);
-                notificationService.sendEmailToUsers(notificationDTO);
+                notificationService.sendEmailToUsers(notificationDTO,instituteId);
             } catch (Exception e) {
                 // Handle exceptions (e.g., log the error)
                 e.printStackTrace();

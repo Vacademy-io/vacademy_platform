@@ -7,8 +7,12 @@ import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInviteService;
+import vacademy.io.admin_core_service.features.institute.service.InstituteService;
+import vacademy.io.admin_core_service.features.learner.constants.TemplateConstants;
+import vacademy.io.admin_core_service.features.learner.utility.TemplateReader;
 import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.PaymentOptionOperationFactory;
 import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.PaymentOptionOperationStrategy;
+import vacademy.io.admin_core_service.features.notification_service.service.SendUniqueLinkService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
@@ -21,6 +25,7 @@ import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollRequestDTO;
+import vacademy.io.common.institute.entity.Institute;
 
 import java.util.Map;
 import java.util.Optional;
@@ -46,6 +51,9 @@ public class LearnerEnrollRequestService {
     @Autowired
     private AuthService authService;
 
+    @Autowired
+    private SendUniqueLinkService service;
+
     @Transactional
     public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
         LearnerPackageSessionsEnrollDTO enrollDTO = learnerEnrollRequestDTO.getLearnerPackageSessionEnroll();
@@ -56,7 +64,11 @@ public class LearnerEnrollRequestService {
         EnrollInvite enrollInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
         PaymentOption paymentOption = getValidatedPaymentOption(enrollDTO.getPaymentOptionId());
         PaymentPlan paymentPlan = getOptionalPaymentPlan(enrollDTO.getPlanId());
-
+        sendNotificationBasedOnPaymentOption(
+                learnerEnrollRequestDTO.getInstituteId(),
+                learnerEnrollRequestDTO.getUser(),
+                paymentOption
+        );
         UserPlan userPlan = createUserPlan(
             learnerEnrollRequestDTO.getUser().getId(),
             enrollDTO,
@@ -64,7 +76,6 @@ public class LearnerEnrollRequestService {
             paymentOption,
             paymentPlan
         );
-
         return enrollLearnerToBatch(
             learnerEnrollRequestDTO,
             enrollDTO,
@@ -72,6 +83,18 @@ public class LearnerEnrollRequestService {
             paymentOption,
             userPlan
         );
+    }
+    private void sendNotificationBasedOnPaymentOption(String instituteId, UserDTO user, PaymentOption paymentOption) {
+        String type = paymentOption.getType();
+        if (PaymentOptionType.SUBSCRIPTION.name().equals(type)|| PaymentOptionType.ONE_TIME.name().equals(type)) {
+            //Paid User
+            service.sendUniqueLinkByEmail(instituteId, user, TemplateConstants.PAID_USER_EMAIL_TEMPLATE);
+            service.sendUniqueLinkByWhatsApp(instituteId, user,TemplateConstants.PAID_USER_WHATSAPP_TEMPLATE);
+        } else {
+            //Free User
+            service.sendUniqueLinkByEmail(instituteId, user,TemplateConstants.PAID_USER_EMAIL_TEMPLATE);
+            service.sendUniqueLinkByWhatsApp(instituteId, user,TemplateConstants.PAID_USER_WHATSAPP_TEMPLATE);
+        }
     }
 
     private EnrollInvite getValidatedEnrollInvite(String enrollInviteId) {

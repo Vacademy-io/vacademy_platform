@@ -143,7 +143,8 @@ public class LearnerSessionOperationService {
                     instituteStudentDetails.getInstituteId(),
                     studentRegistrationManager.makeExpiryDate(instituteStudentDetails.getEnrollmentDate(), instituteStudentDetails.getAccessDays()),
                     instituteStudentDetails.getPackageSessionId(),
-                    instituteStudentDetails.getDestinationPackageSessionId()
+                    instituteStudentDetails.getDestinationPackageSessionId(),
+                    instituteStudentDetails.getUserPlanId()
             );
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());

@@ -54,7 +54,7 @@ public class CsvToStudentDataMapper {
                     getFieldValue(record, "ENROLLMENT_STATUS"),
                     parseDate(getFieldValue(record, "ENROLLMENT_DATE")),
                     getFieldValue(record, "GROUP_ID"),
-                    getFieldValue(record, "ACCESS_DAYS"),null
+                    getFieldValue(record, "ACCESS_DAYS"),null,null
             );
 
             InstituteStudentDTO student = new InstituteStudentDTO(userDetails, studentExtraDetails, instituteStudentDetails, null, null, null);

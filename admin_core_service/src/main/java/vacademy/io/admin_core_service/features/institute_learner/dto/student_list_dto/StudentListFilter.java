@@ -18,10 +18,8 @@ public class StudentListFilter {
     private List<String> statuses;
     private List<String> instituteIds;
     private List<String> packageSessionIds;
-    private List<String> destinationPackageSessionIds;
     private List<String> groupIds;
     private List<String> gender;
     private List<String> paymentStatuses;
-    private Map<String, List<String>> customFields;
     private Map<String, String> sortColumns;
 }

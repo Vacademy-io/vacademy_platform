@@ -2,10 +2,7 @@ package vacademy.io.notification_service.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import vacademy.io.common.notification.dto.EmailOTPRequest;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
 import vacademy.io.notification_service.dto.EmailRequest;
@@ -32,8 +29,8 @@ public class EmailController {
     }
 
     @PostMapping("/send-email")
-    public String sendEmail(@RequestBody EmailRequest request) {
-        emailService.sendEmail(request.getTo(), request.getSubject(), request.getText());
+    public String sendEmail(@RequestBody EmailRequest request, @RequestParam(name = "instituteId",required = false) String instituteId) {
+        emailService.sendEmail(request.getTo(), request.getSubject(), request.getText(),instituteId);
 
         return "Email sent successfully";
     }
@@ -46,15 +43,15 @@ public class EmailController {
     }
 
     @PostMapping("/send-email-otp")
-    public ResponseEntity<String> sendEmailOtp(@RequestBody EmailOTPRequest request) {
-        otpService.sendEmailOtp(request.getTo(), request.getSubject(), request.getService(), request.getName());
+    public ResponseEntity<String> sendEmailOtp(@RequestBody EmailOTPRequest request, @RequestParam(name = "instituteId",required = false)String instituteId) {
+        otpService.sendEmailOtp(request.getTo(), request.getSubject(), request.getService(), request.getName(),instituteId);
         return ResponseEntity.ok("Email OTP sent successfully");
     }
 
     @PostMapping("/send-html-email")
-    public ResponseEntity<Boolean> sendEmail(@RequestBody GenericEmailRequest request) {
+    public ResponseEntity<Boolean> sendEmail(@RequestBody GenericEmailRequest request,@RequestParam(name = "instituteId",required = false)String instituteId) {
         try {
-            emailService.sendHtmlEmail(request.getTo(), request.getSubject(), request.getService(), request.getBody());
+            emailService.sendHtmlEmail(request.getTo(), request.getSubject(), request.getService(), request.getBody(),instituteId);
             return ResponseEntity.ok(true);
         } catch (Exception e) {
             return ResponseEntity.ok(false);
@@ -62,13 +59,13 @@ public class EmailController {
     }
 
     @PostMapping("/send-email-to-users")
-    public ResponseEntity<String> sendEmailsToUsers(@RequestBody NotificationDTO emailToUsersDTO) {
-        return ResponseEntity.ok(notificationService.sendNotification(emailToUsersDTO));
+    public ResponseEntity<String> sendEmailsToUsers(@RequestBody NotificationDTO emailToUsersDTO,@RequestParam(name = "instituteId",required = false)String instituteId) {
+        return ResponseEntity.ok(notificationService.sendNotification(emailToUsersDTO,instituteId));
     }
 
     @PostMapping("/send-email-to-users-public")
-    public ResponseEntity<String> sendEmailsToUsersPublic(@RequestBody NotificationDTO emailToUsersDTO) {
-        return ResponseEntity.ok(notificationService.sendNotification(emailToUsersDTO));
+    public ResponseEntity<String> sendEmailsToUsersPublic(@RequestBody NotificationDTO emailToUsersDTO,@RequestParam(name = "instituteId",required = false)String instituteId) {
+        return ResponseEntity.ok(notificationService.sendNotification(emailToUsersDTO,instituteId));
     }
 
 }

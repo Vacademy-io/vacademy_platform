@@ -76,17 +76,11 @@ public class AttendanceReportService {
             String attendanceStatus = projection.getAttendanceStatus();
             dto.setAttendanceStatus(attendanceStatus);
 
-            if ("PRESENT".equalsIgnoreCase(attendanceStatus)) {
-                presentCount++;
-            }
 
             scheduleDetails.add(dto);
         }
 
-        double attendancePercentage = projections.isEmpty()
-                ? 0.0
-                : ((double) presentCount / projections.size()) * 100.0;
-
+        double attendancePercentage = liveSessionParticipantRepository.getAttendancePercentage(batchId,userId,start,end);
         StudentAttendanceReportDTO report = new StudentAttendanceReportDTO();
         report.setUserId(userId);
         report.setAttendancePercentage(attendancePercentage);

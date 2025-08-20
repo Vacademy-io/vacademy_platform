@@ -20,8 +20,8 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
     @Transactional
     @Modifying
     @Query(value = "INSERT INTO student_session_institute_group_mapping " +
-            "(id, user_id, enrolled_date, status, institute_enrollment_number, group_id, institute_id, expiry_date, package_session_id, destination_package_session_id) " +
-            "VALUES (:id, :userId, :enrolledDate, :status, :instituteEnrolledNumber, :groupId, :instituteId, :expiryDate, :packageSessionId, :destinationPackageSessionId)",
+            "(id, user_id, enrolled_date, status, institute_enrollment_number, group_id, institute_id, expiry_date, package_session_id, destination_package_session_id, user_plan_id) " +
+            "VALUES (:id, :userId, :enrolledDate, :status, :instituteEnrolledNumber, :groupId, :instituteId, :expiryDate, :packageSessionId, :destinationPackageSessionId, :userPlanId)",
             nativeQuery = true)
     void addStudentToInstitute(
             @Param("id") String id,
@@ -33,7 +33,8 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
             @Param("instituteId") String instituteId,
             @Param("expiryDate") Date expiryDate,
             @Param("packageSessionId") String packageSessionId,
-            @Param("destinationPackageSessionId") String destinationPackageSessionId
+            @Param("destinationPackageSessionId") String destinationPackageSessionId,
+            @Param("userPlanId") String userPlanId
     );
 
     @Modifying

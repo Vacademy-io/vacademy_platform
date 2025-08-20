@@ -26,6 +26,7 @@ public class NotificationService {
 
     @Transactional
     public String sendNotification(NotificationDTO notificationDTO,String instituteId) {
+
         List<NotificationToUserDTO> users = notificationDTO.getUsers();
         List<NotificationLog> notificationLogs = new ArrayList<>(); // List to store all logs
 

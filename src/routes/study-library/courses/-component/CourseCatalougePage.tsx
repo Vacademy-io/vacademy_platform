@@ -25,10 +25,15 @@ const CourseCatalougePage: React.FC = () => {
 
     const { setInstituteData, setInstructors } = useCatalogStore();
     const [selectedTab, setSelectedTab] = useState("PROGRESS");
-    const [visibleTabs, setVisibleTabs] = useState<{ value: "ALL" | "PROGRESS" | "COMPLETED"; label?: string }[]>([
+    const [visibleTabs, setVisibleTabs] = useState<
+        { value: "ALL" | "PROGRESS" | "COMPLETED"; label?: string }[]
+    >([
         { value: "PROGRESS", label: "In Progress" },
         { value: "COMPLETED", label: "Completed" },
-        { value: "ALL", label: `All ${getTerminology(ContentTerms.Course, SystemTerms.Course)}s` },
+        {
+            value: "ALL",
+            label: `All ${getTerminology(ContentTerms.Course, SystemTerms.Course)}s`,
+        },
     ]);
     const [allCourses, setAllCourses] = useState<CoursePackageResponse>({
         content: [],
@@ -102,12 +107,12 @@ const CourseCatalougePage: React.FC = () => {
                         size: 10,
                         sortBy:
                             sort === "Newest"
-                                ? "created_at,desc"
+                                ? "created_at,asc"
                                 : sort === "Oldest"
-                                  ? "created_at,asc"
+                                  ? "created_at,desc"
                                   : sort === "Rating"
-                                    ? "rating,desc"
-                                    : "created_at,desc",
+                                    ? "rating,asc"
+                                    : "created_at,asc",
                     },
                     headers: {
                         accept: "*/*",
@@ -202,7 +207,9 @@ const CourseCatalougePage: React.FC = () => {
 
     // Enforce Student Display Settings: visible/order tabs and default tab
     useEffect(() => {
-        const mapSettingIdToValue = (id: StudentAllCoursesTabId): "ALL" | "PROGRESS" | "COMPLETED" => {
+        const mapSettingIdToValue = (
+            id: StudentAllCoursesTabId
+        ): "ALL" | "PROGRESS" | "COMPLETED" => {
             switch (id) {
                 case "AllCourses":
                     return "ALL";
@@ -220,12 +227,19 @@ const CourseCatalougePage: React.FC = () => {
             const ordered = tabs
                 .filter((t) => t.visible !== false)
                 .sort((a, b) => (a.order || 0) - (b.order || 0))
-                .map((t) => ({ value: mapSettingIdToValue(t.id), label: t.label }));
+                .map((t) => ({
+                    value: mapSettingIdToValue(t.id),
+                    label: t.label,
+                }));
             if (ordered.length) setVisibleTabs(ordered);
 
             // Determine default tab from settings; ensure it's visible
-            const defaultVal = mapSettingIdToValue(settings?.allCourses?.defaultTab || "InProgress");
-            const isDefaultVisible = ordered.some((t) => t.value === defaultVal);
+            const defaultVal = mapSettingIdToValue(
+                settings?.allCourses?.defaultTab || "InProgress"
+            );
+            const isDefaultVisible = ordered.some(
+                (t) => t.value === defaultVal
+            );
             const firstVisible = ordered[0]?.value || "PROGRESS";
             const toSet = isDefaultVisible ? defaultVal : firstVisible;
             setSelectedTab(toSet);
@@ -341,8 +355,8 @@ const CourseCatalougePage: React.FC = () => {
                                                       SystemTerms.Course
                                                   )}s`
                                                 : t.value === "PROGRESS"
-                                                ? "In Progress"
-                                                : "Completed")}
+                                                  ? "In Progress"
+                                                  : "Completed")}
                                     </TabsTrigger>
                                 ))}
                             </TabsList>
@@ -351,73 +365,73 @@ const CourseCatalougePage: React.FC = () => {
 
                     {/* Tab Content */}
                     {visibleTabs.some((t) => t.value === "ALL") && (
-                    <TabsContent value="ALL" className="m-0">
-                        <CoursesPage
-                            courseData={allCourses}
-                            searchTerm={searchTerm}
-                            onSearchChange={setSearchTerm}
-                            sortOption={sortOption}
-                            onSortChange={setSortOption}
-                            selectedLevels={selectedLevels}
-                            setSelectedLevels={setSelectedLevels}
-                            selectedTags={selectedTags}
-                            setSelectedTags={setSelectedTags}
-                            selectedInstructors={selectedInstructors}
-                            setSelectedInstructors={setSelectedInstructors}
-                            onApplyFilters={handleApplyFilters}
-                            clearAllFilters={clearAllFilters}
-                            page={progressCourses.number}
-                            handlePageChange={() => {}}
-                            showFilters={selectedTab === "ALL"}
-                            selectedTab={selectedTab}
-                        />
-                    </TabsContent>
+                        <TabsContent value="ALL" className="m-0">
+                            <CoursesPage
+                                courseData={allCourses}
+                                searchTerm={searchTerm}
+                                onSearchChange={setSearchTerm}
+                                sortOption={sortOption}
+                                onSortChange={setSortOption}
+                                selectedLevels={selectedLevels}
+                                setSelectedLevels={setSelectedLevels}
+                                selectedTags={selectedTags}
+                                setSelectedTags={setSelectedTags}
+                                selectedInstructors={selectedInstructors}
+                                setSelectedInstructors={setSelectedInstructors}
+                                onApplyFilters={handleApplyFilters}
+                                clearAllFilters={clearAllFilters}
+                                page={progressCourses.number}
+                                handlePageChange={() => {}}
+                                showFilters={selectedTab === "ALL"}
+                                selectedTab={selectedTab}
+                            />
+                        </TabsContent>
                     )}
                     {visibleTabs.some((t) => t.value === "PROGRESS") && (
-                    <TabsContent value="PROGRESS" className="m-0">
-                        <CoursesPage
-                            courseData={progressCourses}
-                            searchTerm={searchTerm}
-                            onSearchChange={setSearchTerm}
-                            sortOption={sortOption}
-                            onSortChange={setSortOption}
-                            selectedLevels={selectedLevels}
-                            setSelectedLevels={setSelectedLevels}
-                            selectedTags={selectedTags}
-                            setSelectedTags={setSelectedTags}
-                            selectedInstructors={selectedInstructors}
-                            setSelectedInstructors={setSelectedInstructors}
-                            onApplyFilters={handleApplyFilters}
-                            clearAllFilters={clearAllFilters}
-                            page={progressCourses.number}
-                            handlePageChange={() => {}}
-                            showFilters={false}
-                            selectedTab={selectedTab}
-                        />
-                    </TabsContent>
+                        <TabsContent value="PROGRESS" className="m-0">
+                            <CoursesPage
+                                courseData={progressCourses}
+                                searchTerm={searchTerm}
+                                onSearchChange={setSearchTerm}
+                                sortOption={sortOption}
+                                onSortChange={setSortOption}
+                                selectedLevels={selectedLevels}
+                                setSelectedLevels={setSelectedLevels}
+                                selectedTags={selectedTags}
+                                setSelectedTags={setSelectedTags}
+                                selectedInstructors={selectedInstructors}
+                                setSelectedInstructors={setSelectedInstructors}
+                                onApplyFilters={handleApplyFilters}
+                                clearAllFilters={clearAllFilters}
+                                page={progressCourses.number}
+                                handlePageChange={() => {}}
+                                showFilters={false}
+                                selectedTab={selectedTab}
+                            />
+                        </TabsContent>
                     )}
                     {visibleTabs.some((t) => t.value === "COMPLETED") && (
-                    <TabsContent value="COMPLETED" className="m-0">
-                        <CoursesPage
-                            courseData={completedCourses}
-                            searchTerm={searchTerm}
-                            onSearchChange={setSearchTerm}
-                            sortOption={sortOption}
-                            onSortChange={setSortOption}
-                            selectedLevels={selectedLevels}
-                            setSelectedLevels={setSelectedLevels}
-                            selectedTags={selectedTags}
-                            setSelectedTags={setSelectedTags}
-                            selectedInstructors={selectedInstructors}
-                            setSelectedInstructors={setSelectedInstructors}
-                            onApplyFilters={handleApplyFilters}
-                            clearAllFilters={clearAllFilters}
-                            page={completedCourses.number}
-                            handlePageChange={() => {}}
-                            showFilters={false}
-                            selectedTab={selectedTab}
-                        />
-                    </TabsContent>
+                        <TabsContent value="COMPLETED" className="m-0">
+                            <CoursesPage
+                                courseData={completedCourses}
+                                searchTerm={searchTerm}
+                                onSearchChange={setSearchTerm}
+                                sortOption={sortOption}
+                                onSortChange={setSortOption}
+                                selectedLevels={selectedLevels}
+                                setSelectedLevels={setSelectedLevels}
+                                selectedTags={selectedTags}
+                                setSelectedTags={setSelectedTags}
+                                selectedInstructors={selectedInstructors}
+                                setSelectedInstructors={setSelectedInstructors}
+                                onApplyFilters={handleApplyFilters}
+                                clearAllFilters={clearAllFilters}
+                                page={completedCourses.number}
+                                handlePageChange={() => {}}
+                                showFilters={false}
+                                selectedTab={selectedTab}
+                            />
+                        </TabsContent>
                     )}
                 </Tabs>
             </div>

@@ -254,6 +254,7 @@ public class EmailService {
 
     public void sendHtmlEmail(String to, String subject, String service, String body, String instituteId) {
         try {
+
             AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId);
             JavaMailSender mailSenderToUse = config.getKey();
             String fromToUse = config.getValue();

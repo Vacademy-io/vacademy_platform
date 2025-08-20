@@ -117,6 +117,12 @@ export interface StudentNotificationSettings {
   allowBatchStream: boolean;
 }
 
+// Certificates
+export interface StudentCertificateSettings {
+  // Percentage threshold after which certificate can be generated
+  generationThresholdPercent: number;
+}
+
 // Root
 export interface StudentDisplaySettingsData {
   sidebar: { visible: boolean; tabs: StudentSidebarTabConfig[] };
@@ -126,6 +132,7 @@ export interface StudentDisplaySettingsData {
   courseDetails: StudentCourseDetailsSettings;
   allCourses: StudentAllCoursesSettings;
   notifications: StudentNotificationSettings;
+  certificates: StudentCertificateSettings;
   postLoginRedirectRoute: string;
 }
 

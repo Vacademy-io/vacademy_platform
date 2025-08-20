@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { ChevronRight, Play, BookOpen, Users, Clock } from "lucide-react";
 import { useRouter } from "@tanstack/react-router";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
+import LocalStorageUtils from "@/utils/localstorage";
 import { Star } from "phosphor-react";
 import { ProgressBar } from "@/components/ui/custom-progress-bar";
 import { toTitleCase } from "@/lib/utils";
@@ -59,33 +60,53 @@ const CourseCard: React.FC<CourseCardProps> = ({
     const router = useRouter();
     const handleViewCoureseDetails = (id: string) => {
         // console.log("course-detailsIdis",id);
+        try {
+            // Persist percentage locally as a fallback for details page
+            const key = `COURSE_PCT_${id}`;
+            LocalStorageUtils.set(key, { value: percentageCompleted, ts: Date.now() });
+        } catch (e) {
+            console.error("Failed to save percentage to localStorage", e);
+        }
         router.navigate({
             to: "/study-library/courses/course-details",
-            search: { courseId: id, selectedTab: selectedTab },
+            search: { courseId: id, selectedTab: selectedTab, percentageCompleted },
         });
     };
 
-    const loadImage = async () => {
-        if (!previewImageUrl) {
-            setLoadingImage(false);
-            setCourseImageUrl(null);
-            return;
-        }
-
-        setLoadingImage(true);
-        try {
-            const url = await getPublicUrlWithoutLogin(previewImageUrl);
-            setCourseImageUrl(url || null);
-        } catch (error) {
-            console.error("Error fetching course image:", error);
-            setCourseImageUrl(null);
-        } finally {
-            setLoadingImage(false);
-        }
-    };
-
     useEffect(() => {
-        loadImage();
+        let isMounted = true;
+        const load = async () => {
+            if (!previewImageUrl) {
+                if (isMounted) {
+                    setLoadingImage(false);
+                    setCourseImageUrl((prev) => (prev === null ? prev : null));
+                }
+                return;
+            }
+
+            setLoadingImage(true);
+            try {
+                const url = await getPublicUrlWithoutLogin(previewImageUrl);
+                if (isMounted) {
+                    const next = url || null;
+                    setCourseImageUrl((prev) => (prev === next ? prev : next));
+                }
+            } catch (error) {
+                if (isMounted) {
+                    console.error("Error fetching course image:", error);
+                    setCourseImageUrl((prev) => (prev === null ? prev : null));
+                }
+            } finally {
+                if (isMounted) {
+                    setLoadingImage(false);
+                }
+            }
+        };
+
+        load();
+        return () => {
+            isMounted = false;
+        };
     }, [previewImageUrl]);
 
     const getLevelColor = () => {

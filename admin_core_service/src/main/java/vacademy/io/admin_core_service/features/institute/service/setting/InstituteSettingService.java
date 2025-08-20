@@ -1,16 +1,20 @@
-package vacademy.io.admin_core_service.features.institute.service;
+package vacademy.io.admin_core_service.features.institute.service.setting;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
-import vacademy.io.admin_core_service.features.institute.dto.settings.GenericSettingRequest;
+import vacademy.io.admin_core_service.features.institute.constants.ConstantsSettingDefaultValue;
 import vacademy.io.admin_core_service.features.institute.dto.settings.InstituteSettingDto;
 import vacademy.io.admin_core_service.features.institute.dto.settings.SettingDto;
+import vacademy.io.admin_core_service.features.institute.dto.settings.certificate.CertificateSettingDto;
+import vacademy.io.admin_core_service.features.institute.dto.settings.certificate.CertificateSettingRequest;
 import vacademy.io.admin_core_service.features.institute.dto.settings.naming.NameSettingRequest;
+import vacademy.io.admin_core_service.features.institute.enums.CertificateTypeEnum;
 import vacademy.io.admin_core_service.features.institute.enums.SettingKeyEnums;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
@@ -28,6 +32,37 @@ public class InstituteSettingService {
 
     public void createNewNamingSetting(Institute institute, NameSettingRequest request){
         String settingJsonString = settingStrategyFactory.buildNewSettingAndGetSettingJsonString(institute,request, SettingKeyEnums.NAMING_SETTING.name());
+        institute.setSetting(settingJsonString);
+        instituteRepository.save(institute);
+    }
+
+    public void createNewCertificateSetting(Institute institute, CertificateSettingStrategy request){
+        String settingJsonString = settingStrategyFactory.buildNewSettingAndGetSettingJsonString(institute,request, SettingKeyEnums.CERTIFICATE_SETTING.name());
+        institute.setSetting(settingJsonString);
+        instituteRepository.save(institute);
+    }
+
+    public void updateCertificateSetting(Institute institute, CertificateSettingRequest request){
+        String settingJsonString = settingStrategyFactory.rebuildOldSettingAndGetSettingJsonString(institute,request, SettingKeyEnums.CERTIFICATE_SETTING.name());
+        institute.setSetting(settingJsonString);
+        instituteRepository.save(institute);
+    }
+
+    public void createDefaultCertificateSetting(Institute institute){
+        CertificateSettingRequest request = new CertificateSettingRequest();
+        CertificateSettingDto settingDto = new CertificateSettingDto();
+
+        settingDto.setKey(CertificateTypeEnum.COURSE_COMPLETION.name());
+        settingDto.setIsDefaultCertificateSettingOn(false);
+        settingDto.setDefaultHtmlCertificateTemplate(ConstantsSettingDefaultValue.getDefaultHtmlCertificateTemplate());
+        settingDto.setCurrentHtmlCertificateTemplate(ConstantsSettingDefaultValue.getDefaultHtmlCertificateTemplate());
+
+        Map<String, CertificateSettingDto> settingDtoMap = new HashMap<>();
+        settingDtoMap.put(CertificateTypeEnum.COURSE_COMPLETION.name(), settingDto);
+        request.setRequest(settingDtoMap);
+
+
+        String settingJsonString = settingStrategyFactory.buildNewSettingAndGetSettingJsonString(institute,request, SettingKeyEnums.CERTIFICATE_SETTING.name());
         institute.setSetting(settingJsonString);
         instituteRepository.save(institute);
     }

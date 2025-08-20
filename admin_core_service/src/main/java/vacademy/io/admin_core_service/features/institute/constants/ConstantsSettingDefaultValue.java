@@ -50,4 +50,8 @@ public class ConstantsSettingDefaultValue {
         return nameDefaultValues.get(key);
     }
 
+    public static String getDefaultHtmlCertificateTemplate(){
+        return null;
+    }
+
 }

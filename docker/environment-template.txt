@@ -5,7 +5,12 @@
 # API Configuration
 # ===========================================
 VITE_API_BASE_URL=https://backend-stage.vacademy.io
+VITE_BACKEND_URL=https://backend-stage.vacademy.io
+VITE_LEARNER_DASHBOARD_URL=https://learner.vacademy.io
+VITE_TEACHER_DASHBOARD_URL=https://dash.vacademy.io
 VITE_INSTITUTE_ID=c70f40a5-e4d3-4b6c-a498-e612d0d4b133
+VITE_CODE_CIRCLE_INSTITUTE_ID=dd9b9687-56ee-467a-9fc4-8c5835eae7f9
+VITE_HOLISTIC_INSTITUTE_ID=bd9f2362-84d1-4e01-9762-a5196f9bac80
 
 # ===========================================
 # Firebase Configuration
@@ -61,6 +66,7 @@ NGINX_WORKER_PROCESSES=auto
 # Uncomment and modify for production deployment
 # ===========================================
 # VITE_API_BASE_URL=https://api.vacademy.io
+# VITE_BACKEND_URL=https://api.vacademy.io
 # VITE_ENVIRONMENT=production
 # VITE_DEBUG_MODE=false
 # VITE_LOG_LEVEL=error

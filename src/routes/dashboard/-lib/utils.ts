@@ -13,11 +13,11 @@ import {
 } from "../-types/dashboard-data-types";
 import { getStoredDetails } from "@/routes/assessment/examination/-utils.ts/useFetchAssessment";
 import { fetchStudentDetails } from "@/services/studentDetails";
-import { getInstituteId } from "@/constants/helper";
+import { safeJsonParse } from "@/utils/safe-json-parse";
 
 export const fetchUserData = async () => {
     const studentData = await Preferences.get({ key: "StudentDetails" });
-    const userData = studentData.value ? JSON.parse(studentData.value) : null;
+    const userData = safeJsonParse(studentData.value);
     return userData;
 };
 
@@ -29,6 +29,15 @@ export const fetchStaticData = async (
     setData?: (data: DashbaordResponse) => void
 ) => {
     const userData = await fetchUserData();
+    
+    if (!userData) {
+        console.error("No user data found");
+        setUsername(null);
+        setTestAssigned(0);
+        setHomeworkAssigned(0);
+        return;
+    }
+
     if (!userData) {
         console.error("No user data found");
         return;

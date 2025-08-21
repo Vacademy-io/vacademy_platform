@@ -8,7 +8,7 @@ import { handleFetchUserRoleDetails } from "../-services/institute-details";
 import { useEffect, useState } from "react";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { Preferences } from "@capacitor/preferences";
-import { BASE_URL_LEARNER_DASHBOARD } from "@/constants/urls";
+import { BASE_URL_TEACHER_DASHBOARD } from "@/constants/urls";
 import { TokenKey } from "@/constants/auth/tokens";
 import {
     getTokenFromCookie,
@@ -42,7 +42,7 @@ const HeroSection = ({
     const handleNavigate = () => {
         const accessToken = getTokenFromCookie(TokenKey.accessToken);
         const refreshToken = getTokenFromCookie(TokenKey.refreshToken);
-        window.location.href = `${BASE_URL_LEARNER_DASHBOARD.replace(/\/$/, "")}/auth-transfer?accessToken=${accessToken}&refreshToken=${refreshToken}`;
+        window.location.href = `${BASE_URL_TEACHER_DASHBOARD.replace(/\/$/, "")}/auth-transfer?accessToken=${accessToken}&refreshToken=${refreshToken}`;
     };
 
     useEffect(() => {

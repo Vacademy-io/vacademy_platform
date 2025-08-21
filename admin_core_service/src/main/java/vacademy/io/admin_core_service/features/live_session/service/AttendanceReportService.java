@@ -206,7 +206,7 @@ public class AttendanceReportService {
         public static AttendanceReportDTO convertGuestToAttendanceReport(GuestAttendanceDTO guestDto) {
             return AttendanceReportDTOImpl.builder()
                     .studentId(null)
-                    .fullName(guestDto.getGuestEmail())
+                    .fullName(guestDto.getCustomFieldValue())
                     .email(guestDto.getGuestEmail())
                     .mobileNumber(null)
                     .gender(null)

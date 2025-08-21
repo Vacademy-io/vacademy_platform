@@ -30,6 +30,7 @@ public class InstituteAnnouncementSettingsResponse {
         private StreamSettings streams;
         private ResourceSettings resources;
         private GeneralSettings general;
+        private FirebaseSettings firebase;
     }
     
     @Data
@@ -182,5 +183,15 @@ public class InstituteAnnouncementSettingsResponse {
         
         @JsonProperty("retention_days")
         private Integer retentionDays;
+    }
+    
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class FirebaseSettings {
+        @JsonProperty("serviceAccountJson")
+        private String serviceAccountJson;
+        @JsonProperty("serviceAccountJsonBase64")
+        private String serviceAccountJsonBase64;
     }
 }

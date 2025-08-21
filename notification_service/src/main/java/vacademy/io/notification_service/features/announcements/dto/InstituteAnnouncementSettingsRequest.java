@@ -47,6 +47,9 @@ public class InstituteAnnouncementSettingsRequest {
         
         @Valid
         private GeneralSettings general;
+        
+        @Valid
+        private FirebaseSettings firebase;
     }
     
     @Data
@@ -199,5 +202,13 @@ public class InstituteAnnouncementSettingsRequest {
         
         @JsonProperty("retention_days")
         private Integer retentionDays = 365;
+    }
+    
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class FirebaseSettings {
+        @JsonProperty("serviceAccountJson")
+        private String serviceAccountJson;
     }
 }

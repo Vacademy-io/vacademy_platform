@@ -78,7 +78,7 @@ export const usePushNotifications = () => {
   }, [setPermissionGranted]);
 
   // Send a local notification (for testing)
-  const sendLocalNotification = useCallback(async (payload: { title: string; body: string; data?: Record<string, any> }) => {
+  const sendLocalNotification = useCallback(async (payload: { title: string; body: string; data?: Record<string, unknown> }) => {
     try {
       await pushNotificationService.sendLocalNotification({
         title: payload.title,
@@ -95,40 +95,34 @@ export const usePushNotifications = () => {
   const handleNotification = useCallback((notification: PushNotificationSchema) => {
     // Add to store
     addNotification(notification);
-    
-    // Show toast if app is in foreground
-    if (document.hasFocus()) {
-      toast.info(notification.title || 'New notification', {
-        description: notification.body,
-        action: {
-          label: 'View',
-          onClick: () => {
-            // Handle notification action
-            markAsRead(notification.id);
-            // Navigate to relevant screen if needed
-          }
+
+    // Show toast (regardless of focus so it's visible during testing/background)
+    toast.info(notification.title || 'New notification', {
+      description: notification.body,
+      action: {
+        label: 'View',
+        onClick: () => {
+          // Handle notification action
+          markAsRead(notification.id);
+          // Navigate to relevant screen if needed
         }
-      });
-    }
+      }
+    });
   }, [addNotification, markAsRead]);
 
-  // Setup notification listeners
+  // Setup notification listeners for all platforms, including web
   useEffect(() => {
-    const platform = Capacitor.getPlatform();
+    pushNotificationService.addListener(handleNotification);
     
-    if (platform !== 'web') {
-      pushNotificationService.addListener(handleNotification);
-      
-      return () => {
-        pushNotificationService.removeListener(handleNotification);
-      };
-    }
+    return () => {
+      pushNotificationService.removeListener(handleNotification);
+    };
   }, [handleNotification]);
 
   // Handle Electron notification clicks
   useEffect(() => {
     if (window.electronAPI) {
-      const handleElectronNotificationClick = (data: any) => {
+      const handleElectronNotificationClick = (data: { actionUrl?: string }) => {
         if (data.actionUrl) {
           // Navigate to the action URL
           window.location.href = data.actionUrl;

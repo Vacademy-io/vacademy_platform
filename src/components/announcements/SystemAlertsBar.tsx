@@ -10,6 +10,7 @@ import { useSystemAlerts } from '@/hooks/useSystemAlerts';
 import { formatDistanceToNow } from 'date-fns';
 import { processHtmlString } from '@/lib/utils';
 import type { UserMessage } from '@/types/announcement';
+import { announcementApi } from '@/services/announcementApi';
 
 interface SystemAlertsBarProps {
   className?: string;
@@ -78,6 +79,8 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
     setSelectedAlert(alert);
     setShowFullContent(true);
     markAsRead(alert.messageId);
+    // Track click interaction
+    announcementApi.recordInteraction(alert.messageId, 'CLICKED', { source: 'SystemAlertsBar' }).catch(() => undefined);
   };
 
   const handleDismiss = async (messageId: string, event: React.MouseEvent) => {

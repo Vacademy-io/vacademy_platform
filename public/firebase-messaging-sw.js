@@ -49,7 +49,24 @@ messaging.onBackgroundMessage((payload) => {
     tag: 'vacademy-notification'
   };
 
-  return self.registration.showNotification(notificationTitle, notificationOptions);
+  // Show the system notification
+  self.registration.showNotification(notificationTitle, notificationOptions);
+
+  // Also forward the payload to all controlled clients so UI can update
+  // (e.g., add to in-app notification list/toast when the tab is focused again)
+  self.clients.matchAll({ includeUncontrolled: true, type: 'window' }).then((clientList) => {
+    clientList.forEach((client) => {
+      try {
+        client.postMessage({
+          type: 'FCM_BACKGROUND_MESSAGE',
+          payload,
+          forwardedAt: Date.now()
+        });
+      } catch (e) {
+        // ignore postMessage errors
+      }
+    });
+  });
 });
 
 // Handle notification click events

@@ -45,6 +45,21 @@ cd android
 ./gradlew assembleSeven_csRelease
 ```
 
+### Dependencies and permissions
+- Ensure Google services plugin is applied (already configured) and include Firebase Messaging:
+```gradle
+// android/app/build.gradle
+dependencies {
+  implementation platform('com.google.firebase:firebase-bom:33.2.0')
+  implementation 'com.google.firebase:firebase-messaging'
+}
+```
+- Android 13+ requires runtime notification permission. Declare in Manifest:
+```xml
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+```
+- Create a high-importance notification channel at runtime for heads-up notifications (implemented in code).
+
 ### Firebase Android App
 - In the Firebase project, add an Android app with package id `com.sevencs.learner`.
 - Download `google-services.json` and place under `android/app/src/seven_cs/`.
@@ -62,6 +77,16 @@ cd android
 ### Firebase iOS App
 - In Firebase, add an iOS app with bundle id `com.sevencs.learner`.
 - Download `GoogleService-Info.plist` and add to the `SevenCS` target (Build Phases > Copy Bundle Resources).
+
+### Enable FCM delivery for iOS (recommended)
+- Install Capacitor Firebase Messaging and sync:
+```bash
+npm i @capacitor-firebase/messaging
+npx cap sync ios
+cd ios/App && pod install
+```
+- In Xcode Signing & Capabilities: enable Push Notifications and Background Modes → Remote notifications.
+- In Firebase Console → Cloud Messaging: upload your APNs Auth Key (`.p8`) so FCM can bridge to APNs.
 
 ### Build
 ```bash
@@ -92,6 +117,7 @@ VITE_FIREBASE_VAPID_KEY=...
 ### Service Worker (optional per brand)
 - If needed, use `public/firebase-messaging-sw.seven_cs.js` and copy it to `public/firebase-messaging-sw.js` during build/deploy.
  - Ensure the service worker file is served from site root (`/firebase-messaging-sw.js`). If you deploy via a CDN/reverse proxy, verify the path mapping.
+ - Make sure `VITE_FIREBASE_VAPID_KEY` is set for the brand.
 
 ### Build
 ```bash
@@ -116,6 +142,10 @@ npx electron-builder -c electron/electron-builder.seven_cs.json -m
 ## Push Notifications
 - Client sends token + `clientContext` (package/bundle id or web sender id) and `instituteId`.
 - Server selects correct Firebase credentials per app, and targets tokens by instituteId.
+ - Platform specifics:
+   - Web: requires VAPID public key and a service worker at `/firebase-messaging-sw.js`.
+   - Android: FCM direct; ensure notification channel importance is HIGH for heads-up.
+   - iOS: FCM bridges to APNs; upload APNs key to Firebase and enable Push + Background Modes in Xcode.
 
 ## Naming and Icons Checklist
 - Android package id: unique per brand

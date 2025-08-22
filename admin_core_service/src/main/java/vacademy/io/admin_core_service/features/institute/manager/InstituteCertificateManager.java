@@ -47,7 +47,7 @@ public class InstituteCertificateManager {
 
         instituteStudentMapping.get().setAutomatedCompletionCertificateFileId(file.get().getId());
         studentSessionInstituteGroupMappingRepository.save(instituteStudentMapping.get());
-        return new ResponseEntity<>(file.get().getUrl(), HttpStatus.OK);
+        return new ResponseEntity<>(file.get().getId(), HttpStatus.OK);
     }
 
     public ResponseEntity<String> updateCurrentCertificateTemplate(CustomUserDetails userDetails, String instituteId, CertificationGenerationRequest request) {

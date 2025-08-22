@@ -17,6 +17,9 @@ importers:
       '@capacitor-community/privacy-screen':
         specifier: ^6.0.0
         version: 6.0.0(@capacitor/core@7.4.2)
+      '@capacitor-firebase/messaging':
+        specifier: ^7.3.0
+        version: 7.3.0(@capacitor/core@7.4.2)(firebase@10.14.1)
       '@capacitor/android':
         specifier: ^7.0.1
         version: 7.4.2(@capacitor/core@7.4.2)
@@ -673,6 +676,15 @@ packages:
     resolution: {integrity: sha512-Fyx7VBK2Kk2eefDCJpiMCI8m3hF1apthQK8R70r8Pqpyig8FIvAL1zBBnsnOQYEGgYDo/IaiVX6xbReg48NukA==}
     peerDependencies:
       '@capacitor/core': '>=7.0.0'
+
+  '@capacitor-firebase/messaging@7.3.0':
+    resolution: {integrity: sha512-SQmkTNznKKtcmmlGgDID48CgQQnkmkyHM6hxthjdGvT8TIb0FzHJCj4Bocq85eeV9EG4hvL9mkzbR8/K56C90g==}
+    peerDependencies:
+      '@capacitor/core': '>=7.0.0'
+      firebase: ^11.2.0
+    peerDependenciesMeta:
+      firebase:
+        optional: true
 
   '@capacitor/android@7.4.2':
     resolution: {integrity: sha512-FZ7M9NwFkljR7EP5eXiE32mAIfZNcYw2CzRMCG3rQu0u0ZaIoeOeq5/oK4YcDnGpNmu8jpngKJqZ+9OiSQSwDg==}
@@ -7280,6 +7292,12 @@ snapshots:
   '@capacitor-community/privacy-screen@6.0.0(@capacitor/core@7.4.2)':
     dependencies:
       '@capacitor/core': 7.4.2
+
+  '@capacitor-firebase/messaging@7.3.0(@capacitor/core@7.4.2)(firebase@10.14.1)':
+    dependencies:
+      '@capacitor/core': 7.4.2
+    optionalDependencies:
+      firebase: 10.14.1
 
   '@capacitor/android@7.4.2(@capacitor/core@7.4.2)':
     dependencies:

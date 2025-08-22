@@ -108,15 +108,12 @@ public class LearnerStudyLibraryService {
         if (Objects.isNull(packageSessionId)) {
             throw new VacademyException("Please provide packageSessionId");
         }
-        List<LearnerSubjectProjection> response =  subjectPackageSessionRepository.findLearnerSubjectsWithOperationValue(
+        return subjectPackageSessionRepository.findLearnerSubjectsWithOperationValue(
                 packageSessionId,
                 user.getUserId(),
             LearnerOperationEnum.PERCENTAGE_SUBJECT_COMPLETED.name(),
                 List.of(SubjectStatusEnum.ACTIVE.name())
         );
-        Optional<FileDetailsDTO> courseCertificationUrl = instituteSettingService.ifEligibleForCourseCertificationForUserAndPackageSession(user.getUserId(), packageSessionId);
-        courseCertificationUrl.ifPresent(fileDetailsDTO -> System.out.println(fileDetailsDTO.getUrl() + " - " + fileDetailsDTO.getId()));
-        return response;
     }
 
     public List<LearnerSlidesDetailDTO> getLearnerSlides(String chapterId, CustomUserDetails user) {

@@ -2,7 +2,6 @@ import { getInstituteIdSync } from "@/components/common/helper";
 import { GENERATE_CERTIFICATE } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import LocalStorageUtils from "@/utils/localstorage";
-import { getPublicUrl } from "./upload_file";
 
 type GenerateCertificateRequest = {
     user_id: string;

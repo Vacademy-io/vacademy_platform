@@ -8,12 +8,12 @@ import { handleFetchUserRoleDetails } from "../-services/institute-details";
 import { useEffect, useState } from "react";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { Preferences } from "@capacitor/preferences";
-import { BASE_URL_LEARNER_DASHBOARD } from "@/constants/urls";
 import { TokenKey } from "@/constants/auth/tokens";
 import {
     getTokenFromCookie,
     setAuthorizationCookie,
 } from "@/lib/auth/sessionUtility";
+import { handleGetPublicInstituteDetails } from "@/components/common/layout-container/services/navbar-services";
 
 interface UserRole {
     id: string;
@@ -28,6 +28,10 @@ const HeroSection = ({
 }: {
     allowLeanersToCreateCourses: boolean;
 }) => {
+    const { data: instituteDetails } = useSuspenseQuery(
+        handleGetPublicInstituteDetails()
+    );
+
     const { data: userRoleDetails, isLoading } = useSuspenseQuery(
         handleFetchUserRoleDetails()
     );
@@ -42,7 +46,7 @@ const HeroSection = ({
     const handleNavigate = () => {
         const accessToken = getTokenFromCookie(TokenKey.accessToken);
         const refreshToken = getTokenFromCookie(TokenKey.refreshToken);
-        window.location.href = `${BASE_URL_LEARNER_DASHBOARD.replace(/\/$/, "")}/auth-transfer?accessToken=${accessToken}&refreshToken=${refreshToken}`;
+        window.location.href = `https://${instituteDetails.teacher_portal_base_url}/auth-transfer?accessToken=${accessToken}&refreshToken=${refreshToken}`;
     };
 
     useEffect(() => {

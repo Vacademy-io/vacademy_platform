@@ -9,5 +9,7 @@ public interface GuestAttendanceDTO {
     String getAttendanceDetails();
     Timestamp getAttendanceTimestamp();
     String getCustomFieldValue();
+    String getGuestName();
+    String getMobileNumber();
 }
 

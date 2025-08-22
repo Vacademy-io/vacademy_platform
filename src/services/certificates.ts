@@ -84,12 +84,11 @@ export async function mockGenerateCertificate(
     const generatedAt = new Date().toISOString();
     // Randomly decide scenario; 60% already generated, 40% newly generated
     const newlyGenerated = false;
-    const fileId = await generateCertificateUrl({
+    const url = await generateCertificateUrl({
         learnerId: user_id,
         packageSessionId: package_session_id,
         generatedAt,
     });
-    const url = await getPublicUrl(fileId);
 
     // Simulate slight network delay
     await new Promise((r) => setTimeout(r, 500 + Math.random() * 500));

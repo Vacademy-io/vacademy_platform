@@ -54,18 +54,23 @@ export function setCachedCertificateStatus(
 export const generateCertificateUrl = async ({
     learnerId,
     packageSessionId,
+    generatedAt,
 }: {
     learnerId: string;
     packageSessionId: string;
+    generatedAt: string;
 }) => {
     const instituteId = await getInstituteIdSync();
     const response = await authenticatedAxiosInstance({
-        method: "GET",
+        method: "POST",
         url: GENERATE_CERTIFICATE,
         params: {
             learnerId,
             packageSessionId,
             instituteId,
+        },
+        data: {
+            completion_date: generatedAt,
         },
     });
     return response?.data;
@@ -76,14 +81,15 @@ export async function mockGenerateCertificate(
     payload: GenerateCertificateRequest
 ): Promise<GenerateCertificateResponse> {
     const { user_id, package_session_id } = payload;
+    const generatedAt = new Date().toISOString();
     // Randomly decide scenario; 60% already generated, 40% newly generated
     const newlyGenerated = false;
     const fileId = await generateCertificateUrl({
         learnerId: user_id,
         packageSessionId: package_session_id,
+        generatedAt,
     });
     const url = await getPublicUrl(fileId);
-    const generatedAt = new Date().toISOString();
 
     // Simulate slight network delay
     await new Promise((r) => setTimeout(r, 500 + Math.random() * 500));

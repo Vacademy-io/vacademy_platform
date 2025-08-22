@@ -2,6 +2,7 @@ import { getInstituteIdSync } from "@/components/common/helper";
 import { GENERATE_CERTIFICATE } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import LocalStorageUtils from "@/utils/localstorage";
+import { getPublicUrl } from "./upload_file";
 
 type GenerateCertificateRequest = {
     user_id: string;
@@ -77,10 +78,11 @@ export async function mockGenerateCertificate(
     const { user_id, package_session_id } = payload;
     // Randomly decide scenario; 60% already generated, 40% newly generated
     const newlyGenerated = false;
-    const url = await generateCertificateUrl({
+    const fileId = await generateCertificateUrl({
         learnerId: user_id,
         packageSessionId: package_session_id,
     });
+    const url = await getPublicUrl(fileId);
     const generatedAt = new Date().toISOString();
 
     // Simulate slight network delay

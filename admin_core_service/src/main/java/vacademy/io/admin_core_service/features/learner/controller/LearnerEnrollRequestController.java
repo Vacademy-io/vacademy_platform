@@ -20,4 +20,9 @@ public class LearnerEnrollRequestController {
     public ResponseEntity<LearnerEnrollResponseDTO> enrollLearner(@RequestBody LearnerEnrollRequestDTO learnerEnrollRequestDTO){
         return ResponseEntity.ok(learnerEnrollRequestService.recordLearnerRequest(learnerEnrollRequestDTO));
     }
+    @PostMapping("/test")
+    public String test(@RequestBody LearnerEnrollRequestDTO learnerEnrollRequestDTO){
+        learnerEnrollRequestService.test(learnerEnrollRequestDTO.getInstituteId(),learnerEnrollRequestDTO.getUser());
+        return "email send";
+    }
 }

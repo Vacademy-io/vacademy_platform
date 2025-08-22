@@ -51,6 +51,9 @@ public class StudentSessionInstituteGroupMapping {
     @JoinColumn(name = "institute_id", referencedColumnName = "id")
     private Institute institute; // Assuming you have an Institute entity defined
 
+    @Column(name = "automated_completion_certificate_file_id")
+    private String automatedCompletionCertificateFileId;
+
     @ManyToOne
     @JoinColumn(name = "package_session_id", referencedColumnName = "id")
     private PackageSession packageSession; // Assuming you have a PackageSession entity defined

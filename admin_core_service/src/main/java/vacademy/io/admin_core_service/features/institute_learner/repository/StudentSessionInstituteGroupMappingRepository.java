@@ -5,8 +5,10 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
+import vacademy.io.common.institute.entity.Institute;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface StudentSessionInstituteGroupMappingRepository
@@ -31,4 +33,21 @@ public interface StudentSessionInstituteGroupMappingRepository
             @Param("psIds") List<String> packageSessionIds,
             @Param("statuses") List<String> statuses
     );
+
+    @Query(value = """
+            SELECT * FROM student_session_institute_group_mapping
+            WHERE user_id = :userId
+            AND package_session_id = :sessionId ORDER BY created_at DESC LIMIT 1
+            """,nativeQuery = true)
+    Optional<StudentSessionInstituteGroupMapping> findByUserIdAndPackageSessionId(@Param("userId") String userId,
+                                                                                  @Param("sessionId") String packageSessionId);
+    @Query(value = """
+            SELECT * FROM student_session_institute_group_mapping
+            WHERE user_id = :userId
+            AND package_session_id = :sessionId
+            AND institute_id = :instituteId ORDER BY created_at DESC LIMIT 1
+            """,nativeQuery = true)
+    Optional<StudentSessionInstituteGroupMapping> findByUserIdAndPackageSessionIdAndInstituteId(@Param("userId") String userId,
+                                                                                                @Param("sessionId") String packageSessionId,
+                                                                                                @Param("instituteId")String instituteId);
 }

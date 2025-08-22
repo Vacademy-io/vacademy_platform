@@ -23,10 +23,11 @@ public class InternalAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
 
+
         if (request.getRequestURI().contains("internal")) {
             String clientName = request.getHeader("clientName");
             String clientToken = request.getHeader("Signature");
-
+            logger.error("Incoming headers: {}"+ request.getHeaderNames());
 
             boolean isValidClient = clientAuthenticationService.validateClient(clientName, clientToken);
             if (isValidClient) {
@@ -37,6 +38,7 @@ public class InternalAuthFilter extends OncePerRequestFilter {
                 response.getWriter().write("Invalid client authentication");
             }
         } else {
+            logger.error("Incoming headers2: {}"+ request.getHeaderNames());
             filterChain.doFilter(request, response);
             return;
         }

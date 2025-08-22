@@ -2065,7 +2065,7 @@ export const CourseStructureDetails = ({
 
     return (
         <PullToRefreshWrapper onRefresh={refreshData}>
-            <div className="flex size-full flex-col gap-4 rounded-lg bg-gradient-to-br from-neutral-50/50 to-white py-4 text-neutral-700">
+            <div className="flex size-full flex-col gap-4 rounded-lg bg-gradient-to-br from-neutral-50/50 to-white pt-0 pb-4 text-neutral-700">
                 <Tabs
                     value={selectedStructureTab}
                     onValueChange={handleTabChange}

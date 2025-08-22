@@ -1,19 +1,22 @@
 package vacademy.io.admin_core_service.features.institute.service.setting;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.itextpdf.styledxmlparser.jsoup.Jsoup;
 import com.itextpdf.styledxmlparser.jsoup.nodes.Document;
 import com.itextpdf.styledxmlparser.jsoup.nodes.Entities;
-import com.openhtmltopdf.outputdevice.helper.BaseRendererBuilder;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
+import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.institute.constants.ConstantsSettingDefaultValue;
+import vacademy.io.admin_core_service.features.institute.dto.CertificationGenerationRequest;
 import vacademy.io.admin_core_service.features.institute.dto.settings.InstituteSettingDto;
 import vacademy.io.admin_core_service.features.institute.dto.settings.SettingDto;
+import vacademy.io.admin_core_service.features.institute.dto.settings.certificate.CertificateSettingDataDto;
 import vacademy.io.admin_core_service.features.institute.dto.settings.certificate.CertificateSettingDto;
 import vacademy.io.admin_core_service.features.institute.dto.settings.certificate.CertificateSettingRequest;
 import vacademy.io.admin_core_service.features.institute.dto.settings.naming.NameSettingRequest;
@@ -21,8 +24,8 @@ import vacademy.io.admin_core_service.features.institute.enums.CertificateTypeEn
 import vacademy.io.admin_core_service.features.institute.enums.SettingKeyEnums;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
-import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.media_service.service.MediaService;
+import vacademy.io.common.core.utils.DateUtil;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.media.dto.FileDetailsDTO;
@@ -30,7 +33,6 @@ import vacademy.io.common.media.dto.InMemoryMultipartFile;
 import vacademy.io.common.media.service.FileService;
 
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.util.*;
 
 
@@ -39,14 +41,12 @@ public class InstituteSettingService {
 
     private final SettingStrategyFactory settingStrategyFactory;
     private final InstituteRepository instituteRepository;
-    private final StudentSessionInstituteGroupMappingRepository instituteGroupMappingRepository;
     private final ObjectMapper objectMapper;
     private final MediaService mediaService;
     private final AuthService authService;
 
-    public InstituteSettingService(InstituteRepository instituteRepository, StudentSessionInstituteGroupMappingRepository instituteGroupMappingRepository, ObjectMapper objectMapper, FileService fileService, MediaService mediaService, AuthService authService) {
+    public InstituteSettingService(InstituteRepository instituteRepository, ObjectMapper objectMapper, FileService fileService, MediaService mediaService, AuthService authService) {
         this.instituteRepository = instituteRepository;
-        this.instituteGroupMappingRepository = instituteGroupMappingRepository;
         this.objectMapper = objectMapper;
         this.mediaService = mediaService;
         this.authService = authService;
@@ -84,6 +84,10 @@ public class InstituteSettingService {
         Map<String, CertificateSettingDto> settingDtoMap = new HashMap<>();
         settingDtoMap.put(CertificateTypeEnum.COURSE_COMPLETION.name(), settingDto);
         request.setRequest(settingDtoMap);
+
+        Map<String, String> placeHolderValueMapping = new HashMap<>();
+        placeHolderValueMapping.put("6", "Official Signatory");
+        placeHolderValueMapping.put("7", "");
 
 
         String settingJsonString = settingStrategyFactory.buildNewSettingAndGetSettingJsonString(institute,request, SettingKeyEnums.CERTIFICATE_SETTING.name());
@@ -160,36 +164,40 @@ public class InstituteSettingService {
         return institute.getSetting();
     }
 
-    public Optional<FileDetailsDTO> ifEligibleForCourseCertificationForUserAndPackageSession(String userId, String packageSessionId) {
-        Optional<StudentSessionInstituteGroupMapping> instituteStudentMapping = instituteGroupMappingRepository.findByUserIdAndPackageSessionId(userId, packageSessionId);
+    public Optional<FileDetailsDTO> ifEligibleForCourseCertificationForUserAndPackageSession(String learnerId, String packageSessionId, String instituteId, Optional<StudentSessionInstituteGroupMapping> instituteStudentMapping, CertificationGenerationRequest request) {
         if(instituteStudentMapping.isEmpty()) return Optional.empty();
         if(instituteStudentMapping.get().getInstitute()==null) return Optional.empty();
 
         String setting = instituteStudentMapping.get().getInstitute().getSetting();
         if(!StringUtils.hasText(setting)) return Optional.empty();
+        Map<String, String> placeHoldersValueMapping = extractPlaceholders(setting);
 
         Optional<String> currentHtmlCertificateTemplate = getCurrentCertificateTemplate(setting,CertificateTypeEnum.COURSE_COMPLETION.name());
-        return currentHtmlCertificateTemplate.flatMap(s -> createCertificateUrlFromTemplateAndLearnerData(s, instituteStudentMapping.get()));
+        return currentHtmlCertificateTemplate.flatMap(s -> createCertificateUrlFromTemplateAndLearnerData(s, instituteStudentMapping.get(), placeHoldersValueMapping, request));
 
     }
 
     private Optional<FileDetailsDTO> createCertificateUrlFromTemplateAndLearnerData(
             String template,
-            StudentSessionInstituteGroupMapping studentSessionInstituteGroupMapping) {
+            StudentSessionInstituteGroupMapping studentSessionInstituteGroupMapping, Map<String, String> placeHoldersValueMapping, CertificationGenerationRequest request) {
 
         // Your mapping (placeholder key -> actual value)
         Map<String, String> placeHolderMapping = new HashMap<>();
         String studentId = studentSessionInstituteGroupMapping.getUserId();
         String learnerName = authService.getUsersFromAuthServiceByUserIds(List.of(studentId)).get(0).getFullName();
 
+        String instituteImageUrl = mediaService.getFileUrlById(studentSessionInstituteGroupMapping.getInstitute().getLogoFileId());
+
+
         placeHolderMapping.put("1", studentSessionInstituteGroupMapping.getPackageSession().getSession().getSessionName());
         placeHolderMapping.put("2", studentSessionInstituteGroupMapping.getPackageSession().getLevel().getLevelName());
         placeHolderMapping.put("3", learnerName);
-        placeHolderMapping.put("4", new Date().toString());
-        placeHolderMapping.put("5", "https://www.differencebetween.net/wp-content/uploads/2018/03/Difference-Between-Institute-and-University--768x520.jpg");
-        placeHolderMapping.put("6", "Head Of Officials");
-        placeHolderMapping.put("7", "PIYUSH RAJ");
+        placeHolderMapping.put("4", DateUtil.convertDateToString(request.getCompletionDate()));
+        placeHolderMapping.put("5", instituteImageUrl);
+        placeHolderMapping.put("6", placeHoldersValueMapping.get("6"));
+        placeHolderMapping.put("7",placeHoldersValueMapping.get("7"));
         placeHolderMapping.put("8", studentSessionInstituteGroupMapping.getInstitute().getInstituteName());
+        placeHolderMapping.put("9", DateUtil.convertDateToString(new Date()));
 
         // Your default placeholders
         Map<String, String> defaultPlaceHolders = ConstantsSettingDefaultValue.getDefaultPlaceHolders();
@@ -292,4 +300,69 @@ public class InstituteSettingService {
         }
         return Optional.empty();
     }
+
+    private static final Map<String, String> DEFAULT_PLACEHOLDERS = Map.of(
+            "6", "Official Signatory",
+            "7", " "
+    );
+
+    public static Map<String, String> extractPlaceholders(String json) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            CertificateSettingDataDto dataDto = mapper.readValue(json, CertificateSettingDataDto.class);
+
+            if (dataDto == null || dataDto.getData() == null || dataDto.getData().isEmpty()) {
+                return DEFAULT_PLACEHOLDERS;
+            }
+
+            CertificateSettingDto firstSetting = dataDto.getData().get(0);
+
+            if (firstSetting == null || firstSetting.getPlaceHoldersMapping() == null) {
+                return DEFAULT_PLACEHOLDERS;
+            }
+
+            return firstSetting.getPlaceHoldersMapping();
+
+        } catch (Exception e) {
+            // In case JSON parsing fails
+            return DEFAULT_PLACEHOLDERS;
+        }
+    }
+
+    @Transactional
+    public String updateInstituteCurrentTemplate(Institute institute, CertificationGenerationRequest request) throws JsonProcessingException {
+        String settingJson = institute.getSetting();
+
+        // Deserialize
+        InstituteSettingDto instituteSettingDto = objectMapper.readValue(settingJson, InstituteSettingDto.class);
+        SettingDto certificateSettingDto = instituteSettingDto.getSetting().get("CERTIFICATE_SETTING");
+
+        // Convert object to CertificateSettingDataDto properly
+        CertificateSettingDataDto dataDto = objectMapper.convertValue(certificateSettingDto.getData(), CertificateSettingDataDto.class);
+
+        // Update current template
+        for (CertificateSettingDto data : dataDto.getData()) {
+            if (data.getKey().equals(request.getKey())) {
+                data.setCurrentHtmlCertificateTemplate(request.getCurrentHtmlTemplate());
+            }
+        }
+
+        // Set the updated data back
+        certificateSettingDto.setData(dataDto);
+
+        // Put it back into settings map
+        instituteSettingDto.getSetting().put("CERTIFICATE_SETTING", certificateSettingDto);
+
+        // Serialize back to JSON
+        String updatedJson = objectMapper.writeValueAsString(instituteSettingDto);
+
+        // Update entity
+        institute.setSetting(updatedJson);
+
+        // Persist changes
+        instituteRepository.save(institute);
+
+        return "Certificate Template Updated Successfully!";
+    }
+
 }

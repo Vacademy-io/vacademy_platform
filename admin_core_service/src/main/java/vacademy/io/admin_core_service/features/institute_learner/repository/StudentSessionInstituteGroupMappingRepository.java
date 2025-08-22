@@ -41,4 +41,13 @@ public interface StudentSessionInstituteGroupMappingRepository
             """,nativeQuery = true)
     Optional<StudentSessionInstituteGroupMapping> findByUserIdAndPackageSessionId(@Param("userId") String userId,
                                                                                   @Param("sessionId") String packageSessionId);
+    @Query(value = """
+            SELECT * FROM student_session_institute_group_mapping
+            WHERE user_id = :userId
+            AND package_session_id = :sessionId
+            AND institute_id = :instituteId ORDER BY created_at DESC LIMIT 1
+            """,nativeQuery = true)
+    Optional<StudentSessionInstituteGroupMapping> findByUserIdAndPackageSessionIdAndInstituteId(@Param("userId") String userId,
+                                                                                                @Param("sessionId") String packageSessionId,
+                                                                                                @Param("instituteId")String instituteId);
 }

@@ -79,6 +79,7 @@ public class CertificateSettingStrategy extends IInstituteSettingStrategy{
                     dto.setCustomHtmlCertificateTemplate(entry.getValue().getCustomHtmlCertificateTemplate());
                     dto.setCurrentHtmlCertificateTemplate(entry.getValue().getCurrentHtmlCertificateTemplate());
                     dto.setDefaultHtmlCertificateTemplate(entry.getValue().getDefaultHtmlCertificateTemplate());
+                    dto.setPlaceHoldersMapping(entry.getValue().getPlaceHoldersMapping());
                     return dto;
                 })
                 .collect(Collectors.toList());

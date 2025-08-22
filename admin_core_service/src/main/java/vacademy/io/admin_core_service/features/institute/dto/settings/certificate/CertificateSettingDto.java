@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.util.List;
+import java.util.Map;
 
 @Setter
 @Getter
@@ -14,4 +15,5 @@ public class CertificateSettingDto {
     private String defaultHtmlCertificateTemplate;
     private String currentHtmlCertificateTemplate;
     private List<String> customHtmlCertificateTemplate;
+    private Map<String, String> placeHoldersMapping;
 }

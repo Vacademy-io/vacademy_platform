@@ -81,8 +81,7 @@ The system respects student display settings:
 ### System Alerts
 - `GET /notification-service/v1/user-messages/user/{userId}/system-alerts`
 - `GET /notification-service/v1/user-messages/user/{userId}/unread-count?modeType=SYSTEM_ALERT`
-- `POST /notification-service/v1/user-messages/interactions/read`
-- `POST /notification-service/v1/user-messages/interactions/dismiss`
+- `POST /notification-service/v1/user-messages/interactions` (requires body with `interactionType`)
 
 ### Dashboard Pins
 - `GET /notification-service/v1/user-messages/user/{userId}/dashboard-pins`
@@ -105,6 +104,29 @@ The system tracks user interactions:
 - Stream/discussion messages scrolled
 - Reply posted
 - Load more actions
+
+## Interaction Tracking
+
+All message interactions are recorded via a single endpoint:
+
+`POST /notification-service/v1/user-messages/interactions`
+
+Request body:
+
+```
+{
+  "recipientMessageId": "<uuid>",
+  "userId": "<uuid>",
+  "interactionType": "READ" | "DISMISSED" | "CLICKED" | "LIKED" | "SHARED",
+  "additionalData": { "source": "<optional>" }
+}
+```
+
+Current triggers implemented:
+- READ: on opening alerts, pins, stream/discussion messages; also batch mark-as-read
+- DISMISSED: on alert dismissal
+- CLICKED: on clicking alerts, pins, stream/discussion messages
+- LIKED/SHARED: not used yet (add via `announcementApi.recordInteraction` when UI actions are added)
 
 ## Performance Optimizations
 

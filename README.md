@@ -1,3 +1,94 @@
+## Frontend Learner Dashboard App
+
+A Vite + React + TypeScript app with Capacitor and optional Electron packaging. This dashboard is designed to be whitelabeled and deployed to multiple environments/clients.
+
+### Prerequisites
+- Node.js 18+
+- pnpm or npm
+- Optional: Docker (for containerized runs)
+
+### Quick Start
+1. Install dependencies:
+```bash
+pnpm install
+# or
+npm install
+```
+2. Create your environment file (choose one):
+   - Run the helper script to generate `.env` interactively:
+```bash
+./setup-secrets.sh
+```
+   - Or copy and edit the template:
+```bash
+cp docker/environment-template.txt .env
+# then edit .env values
+```
+3. Start the dev server:
+```bash
+pnpm dev
+# or
+npm run dev
+```
+
+### Environment Variables
+These are read via `import.meta.env` at build/runtime:
+- VITE_BACKEND_URL: Base URL for backend APIs (preferred)
+- VITE_API_BASE_URL: Legacy fallback for API base (if provided, used when VITE_BACKEND_URL is unset)
+- VITE_LEARNER_DASHBOARD_URL: Public learner dashboard host (used for cross-app navigation)
+- VITE_TEACHER_DASHBOARD_URL: Admin/teacher dashboard host (used for cross-app navigation)
+- VITE_INSTITUTE_ID: Default institute ID
+- VITE_CODE_CIRCLE_INSTITUTE_ID: Optional institute ID for whitelabel behavior
+- VITE_HOLISTIC_INSTITUTE_ID: Optional institute ID for whitelabel behavior
+
+Other optional variables commonly used (see `docker/environment-template.txt`):
+- Firebase config: `VITE_FIREBASE_*`
+- Analytics: `VITE_AMPLITUDE_API_KEY`
+- Feature flags: `VITE_ENABLE_*`
+
+### Common Scripts
+```bash
+# Dev server
+pnpm dev
+
+# Build web
+pnpm build
+
+# Typecheck
+pnpm run build:tsc
+
+# Lint
+pnpm lint
+```
+
+### Docker (optional)
+Use the provided template to set variables, then build/run via your preferred workflow. The template lives at `docker/environment-template.txt`.
+
+### Electron (optional)
+Electron packaging configs live under `electron/`. Example scripts:
+```bash
+# macOS build (seven_cs example config)
+pnpm electron:build:seven_cs:mac
+
+# Windows build
+pnpm electron:build:seven_cs:win
+```
+
+### Android (optional)
+Android build scripts/examples live in `android/` with Gradle tasks exposed in `package.json`.
+```bash
+pnpm android:assemble:seven_cs:debug
+pnpm android:assemble:seven_cs:release
+```
+
+### Troubleshooting
+- Ensure `.env` is present and contains valid URLs/IDs.
+- For CORS issues, verify backend `VITE_BACKEND_URL` accepts your app origin.
+- If using Docker, ensure environment variables are passed into the container.
+
+### Notes
+- Most URLs are centralized in `src/constants/urls.ts` and are now environment-driven to support multiple client deployments.
+
 # Template App
 
 ## Important

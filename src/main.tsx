@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
-import React, { StrictMode } from "react";
+import React, { StrictMode, useEffect } from "react";
 import ReactDOM from "react-dom/client";
 import RootErrorComponent from "./components/core/deafult-error";
 import RootNotFoundComponent from "./components/core/default-not-found";
@@ -24,6 +24,39 @@ const queryClient = new QueryClient();
 const NotificationInitializer = ({ children }: { children: React.ReactNode }) => {
   // Initialize push notifications when app starts
   usePushNotifications();
+  
+  // Listen for messages forwarded by the service worker
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+    
+    type SwForwardedMessage = { type?: string; payload?: {
+      messageId?: string;
+      notification?: { title?: string; body?: string };
+      data?: Record<string, unknown>;
+    }};
+
+    const handleSwMessage = (event: MessageEvent<SwForwardedMessage>) => {
+      const data = event.data as SwForwardedMessage;
+      if (!data || data.type !== 'FCM_BACKGROUND_MESSAGE') return;
+
+      // Convert to app notification shape and dispatch to store
+      import('./services/push-notifications/push-notification-service').then(({ pushNotificationService }) => {
+        const payload = data.payload || {};
+        const title = payload?.notification?.title || payload?.data?.title || 'New notification';
+        const body = payload?.notification?.body || payload?.data?.body || '';
+        const id = payload?.messageId || String(Date.now());
+        pushNotificationService.dispatch({
+          title,
+          body,
+          id,
+          data: payload?.data || {}
+        } as unknown as import('@capacitor/push-notifications').PushNotificationSchema);
+      });
+    };
+
+    navigator.serviceWorker.addEventListener('message', handleSwMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+  }, []);
   return <>{children}</>;
 };
 

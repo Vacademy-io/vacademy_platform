@@ -1,6 +1,9 @@
 // Mode types for different announcement categories
 export type ModeType = 'SYSTEM_ALERT' | 'DASHBOARD_PIN' | 'DM' | 'STREAM' | 'RESOURCES' | 'COMMUNITY' | 'TASKS';
 
+// Interaction types aligned with backend enum
+export type InteractionType = 'READ' | 'DISMISSED' | 'CLICKED' | 'LIKED' | 'SHARED';
+
 // Message status types
 export type MessageStatus = 'PENDING' | 'SENT' | 'DELIVERED' | 'FAILED' | 'READ';
 
@@ -75,8 +78,8 @@ export interface CreateReplyRequest {
 export interface MessageInteractionRequest {
   recipientMessageId: string;
   userId: string;
-  interactionType: 'CLICK' | 'VIEW' | 'READ' | 'DISMISS';
-  additionalData?: Record<string, any>;
+  interactionType: InteractionType;
+  additionalData?: Record<string, unknown>;
 }
 
 // API response interfaces
@@ -108,7 +111,7 @@ export interface SseEvent {
   announcementId?: string;
   modeType?: ModeType;
   instituteId?: string;
-  data?: any;
+  data?: unknown;
   timestamp: string;
 }
 

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,8 +8,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Loader2, MessageSquare, Send, User, Clock, AlertCircle, Info } from 'lucide-react';
 import { usePackageSessionMessages } from '@/hooks/usePackageSessionMessages';
 import { formatDistanceToNow } from 'date-fns';
-import { processHtmlString } from '@/lib/utils';
 import type { UserMessage } from '@/types/announcement';
+import { announcementApi } from '@/services/announcementApi';
 
 interface PackageSessionMessagesProps {
   packageSessionId: string;
@@ -83,6 +84,8 @@ export const PackageSessionMessages: React.FC<PackageSessionMessagesProps> = ({
     setSelectedMessage(message);
     setShowReplies(true);
     markAsRead(message.messageId, 'STREAM');
+    // Track click interaction
+    announcementApi.recordInteraction(message.messageId, 'CLICKED', { source: 'PackageSessionMessages' }).catch(() => undefined);
   };
 
   const handlePostReply = async () => {
@@ -106,7 +109,7 @@ export const PackageSessionMessages: React.FC<PackageSessionMessagesProps> = ({
       return (
         <div 
           className="prose prose-sm max-w-none"
-          dangerouslySetInnerHTML={{ __html: processHtmlString(message.content.content) }}
+          dangerouslySetInnerHTML={{ __html: message.content.content }}
         />
       );
     }
@@ -190,80 +193,83 @@ export const PackageSessionMessages: React.FC<PackageSessionMessagesProps> = ({
   const renderRepliesSection = () => {
     if (!selectedMessage) return null;
 
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <Card className="w-full max-w-4xl max-h-[90vh] overflow-hidden">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">Discussion</CardTitle>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowReplies(false)}
-              >
-                Close
-              </Button>
-            </div>
-          </CardHeader>
-          
-          <CardContent className="p-0">
-            <div className="flex flex-col h-[calc(90vh-120px)]">
-              {/* Original Message */}
-              <div className="p-4 border-b border-gray-200 bg-gray-50">
-                {renderMessageCard(selectedMessage, selectedMessage.modeType as 'STREAM' | 'COMMUNITY')}
-              </div>
+    return typeof document !== 'undefined'
+      ? createPortal(
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[2147483647] p-4">
+            <Card className="w-full max-w-4xl max-h-[90vh] overflow-hidden">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">Discussion</CardTitle>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowReplies(false)}
+                  >
+                    Close
+                  </Button>
+                </div>
+              </CardHeader>
               
-              {/* Replies */}
-              <ScrollArea className="flex-1 p-4">
-                <div className="space-y-4">
-                  {/* Reply Composer */}
-                  <div className="border rounded-lg p-3">
-                    <Textarea
-                      placeholder="Write a reply..."
-                      value={replyContent}
-                      onChange={(e) => setReplyContent(e.target.value)}
-                      className="min-h-[80px] resize-none"
-                    />
-                    <div className="flex items-center justify-between mt-2">
-                      <div className="flex items-center gap-2 text-xs text-gray-500">
-                        <Info className="h-3 w-3" />
-                        <span>Your reply will be visible to all participants</span>
-                      </div>
-                      <Button
-                        size="sm"
-                        onClick={handlePostReply}
-                        disabled={!replyContent.trim() || isPostingReply}
-                      >
-                        {isPostingReply ? (
-                          <>
-                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                            Posting...
-                          </>
-                        ) : (
-                          <>
-                            <Send className="h-4 w-4 mr-2" />
-                            Post Reply
-                          </>
-                        )}
-                      </Button>
-                    </div>
+              <CardContent className="p-0">
+                <div className="flex flex-col h-[calc(90vh-120px)]">
+                  {/* Original Message */}
+                  <div className="p-4 border-b border-gray-200 bg-gray-50">
+                    {renderMessageCard(selectedMessage, selectedMessage.modeType as 'STREAM' | 'COMMUNITY')}
                   </div>
                   
-                  {/* Replies List */}
-                  <div className="space-y-3">
-                    {/* TODO: Implement replies list */}
-                    <div className="text-center py-8 text-gray-500">
-                      <MessageSquare className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                      <p>Replies will appear here</p>
+                  {/* Replies */}
+                  <ScrollArea className="flex-1 p-4">
+                    <div className="space-y-4">
+                      {/* Reply Composer */}
+                      <div className="border rounded-lg p-3">
+                        <Textarea
+                          placeholder="Write a reply..."
+                          value={replyContent}
+                          onChange={(e) => setReplyContent(e.target.value)}
+                          className="min-h-[80px] resize-none"
+                        />
+                        <div className="flex items-center justify-between mt-2">
+                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                            <Info className="h-3 w-3" />
+                            <span>Your reply will be visible to all participants</span>
+                          </div>
+                          <Button
+                            size="sm"
+                            onClick={handlePostReply}
+                            disabled={!replyContent.trim() || isPostingReply}
+                          >
+                            {isPostingReply ? (
+                              <>
+                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                Posting...
+                              </>
+                            ) : (
+                              <>
+                                <Send className="h-4 w-4 mr-2" />
+                                Post Reply
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                      
+                      {/* Replies List */}
+                      <div className="space-y-3">
+                        {/* TODO: Implement replies list */}
+                        <div className="text-center py-8 text-gray-500">
+                          <MessageSquare className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                          <p>Replies will appear here</p>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  </ScrollArea>
                 </div>
-              </ScrollArea>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
+              </CardContent>
+            </Card>
+          </div>,
+          document.body
+        )
+      : null;
   };
 
   // Don't render if not enabled or still loading settings

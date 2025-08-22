@@ -30,7 +30,14 @@ public interface SessionGuestRegistrationRepository extends JpaRepository<Sessio
             WHERE cfv.source_id = sgr.id
             ORDER BY cfv.id ASC
             LIMIT 1
-        ) AS customFieldValue
+        ) AS guestName,           
+        (
+          SELECT cfv.value
+          FROM custom_field_values cfv
+          WHERE cfv.source_id = sgr.id
+          ORDER BY cfv.id ASC
+          LIMIT 1 OFFSET 3
+        ) AS mobileNumber
     FROM session_guest_registrations sgr
     LEFT JOIN live_session_logs lsl
         ON lsl.session_id = sgr.session_id

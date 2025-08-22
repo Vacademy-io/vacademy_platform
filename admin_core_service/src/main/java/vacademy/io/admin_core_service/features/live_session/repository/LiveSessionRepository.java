@@ -169,6 +169,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         WHERE lsp.source_type = 'BATCH'
           AND lsp.source_id = :batchId
           AND ss.meeting_date >= CURRENT_DATE
+          AND s.status IN ('DRAFT', 'LIVE')
         ORDER BY ss.meeting_date, ss.start_time
     """, nativeQuery = true)
     List<LiveSessionRepository.LiveSessionListProjection> findUpcomingSessionsForBatch(@Param("batchId") String batchId);

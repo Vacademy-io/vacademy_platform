@@ -189,8 +189,12 @@ public class InstituteAnnouncementSettingsResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class FirebaseSettings {
+        @JsonProperty("enabled")
+        private Boolean enabled;
+        
         @JsonProperty("serviceAccountJson")
         private String serviceAccountJson;
+        
         @JsonProperty("serviceAccountJsonBase64")
         private String serviceAccountJsonBase64;
     }

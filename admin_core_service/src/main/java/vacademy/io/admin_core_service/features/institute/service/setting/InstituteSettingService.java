@@ -76,18 +76,21 @@ public class InstituteSettingService {
         CertificateSettingRequest request = new CertificateSettingRequest();
         CertificateSettingDto settingDto = new CertificateSettingDto();
 
+        Map<String, String> placeHolderValueMapping = new HashMap<>();
+        placeHolderValueMapping.put("6", "Official Signatory");
+        placeHolderValueMapping.put("7", "");
+
         settingDto.setKey(CertificateTypeEnum.COURSE_COMPLETION.name());
         settingDto.setIsDefaultCertificateSettingOn(false);
         settingDto.setDefaultHtmlCertificateTemplate(ConstantsSettingDefaultValue.getDefaultHtmlForType(CertificateTypeEnum.COURSE_COMPLETION.name()));
         settingDto.setCurrentHtmlCertificateTemplate(ConstantsSettingDefaultValue.getDefaultHtmlForType(CertificateTypeEnum.COURSE_COMPLETION.name()));
+        settingDto.setPlaceHoldersMapping(placeHolderValueMapping);
 
         Map<String, CertificateSettingDto> settingDtoMap = new HashMap<>();
         settingDtoMap.put(CertificateTypeEnum.COURSE_COMPLETION.name(), settingDto);
         request.setRequest(settingDtoMap);
 
-        Map<String, String> placeHolderValueMapping = new HashMap<>();
-        placeHolderValueMapping.put("6", "Official Signatory");
-        placeHolderValueMapping.put("7", "");
+
 
 
         String settingJsonString = settingStrategyFactory.buildNewSettingAndGetSettingJsonString(institute,request, SettingKeyEnums.CERTIFICATE_SETTING.name());

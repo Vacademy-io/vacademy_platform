@@ -16,6 +16,7 @@ import java.util.Map;
 @AllArgsConstructor
 @Builder
 @NoArgsConstructor
+@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class CertificateSettingRequest {
     Map<String, CertificateSettingDto> request = new HashMap<>();
 }

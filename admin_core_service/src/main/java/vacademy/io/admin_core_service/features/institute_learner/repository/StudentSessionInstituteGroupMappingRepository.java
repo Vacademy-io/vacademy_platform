@@ -50,4 +50,17 @@ public interface StudentSessionInstituteGroupMappingRepository
     Optional<StudentSessionInstituteGroupMapping> findByUserIdAndPackageSessionIdAndInstituteId(@Param("userId") String userId,
                                                                                                 @Param("sessionId") String packageSessionId,
                                                                                                 @Param("instituteId")String instituteId);
+
+    @Query(value = """
+            SELECT * FROM student_session_institute_group_mapping
+            WHERE user_id = :userId
+            AND package_session_id IN (:packageSessionIds)
+            AND institute_id = :instituteId
+            AND (:statusList IS NULL OR  status IN (:statusList))
+            AND automated_completion_certificate_file_id IS NOT NULL
+            """,nativeQuery = true)
+    List<StudentSessionInstituteGroupMapping> findAllByLearnerIdAndPackageSessionIdInAndInstituteIdAndStatusInAndCertificate(@Param("userId") String learnerId,
+                                                                                                               @Param("packageSessionIds") List<String> allPackageSessionIds,
+                                                                                                               @Param("instituteId") String instituteId,
+                                                                                                               @Param("statusList") List<String> status);
 }

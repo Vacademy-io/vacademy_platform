@@ -1,18 +1,18 @@
 export const BASE_URL =
-    import.meta.env.VITE_BACKEND_URL ||
-    // Backward compatibility with older env var name used in Docker/docs
-    import.meta.env.VITE_API_BASE_URL ||
-    "https://backend-stage.vacademy.io";
+  import.meta.env.VITE_BACKEND_URL ||
+  // Backward compatibility with older env var name used in Docker/docs
+  import.meta.env.VITE_API_BASE_URL ||
+  "https://backend-stage.vacademy.io";
 export const BASE_URL_LEARNER_DASHBOARD =
-    import.meta.env.VITE_LEARNER_DASHBOARD_URL || "https://learner.vacademy.io";
+  import.meta.env.VITE_LEARNER_DASHBOARD_URL || "https://learner.vacademy.io";
 export const BASE_URL_TEACHER_DASHBOARD =
-    import.meta.env.VITE_TEACHER_DASHBOARD_URL || "https://dash.vacademy.io";
+  import.meta.env.VITE_TEACHER_DASHBOARD_URL || "https://dash.vacademy.io";
 //urls
 export const INSTITUTE_ID =
-    import.meta.env.VITE_INSTITUTE_ID || "c70f40a5-e4d3-4b6c-a498-e612d0d4b133";
+  import.meta.env.VITE_INSTITUTE_ID || "c70f40a5-e4d3-4b6c-a498-e612d0d4b133";
 export const CODE_CIRCLE_INSTITUTE_ID =
-    import.meta.env.VITE_CODE_CIRCLE_INSTITUTE_ID ||
-    "dd9b9687-56ee-467a-9fc4-8c5835eae7f9";
+  import.meta.env.VITE_CODE_CIRCLE_INSTITUTE_ID ||
+  "dd9b9687-56ee-467a-9fc4-8c5835eae7f9";
 export const GET_SUBDOMAIN_OR_INSTITUTEID = `${BASE_URL}/admin-core-service/public/institute/v1/get/subdomain-or-id`;
 
 export const GET_SLIDES_COUNT = `${BASE_URL}/admin-core-service/open/slide/v1/slide-counts-by-source-type`;
@@ -22,8 +22,8 @@ export const GET_ALL_RATING_SUMMARY = `${BASE_URL}/admin-core-service/open/ratin
 export const GET_COURSE_DETAILS = `${BASE_URL}/admin-core-service/open/packages/v1/package-detail`;
 export const GET_ALL_COURSE_DETAILS = `${BASE_URL}/admin-core-service/open/v1/learner-study-library/init`;
 export const HOLISTIC_INSTITUTE_ID =
-    import.meta.env.VITE_HOLISTIC_INSTITUTE_ID ||
-    "bd9f2362-84d1-4e01-9762-a5196f9bac80";
+  import.meta.env.VITE_HOLISTIC_INSTITUTE_ID ||
+  "bd9f2362-84d1-4e01-9762-a5196f9bac80";
 
 export const LOGIN_URL = `${BASE_URL}/auth-service/learner/v1/login`;
 
@@ -107,6 +107,7 @@ export const ADD_DOUBT = `${BASE_URL}/admin-core-service/institute/v1/doubts/cre
 export const GET_DOUBTS = `${BASE_URL}/admin-core-service/institute/v1/doubts/get-all`;
 export const GET_USER_BASIC_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get-basic-details`;
 export const GET_USER_ROLES_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get`;
+export const UPDATE_USER_DETAILS = `${BASE_URL}/auth-service/v1/user-details/update-user`;
 
 // New signup API endpoint
 export const REGISTER_USER = `${BASE_URL}/auth-service/learner/v1/register`;

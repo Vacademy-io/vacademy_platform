@@ -46,7 +46,7 @@ public class InstituteCertificateController {
     }
 
     @PostMapping("/update-setting")
-    public ResponseEntity<String> updateCertificateSetting(@RequestParam("user") CustomUserDetails userDetails,
+    public ResponseEntity<String> updateCertificateSetting(@RequestAttribute("user") CustomUserDetails userDetails,
                                                            @RequestBody CertificateSettingRequest request,
                                                            @RequestParam("instituteId") String instituteId){
         return instituteCertificateManager.updateCertificateSetting(userDetails,instituteId, request);

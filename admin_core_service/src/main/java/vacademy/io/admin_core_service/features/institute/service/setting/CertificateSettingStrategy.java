@@ -2,11 +2,13 @@ package vacademy.io.admin_core_service.features.institute.service.setting;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.institute.constants.ConstantsSettingDefaultValue;
 import vacademy.io.admin_core_service.features.institute.dto.settings.InstituteSettingDto;
 import vacademy.io.admin_core_service.features.institute.dto.settings.SettingDto;
 import vacademy.io.admin_core_service.features.institute.dto.settings.certificate.CertificateSettingDataDto;
 import vacademy.io.admin_core_service.features.institute.dto.settings.certificate.CertificateSettingDto;
 import vacademy.io.admin_core_service.features.institute.dto.settings.certificate.CertificateSettingRequest;
+import vacademy.io.admin_core_service.features.institute.enums.CertificateTypeEnum;
 import vacademy.io.admin_core_service.features.institute.enums.SettingKeyEnums;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
@@ -70,7 +72,6 @@ public class CertificateSettingStrategy extends IInstituteSettingStrategy{
     }
 
     private CertificateSettingDataDto createCertificateSettingFromRequest(CertificateSettingRequest certificateSettingRequest) {
-        CertificateSettingDataDto data = new CertificateSettingDataDto();
         List<CertificateSettingDto> certificateSetting = certificateSettingRequest.getRequest().entrySet().stream()
                 .map(entry -> {
                     CertificateSettingDto dto = new CertificateSettingDto();
@@ -133,12 +134,13 @@ public class CertificateSettingStrategy extends IInstituteSettingStrategy{
             Map<String, SettingDto> settingMap = instituteSettingDto.getSetting();
             if (settingMap == null) throw new VacademyException("No Setting Found");
 
-            if (!settingMap.containsKey(key)) {
-                throw new VacademyException("Certificate Setting Not Found");
-            }
+            CertificateSettingDataDto newData = null;
 
-            // Update existing setting data
-            CertificateSettingDataDto newData = createCertificateSettingFromRequest(certificateSettingRequest);
+            if (!settingMap.containsKey(key)) {
+                newData = createCertificateSettingFromRequest(createDefaultCertificateSetting());
+            }
+            else newData = createCertificateSettingFromRequest(certificateSettingRequest);
+
 
             SettingDto settingDto = settingMap.get(key);
             settingDto.setData(newData);
@@ -151,5 +153,26 @@ public class CertificateSettingStrategy extends IInstituteSettingStrategy{
         } catch (Exception e) {
             throw new VacademyException("Error rebuilding setting: " + e.getMessage());
         }
+    }
+
+    public CertificateSettingRequest createDefaultCertificateSetting(){
+        CertificateSettingRequest request = new CertificateSettingRequest();
+        CertificateSettingDto settingDto = new CertificateSettingDto();
+
+        Map<String, String> placeHolderValueMapping = new HashMap<>();
+        placeHolderValueMapping.put("6", "Official Signatory");
+        placeHolderValueMapping.put("7", "");
+
+        settingDto.setKey(CertificateTypeEnum.COURSE_COMPLETION.name());
+        settingDto.setIsDefaultCertificateSettingOn(false);
+        settingDto.setDefaultHtmlCertificateTemplate(ConstantsSettingDefaultValue.getDefaultHtmlForType(CertificateTypeEnum.COURSE_COMPLETION.name()));
+        settingDto.setCurrentHtmlCertificateTemplate(ConstantsSettingDefaultValue.getDefaultHtmlForType(CertificateTypeEnum.COURSE_COMPLETION.name()));
+        settingDto.setPlaceHoldersMapping(placeHolderValueMapping);
+
+        Map<String, CertificateSettingDto> settingDtoMap = new HashMap<>();
+        settingDtoMap.put(CertificateTypeEnum.COURSE_COMPLETION.name(), settingDto);
+        request.setRequest(settingDtoMap);
+
+        return request;
     }
 }

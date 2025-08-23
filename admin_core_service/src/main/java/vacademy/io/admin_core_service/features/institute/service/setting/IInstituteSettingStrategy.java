@@ -1,4 +1,4 @@
-package vacademy.io.admin_core_service.features.institute.service;
+package vacademy.io.admin_core_service.features.institute.service.setting;
 
 import lombok.Getter;
 import lombok.Setter;

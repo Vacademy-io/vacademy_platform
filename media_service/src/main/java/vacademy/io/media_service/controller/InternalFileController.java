@@ -65,4 +65,14 @@ public class InternalFileController {
         }
     }
 
+    @PostMapping("/upload-file-v2")
+    public ResponseEntity<FileDetailsDTO> uploadFileToAws(@RequestParam("file") MultipartFile file) {
+        try {
+            return ResponseEntity.ok(fileService.uploadFileWithDetails(file));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new FileDetailsDTO());
+        }
+    }
+
 }

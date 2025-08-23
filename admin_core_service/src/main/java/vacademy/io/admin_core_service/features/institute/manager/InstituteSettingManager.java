@@ -8,7 +8,7 @@ import vacademy.io.admin_core_service.features.institute.dto.settings.InstituteS
 import vacademy.io.admin_core_service.features.institute.dto.settings.SettingDto;
 import vacademy.io.admin_core_service.features.institute.dto.settings.naming.NameSettingRequest;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
-import vacademy.io.admin_core_service.features.institute.service.InstituteSettingService;
+import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;

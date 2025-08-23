@@ -122,7 +122,9 @@ public class AttendanceReportService {
             return new PageImpl<>(Collections.emptyList(), pageable, 0);
         }
         List<AttendanceReportProjection> attendanceRecords = liveSessionParticipantRepository.getAttendanceReportForStudentIds(
-                studentIdsPage.getContent()
+                studentIdsPage.getContent(),
+                filter.getStartDate(),
+                filter.getEndDate()
         );
         Map<String, StudentAttendanceDTO> groupedData = new LinkedHashMap<>();
         for (AttendanceReportProjection record : attendanceRecords) {
@@ -206,9 +208,9 @@ public class AttendanceReportService {
         public static AttendanceReportDTO convertGuestToAttendanceReport(GuestAttendanceDTO guestDto) {
             return AttendanceReportDTOImpl.builder()
                     .studentId(null)
-                    .fullName(guestDto.getCustomFieldValue())
+                    .fullName(guestDto.getGuestName())
                     .email(guestDto.getGuestEmail())
-                    .mobileNumber(null)
+                    .mobileNumber(guestDto.getMobileNumber())
                     .gender(null)
                     .dateOfBirth(null)
                     .instituteEnrollmentNumber(null)

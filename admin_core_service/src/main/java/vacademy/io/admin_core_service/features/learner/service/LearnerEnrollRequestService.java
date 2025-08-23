@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.learner.service;
 
 import jakarta.transaction.Transactional;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -30,6 +31,7 @@ import vacademy.io.common.institute.entity.Institute;
 import java.util.Map;
 import java.util.Optional;
 
+@Slf4j
 @Service
 public class LearnerEnrollRequestService {
 
@@ -84,6 +86,16 @@ public class LearnerEnrollRequestService {
             userPlan
         );
     }
+    public void test(String instituteId,UserDTO user){
+        try{
+            System.out.println("send email");
+            service.sendUniqueLinkByEmail(instituteId, user, TemplateConstants.PAID_USER_EMAIL_TEMPLATE);
+//        service.sendUniqueLinkByWhatsApp(instituteId, user,TemplateConstants.PAID_USER_WHATSAPP_TEMPLATE);
+        }
+        catch (Exception e){
+            log.error("ERROR: " +e.getMessage());
+        }
+    }
     private void sendNotificationBasedOnPaymentOption(String instituteId, UserDTO user, PaymentOption paymentOption) {
         String type = paymentOption.getType();
         if (PaymentOptionType.SUBSCRIPTION.name().equals(type)|| PaymentOptionType.ONE_TIME.name().equals(type)) {
@@ -92,8 +104,8 @@ public class LearnerEnrollRequestService {
             service.sendUniqueLinkByWhatsApp(instituteId, user,TemplateConstants.PAID_USER_WHATSAPP_TEMPLATE);
         } else {
             //Free User
-            service.sendUniqueLinkByEmail(instituteId, user,TemplateConstants.PAID_USER_EMAIL_TEMPLATE);
-            service.sendUniqueLinkByWhatsApp(instituteId, user,TemplateConstants.PAID_USER_WHATSAPP_TEMPLATE);
+            service.sendUniqueLinkByEmail(instituteId, user,TemplateConstants.FREE_USER_EMAIL_TEMPLATE);
+            service.sendUniqueLinkByWhatsApp(instituteId, user,TemplateConstants.FREE_USER_WHATSAPP_TEMPLATE);
         }
     }
 

@@ -3,11 +3,13 @@ package vacademy.io.admin_core_service.features.learner_study_library.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.chapter.dto.ChapterDetailsProjection;
 import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
 import vacademy.io.admin_core_service.features.course.dto.CourseDTOWithDetails;
+import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
 import vacademy.io.admin_core_service.features.learner_operation.enums.LearnerOperationEnum;
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerModuleDTOWithDetails;
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerSlidesDetailDTO;
@@ -30,11 +32,14 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.SubjectDTO;
 import vacademy.io.common.institute.entity.module.Module;
+import vacademy.io.common.media.dto.FileDetailsDTO;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class LearnerStudyLibraryService {
@@ -47,6 +52,7 @@ public class LearnerStudyLibraryService {
     private final ModuleChapterMappingRepository moduleChapterMappingRepository;
     private final SlideService slideService;
     private final ObjectMapper objectMapper;
+    private final InstituteSettingService instituteSettingService;
 
     public List<CourseDTOWithDetails> getLearnerStudyLibraryInitDetails(String instituteId, String packageSessionId, CustomUserDetails user) {
         validateInputs(instituteId, user.getUserId());

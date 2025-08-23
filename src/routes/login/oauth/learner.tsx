@@ -16,6 +16,7 @@ import { useTheme } from "@/providers/theme/theme-provider";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { createFileRoute } from "@tanstack/react-router";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
+import { identifyUser } from "@/lib/analytics";
 
 export const Route = createFileRoute("/login/oauth/learner")({
   component: OAuthRedirectHandler,
@@ -170,6 +171,16 @@ const handleSuccessfulLogin = async (
     const decodedData = getTokenDecodedData(accessToken);
     const authorities = decodedData?.authorities;
     const userId = decodedData?.user;
+
+    // Identify user in analytics immediately after successful OAuth login
+    if (userId) {
+      try {
+        identifyUser(userId, {
+          username: decodedData?.username,
+          email: decodedData?.email,
+        });
+      } catch {}
+    }
 
     const authorityKeys = authorities ? Object.keys(authorities) : [];
 

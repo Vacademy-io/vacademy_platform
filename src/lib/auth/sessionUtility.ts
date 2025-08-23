@@ -149,6 +149,28 @@ export const getRefreshToken = async () => {
     return value;
 };
 
+// Decode the current access token from storage
+export async function getDecodedAccessTokenFromStorage(): Promise<IAccessToken | undefined> {
+    const token = await getAccessToken();
+    return getTokenDecodedData(token);
+}
+
+// Convenience helpers to get current user details from stored token
+export async function getCurrentUserId(): Promise<string | null> {
+    const decoded = await getDecodedAccessTokenFromStorage();
+    return decoded?.user ?? null;
+}
+
+export async function getCurrentUsername(): Promise<string | null> {
+    const decoded = await getDecodedAccessTokenFromStorage();
+    return decoded?.username ?? null;
+}
+
+export async function getCurrentEmail(): Promise<string | null> {
+    const decoded = await getDecodedAccessTokenFromStorage();
+    return decoded?.email ?? null;
+}
+
 const handleSSOLogin = (): boolean => {
     const urlParams = new URLSearchParams(window.location.search);
     const isSSOLogin = urlParams.get("sso") === "true";

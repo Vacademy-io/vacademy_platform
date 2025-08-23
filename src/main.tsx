@@ -13,10 +13,22 @@ import { routeTree } from "./routeTree.gen";
 import "./i18n";
 import { Toaster } from "./components/ui/sonner";
 import { usePushNotifications } from "./hooks/usePushNotifications";
-import { initializeAnalytics } from "./lib/analytics";
+import { initializeAnalytics, identifyUser } from "./lib/analytics";
+import { getDecodedAccessTokenFromStorage } from "@/lib/auth/sessionUtility";
 
 // Initialize Amplitude analytics
 initializeAnalytics();
+
+// Attempt to identify returning user on app start
+(async () => {
+  try {
+    const decoded = await getDecodedAccessTokenFromStorage();
+    const uid = decoded?.user;
+    if (uid) {
+      identifyUser(uid, { username: decoded?.username, email: decoded?.email });
+    }
+  } catch {}
+})();
 
 const queryClient = new QueryClient();
 

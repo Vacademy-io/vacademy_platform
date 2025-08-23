@@ -271,6 +271,7 @@ public class StudentRegistrationManager {
                             studentSessionInstituteGroupMapping.getExpiryDate()
                     );
                 }
+                studentSessionInstituteGroupMapping.setStatus(LearnerSessionStatusEnum.DELETED.name());
                 studentSessionRepository.save(studentSessionInstituteGroupMapping);
                 return  studentSessionRepository.save(mapping).getId();
             } else {

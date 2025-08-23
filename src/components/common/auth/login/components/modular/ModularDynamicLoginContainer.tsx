@@ -1,11 +1,12 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { motion } from "framer-motion";
 import { FcGoogle } from "react-icons/fc";
-import { GitHubLogoIcon } from "@radix-ui/react-icons";
+import { FaGithub } from "react-icons/fa";
+import { ArrowRight, Shield } from "lucide-react";
 import { LOGIN_URL_GOOGLE_GITHUB } from "@/constants/urls";
 import { toast } from "sonner";
-import { motion } from "framer-motion";
-import { Shield, ArrowRight } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { GitHubLogoIcon } from "@radix-ui/react-icons";
 import { ModalEmailLogin } from "../../forms/modal/ModalEmailOtpForm";
 import { ModalUsernameLogin } from "../../forms/modal/ModalUsernamePasswordForm";
 import { LoginSettings } from "@/config/login/defaultLoginSettings";
@@ -80,14 +81,69 @@ export function ModularDynamicLoginContainer({
     }
   }, [enabledProviders, currentProvider, defaultProvider]);
 
+  useEffect(() => {
+    // Listen for OAuth completion message from popup
+    const messageHandler = (event: MessageEvent) => {
+      // Only accept messages from the same origin
+      if (event.origin !== window.location.origin) return;
+      
+      const { action, success, error, redirectTo, backendRoute, currentUrl } = event.data;
+      
+      if (action === 'oauth_complete') {
+        if (success) {
+          // OAuth login successful
+          console.group("[Modal OAuth | Completion]");
+          console.log("OAuth completed successfully");
+          console.log("Redirect to:", redirectTo);
+          console.log("Backend route:", backendRoute);
+          console.log("Current URL:", currentUrl);
+          console.groupEnd();
+          
+          // Handle dynamic redirection (same as signup flow)
+          if (redirectTo) {
+            // Close modal first
+            if (onLoginSuccess) {
+              onLoginSuccess();
+            }
+            
+            // Then redirect to the determined route
+            setTimeout(() => {
+              if (/^https?:\/\//.test(redirectTo)) {
+                window.location.assign(redirectTo);
+              } else {
+                window.location.href = redirectTo;
+              }
+            }, 100);
+          } else {
+            // No redirect specified, just close modal
+            if (onLoginSuccess) {
+              onLoginSuccess();
+            }
+          }
+        } else if (error) {
+          // OAuth login failed - show detailed error message with longer duration
+          toast.error(error || "OAuth login failed. Please try again.", {
+            duration: 5000, // Show for 5 seconds
+            description: "Please check your internet connection and try again."
+          });
+        }
+      }
+    };
+
+    window.addEventListener('message', messageHandler);
+    return () => window.removeEventListener('message', messageHandler);
+  }, [onLoginSuccess]);
+
   const handleOAuthLogin = (provider: "google" | "github") => {
     try {
       // Get current page information for redirection after login
       const currentPath = window.location.pathname;
       const currentSearch = window.location.search;
-      const currentUrl = `${currentPath}${currentSearch}`;
       
-      // Extract instituteId from current URL
+      // Clean the current URL to remove sensitive data like instituteId
+      const cleanCurrentUrl = cleanUrlOfSensitiveData(`${currentPath}${currentSearch}`);
+      
+      // Extract instituteId from current URL (but don't expose it in redirect URLs)
       const urlParams = new URLSearchParams(currentSearch);
       const instituteIdFromUrl = urlParams.get("instituteId") || instituteId;
       
@@ -110,10 +166,10 @@ export function ModularDynamicLoginContainer({
       // Store additional data in sessionStorage to reduce state size
       const modalOAuthData = {
         redirectTo: studyLibraryUrl,
-        currentUrl: currentUrl,
+        currentUrl: cleanCurrentUrl, // Use cleaned URL without sensitive data
         type: type,
         courseId: courseId,
-        instituteId: instituteIdFromUrl,
+        instituteId: instituteIdFromUrl, // Keep instituteId for backend processing but don't expose in URLs
       };
       
       // Store in sessionStorage
@@ -130,20 +186,52 @@ export function ModularDynamicLoginContainer({
       const encodedState = encodeURIComponent(base64State);
       const loginUrl = `${LOGIN_URL_GOOGLE_GITHUB}/${provider}?state=${encodedState}`;
       
-      // Open OAuth flow in new tab to maintain user action context
-      const newWindow = window.open(loginUrl, '_blank');
-      
-      if (newWindow) {
-        // Close the modal since OAuth is happening in new tab
-        if (onLoginSuccess) {
-          onLoginSuccess();
-        }
-      } else {
-        // Fallback: redirect in current tab if popup is blocked
-        window.location.href = loginUrl;
+      // Open OAuth in popup window
+      const popup = window.open(
+        loginUrl,
+        'oauth_popup',
+        'width=500,height=600,scrollbars=yes,resizable=yes'
+      );
+
+      if (!popup) {
+        console.error('[OAuth] Popup blocked');
+        toast.error("Popup blocked! Please allow popups for this site.");
+        return;
       }
+
+      // Focus the popup
+      popup.focus();
     } catch {
       toast.error("Failed to initiate login. Please try again.");
+    }
+  };
+
+  // Helper function to clean URLs of sensitive data
+  const cleanUrlOfSensitiveData = (url: string): string => {
+    try {
+      const urlObj = new URL(url, window.location.origin);
+      
+      // Remove sensitive parameters
+      urlObj.searchParams.delete("instituteId");
+      urlObj.searchParams.delete("accessToken");
+      urlObj.searchParams.delete("refreshToken");
+      urlObj.searchParams.delete("state");
+      
+      // Keep only safe parameters
+      const safeParams = new URLSearchParams();
+      for (const [key, value] of urlObj.searchParams.entries()) {
+        if (key === "type" || key === "courseId" || key === "fromOAuth") {
+          safeParams.set(key, value);
+        }
+      }
+      
+      // Reconstruct URL with only safe parameters
+      const cleanUrl = `${urlObj.pathname}${safeParams.toString() ? '?' + safeParams.toString() : ''}`;
+      return cleanUrl;
+    } catch (error) {
+      console.error("Error cleaning URL:", error);
+      // Return original URL if cleaning fails
+      return url;
     }
   };
 

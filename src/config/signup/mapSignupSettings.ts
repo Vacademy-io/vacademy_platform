@@ -11,9 +11,9 @@ export interface InstituteSignupSettings {
   googleSignupMode?: "direct" | "askCredentials";
   githubSignupMode?: "direct" | "askCredentials";
   emailOtpSignupMode?: "direct" | "askCredentials";
-  usernameStrategy?: "email" | "username" | "both" | "manual";
-  passwordStrategy?: "manual" | "auto" | "none";
-  passwordDelivery?: "email" | "sms" | "none";
+  usernameStrategy?: "email" | "random" | "manual" | "both" | " ";
+  passwordStrategy?: "manual" | "autoRandom" | " ";
+  passwordDelivery?: "showOnScreen" | "sendEmail" | " " | "none";
 }
 
 export const mapSignupSettings = (
@@ -23,7 +23,7 @@ export const mapSignupSettings = (
     return defaultSignupSettings;
   }
 
-
+  console.log('[mapSignupSettings] Backend settings received:', apiSettings);
 
   // Merge providers with defaults, handling backend property name differences
   // Note: Signup never includes usernamePassword provider - only emailOtp
@@ -55,17 +55,37 @@ export const mapSignupSettings = (
     }
   }
 
+  // Map username strategy with proper validation
+  let usernameStrategy = defaultSignupSettings.usernameStrategy;
+  if (apiSettings.usernameStrategy) {
+    if (["email", "random", "manual", "both", " "].includes(apiSettings.usernameStrategy)) {
+      usernameStrategy = apiSettings.usernameStrategy as SignupSettings["usernameStrategy"];
+    } else {
+      console.warn('[mapSignupSettings] Invalid usernameStrategy from backend:', apiSettings.usernameStrategy);
+    }
+  }
+
+  // Map password strategy with proper validation
+  let passwordStrategy = defaultSignupSettings.passwordStrategy;
+  if (apiSettings.passwordStrategy) {
+    if (["manual", "autoRandom", " "].includes(apiSettings.passwordStrategy)) {
+      passwordStrategy = apiSettings.passwordStrategy as SignupSettings["passwordStrategy"];
+    } else {
+      console.warn('[mapSignupSettings] Invalid passwordStrategy from backend:', apiSettings.passwordStrategy);
+    }
+  }
+
   const result = {
     providers: mergedProviders as SignupSettings["providers"],
     googleSignupMode: apiSettings.googleSignupMode || defaultSignupSettings.googleSignupMode,
     githubSignupMode: apiSettings.githubSignupMode || defaultSignupSettings.githubSignupMode,
     emailOtpSignupMode: apiSettings.emailOtpSignupMode || defaultSignupSettings.emailOtpSignupMode,
-    usernameStrategy: apiSettings.usernameStrategy || defaultSignupSettings.usernameStrategy,
-    passwordStrategy: apiSettings.passwordStrategy || defaultSignupSettings.passwordStrategy,
+    usernameStrategy,
+    passwordStrategy,
     passwordDelivery: apiSettings.passwordDelivery || defaultSignupSettings.passwordDelivery,
   };
 
-
+  console.log('[mapSignupSettings] Mapped settings:', result);
 
   return result;
 };

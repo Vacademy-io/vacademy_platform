@@ -6,8 +6,14 @@ import { REFRESH_TOKEN_URL } from "@/constants/urls";
 
 // Helper functions to interact with Capacitor Storage
 export const getTokenFromStorage = async (key: string): Promise<string | null> => {
-  const { value } = await Storage.get({ key });
-  return value;
+  try {
+    const { value } = await Storage.get({ key });
+    console.log(`[Auth] Retrieved ${key} from storage:`, value ? `${value.substring(0, 20)}...` : 'null');
+    return value;
+  } catch (error) {
+    console.error(`[Auth] Error retrieving ${key} from storage:`, error);
+    return null;
+  }
 };
 
 const removeTokensAndInstituteId = async () => {
@@ -47,22 +53,34 @@ const authenticatedAxiosInstance = axios.create({
 // Request interceptor: gets called before every request
 authenticatedAxiosInstance.interceptors.request.use(
   async (request) => {
+    console.log(`[Auth] Making request to: ${request.method?.toUpperCase()} ${request.url}`);
+    
     const accessToken = await getTokenFromStorage(TokenKey.accessToken);
     const instituteId = await getTokenFromStorage("InstituteId");
+
+    console.log(`[Auth] Request details:`, {
+      url: request.url,
+      method: request.method,
+      hasAccessToken: !!accessToken,
+      accessTokenLength: accessToken?.length || 0,
+      hasInstituteId: !!instituteId,
+      instituteId: instituteId
+    });
 
     // Add instituteId to headers if available
     if (instituteId) {
       request.headers["clientId"] = instituteId;
       request.headers["X-Institute-Id"] = instituteId;
+      console.log(`[Auth] Added institute headers:`, { clientId: instituteId, "X-Institute-Id": instituteId });
     }
 
     // Check if the access token is expired
     if (!isTokenExpired(accessToken)) {
-      // request.headers["Authorization"] = `Bearer ${accessToken}`;
       request.headers.Authorization = `Bearer ${accessToken}`;
-
+      console.log(`[Auth] Added Authorization header: Bearer ${accessToken?.substring(0, 20)}...`);
       return request;
     } else {
+      console.log(`[Auth] Access token expired, attempting refresh...`);
       // If the access token is expired, refresh it
       const refreshToken = await getTokenFromStorage(TokenKey.refreshToken);
       try {
@@ -74,6 +92,7 @@ authenticatedAxiosInstance.interceptors.request.use(
         // Get the new access token after refresh
         const newAccessToken = await getTokenFromStorage(TokenKey.accessToken);
         request.headers["Authorization"] = `Bearer ${newAccessToken}`;
+        console.log(`[Auth] Token refreshed, new Authorization header: Bearer ${newAccessToken?.substring(0, 20)}...`);
 
         return request;
       } catch (error) {
@@ -88,6 +107,7 @@ authenticatedAxiosInstance.interceptors.request.use(
     }
   },
   async (error) => {
+    console.error(`[Auth] Request interceptor error:`, error);
     return Promise.reject(error);
   }
 );

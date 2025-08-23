@@ -5,7 +5,15 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useNavigate } from "@tanstack/react-router";
-import axios from "axios";
+import axios, { AxiosError } from "axios";
+
+interface ErrorResponse {
+  message?: string;
+  ex?: string;
+  responseCode?: string;
+  url?: string;
+  date?: string;
+}
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { MyInput } from "@/components/design-system/input";
@@ -114,8 +122,38 @@ export function ModalEmailLogin({
                 onEmailVerificationSuccess(email);
             }
         },
-        onError: () => {
-            toast.error("Failed to send OTP. Please try again.");
+        onError: (error: AxiosError<ErrorResponse>) => {
+            console.error("OTP request failed:", error);
+            
+            // Handle specific backend error responses
+            const errorData = error.response?.data;
+            
+            if (errorData?.ex === "User not found!" || errorData?.responseCode === "User not found!") {
+                // User doesn't exist - show signup message
+                toast.error("Account not found. Please sign up to continue.", {
+                    duration: 5000,
+                    description: "This email is not registered in our system."
+                });
+                
+                // Automatically switch to signup after a short delay
+                setTimeout(() => {
+                    if (onSwitchToSignup) {
+                        onSwitchToSignup();
+                    }
+                }, 2000);
+            } else if (errorData?.ex || errorData?.responseCode) {
+                // Show specific backend error message
+                toast.error(errorData.ex || errorData.responseCode || "Failed to send OTP", {
+                    duration: 5000,
+                    description: "Please try again or contact support if the issue persists."
+                });
+            } else {
+                // Generic error fallback
+                toast.error("Failed to send OTP. Please try again.", {
+                    duration: 5000,
+                    description: "Please check your internet connection and try again."
+                });
+            }
         },
         onSettled: () => {
             setIsLoading(false);
@@ -301,11 +339,26 @@ export function ModalEmailLogin({
                 console.error("Error processing decoded data:", error);
             }
         },
-        onError: () => {
-            toast.error("Invalid OTP", {
-                description: "Please try again",
-                duration: 3000,
-            });
+        onError: (error: AxiosError<ErrorResponse>) => {
+            console.error("OTP verification failed:", error);
+            
+            // Handle specific backend error responses
+            const errorData = error.response?.data;
+            
+            if (errorData?.ex || errorData?.responseCode) {
+                // Show specific backend error message
+                toast.error(errorData.ex || errorData.responseCode || "Invalid OTP", {
+                    duration: 5000,
+                    description: "Please check your OTP and try again."
+                });
+            } else {
+                // Generic error fallback
+                toast.error("Invalid OTP", {
+                    description: "Please try again",
+                    duration: 5000,
+                });
+            }
+            
             otpForm.reset();
         },
         onSettled: () => {

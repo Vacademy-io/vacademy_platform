@@ -4,7 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Preferences } from "@capacitor/preferences";
 import { getTokenDecodedData } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
-import type { NavigateFunction } from "@tanstack/react-router";
+// import type { NavigateFunction } from "@tanstack/react-router";
+type NavigateFunction = (options: { to: string }) => void;
 
 // Types
 export interface InstituteSearchResult {
@@ -88,6 +89,8 @@ export const handlePostSignupAuth = async (
   isModalSignup: boolean = false
 ) => {
   try {
+    console.group('[Signup API] handlePostSignupAuth');
+
     // Store tokens in Capacitor Preferences
     await Preferences.set({ key: TokenKey.accessToken, value: accessToken });
     await Preferences.set({ key: TokenKey.refreshToken, value: refreshToken });
@@ -107,9 +110,12 @@ export const handlePostSignupAuth = async (
 
     // Navigate to dashboard
     navigate({ to: "/dashboard" });
+    console.groupEnd();
   } catch (error) {
+    console.error('[Signup API] handlePostSignupAuth failed:', error);
     // Fallback: redirect to login page
     navigate({ to: "/login" });
+    console.groupEnd();
   }
 };
 
@@ -118,6 +124,8 @@ export const registerUser = async (
   userData: RegisterUserRequest
 ): Promise<RegisterUserResponse> => {
   try {
+    console.group('[Signup API] Starting user registration');
+
     const response = await axios.post<RegisterUserResponse>(
       `${BASE_URL}/auth-service/learner/v1/register`,
       userData,
@@ -128,8 +136,12 @@ export const registerUser = async (
         },
       }
     );
+
+    console.groupEnd();
     return response.data;
   } catch (error) {
+    console.error('[Signup API] Registration failed:', error);
+    console.groupEnd();
     throw new Error("Failed to register user");
   }
 };

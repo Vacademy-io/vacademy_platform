@@ -159,7 +159,8 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
                 const newUrl = new URL(window.location.href);
                 if (oauthType) newUrl.searchParams.set('type', oauthType);
                 if (oauthCourseId) newUrl.searchParams.set('courseId', oauthCourseId);
-                if (instituteId) newUrl.searchParams.set('instituteId', instituteId);
+                // Remove instituteId from URL to avoid exposing sensitive information
+                // if (instituteId) newUrl.searchParams.set('instituteId', instituteId);
                 newUrl.searchParams.set('fromOAuth', 'true');
                 window.history.replaceState({}, '', newUrl.toString());
                 

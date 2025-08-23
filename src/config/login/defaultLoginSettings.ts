@@ -8,13 +8,13 @@ export type PasswordDelivery = "email" | "sms" | "none";
 
 export const defaultLoginSettings = {
   providers: {
-    google: false,
-    github: false,
+    google: true,
+    github: true,
     emailOtp: true,
     usernamePassword: true,
     defaultProvider: "emailOtp" as StudentDefaultProvider,
   },
-  usernameStrategy: "email" as const,
+  usernameStrategy: "manual" as const,
   passwordStrategy: "manual" as const,
   passwordDelivery: "none" as const,
 

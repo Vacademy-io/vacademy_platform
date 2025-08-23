@@ -8,7 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { SignupSettings } from "@/config/signup/defaultSignupSettings";
-import { registerUser, parseInstituteSettings } from "@/services/signup-api";
+import { useUnifiedRegistration } from "@/components/common/auth/signup/hooks/use-unified-registration";
 // import { handlePostSignupAuth } from "@/services/signup-api"; // Keep for later use
 // import { useNavigate } from "@tanstack/react-router"; // Keep for later use
 import { Preferences } from "@capacitor/preferences";
@@ -73,8 +73,8 @@ export function EmailOtpSignupProvider({
   className = "",
   initialEmail = ""
 }: EmailOtpSignupProviderProps) {
+  const { isRegistering, registerUser: registerUserUnified } = useUnifiedRegistration();
   const [currentStep, setCurrentStep] = useState<"otp" | "final" | "success">("otp");
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [timer, setTimer] = useState(30); // Start with 30 second timer since OTP was already sent
   const [formData, setFormData] = useState<EmailOtpFormData | null>(null);
   const [verifiedEmail, setVerifiedEmail] = useState(initialEmail);
@@ -149,60 +149,22 @@ export function EmailOtpSignupProvider({
 
   const handleFinalSubmit = async (data: EmailOtpFormData) => {
     try {
-      setIsSubmitting(true);
-      // Determine roles based on institute settings (learnersCanCreateCourses)
-      let learnersCanCreateCourses = false;
-      try {
-        const stored = await Preferences.get({ key: "InstituteDetails" });
-        if (stored?.value) {
-          const parsed = JSON.parse(stored.value);
-          const settingsString = parsed?.institute_settings_json;
-          if (typeof settingsString === "string") {
-            const instSettings = parseInstituteSettings(settingsString);
-            learnersCanCreateCourses = !!instSettings?.learnersCanCreateCourses;
-          }
-        }
-      } catch (e) {
-        // Ignore and use default
-      }
+      // Use unified registration hook
+      await registerUserUnified({
+        username: data.username,
+        email: initialEmail,
+        full_name: data.fullName,
+        password: settings.emailOtpSignupMode === "askCredentials" ? data.password : undefined,
+        instituteId,
+        settings,
+      });
 
-      const roles: string[] = ["STUDENT", ...(learnersCanCreateCourses ? ["TEACHER"] : [])];
-
-      // Prepare payload
-      const payload = {
-        user: {
-          username: data.username || (initialEmail || "").split("@")[0],
-          email: initialEmail,
-          full_name: data.fullName,
-          roles,
-          root_user: false,
-          ...(settings.emailOtpSignupMode === "askCredentials" && data.password
-            ? { password: data.password }
-            : {}),
-        },
-        institute_id: instituteId,
-        learner_package_session_enroll: null,
-      } as const;
-
-      // Call register API
-      const response = await registerUser(payload);
-
-      // Token handling and navigation (kept for future enablement)
-      // await handlePostSignupAuth(
-      //   response.accessToken,
-      //   response.refreshToken,
-      //   instituteId,
-      //   navigate,
-      //   true
-      // );
       // Success: show toast and close modal only (no redirect/navigation)
       toast.success("Account created successfully!");
       onSignupSuccess?.();
     } catch (error) {
       console.error("Error creating account:", error);
       toast.error("Failed to create account");
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -629,9 +591,9 @@ export function EmailOtpSignupProvider({
           <Button 
             type="submit" 
             className="w-full bg-gray-900 hover:bg-black text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
-            disabled={isSubmitting}
+            disabled={isRegistering}
           >
-            {isSubmitting ? "Creating Account..." : "Create Account"}
+            {isRegistering ? "Creating Account..." : "Create Account"}
           </Button>
         </motion.div>
       </form>

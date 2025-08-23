@@ -190,9 +190,8 @@ export function SignUpForm({
                                 settings={settings!}
                                 instituteDetails={instituteDetails}
                                 onSignupSuccess={() => {
-                                    // Use settings-based redirect route, fallback to dashboard
-                                    const redirectRoute = settings?.postLoginRedirectRoute || "/dashboard";
-                                    navigate({ to: redirectRoute as never });
+                                    // The unified registration hook already handles dynamic redirection
+                                    // based on the postLoginRedirectRoute setting, so we don't need to override it here
                                 }}
                                 onBackToProviders={() => navigate({ to: "/login" })}
                             />

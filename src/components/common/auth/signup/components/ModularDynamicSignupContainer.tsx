@@ -11,7 +11,7 @@ import { ArrowRight, Shield } from "lucide-react";
 import { LOGIN_URL_GOOGLE_GITHUB, LIVE_SESSION_REQUEST_OTP } from "@/constants/urls";
 import axios from "axios";
 import { toast } from "sonner";
-import { registerUser } from "@/services/signup-api";
+import { useUnifiedRegistration } from "../hooks/use-unified-registration";
 import { parseInstituteSettings } from "@/services/signup-api";
 
 interface ModularDynamicSignupContainerProps {
@@ -33,6 +33,7 @@ export function ModularDynamicSignupContainer({
   onBackToProviders,
   className = ""
 }: ModularDynamicSignupContainerProps) {
+  const { isRegistering, registerUser: registerUserUnified } = useUnifiedRegistration();
   const [currentStep, setCurrentStep] = useState<SignupStep>("providers");
   const [emailInput, setEmailInput] = useState("");
   const [isSendingOtp, setIsSendingOtp] = useState(false);
@@ -41,6 +42,7 @@ export function ModularDynamicSignupContainer({
   const [emailForOtp, setEmailForOtp] = useState("");
   const [fullNameForOtp, setFullNameForOtp] = useState("");
   const [instituteSettings, setInstituteSettings] = useState<any>(null);
+  const [hasExecutedCallback, setHasExecutedCallback] = useState(false);
 
   // Use backend settings if available, otherwise fall back to defaults
   const effectiveSettings = settings || {
@@ -58,7 +60,26 @@ export function ModularDynamicSignupContainer({
     passwordDelivery: "none",
   };
 
+  // Handle success step callback execution
+  useEffect(() => {
+    if (currentStep === "success" && onSignupSuccess && !hasExecutedCallback) {
+      setHasExecutedCallback(true);
+      
+      // Execute callback after a delay to allow success message to be seen
+      const timer = setTimeout(() => {
+        onSignupSuccess();
+      }, 1500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [currentStep, onSignupSuccess, hasExecutedCallback]);
 
+  // Reset callback execution flag when step changes
+  useEffect(() => {
+    if (currentStep !== "success") {
+      setHasExecutedCallback(false);
+    }
+  }, [currentStep]);
 
   // Parse institute settings to check for allowLearnersToCreateCourses
   useEffect(() => {
@@ -137,6 +158,7 @@ export function ModularDynamicSignupContainer({
       );
 
       if (!popup) {
+        console.error('[OAuth] Popup blocked');
         toast.error("Popup blocked! Please allow popups for this site.");
         return;
       }
@@ -147,6 +169,7 @@ export function ModularDynamicSignupContainer({
           handleOAuthSuccess(event.data.data);
           window.removeEventListener('message', messageHandler);
         } else if (event.data.type === 'oauth_error') {
+          console.error('[OAuth] Error message received from popup:', event.data.data);
           toast.error(event.data.data.message || 'OAuth authentication failed');
           window.removeEventListener('message', messageHandler);
         }
@@ -163,6 +186,7 @@ export function ModularDynamicSignupContainer({
       }, 1000);
 
     } catch (error) {
+      console.error('[OAuth] Failed to initiate signup:', error);
       toast.error("Failed to initiate signup. Please try again.");
     }
   };
@@ -195,11 +219,14 @@ export function ModularDynamicSignupContainer({
         name: "User",
         otp: "",
       });
+      
       toast.success("OTP sent successfully");
       setEmailForOtp(emailInput.trim());
       setSelectedProvider("emailOtp");
       setCurrentStep("otpVerification");
+      
     } catch (e) {
+      console.error('[Email OTP] Failed to send OTP:', e);
       toast.error("Failed to send OTP", { description: "Please try again" });
     } finally {
       setIsSendingOtp(false);
@@ -207,8 +234,19 @@ export function ModularDynamicSignupContainer({
   };
 
   const handleEmailInputSuccess = (email: string, fullName?: string) => {
-    setEmailForOtp(email);
-    setFullNameForOtp(fullName || "");
+    console.log('[EmailInput] Email input success:', { email, fullName, selectedProvider, oauthData });
+    
+    // For OAuth flows, we should already have the full name, so use it
+    if (selectedProvider === "oauth" && oauthData?.signupData?.name) {
+      console.log('[EmailInput] OAuth flow - using existing full name:', oauthData.signupData.name);
+      setEmailForOtp(email);
+      setFullNameForOtp(oauthData.signupData.name); // Use the OAuth full name
+    } else {
+      // For regular email OTP flows, use the provided full name
+      setEmailForOtp(email);
+      setFullNameForOtp(fullName || "");
+    }
+    
     setCurrentStep("otpVerification");
   };
 
@@ -224,7 +262,17 @@ export function ModularDynamicSignupContainer({
 
   const handleOAuthSuccess = async (oauthData: any) => {
     try {
+      console.group('[ModularDynamicSignupContainer] OAuth success handler');
       const { signupData, state, emailVerified } = oauthData;
+      
+      console.log('[OAuth] Processing OAuth success:', {
+        provider: signupData.provider,
+        email: signupData.email,
+        name: signupData.name,
+        emailVerified,
+        usernameStrategy: effectiveSettings.usernameStrategy,
+        passwordStrategy: effectiveSettings.passwordStrategy
+      });
       
       // Store OAuth data for later use
       setOAuthData({ signupData, state, emailVerified });
@@ -233,48 +281,71 @@ export function ModularDynamicSignupContainer({
       const needsUsername = effectiveSettings.usernameStrategy === "manual" || effectiveSettings.usernameStrategy === " ";
       const needsPassword = effectiveSettings.passwordStrategy === "manual" || effectiveSettings.passwordStrategy === " ";
       
+      console.log('[OAuth] Credential requirements:', { needsUsername, needsPassword });
+      
       // GitHub with private email - always need email OTP verification
       if (signupData.provider === "github" && !signupData.email) {
+        console.log('[OAuth] GitHub with private email - requesting email input for OTP verification');
         setCurrentStep("emailInput");
         setSelectedProvider("oauth");
         return;
       }
       
-      // Google or GitHub with public email - skip email OTP (already verified)
+      // Google or GitHub with public email - check if we can register immediately
       if (signupData.provider === "google" || (signupData.provider === "github" && signupData.email)) {
+        console.log('[OAuth] Provider with verified email - checking if immediate registration is possible');
+        
         // If we need credentials, show credentials form
         if (needsUsername || needsPassword) {
+          console.log('[OAuth] Credentials required - showing credentials form');
           setCurrentStep("credentials");
           setSelectedProvider("oauth");
           return;
         }
         
         // If no credentials needed, proceed with direct registration
+        console.log('[OAuth] No credentials required - proceeding with immediate registration');
         await handleDirectRegistration(signupData);
         return;
       }
       
       // Fallback - should not reach here
+      console.warn('[OAuth] Unexpected flow - falling back to credentials form');
       setCurrentStep("credentials");
       setSelectedProvider("oauth");
       
+      console.groupEnd();
     } catch (error) {
+      console.error('[OAuth] Failed to process OAuth response:', error);
       toast.error("Failed to process OAuth response. Please try again.");
+      console.groupEnd();
     }
   };
 
   const handleDirectRegistration = async (signupData: any) => {
     try {
-      // Here you would call your registration API
-      // For now, we'll simulate success
-      toast.success("Account created successfully!");
+      console.log('[OAuth] Starting direct registration for:', signupData.email);
+      console.log('[OAuth] Using OAuth data:', {
+        email: signupData.email,
+        name: signupData.name,
+        provider: signupData.provider
+      });
+      
+      // Use unified registration hook for OAuth signups with settings
+      await registerUserUnified({
+        username: signupData.username || signupData.email?.split("@")[0],
+        email: signupData.email,
+        full_name: signupData.name, // This should already be the full name from OAuth
+        instituteId: instituteId!,
+        settings: effectiveSettings, // Pass settings for credential generation
+      });
+
+      console.log('[OAuth] Direct registration completed successfully');
       setCurrentStep("success");
       
-      setTimeout(() => {
-        onSignupSuccess?.();
-      }, 1500);
-      
+      // Callback will be handled by the success step component
     } catch (error) {
+      console.error("[OAuth] Direct registration error:", error);
       toast.error("Failed to create account. Please try again.");
       // Fallback to credentials form
       setCurrentStep("credentials");
@@ -282,12 +353,17 @@ export function ModularDynamicSignupContainer({
   };
 
   const handleOtpVerificationSuccess = async (email: string, fullName?: string) => {
+    console.log('[OAuth] OTP verification successful:', { email, fullName });
+    
     // Check if we need credentials form
     const needsUsername = effectiveSettings.usernameStrategy === "manual" || effectiveSettings.usernameStrategy === " ";
     const needsPassword = effectiveSettings.passwordStrategy === "manual" || effectiveSettings.passwordStrategy === " ";
+    
+    console.log('[OAuth] Post-OTP credential requirements:', { needsUsername, needsPassword });
 
     // For OAuth flows, update the OAuth data with verified email
     if (selectedProvider === "oauth" && oauthData) {
+      console.log('[OAuth] Updating OAuth data with verified email');
       setOAuthData({
         ...oauthData,
         signupData: {
@@ -296,16 +372,46 @@ export function ModularDynamicSignupContainer({
           name: fullName || oauthData.signupData.name
         }
       });
+      
+      // Also update the fullNameForOtp for OAuth flows
+      setFullNameForOtp(oauthData.signupData.name);
+    } else {
+      // For non-OAuth flows, use the provided fullName
+      setFullNameForOtp(fullName || "");
     }
 
     if (needsUsername || needsPassword) {
+      console.log('[OAuth] Credentials required after OTP - showing credentials form');
       setCurrentStep("credentials");
     } else {
-      // Direct registration - this would need to be implemented
-      setCurrentStep("success");
-      setTimeout(() => {
-        onSignupSuccess?.();
-      }, 1500);
+      // Direct registration - no credentials needed
+      console.log('[OAuth] No credentials needed after OTP - proceeding with immediate registration');
+      
+      if (selectedProvider === "oauth" && oauthData) {
+        // For OAuth flows, use the updated OAuth data - we already have the full name
+        console.log('[OAuth] OAuth flow - using existing full name from OAuth data:', oauthData.signupData.name);
+        await handleDirectRegistration({
+          ...oauthData.signupData,
+          email: email,
+          name: oauthData.signupData.name // Use the name from OAuth, not the fullName parameter
+        });
+      } else {
+        // For email OTP flows (non-OAuth), we need to ask for full name first
+        if (!fullName) {
+          console.log('[OAuth] Email OTP flow - full name required, showing credentials form');
+          setCurrentStep("credentials");
+        } else {
+          // We have everything needed for registration
+          console.log('[OAuth] Email OTP flow - all data available, proceeding with registration');
+          await registerUserUnified({
+            email: email,
+            full_name: fullName,
+            instituteId: instituteId!,
+            settings: effectiveSettings,
+          });
+          setCurrentStep("success");
+        }
+      }
     }
   };
 
@@ -398,7 +504,7 @@ export function ModularDynamicSignupContainer({
                 <Button
                   onClick={handleEmailOtpSignup}
                   disabled={!emailInput.trim() || isSendingOtp}
-                  className="px-6 bg-gray-900 hover:bg-black text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
+                  className="px-4 bg-gray-900 hover:bg-black text-white font-medium py-3 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
                 >
                   {isSendingOtp ? "Sending..." : "Send OTP"}
                 </Button>
@@ -493,16 +599,17 @@ export function ModularDynamicSignupContainer({
             isOAuth={selectedProvider === "oauth"}
             hideFullName={
               // GitHub with private email: ask only for email (hide full name) before OTP
-              selectedProvider === "oauth" &&
-              oauthData?.signupData?.provider === "github" &&
-              !oauthData?.signupData?.email
+              // For OAuth flows, we already have the full name, so we can hide it
+              selectedProvider === "oauth" && oauthData?.signupData?.name
             }
             privateEmailMessage={
               selectedProvider === "oauth" && 
               oauthData?.signupData?.provider === "github" && 
               !oauthData?.signupData?.email
                 ? "Your GitHub email is private. Please provide your email address to complete the signup process."
-                : "Please verify your email to complete the OAuth signup process."
+                : selectedProvider === "oauth"
+                ? "Please verify your email to complete the OAuth signup process."
+                : "Please verify your email to complete the signup process."
             }
           />
         )}
@@ -518,58 +625,62 @@ export function ModularDynamicSignupContainer({
         )}
         
         {currentStep === "credentials" && (
-          <CredentialsForm
-            settings={effectiveSettings}
-            initialData={{
-              fullName: selectedProvider === "oauth" && oauthData?.signupData?.name ? oauthData.signupData.name : "",
-              ...(effectiveSettings.usernameStrategy === "manual" || effectiveSettings.usernameStrategy === " " ? {
-                username: selectedProvider === "oauth" && oauthData?.signupData?.email ? oauthData.signupData.email : ""
-              } : {}),
-            }}
-            onSubmit={async (data) => {
-              try {
-                // Determine roles based on institute settings
-                const roles = instituteSettings?.learnersCanCreateCourses 
-                  ? ["LEARNER", "TEACHER"] 
-                  : ["LEARNER"];
-                
-
-
-                // Call the register API
-                const registerData = {
-                  user: {
-                    username: data.username || data.email, // Use username if provided, otherwise use email
+          <>
+            {console.log('[ModularDynamicSignupContainer] Rendering CredentialsForm with:', {
+              selectedProvider,
+              oauthData: oauthData?.signupData,
+              fullNameForOtp,
+              emailForOtp,
+              effectiveSettings: {
+                usernameStrategy: effectiveSettings.usernameStrategy,
+                passwordStrategy: effectiveSettings.passwordStrategy
+              }
+            })}
+            <CredentialsForm
+              settings={effectiveSettings}
+              initialData={{
+                fullName: (selectedProvider === "oauth" && oauthData?.signupData?.name) || fullNameForOtp || "",
+                ...(effectiveSettings.usernameStrategy === "manual" || effectiveSettings.usernameStrategy === " " ? {
+                  username: selectedProvider === "oauth" && oauthData?.signupData?.email ? oauthData.signupData.email : ""
+                } : {}),
+              }}
+              onSubmit={async (data) => {
+                try {
+                  console.log('[Credentials] Form submitted with data:', data);
+                  
+                  // Use unified registration hook with settings
+                  await registerUserUnified({
+                    username: data.username,
                     email: emailForOtp,
                     full_name: data.fullName || fullNameForOtp,
                     password: data.password,
-                    roles,
-                    root_user: false,
-                  },
-                  institute_id: instituteId!,
-                };
-
-                await registerUser(registerData);
-                
-                toast.success("Account created successfully!");
-                
-                // Move to success step
-                setCurrentStep("success");
-                setTimeout(() => {
-                  onSignupSuccess?.();
-                }, 1500);
-              } catch (error) {
-                toast.error("Failed to create account. Please try again.");
+                    instituteId: instituteId!,
+                    settings: effectiveSettings, // Pass settings for credential generation
+                  });
+                  
+                  console.log('[Credentials] Registration completed successfully');
+                  // Move to success step
+                  setCurrentStep("success");
+                  // Callback will be handled by the success step component
+                  
+                } catch (error) {
+                  console.error("[Credentials] Registration failed:", error);
+                  toast.error("Failed to create account. Please try again.");
+                }
+              }}
+              onBack={handleBackToProviders}
+              isOAuth={selectedProvider === "oauth"}
+              oauthProvider={selectedProvider === "oauth" && oauthData?.signupData?.provider ? oauthData.signupData.provider : ""}
+              hideFullName={
+                // For OAuth flows: only hide full name if we have it AND no manual credentials are needed
+                // For Email OTP: never hide full name (always ask for it after OTP verification)
+                selectedProvider === "oauth" && 
+                oauthData?.signupData?.name && 
+                !(effectiveSettings.usernameStrategy === "manual" || effectiveSettings.usernameStrategy === " ") &&
+                !(effectiveSettings.passwordStrategy === "manual" || effectiveSettings.passwordStrategy === " ")
               }
-            }}
-            onBack={handleBackToProviders}
-            isOAuth={selectedProvider === "oauth"}
-            oauthProvider={selectedProvider === "oauth" && oauthData?.signupData?.provider ? oauthData.signupData.provider : ""}
-            hideFullName={
-              // For OAuth (Google/GitHub): show full name field (prefilled) even if strategy would hide it
-              // For Email OTP: never hide full name (always ask for it after OTP verification)
-              false // Always show full name field for now to ensure it's visible and prefilled
-            }
-          />
+            />
+          </>
         )}
         
         {currentStep === "success" && (

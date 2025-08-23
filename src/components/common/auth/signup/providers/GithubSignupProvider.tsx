@@ -8,9 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { SignupSettings } from "@/config/signup/defaultSignupSettings";
-import { registerUser, parseInstituteSettings } from "@/services/signup-api";
-// import { handlePostSignupAuth } from "@/services/signup-api"; // keep for later
-import { Preferences } from "@capacitor/preferences";
+import { useUnifiedRegistration } from "@/components/common/auth/signup/hooks/use-unified-registration";
 
 interface GithubSignupProviderProps {
   instituteId: string;
@@ -71,6 +69,7 @@ export function GithubSignupProvider({
   onBackToProviders,
   className = ""
 }: GithubSignupProviderProps) {
+  const { isRegistering, registerUser: registerUserUnified } = useUnifiedRegistration();
   const [currentStep, setCurrentStep] = useState<"button" | "credentials" | "emailOtp" | "otpVerification" | "processing">("button");
   const [githubProfile, setGithubProfile] = useState<GithubProfile | null>(null);
   const [emailForOtp, setEmailForOtp] = useState("");
@@ -160,40 +159,19 @@ export function GithubSignupProvider({
 
   const handleDirectRegistration = async (profile: GithubProfile) => {
     try {
-      setCurrentStep("processing");
-      // Determine roles based on institute settings
-      let learnersCanCreateCourses = false;
-      try {
-        const stored = await Preferences.get({ key: "InstituteDetails" });
-        if (stored?.value) {
-          const parsed = JSON.parse(stored.value);
-          const settingsString = parsed?.institute_settings_json;
-          if (typeof settingsString === "string") {
-            const instSettings = parseInstituteSettings(settingsString);
-            learnersCanCreateCourses = !!instSettings?.learnersCanCreateCourses;
-          }
-        }
-      } catch {}
+      console.log('[GithubSignupProvider] Starting direct registration for:', profile.email);
+      
+      // Use unified registration hook with settings
+      await registerUserUnified({
+        username: profile.email ? (settings.usernameStrategy === "email" ? profile.email : profile.email.split("@")[0]) : "",
+        email: profile.email!,
+        full_name: profile.name,
+        instituteId,
+        settings, // Pass settings for credential generation
+      });
 
-      const roles: string[] = ["STUDENT", ...(learnersCanCreateCourses ? ["TEACHER"] : [])];
-
-      const payload = {
-        user: {
-          username: profile.email ? (settings.usernameStrategy === "email" ? profile.email : profile.email.split("@")[0]) : "",
-          email: profile.email!,
-          full_name: profile.name,
-          roles,
-          root_user: false,
-        },
-        institute_id: instituteId,
-        learner_package_session_enroll: null,
-      } as const;
-
-      const response = await registerUser(payload);
-      // Token handling (keep for later)
-      // await handlePostSignupAuth(response.accessToken, response.refreshToken, instituteId, navigate, true);
-
-      toast.success("Account created successfully!");
+      console.log('[GithubSignupProvider] Direct registration completed successfully');
+      // Success handling is now managed by the unified hook
       onSignupSuccess?.();
     } catch (error) {
       console.error("Direct registration error:", error);
@@ -204,44 +182,25 @@ export function GithubSignupProvider({
 
   const handleCredentialsSubmit = async (data: CredentialsFormData) => {
     try {
-      setCurrentStep("processing");
-      
       if (!githubProfile?.email) throw new Error("Missing email");
-      let learnersCanCreateCourses = false;
-      try {
-        const stored = await Preferences.get({ key: "InstituteDetails" });
-        if (stored?.value) {
-          const parsed = JSON.parse(stored.value);
-          const settingsString = parsed?.institute_settings_json;
-          if (typeof settingsString === "string") {
-            const instSettings = parseInstituteSettings(settingsString);
-            learnersCanCreateCourses = !!instSettings?.learnersCanCreateCourses;
-          }
-        }
-      } catch {}
-      const roles: string[] = ["STUDENT", ...(learnersCanCreateCourses ? ["TEACHER"] : [])];
+      
+      console.log('[GithubSignupProvider] Credentials form submitted:', data);
+      
+      // Use unified registration hook with settings
+      await registerUserUnified({
+        username: data.username,
+        email: githubProfile.email,
+        full_name: data.fullName || githubProfile.name,
+        password: data.password,
+        instituteId,
+        settings, // Pass settings for credential generation
+      });
 
-      const payload = {
-        user: {
-          username: settings.usernameStrategy === "email" ? githubProfile.email : data.username,
-          email: githubProfile.email,
-          full_name: data.fullName,
-          roles,
-          root_user: false,
-          ...(settings.passwordStrategy === "manual" ? { password: data.password } : {}),
-        },
-        institute_id: instituteId,
-        learner_package_session_enroll: null,
-      } as const;
-
-      const response = await registerUser(payload);
-      // Token handling (keep for later)
-      // await handlePostSignupAuth(response.accessToken, response.refreshToken, instituteId, navigate, true);
-
-      toast.success("Account created successfully!");
+      console.log('[GithubSignupProvider] Registration with credentials completed successfully');
+      // Success handling is now managed by the unified hook
       onSignupSuccess?.();
     } catch (error) {
-      console.error("Credentials registration error:", error);
+      console.error("Registration error:", error);
       toast.error("Failed to register user");
     }
   };
@@ -252,7 +211,6 @@ export function GithubSignupProvider({
       
       // Here you would call the sendOtp API
       // For now, we'll simulate success
-      console.log("Sending OTP to:", data.email);
       
       setIsOtpSent(true);
       startTimer();
@@ -276,7 +234,6 @@ export function GithubSignupProvider({
       
       // Here you would call the verifyOtp API
       // For now, we'll simulate success
-      console.log("Verifying OTP:", data.otp);
       
       // Simulate OTP verification delay
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -302,7 +259,6 @@ export function GithubSignupProvider({
   const handleResendOtp = async () => {
     try {
       // Here you would call the sendOtp API again
-      console.log("Resending OTP to:", emailForOtp);
       
       startTimer();
       toast.success("Verification code resent!");
@@ -442,7 +398,7 @@ export function GithubSignupProvider({
     return renderCredentialsForm();
   }
 
-  const isSubmitting = currentStep === "processing";
+  // Loading state is now managed by the unified registration hook
 
   const renderCredentialsForm = () => (
     <motion.div
@@ -556,9 +512,9 @@ export function GithubSignupProvider({
           <Button 
             type="submit" 
             className="flex-1 bg-gray-900 hover:bg-black text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
-            disabled={isSubmitting}
+            disabled={isRegistering}
           >
-            {isSubmitting ? "Creating Account..." : "Create Account"}
+            {isRegistering ? "Creating Account..." : "Create Account"}
           </Button>
         </motion.div>
       </form>

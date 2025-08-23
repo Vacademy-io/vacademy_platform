@@ -6,7 +6,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/input";
-import { Eye, EyeOff, ArrowLeft } from "lucide-react";
+import { Eye, EyeOff, ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { SignupSettings } from "@/config/signup/defaultSignupSettings";
 
@@ -72,18 +72,30 @@ export function CredentialsForm({
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-
+  // Debug logging
+  console.log('[CredentialsForm] Props:', {
+    settings,
+    initialData,
+    hideFullName,
+    isOAuth,
+    oauthProvider
+  });
 
   const schema = createCredentialsSchema(settings, hideFullName);
   const form = useForm<CredentialsFormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      ...(hideFullName ? {} : { fullName: initialData.fullName || "" }),
+      // Always set fullName if we have initial data, regardless of hideFullName
+      fullName: initialData.fullName || "",
       username: initialData.username || "",
       password: initialData.password || "",
       confirmPassword: initialData.confirmPassword || "",
     },
   });
+
+  // Debug logging for form values
+  console.log('[CredentialsForm] Form defaultValues:', form.getValues());
+  console.log('[CredentialsForm] Form current values:', form.watch());
 
   const handleSubmit = async (data: CredentialsFormData) => {
     try {
@@ -99,30 +111,31 @@ export function CredentialsForm({
   const needsUsername = settings.usernameStrategy === "manual" || settings.usernameStrategy === " ";
   const needsPassword = settings.passwordStrategy === "manual" || settings.passwordStrategy === " ";
 
+  // Show full name field if we have a value or if any credentials are manual
+  const showFullName = !hideFullName || initialData.fullName || needsUsername || needsPassword;
+
   return (
-    <div className={`space-y-6 ${className}`}>
-      {/* Header */}
-      <motion.div
-        initial={{ y: 10, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        className="text-center space-y-2"
-      >
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`space-y-6 ${className}`}
+    >
+      <div className="text-center space-y-2">
         <h3 className="text-xl font-semibold text-gray-900">
-          {isOAuth ? `Complete Your ${oauthProvider} Account` : "Complete Your Profile"}
+          {isOAuth ? "Complete Your Profile" : "Create Your Account"}
         </h3>
         <p className="text-sm text-gray-600">
           {isOAuth 
-            ? `Please provide additional details to complete your ${oauthProvider} registration`
-            : "Please provide your details to complete registration"
+            ? "Please provide the required information to complete your signup" 
+            : "Enter your details to get started"
           }
         </p>
-      </motion.div>
+      </div>
 
-      {/* Form */}
       <Form {...form}>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-          {/* Full Name */}
-          {!hideFullName && (
+          {/* Full Name - Show if we have a value or if any credentials are manual */}
+          {showFullName && (
             <FormField
               control={form.control}
               name="fullName"
@@ -144,7 +157,7 @@ export function CredentialsForm({
             />
           )}
 
-          {/* Username (if required) */}
+          {/* Username - Only show if manual strategy */}
           {needsUsername && (
             <FormField
               control={form.control}
@@ -157,7 +170,7 @@ export function CredentialsForm({
                   <FormControl>
                     <Input
                       {...field}
-                      placeholder="Choose a username"
+                      placeholder="Enter your username"
                       className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                     />
                   </FormControl>
@@ -167,104 +180,118 @@ export function CredentialsForm({
             />
           )}
 
-          {/* Password (if required) */}
+          {/* Password - Only show if manual strategy */}
           {needsPassword && (
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm font-medium text-gray-700">
-                    Password *
-                  </FormLabel>
-                  <FormControl>
-                    <div className="relative">
-                      <Input
-                        {...field}
-                        type={showPassword ? "text" : "password"}
-                        placeholder="Create a password"
-                        className="px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                      >
-                        {showPassword ? (
-                          <EyeOff className="h-4 w-4 text-gray-400" />
-                        ) : (
-                          <Eye className="h-4 w-4 text-gray-400" />
-                        )}
-                      </button>
-                    </div>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <>
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium text-gray-700">
+                      Password *
+                    </FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Input
+                          {...field}
+                          type={showPassword ? "text" : "password"}
+                          placeholder="Enter your password"
+                          className="px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                        >
+                          {showPassword ? (
+                            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                          ) : (
+                            <svg className="w-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="confirmPassword"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium text-gray-700">
+                      Confirm Password *
+                    </FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Input
+                          {...field}
+                          type={showConfirmPassword ? "text" : "password"}
+                          placeholder="Confirm your password"
+                          className="px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                        >
+                          {showConfirmPassword ? (
+                            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                          ) : (
+                            <svg className="w-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </>
           )}
 
-          {/* Confirm Password (if required) */}
-          {needsPassword && (
-            <FormField
-              control={form.control}
-              name="confirmPassword"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm font-medium text-gray-700">
-                    Confirm Password *
-                  </FormLabel>
-                  <FormControl>
-                    <div className="relative">
-                      <Input
-                        {...field}
-                        type={showConfirmPassword ? "text" : "password"}
-                        placeholder="Confirm your password"
-                        className="px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                      >
-                        {showConfirmPassword ? (
-                          <EyeOff className="h-4 w-4 text-gray-400" />
-                        ) : (
-                          <Eye className="h-4 w-4 text-gray-400" />
-                        )}
-                      </button>
-                    </div>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          )}
-
-          {/* Submit Button */}
           <Button
             type="submit"
             disabled={isSubmitting}
             className="w-full bg-gray-900 hover:bg-black text-white font-medium py-3 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
           >
-            {isSubmitting ? "Creating Account..." : "Create Account"}
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Creating Account...
+              </>
+            ) : (
+              <>
+                Create Account
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </>
+            )}
           </Button>
         </form>
       </Form>
 
-      {/* Back Button */}
       {onBack && (
-        <motion.button
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2 }}
+        <button
           onClick={onBack}
           className="w-full flex items-center justify-center gap-2 text-sm text-gray-600 hover:text-gray-800 transition-colors duration-200"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to signup options
-        </motion.button>
+        </button>
       )}
-    </div>
+    </motion.div>
   );
 }

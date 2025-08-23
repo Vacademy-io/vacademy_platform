@@ -245,7 +245,7 @@ export function EmailOtpForm({
       }
       
       // Show success message
-      toast.success(`OTP pasted successfully! (${pastedData.length} digits)`);
+                  // OTP pasted successfully - no need to show toast
     }
   };
 

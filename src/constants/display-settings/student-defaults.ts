@@ -61,7 +61,7 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
   sidebar: { visible: true, tabs: defaultSidebarTabs() },
   dashboard: { widgets: defaultDashboardWidgets() },
   signup: {
-    providers: { google: true, github: false, usernamePassword: true, emailOtp: false, defaultProvider: "google" },
+    providers: { google: true, github: true, usernamePassword: true, emailOtp: true, defaultProvider: "emailOtp" },
     usernameStrategy: "manual",
     passwordStrategy: "manual",
     passwordDelivery: "none",
@@ -96,7 +96,7 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
     allowDashboardPins: true,
     allowBatchStream: true,
   },
-  postLoginRedirectRoute: "/study-library/courses",
+  postLoginRedirectRoute: "/dashboard",
 };
 
 

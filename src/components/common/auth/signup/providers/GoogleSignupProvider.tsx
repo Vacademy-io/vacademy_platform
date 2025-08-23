@@ -8,10 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { SignupSettings } from "@/config/signup/defaultSignupSettings";
-import { registerUser, parseInstituteSettings } from "@/services/signup-api";
-// import { handlePostSignupAuth } from "@/services/signup-api"; // keep for later
-// import { useNavigate } from "@tanstack/react-router"; // keep for later
-import { Preferences } from "@capacitor/preferences";
+import { useUnifiedRegistration } from "@/components/common/auth/signup/hooks/use-unified-registration";
 import { FcGoogle } from "react-icons/fc";
 
 interface GoogleSignupProviderProps {
@@ -53,12 +50,11 @@ export function GoogleSignupProvider({
   onBackToProviders,
   className = ""
 }: GoogleSignupProviderProps) {
+  const { isRegistering, registerUser: registerUserUnified } = useUnifiedRegistration();
   const [currentStep, setCurrentStep] = useState<"button" | "credentials" | "processing">("button");
   const [googleProfile, setGoogleProfile] = useState<GoogleProfile | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  // const navigate = useNavigate(); // keep for later
 
   const credentialsForm = useForm<CredentialsFormData>({
     resolver: zodResolver(credentialsSchema),
@@ -84,14 +80,16 @@ export function GoogleSignupProvider({
       setGoogleProfile(mockProfile);
       
       // Decide whether we need credentials based on strategies
-      const needsUsername = !["email", "auto"].includes((settings.usernameStrategy as string) || "manual");
-      const needsPassword = !["auto", "none"].includes((settings.passwordStrategy as string) || "manual");
-
-      if (needsUsername || needsPassword) {
+      // For Google OAuth, we can often proceed directly if we have the profile data
+      const needsUsername = settings.usernameStrategy === "manual" && !profile.email;
+      const needsPassword = settings.passwordStrategy === "manual";
+      
+      // If we have an email and don't need a password, we can register directly
+      if (profile.email && !needsPassword) {
+        await handleDirectRegistration(mockProfile);
+      } else {
         setCurrentStep("credentials");
         credentialsForm.setValue("fullName", mockProfile.name);
-      } else {
-        await handleDirectRegistration(mockProfile);
       }
     } catch (error) {
       console.error("Google OAuth error:", error);
@@ -102,96 +100,50 @@ export function GoogleSignupProvider({
 
   const handleDirectRegistration = async (profile: GoogleProfile) => {
     try {
-      setIsSubmitting(true);
-      // Determine roles based on institute settings
-      let learnersCanCreateCourses = false;
-      try {
-        const stored = await Preferences.get({ key: "InstituteDetails" });
-        if (stored?.value) {
-          const parsed = JSON.parse(stored.value);
-          const settingsString = parsed?.institute_settings_json;
-          if (typeof settingsString === "string") {
-            const instSettings = parseInstituteSettings(settingsString);
-            learnersCanCreateCourses = !!instSettings?.learnersCanCreateCourses;
-          }
-        }
-      } catch {}
+      console.log('[GoogleSignupProvider] Starting direct registration for:', profile.email);
+      
+      // Use unified registration hook with settings
+      await registerUserUnified({
+        username: settings.usernameStrategy === "email" ? profile.email : undefined,
+        email: profile.email,
+        full_name: profile.name,
+        instituteId,
+        settings, // Pass settings for credential generation
+      });
 
-      const roles: string[] = ["STUDENT", ...(learnersCanCreateCourses ? ["TEACHER"] : [])];
-
-      const payload = {
-        user: {
-          username: settings.usernameStrategy === "email" ? profile.email : "",
-          email: profile.email,
-          full_name: profile.name,
-          roles,
-          root_user: false,
-        },
-        institute_id: instituteId,
-        learner_package_session_enroll: null,
-      } as const;
-
-      const response = await registerUser(payload);
-      // Token handling (keep for later)
-      // await handlePostSignupAuth(response.accessToken, response.refreshToken, instituteId, navigate, true);
-
-      toast.success("Account created successfully!");
+      console.log('[GoogleSignupProvider] Direct registration completed successfully');
+      // Success handling is now managed by the unified hook
       onSignupSuccess?.();
     } catch (error) {
       console.error("Direct registration error:", error);
       toast.error("Failed to register user");
       setCurrentStep("button");
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
   const handleCredentialsSubmit = async (data: CredentialsFormData) => {
     try {
-      setIsSubmitting(true);
-      if (!googleProfile?.email) {
-        throw new Error("Missing Google email");
-      }
+      if (!googleProfile?.email)
+        throw new Error("Missing Google profile data");
 
-      // Determine roles
-      let learnersCanCreateCourses = false;
-      try {
-        const stored = await Preferences.get({ key: "InstituteDetails" });
-        if (stored?.value) {
-          const parsed = JSON.parse(stored.value);
-          const settingsString = parsed?.institute_settings_json;
-          if (typeof settingsString === "string") {
-            const instSettings = parseInstituteSettings(settingsString);
-            learnersCanCreateCourses = !!instSettings?.learnersCanCreateCourses;
-          }
-        }
-      } catch {}
-      const roles: string[] = ["STUDENT", ...(learnersCanCreateCourses ? ["TEACHER"] : [])];
+      console.log('[GoogleSignupProvider] Credentials form submitted:', data);
+      
+      // Use unified registration hook with settings
+      await registerUserUnified({
+        username: data.username,
+        email: googleProfile.email,
+        full_name: data.fullName || googleProfile.name,
+        password: data.password,
+        instituteId,
+        settings, // Pass settings for credential generation
+      });
 
-      const payload = {
-        user: {
-          username: settings.usernameStrategy === "email" ? googleProfile.email : data.username,
-          email: googleProfile.email,
-          full_name: data.fullName,
-          roles,
-          root_user: false,
-          ...(settings.passwordStrategy === "manual" ? { password: data.password } : {}),
-        },
-        institute_id: instituteId,
-        learner_package_session_enroll: null,
-      } as const;
-
-      const response = await registerUser(payload);
-      // Token handling (keep for later)
-      // await handlePostSignupAuth(response.accessToken, response.refreshToken, instituteId, navigate, true);
-
-      toast.success("Account created successfully!");
+      console.log('[GoogleSignupProvider] Registration with credentials completed successfully');
+      // Success handling is now managed by the unified hook
       onSignupSuccess?.();
     } catch (error) {
-      console.error("Credentials registration error:", error);
+      console.error("Registration error:", error);
       toast.error("Failed to register user");
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -365,9 +317,9 @@ export function GoogleSignupProvider({
           <Button 
             type="submit" 
             className="flex-1 bg-gray-900 hover:bg-black text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
-            disabled={isSubmitting}
+            disabled={isRegistering}
           >
-            {isSubmitting ? "Creating Account..." : "Create Account"}
+            {isRegistering ? "Creating Account..." : "Create Account"}
           </Button>
         </motion.div>
       </form>
@@ -375,18 +327,46 @@ export function GoogleSignupProvider({
   );
 
   // Render the Google signup button
+  if (currentStep === "button") {
   return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className={`space-y-4 ${className}`}
+      >
     <motion.button
       whileHover={{ scale: 1.01 }}
       whileTap={{ scale: 0.99 }}
       onClick={handleGoogleOAuth}
-      className={`w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-200 rounded-md bg-white text-gray-700 font-medium hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm transition-all duration-200 group ${className}`}
+          className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-200 rounded-md bg-white text-gray-700 font-medium hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm transition-all duration-200 group"
       type="button"
     >
-      <FcGoogle className="w-4 h-4" />
-      <span className="text-sm">
+          <FcGoogle className="w-5 h-5" />
         Continue with Google
-      </span>
     </motion.button>
-  );
+        
+        {/* Test button for direct registration */}
+        <Button
+          onClick={() => handleDirectRegistration({
+            name: "Test User",
+            email: "test@example.com"
+          })}
+          className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-blue-200 rounded-md bg-blue-50 text-blue-700 font-medium hover:bg-blue-100 hover:border-blue-300 hover:shadow-sm transition-all duration-200 group"
+          type="button"
+        >
+          🧪 Test Direct Registration
+        </Button>
+        
+        {onBackToProviders && (
+          <Button
+            onClick={onBackToProviders}
+            variant="ghost"
+            className="w-full text-gray-600 hover:text-gray-800"
+          >
+            ← Back to options
+          </Button>
+        )}
+      </motion.div>
+    );
+  }
 }

@@ -124,7 +124,6 @@ public class CertificateSettingStrategy extends IInstituteSettingStrategy{
         try {
             ObjectMapper objectMapper = new ObjectMapper();
             CertificateSettingRequest certificateSettingRequest = (CertificateSettingRequest) settingRequest;
-            if (certificateSettingRequest == null) throw new VacademyException("Invalid Request");
 
             // Parse existing settings
             InstituteSettingDto instituteSettingDto = objectMapper.readValue(
@@ -136,7 +135,7 @@ public class CertificateSettingStrategy extends IInstituteSettingStrategy{
 
             CertificateSettingDataDto newData = null;
 
-            if (!settingMap.containsKey(key)) {
+            if (!settingMap.containsKey(key) && certificateSettingRequest == null) {
                 newData = createCertificateSettingFromRequest(createDefaultCertificateSetting());
             }
             else newData = createCertificateSettingFromRequest(certificateSettingRequest);

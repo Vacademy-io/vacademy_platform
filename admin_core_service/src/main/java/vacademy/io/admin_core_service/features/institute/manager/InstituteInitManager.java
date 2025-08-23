@@ -61,6 +61,15 @@ public class InstituteInitManager {
         instituteInfoDTO.setCity(institute.get().getCity());
         instituteInfoDTO.setCountry(institute.get().getCountry());
         instituteInfoDTO.setWebsiteUrl(institute.get().getWebsiteUrl());
+        instituteInfoDTO.setLearnerPortalBaseUrl(
+                Optional.ofNullable(institute.get().getLearnerPortalBaseUrl()).orElse("learner.vacademy.io")
+        );
+        instituteInfoDTO.setTeacherPortalBaseUrl(
+                Optional.ofNullable(institute.get().getTeacherPortalBaseUrl()).orElse("teacher.vacademy.io")
+        );
+        instituteInfoDTO.setAdminPortalBaseUrl(
+                Optional.ofNullable(institute.get().getAdminPortalBaseUrl()).orElse("dash.vacademy.io")
+        );
         instituteInfoDTO.setEmail(institute.get().getEmail());
         instituteInfoDTO.setPinCode(institute.get().getPinCode());
         instituteInfoDTO.setInstituteLogoFileId(institute.get().getLogoFileId());
@@ -107,6 +116,15 @@ public class InstituteInitManager {
         instituteInfoDTO.setCity(institute.get().getCity());
         instituteInfoDTO.setCountry(institute.get().getCountry());
         instituteInfoDTO.setWebsiteUrl(institute.get().getWebsiteUrl());
+        instituteInfoDTO.setLearnerPortalBaseUrl(
+                Optional.ofNullable(institute.get().getLearnerPortalBaseUrl()).orElse("learner.vacademy.io")
+        );
+        instituteInfoDTO.setTeacherPortalBaseUrl(
+                Optional.ofNullable(institute.get().getTeacherPortalBaseUrl()).orElse("teacher.vacademy.io")
+        );
+        instituteInfoDTO.setAdminPortalBaseUrl(
+                Optional.ofNullable(institute.get().getAdminPortalBaseUrl()).orElse("dash.vacademy.io")
+        );
         instituteInfoDTO.setPinCode(institute.get().getPinCode());
         instituteInfoDTO.setInstituteLogoFileId(institute.get().getLogoFileId());
         instituteInfoDTO.setDescription(institute.get().getDescription());

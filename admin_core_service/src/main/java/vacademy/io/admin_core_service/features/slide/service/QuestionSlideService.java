@@ -53,10 +53,9 @@ public class QuestionSlideService {
     public String addQuestionSlide(SlideDTO slideDTO, String chapterId) {
         QuestionSlide questionSlide = new QuestionSlide(slideDTO.getQuestionSlide());
         QuestionSlide savedQuestionSlide = questionSlideRepository.save(questionSlide);
-        Slide slide = slideService.saveSlide(slideDTO.getId(), savedQuestionSlide.getId(), SlideTypeEnum.QUESTION.name(),
+        return slideService.saveSlide(slideDTO.getId(), savedQuestionSlide.getId(), SlideTypeEnum.QUESTION.name(),
                 slideDTO.getStatus(), slideDTO.getTitle(), slideDTO.getDescription(),
                 slideDTO.getImageFileId(), slideDTO.getSlideOrder(), chapterId);
-        return slide.getId();
     }
 
     public String updateQuestionSlide(SlideDTO slideDTO, String chapterId,String moduleId,String subjectId,String packageSessionId) {

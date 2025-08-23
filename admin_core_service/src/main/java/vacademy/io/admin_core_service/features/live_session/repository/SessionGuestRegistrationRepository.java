@@ -17,29 +17,40 @@ public interface SessionGuestRegistrationRepository extends JpaRepository<Sessio
     boolean existsBySessionIdAndEmail(String sessionId, String email);
 
     Optional<SessionGuestRegistration> findBySessionIdAndEmail(String sessionId, String email);
-
-
     @Query(value = """
-                SELECT
-                    sgr.email AS guestEmail,
-                    sgr.registered_at AS registeredAt,
-                    lsl.status AS attendanceStatus,
-                    lsl.details AS attendanceDetails,
-                    lsl.created_at AS attendanceTimestamp
-                FROM session_guest_registrations sgr
-                LEFT JOIN live_session_logs lsl
-                    ON lsl.session_id = sgr.session_id
-                    AND lsl.schedule_id = :scheduleId
-                    AND lsl.user_source_type = 'GUEST'
-                    AND lsl.user_source_id = sgr.email
-                    AND lsl.log_type = 'ATTENDANCE_RECORDED'
-                WHERE sgr.session_id = :sessionId
-            """, nativeQuery = true)
+    SELECT
+        sgr.email AS guestEmail,
+        sgr.registered_at AS registeredAt,
+        lsl.status AS attendanceStatus,
+        lsl.details AS attendanceDetails,
+        lsl.created_at AS attendanceTimestamp,
+        (
+            SELECT cfv.value
+            FROM custom_field_values cfv
+            WHERE cfv.source_id = sgr.id
+            ORDER BY cfv.id ASC
+            LIMIT 1
+        ) AS guestName,           
+        (
+          SELECT cfv.value
+          FROM custom_field_values cfv
+          WHERE cfv.source_id = sgr.id
+          ORDER BY cfv.id ASC
+          LIMIT 1 OFFSET 3
+        ) AS mobileNumber
+    FROM session_guest_registrations sgr
+    LEFT JOIN live_session_logs lsl
+        ON lsl.session_id = sgr.session_id
+        AND lsl.schedule_id = :scheduleId
+        AND lsl.user_source_type = 'EXTERNAL_USER'
+        AND lsl.user_source_id = sgr.id
+        AND lsl.log_type = 'ATTENDANCE_RECORDED'
+    WHERE sgr.session_id = :sessionId
+    """, nativeQuery = true)
     List<GuestAttendanceDTO> findGuestAttendanceBySessionAndSchedule(
             @Param("sessionId") String sessionId,
             @Param("scheduleId") String scheduleId
     );
-
 
     @Query(value = """
     SELECT

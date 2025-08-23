@@ -58,7 +58,8 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
                 instituteId,
                 learnerPackageSessionsEnrollDTO.getPackageSessionIds(),
                 enrollInvite.getLearnerAccessDays(),
-                learnerSessionStatus
+                learnerSessionStatus,
+                userPlan
         );
 
         // Create or update user
@@ -99,7 +100,7 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
 
     private List<InstituteStudentDetails> buildInstituteStudentDetails(String instituteId,
                                                                        List<String> packageSessionIds,
-                                                                       Integer accessDays,String learnerSessionStatus) {
+                                                                       Integer accessDays,String learnerSessionStatus,UserPlan userPlan) {
         List<InstituteStudentDetails> detailsList = new ArrayList<>();
 
         for (String packageSessionId : packageSessionIds) {
@@ -124,7 +125,8 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
                     new Date(),
                     null,
                     accessDays != null ? accessDays.toString() : null,
-                    packageSessionId
+                    packageSessionId,
+                    userPlan.getId()
             );
             detailsList.add(detail);
         }

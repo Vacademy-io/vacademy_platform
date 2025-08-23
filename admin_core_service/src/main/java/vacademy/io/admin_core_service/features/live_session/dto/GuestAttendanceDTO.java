@@ -8,5 +8,8 @@ public interface GuestAttendanceDTO {
     String getAttendanceStatus();
     String getAttendanceDetails();
     Timestamp getAttendanceTimestamp();
+    String getCustomFieldValue();
+    String getGuestName();
+    String getMobileNumber();
 }
 

@@ -1,5 +1,7 @@
 package vacademy.io.notification_service.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.activation.DataHandler;
 import jakarta.mail.Message;
 import jakarta.mail.MessagingException;
@@ -15,9 +17,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.notification_service.constants.NotificationConstants;
+import vacademy.io.notification_service.institute.InstituteInfoDTO;
+import vacademy.io.notification_service.institute.InstituteInternalService;
 
+import java.util.AbstractMap;
 import java.util.Map;
 import java.util.Properties;
 
@@ -31,71 +39,142 @@ public class EmailService {
     private String from;
 
     @Autowired
+    private InstituteInternalService internalService;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+
+    @Autowired
     public EmailService(JavaMailSender mailSender) {
         this.mailSender = mailSender;
     }
 
-    public void sendEmail(String to, String subject, String text) {
+    private JavaMailSenderImpl createCustomMailSender(JsonNode emailSettings) {
+        JavaMailSenderImpl mailSender = new JavaMailSenderImpl();
+        mailSender.setHost(emailSettings.path(NotificationConstants.HOST).asText());
+        mailSender.setPort(emailSettings.path(NotificationConstants.PORT).asInt(587));
+        mailSender.setUsername(emailSettings.path(NotificationConstants.USERNAME).asText());
+        mailSender.setPassword(emailSettings.path(NotificationConstants.PASSWORD).asText());
+
+        Properties props = mailSender.getJavaMailProperties();
+        props.put("mail.transport.protocol", "smtp");
+        props.put("mail.smtp.auth", "true");
+        props.put("mail.smtp.starttls.enable", "true");
+        props.put("mail.smtp.starttls.required", "true");
+        props.put("mail.debug", "true");
+
+        return mailSender;
+    }
+
+
+    private AbstractMap.SimpleEntry<JavaMailSender, String> getMailSenderConfig(String instituteId) {
+        JavaMailSender mailSenderToUse = mailSender;
+        String fromToUse = from;
+
+        if (StringUtils.hasText(instituteId)) {
+            InstituteInfoDTO institute = internalService.getInstituteByInstituteId(instituteId);
+            try {
+                if (institute != null && institute.getSetting() != null) {
+                    JsonNode settings = objectMapper.readTree(institute.getSetting());
+                    JsonNode utilityEmailSettings = settings
+                            .path(NotificationConstants.SETTING)
+                            .path(NotificationConstants.EMAIL_SETTING)
+                            .path(NotificationConstants.DATA)
+                            .path(NotificationConstants.UTILITY_EMAIL);
+
+                    if (!utilityEmailSettings.isMissingNode()) {
+                        mailSenderToUse = createCustomMailSender(utilityEmailSettings);
+                        fromToUse = utilityEmailSettings.path(NotificationConstants.FROM).asText(from);
+                        logger.info("Using custom SMTP settings for institute: {}", instituteId);
+                    } else {
+                        logger.info("No custom SMTP settings found, using default SMTP");
+                    }
+                }
+            } catch (Exception e) {
+                logger.error("Error parsing institute email settings", e);
+                throw new VacademyException("Error parsing JSON object for email settings");
+            }
+        } else {
+            logger.info("No instituteId provided, using default SMTP");
+        }
+
+        return new AbstractMap.SimpleEntry<>(mailSenderToUse, fromToUse);
+    }
+
+
+    public void sendEmail(String to, String subject, String text, String instituteId) {
         try {
-            emailDispatcher.sendEmail(() -> {
-                SimpleMailMessage message = new SimpleMailMessage();
-                message.setTo(to);
-                message.setFrom(from);
-                message.setSubject(subject);
-                message.setText(text);
-                mailSender.send(message);
-            });
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            e.printStackTrace();
+            AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId);
+            JavaMailSender mailSenderToUse = config.getKey();
+            String fromToUse = config.getValue();
+
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setTo(to);
+            message.setFrom(fromToUse);
+            message.setSubject(subject);
+            message.setText(text);
+
+            mailSenderToUse.send(message);
+            logger.info("Email sent successfully to {} using {}", to,
+                    StringUtils.hasText(instituteId) ? "custom SMTP" : "default SMTP");
+
+        } catch (Exception e) {
+            logger.error("Failed to send email", e);
             throw new RuntimeException(e);
         }
     }
 
-    public void sendEmailOtp(String to, String subject, String service, String name, String otp) {
+    public void sendEmailOtp(String to, String subject, String service, String name, String otp, String instituteId) {
         try {
-            // Ensure subject has a valid value
-            final String emailSubject = StringUtils.hasText(subject) ? subject : "This is a very important email";
+            AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId);
+            JavaMailSender mailSenderToUse = config.getKey();
+            String fromToUse = config.getValue();
 
-            // Create the email body using the provided information
+            final String emailSubject = StringUtils.hasText(subject)
+                    ? subject
+                    : "This is a very important email";
+
+            // Build the HTML body for the OTP email
             final String emailBody = createEmailBody(service, name, otp);
 
-            // Send the email asynchronously using the emailDispatcher
             emailDispatcher.sendEmail(() -> {
                 try {
-                    // Prepare the email session and message
                     Session session = Session.getDefaultInstance(new Properties(), null);
                     MimeMessage message = new MimeMessage(session);
 
-                    // Set the recipient, sender, and subject
                     message.setRecipient(Message.RecipientType.TO, new InternetAddress(to));
-                    message.setFrom(new InternetAddress(from));
+                    message.setFrom(new InternetAddress(fromToUse));
                     message.setSubject(emailSubject);
 
-                    // Attach the HTML body
+                    // Add HTML content
                     MimeMultipart multipart = new MimeMultipart();
                     MimeBodyPart htmlPart = new MimeBodyPart();
                     htmlPart.setContent(emailBody, "text/html; charset=utf-8");
                     multipart.addBodyPart(htmlPart);
+
                     message.setContent(multipart);
 
-                    // Send the email
-                    mailSender.send(message);
+                    logger.info("Sending OTP email to: {}", to);
+                    mailSenderToUse.send(message);
+                    logger.info("OTP email successfully sent to: {}", to);
 
                 } catch (Exception e) {
-                    // Log the exception and rethrow as a RuntimeException
+                    logger.error("Error while sending OTP email", e);
                     throw new RuntimeException("Failed to send OTP email", e);
                 }
             });
+
         } catch (InterruptedException e) {
-            // Handle thread interruption and rethrow exception
             Thread.currentThread().interrupt();
+            logger.error("OTP email sending interrupted due to rate limiting", e);
             throw new RuntimeException("Failed to send OTP email due to rate limiting", e);
         } catch (Exception e) {
-            // Catch any other exceptions that might occur during email sending process
+            logger.error("An error occurred while preparing the OTP email", e);
             throw new RuntimeException("An error occurred while preparing the OTP email", e);
         }
     }
+
 
 
     // Method to create the email body
@@ -173,72 +252,54 @@ public class EmailService {
     }
 
 
-    public void sendHtmlEmail(String to, String subject, String service, String body) {
+    public void sendHtmlEmail(String to, String subject, String service, String body, String instituteId) {
         try {
-            // Log the start of email preparation
-            logger.info("Preparing to send email to: {} with subject: {}", to, subject);
 
-            // Set default subject if none is provided
-            final String emailSubject = StringUtils.hasText(subject) ? subject : "This is a very important email";
-            final String emailBody = body; // The body is already passed, so just ensure it's final if needed
+            AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId);
+            JavaMailSender mailSenderToUse = config.getKey();
+            String fromToUse = config.getValue();
 
-            // Log the email body (excluding sensitive info like personal data)
-            logger.debug("Email body content: {}", emailBody);
+            String emailSubject = StringUtils.hasText(subject) ? subject : "This is a very important email";
 
-            // Send the email asynchronously using the emailDispatcher
             emailDispatcher.sendEmail(() -> {
                 try {
-                    // Prepare the email session and message
-                    logger.info("Setting up email session and message...");
-                    Session session = Session.getDefaultInstance(new Properties(), null);
-                    MimeMessage message = new MimeMessage(session);
-
-                    // Set the recipient, sender, and subject
+                    MimeMessage message = new MimeMessage(Session.getInstance(new Properties()));
                     message.setRecipient(Message.RecipientType.TO, new InternetAddress(to));
-                    message.setFrom(new InternetAddress(from));
+                    message.setFrom(new InternetAddress(fromToUse));
                     message.setSubject(emailSubject);
 
-                    // Attach the HTML body
                     MimeMultipart multipart = new MimeMultipart();
                     MimeBodyPart htmlPart = new MimeBodyPart();
-                    htmlPart.setContent(emailBody, "text/html; charset=utf-8");
+                    htmlPart.setContent(body, "text/html; charset=utf-8");
                     multipart.addBodyPart(htmlPart);
+
                     message.setContent(multipart);
-
-                    // Log before sending the email
-                    logger.info("Sending email to: {}", to);
-                    mailSender.send(message);
-
-                    // Log successful email sending
-                    logger.info("Email successfully sent to: {}", to);
+                    mailSenderToUse.send(message);
 
                 } catch (MessagingException e) {
-                    e.printStackTrace();
-                    // Log the error and rethrow as RuntimeException
-                    logger.error("Error while preparing or sending the email", e);
                     throw new RuntimeException("Failed to send HTML email", e);
                 }
             });
 
         } catch (InterruptedException e) {
-            // Handle thread interruption
-            e.printStackTrace();
             Thread.currentThread().interrupt();
-            logger.error("Email sending interrupted due to rate limiting", e);
             throw new RuntimeException("Failed to send HTML email due to rate limiting", e);
-        } catch (Exception e) {
-            // Log and handle any other exceptions
-            e.printStackTrace();
-            logger.error("An error occurred while preparing the HTML email", e);
-            throw new RuntimeException("An error occurred while preparing the HTML email", e);
         }
     }
 
-    public void sendAttachmentEmail(String to, String subject, String service, String body, Map<String, byte[]> attachments) {
+
+    public void sendAttachmentEmail(String to, String subject, String service, String body,
+                                    Map<String, byte[]> attachments, String instituteId) {
         try {
             logger.info("Preparing to send email to: {} with subject: {}", to, subject);
 
-            final String emailSubject = (subject != null && !subject.isEmpty()) ? subject : "This is a very important email";
+            AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId);
+            JavaMailSender mailSenderToUse = config.getKey();
+            String fromToUse = config.getValue();
+
+            final String emailSubject = StringUtils.hasText(subject)
+                    ? subject
+                    : "This is a very important email";
             final String emailBody = body;
 
             emailDispatcher.sendEmail(() -> {
@@ -248,7 +309,7 @@ public class EmailService {
                     MimeMessage message = new MimeMessage(session);
 
                     message.setRecipient(Message.RecipientType.TO, new InternetAddress(to));
-                    message.setFrom(new InternetAddress(from));
+                    message.setFrom(new InternetAddress(fromToUse));
                     message.setSubject(emailSubject);
 
                     MimeMultipart multipart = new MimeMultipart();
@@ -258,7 +319,7 @@ public class EmailService {
                     htmlPart.setContent(emailBody, "text/html; charset=utf-8");
                     multipart.addBodyPart(htmlPart);
 
-                    // Add attachments by filename
+                    // Add attachments
                     if (attachments != null && !attachments.isEmpty()) {
                         for (Map.Entry<String, byte[]> entry : attachments.entrySet()) {
                             byte[] data = entry.getValue();
@@ -275,7 +336,7 @@ public class EmailService {
                     message.setContent(multipart);
 
                     logger.info("Sending email to: {}", to);
-                    mailSender.send(message);
+                    mailSenderToUse.send(message);
                     logger.info("Email successfully sent to: {}", to);
 
                 } catch (MessagingException e) {
@@ -293,6 +354,5 @@ public class EmailService {
             throw new RuntimeException("An error occurred while preparing the email", e);
         }
     }
-
 
 }

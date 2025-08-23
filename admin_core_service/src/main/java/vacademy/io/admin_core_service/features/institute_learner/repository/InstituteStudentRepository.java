@@ -240,7 +240,9 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 ssigm.status AS "status",
                 up.plan_json AS "paymentPlanJson",
                 up.payment_option_json AS "paymentOptionJson",
-                ssigm.destination_package_session_id AS "destinationPackageSessionId"
+                ssigm.destination_package_session_id AS "destinationPackageSessionId",
+                ssigm.user_plan_id AS "userPlanId",
+                up.enroll_invite_id AS "enrollInviteId"
             FROM student s
             JOIN student_session_institute_group_mapping ssigm
                 ON s.user_id = ssigm.user_id
@@ -253,11 +255,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 ON cfv.source_type = 'STUDENT_SESSION_INSTITUTE_GROUP_MAPPING'
                 AND cfv.source_id = ssigm.id
                 AND cfv.custom_field_id = cf.id
-            LEFT JOIN package_session_learner_invitation_to_payment_option map
-                ON map.package_session_id = ssigm.package_session_id
             LEFT JOIN user_plan up
-                ON up.user_id = s.user_id
-                AND up.enroll_invite_id = map.enroll_invite_id
+                ON up.id = ssigm.user_plan_id
             LEFT JOIN LATERAL (
                 SELECT pl.payment_status
                 FROM payment_log pl
@@ -270,7 +269,6 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm.institute_id IN (:instituteIds))
               AND (:#{#groupIds == null || #groupIds.isEmpty()} = true OR ssigm.group_id IN (:groupIds))
               AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ssigm.package_session_id IN (:packageSessionIds))
-              AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
               AND (:#{#paymentStatuses == null || #paymentStatuses.isEmpty()} = true OR last_pl.payment_status IN (:paymentStatuses))
             GROUP BY s.id, s.username, s.full_name, s.email, s.mobile_number,
                      ssigm.package_session_id, ssigm.enrolled_date, ssigm.expiry_date,
@@ -279,17 +277,14 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                      s.parents_mobile_number, s.parents_email, s.linked_institute_name,
                      s.created_at, s.updated_at, s.face_file_id, s.parents_to_mother_mobile_number,
                      s.parents_to_mother_email, ssigm.institute_enrollment_number,
-                     ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id
+                     ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id
             """, countQuery = """
             SELECT COUNT(DISTINCT s.id)
             FROM student s
             JOIN student_session_institute_group_mapping ssigm
                 ON s.user_id = ssigm.user_id
-            LEFT JOIN package_session_learner_invitation_to_payment_option map
-                ON map.package_session_id = ssigm.package_session_id
             LEFT JOIN user_plan up
-                ON up.user_id = s.user_id
-                AND up.enroll_invite_id = map.enroll_invite_id
+                ON up.id = ssigm.user_plan_id
             LEFT JOIN LATERAL (
                 SELECT pl.payment_status
                 FROM payment_log pl
@@ -310,7 +305,6 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             @Param("instituteIds") List<String> instituteIds,
             @Param("groupIds") List<String> groupIds,
             @Param("packageSessionIds") List<String> packageSessionIds,
-            @Param("destinationPackageSessionIds") List<String> destinationPackageSessionIds,
             @Param("paymentStatuses") List<String> paymentStatuses,
             @Param("customFieldStatus") List<String> customFieldStatus,
             Pageable pageable);
@@ -359,7 +353,9 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 ssigm.status AS "status",
                 up.plan_json AS "paymentPlanJson",
                 up.payment_option_json AS "paymentOptionJson",
-                ssigm.destination_package_session_id AS "destinationPackageSessionId"
+                ssigm.destination_package_session_id AS "destinationPackageSessionId",
+                ssigm.user_plan_id AS "userPlanId",
+                up.enroll_invite_id AS "enrollInviteId"
             FROM student s
             JOIN student_session_institute_group_mapping ssigm
                 ON s.user_id = ssigm.user_id
@@ -372,11 +368,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 ON cfv.source_type = 'STUDENT_SESSION_INSTITUTE_GROUP_MAPPING'
                 AND cfv.source_id = ssigm.id
                 AND cfv.custom_field_id = cf.id
-            LEFT JOIN package_session_learner_invitation_to_payment_option map
-                ON map.package_session_id = ssigm.package_session_id
             LEFT JOIN user_plan up
-                ON up.user_id = s.user_id
-                AND up.enroll_invite_id = map.enroll_invite_id
+                ON up.id = ssigm.user_plan_id
             LEFT JOIN LATERAL (
                 SELECT pl.payment_status
                 FROM payment_log pl
@@ -394,7 +387,6 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             )
               AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))
               AND (:statuses IS NULL OR ssigm.status IN (:statuses))
-              AND (:destinationPackageSessionIds IS NULL OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
               AND (:paymentStatuses IS NULL OR last_pl.payment_status IN (:paymentStatuses))
             GROUP BY s.id, s.username, s.full_name, s.email, s.mobile_number,
                      ssigm.package_session_id, ssigm.enrolled_date, ssigm.expiry_date,
@@ -403,17 +395,14 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                      s.parents_mobile_number, s.parents_email, s.linked_institute_name,
                      s.created_at, s.updated_at, s.face_file_id, s.parents_to_mother_mobile_number,
                      s.parents_to_mother_email, ssigm.institute_enrollment_number,
-                     ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id
+                     ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id
             """, countQuery = """
             SELECT COUNT(DISTINCT s.id)
             FROM student s
             JOIN student_session_institute_group_mapping ssigm
                 ON s.user_id = ssigm.user_id
-            LEFT JOIN package_session_learner_invitation_to_payment_option map
-                ON map.package_session_id = ssigm.package_session_id
             LEFT JOIN user_plan up
-                ON up.user_id = s.user_id
-                AND up.enroll_invite_id = map.enroll_invite_id
+                ON up.id = ssigm.user_plan_id
             LEFT JOIN LATERAL (
                 SELECT pl.payment_status
                 FROM payment_log pl
@@ -437,7 +426,6 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             @Param("name") String name,
             @Param("instituteIds") List<String> instituteIds,
             @Param("statuses") List<String> statuses,
-            @Param("destinationPackageSessionIds") List<String> destinationPackageSessionIds,
             @Param("paymentStatuses") List<String> paymentStatuses,
             @Param("customFieldStatus") List<String> customFieldStatus,
             Pageable pageable);

@@ -76,17 +76,11 @@ public class AttendanceReportService {
             String attendanceStatus = projection.getAttendanceStatus();
             dto.setAttendanceStatus(attendanceStatus);
 
-            if ("PRESENT".equalsIgnoreCase(attendanceStatus)) {
-                presentCount++;
-            }
 
             scheduleDetails.add(dto);
         }
 
-        double attendancePercentage = projections.isEmpty()
-                ? 0.0
-                : ((double) presentCount / projections.size()) * 100.0;
-
+        double attendancePercentage = liveSessionParticipantRepository.getAttendancePercentage(batchId,userId,start,end);
         StudentAttendanceReportDTO report = new StudentAttendanceReportDTO();
         report.setUserId(userId);
         report.setAttendancePercentage(attendancePercentage);
@@ -128,7 +122,9 @@ public class AttendanceReportService {
             return new PageImpl<>(Collections.emptyList(), pageable, 0);
         }
         List<AttendanceReportProjection> attendanceRecords = liveSessionParticipantRepository.getAttendanceReportForStudentIds(
-                studentIdsPage.getContent()
+                studentIdsPage.getContent(),
+                filter.getStartDate(),
+                filter.getEndDate()
         );
         Map<String, StudentAttendanceDTO> groupedData = new LinkedHashMap<>();
         for (AttendanceReportProjection record : attendanceRecords) {
@@ -212,9 +208,9 @@ public class AttendanceReportService {
         public static AttendanceReportDTO convertGuestToAttendanceReport(GuestAttendanceDTO guestDto) {
             return AttendanceReportDTOImpl.builder()
                     .studentId(null)
-                    .fullName(guestDto.getGuestEmail())
+                    .fullName(guestDto.getGuestName())
                     .email(guestDto.getGuestEmail())
-                    .mobileNumber(null)
+                    .mobileNumber(guestDto.getMobileNumber())
                     .gender(null)
                     .dateOfBirth(null)
                     .instituteEnrollmentNumber(null)

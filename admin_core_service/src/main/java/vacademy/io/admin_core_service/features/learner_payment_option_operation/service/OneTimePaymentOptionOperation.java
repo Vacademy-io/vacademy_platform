@@ -52,7 +52,8 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
                 instituteId,
                 learnerPackageSessionsEnrollDTO.getPackageSessionIds(),
                 enrollInvite.getLearnerAccessDays(),
-                learnerSessionStatus
+                learnerSessionStatus,
+                userPlan
         );
 
         // Create or update user
@@ -93,7 +94,7 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
 
     private List<InstituteStudentDetails> buildInstituteStudentDetails(String instituteId,
                                                                        List<String> packageSessionIds,
-                                                                       Integer accessDays,String learnerSessionStatus) {
+                                                                       Integer accessDays,String learnerSessionStatus,UserPlan userPlan) {
         List<InstituteStudentDetails> detailsList = new ArrayList<>();
 
         for (String packageSessionId : packageSessionIds) {
@@ -118,7 +119,8 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
                     new Date(),
                     null,
                     accessDays != null ? accessDays.toString() : null,
-                    packageSessionId
+                    packageSessionId,
+                    userPlan.getId()
             );
             detailsList.add(detail);
         }

@@ -201,6 +201,8 @@ public class StudentRegistrationManager {
                     mapping.setInstituteEnrolledNumber(studentSessionInstituteGroupMappingOptional.get().getInstituteEnrolledNumber());
                 }
 
+                mapping.setUserPlanId(instituteStudentDetails.getUserPlanId());
+
                 if (instituteStudentDetails.getAccessDays() != null) {
                     mapping.setExpiryDate(
                             makeExpiryDate(
@@ -226,7 +228,8 @@ public class StudentRegistrationManager {
                                 instituteStudentDetails.getAccessDays()
                         ),
                         instituteStudentDetails.getPackageSessionId(),
-                        instituteStudentDetails.getDestinationPackageSessionId()
+                        instituteStudentDetails.getDestinationPackageSessionId(),
+                        instituteStudentDetails.getUserPlanId()
                 );
                 return studentSessionId.toString();
             }
@@ -286,7 +289,8 @@ public class StudentRegistrationManager {
                         studentSessionInstituteGroupMapping.getInstitute().getId(),
                         studentSessionInstituteGroupMapping.getExpiryDate(),
                         destinationPackageSession,
-                        null
+                        null,
+                        studentSessionInstituteGroupMapping.getUserPlanId()
                 );
                 studentSessionInstituteGroupMapping.setStatus(LearnerSessionStatusEnum.DELETED.name());
                 studentSessionRepository.save(studentSessionInstituteGroupMapping);

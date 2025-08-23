@@ -92,8 +92,8 @@ public class LearnerEnrollRequestService {
             service.sendUniqueLinkByWhatsApp(instituteId, user,TemplateConstants.PAID_USER_WHATSAPP_TEMPLATE);
         } else {
             //Free User
-            service.sendUniqueLinkByEmail(instituteId, user,TemplateConstants.PAID_USER_EMAIL_TEMPLATE);
-            service.sendUniqueLinkByWhatsApp(instituteId, user,TemplateConstants.PAID_USER_WHATSAPP_TEMPLATE);
+            service.sendUniqueLinkByEmail(instituteId, user,TemplateConstants.FREE_USER_EMAIL_TEMPLATE);
+            service.sendUniqueLinkByWhatsApp(instituteId, user,TemplateConstants.FREE_USER_WHATSAPP_TEMPLATE);
         }
     }
 

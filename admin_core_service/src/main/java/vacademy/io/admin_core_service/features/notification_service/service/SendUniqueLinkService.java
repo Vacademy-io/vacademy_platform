@@ -50,8 +50,8 @@ public class SendUniqueLinkService {
         Institute institute=service.findById(instituteId);
         if(institute!=null) {
             String leanerDashBoardUrl=templateReader.getLearnerDashBoardUrl(institute.getSetting());
-            templateReader.sendWhatsAppMessage(institute.getSetting(),user,leanerDashBoardUrl+ user.getUsername(),instituteId,templateType);
+            if(leanerDashBoardUrl!=null)
+              templateReader.sendWhatsAppMessage(institute.getSetting(),user,leanerDashBoardUrl+ user.getUsername(),instituteId,templateType);
         }
-
     }
 }

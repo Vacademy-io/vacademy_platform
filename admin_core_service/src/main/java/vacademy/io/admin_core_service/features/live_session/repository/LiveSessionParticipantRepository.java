@@ -185,10 +185,13 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         AND lsl.schedule_id = ss.id
         AND lsl.log_type = 'ATTENDANCE_RECORDED'
     WHERE s.user_id IN (:studentIds)
+    AND ss.meeting_date BETWEEN :startDate AND :endDate
     ORDER BY LOWER(s.full_name), ss.meeting_date
 """,nativeQuery = true)
     List<AttendanceReportProjection> getAttendanceReportForStudentIds(
-            @Param("studentIds") List<String> studentIds
+            @Param("studentIds") List<String> studentIds,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
     );
 
     @Query(value = """

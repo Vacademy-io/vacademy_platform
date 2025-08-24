@@ -1,13 +1,13 @@
-import { Storage } from "@capacitor/storage";
+import { Preferences } from "@capacitor/preferences";
 import { TokenKey } from "@/constants/auth/tokens";
 import axios from "axios";
 import { isTokenExpired } from "./sessionUtility"; // Utility for JWT expiration checks
 import { REFRESH_TOKEN_URL } from "@/constants/urls";
 
-// Helper functions to interact with Capacitor Storage
+// Helper functions to interact with Capacitor Preferences
 export const getTokenFromStorage = async (key: string): Promise<string | null> => {
   try {
-    const { value } = await Storage.get({ key });
+    const { value } = await Preferences.get({ key });
     console.log(`[Auth] Retrieved ${key} from storage:`, value ? `${value.substring(0, 20)}...` : 'null');
     return value;
   } catch (error) {
@@ -17,9 +17,9 @@ export const getTokenFromStorage = async (key: string): Promise<string | null> =
 };
 
 const removeTokensAndInstituteId = async () => {
-  await Storage.remove({ key: TokenKey.accessToken });
-  await Storage.remove({ key: TokenKey.refreshToken });
-  await Storage.remove({ key: "instituteId" });
+  await Preferences.remove({ key: TokenKey.accessToken });
+  await Preferences.remove({ key: TokenKey.refreshToken });
+  await Preferences.remove({ key: "instituteId" });
 };
 
 const refreshTokens = async (refreshToken: string): Promise<void> => {
@@ -32,9 +32,9 @@ const refreshTokens = async (refreshToken: string): Promise<void> => {
     } = response.data;
 
     // Store the new tokens and institute ID
-    await Storage.set({ key: TokenKey.accessToken, value: accessToken });
-    await Storage.set({ key: TokenKey.refreshToken, value: newRefreshToken });
-    await Storage.set({ key: "instituteId", value: instituteId });
+    await Preferences.set({ key: TokenKey.accessToken, value: accessToken });
+    await Preferences.set({ key: TokenKey.refreshToken, value: newRefreshToken });
+    await Preferences.set({ key: "instituteId", value: instituteId });
   } catch (error) {
     console.error("Error refreshing token", error);
     throw error;

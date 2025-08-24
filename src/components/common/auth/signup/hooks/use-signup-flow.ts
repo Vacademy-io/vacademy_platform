@@ -6,7 +6,6 @@ import {
   getInstituteDetails, 
   parseInstituteSettings,
   parseSignupSettings,
-  handlePostSignupAuth,
   type InstituteSearchResult,
   type InstituteDetails,
   type InstituteSettings,

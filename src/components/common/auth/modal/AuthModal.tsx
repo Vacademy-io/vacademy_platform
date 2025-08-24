@@ -480,6 +480,7 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
                             key={`login-${currentMode}-${instituteIdFromStorage}`}
                             instituteId={instituteIdFromStorage || ""}
                             settings={loginSettings}
+                            signupSettings={getSignupSettings()}
                             type={getCurrentRouteContext().type} 
                             courseId={getCurrentRouteContext().courseId}
                             onSwitchToSignup={handleSwitchToSignup}

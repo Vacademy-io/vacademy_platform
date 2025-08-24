@@ -10,10 +10,12 @@ import { GitHubLogoIcon } from "@radix-ui/react-icons";
 import { ModalEmailLogin } from "../../forms/modal/ModalEmailOtpForm";
 import { ModalUsernameLogin } from "../../forms/modal/ModalUsernamePasswordForm";
 import { LoginSettings } from "@/config/login/defaultLoginSettings";
+import { SignupSettings } from "@/config/signup/defaultSignupSettings";
 
 interface ModularDynamicLoginContainerProps {
   instituteId?: string;
   settings?: LoginSettings | null;
+  signupSettings?: SignupSettings | null;
   type?: string;
   courseId?: string;
   onSwitchToSignup?: () => void;
@@ -25,6 +27,7 @@ interface ModularDynamicLoginContainerProps {
 export function ModularDynamicLoginContainer({
   instituteId,
   settings,
+  signupSettings,
   type,
   courseId,
   onSwitchToSignup,
@@ -52,6 +55,12 @@ export function ModularDynamicLoginContainer({
   const enabledProviders = Object.entries(effectiveSettings.providers)
     .filter(([key, value]) => key !== "defaultProvider" && value === true)
     .map(([key]) => key);
+
+  // Check if signup is available
+  const isSignupAvailable = signupSettings && 
+    Object.entries(signupSettings.providers)
+      .filter(([key, value]) => key !== "defaultProvider" && value === true)
+      .length > 0;
 
   // Determine initial provider based on defaultProvider
   const defaultProvider = effectiveSettings.providers.defaultProvider;
@@ -331,6 +340,7 @@ export function ModularDynamicLoginContainer({
                   onSwitchToSignup={onSwitchToSignup}
                   onLoginSuccess={onLoginSuccess}
                   showUsernameSwitch={false} // Disable built-in switching since we handle it in container
+                  signupAvailable={isSignupAvailable}
                 />
               ) : currentProvider === "usernamePassword" && effectiveSettings.providers.usernamePassword ? (
                 <ModalUsernameLogin
@@ -341,6 +351,7 @@ export function ModularDynamicLoginContainer({
                   onSwitchToForgotPassword={onSwitchToForgotPassword}
                   onLoginSuccess={onLoginSuccess}
                   showEmailSwitch={false} // Disable built-in switching since we handle it in container
+                  signupAvailable={isSignupAvailable}
                 />
               ) : null}
 
@@ -382,24 +393,26 @@ export function ModularDynamicLoginContainer({
         </motion.div>
       )}
 
-      {/* Signup Link - Always show regardless of providers */}
-      <motion.div
-        initial={{ y: 10, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 1.2 }}
-        className="text-center mt-6"
-      >
-        <p className="text-xs text-gray-600">
-          Don't have an account?{" "}
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            onClick={onSwitchToSignup}
-            className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
-          >
-            Sign up here
-          </motion.button>
-        </p>
-      </motion.div>
+      {/* Signup Link - Only show if signup is available */}
+      {isSignupAvailable && onSwitchToSignup && (
+        <motion.div
+          initial={{ y: 10, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 1.2 }}
+          className="text-center mt-6"
+        >
+          <p className="text-xs text-gray-600">
+            Don't have an account?{" "}
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              onClick={onSwitchToSignup}
+              className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
+            >
+              Sign up here
+            </motion.button>
+          </p>
+        </motion.div>
+      )}
 
       {/* Security Notice */}
       <motion.div

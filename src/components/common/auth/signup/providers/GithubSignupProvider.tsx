@@ -24,6 +24,8 @@ interface GithubProfile {
   email?: string;
   emailPublic?: boolean;
   emailVerified?: boolean;
+  id?: string; // GitHub user ID
+  login?: string; // GitHub username
 }
 
 interface CredentialsFormData {
@@ -168,6 +170,8 @@ export function GithubSignupProvider({
         full_name: profile.name,
         instituteId,
         settings, // Pass settings for credential generation
+        subject_id: profile.id?.toString() || profile.login, // GitHub user ID or username as subject_id
+        vendor_id: "github", // OAuth provider
       });
 
       console.log('[GithubSignupProvider] Direct registration completed successfully');
@@ -194,6 +198,8 @@ export function GithubSignupProvider({
         password: data.password,
         instituteId,
         settings, // Pass settings for credential generation
+        subject_id: githubProfile.id?.toString() || githubProfile.login, // GitHub user ID or username as subject_id
+        vendor_id: "github", // OAuth provider
       });
 
       console.log('[GithubSignupProvider] Registration with credentials completed successfully');

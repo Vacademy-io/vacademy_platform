@@ -43,6 +43,16 @@ const otpSchema = z.object({
 type EmailFormValues = z.infer<typeof emailSchema>;
 type OtpFormValues = { otp: string[] };
 
+interface ModalEmailOtpFormProps {
+  onSwitchToUsername?: () => void;
+  type?: string;
+  courseId?: string;
+  onSwitchToSignup?: () => void;
+  onLoginSuccess?: () => void;
+  showUsernameSwitch?: boolean;
+  signupAvailable?: boolean; // Add this prop to check if signup is available
+}
+
 export function ModalEmailLogin({
     onSwitchToUsername,
     type,
@@ -51,15 +61,8 @@ export function ModalEmailLogin({
     onEmailVerificationSuccess,
     onLoginSuccess,
     showUsernameSwitch = true,
-}: {
-    onSwitchToUsername: () => void;
-    type?: string;
-    courseId?: string;
-    onSwitchToSignup?: () => void;
-    onEmailVerificationSuccess?: (email: string) => void;
-    onLoginSuccess?: () => void;
-    showUsernameSwitch?: boolean;
-}) {
+    signupAvailable,
+}: ModalEmailOtpFormProps) {
     // Extract instituteId from current URL
     const urlParams = new URLSearchParams(window.location.search);
     const instituteId = urlParams.get("instituteId");
@@ -129,18 +132,24 @@ export function ModalEmailLogin({
             const errorData = error.response?.data;
             
             if (errorData?.ex === "User not found!" || errorData?.responseCode === "User not found!") {
-                // User doesn't exist - show signup message
-                toast.error("Account not found. Please sign up to continue.", {
-                    duration: 5000,
-                    description: "This email is not registered in our system."
-                });
-                
-                // Automatically switch to signup after a short delay
-                setTimeout(() => {
-                    if (onSwitchToSignup) {
+                // User doesn't exist - show signup message only if signup is available
+                if (signupAvailable && onSwitchToSignup) {
+                    toast.error("Account not found. Please sign up to continue.", {
+                        duration: 5000,
+                        description: "This email is not registered in our system."
+                    });
+                    
+                    // Automatically switch to signup after a short delay
+                    setTimeout(() => {
                         onSwitchToSignup();
-                    }
-                }, 2000);
+                    }, 2000);
+                } else {
+                    // Signup not available - show different message
+                    toast.error("Account not found.", {
+                        duration: 5000,
+                        description: "This email is not registered in our system. Please contact your administrator for access."
+                    });
+                }
             } else if (errorData?.ex || errorData?.responseCode) {
                 // Show specific backend error message
                 toast.error(errorData.ex || errorData.responseCode || "Failed to send OTP", {

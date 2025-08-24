@@ -35,6 +35,7 @@ interface ModalUsernameLoginProps {
     type?: string;
     courseId?: string;
     onLoginSuccess?: () => void;
+    signupAvailable?: boolean; // Add this prop to check if signup is available
 }
 
 export function ModalUsernameLogin({
@@ -45,10 +46,12 @@ export function ModalUsernameLogin({
     onSwitchToForgotPassword,
     onLoginSuccess,
     showEmailSwitch = true,
+    signupAvailable,
 }: ModalUsernameLoginProps & {
     onSwitchToSignup?: () => void;
     onSwitchToForgotPassword?: () => void;
     showEmailSwitch?: boolean;
+    signupAvailable?: boolean;
 }) {
     // Extract instituteId from current URL
     const urlParams = new URLSearchParams(window.location.search);

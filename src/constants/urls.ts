@@ -94,6 +94,9 @@ export const GET_DOUBTS = `${BASE_URL}/admin-core-service/institute/v1/doubts/ge
 export const GET_USER_BASIC_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get-basic-details`;
 export const GET_USER_ROLES_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get`;
 
+// User enrollment check API endpoint (expects POST request with empty body)
+export const GET_USER_DETAILS_BY_EMAIL = `${BASE_URL}/auth-service/open/user-details/by-email`;
+
 // New signup API endpoint
 export const REGISTER_USER = `${BASE_URL}/auth-service/learner/v1/register`;
 

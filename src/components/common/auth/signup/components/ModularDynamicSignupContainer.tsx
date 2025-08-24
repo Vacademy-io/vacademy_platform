@@ -115,9 +115,38 @@ export function ModularDynamicSignupContainer({
     .filter(([key, value]) => key !== "defaultProvider" && value === true)
     .map(([key]) => key);
 
-  // Always show provider selection step, even if only one provider is enabled
-  const shouldShowProviderSelection = enabledProviders.length > 0;
+  // Check if any providers are enabled
+  const hasEnabledProviders = enabledProviders.length > 0;
 
+  // Always show provider selection step, even if only one provider is enabled
+  const shouldShowProviderSelection = hasEnabledProviders;
+
+  // If no providers are enabled, show a message that signup is not available
+  if (!hasEnabledProviders) {
+    return (
+      <div className={`flex items-center justify-center p-8 ${className}`}>
+        <div className="text-center">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Signup Not Available</h3>
+          <p className="text-gray-600 mb-4">
+            Signup is currently disabled for this institute. Please contact your administrator to enable signup options.
+          </p>
+          {onBackToProviders && (
+            <button
+              onClick={onBackToProviders}
+              className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded-md transition-colors"
+            >
+              Go Back
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
 
   const handleOAuthSignUp = (provider: "google" | "github") => {
@@ -328,7 +357,8 @@ export function ModularDynamicSignupContainer({
       console.log('[OAuth] Using OAuth data:', {
         email: signupData.email,
         name: signupData.name,
-        provider: signupData.provider
+        provider: signupData.provider,
+        sub: signupData.sub
       });
       
       // Use unified registration hook for OAuth signups with settings
@@ -338,6 +368,8 @@ export function ModularDynamicSignupContainer({
         full_name: signupData.name, // This should already be the full name from OAuth
         instituteId: instituteId!,
         settings: effectiveSettings, // Pass settings for credential generation
+        subject_id: signupData.sub, // OAuth subject ID (e.g., Google sub)
+        vendor_id: signupData.provider, // OAuth provider (e.g., "google", "github")
       });
 
       console.log('[OAuth] Direct registration completed successfully');
@@ -656,6 +688,11 @@ export function ModularDynamicSignupContainer({
                     password: data.password,
                     instituteId: instituteId!,
                     settings: effectiveSettings, // Pass settings for credential generation
+                    // Include OAuth fields if this is an OAuth flow
+                    ...(selectedProvider === "oauth" && oauthData?.signupData && {
+                      subject_id: oauthData.signupData.sub, // OAuth subject ID
+                      vendor_id: oauthData.signupData.provider, // OAuth provider
+                    }),
                   });
                   
                   console.log('[Credentials] Registration completed successfully');

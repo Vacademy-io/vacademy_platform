@@ -20,20 +20,57 @@ export const mapSignupSettings = (
   apiSettings?: InstituteSignupSettings | null
 ): SignupSettings => {
   if (!apiSettings) {
+    console.log('[mapSignupSettings] No API settings provided - using defaults');
     return defaultSignupSettings;
   }
 
   console.log('[mapSignupSettings] Backend settings received:', apiSettings);
 
-  // Merge providers with defaults, handling backend property name differences
-  // Note: Signup never includes usernamePassword provider - only emailOtp
-  const mergedProviders = {
-    ...defaultSignupSettings.providers,
-    ...apiSettings.providers,
-    // For signup: use emailOtp directly, or fallback to usernamePassword if emailOtp not provided
-    // This ensures emailOtp: true is respected when backend sends it
-    emailOtp: apiSettings.providers?.emailOtp ?? apiSettings.providers?.usernamePassword ?? defaultSignupSettings.providers.emailOtp,
-  };
+  // Check if backend has any provider settings at all
+  const hasAnyProviderSettings = apiSettings.providers && 
+    (apiSettings.providers.google !== undefined || 
+     apiSettings.providers.github !== undefined || 
+     apiSettings.providers.emailOtp !== undefined ||
+     apiSettings.providers.usernamePassword !== undefined);
+
+  // Check if backend explicitly disables ALL providers (intentional signup disable)
+  const hasExplicitDisableAll = apiSettings.providers && 
+    apiSettings.providers.google === false && 
+    apiSettings.providers.github === false && 
+    apiSettings.providers.emailOtp === false &&
+    apiSettings.providers.usernamePassword === false;
+
+  let mergedProviders: SignupSettings["providers"];
+
+  if (hasExplicitDisableAll) {
+    // Backend explicitly disabled ALL providers - respect this completely
+    console.log('[mapSignupSettings] Backend explicitly disabled all signup providers');
+    mergedProviders = {
+      google: false,
+      github: false,
+      emailOtp: false,
+      defaultProvider: "emailOtp",
+    };
+  } else if (hasAnyProviderSettings) {
+    // Backend has some provider settings - merge with defaults intelligently
+    console.log('[mapSignupSettings] Backend has partial provider settings - merging with defaults');
+    mergedProviders = {
+      ...defaultSignupSettings.providers, // Start with defaults
+      ...apiSettings.providers, // Override with any explicit backend values
+      // Handle emailOtp/usernamePassword mapping
+      emailOtp: apiSettings.providers?.emailOtp ?? 
+                apiSettings.providers?.usernamePassword ?? 
+                defaultSignupSettings.providers.emailOtp,
+    };
+  } else {
+    // Backend has no provider settings at all - use defaults completely
+    console.log('[mapSignupSettings] No backend provider settings - using defaults completely');
+    mergedProviders = {
+      ...defaultSignupSettings.providers,
+    };
+  }
+
+  console.log('[mapSignupSettings] Merged provider settings:', mergedProviders);
 
   // Ensure all provider flags are boolean
   Object.keys(mergedProviders).forEach((key) => {
@@ -43,15 +80,40 @@ export const mapSignupSettings = (
     }
   });
 
-  // Validate defaultProvider is one of the enabled providers
-  if (mergedProviders.defaultProvider) {
-    const enabledProviders = Object.entries(mergedProviders)
-      .filter(([key, value]) => key !== "defaultProvider" && value === true)
-      .map(([key]) => key);
+  // Check if any providers are enabled
+  const enabledProviders = Object.entries(mergedProviders)
+    .filter(([key, value]) => key !== "defaultProvider" && value === true)
+    .map(([key]) => key);
 
-    if (enabledProviders.length > 0 && !enabledProviders.includes(mergedProviders.defaultProvider)) {
+  console.log('[mapSignupSettings] Enabled providers:', enabledProviders);
+
+  // If no providers are enabled, this means signup is disabled
+  if (enabledProviders.length === 0) {
+    console.warn('[mapSignupSettings] All signup providers are disabled - signup will not be available');
+    
+    // Return settings with all providers disabled
+    return {
+      providers: {
+        google: false,
+        github: false,
+        emailOtp: false,
+        defaultProvider: "emailOtp",
+      },
+      googleSignupMode: "askCredentials",
+      githubSignupMode: "askCredentials",
+      emailOtpSignupMode: "askCredentials",
+      usernameStrategy: "manual",
+      passwordStrategy: "manual",
+      passwordDelivery: "none",
+    };
+  }
+
+  // Validate defaultProvider is one of the enabled providers
+  if (mergedProviders.defaultProvider && enabledProviders.length > 0) {
+    if (!enabledProviders.includes(mergedProviders.defaultProvider)) {
       // If default provider is not enabled, use the first enabled provider
       mergedProviders.defaultProvider = enabledProviders[0] as SignupSettings["providers"]["defaultProvider"];
+      console.log('[mapSignupSettings] Updated defaultProvider to:', mergedProviders.defaultProvider);
     }
   }
 
@@ -85,7 +147,7 @@ export const mapSignupSettings = (
     passwordDelivery: apiSettings.passwordDelivery || defaultSignupSettings.passwordDelivery,
   };
 
-  console.log('[mapSignupSettings] Mapped settings:', result);
+  console.log('[mapSignupSettings] Final mapped settings:', result);
 
   return result;
 };

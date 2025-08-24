@@ -109,6 +109,8 @@ export function GoogleSignupProvider({
         full_name: profile.name,
         instituteId,
         settings, // Pass settings for credential generation
+        subject_id: profile.sub, // OAuth subject ID (Google sub)
+        vendor_id: "google", // OAuth provider
       });
 
       console.log('[GoogleSignupProvider] Direct registration completed successfully');
@@ -136,6 +138,8 @@ export function GoogleSignupProvider({
         password: data.password,
         instituteId,
         settings, // Pass settings for credential generation
+        subject_id: googleProfile.sub, // OAuth subject ID (Google sub)
+        vendor_id: "google", // OAuth provider
       });
 
       console.log('[GoogleSignupProvider] Registration with credentials completed successfully');

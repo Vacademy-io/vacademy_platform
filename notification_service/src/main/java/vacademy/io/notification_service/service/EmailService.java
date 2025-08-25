@@ -53,14 +53,14 @@ public class EmailService {
     private JavaMailSenderImpl createCustomMailSender(JsonNode emailSettings) {
         JavaMailSenderImpl mailSender = new JavaMailSenderImpl();
         mailSender.setHost(emailSettings.path(NotificationConstants.HOST).asText());
-        mailSender.setPort(emailSettings.path(NotificationConstants.PORT).asInt(587));
+        mailSender.setPort(emailSettings.path(NotificationConstants.PORT).asInt(465));
         mailSender.setUsername(emailSettings.path(NotificationConstants.USERNAME).asText());
         mailSender.setPassword(emailSettings.path(NotificationConstants.PASSWORD).asText());
 
         Properties props = mailSender.getJavaMailProperties();
         props.put("mail.transport.protocol", "smtp");
-        props.put("mail.smtp.auth", "true");
-        props.put("mail.smtp.starttls.enable", "true");
+        props.put("mail.smtp.auth", Boolean.toString(true));
+        props.put("mail.smtp.ssl.enable", "true");
         props.put("mail.debug", "true");
 
         return mailSender;

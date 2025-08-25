@@ -413,7 +413,8 @@ export const CourseDetailsPage = () => {
         const tryGenerateCertificate = async () => {
             try {
                 const settings = await getStudentDisplaySettings(false);
-                const threshold = 0;
+                const threshold =
+                    settings.certificates?.generationThresholdPercent ?? 80;
                 // percent can come from query param (carried over from list) or course data
                 const pctFromQuery = ((): number | undefined => {
                     const raw =
@@ -991,7 +992,7 @@ export const CourseDetailsPage = () => {
             });
     }, []);
 
-    const hasRightSidebar = true;
+    const hasRightSidebar = overviewVisible;
 
     // Function to update module statistics for depth 5 courses
     const updateModuleStats = (
@@ -1468,7 +1469,7 @@ export const CourseDetailsPage = () => {
                 </Dialog>
                 {/* Video Player for non-lg screens (always visible if course has media) */}
                 {form.watch("courseData").courseMediaId && (
-                    <div className="lg:hidden relative z-10 max-w-[350px] px-0 py-3">
+                    <div className="lg:hidden relative z-10 max-w-[350px] px-2 sm:px-3 py-3">
                         <div className="bg-white border border-gray-200 rounded-md shadow-sm p-2 sm:p-3">
                             <VideoPlayer
                                 src={form.watch("courseData").courseMediaId}
@@ -1478,10 +1479,14 @@ export const CourseDetailsPage = () => {
                 )}
 
                 {/* Main Content Container */}
-                <div className="relative z-10 w-full px-0 py-3 lg:py-4">
-                    <div className={`grid grid-cols-1 ${hasRightSidebar ? "lg:grid-cols-3" : ""} gap-3 lg:gap-4`}>
+                <div className="relative z-10 max-w-7xl mx-auto px-2 sm:px-3 lg:px-4 py-3 lg:py-4">
+                    <div
+                        className={`grid grid-cols-1 ${hasRightSidebar ? "lg:grid-cols-4" : ""} gap-3 lg:gap-4`}
+                    >
                         {/* Left Column - Course Content (3/4) */}
-                        <div className={`${hasRightSidebar ? "lg:col-span-2" : ""} space-y-3 lg:space-y-4`}>
+                        <div
+                            className={`${hasRightSidebar ? "lg:col-span-3" : ""} space-y-3 lg:space-y-4`}
+                        >
                             {/* Certificate Card (separate from Course Configuration) */}
                             {certificateUrl && (
                                 <div
@@ -2025,7 +2030,7 @@ export const CourseDetailsPage = () => {
                         {hasRightSidebar && (
                             <div className="lg:col-span-1">
                                 <div className="sticky top-4 space-y-4">
-                                    { 
+                                    {overviewVisible && (
                                         <div
                                             className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
                                             style={{ animationDelay: "0.7s" }}
@@ -2124,7 +2129,7 @@ export const CourseDetailsPage = () => {
                                                         </div>
                                                     ) : (
                                                         <div className="space-y-2">
-                                                            {overviewVisible && processedSlideCounts.map(
+                                                            {processedSlideCounts.map(
                                                                 (count: {
                                                                     source_type: string;
                                                                     slide_count: number;
@@ -2156,7 +2161,7 @@ export const CourseDetailsPage = () => {
                                                             )}
 
                                                             {/* Module Statistics */}
-                                                            { overviewVisible && ((() => {
+                                                            {(() => {
                                                                 const currentSubjects =
                                                                     getSubjectDetails(
                                                                         form.getValues(),
@@ -2252,7 +2257,7 @@ export const CourseDetailsPage = () => {
                                                                             )}
                                                                     </>
                                                                 );
-                                                            })())}
+                                                            })()}
 
                                                             {/* Instructors Count */}
                                                             {form.getValues(
@@ -2342,33 +2347,57 @@ export const CourseDetailsPage = () => {
                                                     })()}
                                             </div>
                                         </div>
-                                    }
-
-                           
-
-                                    {/* Ratings & Reviews */}
-                                    {packageSessionIdForCurrentLevel && (
-                                        <div
-                                            className="animate-fade-in-up"
-                                            style={{ animationDelay: "1.0s" }}
-                                        >
-                                            <CourseDetailsRatingsComponent
-                                                packageSessionId={
-                                                    packageSessionIdForCurrentLevel
-                                                }
-                                                onLoadingChange={
-                                                    handleRatingsLoadingChange
-                                                }
-                                            />
-                                        </div>
                                     )}
+
+                                    {/* Enrollment card within sidebar (when visible) */}
+                                    {hasRightSidebar &&
+                                        selectedTab === "ALL" &&
+                                        (() => {
+                                            if (
+                                                !selectedSession ||
+                                                !selectedLevel
+                                            )
+                                                return null;
+                                            const isAlreadyEnrolled =
+                                                enrolledSessions.some(
+                                                    (enrolledSession) =>
+                                                        enrolledSession
+                                                            .package_dto.id ===
+                                                            searchParams.courseId &&
+                                                        enrolledSession.session
+                                                            .id ===
+                                                            selectedSession &&
+                                                        enrolledSession.level
+                                                            .id ===
+                                                            selectedLevel
+                                                );
+                                            if (isAlreadyEnrolled) return null;
+                                            return (
+                                                <div className="relative bg-white border border-gray-200 rounded-md shadow-sm p-2 sm:p-3">
+                                                    <MyButton
+                                                        type="button"
+                                                        scale="large"
+                                                        buttonType="primary"
+                                                        layoutVariant="default"
+                                                        className="!min-w-full !w-full text-xs h-8"
+                                                        onClick={() =>
+                                                            setEnrollmentDialogOpen(
+                                                                true
+                                                            )
+                                                        }
+                                                    >
+                                                        Enroll
+                                                    </MyButton>
+                                                </div>
+                                            );
+                                        })()}
                                 </div>
                             </div>
                         )}
                     </div>
 
-                    {/* Ratings bottom section removed to avoid duplication; sidebar hosts it */}
-                    {!hasRightSidebar && packageSessionIdForCurrentLevel && (
+                    {/* Ratings Component */}
+                    {packageSessionIdForCurrentLevel && (
                         <div
                             className="mt-6 lg:mt-8 animate-fade-in-up"
                             style={{ animationDelay: "0.8s" }}

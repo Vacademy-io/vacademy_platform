@@ -25,8 +25,8 @@ This document summarizes the implementation of the new signup flow that handles 
 ### 3. Enhanced Unified Registration Hook
 - **Settings Integration**: Now accepts `SignupSettings` for credential generation
 - **Automatic Role Assignment**: 
-  - Always assigns `LEARNER` role
-  - Adds `TEACHER` role if `learnersCanCreateCourses` is true in institute settings
+  - Always assigns `STUDENT` role
+  - Adds `TEACHER` role if `allowLearnersToCreateCourses` is true in course permissions
 - **Comprehensive Logging**: Added detailed logging throughout the registration process
 - **Credential Validation**: Ensures required credentials are provided or generated
 
@@ -88,8 +88,8 @@ This document summarizes the implementation of the new signup flow that handles 
 5. User redirected to success page
 
 ## Role Assignment Logic
-- **Base Role**: All users get `LEARNER` role
-- **Additional Role**: If institute settings allow `learnersCanCreateCourses = true`, users also get `TEACHER` role
+- **Base Role**: All users get `STUDENT` role
+- **Additional Role**: If institute settings allow `allowLearnersToCreateCourses = true` in course permissions, users also get `TEACHER` role
 - **Role Source**: Retrieved from institute settings stored in `InstituteDetails` preference
 
 ## Logging and Debugging

@@ -64,7 +64,8 @@ authenticatedAxiosInstance.interceptors.request.use(
       hasAccessToken: !!accessToken,
       accessTokenLength: accessToken?.length || 0,
       hasInstituteId: !!instituteId,
-      instituteId: instituteId
+      instituteId: instituteId,
+      tokenStart: accessToken ? accessToken.substring(0, 20) + '...' : 'null'
     });
 
     // Add instituteId to headers if available
@@ -75,7 +76,14 @@ authenticatedAxiosInstance.interceptors.request.use(
     }
 
     // Check if the access token is expired
-    if (!isTokenExpired(accessToken)) {
+    const isExpired = isTokenExpired(accessToken);
+    console.log(`[Auth] Token expiration check:`, {
+      hasToken: !!accessToken,
+      isExpired: isExpired,
+      tokenStart: accessToken ? accessToken.substring(0, 20) + '...' : 'null'
+    });
+    
+    if (!isExpired) {
       request.headers.Authorization = `Bearer ${accessToken}`;
       console.log(`[Auth] Added Authorization header: Bearer ${accessToken?.substring(0, 20)}...`);
       return request;
@@ -116,9 +124,21 @@ authenticatedAxiosInstance.interceptors.request.use(
 authenticatedAxiosInstance.interceptors.response.use(
   (response) => response,
   async (error) => {
+    // Log all error responses for debugging
+    if (error.response) {
+      console.error(`[Auth] API Error Response:`, {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        url: error.config?.url,
+        method: error.config?.method,
+        headers: error.config?.headers,
+        data: error.response.data
+      });
+    }
+    
     // Handle unauthorized errors (401)
     if (error.response && error.response.status === 401) {
-      console.error("Unauthorized access. Logging out...");
+      console.error("[Auth] Unauthorized access. Logging out...");
 
       // Remove tokens and institute ID
       await removeTokensAndInstituteId();
@@ -126,6 +146,26 @@ authenticatedAxiosInstance.interceptors.response.use(
       // Optionally, you can add logic to redirect to login page
       // This might involve using a navigation library or window.location
     }
+    
+    // Handle forbidden errors (403) - might be token issues
+    if (error.response && error.response.status === 403) {
+      console.error("[Auth] Forbidden access (403). This might indicate token issues.");
+      
+      // Log current token state for debugging
+      try {
+        const currentToken = await getTokenFromStorage(TokenKey.accessToken);
+        const currentInstituteId = await getTokenFromStorage("InstituteId");
+        console.log("[Auth] Current token state during 403 error:", {
+          hasToken: !!currentToken,
+          tokenLength: currentToken?.length || 0,
+          hasInstituteId: !!currentInstituteId,
+          instituteId: currentInstituteId
+        });
+      } catch (tokenError) {
+        console.error("[Auth] Failed to check token state during 403 error:", tokenError);
+      }
+    }
+    
     return Promise.reject(error);
   }
 );

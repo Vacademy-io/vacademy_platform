@@ -51,13 +51,21 @@ export const fetchAndStoreInstituteDetails = async (
   userId: string
 ): Promise<InstituteDetails | null> => {
   try {
+    console.log('[fetchAndStoreInstituteDetails] Starting API call:', {
+      instituteId,
+      userId,
+      url: `${INSTITUTE_DETAIL}/${instituteId}`
+    });
+    
     // Store the institute ID in storage
     await Preferences.set({
       key: "InstituteId",
       value: instituteId,
     });
+    console.log('[fetchAndStoreInstituteDetails] Institute ID stored in preferences');
 
     // Call API to get institute details
+    console.log('[fetchAndStoreInstituteDetails] Making API call...');
     const instituteDetailsResponse = await authenticatedAxiosInstance({
       method: "GET",
       url: `${INSTITUTE_DETAIL}/${instituteId}`,
@@ -65,6 +73,10 @@ export const fetchAndStoreInstituteDetails = async (
         instituteId,
         userId,
       },
+    });
+    console.log('[fetchAndStoreInstituteDetails] API call successful:', {
+      status: instituteDetailsResponse.status,
+      hasData: !!instituteDetailsResponse.data
     });
 
     // Ensure response data is valid

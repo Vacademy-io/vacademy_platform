@@ -306,6 +306,13 @@ export function ModularDynamicSignupContainer({
       // Store OAuth data for later use
       setOAuthData({ signupData, state, emailVerified });
       
+      console.log('[OAuth] Stored OAuth data:', {
+        email: signupData.email,
+        name: signupData.name,
+        provider: signupData.provider,
+        sub: signupData.sub
+      });
+      
       // Check credential requirements based on institute settings
       const needsUsername = effectiveSettings.usernameStrategy === "manual" || effectiveSettings.usernameStrategy === " ";
       const needsPassword = effectiveSettings.passwordStrategy === "manual" || effectiveSettings.passwordStrategy === " ";
@@ -327,6 +334,10 @@ export function ModularDynamicSignupContainer({
         // If we need credentials, show credentials form
         if (needsUsername || needsPassword) {
           console.log('[OAuth] Credentials required - showing credentials form');
+          // For OAuth flows that need credentials, also set the email for consistency
+          if (signupData.email) {
+            setEmailForOtp(signupData.email);
+          }
           setCurrentStep("credentials");
           setSelectedProvider("oauth");
           return;
@@ -340,6 +351,10 @@ export function ModularDynamicSignupContainer({
       
       // Fallback - should not reach here
       console.warn('[OAuth] Unexpected flow - falling back to credentials form');
+      // For fallback OAuth flows, also set the email if available
+      if (signupData.email) {
+        setEmailForOtp(signupData.email);
+      }
       setCurrentStep("credentials");
       setSelectedProvider("oauth");
       
@@ -407,6 +422,12 @@ export function ModularDynamicSignupContainer({
       
       // Also update the fullNameForOtp for OAuth flows
       setFullNameForOtp(oauthData.signupData.name);
+      
+      console.log('[OAuth] Updated OAuth data after OTP verification:', {
+        email: email,
+        name: oauthData.signupData.name,
+        provider: oauthData.signupData.provider
+      });
     } else {
       // For non-OAuth flows, use the provided fullName
       setFullNameForOtp(fullName || "");
@@ -414,6 +435,10 @@ export function ModularDynamicSignupContainer({
 
     if (needsUsername || needsPassword) {
       console.log('[OAuth] Credentials required after OTP - showing credentials form');
+      // For OAuth flows that need credentials after OTP, ensure email is set
+      if (selectedProvider === "oauth" && oauthData?.signupData?.email) {
+        setEmailForOtp(oauthData.signupData.email);
+      }
       setCurrentStep("credentials");
     } else {
       // Direct registration - no credentials needed
@@ -668,6 +693,11 @@ export function ModularDynamicSignupContainer({
                 passwordStrategy: effectiveSettings.passwordStrategy
               }
             })}
+            {console.log('[ModularDynamicSignupContainer] Email sources for credentials form:', {
+              oauthEmail: oauthData?.signupData?.email,
+              emailForOtp,
+              selectedProvider
+            })}
             <CredentialsForm
               settings={effectiveSettings}
               initialData={{
@@ -680,10 +710,22 @@ export function ModularDynamicSignupContainer({
                 try {
                   console.log('[Credentials] Form submitted with data:', data);
                   
+                  // Determine the correct email source
+                  const email = selectedProvider === "oauth" && oauthData?.signupData?.email 
+                    ? oauthData.signupData.email 
+                    : emailForOtp;
+                  
+                  console.log('[Credentials] Email source:', {
+                    selectedProvider,
+                    oauthEmail: oauthData?.signupData?.email,
+                    emailForOtp,
+                    finalEmail: email
+                  });
+                  
                   // Use unified registration hook with settings
                   await registerUserUnified({
                     username: data.username,
-                    email: emailForOtp,
+                    email: email,
                     full_name: data.fullName || fullNameForOtp,
                     password: data.password,
                     instituteId: instituteId!,

@@ -156,15 +156,28 @@ export async function getStudentDisplaySettings(forceRefresh = false): Promise<S
   }
 
   try {
+    console.log('[getStudentDisplaySettings] Making API call:', {
+      instituteId,
+      settingKey: STUDENT_DISPLAY_SETTINGS_KEY,
+      url: `${BASE_URL}/admin-core-service/institute/setting/v1/get`
+    });
+    
     const res = await authenticatedAxiosInstance.get<{ data: StudentDisplaySettingsData | null }>(
       `${BASE_URL}/admin-core-service/institute/setting/v1/get`,
       { params: { instituteId, settingKey: STUDENT_DISPLAY_SETTINGS_KEY } }
     );
+    
+    console.log('[getStudentDisplaySettings] API call successful:', {
+      status: res.status,
+      hasData: !!res.data?.data
+    });
+    
     const serverData = res.data?.data;
     const merged = mergeWithDefaults(serverData && Object.keys(serverData).length ? serverData : DEFAULT_STUDENT_DISPLAY_SETTINGS);
     await writeCacheForInstitute(instituteId, merged);
     return merged;
-  } catch {
+  } catch (error) {
+    console.error('[getStudentDisplaySettings] API call failed:', error);
     const defaults = DEFAULT_STUDENT_DISPLAY_SETTINGS;
     await writeCacheForInstitute(instituteId, defaults);
     return defaults;

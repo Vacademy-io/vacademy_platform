@@ -413,8 +413,7 @@ export const CourseDetailsPage = () => {
         const tryGenerateCertificate = async () => {
             try {
                 const settings = await getStudentDisplaySettings(false);
-                const threshold =
-                    settings.certificates?.generationThresholdPercent ?? 80;
+                const threshold = 0;
                 // percent can come from query param (carried over from list) or course data
                 const pctFromQuery = ((): number | undefined => {
                     const raw =

@@ -75,6 +75,7 @@ import confetti from "canvas-confetti";
 import LocalStorageUtils from "@/utils/localstorage";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { MyButton } from "@/components/design-system/button";
+import { extractTextFromHTML } from "@/components/common/helper";
 
 type SlideType = {
     id: string;
@@ -1848,8 +1849,9 @@ export const CourseDetailsPage = () => {
                             {/* Content Sections */}
                             <div className="space-y-4">
                                 {/* What You'll Learn Section */}
-                                {form.getValues("courseData")
-                                    .whatYoullLearn && (
+                                {extractTextFromHTML(
+                                    form.getValues("courseData").whatYoullLearn
+                                ) && (
                                     <div
                                         className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
                                         style={{ animationDelay: "0.3s" }}
@@ -1882,8 +1884,9 @@ export const CourseDetailsPage = () => {
                                 )}
 
                                 {/* About Course Section */}
-                                {form.getValues("courseData")
-                                    .aboutTheCourse && (
+                                {extractTextFromHTML(
+                                    form.getValues("courseData").aboutTheCourse
+                                ) && (
                                     <div
                                         className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
                                         style={{ animationDelay: "0.4s" }}
@@ -1920,8 +1923,9 @@ export const CourseDetailsPage = () => {
                                 )}
 
                                 {/* Who Should Join Section */}
-                                {form.getValues("courseData")
-                                    .whoShouldLearn && (
+                                {extractTextFromHTML(
+                                    form.getValues("courseData").whoShouldLearn
+                                ) && (
                                     <div
                                         className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
                                         style={{ animationDelay: "0.5s" }}

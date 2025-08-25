@@ -1,6 +1,5 @@
 package vacademy.io.admin_core_service.features.institute.controller;
 
-import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.institute.dto.CertificationGenerationRequest;

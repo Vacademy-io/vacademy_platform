@@ -135,18 +135,26 @@ public class CertificateSettingStrategy extends IInstituteSettingStrategy{
 
             CertificateSettingDataDto newData = null;
 
-            if (!settingMap.containsKey(key) && certificateSettingRequest == null) {
+            if (!settingMap.containsKey(key)) {
                 newData = createCertificateSettingFromRequest(createDefaultCertificateSetting());
+                SettingDto settingDto = new SettingDto();
+                settingDto.setKey(SettingKeyEnums.CERTIFICATE_SETTING.name());
+                settingDto.setName("Certificate Setting");
+                settingDto.setData(newData);
+
+                // Replace and return updated JSON
+                settingMap.put(key, settingDto);
+                instituteSettingDto.setSetting(settingMap);
             }
-            else newData = createCertificateSettingFromRequest(certificateSettingRequest);
+            else{
+                newData = createCertificateSettingFromRequest(certificateSettingRequest);
+                SettingDto settingDto = settingMap.get(key);
+                settingDto.setData(newData);
 
-
-            SettingDto settingDto = settingMap.get(key);
-            settingDto.setData(newData);
-
-            // Replace and return updated JSON
-            settingMap.put(key, settingDto);
-            instituteSettingDto.setSetting(settingMap);
+                // Replace and return updated JSON
+                settingMap.put(key, settingDto);
+                instituteSettingDto.setSetting(settingMap);
+            }
 
             return objectMapper.writeValueAsString(instituteSettingDto);
         } catch (Exception e) {

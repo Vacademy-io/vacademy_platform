@@ -21,7 +21,7 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { getTokenFromCookie } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { SystemAlertsBar } from "@/components/announcements";
-import { handleGetPublicInstituteDetails } from "../services/navbar-services";
+// import { handleGetPublicInstituteDetails } from "../services/navbar-services";
 
 interface UserRole {
     id: string;

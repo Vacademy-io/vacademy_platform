@@ -9,6 +9,7 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import axios from "axios";
 import { LIVE_SESSION_VERIFY_OTP, LIVE_SESSION_REQUEST_OTP } from "@/constants/urls";
+import { checkUserEnrollmentInInstitute, handleEnrolledUser } from "../../utils/enrollment-checker";
 
 interface OtpFormData {
   otp: string[];
@@ -20,6 +21,9 @@ interface OtpVerificationFormProps {
   onOtpVerified: (email: string, fullName?: string) => Promise<void>;
   onBack?: () => void;
   className?: string;
+  instituteId?: string; // Add instituteId for enrollment checking
+  onEnrolledUserDetected?: () => void; // Callback for when enrolled user is detected
+  checkEnrollmentOnce?: (email: string) => Promise<any>; // Function to check enrollment once
 }
 
 const otpSchema = z.object({
@@ -31,7 +35,10 @@ export function OtpVerificationForm({
   fullName,
   onOtpVerified,
   onBack,
-  className = ""
+  className = "",
+  instituteId,
+  onEnrolledUserDetected,
+  checkEnrollmentOnce
 }: OtpVerificationFormProps) {
   const [isVerifying, setIsVerifying] = useState(false);
   const [timer, setTimer] = useState(60);
@@ -89,6 +96,45 @@ export function OtpVerificationForm({
         otp: otpString,
         service: "signup",
       });
+
+      // ENROLLMENT CHECK: Check enrollment after OTP verification for ALL flows
+      // This includes:
+      // - GitHub private email (OAuth flow requiring email verification)
+      // - Regular email OTP flow
+      // - Any other email verification flows
+      // We check here because we now have a verified email address
+      console.log('[DEBUG] OtpVerificationForm: About to check enrollment for:', email);
+      console.log('[DEBUG] OtpVerificationForm: instituteId:', instituteId);
+      console.log('[DEBUG] OtpVerificationForm: checkEnrollmentOnce function:', !!checkEnrollmentOnce);
+      
+      if (instituteId && checkEnrollmentOnce) {
+        console.log('[DEBUG] OtpVerificationForm: Calling checkEnrollmentOnce...');
+        const enrollmentResult = await checkEnrollmentOnce(email);
+        console.log('[DEBUG] OtpVerificationForm: Enrollment result:', enrollmentResult);
+        
+        if (enrollmentResult?.isEnrolled) {
+          console.log('[DEBUG] OtpVerificationForm: User is enrolled, handling auto-login...');
+          const autoLoginResult = await handleEnrolledUser(
+            email,
+            instituteId,
+            () => {
+              // Auto-login success - notify parent component
+              onEnrolledUserDetected?.();
+            },
+            (error) => {
+              // Auto-login failed - show error but don't block signup flow
+              toast.warning("You appear to be already enrolled. You can still proceed with signup if needed.");
+            },
+            true // shouldRedirectAfterLogin - will handle navigation automatically
+          );
+          
+          if (autoLoginResult.success) {
+            return; // Auto-login handled everything
+          }
+        }
+      } else {
+        console.log('[DEBUG] OtpVerificationForm: Skipping enrollment check - missing instituteId or checkEnrollmentOnce function');
+      }
 
       // OTP verified, call the callback
       await onOtpVerified(email, fullName);

@@ -72,15 +72,6 @@ export function CredentialsForm({
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Debug logging
-  console.log('[CredentialsForm] Props:', {
-    settings,
-    initialData,
-    hideFullName,
-    isOAuth,
-    oauthProvider
-  });
-
   const schema = createCredentialsSchema(settings, hideFullName);
   const form = useForm<CredentialsFormData>({
     resolver: zodResolver(schema),
@@ -92,10 +83,6 @@ export function CredentialsForm({
       confirmPassword: initialData.confirmPassword || "",
     },
   });
-
-  // Debug logging for form values
-  console.log('[CredentialsForm] Form defaultValues:', form.getValues());
-  console.log('[CredentialsForm] Form current values:', form.watch());
 
   const handleSubmit = async (data: CredentialsFormData) => {
     try {

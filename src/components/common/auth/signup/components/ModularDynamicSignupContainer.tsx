@@ -13,6 +13,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import { useUnifiedRegistration } from "../hooks/use-unified-registration";
 import { parseInstituteSettings } from "@/services/signup-api";
+import { checkUserEnrollmentInInstitute, handleEnrolledUser } from "../utils/enrollment-checker";
 
 interface ModularDynamicSignupContainerProps {
   instituteId?: string;
@@ -43,6 +44,7 @@ export function ModularDynamicSignupContainer({
   const [fullNameForOtp, setFullNameForOtp] = useState("");
   const [instituteSettings, setInstituteSettings] = useState<any>(null);
   const [hasExecutedCallback, setHasExecutedCallback] = useState(false);
+  const [enrollmentChecked, setEnrollmentChecked] = useState<Set<string>>(new Set());
 
   // Use backend settings if available, otherwise fall back to defaults
   const effectiveSettings = settings || {
@@ -187,7 +189,6 @@ export function ModularDynamicSignupContainer({
       );
 
       if (!popup) {
-        console.error('[OAuth] Popup blocked');
         toast.error("Popup blocked! Please allow popups for this site.");
         return;
       }
@@ -198,7 +199,6 @@ export function ModularDynamicSignupContainer({
           handleOAuthSuccess(event.data.data);
           window.removeEventListener('message', messageHandler);
         } else if (event.data.type === 'oauth_error') {
-          console.error('[OAuth] Error message received from popup:', event.data.data);
           toast.error(event.data.data.message || 'OAuth authentication failed');
           window.removeEventListener('message', messageHandler);
         }
@@ -215,7 +215,6 @@ export function ModularDynamicSignupContainer({
       }, 1000);
 
     } catch (error) {
-      console.error('[OAuth] Failed to initiate signup:', error);
       toast.error("Failed to initiate signup. Please try again.");
     }
   };
@@ -255,7 +254,6 @@ export function ModularDynamicSignupContainer({
       setCurrentStep("otpVerification");
       
     } catch (e) {
-      console.error('[Email OTP] Failed to send OTP:', e);
       toast.error("Failed to send OTP", { description: "Please try again" });
     } finally {
       setIsSendingOtp(false);
@@ -263,11 +261,8 @@ export function ModularDynamicSignupContainer({
   };
 
   const handleEmailInputSuccess = (email: string, fullName?: string) => {
-    console.log('[EmailInput] Email input success:', { email, fullName, selectedProvider, oauthData });
-    
     // For OAuth flows, we should already have the full name, so use it
     if (selectedProvider === "oauth" && oauthData?.signupData?.name) {
-      console.log('[EmailInput] OAuth flow - using existing full name:', oauthData.signupData.name);
       setEmailForOtp(email);
       setFullNameForOtp(oauthData.signupData.name); // Use the OAuth full name
     } else {
@@ -287,41 +282,79 @@ export function ModularDynamicSignupContainer({
     // Removed onBackToProviders?.() call to keep user in signup flow
   };
 
+  // Helper function to check enrollment only once per email
+  const checkEnrollmentOnce = async (email: string) => {
+    console.log('[DEBUG] checkEnrollmentOnce called with email:', email);
+    
+    // If we've already checked this email, don't check again
+    if (enrollmentChecked.has(email)) {
+      console.log('[DEBUG] Email already checked, returning cached result');
+      return null;
+    }
+
+    console.log('[DEBUG] First time checking enrollment for:', email);
+    const enrollmentResult = await checkUserEnrollmentInInstitute(email, instituteId!);
+    console.log('[DEBUG] Enrollment result:', enrollmentResult);
+    
+    // Mark this email as checked
+    setEnrollmentChecked(prev => new Set(prev).add(email));
+    
+    return enrollmentResult;
+  };
+
 
 
   const handleOAuthSuccess = async (oauthData: any) => {
     try {
-      console.group('[ModularDynamicSignupContainer] OAuth success handler');
       const { signupData, state, emailVerified } = oauthData;
-      
-      console.log('[OAuth] Processing OAuth success:', {
-        provider: signupData.provider,
-        email: signupData.email,
-        name: signupData.name,
-        emailVerified,
-        usernameStrategy: effectiveSettings.usernameStrategy,
-        passwordStrategy: effectiveSettings.passwordStrategy
-      });
       
       // Store OAuth data for later use
       setOAuthData({ signupData, state, emailVerified });
       
-      console.log('[OAuth] Stored OAuth data:', {
-        email: signupData.email,
-        name: signupData.name,
-        provider: signupData.provider,
-        sub: signupData.sub
-      });
+      // ENROLLMENT CHECK: Check if user is already enrolled before proceeding
+      // This handles OAuth flows with public email (Google, GitHub with public email)
+      // For flows requiring email verification (GitHub private email, regular email OTP), 
+      // enrollment is checked AFTER OTP verification in the OtpVerificationForm
+      if (signupData.email) {
+        console.log('[DEBUG] OAuth Success: Checking enrollment for public email:', signupData.email);
+        const enrollmentResult = await checkEnrollmentOnce(signupData.email);
+        console.log('[DEBUG] OAuth Success: Enrollment result:', enrollmentResult);
+        
+        if (enrollmentResult?.isEnrolled) {
+          console.log('[DEBUG] OAuth Success: User is enrolled, handling auto-login...');
+          const autoLoginResult = await handleEnrolledUser(
+            signupData.email,
+            instituteId!,
+            () => {
+              // Auto-login success - redirect to success step
+              setCurrentStep("success");
+              onSignupSuccess?.();
+            },
+            (error) => {
+              // Auto-login failed - show error and go back to providers
+              setCurrentStep("providers");
+              setSelectedProvider(null);
+              setOAuthData(null);
+            },
+            true // shouldRedirectAfterLogin - will handle navigation automatically
+          );
+          
+          if (autoLoginResult.success) {
+            return; // Auto-login handled everything
+          }
+        }
+      } else {
+        console.log('[DEBUG] OAuth Success: No email provided, skipping enrollment check');
+      }
       
       // Check credential requirements based on institute settings
       const needsUsername = effectiveSettings.usernameStrategy === "manual" || effectiveSettings.usernameStrategy === " ";
       const needsPassword = effectiveSettings.passwordStrategy === "manual" || effectiveSettings.passwordStrategy === " ";
       
-      console.log('[OAuth] Credential requirements:', { needsUsername, needsPassword });
-      
       // GitHub with private email - always need email OTP verification
+      // We don't check enrollment here because we need to verify the email first
+      // Enrollment will be checked AFTER OTP verification in OtpVerificationForm
       if (signupData.provider === "github" && !signupData.email) {
-        console.log('[OAuth] GitHub with private email - requesting email input for OTP verification');
         setCurrentStep("emailInput");
         setSelectedProvider("oauth");
         return;
@@ -329,11 +362,8 @@ export function ModularDynamicSignupContainer({
       
       // Google or GitHub with public email - check if we can register immediately
       if (signupData.provider === "google" || (signupData.provider === "github" && signupData.email)) {
-        console.log('[OAuth] Provider with verified email - checking if immediate registration is possible');
-        
         // If we need credentials, show credentials form
         if (needsUsername || needsPassword) {
-          console.log('[OAuth] Credentials required - showing credentials form');
           // For OAuth flows that need credentials, also set the email for consistency
           if (signupData.email) {
             setEmailForOtp(signupData.email);
@@ -344,13 +374,11 @@ export function ModularDynamicSignupContainer({
         }
         
         // If no credentials needed, proceed with direct registration
-        console.log('[OAuth] No credentials required - proceeding with immediate registration');
         await handleDirectRegistration(signupData);
         return;
       }
       
       // Fallback - should not reach here
-      console.warn('[OAuth] Unexpected flow - falling back to credentials form');
       // For fallback OAuth flows, also set the email if available
       if (signupData.email) {
         setEmailForOtp(signupData.email);
@@ -358,24 +386,13 @@ export function ModularDynamicSignupContainer({
       setCurrentStep("credentials");
       setSelectedProvider("oauth");
       
-      console.groupEnd();
     } catch (error) {
-      console.error('[OAuth] Failed to process OAuth response:', error);
       toast.error("Failed to process OAuth response. Please try again.");
-      console.groupEnd();
     }
   };
 
   const handleDirectRegistration = async (signupData: any) => {
     try {
-      console.log('[OAuth] Starting direct registration for:', signupData.email);
-      console.log('[OAuth] Using OAuth data:', {
-        email: signupData.email,
-        name: signupData.name,
-        provider: signupData.provider,
-        sub: signupData.sub
-      });
-      
       // Use unified registration hook for OAuth signups with settings
       await registerUserUnified({
         username: signupData.username || signupData.email?.split("@")[0],
@@ -387,12 +404,10 @@ export function ModularDynamicSignupContainer({
         vendor_id: signupData.provider, // OAuth provider (e.g., "google", "github")
       });
 
-      console.log('[OAuth] Direct registration completed successfully');
       setCurrentStep("success");
       
       // Callback will be handled by the success step component
     } catch (error) {
-      console.error("[OAuth] Direct registration error:", error);
       toast.error("Failed to create account. Please try again.");
       // Fallback to credentials form
       setCurrentStep("credentials");
@@ -400,17 +415,40 @@ export function ModularDynamicSignupContainer({
   };
 
   const handleOtpVerificationSuccess = async (email: string, fullName?: string) => {
-    console.log('[OAuth] OTP verification successful:', { email, fullName });
+    // ENROLLMENT CHECK: Check if user is already enrolled after OTP verification
+    // This handles: GitHub private email, regular email OTP, and any other email verification flows
+    // We check here because we now have a verified email address
+    const enrollmentResult = await checkEnrollmentOnce(email);
+    
+    if (enrollmentResult?.isEnrolled) {
+      const autoLoginResult = await handleEnrolledUser(
+        email,
+        instituteId!,
+        () => {
+          // Auto-login success - redirect to success step
+          setCurrentStep("success");
+          onSignupSuccess?.();
+        },
+        (error) => {
+          // Auto-login failed - show error and go back to providers
+          setCurrentStep("providers");
+          setSelectedProvider(null);
+          setOAuthData(null);
+        },
+        true // shouldRedirectAfterLogin - will handle navigation automatically
+      );
+      
+      if (autoLoginResult.success) {
+        return; // Auto-login handled everything
+      }
+    }
     
     // Check if we need credentials form
     const needsUsername = effectiveSettings.usernameStrategy === "manual" || effectiveSettings.usernameStrategy === " ";
     const needsPassword = effectiveSettings.passwordStrategy === "manual" || effectiveSettings.passwordStrategy === " ";
-    
-    console.log('[OAuth] Post-OTP credential requirements:', { needsUsername, needsPassword });
 
     // For OAuth flows, update the OAuth data with verified email
     if (selectedProvider === "oauth" && oauthData) {
-      console.log('[OAuth] Updating OAuth data with verified email');
       setOAuthData({
         ...oauthData,
         signupData: {
@@ -422,31 +460,22 @@ export function ModularDynamicSignupContainer({
       
       // Also update the fullNameForOtp for OAuth flows
       setFullNameForOtp(oauthData.signupData.name);
-      
-      console.log('[OAuth] Updated OAuth data after OTP verification:', {
-        email: email,
-        name: oauthData.signupData.name,
-        provider: oauthData.signupData.provider
-      });
     } else {
       // For non-OAuth flows, use the provided fullName
       setFullNameForOtp(fullName || "");
     }
 
     if (needsUsername || needsPassword) {
-      console.log('[OAuth] Credentials required after OTP - showing credentials form');
       // For OAuth flows that need credentials after OTP, ensure email is set
       if (selectedProvider === "oauth" && oauthData?.signupData?.email) {
-        setEmailForOtp(oauthData.signupData.email);
+        setEmailForOtp(email);
       }
       setCurrentStep("credentials");
     } else {
       // Direct registration - no credentials needed
-      console.log('[OAuth] No credentials needed after OTP - proceeding with immediate registration');
       
       if (selectedProvider === "oauth" && oauthData) {
         // For OAuth flows, use the updated OAuth data - we already have the full name
-        console.log('[OAuth] OAuth flow - using existing full name from OAuth data:', oauthData.signupData.name);
         await handleDirectRegistration({
           ...oauthData.signupData,
           email: email,
@@ -455,11 +484,9 @@ export function ModularDynamicSignupContainer({
       } else {
         // For email OTP flows (non-OAuth), we need to ask for full name first
         if (!fullName) {
-          console.log('[OAuth] Email OTP flow - full name required, showing credentials form');
           setCurrentStep("credentials");
         } else {
           // We have everything needed for registration
-          console.log('[OAuth] Email OTP flow - all data available, proceeding with registration');
           await registerUserUnified({
             email: email,
             full_name: fullName,
@@ -668,6 +695,13 @@ export function ModularDynamicSignupContainer({
                 ? "Please verify your email to complete the OAuth signup process."
                 : "Please verify your email to complete the signup process."
             }
+            instituteId={instituteId}
+            onEnrolledUserDetected={() => {
+              // User is already enrolled and auto-login was successful
+              setCurrentStep("success");
+              onSignupSuccess?.();
+            }}
+            checkEnrollmentOnce={checkEnrollmentOnce}
           />
         )}
         
@@ -678,26 +712,18 @@ export function ModularDynamicSignupContainer({
             onOtpVerified={handleOtpVerificationSuccess}
             onBack={handleBackToProviders}
             className=""
+            instituteId={instituteId}
+            onEnrolledUserDetected={() => {
+              // User is already enrolled and auto-login was successful
+              setCurrentStep("success");
+              onSignupSuccess?.();
+            }}
+            checkEnrollmentOnce={checkEnrollmentOnce}
           />
         )}
         
         {currentStep === "credentials" && (
           <>
-            {console.log('[ModularDynamicSignupContainer] Rendering CredentialsForm with:', {
-              selectedProvider,
-              oauthData: oauthData?.signupData,
-              fullNameForOtp,
-              emailForOtp,
-              effectiveSettings: {
-                usernameStrategy: effectiveSettings.usernameStrategy,
-                passwordStrategy: effectiveSettings.passwordStrategy
-              }
-            })}
-            {console.log('[ModularDynamicSignupContainer] Email sources for credentials form:', {
-              oauthEmail: oauthData?.signupData?.email,
-              emailForOtp,
-              selectedProvider
-            })}
             <CredentialsForm
               settings={effectiveSettings}
               initialData={{
@@ -708,19 +734,10 @@ export function ModularDynamicSignupContainer({
               }}
               onSubmit={async (data) => {
                 try {
-                  console.log('[Credentials] Form submitted with data:', data);
-                  
                   // Determine the correct email source
                   const email = selectedProvider === "oauth" && oauthData?.signupData?.email 
                     ? oauthData.signupData.email 
                     : emailForOtp;
-                  
-                  console.log('[Credentials] Email source:', {
-                    selectedProvider,
-                    oauthEmail: oauthData?.signupData?.email,
-                    emailForOtp,
-                    finalEmail: email
-                  });
                   
                   // Use unified registration hook with settings
                   await registerUserUnified({
@@ -737,13 +754,11 @@ export function ModularDynamicSignupContainer({
                     }),
                   });
                   
-                  console.log('[Credentials] Registration completed successfully');
                   // Move to success step
                   setCurrentStep("success");
                   // Callback will be handled by the success step component
                   
                 } catch (error) {
-                  console.error("[Credentials] Registration failed:", error);
                   toast.error("Failed to create account. Please try again.");
                 }
               }}

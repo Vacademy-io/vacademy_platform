@@ -15,6 +15,7 @@ export { useModularSignupFlow } from "./hooks/use-modular-signup-flow";
 
 // Utils
 export { generateCredentials, generateUsername, generatePassword, areCredentialsRequired } from "./utils/credential-generator";
+export { checkUserEnrollmentInInstitute, handleEnrolledUser, autoLoginEnrolledUser } from "./utils/enrollment-checker";
 
 // Types
 export type { SignupSettings } from "@/config/signup/defaultSignupSettings";

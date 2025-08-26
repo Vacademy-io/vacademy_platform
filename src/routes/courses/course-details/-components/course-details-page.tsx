@@ -58,9 +58,9 @@ import { CourseStructureResponse } from "@/types/institute-details/course-detail
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { AuthModal } from "@/components/common/auth/modal/AuthModal";
-import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
-import { TokenKey } from "@/constants/auth/tokens";
-import { Preferences } from "@capacitor/preferences";
+// import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
+// import { TokenKey } from "@/constants/auth/tokens";
+// import { Preferences } from "@capacitor/preferences";
 import { getSubdomain } from "@/helpers/helper";
 import { handleGetInstituteIdWithLocalStorageCheck } from "../../-services/courses-services";
 import { DashboardLoader } from "@/components/core/dashboard-loader";

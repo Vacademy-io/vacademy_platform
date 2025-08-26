@@ -44,9 +44,6 @@ export function useUnifiedRegistration(): UseUnifiedRegistrationReturn {
     data: RegistrationData,
     options: PostRegistrationOptions = {}
   ) => {
-    console.group('[UnifiedRegistration] Starting registration process');
-    console.log('[UnifiedRegistration] Registration data:', data);
-    console.log('[UnifiedRegistration] Options:', options);
 
     const {
       shouldAutoLogin = true,
@@ -56,7 +53,6 @@ export function useUnifiedRegistration(): UseUnifiedRegistrationReturn {
     } = options;
 
     if (!data.email || !data.full_name || !data.instituteId) {
-      console.error('[UnifiedRegistration] Missing required registration data');
       throw new Error('Missing required registration data');
     }
 
@@ -64,18 +60,10 @@ export function useUnifiedRegistration(): UseUnifiedRegistrationReturn {
 
     try {
       // First, check if user is already enrolled
-      console.log('[UnifiedRegistration] Checking if user is already enrolled...');
       const enrollmentCheck = await checkUserEnrollment(data.email, data.instituteId);
       
       // If user exists in system, we'll try registration first, and if it fails due to existing enrollment,
       // we'll attempt to login with the password from the API response
-      if (enrollmentCheck.userDetails && enrollmentCheck.password) {
-        console.log('[UnifiedRegistration] User exists in system with password, will attempt registration first');
-        console.log('[UnifiedRegistration] If registration fails due to existing enrollment, will attempt automatic login');
-      }
-      
-      console.log('[UnifiedRegistration] Proceeding with registration...');
-      console.log('[UnifiedRegistration] Enrollment info:', enrollmentCheck.enrollmentInfo);
       
       // Get institute settings to determine roles
       let allowLearnersToCreateCourses = false;
@@ -95,35 +83,24 @@ export function useUnifiedRegistration(): UseUnifiedRegistrationReturn {
               allowLearnersToCreateCourses = true;
             }
             
-            console.log('[UnifiedRegistration] Institute settings parsed:', { 
-              allowLearnersToCreateCourses,
-              coursePermissions: instSettings?.setting?.COURSE_SETTING?.data?.permissions,
-              legacySetting: instSettings?.learnersCanCreateCourses
-            });
+
           }
         }
       } catch (error) {
-        console.warn('[UnifiedRegistration] Failed to parse institute settings:', error);
+        // Silently handle parsing errors
       }
 
       // Determine roles based on institute settings
       const roles: string[] = ["STUDENT"];
       if (allowLearnersToCreateCourses) {
         roles.push("TEACHER");
-        console.log('[UnifiedRegistration] Adding TEACHER role - learners can create courses');
       }
-      console.log('[UnifiedRegistration] Final roles:', roles);
 
       // Generate credentials based on strategies if settings are provided
       let finalUsername = data.username;
       let finalPassword = data.password;
 
       if (data.settings) {
-        console.log('[UnifiedRegistration] Using settings for credential generation:', {
-          usernameStrategy: data.settings.usernameStrategy,
-          passwordStrategy: data.settings.passwordStrategy
-        });
-
         const { username, password } = generateCredentials(
           data.settings.usernameStrategy,
           data.settings.passwordStrategy,
@@ -134,13 +111,6 @@ export function useUnifiedRegistration(): UseUnifiedRegistrationReturn {
 
         finalUsername = username;
         finalPassword = password;
-
-        console.log('[UnifiedRegistration] Generated credentials:', {
-          username: finalUsername || '(not generated)',
-          password: finalPassword ? '(generated)' : '(not generated)'
-        });
-      } else {
-        console.log('[UnifiedRegistration] No settings provided, using provided credentials');
       }
 
       // Validate that we have required credentials
@@ -174,24 +144,11 @@ export function useUnifiedRegistration(): UseUnifiedRegistrationReturn {
         ...(data.vendor_id && { vendor_id: data.vendor_id }),   // Include vendor_id if provided
       };
 
-      console.log('[UnifiedRegistration] Registration payload prepared:', {
-        username: payload.user.username,
-        email: payload.user.email,
-        full_name: payload.user.full_name,
-        password: payload.user.password ? '(provided)' : '(not provided)',
-        roles: payload.user.roles,
-        institute_id: payload.institute_id,
-        subject_id: payload.subject_id,
-        vendor_id: payload.vendor_id
-      });
-
       // Call registration API
-      console.log('[UnifiedRegistration] Calling registration API...');
       let response: RegisterUserResponse;
       
       try {
         response = await registerUser(payload);
-        console.log('[UnifiedRegistration] Registration API response received');
       } catch (registrationError: any) {
         // Check if registration failed due to user already being enrolled in this institute
         if (enrollmentCheck.userDetails && enrollmentCheck.password && 
@@ -199,22 +156,16 @@ export function useUnifiedRegistration(): UseUnifiedRegistrationReturn {
              registrationError.message?.includes('already enrolled') ||
              registrationError.response?.status === 409)) {
           
-          console.log('[UnifiedRegistration] Registration failed due to existing enrollment, attempting automatic login...');
-          
           try {
             // Attempt automatic login with password from API response
             const existingUsername = enrollmentCheck.userDetails.username;
             const loginUsername = existingUsername || data.username || data.email.split("@")[0];
-            
-            console.log('[UnifiedRegistration] Attempting automatic login with username:', loginUsername);
             
             const loginResponse = await loginEnrolledUser(
               loginUsername,
               enrollmentCheck.password,
               data.instituteId
             );
-            
-            console.log('[UnifiedRegistration] Automatic login successful for enrolled user');
             
             // Show success message
             if (showSuccessMessage) {
@@ -223,15 +174,11 @@ export function useUnifiedRegistration(): UseUnifiedRegistrationReturn {
             
             // Handle post-login flow
             if (shouldAutoLogin && loginResponse.accessToken && loginResponse.refreshToken) {
-              console.log('[UnifiedRegistration] Auto-login enabled for enrolled user, storing tokens...');
-              
               // Store tokens using Storage (compatible with existing auth system)
               await Preferences.set({ key: TokenKey.accessToken, value: loginResponse.accessToken });
               await Preferences.set({ key: TokenKey.refreshToken, value: loginResponse.refreshToken });
               await Preferences.set({ key: "instituteId", value: data.instituteId });
               await Preferences.set({ key: "InstituteId", value: data.instituteId });
-
-              console.log('[UnifiedRegistration] Tokens stored successfully for enrolled user');
 
               // Handle post-login flow
               if (redirectAfterLogin) {
@@ -246,22 +193,13 @@ export function useUnifiedRegistration(): UseUnifiedRegistrationReturn {
                     throw new Error('Failed to decode user ID from token');
                   }
                   
-                  console.log('[UnifiedRegistration] User ID extracted from token:', userId);
+
                   
-                              // Extended delay to ensure tokens are properly stored and accessible
-            console.log('[UnifiedRegistration] Waiting for tokens to be properly stored...');
+            // Extended delay to ensure tokens are properly stored and accessible
             await new Promise(resolve => setTimeout(resolve, 500));
             
             // Verify tokens are accessible
             const storedToken = await Preferences.get({ key: TokenKey.accessToken });
-            const storedInstituteId = await Preferences.get({ key: "InstituteId" });
-            
-            console.log('[UnifiedRegistration] Token verification:', {
-              hasStoredToken: !!storedToken.value,
-              tokenLength: storedToken.value?.length || 0,
-              hasStoredInstituteId: !!storedInstituteId.value,
-              instituteId: storedInstituteId.value
-            });
             
             if (!storedToken.value) {
               throw new Error('Access token not found in storage after storing');
@@ -271,74 +209,39 @@ export function useUnifiedRegistration(): UseUnifiedRegistrationReturn {
             try {
               const { getTokenFromStorage } = await import('@/lib/auth/axiosInstance');
               const verifiedToken = await getTokenFromStorage(TokenKey.accessToken);
-              console.log('[UnifiedRegistration] Token verification via getTokenFromStorage:', {
-                hasVerifiedToken: !!verifiedToken,
-                tokenLength: verifiedToken?.length || 0,
-                tokenMatch: verifiedToken === storedToken.value
-              });
               
               if (!verifiedToken) {
                 throw new Error('Token not accessible via getTokenFromStorage');
               }
               
-              // Additional verification: check if token is accessible via direct Preferences.get
-              const directToken = await Preferences.get({ key: TokenKey.accessToken });
-              console.log('[UnifiedRegistration] Direct token verification:', {
-                hasDirectToken: !!directToken.value,
-                tokenLength: directToken.value?.length || 0,
-                directTokenMatch: directToken.value === storedToken.value
-              });
-              
             } catch (error) {
-              console.error('[UnifiedRegistration] Token verification failed:', error);
               throw error;
             }
                   
-                              // 1. Fetch student display settings (same as login flow)
-            console.log('[UnifiedRegistration] Fetching student display settings...');
+            // 1. Fetch student display settings (same as login flow)
             try {
-              const studentSettings = await getStudentDisplaySettings(true);
-              console.log('[UnifiedRegistration] Student display settings fetched successfully:', {
-                hasSettings: !!studentSettings,
-                settingsKeys: studentSettings ? Object.keys(studentSettings) : []
-              });
+              await getStudentDisplaySettings(true);
             } catch (error) {
-              console.error('[UnifiedRegistration] Failed to fetch student display settings:', error);
               throw error;
             }
             
             // 2. Fetch and store institute details (same as login flow)
-            console.log('[UnifiedRegistration] Fetching institute details...');
             try {
-              const instituteDetails = await fetchAndStoreInstituteDetails(data.instituteId, userId);
-              console.log('[UnifiedRegistration] Institute details fetched and stored successfully:', {
-                hasDetails: !!instituteDetails,
-                instituteName: instituteDetails?.institute_name,
-                instituteId: instituteDetails?.id
-              });
+              await fetchAndStoreInstituteDetails(data.instituteId, userId);
             } catch (error) {
-              console.error('[UnifiedRegistration] Failed to fetch institute details:', error);
               throw error;
             }
             
             // 3. Fetch and store student details (same as login flow)
-            console.log('[UnifiedRegistration] Fetching student details...');
             try {
               await fetchAndStoreStudentDetails(data.instituteId, userId);
-              console.log('[UnifiedRegistration] Student details fetched and stored successfully');
             } catch (error) {
-              console.error('[UnifiedRegistration] Failed to fetch student details:', error);
               throw error;
             }
             
             // 4. Fetch user role details (same as login flow)
-            console.log('[UnifiedRegistration] Fetching user role details...');
             try {
-              const userRoleDetails = await fetchUserRolesDetails();
-              console.log('[UnifiedRegistration] User role details fetched successfully:', {
-                hasRoleDetails: !!userRoleDetails,
-                roles: userRoleDetails?.roles?.map(r => r.role_name) || []
-              });
+              await fetchUserRolesDetails();
             } catch (error) {
               console.error('[UnifiedRegistration] Failed to fetch user role details:', error);
               throw error;

@@ -11,6 +11,7 @@ import { SignupSettings } from "@/config/signup/defaultSignupSettings";
 import { toast } from "sonner";
 import axios from "axios";
 import { LIVE_SESSION_REQUEST_OTP } from "@/constants/urls";
+import { checkUserEnrollmentInInstitute, handleEnrolledUser } from "../../utils/enrollment-checker";
 
 interface EmailInputFormData {
   email: string;
@@ -27,6 +28,9 @@ interface EmailInputFormProps {
   isOAuth?: boolean;
   hideFullName?: boolean;
   privateEmailMessage?: string;
+  instituteId?: string; // Add instituteId for enrollment checking
+  onEnrolledUserDetected?: () => void; // Callback for when enrolled user is detected
+  checkEnrollmentOnce?: (email: string) => Promise<any>; // Function to check enrollment once
 }
 
 const createEmailInputSchema = (hideFullName: boolean = false) => {
@@ -52,7 +56,10 @@ export function EmailInputForm({
   className = "",
   isOAuth = false,
   hideFullName = false,
-  privateEmailMessage = ""
+  privateEmailMessage = "",
+  instituteId,
+  onEnrolledUserDetected,
+  checkEnrollmentOnce
 }: EmailInputFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const schema = createEmailInputSchema(hideFullName);
@@ -68,6 +75,12 @@ export function EmailInputForm({
   const handleEmailSubmit = async (data: EmailInputFormData) => {
     try {
       setIsSubmitting(true);
+      
+      // Note: We don't check enrollment here anymore
+      // Enrollment is checked AFTER OTP verification for all flows:
+      // - GitHub private email (OAuth flow)
+      // - Regular email OTP flow
+      // This ensures we have a verified email before checking enrollment status
       
       await axios.post(LIVE_SESSION_REQUEST_OTP, {
         to: data.email.trim(),

@@ -38,8 +38,10 @@ public class PaymentLogService {
     @Autowired
     private AuthService authService;
 
-    public String createPaymentLog(String userId, double paymentAmount, String vendor, String vendorId, String currency, UserPlan userPlan) {
-        logger.info("Creating payment log for userId={}, amount={}, vendor={}, currency={}", userId, paymentAmount, vendor, currency);
+    public String createPaymentLog(String userId, double paymentAmount, String vendor, String vendorId, String currency,
+            UserPlan userPlan) {
+        logger.info("Creating payment log for userId={}, amount={}, vendor={}, currency={}", userId, paymentAmount,
+                vendor, currency);
 
         PaymentLog paymentLog = new PaymentLog();
         paymentLog.setStatus(PaymentLogStatusEnum.INITIATED.name());
@@ -82,7 +84,7 @@ public class PaymentLogService {
     }
 
     @Transactional
-    public void updatePaymentLog(String paymentLogId, String paymentStatus,String instituteId) {
+    public void updatePaymentLog(String paymentLogId, String paymentStatus, String instituteId) {
         logger.info("Transactional update of payment log ID={}, setting paymentStatus={}", paymentLogId, paymentStatus);
 
         PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId).orElseThrow(() -> {
@@ -96,17 +98,22 @@ public class PaymentLogService {
         logger.info("Payment log saved with new paymentStatus. ID={}", paymentLogId);
 
         if (PaymentStatusEnum.PAID.name().equals(paymentStatus)) {
-            logger.info("Payment marked as PAID, triggering applyOperationsOnFirstPayment for userPlan ID={}", paymentLog.getUserPlan().getId());
+            logger.info("Payment marked as PAID, triggering applyOperationsOnFirstPayment for userPlan ID={}",
+                    paymentLog.getUserPlan().getId());
             userPlanService.applyOperationsOnFirstPayment(paymentLog.getUserPlan());
-            PaymentResponseDTO paymentResponseDTO = JsonUtil.fromJson(paymentLog.getPaymentSpecificData(), PaymentResponseDTO.class);
-            PaymentInitiationRequestDTO paymentInitiationRequestDTO = JsonUtil.fromJson(paymentLog.getUserPlan().getJsonPaymentDetails(), PaymentInitiationRequestDTO.class);
+            PaymentResponseDTO paymentResponseDTO = JsonUtil.fromJson(paymentLog.getPaymentSpecificData(),
+                    PaymentResponseDTO.class);
+            PaymentInitiationRequestDTO paymentInitiationRequestDTO = JsonUtil
+                    .fromJson(paymentLog.getUserPlan().getJsonPaymentDetails(), PaymentInitiationRequestDTO.class);
             UserDTO userDTO = authService.getUsersFromAuthServiceByUserIds(List.of(paymentLog.getUserId())).get(0);
-            paymentNotificatonService.sendPaymentConfirmationNotification(instituteId,paymentResponseDTO,paymentInitiationRequestDTO,userDTO);
+            paymentNotificatonService.sendPaymentConfirmationNotification(instituteId, paymentResponseDTO,
+                    paymentInitiationRequestDTO, userDTO);
         }
     }
 
     public PaymentLogDTO getPaymentLog(String paymentLogId) {
-        PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId).orElseThrow(() -> new RuntimeException("Payment log not found with ID: " + paymentLogId));
+        PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId)
+                .orElseThrow(() -> new RuntimeException("Payment log not found with ID: " + paymentLogId));
         return paymentLog.mapToDTO();
     }
 }

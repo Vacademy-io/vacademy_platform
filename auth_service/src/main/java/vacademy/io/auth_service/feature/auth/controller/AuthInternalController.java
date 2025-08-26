@@ -35,19 +35,21 @@ public class AuthInternalController {
     UserActivityTrackingService userActivityTrackingService;
 
     @GetMapping("/user")
-    public ResponseEntity<CustomUserDetails> getUserDetails(@RequestParam String userName, 
-                                                          @RequestParam(required = false) String serviceName,
-                                                          @RequestParam(required = false) String sessionToken,
-                                                          HttpServletRequest request) {
+    public ResponseEntity<CustomUserDetails> getUserDetails(@RequestParam String userName,
+                                                            @RequestParam(required = false) String serviceName,
+                                                            @RequestParam(required = false) String sessionToken,
+                                                            HttpServletRequest request) {
         long startTime = System.currentTimeMillis();
-        
+
         String smallCaseUsername = StringUtils.trimAllWhitespace(userName).toLowerCase();
 
         String usernameWithoutInstitute = smallCaseUsername;
         String instituteId = null;
-        String[] stringUsernameSplit = smallCaseUsername.split("@");
 
-        if (stringUsernameSplit.length > 1) {
+        // Split only into 2 parts: before first '@' and the rest
+        String[] stringUsernameSplit = smallCaseUsername.split("@", 2);
+
+        if (stringUsernameSplit.length == 2) {
             instituteId = stringUsernameSplit[0];
             usernameWithoutInstitute = stringUsernameSplit[1];
         }
@@ -66,45 +68,46 @@ public class AuthInternalController {
         long responseTime = System.currentTimeMillis() - startTime;
         String ipAddress = getClientIpAddress(request);
         String userAgent = request.getHeader("User-Agent");
-        
+
         userActivityTrackingService.logUserActivity(
-            user.get().getId(),
-            instituteId,
-            serviceName != null ? serviceName : "auth-service",
-            "/auth-service/v1/internal/user",
-            "USER_VERIFICATION",
-            sessionToken,
-            ipAddress,
-            userAgent,
-            200,
-            responseTime
+                user.get().getId(),
+                instituteId,
+                serviceName != null ? serviceName : "auth-service",
+                "/auth-service/v1/internal/user",
+                "USER_VERIFICATION",
+                sessionToken,
+                ipAddress,
+                userAgent,
+                200,
+                responseTime
         );
 
         // Create or update session if session token is provided
         if (sessionToken != null && instituteId != null) {
             userActivityTrackingService.createOrUpdateSession(
-                user.get().getId(),
-                instituteId,
-                sessionToken,
-                ipAddress,
-                userAgent
+                    user.get().getId(),
+                    instituteId,
+                    sessionToken,
+                    ipAddress,
+                    userAgent
             );
         }
 
         return ResponseEntity.ok(customUserDetails);
     }
 
+
     private String getClientIpAddress(HttpServletRequest request) {
         String xForwardedForHeader = request.getHeader("X-Forwarded-For");
         if (xForwardedForHeader != null && !xForwardedForHeader.isEmpty()) {
             return xForwardedForHeader.split(",")[0].trim();
         }
-        
+
         String xRealIpHeader = request.getHeader("X-Real-IP");
         if (xRealIpHeader != null && !xRealIpHeader.isEmpty()) {
             return xRealIpHeader;
         }
-        
+
         return request.getRemoteAddr();
     }
 

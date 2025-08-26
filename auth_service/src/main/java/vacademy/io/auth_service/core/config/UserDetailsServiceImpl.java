@@ -31,7 +31,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         String usernameWithoutInstitute = username;
         String instituteId = null;
-        String[] stringUsernameSplit = username.split("@");
+        String[] stringUsernameSplit = username.split("@",2);
 
         if (stringUsernameSplit.length > 1) {
             instituteId = stringUsernameSplit[0];

@@ -4,12 +4,14 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDTO;
+import vacademy.io.admin_core_service.features.learner.constants.TemplateConstants;
 import vacademy.io.admin_core_service.features.notification.config.NotificationConfig;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
 import vacademy.io.admin_core_service.features.notification_service.enums.CommunicationType;
 import vacademy.io.admin_core_service.features.notification_service.enums.NotificationSourceEnum;
 import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
+import vacademy.io.admin_core_service.features.notification_service.service.SendUniqueLinkService;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 
@@ -26,20 +28,37 @@ public class LearnerEnrollmentNotificationService {
     private final NotificationService notificationService;
     private final InstituteRepository instituteRepository;
     private final ExecutorService executor = Executors.newFixedThreadPool(10);
+    private final SendUniqueLinkService sendUniqueLinkService;
 
+    
     public void sendLearnerEnrollmentNotification(List<InstituteStudentDTO> students, String instituteId) {
         // Submit the task to the thread pool
         executor.submit(() -> {
             try {
                 Institute institute = fetchInstitute(instituteId);
                 NotificationDTO notificationDTO = createNotificationDTO(institute, students);
-                notificationService.sendEmailToUsers(notificationDTO,instituteId);
+                //notificationService.sendEmailToUsers(notificationDTO,instituteId);
+                for (InstituteStudentDTO student : students) {
+                    if (student != null && student.getUserDetails() != null) {
+                        sendUniqueLinkService.sendUniqueLinkByWhatsApp(
+                                instituteId,
+                                student.getUserDetails(),
+                                TemplateConstants.FREE_USER_WHATSAPP_TEMPLATE
+                        );
+                        sendUniqueLinkService.sendUniqueLinkByEmail(
+                                instituteId,
+                                student.getUserDetails(),
+                                TemplateConstants.FREE_USER_EMAIL_TEMPLATE
+                        );
+                    }
+                }
             } catch (Exception e) {
                 // Handle exceptions (e.g., log the error)
                 e.printStackTrace();
             }
         });
     }
+
 
     private Institute fetchInstitute(String instituteId) {
         return instituteRepository.findById(instituteId)

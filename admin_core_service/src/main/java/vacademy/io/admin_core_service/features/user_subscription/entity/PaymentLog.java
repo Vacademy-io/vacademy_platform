@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogDTO;
+import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 
 import java.time.LocalDateTime;
 import java.util.Date; // Using java.util.Date as in your original PaymentLog
@@ -60,7 +61,7 @@ public class PaymentLog {
     @Column(name = "payment_specific_data")
     private String paymentSpecificData;
 
-    public PaymentLogDTO mapToDTO(){
+    public PaymentLogDTO mapToDTO() {
         PaymentLogDTO paymentLogDTO = new PaymentLogDTO();
         paymentLogDTO.setId(id);
         paymentLogDTO.setStatus(status);
@@ -71,6 +72,7 @@ public class PaymentLog {
         paymentLogDTO.setDate(date);
         paymentLogDTO.setCurrency(currency);
         paymentLogDTO.setPaymentSpecificData(paymentSpecificData);
+        paymentLogDTO.setPaymentAmount(paymentAmount);
         return paymentLogDTO;
     }
 

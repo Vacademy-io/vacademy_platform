@@ -5,7 +5,15 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import axios from "axios";
+import axios, { AxiosError } from "axios";
+
+interface ErrorResponse {
+  message?: string;
+  ex?: string;
+  responseCode?: string;
+  url?: string;
+  date?: string;
+}
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { MyInput } from "@/components/design-system/input";
@@ -105,12 +113,39 @@ export function EmailLogin({
             startTimer(); // Add this line
             toast.success("OTP sent successfully");
         },
-        onError: () => {
+        onError: (error: AxiosError<ErrorResponse>) => {
             setIsLoading(false);
-            toast.error("this email is not registered", {
-                description: "Please try again with a registered email",
-                duration: 3000,
-            });
+            console.error("OTP request failed:", error);
+            
+            // Handle specific backend error responses
+            const errorData = error.response?.data;
+            
+            if (errorData?.ex === "User not found!" || errorData?.responseCode === "User not found!") {
+                // User doesn't exist - show signup message
+                toast.error("Account not found. Please sign up to continue.", {
+                    duration: 5000,
+                    description: "This email is not registered in our system."
+                });
+                
+                // Automatically switch to signup after a short delay
+                setTimeout(() => {
+                    if (onSwitchToSignup) {
+                        onSwitchToSignup();
+                    }
+                }, 2000);
+            } else if (errorData?.ex || errorData?.responseCode) {
+                // Show specific backend error message
+                toast.error(errorData.ex || errorData.responseCode || "Failed to send OTP", {
+                    duration: 5000,
+                    description: "Please try again or contact support if the issue persists."
+                });
+            } else {
+                // Generic error fallback
+                toast.error("Failed to send OTP. Please try again.", {
+                    duration: 5000,
+                    description: "Please check your internet connection and try again."
+                });
+            }
         },
     });
 
@@ -178,14 +213,24 @@ export function EmailLogin({
                                     redirectUrl = "/study-library/courses";
                                 }
                                 
-                                // Open in new tab if login originated from course-related pages or if type is courseDetailsPage
-                                if (type === "courseDetailsPage" || (type && type !== "mainLogin")) {
-                                    window.open(redirectUrl, '_blank');
+                                                            // Redirect in same tab if login originated from course-related pages or if type is courseDetailsPage
+                            if (type === "courseDetailsPage" || (type && type !== "mainLogin")) {
+                                // For course-related pages, redirect to the appropriate study library page
+                                if (redirectUrl !== "/dashboard") {
+                                    navigate({
+                                        to: redirectUrl as any,
+                                    });
+                                } else {
+                                    navigate({
+                                        to: "/dashboard",
+                                    });
                                 }
+                            } else {
                                 // Always navigate to dashboard for page login
                                 navigate({
                                     to: "/dashboard",
                                 });
+                            }
                             } else {
                                 // Unexpected login status
                             }
@@ -201,12 +246,30 @@ export function EmailLogin({
                 console.error("Error processing decoded data:", error);
             }
         },
-        onError: () => {
-            toast.error("Invalid OTP", {
-                description: "Please try again",
-                duration: 3000,
-            });
+        onError: (error: AxiosError<ErrorResponse>) => {
+            console.error("OTP verification failed:", error);
+            
+            // Handle specific backend error responses
+            const errorData = error.response?.data;
+            
+            if (errorData?.ex || errorData?.responseCode) {
+                // Show specific backend error message
+                toast.error(errorData.ex || errorData.responseCode || "Invalid OTP", {
+                    duration: 5000,
+                    description: "Please check your OTP and try again."
+                });
+            } else {
+                // Generic error fallback
+                toast.error("Invalid OTP", {
+                    description: "Please try again",
+                    duration: 5000,
+                });
+            }
+            
             otpForm.reset();
+        },
+        onSettled: () => {
+            setIsLoading(false);
         },
     });
 

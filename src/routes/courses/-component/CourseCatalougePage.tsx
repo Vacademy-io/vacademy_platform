@@ -80,7 +80,6 @@ const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }
                 }
             );
             setCourseData(response.data.content);
-            console.log("Response courses:", response.data);
         } catch (error) {
             console.error("Error fetching packages:", error);
         }
@@ -260,17 +259,19 @@ const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }
                     <div className="absolute inset-0 z-0 bg-transparent" />
                 ) : (
                     <div className="absolute inset-0 z-0 opacity-70">
-                        <img
-                            src={bannerImage}
-                            alt="Course Banner"
-                            className="size-full object-cover"
-                            onError={(e) => {
-                                e.currentTarget.style.display = "none";
-                                e.currentTarget.parentElement?.classList.add(
-                                    "bg-primary-500"
-                                );
-                            }}
-                        />
+                        {bannerImage && (
+                            <img
+                                src={bannerImage}
+                                alt="Course Banner"
+                                className="size-full object-cover"
+                                onError={(e) => {
+                                    e.currentTarget.style.display = "none";
+                                    e.currentTarget.parentElement?.classList.add(
+                                        "bg-primary-500"
+                                    );
+                                }}
+                            />
+                        )}
                     </div>
                 )}
                 <div className="w-full px-4 sm:px-6 lg:px-8 relative z-20 h-full flex">

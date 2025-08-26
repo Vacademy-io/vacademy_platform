@@ -69,13 +69,15 @@ const CourseListHeader = ({
               Loading...
             </div>
           )}
-          <img
-            src={imgUrl}
-            alt={`logo`}
-            className={`h-full w-full object-contain rounded-md border border-gray-200 ${
-              logoLoading ? "opacity-0" : "opacity-100"
-            }`}
-          />
+          {imgUrl && (
+            <img
+              src={imgUrl}
+              alt={`logo`}
+              className={`h-full w-full object-contain rounded-md border border-gray-200 ${
+                logoLoading ? "opacity-0" : "opacity-100"
+              }`}
+            />
+          )}
         </div>
 
         {/* Mobile Menu Button */}

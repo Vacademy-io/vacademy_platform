@@ -21,7 +21,7 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { getTokenFromCookie } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { SystemAlertsBar } from "@/components/announcements";
-import { handleGetPublicInstituteDetails } from "../services/navbar-services";
+// import { handleGetPublicInstituteDetails } from "../services/navbar-services";
 
 interface UserRole {
     id: string;
@@ -32,10 +32,7 @@ interface UserRole {
 }
 
 export function Navbar() {
-    const { data: instituteDetails } = useSuspenseQuery(
-        handleGetPublicInstituteDetails()
-    );
-    const { data: userRoleDetails, isLoading } = useSuspenseQuery(
+    const { data: userRoleDetails, isLoading, error } = useSuspenseQuery(
         handleFetchUserRoleDetails()
     );
 
@@ -44,13 +41,15 @@ export function Navbar() {
 
     const roleNames = userRoleDetails?.roles?.map(
         (role: UserRole) => role.role_name
-    );
+    ) || [];
 
     useEffect(() => {
-        setHasTeacherAndStudentRole(
-            roleNames.includes("STUDENT") && roleNames.includes("TEACHER")
-        );
-    }, [userRoleDetails]);
+        if (userRoleDetails?.roles && roleNames.length > 0) {
+            setHasTeacherAndStudentRole(
+                roleNames.includes("STUDENT") && roleNames.includes("TEACHER")
+            );
+        }
+    }, [userRoleDetails, roleNames]);
 
     const { navHeading } = useNavHeadingStore();
     const { setInstituteDetails, setSidebarOpen } = useStore();
@@ -97,6 +96,52 @@ export function Navbar() {
     }, []);
 
     if (isLoading) return <DashboardLoader />;
+
+    // Handle error gracefully
+    if (error) {
+        console.warn("Navbar: Error loading user role details, showing fallback UI:", error);
+        // Return a simplified navbar without role-dependent features
+        return (
+            <div className="sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-14 items-center justify-between bg-gradient-to-r from-white via-primary-50/20 to-blue-50/20 dark:bg-gradient-to-r dark:from-neutral-900 dark:via-neutral-900 dark:to-neutral-900 px-4 md:px-5 py-2 transition-all duration-300 shadow-sm">
+                <LogoutSidebar />
+                
+                {/* Left Section */}
+                <div className="flex items-center gap-4">
+                    {showSidebarControls && (
+                        <SidebarTrigger>
+                            <div
+                                onClick={() => {}}
+                                className="group flex items-center justify-center w-8 h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-gradient-to-br from-white to-primary-50/40 dark:from-neutral-800 dark:to-neutral-700/40 hover:from-primary-50 hover:to-primary-100 hover:border-primary-300 dark:hover:from-neutral-700 dark:hover:to-neutral-600 dark:hover:border-neutral-600 transition-all duration-200"
+                            >
+                                <FiSidebar
+                                    className="w-4 h-4 text-primary-600 dark:text-primary-400 group-hover:text-primary-700 dark:group-hover:text-primary-300 transition-colors duration-200"
+                                />
+                            </div>
+                        </SidebarTrigger>
+                    )}
+                    
+                    <div className="flex items-center gap-2">
+                        <div className="h-6 w-px bg-primary-200/50 dark:bg-neutral-700" />
+                        <h1 className="text-lg font-semibold text-primary-900 dark:text-primary-100">
+                            {navHeading || "Dashboard"}
+                        </h1>
+                    </div>
+                </div>
+
+                {/* Right Section */}
+                <div className="flex items-center gap-3">
+                    <SystemAlertsBar />
+                    <div className="flex items-center gap-2">
+                        <div className="h-6 w-px bg-primary-200/50 dark:bg-neutral-700" />
+                        <Student className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+                        <span className="text-sm font-medium text-primary-700 dark:text-primary-300">
+                            User
+                        </span>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-14 items-center justify-between bg-gradient-to-r from-white via-primary-50/20 to-blue-50/20 dark:bg-gradient-to-r dark:from-neutral-900 dark:via-neutral-900 dark:to-neutral-900 px-4 md:px-5 py-2 transition-all duration-300 shadow-sm">

@@ -29,12 +29,11 @@ export const resolveDomainRouting = async (
   // Check cache first
   const cached = domainRoutingCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-    console.log("[Domain Routing] Using cached response for:", cacheKey);
     return cached.data;
   }
 
   try {
-    console.log("[Domain Routing] Resolving domain routing for:", { domain, subdomain });
+    // Resolving domain routing for: ${domain}:${subdomain}
     
     const response = await axios.get<DomainRoutingResponse>(
       `${BASE_URL}/admin-core-service/public/domain-routing/v1/resolve`,
@@ -49,11 +48,11 @@ export const resolveDomainRouting = async (
     // Cache the successful response
     domainRoutingCache.set(cacheKey, { data, timestamp: Date.now() });
     
-    console.log("[Domain Routing] Successfully resolved:", data);
+    // Successfully resolved domain routing
     return data;
   } catch (error: any) {
     if (error.response?.status === 404) {
-      console.log("[Domain Routing] No institute found for domain/subdomain:", { domain, subdomain });
+      // No institute found for domain/subdomain: ${domain}:${subdomain}
       return null;
     }
     
@@ -99,7 +98,7 @@ export const getCurrentDomainInfo = () => {
 // Clear cache (useful for testing or when cache becomes stale)
 export const clearDomainRoutingCache = () => {
   domainRoutingCache.clear();
-  console.log("[Domain Routing] Cache cleared");
+  // Domain routing cache cleared
 };
 
 // Get cached data for debugging

@@ -993,7 +993,7 @@ export const CourseDetailsPage = () => {
             });
     }, []);
 
-    const hasRightSidebar = overviewVisible;
+    const hasRightSidebar = true;
 
     // Function to update module statistics for depth 5 courses
     const updateModuleStats = (
@@ -1470,7 +1470,7 @@ export const CourseDetailsPage = () => {
                 </Dialog>
                 {/* Video Player for non-lg screens (always visible if course has media) */}
                 {form.watch("courseData").courseMediaId && (
-                    <div className="lg:hidden relative z-10 max-w-[350px] px-2 sm:px-3 py-3">
+                    <div className="lg:hidden relative z-10 max-w-[350px] px-0 py-3">
                         <div className="bg-white border border-gray-200 rounded-md shadow-sm p-2 sm:p-3">
                             <VideoPlayer
                                 src={form.watch("courseData").courseMediaId}
@@ -1480,13 +1480,13 @@ export const CourseDetailsPage = () => {
                 )}
 
                 {/* Main Content Container */}
-                <div className="relative z-10 max-w-7xl mx-auto px-2 sm:px-3 lg:px-4 py-3 lg:py-4">
+                <div className="relative z-10 w-full px-0 py-3 lg:py-4">
                     <div
-                        className={`grid grid-cols-1 ${hasRightSidebar ? "lg:grid-cols-4" : ""} gap-3 lg:gap-4`}
+                        className={`grid grid-cols-1 ${hasRightSidebar ? "lg:grid-cols-3" : ""} gap-3 lg:gap-4`}
                     >
                         {/* Left Column - Course Content (3/4) */}
                         <div
-                            className={`${hasRightSidebar ? "lg:col-span-3" : ""} space-y-3 lg:space-y-4`}
+                            className={`${hasRightSidebar ? "lg:col-span-2" : ""} space-y-3 lg:space-y-4`}
                         >
                             {/* Certificate Card (separate from Course Configuration) */}
                             {certificateUrl && (
@@ -2034,7 +2034,7 @@ export const CourseDetailsPage = () => {
                         {hasRightSidebar && (
                             <div className="lg:col-span-1">
                                 <div className="sticky top-4 space-y-4">
-                                    {overviewVisible && (
+                                    {
                                         <div
                                             className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
                                             style={{ animationDelay: "0.7s" }}
@@ -2133,135 +2133,137 @@ export const CourseDetailsPage = () => {
                                                         </div>
                                                     ) : (
                                                         <div className="space-y-2">
-                                                            {processedSlideCounts.map(
-                                                                (count: {
-                                                                    source_type: string;
-                                                                    slide_count: number;
-                                                                    display_name: string;
-                                                                }) => (
-                                                                    <div
-                                                                        key={
-                                                                            count.source_type
-                                                                        }
-                                                                        className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item"
-                                                                    >
-                                                                        <div className="flex items-center space-x-2">
-                                                                            {getSlideTypeIcon(
+                                                            {overviewVisible &&
+                                                                processedSlideCounts.map(
+                                                                    (count: {
+                                                                        source_type: string;
+                                                                        slide_count: number;
+                                                                        display_name: string;
+                                                                    }) => (
+                                                                        <div
+                                                                            key={
                                                                                 count.source_type
-                                                                            )}
-                                                                            <span className="text-xs font-medium text-gray-700">
+                                                                            }
+                                                                            className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item"
+                                                                        >
+                                                                            <div className="flex items-center space-x-2">
+                                                                                {getSlideTypeIcon(
+                                                                                    count.source_type
+                                                                                )}
+                                                                                <span className="text-xs font-medium text-gray-700">
+                                                                                    {
+                                                                                        count.display_name
+                                                                                    }
+                                                                                </span>
+                                                                            </div>
+                                                                            <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
                                                                                 {
-                                                                                    count.display_name
+                                                                                    count.slide_count
                                                                                 }
                                                                             </span>
                                                                         </div>
-                                                                        <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                                                                            {
-                                                                                count.slide_count
-                                                                            }
-                                                                        </span>
-                                                                    </div>
-                                                                )
-                                                            )}
+                                                                    )
+                                                                )}
 
                                                             {/* Module Statistics */}
-                                                            {(() => {
-                                                                const currentSubjects =
-                                                                    getSubjectDetails(
-                                                                        form.getValues(),
-                                                                        selectedSession,
-                                                                        selectedLevel
-                                                                    );
+                                                            {overviewVisible &&
+                                                                (() => {
+                                                                    const currentSubjects =
+                                                                        getSubjectDetails(
+                                                                            form.getValues(),
+                                                                            selectedSession,
+                                                                            selectedLevel
+                                                                        );
 
-                                                                return (
-                                                                    <>
-                                                                        {/* Total Modules */}
-                                                                        {moduleStats.totalModules >
-                                                                            0 && (
-                                                                            <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
-                                                                                <div className="flex items-center space-x-2">
-                                                                                    <FileText
-                                                                                        size={
-                                                                                            16
-                                                                                        }
-                                                                                        className="text-blue-600 group-hover/item:scale-110 transition-transform duration-300"
-                                                                                        weight="duotone"
-                                                                                    />
-                                                                                    <span className="text-xs font-medium text-gray-700">
-                                                                                        {getTerminology(
-                                                                                            ContentTerms.Modules,
-                                                                                            SystemTerms.Modules
-                                                                                        )}
-                                                                                    </span>
-                                                                                </div>
-                                                                                <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                                                                                    {
-                                                                                        moduleStats.totalModules
-                                                                                    }
-                                                                                </span>
-                                                                            </div>
-                                                                        )}
-
-                                                                        {/* Total Chapters */}
-                                                                        {moduleStats.totalChapters >
-                                                                            0 && (
-                                                                            <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
-                                                                                <div className="flex items-center space-x-2">
-                                                                                    <PresentationChart
-                                                                                        size={
-                                                                                            16
-                                                                                        }
-                                                                                        className="text-green-600 group-hover/item:scale-110 transition-transform duration-300"
-                                                                                        weight="duotone"
-                                                                                    />
-                                                                                    <span className="text-xs font-medium text-gray-700">
-                                                                                        {getTerminology(
-                                                                                            ContentTerms.Chapters,
-                                                                                            SystemTerms.Chapters
-                                                                                        )}
-                                                                                    </span>
-                                                                                </div>
-                                                                                <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                                                                                    {
-                                                                                        moduleStats.totalChapters
-                                                                                    }
-                                                                                </span>
-                                                                            </div>
-                                                                        )}
-
-                                                                        {/* Total Subjects (for depth 5) */}
-                                                                        {form.getValues(
-                                                                            "courseData.courseStructure"
-                                                                        ) ===
-                                                                            5 &&
-                                                                            currentSubjects.length >
+                                                                    return (
+                                                                        <>
+                                                                            {/* Total Modules */}
+                                                                            {moduleStats.totalModules >
                                                                                 0 && (
                                                                                 <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
                                                                                     <div className="flex items-center space-x-2">
-                                                                                        <Folder
+                                                                                        <FileText
                                                                                             size={
                                                                                                 16
                                                                                             }
-                                                                                            className="text-purple-600 group-hover/item:scale-110 transition-transform duration-300"
+                                                                                            className="text-blue-600 group-hover/item:scale-110 transition-transform duration-300"
                                                                                             weight="duotone"
                                                                                         />
                                                                                         <span className="text-xs font-medium text-gray-700">
                                                                                             {getTerminology(
-                                                                                                ContentTerms.Subjects,
-                                                                                                SystemTerms.Subjects
+                                                                                                ContentTerms.Modules,
+                                                                                                SystemTerms.Modules
                                                                                             )}
                                                                                         </span>
                                                                                     </div>
                                                                                     <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
                                                                                         {
-                                                                                            currentSubjects.length
+                                                                                            moduleStats.totalModules
                                                                                         }
                                                                                     </span>
                                                                                 </div>
                                                                             )}
-                                                                    </>
-                                                                );
-                                                            })()}
+
+                                                                            {/* Total Chapters */}
+                                                                            {moduleStats.totalChapters >
+                                                                                0 && (
+                                                                                <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
+                                                                                    <div className="flex items-center space-x-2">
+                                                                                        <PresentationChart
+                                                                                            size={
+                                                                                                16
+                                                                                            }
+                                                                                            className="text-green-600 group-hover/item:scale-110 transition-transform duration-300"
+                                                                                            weight="duotone"
+                                                                                        />
+                                                                                        <span className="text-xs font-medium text-gray-700">
+                                                                                            {getTerminology(
+                                                                                                ContentTerms.Chapters,
+                                                                                                SystemTerms.Chapters
+                                                                                            )}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
+                                                                                        {
+                                                                                            moduleStats.totalChapters
+                                                                                        }
+                                                                                    </span>
+                                                                                </div>
+                                                                            )}
+
+                                                                            {/* Total Subjects (for depth 5) */}
+                                                                            {form.getValues(
+                                                                                "courseData.courseStructure"
+                                                                            ) ===
+                                                                                5 &&
+                                                                                currentSubjects.length >
+                                                                                    0 && (
+                                                                                    <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
+                                                                                        <div className="flex items-center space-x-2">
+                                                                                            <Folder
+                                                                                                size={
+                                                                                                    16
+                                                                                                }
+                                                                                                className="text-purple-600 group-hover/item:scale-110 transition-transform duration-300"
+                                                                                                weight="duotone"
+                                                                                            />
+                                                                                            <span className="text-xs font-medium text-gray-700">
+                                                                                                {getTerminology(
+                                                                                                    ContentTerms.Subjects,
+                                                                                                    SystemTerms.Subjects
+                                                                                                )}
+                                                                                            </span>
+                                                                                        </div>
+                                                                                        <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
+                                                                                            {
+                                                                                                currentSubjects.length
+                                                                                            }
+                                                                                        </span>
+                                                                                    </div>
+                                                                                )}
+                                                                        </>
+                                                                    );
+                                                                })()}
 
                                                             {/* Instructors Count */}
                                                             {form.getValues(
@@ -2351,57 +2353,31 @@ export const CourseDetailsPage = () => {
                                                     })()}
                                             </div>
                                         </div>
-                                    )}
+                                    }
 
-                                    {/* Enrollment card within sidebar (when visible) */}
-                                    {hasRightSidebar &&
-                                        selectedTab === "ALL" &&
-                                        (() => {
-                                            if (
-                                                !selectedSession ||
-                                                !selectedLevel
-                                            )
-                                                return null;
-                                            const isAlreadyEnrolled =
-                                                enrolledSessions.some(
-                                                    (enrolledSession) =>
-                                                        enrolledSession
-                                                            .package_dto.id ===
-                                                            searchParams.courseId &&
-                                                        enrolledSession.session
-                                                            .id ===
-                                                            selectedSession &&
-                                                        enrolledSession.level
-                                                            .id ===
-                                                            selectedLevel
-                                                );
-                                            if (isAlreadyEnrolled) return null;
-                                            return (
-                                                <div className="relative bg-white border border-gray-200 rounded-md shadow-sm p-2 sm:p-3">
-                                                    <MyButton
-                                                        type="button"
-                                                        scale="large"
-                                                        buttonType="primary"
-                                                        layoutVariant="default"
-                                                        className="!min-w-full !w-full text-xs h-8"
-                                                        onClick={() =>
-                                                            setEnrollmentDialogOpen(
-                                                                true
-                                                            )
-                                                        }
-                                                    >
-                                                        Enroll
-                                                    </MyButton>
-                                                </div>
-                                            );
-                                        })()}
+                                    {/* Ratings & Reviews */}
+                                    {packageSessionIdForCurrentLevel && (
+                                        <div
+                                            className="animate-fade-in-up"
+                                            style={{ animationDelay: "1.0s" }}
+                                        >
+                                            <CourseDetailsRatingsComponent
+                                                packageSessionId={
+                                                    packageSessionIdForCurrentLevel
+                                                }
+                                                onLoadingChange={
+                                                    handleRatingsLoadingChange
+                                                }
+                                            />
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
                     </div>
 
                     {/* Ratings Component */}
-                    {packageSessionIdForCurrentLevel && (
+                    {!hasRightSidebar && packageSessionIdForCurrentLevel && (
                         <div
                             className="mt-6 lg:mt-8 animate-fade-in-up"
                             style={{ animationDelay: "0.8s" }}

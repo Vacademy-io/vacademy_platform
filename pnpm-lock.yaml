@@ -17,6 +17,9 @@ importers:
       '@capacitor-community/privacy-screen':
         specifier: ^6.0.0
         version: 6.0.0(@capacitor/core@7.4.2)
+      '@capacitor-firebase/messaging':
+        specifier: ^7.3.0
+        version: 7.3.0(@capacitor/core@7.4.2)(firebase@10.14.1)
       '@capacitor/android':
         specifier: ^7.0.1
         version: 7.4.2(@capacitor/core@7.4.2)
@@ -227,6 +230,9 @@ importers:
       axios:
         specifier: ^1.7.9
         version: 1.10.0
+      canvas-confetti:
+        specifier: ^1.9.3
+        version: 1.9.3
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -782,6 +788,15 @@ packages:
     resolution: {integrity: sha512-Fyx7VBK2Kk2eefDCJpiMCI8m3hF1apthQK8R70r8Pqpyig8FIvAL1zBBnsnOQYEGgYDo/IaiVX6xbReg48NukA==}
     peerDependencies:
       '@capacitor/core': '>=7.0.0'
+
+  '@capacitor-firebase/messaging@7.3.0':
+    resolution: {integrity: sha512-SQmkTNznKKtcmmlGgDID48CgQQnkmkyHM6hxthjdGvT8TIb0FzHJCj4Bocq85eeV9EG4hvL9mkzbR8/K56C90g==}
+    peerDependencies:
+      '@capacitor/core': '>=7.0.0'
+      firebase: ^11.2.0
+    peerDependenciesMeta:
+      firebase:
+        optional: true
 
   '@capacitor/android@7.4.2':
     resolution: {integrity: sha512-FZ7M9NwFkljR7EP5eXiE32mAIfZNcYw2CzRMCG3rQu0u0ZaIoeOeq5/oK4YcDnGpNmu8jpngKJqZ+9OiSQSwDg==}
@@ -3269,6 +3284,9 @@ packages:
   '@types/babel__traverse@7.20.7':
     resolution: {integrity: sha512-dkO5fhS7+/oos4ciWxyEyjWe48zmG6wbCheo/G2ZnHx4fs3EU6YC6UM8rk56gAjNJ9P3MTH2jo5jb92/K6wbng==}
 
+  '@types/canvas-confetti@1.9.0':
+    resolution: {integrity: sha512-aBGj/dULrimR1XDZLtG9JwxX1b4HPRF6CX9Yfwh3NvstZEm1ZL7RBnel4keCPSqs1ANRu1u2Aoz9R+VmtjYuTg==}
+
   '@types/crypto-js@4.2.2':
     resolution: {integrity: sha512-sDOLlVbHhXpAUAL0YHDUUwDZf3iN4Bwi4W6a0W0b+QcAezUbRtH4FVb+9J4h+XFPW7l/gQ9F8qC7P+Ec4k8QVQ==}
 
@@ -3936,6 +3954,9 @@ packages:
 
   caniuse-lite@1.0.30001727:
     resolution: {integrity: sha512-pB68nIHmbN6L/4C6MH1DokyR3bYqFwjaSs/sWDHGj4CTcFtQUQMuJftVwWkXq7mNWOybD3KhUv3oWHoGxgP14Q==}
+
+  canvas-confetti@1.9.3:
+    resolution: {integrity: sha512-rFfTURMvmVEX1gyXFgn5QMn81bYk70qa0HLzcIOSVEyl57n6o9ItHeBtUSWdvKAPY0xlvBHno4/v3QPrT83q9g==}
 
   canvas-roundrect-polyfill@0.0.1:
     resolution: {integrity: sha512-yWq+R3U3jE+coOeEb3a3GgE2j/0MMiDKM/QpLb6h9ihf5fGY9UXtvK9o4vNqjWXoZz7/3EaSVU3IX53TvFFUOw==}
@@ -8336,6 +8357,12 @@ snapshots:
     dependencies:
       '@capacitor/core': 7.4.2
 
+  '@capacitor-firebase/messaging@7.3.0(@capacitor/core@7.4.2)(firebase@10.14.1)':
+    dependencies:
+      '@capacitor/core': 7.4.2
+    optionalDependencies:
+      firebase: 10.14.1
+
   '@capacitor/android@7.4.2(@capacitor/core@7.4.2)':
     dependencies:
       '@capacitor/core': 7.4.2
@@ -11136,6 +11163,8 @@ snapshots:
     dependencies:
       '@babel/types': 7.28.0
 
+  '@types/canvas-confetti@1.9.0': {}
+
   '@types/crypto-js@4.2.2': {}
 
   '@types/d3-array@3.2.1': {}
@@ -11831,6 +11860,8 @@ snapshots:
   camelcase@6.3.0: {}
 
   caniuse-lite@1.0.30001727: {}
+
+  canvas-confetti@1.9.3: {}
 
   canvas-roundrect-polyfill@0.0.1: {}
 

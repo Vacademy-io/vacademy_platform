@@ -13,6 +13,7 @@ import {
     getTokenFromCookie,
     setAuthorizationCookie,
 } from "@/lib/auth/sessionUtility";
+import { handleGetPublicInstituteDetails } from "@/components/common/layout-container/services/navbar-services";
 
 interface UserRole {
     id: string;
@@ -27,6 +28,10 @@ const HeroSection = ({
 }: {
     allowLeanersToCreateCourses: boolean;
 }) => {
+    const { data: instituteDetails } = useSuspenseQuery(
+        handleGetPublicInstituteDetails()
+    );
+
     const { data: userRoleDetails, isLoading } = useSuspenseQuery(
         handleFetchUserRoleDetails()
     );
@@ -41,7 +46,7 @@ const HeroSection = ({
     const handleNavigate = () => {
         const accessToken = getTokenFromCookie(TokenKey.accessToken);
         const refreshToken = getTokenFromCookie(TokenKey.refreshToken);
-        window.location.href = `https://dash.vacademy.io/auth-transfer?accessToken=${accessToken}&refreshToken=${refreshToken}`;
+        window.location.href = `https://${instituteDetails.teacher_portal_base_url}/auth-transfer?accessToken=${accessToken}&refreshToken=${refreshToken}`;
     };
 
     useEffect(() => {

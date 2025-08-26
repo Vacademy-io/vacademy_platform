@@ -35,6 +35,7 @@ import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { AuthPageBranding } from "@/components/common/institute-branding";
+import { identifyUser } from "@/lib/analytics";
 
 export const getFromStorage = async (key: string) => {
     const result = await Preferences.get({ key });
@@ -105,6 +106,16 @@ export function LoginForm({
             const authorities = decodedData?.authorities;
             const userId = decodedData?.user;
             const authorityKeys = authorities ? Object.keys(authorities) : [];
+
+            // Identify user in analytics as soon as we know the userId
+            if (userId) {
+                try {
+                    identifyUser(userId, {
+                        username: decodedData?.username,
+                        email: decodedData?.email,
+                    });
+                } catch {}
+            }
 
             if (authorityKeys.length > 1) {
                 // User has multiple institutes - redirect to institute selection

@@ -18,6 +18,8 @@ export interface Course {
     tags: string[] | null;
     course_depth: number;
     course_html_description: string;
+    // Optional progress info if available in upstream API
+    percentage_completed?: number;
 }
 
 export interface Session {

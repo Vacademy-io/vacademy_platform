@@ -8,6 +8,7 @@ import { useDashboardPins } from '@/hooks/useDashboardPins';
 import { formatDistanceToNow } from 'date-fns';
 import { processHtmlString } from '@/lib/utils';
 import type { UserMessage } from '@/types/announcement';
+import { announcementApi } from '@/services/announcementApi';
 
 interface DashboardPinsPanelProps {
   className?: string;
@@ -39,6 +40,8 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
     setSelectedPin(pin);
     setShowFullContent(true);
     markAsRead(pin.messageId);
+    // Track click interaction
+    announcementApi.recordInteraction(pin.messageId, 'CLICKED', { source: 'DashboardPinsPanel' }).catch(() => undefined);
   };
 
   const getPriorityColor = (priority?: string) => {

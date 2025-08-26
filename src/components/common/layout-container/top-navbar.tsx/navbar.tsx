@@ -21,6 +21,7 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { getTokenFromCookie } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { SystemAlertsBar } from "@/components/announcements";
+import { handleGetPublicInstituteDetails } from "../services/navbar-services";
 
 interface UserRole {
     id: string;
@@ -56,7 +57,7 @@ export function Navbar() {
     const handleNavigateToAdmin = () => {
         const accessToken = getTokenFromCookie(TokenKey.accessToken);
         const refreshToken = getTokenFromCookie(TokenKey.refreshToken);
-        window.location.href = `https://dash.vacademy.io/auth-transfer?accessToken=${accessToken}&refreshToken=${refreshToken}`;
+        window.location.href = `https://${instituteDetails.teacher_portal_base_url}/auth-transfer?accessToken=${accessToken}&refreshToken=${refreshToken}`;
     };
 
     async function fetch() {
@@ -177,7 +178,7 @@ export function Navbar() {
             <div className="flex items-center gap-3">
                 {/* System Alerts */}
                 <SystemAlertsBar />
-                
+
                 {hasTeacherAndStudentRole && (
                     <Tooltip delayDuration={0}>
                         <TooltipTrigger>

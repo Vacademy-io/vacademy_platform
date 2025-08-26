@@ -75,8 +75,19 @@ export const getFirebaseToken = async (): Promise<string | null> => {
   }
 
   try {
+    // Prefer the explicitly-registered service worker for reliability in dev (Vite) and prod
+    let serviceWorkerRegistration: ServiceWorkerRegistration | undefined = undefined;
+    if ('serviceWorker' in navigator) {
+      try {
+        serviceWorkerRegistration = await navigator.serviceWorker.getRegistration('/firebase-messaging-sw.js') || undefined;
+      } catch {
+        // no-op
+      }
+    }
+
     const token = await getToken(messaging, {
-      vapidKey: VAPID_KEY
+      vapidKey: VAPID_KEY,
+      serviceWorkerRegistration
     });
     
     if (token) {

@@ -7,8 +7,6 @@ import type {
   UnreadCountResponse,
   MessageReply,
   MessageRepliesResponse,
-  MarkAsReadRequest,
-  DismissMessageRequest,
   CreateReplyRequest,
   MessageInteractionRequest,
   SystemAlertsFilters,
@@ -16,6 +14,7 @@ import type {
   CommunityMessagesFilters,
   RepliesFilters,
   ModeType,
+  InteractionType,
 } from '@/types/announcement';
 
 // Base configuration for notification service API
@@ -154,12 +153,13 @@ export const markAsRead = async (recipientMessageId: string) => {
     const { userId } = await getUserContext();
     if (!userId) throw new Error('User ID not found');
 
-    const payload: MarkAsReadRequest = {
+    const payload: MessageInteractionRequest = {
       recipientMessageId,
       userId,
+      interactionType: 'READ',
     };
 
-    await notificationApi.post('/user-messages/interactions/read', payload);
+    await notificationApi.post('/user-messages/interactions', payload);
     toast.success('Marked as read');
   } catch (error) {
     handleApiError(error, 'mark as read');
@@ -171,12 +171,13 @@ export const dismissMessage = async (recipientMessageId: string) => {
     const { userId } = await getUserContext();
     if (!userId) throw new Error('User ID not found');
 
-    const payload: DismissMessageRequest = {
+    const payload: MessageInteractionRequest = {
       recipientMessageId,
       userId,
+      interactionType: 'DISMISSED',
     };
 
-    await notificationApi.post('/user-messages/interactions/dismiss', payload);
+    await notificationApi.post('/user-messages/interactions', payload);
     toast.success('Message dismissed');
   } catch (error) {
     handleApiError(error, 'dismiss message');
@@ -185,7 +186,7 @@ export const dismissMessage = async (recipientMessageId: string) => {
 
 export const recordInteraction = async (
   recipientMessageId: string,
-  interactionType: 'CLICK' | 'VIEW' | 'READ' | 'DISMISS',
+  interactionType: InteractionType,
   additionalData?: Record<string, unknown>
 ) => {
   try {
@@ -294,10 +295,11 @@ export const batchMarkAsRead = async (recipientMessageIds: string[]) => {
     if (!userId) throw new Error('User ID not found');
 
     const promises = recipientMessageIds.map(recipientMessageId =>
-      notificationApi.post('/user-messages/interactions/read', {
+      notificationApi.post('/user-messages/interactions', {
         recipientMessageId,
         userId,
-      })
+        interactionType: 'READ',
+      } as MessageInteractionRequest)
     );
 
     await Promise.all(promises);

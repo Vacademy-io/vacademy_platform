@@ -64,6 +64,7 @@ import { Preferences } from "@capacitor/preferences";
 import { getSubdomain } from "@/helpers/helper";
 import { handleGetInstituteIdWithLocalStorageCheck } from "../../-services/courses-services";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
+import { extractTextFromHTML } from "@/components/common/helper";
 
 type SlideType = {
     id: string;
@@ -297,12 +298,13 @@ export const CourseDetailsPage = () => {
     }, [instituteId, selectedSession, selectedLevel, updateLoadingState]);
 
     // Only run the query if instituteId is available
-    const { data: studyLibraryData, isLoading: isCourseDetailsLoading } = useQuery({
-        ...handleGetAllCourseDetails({
-            instituteId: instituteId || "",
-        }),
-        enabled: !!instituteId, // Only run query when instituteId is available
-    });
+    const { data: studyLibraryData, isLoading: isCourseDetailsLoading } =
+        useQuery({
+            ...handleGetAllCourseDetails({
+                instituteId: instituteId || "",
+            }),
+            enabled: !!instituteId, // Only run query when instituteId is available
+        });
 
     // Update course details loading state
     useEffect(() => {
@@ -1046,11 +1048,15 @@ export const CourseDetailsPage = () => {
                                 packageSessionId={
                                     packageSessionIdForCurrentLevel || ""
                                 }
-                                onModulesLoadingChange={handleModulesLoadingChange}
+                                onModulesLoadingChange={
+                                    handleModulesLoadingChange
+                                }
                             />
 
                             {/* What You'll Learn Section */}
-                            {form.getValues("courseData").whatYoullLearn && (
+                            {extractTextFromHTML(
+                                form.getValues("courseData").whatYoullLearn
+                            ) && (
                                 <div className="mb-6 sm:mb-8">
                                     <h2 className="mb-3 sm:mb-4 text-xl sm:text-2xl font-bold">
                                         What you&apos;ll learn?
@@ -1069,7 +1075,9 @@ export const CourseDetailsPage = () => {
                             )}
 
                             {/* About Content Section */}
-                            {form.getValues("courseData").aboutTheCourse && (
+                            {extractTextFromHTML(
+                                form.getValues("courseData").aboutTheCourse
+                            ) && (
                                 <div className="mb-6 sm:mb-8">
                                     <h2 className="mb-3 sm:mb-4 text-xl sm:text-2xl font-bold">
                                         About this course
@@ -1088,7 +1096,9 @@ export const CourseDetailsPage = () => {
                             )}
 
                             {/* Who Should Join Section */}
-                            {form.getValues("courseData").whoShouldLearn && (
+                            {extractTextFromHTML(
+                                form.getValues("courseData").whoShouldLearn
+                            ) && (
                                 <div className="mb-6 sm:mb-8">
                                     <h2 className="mb-3 sm:mb-4 text-xl sm:text-2xl font-bold">
                                         Who should join?

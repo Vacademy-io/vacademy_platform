@@ -16,6 +16,7 @@ public class PaymentInitiationRequestDTO {
     private boolean chargeAutomatically;
     private String orderId;
     private String instituteId;
+    private String email;
 
     private StripeRequestDTO stripeRequest;
     private RazorpayRequestDTO razorpayRequest;

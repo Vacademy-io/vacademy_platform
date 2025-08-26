@@ -55,7 +55,7 @@ public class PaymentNotificatonService {
 
         NotificationToUserDTO notificationToUserDTO = new NotificationToUserDTO();
         notificationToUserDTO.setUserId(userDTO.getId());
-        notificationToUserDTO.setChannelId(userDTO.getEmail());
+        notificationToUserDTO.setChannelId(paymentInitiationRequestDTO.getEmail()==null ? userDTO.getEmail() : paymentInitiationRequestDTO.getEmail());
         notificationToUserDTO.setPlaceholders(Map.of());
         notificationDTO.setUsers(List.of(notificationToUserDTO));
         notificationService.sendEmailToUsers(notificationDTO, instituteId);
@@ -89,7 +89,7 @@ public class PaymentNotificatonService {
 
         NotificationToUserDTO notificationToUserDTO = new NotificationToUserDTO();
         notificationToUserDTO.setUserId(userDTO.getId());
-        notificationToUserDTO.setChannelId(userDTO.getEmail());
+        notificationToUserDTO.setChannelId(paymentInitiationRequestDTO.getEmail()==null ? userDTO.getEmail() :  paymentInitiationRequestDTO.getEmail());
         notificationToUserDTO.setPlaceholders(Map.of());
         notificationDTO.setUsers(List.of(notificationToUserDTO));
         notificationService.sendEmailToUsers(notificationDTO, instituteId);

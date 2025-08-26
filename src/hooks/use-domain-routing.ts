@@ -32,7 +32,6 @@ export const useDomainRouting = () => {
   });
 
   const applyInstituteTheme = (themeCode: string | null) => {
-    console.log("[Domain Routing] Applying institute theme:", themeCode);
     // Use the existing theme system - the themeCode from API should match the codes in theme.json
     if (themeCode) {
       setPrimaryColor(themeCode);
@@ -64,7 +63,6 @@ export const useDomainRouting = () => {
       // Update global state
       setInstituteId(data.instituteId);
       
-      console.log("[Domain Routing] Stored institute data:", data);
     } catch (error) {
       console.error("[Domain Routing] Error storing institute data:", error);
     }
@@ -75,7 +73,6 @@ export const useDomainRouting = () => {
       // Try to get institute ID from localStorage (current logic)
       const { value } = await Preferences.get({ key: "InstituteId" });
       if (!isNullOrEmptyOrUndefined(value)) {
-        console.log("[Domain Routing] Found fallback institute ID:", value);
         return value;
       }
       
@@ -85,7 +82,6 @@ export const useDomainRouting = () => {
         try {
           const parsed = JSON.parse(instituteDetails.value);
           if (parsed.id) {
-            console.log("[Domain Routing] Found fallback institute ID from details:", parsed.id);
             return parsed.id;
           }
         } catch (e) {
@@ -110,14 +106,14 @@ export const useDomainRouting = () => {
       const testSubdomain = subdomain || "*";
       const testDomain = domain;
       
-      console.log("[Domain Routing] Resolving with domain:", testDomain, "subdomain:", testSubdomain);
+      // Resolving with domain: ${testDomain} subdomain: ${testSubdomain}
 
       // Try API first
       const apiResult = await resolveDomainRouting(testDomain, testSubdomain);
       
       if (apiResult) {
         // API returned valid institute data
-        console.log("[Domain Routing] API resolved institute:", apiResult);
+        // API resolved institute successfully
         
         await storeInstituteData(apiResult);
         applyInstituteTheme(apiResult.instituteThemeCode);
@@ -135,12 +131,11 @@ export const useDomainRouting = () => {
         return;
       }
 
-      // API returned 404, try fallback
-      console.log("[Domain Routing] API returned 404, trying fallback");
+      // API returned 404, trying fallback
       const fallbackInstituteId = await getFallbackInstituteId();
       
       if (fallbackInstituteId) {
-        console.log("[Domain Routing] Using fallback institute ID:", fallbackInstituteId);
+        // Using fallback institute ID
         setState({
           isLoading: false,
           instituteId: fallbackInstituteId,
@@ -153,8 +148,7 @@ export const useDomainRouting = () => {
         return;
       }
 
-      // No institute found anywhere, redirect to login
-      console.log("[Domain Routing] No institute found, redirecting to login");
+      // No institute found anywhere, redirecting to login
       setState({
         isLoading: false,
         instituteId: null,
@@ -173,7 +167,7 @@ export const useDomainRouting = () => {
         const fallbackInstituteId = await getFallbackInstituteId();
         
         if (fallbackInstituteId) {
-          console.log("[Domain Routing] Using fallback after API error:", fallbackInstituteId);
+          // Using fallback after API error
           setState({
             isLoading: false,
             instituteId: fallbackInstituteId,
@@ -204,7 +198,7 @@ export const useDomainRouting = () => {
 
   const redirectToResolvedPath = () => {
     if (state.redirectPath) {
-      console.log("[Domain Routing] Redirecting to resolved path:", state.redirectPath);
+      // Redirecting to resolved path: ${state.redirectPath}
       navigate({ to: state.redirectPath as never });
     } else if (state.instituteId) {
       // Don't automatically redirect to courses if we're on a public route
@@ -213,14 +207,14 @@ export const useDomainRouting = () => {
       const isOnPublicRoute = publicRoutes.some(route => currentPath.startsWith(route));
       
       if (isOnPublicRoute) {
-        console.log("[Domain Routing] Skipping automatic redirect to courses on public route:", currentPath);
+        // Skipping automatic redirect to courses on public route: ${currentPath}
         return;
       }
       
-      console.log("[Domain Routing] Redirecting to courses catalog for institute:", state.instituteId);
+      // Redirecting to courses catalog for institute
       navigate({ to: "/courses" });
     } else {
-      console.log("[Domain Routing] Redirecting to default login");
+      // Redirecting to default login
       navigate({ to: "/login" });
     }
   };
@@ -232,7 +226,7 @@ export const useDomainRouting = () => {
   // Handle redirect when state changes
   useEffect(() => {
     if (!state.isLoading && state.redirectPath) {
-      console.log("[Domain Routing] State updated, redirecting to:", state.redirectPath);
+      // State updated, redirecting to: ${state.redirectPath}
       
       // Don't redirect if we're on public routes
       const currentPath = window.location.pathname;
@@ -240,16 +234,16 @@ export const useDomainRouting = () => {
       const isOnPublicRoute = publicRoutes.some(route => currentPath.startsWith(route));
       
       if (isOnPublicRoute) {
-        console.log("[Domain Routing] Skipping redirect on public route:", currentPath);
+        // Skipping redirect on public route: ${currentPath}
         return;
       }
       
       // Only redirect if we're not on the root route (to avoid conflicts with root route logic)
       if (window.location.pathname !== "/") {
-        console.log("[Domain Routing] Executing redirect to:", state.redirectPath);
+        // Executing redirect to: ${state.redirectPath}
         redirectToResolvedPath();
       } else {
-        console.log("[Domain Routing] Skipping redirect on root route to avoid conflicts");
+        // Skipping redirect on root route to avoid conflicts
       }
     }
   }, [state.isLoading, state.redirectPath]);

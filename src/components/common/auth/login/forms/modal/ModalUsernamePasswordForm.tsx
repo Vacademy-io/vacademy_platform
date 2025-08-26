@@ -144,19 +144,35 @@ export function ModalUsernameLogin({
                                 redirectUrl = "/study-library/courses";
                             }
                             
-                            // Open in new tab if login originated from course-related pages or if type is courseDetailsPage
+                            // Redirect in same tab if login originated from course-related pages or if type is courseDetailsPage
                             if (type === "courseDetailsPage" || (type && type !== "mainLogin")) {
-                                window.open(redirectUrl, '_blank');
-                            }
-                            // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
-                            if (!type || type === "mainLogin") {
-                                navigate({
-                                    to: "/dashboard",
-                                });
+                                // For course-related pages, redirect to the appropriate study library page
+                                if (redirectUrl !== "/dashboard") {
+                                    // Close modal first, then redirect
+                                    if (onLoginSuccess) {
+                                        onLoginSuccess();
+                                    }
+                                    // Use setTimeout to ensure modal closes before redirect
+                                    setTimeout(() => {
+                                        window.location.href = redirectUrl;
+                                    }, 100);
+                                } else {
+                                    // Call onLoginSuccess callback for modal login
+                                    if (onLoginSuccess) {
+                                        onLoginSuccess();
+                                    }
+                                }
                             } else {
-                                // Call onLoginSuccess callback for modal login
-                                if (onLoginSuccess) {
-                                    onLoginSuccess();
+                                // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
+                                if (!type || type === "mainLogin") {
+                                    navigate({
+                                        to: "/dashboard",
+                                    });
+                                } else {
+                                    // Call onLoginSuccess callback for modal login
+                                    if (onLoginSuccess) {
+                                        onLoginSuccess();
+                                    }
                                 }
                             }
                         } catch (error) {
@@ -167,34 +183,50 @@ export function ModalUsernameLogin({
                         // Single institute case
                         const instituteId = authorityKeys[0];
                         
-                        try {
+                                                try {
                             await fetchAndStoreInstituteDetails(instituteId, userId);
                             await fetchAndStoreStudentDetails(instituteId, userId);
 
                             // Determine redirect URL based on type and courseId
                             let redirectUrl = "/dashboard";
-                        
-                        if (type === "courseDetailsPage" && courseId) {
-                            redirectUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
-                        } else if (type === "courseDetailsPage") {
-                            redirectUrl = "/study-library/courses";
-                        }
-                        
-                        // Open in new tab if login originated from course-related pages or if type is courseDetailsPage
-                        if (type === "courseDetailsPage" || (type && type !== "mainLogin")) {
-                            window.open(redirectUrl, '_blank');
-                        }
-                        // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
-                        if (!type || type === "mainLogin") {
-                            navigate({
-                                to: "/dashboard",
-                            });
-                        } else {
-                            // Call onLoginSuccess callback for modal login
-                            if (onLoginSuccess) {
-                                onLoginSuccess();
+                            
+                            if (type === "courseDetailsPage" && courseId) {
+                                redirectUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
+                            } else if (type === "courseDetailsPage") {
+                                redirectUrl = "/study-library/courses";
                             }
-                        }
+                            
+                            // Redirect in same tab if login originated from course-related pages or if type is courseDetailsPage
+                            if (type === "courseDetailsPage" || (type && type !== "mainLogin")) {
+                                // For course-related pages, redirect to the appropriate study library page
+                                if (redirectUrl !== "/dashboard") {
+                                    // Close modal first, then redirect
+                                    if (onLoginSuccess) {
+                                        onLoginSuccess();
+                                    }
+                                    // Use setTimeout to ensure modal closes before redirect
+                                    setTimeout(() => {
+                                        window.location.href = redirectUrl;
+                                    }, 100);
+                                } else {
+                                    // Call onLoginSuccess callback for modal login
+                                    if (onLoginSuccess) {
+                                        onLoginSuccess();
+                                    }
+                                }
+                            } else {
+                                // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
+                                if (!type || type === "mainLogin") {
+                                    navigate({
+                                        to: "/dashboard",
+                                    });
+                                } else {
+                                    // Call onLoginSuccess callback for modal login
+                                    if (onLoginSuccess) {
+                                        onLoginSuccess();
+                                    }
+                                }
+                            }
                         } catch (error) {
                             console.error("Error fetching details:", error);
                             toast.error("Failed to fetch details");

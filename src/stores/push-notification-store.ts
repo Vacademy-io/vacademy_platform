@@ -160,7 +160,6 @@ export const usePushNotificationStore = create<PushNotificationState>((set, get)
     try {
       // Load settings from storage or API
       // This would typically load user preferences from your backend
-      console.log('Initializing push notification store...');
       
       // You can add logic here to:
       // 1. Load notification settings from backend

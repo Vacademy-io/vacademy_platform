@@ -24,7 +24,7 @@ export const mapSignupSettings = (
     return defaultSignupSettings;
   }
 
-  console.log('[mapSignupSettings] Backend settings received:', apiSettings);
+  // Backend settings received
 
   // Check if backend has any provider settings at all
   const hasAnyProviderSettings = apiSettings.providers && 
@@ -44,16 +44,16 @@ export const mapSignupSettings = (
 
   if (hasExplicitDisableAll) {
     // Backend explicitly disabled ALL providers - respect this completely
-    console.log('[mapSignupSettings] Backend explicitly disabled all signup providers');
-    mergedProviders = {
-      google: false,
-      github: false,
-      emailOtp: false,
-      defaultProvider: "emailOtp",
-    };
+          // Backend explicitly disabled all signup providers
+      mergedProviders = {
+        google: false,
+        github: false,
+        emailOtp: false,
+        defaultProvider: "emailOtp" as const,
+      };
   } else if (hasAnyProviderSettings) {
     // Backend has some provider settings - merge with defaults intelligently
-    console.log('[mapSignupSettings] Backend has partial provider settings - merging with defaults');
+    // Backend has partial provider settings - merging with defaults
     mergedProviders = {
       ...defaultSignupSettings.providers, // Start with defaults
       ...apiSettings.providers, // Override with any explicit backend values
@@ -64,13 +64,13 @@ export const mapSignupSettings = (
     };
   } else {
     // Backend has no provider settings at all - use defaults completely
-    console.log('[mapSignupSettings] No backend provider settings - using defaults completely');
+    // No backend provider settings - using defaults completely
     mergedProviders = {
       ...defaultSignupSettings.providers,
     };
   }
 
-  console.log('[mapSignupSettings] Merged provider settings:', mergedProviders);
+  // Merged provider settings completed
 
   // Ensure all provider flags are boolean
   Object.keys(mergedProviders).forEach((key) => {
@@ -85,20 +85,20 @@ export const mapSignupSettings = (
     .filter(([key, value]) => key !== "defaultProvider" && value === true)
     .map(([key]) => key);
 
-  console.log('[mapSignupSettings] Enabled providers:', enabledProviders);
+  // Enabled providers: ${enabledProviders.length}
 
   // If no providers are enabled, this means signup is disabled
   if (enabledProviders.length === 0) {
     console.warn('[mapSignupSettings] All signup providers are disabled - signup will not be available');
     
-    // Return settings with all providers disabled
-    return {
-      providers: {
-        google: false,
-        github: false,
-        emailOtp: false,
-        defaultProvider: "emailOtp",
-      },
+          // Return settings with all providers disabled
+      return {
+        providers: {
+          google: false,
+          github: false,
+          emailOtp: false,
+          defaultProvider: "emailOtp" as const,
+        },
       googleSignupMode: "askCredentials",
       githubSignupMode: "askCredentials",
       emailOtpSignupMode: "askCredentials",
@@ -146,8 +146,6 @@ export const mapSignupSettings = (
     passwordStrategy,
     passwordDelivery: apiSettings.passwordDelivery || defaultSignupSettings.passwordDelivery,
   };
-
-  console.log('[mapSignupSettings] Final mapped settings:', result);
 
   return result;
 };

@@ -213,14 +213,24 @@ export function EmailLogin({
                                     redirectUrl = "/study-library/courses";
                                 }
                                 
-                                // Open in new tab if login originated from course-related pages or if type is courseDetailsPage
-                                if (type === "courseDetailsPage" || (type && type !== "mainLogin")) {
-                                    window.open(redirectUrl, '_blank');
+                                                            // Redirect in same tab if login originated from course-related pages or if type is courseDetailsPage
+                            if (type === "courseDetailsPage" || (type && type !== "mainLogin")) {
+                                // For course-related pages, redirect to the appropriate study library page
+                                if (redirectUrl !== "/dashboard") {
+                                    navigate({
+                                        to: redirectUrl as any,
+                                    });
+                                } else {
+                                    navigate({
+                                        to: "/dashboard",
+                                    });
                                 }
+                            } else {
                                 // Always navigate to dashboard for page login
                                 navigate({
                                     to: "/dashboard",
                                 });
+                            }
                             } else {
                                 // Unexpected login status
                             }

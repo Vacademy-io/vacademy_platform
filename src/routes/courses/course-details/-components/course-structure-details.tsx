@@ -83,7 +83,7 @@ export const CourseStructureDetails = ({
   packageSessionId: string;
   onModulesLoadingChange?: (loading: boolean) => void;
 }) => {
-  console.log(courseStructure);
+  // courseStructure value: ${courseStructure}
   const { setNavHeading } = useNavHeadingStore();
 
   const [studyLibraryData, setStudyLibraryData] = useState<SubjectType[]>([]);
@@ -247,8 +247,8 @@ export const CourseStructureDetails = ({
         const allModuleIds = new Set<string>();
         const allChapterIds = new Set<string>();
 
-        console.log("allModuleIds", allModuleIds);
-        console.log("allChapterIds", allChapterIds);
+        // allModuleIds: ${allModuleIds.size}
+        // allChapterIds: ${allChapterIds.size}
 
         Object.values(modulesMap).forEach((modules) => {
           modules.forEach((mod) => {
@@ -278,21 +278,18 @@ export const CourseStructureDetails = ({
   useEffect(() => {
     const prefetchThumbnails = async () => {
       try {
-        console.log("[thumb] prefetch start", {
-          subjects: (studyLibraryData ?? []).map((s) => ({ id: s.id, thumbnail_id: s.thumbnail_id })),
-          subjectModulesMapKeys: Object.keys(subjectModulesMap),
-        });
+        // [thumb] prefetch start - subjects: ${(studyLibraryData ?? []).length}, modules: ${Object.keys(subjectModulesMap).length}
         const updates: Record<string, string> = {};
 
         // Subjects
         for (const subject of studyLibraryData ?? []) {
           const key = `subject:${subject.id}`;
           const fileId = subject.thumbnail_id ?? undefined;
-          console.log("[thumb] subject candidate", { key, fileId, hasUrl: Boolean(thumbUrlById[key]) });
+          // [thumb] subject candidate - key: ${key}, hasUrl: ${Boolean(thumbUrlById[key])}
           if (fileId && !thumbUrlById[key]) {
             try {
               const url = await getPublicUrlWithoutLogin(fileId);
-              console.log("[thumb] subject url fetched", { key, fileId, url });
+              // [thumb] subject url fetched - key: ${key}
               if (url) updates[key] = url;
             } catch (err) {
               console.debug("prefetchThumbnails: subject thumbnail fetch failed", err);
@@ -302,7 +299,6 @@ export const CourseStructureDetails = ({
 
         // Apply subject URL updates immediately
         if (Object.keys(updates).length > 0) {
-          console.log("[thumb] subject urls applying", updates);
           setThumbUrlById((prev) => ({ ...prev, ...updates }));
         }
 
@@ -313,7 +309,7 @@ export const CourseStructureDetails = ({
             const moduleKey = `module:${mod.module.id}`;
             const moduleFileId = (mod.module as { thumbnail_id?: string | null })
               .thumbnail_id ?? undefined;
-            console.log("[thumb] module candidate", { moduleKey, moduleFileId, hasUrl: Boolean(thumbUrlById[moduleKey]) });
+            // [thumb] module candidate - key: ${moduleKey}, hasUrl: ${Boolean(thumbUrlById[moduleKey])}
             if (moduleFileId && !thumbUrlById[moduleKey]) {
               updates[moduleKey] = updates[moduleKey] || ""; // mark to fetch
             }
@@ -322,7 +318,7 @@ export const CourseStructureDetails = ({
             for (const ch of mod.chapters ?? []) {
               const chapterKey = `chapter:${ch.id}`;
               const chapterFileId = ch.file_id ?? undefined;
-              console.log("[thumb] chapter candidate", { chapterKey, chapterFileId, hasUrl: Boolean(thumbUrlById[chapterKey]) });
+              // [thumb] chapter candidate - key: ${chapterKey}, hasUrl: ${Boolean(thumbUrlById[chapterKey])}
               if (chapterFileId && !thumbUrlById[chapterKey]) {
                 updates[chapterKey] = updates[chapterKey] || ""; // mark to fetch
               }
@@ -365,7 +361,7 @@ export const CourseStructureDetails = ({
           uniquePairs.map(async ({ key, fileId }) => {
             try {
               const url = await getPublicUrlWithoutLogin(fileId);
-              console.log("[thumb] fetched", { key, fileId, url });
+              // [thumb] fetched - key: ${key}
               return { key, url } as const;
             } catch (err) {
               console.debug("prefetchThumbnails: module/chapter thumbnail fetch failed", err);
@@ -405,13 +401,7 @@ export const CourseStructureDetails = ({
     );
   }, []);
 
-  // Mount/unmount logs to verify component is active
-  useEffect(() => {
-    console.log('[thumb] CourseStructureDetails (courses) mounted');
-    return () => {
-      console.log('[thumb] CourseStructureDetails (courses) unmounted');
-    };
-  }, []);
+  // Mount/unmount tracking removed for cleaner console
 
   useEffect(() => {
     setStudyLibraryData(
@@ -492,11 +482,10 @@ export const CourseStructureDetails = ({
                            src={thumbUrlById[`subject:${subject.id}`]}
                            alt=""
                            className="w-6 h-6 rounded-sm object-cover border border-neutral-200"
-                           onLoad={() => console.log('[thumb] subject img load', { id: subject.id })}
-                           onError={(e) => {
-                             console.warn('[thumb] subject img error', { id: subject.id, src: e.currentTarget.src });
-                             e.currentTarget.style.display = 'none';
-                           }}
+                           onLoad={() => {/* Image loaded successfully */}}
+                                                        onError={(e) => {
+                               e.currentTarget.style.display = 'none';
+                             }}
                          />
                        )}
                       <span className="w-7 shrink-0 text-center font-mono text-xs font-semibold text-neutral-500 bg-neutral-100 rounded px-1 py-0.5">

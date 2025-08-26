@@ -101,11 +101,9 @@ class PushNotificationService {
       try {
         // Register Firebase messaging service worker
         const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-        console.log('Firebase Service Worker registered successfully:', registration);
 
         const permission = await Notification.requestPermission();
         if (permission === 'granted') {
-          console.log('Web push notification permission granted');
           
           // Get FCM token using Firebase
           const { getFirebaseToken } = await import('@/services/firebase-config');
@@ -115,12 +113,10 @@ class PushNotificationService {
             this.currentToken = token;
             await this.saveTokenToStorage(token);
             await this.registerStoredToken();
-            console.log('FCM token retrieved and stored:', token);
             
             // Setup foreground message listener
             const { onFirebaseMessage } = await import('@/services/firebase-config');
             onFirebaseMessage((payload) => {
-              console.log('Foreground message received:', payload);
               this.notifyListeners({
                 title: payload.notification?.title || 'New notification',
                 body: payload.notification?.body || '',
@@ -148,7 +144,6 @@ class PushNotificationService {
       try {
         // Check permissions (always granted on desktop)
         const permission = await window.electronAPI.checkNotificationPermission();
-        console.log('Electron notification permission:', permission);
         
         // Setup notification click handler
         window.electronAPI.onNotificationClicked((data: Record<string, unknown>) => {
@@ -223,7 +218,6 @@ class PushNotificationService {
 
       // Guard: ensure we have both userId and instituteId before registering
       if (!userId || !instituteId) {
-        console.warn('[Push] Skipping registration: missing userId or instituteId', { userId, instituteId });
         return;
       }
 
@@ -253,7 +247,6 @@ class PushNotificationService {
       if (!response.ok) {
         throw new Error(`Push token registration failed with status ${response.status}`);
       }
-      console.log('Push token registered successfully');
     } catch (error) {
       console.error('Error registering push token:', error);
     }

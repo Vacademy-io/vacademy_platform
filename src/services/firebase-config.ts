@@ -80,10 +80,8 @@ export const getFirebaseToken = async (): Promise<string | null> => {
     });
     
     if (token) {
-      console.log('Firebase token generated:', token);
       return token;
     } else {
-      console.log('No registration token available.');
       return null;
     }
   } catch (error) {
@@ -99,7 +97,6 @@ export const onFirebaseMessage = (callback: (payload: MessagePayload) => void) =
   }
 
   return onMessage(messaging, (payload) => {
-    console.log('Message received in foreground:', payload);
     callback(payload);
   });
 };
@@ -112,7 +109,6 @@ export const registerServiceWorker = async () => {
 
   try {
     const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-    console.log('Service Worker registered successfully:', registration);
     return registration;
   } catch (error) {
     console.error('Service Worker registration failed:', error);

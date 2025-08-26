@@ -147,7 +147,6 @@ export const Route = createRootRouteWithContext<{
     beforeLoad: async ({ location }) => {
         // Skip all logic for public routes - they should work without any redirects
         if (isPublicRoute(location.pathname)) {
-            console.log("[Root beforeLoad] Public route detected:", location.pathname, "- skipping all logic");
             return;
         }
 
@@ -157,10 +156,9 @@ export const Route = createRootRouteWithContext<{
                 // If already authenticated, redirect to settings.postLoginRedirectRoute
                 const authenticated = await isAuthenticated();
                 if (authenticated) {
-                    const settings = await getStudentDisplaySettings(true);
-                    const route = settings?.postLoginRedirectRoute || "/dashboard";
-                    console.log("[Root beforeLoad] Authenticated at '/'. Redirecting to:", route);
-                    // Support external absolute URLs
+                                    const settings = await getStudentDisplaySettings(true);
+                const route = settings?.postLoginRedirectRoute || "/dashboard";
+                // Support external absolute URLs
                     if (/^https?:\/\//.test(route)) {
                         // Can't external-redirect from beforeLoad; fall back to internal default
                         throw redirect({ to: "/dashboard" });
@@ -183,9 +181,7 @@ export const Route = createRootRouteWithContext<{
                 
                 if (domainRoutingResult) {
                     // API returned valid institute data, use the redirect field from API response
-                    console.log("[Root beforeLoad] Domain routing resolved institute:", domainRoutingResult);
                     const redirectPath = domainRoutingResult.redirect || "/courses";
-                    console.log("[Root beforeLoad] Redirecting to:", redirectPath);
                     throw redirect({ to: redirectPath as never });
                 }
                 
@@ -195,8 +191,7 @@ export const Route = createRootRouteWithContext<{
                     throw redirect({ to: "/courses" });
                 }
             } catch (error) {
-                console.error("[Root beforeLoad] Domain routing error:", error);
-                // Continue to fallback logic
+                // Domain routing error, continuing to fallback logic
             }
 
             throw redirect({ to: "/login" });
@@ -208,7 +203,7 @@ export const Route = createRootRouteWithContext<{
             if (authenticated && location.pathname === "/dashboard") {
                 const settings = await getStudentDisplaySettings(false);
                 const route = settings?.postLoginRedirectRoute || "/dashboard";
-                console.log("[Root beforeLoad] On '/dashboard'. Settings route:", route);
+                // On '/dashboard'. Settings route: ${route}
                 if (route !== "/dashboard" && !/^https?:\/\//.test(route)) {
                     throw redirect({ to: route as never });
                 }
@@ -232,9 +227,7 @@ export const Route = createRootRouteWithContext<{
                 
                 if (domainRoutingResult) {
                     // API returned valid institute data, use the redirect field from API response
-                    console.log("[Root beforeLoad] Domain routing resolved institute for protected route:", domainRoutingResult);
                     const redirectPath = domainRoutingResult.redirect || "/courses";
-                    console.log("[Root beforeLoad] Redirecting to:", redirectPath);
                     throw redirect({ to: redirectPath as never });
                 }
                 
@@ -244,8 +237,7 @@ export const Route = createRootRouteWithContext<{
                     throw redirect({ to: "/courses" });
                 }
             } catch (error) {
-                console.error("[Root beforeLoad] Domain routing error for protected route:", error);
-                // Continue to fallback logic
+                // Domain routing error for protected route, continuing to fallback logic
             }
 
             // Store the current path as redirect URL for after login

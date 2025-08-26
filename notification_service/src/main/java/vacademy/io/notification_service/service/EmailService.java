@@ -52,7 +52,7 @@ public class EmailService {
     private JavaMailSenderImpl createCustomMailSender(JsonNode emailSettings) {
         JavaMailSenderImpl mailSender = new JavaMailSenderImpl();
         mailSender.setHost(emailSettings.path(NotificationConstants.HOST).asText());
-        mailSender.setPort(emailSettings.path(NotificationConstants.PORT).asInt(587));
+        mailSender.setPort(emailSettings.path(NotificationConstants.PORT).asInt(2587));
         mailSender.setUsername(emailSettings.path(NotificationConstants.USERNAME).asText());
         mailSender.setPassword(emailSettings.path(NotificationConstants.PASSWORD).asText());
 

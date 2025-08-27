@@ -95,35 +95,41 @@ public class Step2Service {
         }
     }
 
-    private ScheduleNotification mapToNotificationEntity(LiveSessionStep2RequestDTO.NotificationActionDTO dto, String sessionId) {
+    private ScheduleNotification mapToNotificationEntity(LiveSessionStep2RequestDTO.NotificationActionDTO dto,
+            String sessionId) {
         int offset = dto.getType() == NotificationTypeEnum.BEFORE_LIVE
-                ? extractMinutes(dto.getTime()) : 0;
+                ? extractMinutes(dto.getTime())
+                : 0;
 
         return ScheduleNotification.builder()
                 .id(UUID.randomUUID().toString())
                 .sessionId(sessionId)
                 .type(dto.getType().name())
-                .status(dto.getNotify() ? NotificationStatusEnum.PENDING.name() : NotificationStatusEnum.DISABLED.name() )
+                .status(dto.getNotify() ? NotificationStatusEnum.PENDING.name()
+                        : NotificationStatusEnum.DISABLED.name())
                 .channel(NotificationMediaTypeEnum.MAIL.name())
                 .offsetMinutes(offset)
                 .triggerTime(null)
                 .build();
     }
 
-    private void updateNotificationEntity(ScheduleNotification notification, LiveSessionStep2RequestDTO.NotificationActionDTO dto) {
+    private void updateNotificationEntity(ScheduleNotification notification,
+            LiveSessionStep2RequestDTO.NotificationActionDTO dto) {
         notification.setType(dto.getType().name());
         // TODO : change this what whatsapp service is available
         notification.setChannel(NotificationMediaTypeEnum.MAIL.name());
-        notification.setStatus(dto.getNotify() ? NotificationStatusEnum.PENDING.name() : NotificationStatusEnum.DISABLED.name());
+        notification.setStatus(
+                dto.getNotify() ? NotificationStatusEnum.PENDING.name() : NotificationStatusEnum.DISABLED.name());
         notification.setOffsetMinutes(dto.getType() == NotificationTypeEnum.BEFORE_LIVE
-                ? extractMinutes(dto.getTime()) : 0);
+                ? extractMinutes(dto.getTime())
+                : 0);
     }
     // TODO : for later
-//    private String resolveChannel(LiveSessionStep2RequestDTO.NotifyBy notifyBy) {
-//        if (notifyBy.isMail()) return NotificationMediaTypeEnum.MAIL.name();
-//        if (notifyBy.isWhatsapp()) return NotificationMediaTypeEnum.WHATSAPP.name();
-//        return NotificationMediaTypeEnum.MAIL.name();
-//    }
+    // private String resolveChannel(LiveSessionStep2RequestDTO.NotifyBy notifyBy) {
+    // if (notifyBy.isMail()) return NotificationMediaTypeEnum.MAIL.name();
+    // if (notifyBy.isWhatsapp()) return NotificationMediaTypeEnum.WHATSAPP.name();
+    // return NotificationMediaTypeEnum.MAIL.name();
+    // }
 
     private void linkParticipants(LiveSessionStep2RequestDTO request) {
         if (request.getPackageSessionIds() != null) {
@@ -165,13 +171,14 @@ public class Step2Service {
                 existing.setFieldKey(dto.getLabel().toLowerCase().replaceAll("\\s+", "_"));
                 existing.setFieldType(dto.getType());
                 existing.setIsMandatory(dto.isRequired());
+                existing.setIsHidden(false); // Default to false for existing fields
 
                 try {
                     if (dto.getOptions() != null && !dto.getOptions().isEmpty()) {
                         existing.setConfig(objectMapper.writeValueAsString(dto.getOptions()));
                     }
                 } catch (JsonProcessingException e) {
-                    throw new VacademyException(HttpStatus.BAD_REQUEST,"Failed to convert field options to JSON");
+                    throw new VacademyException(HttpStatus.BAD_REQUEST, "Failed to convert field options to JSON");
                 }
 
                 customFieldRepository.save(existing);
@@ -195,7 +202,7 @@ public class Step2Service {
                 configJson = objectMapper.writeValueAsString(dto.getOptions());
             }
         } catch (JsonProcessingException e) {
-            throw new VacademyException(HttpStatus.BAD_REQUEST,"Failed to convert field options to JSON");
+            throw new VacademyException(HttpStatus.BAD_REQUEST, "Failed to convert field options to JSON");
         }
 
         CustomFields field = CustomFields.builder()
@@ -209,6 +216,7 @@ public class Step2Service {
                 .isMandatory(dto.isRequired())
                 .isFilter(false)
                 .isSortable(false)
+                .isHidden(false)
                 .build();
 
         CustomFields savedField = customFieldRepository.save(field);

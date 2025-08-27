@@ -19,6 +19,7 @@ public class CustomFieldDTO {
     private Boolean isMandatory;
     private Boolean isFilter;
     private Boolean isSortable;
+    private Boolean isHidden;
     private Timestamp createdAt;
     private Timestamp updatedAt;
     private String sessionId;
@@ -27,4 +28,3 @@ public class CustomFieldDTO {
 
     // Getters and Setters (or use Lombok @Data/@Getter/@Setter)
 }
-

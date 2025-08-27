@@ -1,8 +1,5 @@
 package vacademy.io.admin_core_service.features.live_session.dto;
 
-
-
-
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.Getter;
@@ -40,6 +37,6 @@ public class RegistrationFromResponseDTO {
         private boolean isMandatory;
         private boolean isFilter;
         private boolean isSortable;
+        private boolean isHidden;
     }
 }
-

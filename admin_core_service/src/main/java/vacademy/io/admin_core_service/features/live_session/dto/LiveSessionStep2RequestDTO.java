@@ -55,6 +55,7 @@ public class LiveSessionStep2RequestDTO {
         private String label;
         private boolean required;
         private boolean isDefault;
+        private boolean isHidden;
         private String type;
         private List<FieldOptionDTO> options;
     }

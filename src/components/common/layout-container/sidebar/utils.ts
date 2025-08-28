@@ -1,4 +1,3 @@
-import { getInstituteId } from "@/constants/helper";
 import { SidebarItemsType } from "../../../../types/layout-container-types";
 import {
   House,
@@ -7,20 +6,7 @@ import {
   SignOut,
   NotePencil,
 } from "@phosphor-icons/react";
-import {
-  CreditCard,
-  Headset,
-  MonitorPlay,
-  Notepad,
-  Password,
-  UserCircle,
-  UserCircleMinus,
-  UsersThree,
-} from "phosphor-react";
-import {
-  CODE_CIRCLE_INSTITUTE_ID,
-  HOLISTIC_INSTITUTE_ID,
-} from "@/constants/urls";
+import { Password, UserCircle, UserCircleMinus } from "phosphor-react";
 import { NamingSettingsType } from "@/services/fetchAndStoreInstituteDetails";
 import { NAMING_SETTINGS_KEY } from "@/types/naming-settings";
 
@@ -113,21 +99,21 @@ export const HamBurgerSidebarItemsData: SidebarItemsType[] = [
     title: "View Profile Details",
     to: "/user-profile",
   },
-  {
-    icon: CreditCard,
-    title: "Membership Details",
-    to: "/membership-details",
-  },
+  // {
+  //   icon: CreditCard,
+  //   title: "Membership Details",
+  //   to: "/membership-details",
+  // },
   {
     icon: Password,
     title: "Change Password",
     to: "/change-password",
   },
-  {
-    icon: Headset,
-    title: "Contact Support",
-    to: "/support",
-  },
+  // {
+  //   icon: Headset,
+  //   title: "Contact Support",
+  //   to: "/support",
+  // },
   {
     icon: SignOut,
     title: "Log Out",
@@ -140,118 +126,33 @@ export const HamBurgerSidebarItemsData: SidebarItemsType[] = [
   },
 ];
 
-export async function filterMenuItems(SidebarItemsData: SidebarItemsType[]) {
-  const instituteId = await getInstituteId();
-  if (instituteId === CODE_CIRCLE_INSTITUTE_ID) {
-    return SidebarItemsData.filter(
-      (item) => item.title !== "Homework" && item.title !== "Assessment Centre"
-    );
-  } else if (instituteId === HOLISTIC_INSTITUTE_ID) {
-    // Return only 3 specific items for holistic
-    return [
-      {
-        icon: House,
-        title: "Dashboard",
-        to: "/dashboard",
-      },
-      {
-        icon: MonitorPlay,
-        title: "My Classes",
-        to: "/study-library/live-class",
-      },
-      {
-        icon: Notepad,
-        title: "Attendance",
-        to: "/learning-centre/attendance",
-      },
-      {
-        icon: UsersThree,
-        title: "My Referral",
-        to: "/referral",
-      },
-    ];
-  }
-  return SidebarItemsData;
-}
-
-export async function filterHamburgerMenuItems(
-  HamBurgerSidebarItemsData: SidebarItemsType[]
-) {
-  const instituteId = await getInstituteId();
-
-  if (instituteId === HOLISTIC_INSTITUTE_ID) {
-    // For holistic institute, show core items plus the 3 specific options
-    return [
-      {
-        icon: UserCircle,
-        title: "View Profile Details",
-        to: "/user-profile",
-      },
-      {
-        icon: CreditCard,
-        title: "Membership Details",
-        to: "/membership-details",
-      },
-      {
-        icon: Password,
-        title: "Change Password",
-        to: "/change-password",
-      },
-      {
-        icon: Headset,
-        title: "Contact Support",
-        to: "/support",
-      },
-      {
-        icon: SignOut,
-        title: "Log Out",
-        to: "/logout",
-      },
-      {
-        icon: UserCircleMinus,
-        title: "Delete Account",
-        to: "/delete-user",
-      },
-    ];
-  } else if (instituteId === CODE_CIRCLE_INSTITUTE_ID) {
-    // For code circle institute, show only logout button
-    return [
-      {
-        icon: SignOut,
-        title: "Log Out",
-        to: "/logout",
-      },
-    ];
-  } else {
-    // For other institutes, exclude the 3 specific options
-    return HamBurgerSidebarItemsData.filter(
-      (item) =>
-        item.title !== "Membership Details" &&
-        item.title !== "Change Password" &&
-        item.title !== "Contact Support"
-    );
-  }
-}
-
 // New function to filter menu items based on permissions
 export async function filterHamburgerMenuItemsWithPermissions(
   HamBurgerSidebarItemsData: SidebarItemsType[],
-  permissions: { canViewProfile: boolean; canEditProfile: boolean; canDeleteProfile: boolean }
+  permissions: {
+    canViewProfile: boolean;
+    canEditProfile: boolean;
+    canDeleteProfile: boolean;
+  }
 ) {
-  let filteredItems = await filterHamburgerMenuItems(HamBurgerSidebarItemsData);
-  
   // Filter based on permissions
   if (!permissions.canViewProfile) {
-    filteredItems = filteredItems.filter(item => item.title !== "View Profile Details");
+    HamBurgerSidebarItemsData = HamBurgerSidebarItemsData.filter(
+      (item) => item.title !== "View Profile Details"
+    );
   }
-  
+
   if (!permissions.canEditProfile) {
-    filteredItems = filteredItems.filter(item => item.title !== "Change Password");
+    HamBurgerSidebarItemsData = HamBurgerSidebarItemsData.filter(
+      (item) => item.title !== "Change Password"
+    );
   }
-  
+
   if (!permissions.canDeleteProfile) {
-    filteredItems = filteredItems.filter(item => item.title !== "Delete Account");
+    HamBurgerSidebarItemsData = HamBurgerSidebarItemsData.filter(
+      (item) => item.title !== "Delete Account"
+    );
   }
-  
-  return filteredItems;
+
+  return HamBurgerSidebarItemsData;
 }

@@ -1,6 +1,6 @@
 import axios from "axios";
-import { Preferences } from "@capacitor/preferences";
 import { BASE_URL } from "../constants/urls";
+import { getDomainAndSubdomain } from "../utils/platform-flavor";
 
 export interface DomainRoutingResponse {
   instituteId: string;
@@ -17,7 +17,10 @@ export interface DomainRoutingError {
 }
 
 // Cache for domain routing responses
-const domainRoutingCache = new Map<string, { data: DomainRoutingResponse; timestamp: number }>();
+const domainRoutingCache = new Map<
+  string,
+  { data: DomainRoutingResponse; timestamp: number }
+>();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 export const resolveDomainRouting = async (
@@ -25,7 +28,7 @@ export const resolveDomainRouting = async (
   subdomain: string
 ): Promise<DomainRoutingResponse | null> => {
   const cacheKey = `${domain}:${subdomain}`;
-  
+
   // Check cache first
   const cached = domainRoutingCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
@@ -34,7 +37,7 @@ export const resolveDomainRouting = async (
 
   try {
     // Resolving domain routing for: ${domain}:${subdomain}
-    
+
     const response = await axios.get<DomainRoutingResponse>(
       `${BASE_URL}/admin-core-service/public/domain-routing/v1/resolve`,
       {
@@ -44,55 +47,35 @@ export const resolveDomainRouting = async (
     );
 
     const data = response.data;
-    
+
     // Cache the successful response
     domainRoutingCache.set(cacheKey, { data, timestamp: Date.now() });
-    
+
     // Successfully resolved domain routing
     return data;
-  } catch (error: any) {
-    if (error.response?.status === 404) {
+  } catch (error: unknown) {
+    // Type guard for axios error
+    const isAxiosError = (
+      err: unknown
+    ): err is { response?: { status: number }; message: string } => {
+      return typeof err === "object" && err !== null && "response" in err;
+    };
+
+    if (isAxiosError(error) && error.response?.status === 404) {
       // No institute found for domain/subdomain: ${domain}:${subdomain}
       return null;
     }
-    
+
     console.error("[Domain Routing] API error:", error);
-    throw new Error(`Domain routing API error: ${error.message}`);
+    const errorMessage = isAxiosError(error) ? error.message : "Unknown error";
+    throw new Error(`Domain routing API error: ${errorMessage}`);
   }
 };
 
 // Helper function to get domain and subdomain from current location
-export const getCurrentDomainInfo = () => {
-  const hostname = window.location.hostname;
-  const parts = hostname.split(".");
-  
-  // Special handling for localhost subdomains
-  if (hostname.includes("localhost")) {
-    if (parts.length >= 2 && parts[0] !== "localhost") {
-      // e.g., pp.localhost -> subdomain: pp, domain: localhost
-      const subdomain = parts[0];
-      const domain = parts.slice(1).join(".");
-      return { domain, subdomain };
-    } else {
-      // e.g., localhost -> subdomain: null, domain: localhost
-      return { domain: "localhost", subdomain: null };
-    }
-  }
-  
-  // Standard domain handling
-  if (parts.length >= 3) {
-    // e.g., code-circle.vacademy.io -> subdomain: code-circle, domain: vacademy.io
-    const subdomain = parts[0];
-    const domain = parts.slice(1).join(".");
-    return { domain, subdomain };
-  } else if (parts.length === 2) {
-    // e.g., vacademy.io -> subdomain: null, domain: vacademy.io
-    const domain = hostname;
-    return { domain, subdomain: null };
-  }
-  
-  // Fallback for other cases
-  return { domain: hostname, subdomain: null };
+export const getCurrentDomainInfo = async () => {
+  // Use the platform-aware domain resolution
+  return await getDomainAndSubdomain();
 };
 
 // Clear cache (useful for testing or when cache becomes stale)

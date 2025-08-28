@@ -30,6 +30,7 @@ export async function getInstituteIdSync() {
     }
 }
 
-export function extractTextFromHTML(htmlString: string) {
-    return htmlString.replace(/<[^>]*>/g, "");
+export function extractTextFromHTML(htmlString?: string | null) {
+    if (htmlString == null) return "";
+    return String(htmlString).replace(/<[^>]*>/g, "");
 }

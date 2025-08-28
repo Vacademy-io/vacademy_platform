@@ -339,7 +339,9 @@ export const SlideMaterial = () => {
           } else if (activeItem.document_slide?.type === "DOC") {
             const isHtml =
               activeItem.document_slide.published_data &&
-              activeItem.document_slide.published_data.includes("<html");
+              (activeItem.document_slide.published_data.includes("<html") ||
+               activeItem.document_slide.published_data.includes("<body") ||
+               activeItem.document_slide.published_data.trim().startsWith("<"));
             if (isHtml) {
               setContent(
                 <div className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">

@@ -103,17 +103,11 @@ export function OtpVerificationForm({
       // - Regular email OTP flow
       // - Any other email verification flows
       // We check here because we now have a verified email address
-      console.log('[DEBUG] OtpVerificationForm: About to check enrollment for:', email);
-      console.log('[DEBUG] OtpVerificationForm: instituteId:', instituteId);
-      console.log('[DEBUG] OtpVerificationForm: checkEnrollmentOnce function:', !!checkEnrollmentOnce);
       
       if (instituteId && checkEnrollmentOnce) {
-        console.log('[DEBUG] OtpVerificationForm: Calling checkEnrollmentOnce...');
         const enrollmentResult = await checkEnrollmentOnce(email);
-        console.log('[DEBUG] OtpVerificationForm: Enrollment result:', enrollmentResult);
         
         if (enrollmentResult?.isEnrolled) {
-          console.log('[DEBUG] OtpVerificationForm: User is enrolled, handling auto-login...');
           const autoLoginResult = await handleEnrolledUser(
             email,
             instituteId,
@@ -132,8 +126,6 @@ export function OtpVerificationForm({
             return; // Auto-login handled everything
           }
         }
-      } else {
-        console.log('[DEBUG] OtpVerificationForm: Skipping enrollment check - missing instituteId or checkEnrollmentOnce function');
       }
 
       // OTP verified, call the callback

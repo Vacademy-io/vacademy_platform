@@ -6,12 +6,14 @@ export async function getInstituteIdSync() {
     try {
         // First, check if user has selected a specific institute
         const { Preferences } = await import("@capacitor/preferences");
-        const selectedInstitute = await Preferences.get({ key: "selectedInstituteId" });
-        
+        const selectedInstitute = await Preferences.get({
+            key: "selectedInstituteId",
+        });
+
         if (selectedInstitute.value) {
             return selectedInstitute.value;
         }
-        
+
         // Fallback to first institute from authorities if no selection made
         const accessToken = await getTokenFromStorage(TokenKey.accessToken);
         const data = getTokenDecodedData(accessToken);
@@ -26,4 +28,8 @@ export async function getInstituteIdSync() {
         const INSTITUTE_ID = data && Object.keys(data.authorities)[0];
         return INSTITUTE_ID;
     }
+}
+
+export function extractTextFromHTML(htmlString: string) {
+    return htmlString.replace(/<[^>]*>/g, "");
 }

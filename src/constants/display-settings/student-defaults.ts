@@ -61,12 +61,12 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
   sidebar: { visible: true, tabs: defaultSidebarTabs() },
   dashboard: { widgets: defaultDashboardWidgets() },
   signup: {
-    providers: { google: true, github: false, usernamePassword: true, emailOtp: false, defaultProvider: "google" },
-    usernameStrategy: "email",
+    providers: { google: true, github: true, usernamePassword: true, emailOtp: true, defaultProvider: "emailOtp" },
+    usernameStrategy: "manual",
     passwordStrategy: "manual",
     passwordDelivery: "none",
   },
-  permissions: { canViewProfile: true, canEditProfile: true, canDeleteProfile: false },
+  permissions: { canViewProfile: false, canEditProfile: false, canDeleteProfile: false },
   courseDetails: {
     tabs: [
       { id: "OUTLINE", order: 1, visible: true },

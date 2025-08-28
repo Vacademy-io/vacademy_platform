@@ -159,14 +159,24 @@ export function UsernameLogin({
                             redirectUrl = "/study-library/courses";
                         }
                         
-                                                                           // Open in new tab if login originated from course-related pages or if type is courseDetailsPage
+                                                                           // Redirect in same tab if login originated from course-related pages or if type is courseDetailsPage
                         if (type === "courseDetailsPage" || (type && type !== "mainLogin")) {
-                            window.open(redirectUrl, '_blank');
+                            // For course-related pages, redirect to the appropriate study library page
+                            if (redirectUrl !== "/dashboard") {
+                                navigate({
+                                    to: redirectUrl as any,
+                                });
+                            } else {
+                                navigate({
+                                    to: "/dashboard",
+                                });
+                            }
+                        } else {
+                            // Always navigate to dashboard for page login
+                            navigate({
+                                to: "/dashboard",
+                            });
                         }
-                        // Always navigate to dashboard for page login
-                        navigate({
-                            to: "/dashboard",
-                        });
                     }
                 } catch (error) {
                     console.error("Error processing decoded data:", error);

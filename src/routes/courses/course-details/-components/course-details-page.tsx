@@ -58,12 +58,13 @@ import { CourseStructureResponse } from "@/types/institute-details/course-detail
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { AuthModal } from "@/components/common/auth/modal/AuthModal";
-import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
-import { TokenKey } from "@/constants/auth/tokens";
-import { Preferences } from "@capacitor/preferences";
+// import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
+// import { TokenKey } from "@/constants/auth/tokens";
+// import { Preferences } from "@capacitor/preferences";
 import { getSubdomain } from "@/helpers/helper";
 import { handleGetInstituteIdWithLocalStorageCheck } from "../../-services/courses-services";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
+import { extractTextFromHTML } from "@/components/common/helper";
 
 type SlideType = {
     id: string;
@@ -297,12 +298,13 @@ export const CourseDetailsPage = () => {
     }, [instituteId, selectedSession, selectedLevel, updateLoadingState]);
 
     // Only run the query if instituteId is available
-    const { data: studyLibraryData, isLoading: isCourseDetailsLoading } = useQuery({
-        ...handleGetAllCourseDetails({
-            instituteId: instituteId || "",
-        }),
-        enabled: !!instituteId, // Only run query when instituteId is available
-    });
+    const { data: studyLibraryData, isLoading: isCourseDetailsLoading } =
+        useQuery({
+            ...handleGetAllCourseDetails({
+                instituteId: instituteId || "",
+            }),
+            enabled: !!instituteId, // Only run query when instituteId is available
+        });
 
     // Update course details loading state
     useEffect(() => {
@@ -637,36 +639,48 @@ export const CourseDetailsPage = () => {
         }
     };
 
-    useEffect(() => {
-        const redirectToDashboardIfAuthenticated = async () => {
-            const token = await getTokenFromStorage(TokenKey.accessToken);
-            const studentDetails = await Preferences.get({
-                key: "StudentDetails",
-            });
-            const instituteDetails = await Preferences.get({
-                key: "InstituteDetails",
-            });
+    // Temporarily disabled automatic redirect to prevent redirect loops
+    // useEffect(() => {
+    //     const redirectToDashboardIfAuthenticated = async () => {
+    //         const token = await getTokenFromStorage(TokenKey.accessToken);
+    //         const studentDetails = await Preferences.get({
+    //             key: "StudentDetails",
+    //         });
+    //         const instituteDetails = await Preferences.get({
+    //             key: "InstituteDetails",
+    //         });
 
-            if (
-                !isNullOrEmptyOrUndefined(token) &&
-                !isNullOrEmptyOrUndefined(studentDetails) &&
-                !isNullOrEmptyOrUndefined(instituteDetails)
-            ) {
-                navigate({
-                    to: "/study-library/courses/course-details",
-                    search: {
-                        courseId: searchParams.courseId || "",
-                    },
-                    replace: true,
-                });
-            }
-        };
+    //         // Only redirect if the user is authenticated and we're not already on a course details page
+    //         // This prevents redirect loops and allows users to stay on the public course details page
+    //         if (
+    //             !isNullOrEmptyOrUndefined(token) &&
+    //             !isNullOrEmptyOrUndefined(studentDetails) &&
+    //             !isNullOrEmptyOrUndefined(instituteDetails) &&
+    //             !window.location.pathname.includes('/study-library/') &&
+    //             !window.location.pathname.includes('/course-details')
+    //         ) {
+    //             // Only redirect if we're coming from a different page, not if we're already on course details
+    //             const referrer = document.referrer;
+    //             const isComingFromCoursesPage = referrer.includes('/courses') && !referrer.includes('/course-details');
+                
+    //             if (isComingFromCoursesPage) {
+    //             navigate({
+    //                 to: "/study-library/courses/course-details",
+    //                 search: {
+    //                     courseId: searchParams.courseId || "",
+    //                 },
+    //                 replace: true,
+    //             });
+    //         }
+    //     }
+    //     };
 
-        redirectToDashboardIfAuthenticated();
-    }, [navigate]);
+    //     redirectToDashboardIfAuthenticated();
+    // }, [navigate]);
 
-    // Show loading until all APIs are complete or until we have the required data
-    if (isLoading || !instituteId || !studyLibraryData || !packageSessionIdForCurrentLevel) {
+    // Show loading until essential APIs are complete
+    // Note: packageSessionIdForCurrentLevel is not required for initial render
+    if (isLoading || !instituteId || !studyLibraryData) {
         return <DashboardLoader />;
     }
 
@@ -1034,11 +1048,15 @@ export const CourseDetailsPage = () => {
                                 packageSessionId={
                                     packageSessionIdForCurrentLevel || ""
                                 }
-                                onModulesLoadingChange={handleModulesLoadingChange}
+                                onModulesLoadingChange={
+                                    handleModulesLoadingChange
+                                }
                             />
 
                             {/* What You'll Learn Section */}
-                            {form.getValues("courseData").whatYoullLearn && (
+                            {extractTextFromHTML(
+                                form.getValues("courseData").whatYoullLearn
+                            ) && (
                                 <div className="mb-6 sm:mb-8">
                                     <h2 className="mb-3 sm:mb-4 text-xl sm:text-2xl font-bold">
                                         What you&apos;ll learn?
@@ -1057,7 +1075,9 @@ export const CourseDetailsPage = () => {
                             )}
 
                             {/* About Content Section */}
-                            {form.getValues("courseData").aboutTheCourse && (
+                            {extractTextFromHTML(
+                                form.getValues("courseData").aboutTheCourse
+                            ) && (
                                 <div className="mb-6 sm:mb-8">
                                     <h2 className="mb-3 sm:mb-4 text-xl sm:text-2xl font-bold">
                                         About this course
@@ -1076,7 +1096,9 @@ export const CourseDetailsPage = () => {
                             )}
 
                             {/* Who Should Join Section */}
-                            {form.getValues("courseData").whoShouldLearn && (
+                            {extractTextFromHTML(
+                                form.getValues("courseData").whoShouldLearn
+                            ) && (
                                 <div className="mb-6 sm:mb-8">
                                     <h2 className="mb-3 sm:mb-4 text-xl sm:text-2xl font-bold">
                                         Who should join?

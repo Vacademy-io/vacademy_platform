@@ -4,14 +4,15 @@ import { useNavigate } from "@tanstack/react-router";
 import { 
   searchInstitute, 
   getInstituteDetails, 
-  registerUser, 
   parseInstituteSettings,
-  handlePostSignupAuth,
+  parseSignupSettings,
   type InstituteSearchResult,
   type InstituteDetails,
   type InstituteSettings,
   type RegisterUserRequest
 } from "@/services/signup-api";
+import { useUnifiedRegistration } from "./use-unified-registration";
+import { mapSignupSettings, type SignupSettings } from "@/config/signup/mapSignupSettings";
 
 interface SignupState {
   // Institute search and selection
@@ -20,6 +21,7 @@ interface SignupState {
   isSearching: boolean;
   selectedInstitute: InstituteDetails | null;
   instituteSettings: InstituteSettings | null;
+  signupSettings: SignupSettings | null;
   isFetchingInstituteDetails: boolean;
   
   // User data
@@ -42,6 +44,7 @@ const initialState: SignupState = {
   isSearching: false,
   selectedInstitute: null,
   instituteSettings: null,
+  signupSettings: null,
   isFetchingInstituteDetails: false,
   userData: {
     email: "",
@@ -54,6 +57,7 @@ const initialState: SignupState = {
 
 export const useSignupFlow = (isModalSignup?: boolean, type?: string, courseId?: string) => {
   const navigate = useNavigate();
+  const { isRegistering, registerUser: registerUserUnified } = useUnifiedRegistration();
   const [state, setState] = useState<SignupState>(initialState);
 
   // Institute search functionality
@@ -77,7 +81,6 @@ export const useSignupFlow = (isModalSignup?: boolean, type?: string, courseId?:
         isSearching: false 
       }));
     } catch (error) {
-      console.error("Error searching institutes:", error);
       toast.error("Failed to search institutes. Please try again.");
       setState(prev => ({ 
         ...prev, 
@@ -97,6 +100,11 @@ export const useSignupFlow = (isModalSignup?: boolean, type?: string, courseId?:
       
       // Parse the settings to determine available roles
       const settings = parseInstituteSettings(instituteDetails.setting);
+      
+      // Parse signup settings from institute settings and merge with defaults
+      const rawSignupSettings = settings.signup || parseSignupSettings(instituteDetails);
+      const signupSettings = mapSignupSettings(rawSignupSettings);
+      
       // Determine the available role based on settings
       let availableRole: "learner" | "teacher" | null = null;
       if (settings.allowLearnerSignup && settings.allowTeacherSignup) {
@@ -110,12 +118,12 @@ export const useSignupFlow = (isModalSignup?: boolean, type?: string, courseId?:
         ...prev,
         selectedInstitute: instituteDetails,
         instituteSettings: settings,
+        signupSettings: signupSettings,
         selectedRole: availableRole,
         isFetchingInstituteDetails: false,
       }));
-      toast.success(`Selected: ${instituteDetails.institute_name}`);
+      // Removed toast for institute selection to keep UX quiet
     } catch (error) {
-      console.error("Error fetching institute details:", error);
       toast.error("Failed to fetch institute details. Please try again.");
       setState(prev => ({ 
         ...prev, 
@@ -152,59 +160,22 @@ export const useSignupFlow = (isModalSignup?: boolean, type?: string, courseId?:
       return;
     }
 
-    setState(prev => ({ ...prev, isRegistering: true }));
-
     try {
-      // Prepare user roles based on institute settings and course creation permissions
-      const userRoles: string[] = [];
-      
-      // Always add STUDENT role for learners
-      userRoles.push("STUDENT");
-      
-      // If learners can create courses, also add TEACHER role
-      if (state.instituteSettings?.learnersCanCreateCourses) {
-        userRoles.push("TEACHER");
-      }
-      
-      console.log("User registration - Roles assigned:", {
-        learnersCanCreateCourses: state.instituteSettings?.learnersCanCreateCourses,
-        assignedRoles: userRoles,
-        instituteSettings: state.instituteSettings
+      // Use unified registration hook
+      await registerUserUnified({
+        username: state.userData.username,
+        email: state.userData.email,
+        full_name: state.userData.fullName,
+        instituteId: state.selectedInstitute.id,
       });
 
-      // Prepare registration payload
-      const registrationData: RegisterUserRequest = {
-        user: {
-          username: state.userData.username,
-          email: state.userData.email,
-          full_name: state.userData.fullName,
-          roles: userRoles,
-          root_user: false,
-        },
-        institute_id: state.selectedInstitute.id,
-        learner_package_session_enroll: null,
-      };
-
-      // Call the registration API
-      const response = await registerUser(registrationData);
-
-      // Handle post-signup authentication and redirect
-      await handlePostSignupAuth(
-        response.accessToken,
-        response.refreshToken,
-        state.selectedInstitute.id,
-        navigate,
-        isModalSignup,
-        type,
-        courseId
-      );
+      // Post-registration handling is now managed by the unified hook
+      // The hook will handle login and redirection automatically
     } catch (error) {
       console.error("Registration failed:", error);
       toast.error("Registration failed. Please try again.");
-    } finally {
-      setState(prev => ({ ...prev, isRegistering: false }));
     }
-  }, [state.selectedInstitute, state.selectedRole, state.userData, navigate]);
+  }, [state.selectedInstitute, state.selectedRole, state.userData, registerUserUnified]);
 
   // Reset state
   const resetState = useCallback(() => {
@@ -212,12 +183,17 @@ export const useSignupFlow = (isModalSignup?: boolean, type?: string, courseId?:
   }, []);
 
   return {
-    state,
+    state: {
+      ...state,
+      isRegistering, // Use unified registration loading state
+    },
     handleInstituteSearch,
     handleInstituteSelect,
     updateUserData,
     updateSelectedRole,
     handleUserRegistration,
     resetState,
+    // Getter for signup settings
+    getSignupSettings: () => state.signupSettings,
   };
 }; 

@@ -1,0 +1,181 @@
+import { useCallback } from 'react';
+import { z } from 'zod';
+
+// Validation schemas
+export const emailSchema = z.string().email("Please enter a valid email address");
+export const usernameSchema = z.string().min(3, "Username must be at least 3 characters").max(30, "Username must be less than 30 characters");
+export const fullNameSchema = z.string().min(2, "Full name must be at least 2 characters").max(100, "Full name must be less than 100 characters");
+export const passwordSchema = z.string().min(8, "Password must be at least 8 characters").regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, "Password must contain at least one uppercase letter, one lowercase letter, and one number");
+
+// Complete registration validation schema
+export const registrationSchema = z.object({
+  email: emailSchema,
+  full_name: fullNameSchema,
+  username: usernameSchema.optional(),
+  password: passwordSchema.optional(),
+  instituteId: z.string().uuid("Invalid institute ID"),
+});
+
+export type RegistrationValidationData = z.infer<typeof registrationSchema>;
+
+export interface ValidationResult {
+  isValid: boolean;
+  errors: Record<string, string>;
+  data?: RegistrationValidationData;
+}
+
+export function useRegistrationValidation() {
+  const validateEmail = useCallback((email: string): { isValid: boolean; error?: string } => {
+    try {
+      emailSchema.parse(email);
+      return { isValid: true };
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return { isValid: false, error: error.errors[0].message };
+      }
+      return { isValid: false, error: "Invalid email format" };
+    }
+  }, []);
+
+  const validateUsername = useCallback((username: string): { isValid: boolean; error?: string } => {
+    try {
+      usernameSchema.parse(username);
+      return { isValid: true };
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return { isValid: false, error: error.errors[0].message };
+      }
+      return { isValid: false, error: "Invalid username format" };
+    }
+  }, []);
+
+  const validateFullName = useCallback((fullName: string): { isValid: boolean; error?: string } => {
+    try {
+      fullNameSchema.parse(fullName);
+      return { isValid: true };
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return { isValid: false, error: error.errors[0].message };
+      }
+      return { isValid: false, error: "Invalid full name format" };
+    }
+  }, []);
+
+  const validatePassword = useCallback((password: string): { isValid: boolean; error?: string } => {
+    try {
+      passwordSchema.parse(password);
+      return { isValid: true };
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return { isValid: false, error: error.errors[0].message };
+      }
+      return { isValid: false, error: "Invalid password format" };
+    }
+  }, []);
+
+  const validateInstituteId = useCallback((instituteId: string): { isValid: boolean; error?: string } => {
+    try {
+      z.string().uuid().parse(instituteId);
+      return { isValid: true };
+    } catch (error) {
+      return { isValid: false, error: "Invalid institute ID format" };
+    }
+  }, []);
+
+  const validateRegistrationData = useCallback((data: Partial<RegistrationValidationData>): ValidationResult => {
+    try {
+      const validatedData = registrationSchema.parse(data);
+      return {
+        isValid: true,
+        errors: {},
+        data: validatedData,
+      };
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const errors: Record<string, string> = {};
+        error.errors.forEach((err) => {
+          if (err.path[0]) {
+            errors[err.path[0] as string] = err.message;
+          }
+        });
+        return {
+          isValid: false,
+          errors,
+        };
+      }
+      return {
+        isValid: false,
+        errors: { general: "Validation failed" },
+      };
+    }
+  }, []);
+
+  const validatePartialData = useCallback((data: Partial<RegistrationValidationData>): ValidationResult => {
+    const errors: Record<string, string> = {};
+    let hasErrors = false;
+
+    // Validate only provided fields
+    if (data.email !== undefined) {
+      const emailValidation = validateEmail(data.email);
+      if (!emailValidation.isValid) {
+        errors.email = emailValidation.error!;
+        hasErrors = true;
+      }
+    }
+
+    if (data.full_name !== undefined) {
+      const fullNameValidation = validateFullName(data.full_name);
+      if (!fullNameValidation.isValid) {
+        errors.full_name = fullNameValidation.error!;
+        hasErrors = true;
+      }
+    }
+
+    if (data.username !== undefined) {
+      const usernameValidation = validateUsername(data.username);
+      if (!usernameValidation.isValid) {
+        errors.username = usernameValidation.error!;
+        hasErrors = true;
+      }
+    }
+
+    if (data.password !== undefined) {
+      const passwordValidation = validatePassword(data.password);
+      if (!passwordValidation.isValid) {
+        errors.password = passwordValidation.error!;
+        hasErrors = true;
+      }
+    }
+
+    if (data.instituteId !== undefined) {
+      const instituteIdValidation = validateInstituteId(data.instituteId);
+      if (!instituteIdValidation.isValid) {
+        errors.instituteId = instituteIdValidation.error!;
+        hasErrors = true;
+      }
+    }
+
+    return {
+      isValid: !hasErrors,
+      errors,
+      data: hasErrors ? undefined : data as RegistrationValidationData,
+    };
+  }, [validateEmail, validateUsername, validateFullName, validatePassword, validateInstituteId]);
+
+  return {
+    validateEmail,
+    validateUsername,
+    validateFullName,
+    validatePassword,
+    validateInstituteId,
+    validateRegistrationData,
+    validatePartialData,
+    schemas: {
+      email: emailSchema,
+      username: usernameSchema,
+      fullName: fullNameSchema,
+      password: passwordSchema,
+      registration: registrationSchema,
+    },
+  };
+}

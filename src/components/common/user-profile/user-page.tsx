@@ -16,6 +16,7 @@ import { HOLISTIC_INSTITUTE_ID } from "@/constants/urls";
 import { getTerminology } from "../layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { toTitleCase } from "@/lib/utils";
+import { useStudentPermissions } from "@/hooks/use-student-permissions";
 // import { SessionExpiry } from "./sessionExpiery";
 interface CourseDetails {
   packageName: string;
@@ -34,6 +35,14 @@ export default function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
   const { showForInstitutes } = useInstituteFeatureStore();
+  const { permissions, isLoading: permissionsLoading } = useStudentPermissions();
+
+  // Redirect if user doesn't have permission to view profile
+  useEffect(() => {
+    if (!permissionsLoading && !permissions.canViewProfile) {
+      navigate({ to: "/dashboard" });
+    }
+  }, [permissions.canViewProfile, permissionsLoading, navigate]);
 
   // Fetch student data from Preferences
   useEffect(() => {
@@ -221,8 +230,8 @@ export default function ProfilePage() {
     navigate({ to: "/dashboard" });
   };
 
-  if (isLoading) {
-    <DashboardLoader />;
+  if (isLoading || permissionsLoading) {
+    return <DashboardLoader />;
   }
 
   return (
@@ -454,18 +463,20 @@ export default function ProfilePage() {
           </div>
         </div>
       )}
-      {/* Edit Profile Button */}
-      <div className="p-2  flex justify-center fixed bottom-0 left-0 w-full bg-white ">
-        <MyButton
-          type="submit"
-          scale="large"
-          buttonType="secondary"
-          layoutVariant="default"
-          onClick={handleEditProfile}
-        >
-          Edit Profile
-        </MyButton>
-      </div>
+      {/* Edit Profile Button - Only show if user has permission */}
+      {permissions.canEditProfile && (
+        <div className="p-2  flex justify-center fixed bottom-0 left-0 w-full bg-white ">
+          <MyButton
+            type="submit"
+            scale="large"
+            buttonType="secondary"
+            layoutVariant="default"
+            onClick={handleEditProfile}
+          >
+            Edit Profile
+          </MyButton>
+        </div>
+      )}
     </div>
   );
 }

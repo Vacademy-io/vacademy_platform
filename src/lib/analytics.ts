@@ -14,8 +14,6 @@ export const initializeAnalytics = () => {
     amplitude.init(AMPLITUDE_API_KEY, {
       autocapture: true,
     });
-    analyticsReady = true;
-    console.log('Amplitude analytics initialized successfully');
   } catch (error) {
     console.error('Failed to initialize Amplitude analytics:', error);
     analyticsReady = false;

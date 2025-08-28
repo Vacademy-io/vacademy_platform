@@ -35,6 +35,7 @@ interface ModalUsernameLoginProps {
     type?: string;
     courseId?: string;
     onLoginSuccess?: () => void;
+    signupAvailable?: boolean; // Add this prop to check if signup is available
 }
 
 export function ModalUsernameLogin({
@@ -44,9 +45,13 @@ export function ModalUsernameLogin({
     onSwitchToSignup,
     onSwitchToForgotPassword,
     onLoginSuccess,
+    showEmailSwitch = true,
+    signupAvailable,
 }: ModalUsernameLoginProps & {
     onSwitchToSignup?: () => void;
     onSwitchToForgotPassword?: () => void;
+    showEmailSwitch?: boolean;
+    signupAvailable?: boolean;
 }) {
     // Extract instituteId from current URL
     const urlParams = new URLSearchParams(window.location.search);
@@ -139,19 +144,35 @@ export function ModalUsernameLogin({
                                 redirectUrl = "/study-library/courses";
                             }
                             
-                            // Open in new tab if login originated from course-related pages or if type is courseDetailsPage
+                            // Redirect in same tab if login originated from course-related pages or if type is courseDetailsPage
                             if (type === "courseDetailsPage" || (type && type !== "mainLogin")) {
-                                window.open(redirectUrl, '_blank');
-                            }
-                            // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
-                            if (!type || type === "mainLogin") {
-                                navigate({
-                                    to: "/dashboard",
-                                });
+                                // For course-related pages, redirect to the appropriate study library page
+                                if (redirectUrl !== "/dashboard") {
+                                    // Close modal first, then redirect
+                                    if (onLoginSuccess) {
+                                        onLoginSuccess();
+                                    }
+                                    // Use setTimeout to ensure modal closes before redirect
+                                    setTimeout(() => {
+                                        window.location.href = redirectUrl;
+                                    }, 100);
+                                } else {
+                                    // Call onLoginSuccess callback for modal login
+                                    if (onLoginSuccess) {
+                                        onLoginSuccess();
+                                    }
+                                }
                             } else {
-                                // Call onLoginSuccess callback for modal login
-                                if (onLoginSuccess) {
-                                    onLoginSuccess();
+                                // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
+                                if (!type || type === "mainLogin") {
+                                    navigate({
+                                        to: "/dashboard",
+                                    });
+                                } else {
+                                    // Call onLoginSuccess callback for modal login
+                                    if (onLoginSuccess) {
+                                        onLoginSuccess();
+                                    }
                                 }
                             }
                         } catch (error) {
@@ -162,34 +183,50 @@ export function ModalUsernameLogin({
                         // Single institute case
                         const instituteId = authorityKeys[0];
                         
-                        try {
+                                                try {
                             await fetchAndStoreInstituteDetails(instituteId, userId);
                             await fetchAndStoreStudentDetails(instituteId, userId);
 
                             // Determine redirect URL based on type and courseId
                             let redirectUrl = "/dashboard";
-                        
-                        if (type === "courseDetailsPage" && courseId) {
-                            redirectUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
-                        } else if (type === "courseDetailsPage") {
-                            redirectUrl = "/study-library/courses";
-                        }
-                        
-                        // Open in new tab if login originated from course-related pages or if type is courseDetailsPage
-                        if (type === "courseDetailsPage" || (type && type !== "mainLogin")) {
-                            window.open(redirectUrl, '_blank');
-                        }
-                        // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
-                        if (!type || type === "mainLogin") {
-                            navigate({
-                                to: "/dashboard",
-                            });
-                        } else {
-                            // Call onLoginSuccess callback for modal login
-                            if (onLoginSuccess) {
-                                onLoginSuccess();
+                            
+                            if (type === "courseDetailsPage" && courseId) {
+                                redirectUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
+                            } else if (type === "courseDetailsPage") {
+                                redirectUrl = "/study-library/courses";
                             }
-                        }
+                            
+                            // Redirect in same tab if login originated from course-related pages or if type is courseDetailsPage
+                            if (type === "courseDetailsPage" || (type && type !== "mainLogin")) {
+                                // For course-related pages, redirect to the appropriate study library page
+                                if (redirectUrl !== "/dashboard") {
+                                    // Close modal first, then redirect
+                                    if (onLoginSuccess) {
+                                        onLoginSuccess();
+                                    }
+                                    // Use setTimeout to ensure modal closes before redirect
+                                    setTimeout(() => {
+                                        window.location.href = redirectUrl;
+                                    }, 100);
+                                } else {
+                                    // Call onLoginSuccess callback for modal login
+                                    if (onLoginSuccess) {
+                                        onLoginSuccess();
+                                    }
+                                }
+                            } else {
+                                // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
+                                if (!type || type === "mainLogin") {
+                                    navigate({
+                                        to: "/dashboard",
+                                    });
+                                } else {
+                                    // Call onLoginSuccess callback for modal login
+                                    if (onLoginSuccess) {
+                                        onLoginSuccess();
+                                    }
+                                }
+                            }
                         } catch (error) {
                             console.error("Error fetching details:", error);
                             toast.error("Failed to fetch details");
@@ -410,27 +447,19 @@ export function ModalUsernameLogin({
                 transition={{ delay: 0.4 }}
                 className="text-center pt-3 space-y-2"
             >
-                <motion.button
-                    type="button"
-                    whileHover={{ scale: 1.02 }}
-                    className="text-sm text-gray-500 hover:text-gray-700 transition-colors duration-200 relative group font-medium"
-                    onClick={onSwitchToEmail}
-                >
-                    Prefer email login?
-                    <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-700 transition-all duration-200 group-hover:w-full"></span>
-                </motion.button>
-                
-                <div className="text-xs text-gray-500">
-                    Don't have an account?{" "}
+                {showEmailSwitch && (
                     <motion.button
                         type="button"
                         whileHover={{ scale: 1.02 }}
-                        onClick={onSwitchToSignup}
-                        className="text-gray-700 hover:text-gray-900 font-medium underline cursor-pointer"
+                        className="text-sm text-gray-500 hover:text-gray-700 transition-colors duration-200 relative group font-medium"
+                        onClick={onSwitchToEmail}
                     >
-                        Sign up here
+                        Prefer emailotp login?
+                        <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-700 transition-all duration-200 group-hover:w-full"></span>
                     </motion.button>
-                </div>
+                )}
+                
+
             </motion.div>
         </div>
     );

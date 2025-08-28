@@ -12,7 +12,7 @@ import {
     sideBarStateType,
 } from "../../../../types/layout-container-types";
 import { SidebarItem } from "./sidebar-item";
-import { HamBurgerSidebarItemsData, filterHamburgerMenuItems } from "./utils";
+import { HamBurgerSidebarItemsData, filterHamburgerMenuItems, filterHamburgerMenuItemsWithPermissions } from "./utils";
 import "./scrollbarStyle.css";
 import useStore from "./useSidebar";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
@@ -101,7 +101,11 @@ export const MySidebar = ({
         });
 
         if (sideBarState === sideBarStateType.HAMBURGER) {
-            filterHamburgerMenuItems(HamBurgerSidebarItemsData).then((data) => {
+            // Filter hamburger menu items based on permissions
+            filterHamburgerMenuItemsWithPermissions(
+                HamBurgerSidebarItemsData,
+                settings?.permissions || { canViewProfile: false, canEditProfile: false, canDeleteProfile: false }
+            ).then((data) => {
                 setFilteredHamburgerItems(data);
             });
         }

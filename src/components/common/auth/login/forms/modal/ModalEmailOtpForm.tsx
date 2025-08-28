@@ -5,7 +5,15 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useNavigate } from "@tanstack/react-router";
-import axios from "axios";
+import axios, { AxiosError } from "axios";
+
+interface ErrorResponse {
+  message?: string;
+  ex?: string;
+  responseCode?: string;
+  url?: string;
+  date?: string;
+}
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { MyInput } from "@/components/design-system/input";
@@ -35,6 +43,16 @@ const otpSchema = z.object({
 type EmailFormValues = z.infer<typeof emailSchema>;
 type OtpFormValues = { otp: string[] };
 
+interface ModalEmailOtpFormProps {
+  onSwitchToUsername?: () => void;
+  type?: string;
+  courseId?: string;
+  onSwitchToSignup?: () => void;
+  onLoginSuccess?: () => void;
+  showUsernameSwitch?: boolean;
+  signupAvailable?: boolean; // Add this prop to check if signup is available
+}
+
 export function ModalEmailLogin({
     onSwitchToUsername,
     type,
@@ -42,14 +60,9 @@ export function ModalEmailLogin({
     onSwitchToSignup,
     onEmailVerificationSuccess,
     onLoginSuccess,
-}: {
-    onSwitchToUsername: () => void;
-    type?: string;
-    courseId?: string;
-    onSwitchToSignup?: () => void;
-    onEmailVerificationSuccess?: (email: string) => void;
-    onLoginSuccess?: () => void;
-}) {
+    showUsernameSwitch = true,
+    signupAvailable,
+}: ModalEmailOtpFormProps) {
     // Extract instituteId from current URL
     const urlParams = new URLSearchParams(window.location.search);
     const instituteId = urlParams.get("instituteId");
@@ -112,8 +125,42 @@ export function ModalEmailLogin({
                 onEmailVerificationSuccess(email);
             }
         },
-        onError: () => {
-            toast.error("Failed to send OTP. Please try again.");
+        onError: (error: AxiosError<ErrorResponse>) => {
+            // Handle specific backend error responses
+            const errorData = error.response?.data;
+            
+            if (errorData?.ex === "User not found!" || errorData?.responseCode === "User not found!") {
+                // User doesn't exist - show signup message only if signup is available
+                if (signupAvailable && onSwitchToSignup) {
+                    toast.error("Account not found. Please sign up to continue.", {
+                        duration: 5000,
+                        description: "This email is not registered in our system."
+                    });
+                    
+                    // Automatically switch to signup after a short delay
+                    setTimeout(() => {
+                        onSwitchToSignup();
+                    }, 2000);
+                } else {
+                    // Signup not available - show different message
+                    toast.error("Account not found.", {
+                        duration: 5000,
+                        description: "This email is not registered in our system. Please contact your administrator for access."
+                    });
+                }
+            } else if (errorData?.ex || errorData?.responseCode) {
+                // Show specific backend error message
+                toast.error(errorData.ex || errorData.responseCode || "Failed to send OTP", {
+                    duration: 5000,
+                    description: "Please try again or contact support if the issue persists."
+                });
+            } else {
+                // Generic error fallback
+                toast.error("Failed to send OTP. Please try again.", {
+                    duration: 5000,
+                    description: "Please check your internet connection and try again."
+                });
+            }
         },
         onSettled: () => {
             setIsLoading(false);
@@ -174,27 +221,42 @@ export function ModalEmailLogin({
                                 redirectUrl = "/study-library/courses";
                             }
                             
-                            // Open in new tab if login originated from course-related pages or if type is courseDetailsPage
+                            // Redirect in same tab if login originated from course-related pages or if type is courseDetailsPage
                             if (type === "courseDetailsPage" || (type && type !== "mainLogin")) {
-                                window.open(redirectUrl, '_blank');
-                            }
-                            // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
-                            if (!type || type === "mainLogin") {
-                                navigate({
-                                    to: "/dashboard",
-                                });
+                                // For course-related pages, redirect to the appropriate study library page
+                                if (redirectUrl !== "/dashboard") {
+                                    // Close modal first, then redirect
+                                    if (onLoginSuccess) {
+                                        onLoginSuccess();
+                                    }
+                                    // Use setTimeout to ensure modal closes before redirect
+                                    setTimeout(() => {
+                                        window.location.href = redirectUrl;
+                                    }, 100);
+                                } else {
+                                    // Call onLoginSuccess callback for modal login
+                                    if (onLoginSuccess) {
+                                        onLoginSuccess();
+                                    }
+                                }
                             } else {
-                                // Call onLoginSuccess callback for modal login
-                                if (onLoginSuccess) {
-                                    onLoginSuccess();
+                                // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
+                                if (!type || type === "mainLogin") {
+                                    navigate({
+                                        to: "/dashboard",
+                                    });
+                                } else {
+                                    // Call onLoginSuccess callback for modal login
+                                    if (onLoginSuccess) {
+                                        onLoginSuccess();
+                                    }
                                 }
                             }
                         }
-                    } catch (error) {
-                        console.error("Error fetching details:", error);
-                        toast.error("Failed to fetch details");
-                    }
-                } else if (instituteId && !authorityKeys.includes(instituteId)) {
+                                            } catch (error) {
+                            toast.error("Failed to fetch details");
+                        }
+                    } else if (instituteId && !authorityKeys.includes(instituteId)) {
                     // User is not enrolled in the specified institute
                     toast.error("You are not enrolled in this institute.");
                     if (onLoginSuccess) {
@@ -221,28 +283,43 @@ export function ModalEmailLogin({
                                 redirectUrl = "/study-library/courses";
                             }
                             
-                            // Open in new tab if login originated from course-related pages or if type is courseDetailsPage
+                            // Redirect in same tab if login originated from course-related pages or if type is courseDetailsPage
                             if (type === "courseDetailsPage" || (type && type !== "mainLogin")) {
-                                window.open(redirectUrl, '_blank');
-                            }
-                            // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
-                            if (!type || type === "mainLogin") {
-                                navigate({
-                                    to: "/dashboard",
-                                });
+                                // For course-related pages, redirect to the appropriate study library page
+                                if (redirectUrl !== "/dashboard") {
+                                    // Close modal first, then redirect
+                                    if (onLoginSuccess) {
+                                        onLoginSuccess();
+                                    }
+                                    // Use setTimeout to ensure modal closes before redirect
+                                    setTimeout(() => {
+                                        window.location.href = redirectUrl;
+                                    }, 100);
+                                } else {
+                                    // Call onLoginSuccess callback for modal login
+                                    if (onLoginSuccess) {
+                                        onLoginSuccess();
+                                    }
+                                }
                             } else {
-                                // Call onLoginSuccess callback for modal login
-                                if (onLoginSuccess) {
-                                    onLoginSuccess();
+                                // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
+                                if (!type || type === "mainLogin") {
+                                    navigate({
+                                        to: "/dashboard",
+                                    });
+                                } else {
+                                    // Call onLoginSuccess callback for modal login
+                                    if (onLoginSuccess) {
+                                        onLoginSuccess();
+                                    }
                                 }
                             }
                         }
-                    } catch (error) {
-                        console.error("Error fetching details:", error);
-                        toast.error("Failed to fetch details");
-                    }
-                } else {
-                    // Single institute case
+                                            } catch (error) {
+                            toast.error("Failed to fetch details");
+                        }
+                    } else {
+                        // Single institute case
                     const instituteId = authorityKeys[0];
 
                     if (instituteId && userId) {
@@ -269,41 +346,69 @@ export function ModalEmailLogin({
                                     redirectUrl = "/study-library/courses";
                                 }
                                 
-                                // Open in new tab if login originated from course-related pages or if type is courseDetailsPage
+                                // Redirect in same tab if login originated from course-related pages or if type is courseDetailsPage
                                 if (type === "courseDetailsPage" || (type && type !== "mainLogin")) {
-                                    window.open(redirectUrl, '_blank');
-                                }
-                                // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
-                                if (!type || type === "mainLogin") {
-                                    navigate({
-                                        to: "/dashboard",
-                                    });
+                                    // For course-related pages, redirect to the appropriate study library page
+                                    if (redirectUrl !== "/dashboard") {
+                                        // Close modal first, then redirect
+                                        if (onLoginSuccess) {
+                                            onLoginSuccess();
+                                        }
+                                        // Use setTimeout to ensure modal closes before redirect
+                                        setTimeout(() => {
+                                            window.location.href = redirectUrl;
+                                        }, 100);
+                                    } else {
+                                        // Call onLoginSuccess callback for modal login
+                                        if (onLoginSuccess) {
+                                            onLoginSuccess();
+                                        }
+                                    }
                                 } else {
-                                    // Call onLoginSuccess callback for modal login
-                                    if (onLoginSuccess) {
-                                        onLoginSuccess();
+                                    // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
+                                    if (!type || type === "mainLogin") {
+                                        navigate({
+                                            to: "/dashboard",
+                                        });
+                                    } else {
+                                        // Call onLoginSuccess callback for modal login
+                                        if (onLoginSuccess) {
+                                            onLoginSuccess();
+                                        }
                                     }
                                 }
                             } else {
                                 // Unexpected login status
                             }
                         } catch (error) {
-                            console.error("Error fetching details:", error);
                             toast.error("Failed to fetch details");
                         }
                     } else {
-                        console.error("Institute ID or User ID is undefined");
+                        // Institute ID or User ID is undefined
                     }
                 }
             } catch (error) {
-                console.error("Error processing decoded data:", error);
+                // Error processing decoded data
             }
         },
-        onError: () => {
-            toast.error("Invalid OTP", {
-                description: "Please try again",
-                duration: 3000,
-            });
+        onError: (error: AxiosError<ErrorResponse>) => {
+            // Handle specific backend error responses
+            const errorData = error.response?.data;
+            
+            if (errorData?.ex || errorData?.responseCode) {
+                // Show specific backend error message
+                toast.error(errorData.ex || errorData.responseCode || "Invalid OTP", {
+                    duration: 5000,
+                    description: "Please check your OTP and try again."
+                });
+            } else {
+                // Generic error fallback
+                toast.error("Invalid OTP", {
+                    description: "Please try again",
+                    duration: 5000,
+                });
+            }
+            
             otpForm.reset();
         },
         onSettled: () => {
@@ -685,27 +790,19 @@ export function ModalEmailLogin({
                 transition={{ delay: 0.8 }}
                 className="text-center pt-3 space-y-2"
             >
-                <motion.button
-                    type="button"
-                    whileHover={{ scale: 1.02 }}
-                    className="text-sm text-gray-500 hover:text-gray-700 transition-colors duration-200 relative group font-medium"
-                    onClick={onSwitchToUsername}
-                >
-                    Prefer username login?
-                    <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-700 transition-all duration-200 group-hover:w-full"></span>
-                </motion.button>
-                
-                <div className="text-xs text-gray-500">
-                    Don't have an account?{" "}
+                {showUsernameSwitch && (
                     <motion.button
                         type="button"
                         whileHover={{ scale: 1.02 }}
-                        onClick={onSwitchToSignup}
-                        className="text-gray-700 hover:text-gray-900 font-medium underline cursor-pointer"
+                        className="text-sm text-gray-500 hover:text-gray-700 transition-colors duration-200 relative group font-medium"
+                        onClick={onSwitchToUsername}
                     >
-                        Sign up here
+                        Prefer username login?
+                        <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-700 transition-all duration-200 group-hover:w-full"></span>
                     </motion.button>
-                </div>
+                )}
+                
+
             </motion.div>
                 </form>
             </Form>

@@ -304,6 +304,34 @@ const CourseCatalougePage: React.FC = () => {
         fetchInstructor();
     }, []);
 
+    // ✅ Initial course data fetching when component mounts
+    useEffect(() => {
+        const loadInitialCourseData = async () => {
+            try {
+                // Fetch data for the default tab (PROGRESS)
+                await fetchTabCourses("PROGRESS", setProgressCourses, "", sortOption);
+                
+                // Also fetch some data for ALL tab if it's visible
+                if (visibleTabs.some(t => t.value === "ALL")) {
+                    await fetchTabCourses("ALL", setAllCourses, "", sortOption);
+                }
+                
+                // Fetch completed courses if the tab is visible
+                if (visibleTabs.some(t => t.value === "COMPLETED")) {
+                    await fetchTabCourses("COMPLETED", setCompletedCourses, "", sortOption);
+                }
+                
+            } catch (error) {
+                console.error('[CourseCatalougePage] Failed to load initial course data:', error);
+            }
+        };
+
+        // Only load data if we have the necessary settings
+        if (visibleTabs.length > 0) {
+            loadInitialCourseData();
+        }
+    }, [visibleTabs, sortOption]); // Dependencies: visibleTabs and sortOption
+
     useEffect(() => {
         const fetchInstituteDetails = async () => {
             const InstituteDetails = await Preferences.get({

@@ -58,8 +58,8 @@ pids
 *.pid.lock
 
 # Coverage directory used by tools like istanbul
-coverage/
-*.lcov
+# coverage/
+# *.lcov
 
 # Capacitor platform builds (mobile/desktop)
 android/
@@ -75,12 +75,12 @@ tsconfig.tsbuildinfo
 # Development scripts and configs (keep package.json and lock files)
 .prettierrc*
 .eslintrc*
-jest.config.*
-*.test.*
-*.spec.*
-__tests__/
-test/
-tests/
+# jest.config.*
+# *.test.*
+# *.spec.*
+# __tests__/
+# test/
+# tests/
 
 # Docker files (except the ones we need)
 docker-compose.*

@@ -115,7 +115,6 @@ export function EmailLogin({
         },
         onError: (error: AxiosError<ErrorResponse>) => {
             setIsLoading(false);
-            console.error("OTP request failed:", error);
             
             // Handle specific backend error responses
             const errorData = error.response?.data;
@@ -235,20 +234,17 @@ export function EmailLogin({
                                 // Unexpected login status
                             }
                         } catch (error) {
-                            console.error("Error fetching details:", error);
                             toast.error("Failed to fetch details");
                         }
                     } else {
-                        console.error("Institute ID or User ID is undefined");
+                        // Institute ID or User ID is undefined
                     }
                 }
             } catch (error) {
-                console.error("Error processing decoded data:", error);
+                // Error processing decoded data
             }
         },
         onError: (error: AxiosError<ErrorResponse>) => {
-            console.error("OTP verification failed:", error);
-            
             // Handle specific backend error responses
             const errorData = error.response?.data;
             

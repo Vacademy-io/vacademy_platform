@@ -159,19 +159,27 @@ const handleSuccessfulLogin = async (
         const settings = await getStudentDisplaySettings(true);
         const redirectRoute = settings?.postLoginRedirectRoute || "/dashboard";
 
-        console.group("[Post-Login Redirect | OAuth]");
-        console.log("Fetched settings:", settings);
-        console.log("Resolved redirectRoute:", redirectRoute);
-        console.groupEnd();
-
         if (/^https?:\/\//.test(redirectRoute)) {
           window.location.assign(redirectRoute);
         } else {
           navigate({ to: redirectRoute as string });
         }
       } catch (e) {
-        console.error("[Post-Login Redirect | OAuth] Falling back to /dashboard due to error:", e);
-        navigate({ to: "/dashboard" });
+        // Falling back to /dashboard due to error
+        const fallbackRedirect = "/dashboard";
+        
+        // Send success message to parent window with fallback redirect
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage({
+            action: 'oauth_complete',
+            success: true,
+            redirectTo: fallbackRedirect,
+            error: 'Dynamic redirection failed, using fallback route'
+          }, window.location.origin);
+        }
+        
+        // Close popup after sending message
+        setTimeout(() => window.close(), 500);
       }
     } else {
       // For multiple institutes, use the existing logic

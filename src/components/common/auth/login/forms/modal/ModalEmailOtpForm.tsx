@@ -126,8 +126,6 @@ export function ModalEmailLogin({
             }
         },
         onError: (error: AxiosError<ErrorResponse>) => {
-            console.error("OTP request failed:", error);
-            
             // Handle specific backend error responses
             const errorData = error.response?.data;
             
@@ -255,11 +253,10 @@ export function ModalEmailLogin({
                                 }
                             }
                         }
-                    } catch (error) {
-                        console.error("Error fetching details:", error);
-                        toast.error("Failed to fetch details");
-                    }
-                } else if (instituteId && !authorityKeys.includes(instituteId)) {
+                                            } catch (error) {
+                            toast.error("Failed to fetch details");
+                        }
+                    } else if (instituteId && !authorityKeys.includes(instituteId)) {
                     // User is not enrolled in the specified institute
                     toast.error("You are not enrolled in this institute.");
                     if (onLoginSuccess) {
@@ -318,12 +315,11 @@ export function ModalEmailLogin({
                                 }
                             }
                         }
-                    } catch (error) {
-                        console.error("Error fetching details:", error);
-                        toast.error("Failed to fetch details");
-                    }
-                } else {
-                    // Single institute case
+                                            } catch (error) {
+                            toast.error("Failed to fetch details");
+                        }
+                    } else {
+                        // Single institute case
                     const instituteId = authorityKeys[0];
 
                     if (instituteId && userId) {
@@ -385,20 +381,17 @@ export function ModalEmailLogin({
                                 // Unexpected login status
                             }
                         } catch (error) {
-                            console.error("Error fetching details:", error);
                             toast.error("Failed to fetch details");
                         }
                     } else {
-                        console.error("Institute ID or User ID is undefined");
+                        // Institute ID or User ID is undefined
                     }
                 }
             } catch (error) {
-                console.error("Error processing decoded data:", error);
+                // Error processing decoded data
             }
         },
         onError: (error: AxiosError<ErrorResponse>) => {
-            console.error("OTP verification failed:", error);
-            
             // Handle specific backend error responses
             const errorData = error.response?.data;
             

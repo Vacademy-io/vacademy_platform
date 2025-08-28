@@ -1,14 +1,12 @@
-import { MyButton } from "@/components/design-system/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useNavigate } from "@tanstack/react-router";
-import { X } from "phosphor-react";
 import { useStudentPermissions } from "@/hooks/use-student-permissions";
 import { useEffect } from "react";
+import AccountDetailsEdit from "./account-details-edit";
 
 const ChangePasswordPage = () => {
   const navigate = useNavigate();
-  const { permissions, isLoading: permissionsLoading } = useStudentPermissions();
+  const { permissions, isLoading: permissionsLoading } =
+    useStudentPermissions();
 
   // Redirect if user doesn't have permission to edit profile
   useEffect(() => {
@@ -17,9 +15,6 @@ const ChangePasswordPage = () => {
     }
   }, [permissions.canEditProfile, permissionsLoading, navigate]);
 
-  const handleClose = () => {
-    navigate({ to: "/dashboard" });
-  };
   // Show loading while checking permissions
   if (permissionsLoading) {
     return (

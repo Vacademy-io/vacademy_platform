@@ -46,7 +46,7 @@ export class InstituteSettingsCache {
           return;
         }
       }
-
+      
       // Fetch full institute details
       const fullInstituteDetails = await getInstituteDetails(instituteId);
       
@@ -62,8 +62,17 @@ export class InstituteSettingsCache {
             institute_settings_json: fullInstituteDetails.setting
           })
         });
+        
+        // Log the key settings for verification
+        try {
+          const settingData = JSON.parse(fullInstituteDetails.setting);
+          const allowLearnersToCreateCourses = settingData?.COURSE_SETTING?.data?.permissions?.allowLearnersToCreateCourses;
+        } catch (parseError) {
+          console.error('[InstituteSettingsCache] Error parsing cached settings:', parseError);
+        }
       }
     } catch (error) {
+      console.error('[InstituteSettingsCache] Error caching institute settings:', error);
       // Don't throw - this is a background operation
     }
   }
@@ -82,6 +91,7 @@ export class InstituteSettingsCache {
       }
       return null;
     } catch (error) {
+      console.error('[InstituteSettingsCache] Error getting cached settings:', error);
       return null;
     }
   }
@@ -93,7 +103,7 @@ export class InstituteSettingsCache {
     try {
       await Preferences.remove({ key: "InstituteDetails" });
     } catch (error) {
-      // Silently handle errors
+      console.error('[InstituteSettingsCache] Error clearing cache:', error);
     }
   }
 }

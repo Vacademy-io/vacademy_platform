@@ -67,79 +67,27 @@ export function useUnifiedRegistration(): UseUnifiedRegistrationReturn {
       
       // Get institute settings to determine roles
       let allowLearnersToCreateCourses = false;
-      let rawSettings = null;
-      let parsedSettings = null;
-      
       try {
         const stored = await Preferences.get({ key: "InstituteDetails" });
-        
         if (stored?.value) {
-          rawSettings = JSON.parse(stored.value);
-          const settingsString = rawSettings?.institute_settings_json;
-          
+          const parsed = JSON.parse(stored.value);
+          const settingsString = parsed?.institute_settings_json;
           if (typeof settingsString === "string") {
-            try {
-              parsedSettings = JSON.parse(settingsString);
-              
-              // Check for the correct permission setting
-              const courseSetting = parsedSettings?.setting?.COURSE_SETTING;
-              
-              if (courseSetting?.data?.permissions?.allowLearnersToCreateCourses) {
-                allowLearnersToCreateCourses = true;
-              } else if (parsedSettings?.learnersCanCreateCourses) {
-                // Fallback to legacy setting
-                allowLearnersToCreateCourses = true;
-              }
-            } catch (parseError) {
-              // Silently handle parsing errors
+            const instSettings = JSON.parse(settingsString);
+            
+            // Check for the correct permission setting
+            if (instSettings?.setting?.COURSE_SETTING?.data?.permissions?.allowLearnersToCreateCourses) {
+              allowLearnersToCreateCourses = true;
+            } else if (instSettings?.learnersCanCreateCourses) {
+              // Fallback to legacy setting
+              allowLearnersToCreateCourses = true;
             }
+            
+
           }
         }
       } catch (error) {
         // Silently handle parsing errors
-      }
-
-      // If settings are missing, try to fetch them from the full institute details API
-      if (!allowLearnersToCreateCourses) {
-        try {
-          const { getInstituteDetails } = await import('@/services/signup-api');
-          const fullInstituteDetails = await getInstituteDetails(data.instituteId);
-          
-          if (fullInstituteDetails?.setting) {
-            // Store the full institute details for future use
-            try {
-              await Preferences.set({
-                key: "InstituteDetails",
-                value: JSON.stringify({
-                  ...rawSettings, // Keep existing basic info
-                  institute_settings_json: fullInstituteDetails.setting // Add the full settings
-                })
-              });
-            } catch (storeError) {
-              // Silently handle storage errors
-            }
-            
-            // Parse the setting field to check for course permissions
-            try {
-              const settingData = JSON.parse(fullInstituteDetails.setting);
-              
-              // Check for the correct permission setting in the setting field
-              // The structure is: settingData.setting.COURSE_SETTING.data.permissions.allowLearnersToCreateCourses
-              const settingCourseSetting = settingData?.setting?.COURSE_SETTING;
-              
-              if (settingCourseSetting?.data?.permissions?.allowLearnersToCreateCourses) {
-                allowLearnersToCreateCourses = true;
-              } else if (settingData?.learnersCanCreateCourses) {
-                // Fallback to legacy setting
-                allowLearnersToCreateCourses = true;
-              }
-            } catch (settingParseError) {
-              // Silently handle parsing errors
-            }
-          }
-        } catch (fetchError) {
-          // Continue with default behavior (STUDENT role only)
-        }
       }
 
       // Determine roles based on institute settings

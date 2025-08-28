@@ -208,7 +208,13 @@ export function ModularDynamicSignupContainer({
 
       // Check if popup was closed manually
       const checkClosed = setInterval(() => {
-        if (popup.closed) {
+        try {
+          if (popup.closed) {
+            clearInterval(checkClosed);
+            window.removeEventListener('message', messageHandler);
+          }
+        } catch (error) {
+          // Handle Cross-Origin-Opener-Policy restrictions
           clearInterval(checkClosed);
           window.removeEventListener('message', messageHandler);
         }
@@ -284,17 +290,12 @@ export function ModularDynamicSignupContainer({
 
   // Helper function to check enrollment only once per email
   const checkEnrollmentOnce = async (email: string) => {
-    console.log('[DEBUG] checkEnrollmentOnce called with email:', email);
-    
     // If we've already checked this email, don't check again
     if (enrollmentChecked.has(email)) {
-      console.log('[DEBUG] Email already checked, returning cached result');
       return null;
     }
 
-    console.log('[DEBUG] First time checking enrollment for:', email);
     const enrollmentResult = await checkUserEnrollmentInInstitute(email, instituteId!);
-    console.log('[DEBUG] Enrollment result:', enrollmentResult);
     
     // Mark this email as checked
     setEnrollmentChecked(prev => new Set(prev).add(email));
@@ -316,12 +317,9 @@ export function ModularDynamicSignupContainer({
       // For flows requiring email verification (GitHub private email, regular email OTP), 
       // enrollment is checked AFTER OTP verification in the OtpVerificationForm
       if (signupData.email) {
-        console.log('[DEBUG] OAuth Success: Checking enrollment for public email:', signupData.email);
         const enrollmentResult = await checkEnrollmentOnce(signupData.email);
-        console.log('[DEBUG] OAuth Success: Enrollment result:', enrollmentResult);
         
         if (enrollmentResult?.isEnrolled) {
-          console.log('[DEBUG] OAuth Success: User is enrolled, handling auto-login...');
           const autoLoginResult = await handleEnrolledUser(
             signupData.email,
             instituteId!,
@@ -343,8 +341,6 @@ export function ModularDynamicSignupContainer({
             return; // Auto-login handled everything
           }
         }
-      } else {
-        console.log('[DEBUG] OAuth Success: No email provided, skipping enrollment check');
       }
       
       // Check credential requirements based on institute settings

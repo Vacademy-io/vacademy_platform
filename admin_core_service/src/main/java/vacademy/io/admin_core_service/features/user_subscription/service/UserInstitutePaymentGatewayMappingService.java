@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.user_subscription.entity.UserInst
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserInstitutePaymentGatewayMappingRepository;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -29,13 +30,14 @@ public class UserInstitutePaymentGatewayMappingService {
     }
 
     public UserInstitutePaymentGatewayMapping saveUserInstituteVendorMapping(String userId, String instituteId,
-                                                 String vendor,
-                                                 String paymentGatewayCustomerId,
-                                                 Object paymentGatewaySpecificData) {
+            String vendor,
+            String paymentGatewayCustomerId,
+            Object paymentGatewaySpecificData) {
         System.out.println(paymentGatewaySpecificData);
         UserInstitutePaymentGatewayMapping mapping = new UserInstitutePaymentGatewayMapping();
         mapping.setUserId(userId);
-        mapping.setInstitutePaymentGatewayMapping(institutePaymentGatewayMappingService.findByInstituteIdAndVendor(instituteId,vendor));
+        mapping.setInstitutePaymentGatewayMapping(
+                institutePaymentGatewayMappingService.findByInstituteIdAndVendor(instituteId, vendor));
         mapping.setPaymentGatewayCustomerId(paymentGatewayCustomerId);
         mapping.setStatus(StatusEnum.ACTIVE.name());
 

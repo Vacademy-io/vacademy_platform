@@ -18,4 +18,16 @@ public class RazorpayPaymentManager implements PaymentServiceStrategy {
     public Map<String, Object> createCustomer(UserDTO user, PaymentInitiationRequestDTO request, Map<String, Object> paymentGatewaySpecificData) {
         return null;
     }
+
+    @Override
+    public Map<String, Object> createCustomerForUnknownUser(String email, PaymentInitiationRequestDTO request, Map<String, Object> paymentGatewaySpecificData) {
+        // TODO: Implement Razorpay customer creation for unknown users
+        return null;
+    }
+
+    @Override
+    public Map<String, Object> findCustomerByEmail(String email, Map<String, Object> paymentGatewaySpecificData) {
+        // TODO: Implement Razorpay customer search by email
+        return null;
+    }
 }

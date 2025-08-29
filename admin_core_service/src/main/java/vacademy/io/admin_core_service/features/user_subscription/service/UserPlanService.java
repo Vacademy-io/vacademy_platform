@@ -142,6 +142,12 @@ public class UserPlanService {
         return userPlanDTO;
     }
 
+    public UserPlan findById(String userPlanId) {
+        logger.info("Finding UserPlan by ID: {}", userPlanId);
+        return userPlanRepository.findById(userPlanId)
+                .orElseThrow(() -> new RuntimeException("UserPlan not found with ID: " + userPlanId));
+    }
+
     private List<PaymentLogDTO> getPaymentLogsByUserPlanId(String userPlanId) {
         logger.info("Getting payment logs for user plan ID: {}", userPlanId);
 

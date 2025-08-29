@@ -142,9 +142,6 @@ public class PaymentLogService {
     ///  to do:
 
     private void handleDonationPaymentConfirmation(PaymentLog paymentLog, String instituteId) {
-        if (true){
-            return;
-        }
         try {
             // Parse the paymentSpecificData which now contains both response and original
             // request

@@ -13,9 +13,6 @@ public class WebHookController {
     @Autowired
     private StripeWebHookService stripeWebHookService;
 
-    @Autowired
-    private PaymentService paymentService;
-
     @PostMapping("/webhook/callback/stripe")
     public ResponseEntity<String> handleStripeWebhook(
             @RequestBody String payload,

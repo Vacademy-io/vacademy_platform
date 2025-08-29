@@ -1,24 +1,23 @@
 package vacademy.io.admin_core_service.features.workflow.engine;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationContext;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import vacademy.io.admin_core_service.features.workflow.actions.ActionHandlerService;
-import vacademy.io.admin_core_service.features.workflow.actions.prebuilt.PrebuiltActionService;
-import vacademy.io.admin_core_service.features.workflow.spel.SpelEvaluator;
+import vacademy.io.admin_core_service.features.workflow.dto.ActionNodeDTO;
+import vacademy.io.admin_core_service.features.workflow.entity.NodeTemplate;
+import vacademy.io.admin_core_service.features.workflow.engine.action.DataProcessorStrategy;
+import vacademy.io.admin_core_service.features.workflow.engine.action.DataProcessorStrategyRegistry;
 
 import java.util.*;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class ActionNodeHandler implements NodeHandler {
+
     private final ObjectMapper objectMapper;
-    private final SpelEvaluator spelEvaluator;
-    private final DedupeService dedupeService;
-    private final ApplicationContext applicationContext;
-    private final List<PrebuiltActionService> prebuiltServices;
+    private final DataProcessorStrategyRegistry strategyRegistry;
 
     @Override
     public boolean supports(String nodeType) {
@@ -26,84 +25,45 @@ public class ActionNodeHandler implements NodeHandler {
     }
 
     @Override
-    public Map<String, Object> handle(Map<String, Object> context, String nodeConfigJson) {
+    public Map<String, Object> handle(
+            Map<String, Object> context,
+            String nodeConfigJson,
+            Map<String, NodeTemplate> nodeTemplates,
+            int countProcessed) {
+
         Map<String, Object> changes = new HashMap<>();
         try {
-            JsonNode root = objectMapper.readTree(nodeConfigJson);
-            JsonNode actions = root.path("actions");
-            if (actions.isArray()) {
-                for (JsonNode action : actions) {
-                    String type = action.path("type").asText("");
-                    String overInput = action.path("iterate").path("over_input").asText("items");
-                    String appendTo = action.path("outputs").path("append_to").asText("action_results");
+            ActionNodeDTO actionNodeDTO = objectMapper.readValue(nodeConfigJson, ActionNodeDTO.class);
 
-                    // Prebuilt action dispatch (no iteration over_input required)
-                    String prebuiltKey = action.path("config").path("prebuilt_key").asText("");
-                    if (!prebuiltKey.isBlank()) {
-                        PrebuiltActionService svc = prebuiltServices.stream()
-                                .filter(s -> s.key().equals(prebuiltKey)).findFirst().orElse(null);
-                        if (svc != null) {
-                            Map<String, Object> res = svc.execute(action.path("config"), context);
-                            List<Map<String, Object>> existing = castListOfMap(
-                                    context.getOrDefault(appendTo, new ArrayList<>()));
-                            existing.add(res);
-                            changes.put(appendTo, existing);
-                        }
-                        continue;
-                    }
-
-                    List<Map<String, Object>> items = castListOfMap(
-                            context.getOrDefault(overInput, Collections.emptyList()));
-                    ActionHandlerService handler = applicationContext.getBeansOfType(ActionHandlerService.class)
-                            .values().stream().filter(h -> h.getType().equalsIgnoreCase(type)).findFirst()
-                            .orElse(null);
-                    if (handler == null)
-                        continue;
-
-                    List<Map<String, Object>> results = new ArrayList<>();
-                    for (Map<String, Object> item : items) {
-                        Map<String, Object> vars = new HashMap<>(context);
-                        vars.put("item", item);
-                        String dedupeKeyExpr = action.path("idempotency").path("key").asText(null);
-                        String dedupeKey = dedupeKeyExpr == null ? null
-                                : String.valueOf(spelEvaluator.eval(dedupeKeyExpr, vars));
-                        if (dedupeKey != null && dedupeService.seen(dedupeKey))
-                            continue;
-
-                        Map<String, Object> res = handler.execute(item, action.path("config"), context);
-                        if (dedupeKey != null && Boolean.TRUE.equals(res.get("success")))
-                            dedupeService.remember(dedupeKey);
-                        results.add(res);
-                    }
-
-                    List<Map<String, Object>> existing = castListOfMap(
-                            context.getOrDefault(appendTo, new ArrayList<>()));
-                    existing.addAll(results);
-                    changes.put(appendTo, existing);
-                }
+            String dataProcessor = actionNodeDTO.getDataProcessor();
+            if (dataProcessor == null || dataProcessor.isBlank()) {
+                log.warn("ActionNode missing dataProcessor");
+                return changes;
             }
+
+            // Get the appropriate strategy for this data processor
+            DataProcessorStrategy strategy = strategyRegistry.getStrategy(dataProcessor);
+            if (strategy == null) {
+                log.warn("No strategy found for dataProcessor: {}", dataProcessor);
+                changes.put("error", "No strategy found for: " + dataProcessor);
+                return changes;
+            }
+
+            // Execute the strategy
+            Object config = actionNodeDTO.getConfig();
+            Map<String, Object> itemContext = new HashMap<>(context);
+
+            Map<String, Object> result = strategy.execute(context, config, itemContext);
+            if (result != null) {
+                changes.putAll(result);
+            }
+
+            log.info("Successfully executed {} strategy", dataProcessor);
+
         } catch (Exception e) {
-            changes.put("action_error", e.getMessage());
+            log.error("Error handling ActionNode", e);
+            changes.put("error", e.getMessage());
         }
         return changes;
-    }
-
-    private List<Map<String, Object>> castListOfMap(Object o) {
-        if (o instanceof List<?> l) {
-            List<Map<String, Object>> out = new ArrayList<>();
-            for (Object e : l)
-                if (e instanceof Map<?, ?> m)
-                    out.add((Map<String, Object>) m);
-                else if (e != null)
-                    out.add(Map.of("value", e));
-            return out;
-        }
-        return new ArrayList<>();
-    }
-
-    public interface DedupeService {
-        boolean seen(String key);
-
-        void remember(String key);
     }
 }

@@ -5,6 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.common.util.JsonUtil;
+import vacademy.io.admin_core_service.features.workflow.dto.RoutingDTO;
+import vacademy.io.admin_core_service.features.workflow.dto.TriggerNodeDTO;
+import vacademy.io.admin_core_service.features.workflow.entity.NodeTemplate;
 import vacademy.io.admin_core_service.features.workflow.spel.SpelEvaluator;
 
 import java.time.Instant;
@@ -29,40 +33,37 @@ public class TriggerNodeHandler implements NodeHandler {
     }
 
     @Override
-    public Map<String, Object> handle(Map<String, Object> context, String nodeConfigJson) {
+    public Map<String, Object> handle(Map<String, Object> context, String nodeConfigJson,
+            Map<String, NodeTemplate> nodeTemplates, int countProcessed) {
         log.info("TriggerNodeHandler.handle() invoked with context: {}, configJson: {}", context, nodeConfigJson);
 
         Map<String, Object> changes = new HashMap<>();
-
         try {
-            JsonNode config = objectMapper.readTree(nodeConfigJson);
+            TriggerNodeDTO config = objectMapper.readValue(nodeConfigJson, TriggerNodeDTO.class);
 
-            // Parse output_data_points
-            JsonNode outputs = config.get("output_data_points");
-            if (outputs != null && outputs.isArray()) {
-                for (JsonNode output : outputs) {
-                    String fieldName = output.path("field_name").asText("");
-                    if (fieldName.isBlank()) {
+            if (config.getOutputDataPoints() != null) {
+                for (TriggerNodeDTO.OutputDataPoint output : config.getOutputDataPoints()) {
+                    String fieldName = output.getFieldName();
+                    if (fieldName == null || fieldName.isBlank())
                         continue;
-                    }
 
-                    // Prefer dynamic compute (SpEL), fallback to static value
-                    String computeExpr = output.path("compute").asText(null);
-                    if (computeExpr != null && !computeExpr.isBlank()) {
-                        Object value = spelEvaluator.eval(computeExpr, context);
+                    if (output.getCompute() != null && !output.getCompute().isBlank()) {
+                        Object value = spelEvaluator.eval(output.getCompute(), context);
                         changes.put(fieldName, value);
                         log.debug("Field '{}' computed via SpEL to value: {}", fieldName, value);
-                        continue;
-                    }
-
-                    JsonNode valueNode = output.get("value");
-                    if (valueNode != null && !valueNode.isNull()) {
-                        Object value = objectMapper.convertValue(valueNode, Object.class);
-                        changes.put(fieldName, value);
-                        log.debug("Field '{}' set to static value: {}", fieldName, value);
+                    } else if (output.getValue() != null) {
+                        changes.put(fieldName, output.getValue());
+                        log.debug("Field '{}' set to static value: {}", fieldName, output.getValue());
                     }
                 }
             }
+
+            // Store routing info in context for the main workflow engine to handle
+            if (config.getRouting() != null && !config.getRouting().isEmpty()) {
+                changes.put("routingInfo", config.getRouting());
+                log.debug("Routing info stored in context for workflow engine to process");
+            }
+
         } catch (Exception e) {
             log.error("Error while processing TriggerNodeHandler config", e);
         }

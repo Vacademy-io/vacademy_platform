@@ -48,8 +48,6 @@ interface PaginatedResponse {
     size: number;
 }
 
-
-
 // Helper function to transform API data to Review format
 const transformRatingToReview = (rating: Rating): Review => {
     return {
@@ -106,29 +104,34 @@ export function CourseDetailsRatingsComponent({
         fetchCurrentUserId();
     }, []);
 
-    const { data: ratingData, isLoading: isRatingLoading } = useSuspenseQuery<PaginatedResponse>(
-        handleGetRatingDetails({
-            pageNo: page,
-            pageSize: 10,
-            data: {
-                source_id: packageSessionId || "",
-                source_type: "PACKAGE_SESSION",
-            },
-        })
-    );
+    const { data: ratingData, isLoading: isRatingLoading } =
+        useSuspenseQuery<PaginatedResponse>(
+            handleGetRatingDetails({
+                pageNo: page,
+                pageSize: 10,
+                data: {
+                    source_id: packageSessionId || "",
+                    source_type: "PACKAGE_SESSION",
+                },
+            })
+        );
 
-    const { data: overallRatingData, isLoading: isOverallRatingLoading } = useSuspenseQuery(
-        handleGetOverAllRatingDetails({
-            source_id: packageSessionId || "",
-        })
-    );
+    const { data: overallRatingData, isLoading: isOverallRatingLoading } =
+        useSuspenseQuery(
+            handleGetOverAllRatingDetails({
+                source_id: packageSessionId || "",
+            })
+        );
 
     // Memoized callback for loading state changes
-    const handleLoadingChange = useCallback((loading: boolean) => {
-        if (onRatingsLoadingChange) {
-            onRatingsLoadingChange(loading);
-        }
-    }, [onRatingsLoadingChange]);
+    const handleLoadingChange = useCallback(
+        (loading: boolean) => {
+            if (onRatingsLoadingChange) {
+                onRatingsLoadingChange(loading);
+            }
+        },
+        [onRatingsLoadingChange]
+    );
 
     // Update loading state for parent component
     useEffect(() => {
@@ -149,7 +152,9 @@ export function CourseDetailsRatingsComponent({
         const fetchAvatarUrls = async () => {
             // Only fetch URLs for reviews that we haven't fetched before
             const reviewsNeedingUrls = reviews.filter(
-                review => review.user.avatarUrl && !fetchedUrlsRef.current.has(review.id)
+                (review) =>
+                    review.user.avatarUrl &&
+                    !fetchedUrlsRef.current.has(review.id)
             );
 
             if (reviewsNeedingUrls.length === 0) return;
@@ -169,15 +174,15 @@ export function CourseDetailsRatingsComponent({
 
             const results = await Promise.all(urlPromises);
             const newUrls: Record<string, string> = {};
-            
+
             results.forEach(({ reviewId, url }) => {
                 if (url) {
                     newUrls[reviewId] = url;
                 }
             });
-            
+
             // Merge with existing URLs instead of replacing
-            setAvatarUrls(prev => ({ ...prev, ...newUrls }));
+            setAvatarUrls((prev) => ({ ...prev, ...newUrls }));
         };
 
         if (reviews.length > 0) {
@@ -220,27 +225,39 @@ export function CourseDetailsRatingsComponent({
         onError: (error: unknown, variables) => {
             // Revert optimistic updates on error
             queryClient.setQueryData(
-                ["GET_ALL_USER_COURSE_RATINGS", page, 10, { source_id: packageSessionId || "", source_type: "PACKAGE_SESSION" }],
+                [
+                    "GET_ALL_USER_COURSE_RATINGS",
+                    page,
+                    10,
+                    {
+                        source_id: packageSessionId || "",
+                        source_type: "PACKAGE_SESSION",
+                    },
+                ],
                 (oldData: any) => {
                     if (!oldData) return oldData;
-                    
+
                     // Find the original review to revert changes
-                    const originalReview = reviews.find(r => r.id === variables.id);
+                    const originalReview = reviews.find(
+                        (r) => r.id === variables.id
+                    );
                     if (!originalReview) return oldData;
 
                     return {
                         ...oldData,
-                        content: oldData.content.map((rating: any) => 
-                            rating.id === variables.id 
-                                ? { 
-                                    ...rating, 
-                                    likes: originalReview.likes,
-                                    dislikes: originalReview.dislikes,
-                                    status: "ACTIVE" // Revert status if it was deleted
-                                }
+                        content: oldData.content.map((rating: any) =>
+                            rating.id === variables.id
+                                ? {
+                                      ...rating,
+                                      likes: originalReview.likes,
+                                      dislikes: originalReview.dislikes,
+                                      status: "ACTIVE", // Revert status if it was deleted
+                                  }
                                 : rating
                         ),
-                        totalElements: oldData.totalElements + (variables.status === "DELETED" ? 1 : 0) // Revert total count if deleted
+                        totalElements:
+                            oldData.totalElements +
+                            (variables.status === "DELETED" ? 1 : 0), // Revert total count if deleted
                     };
                 }
             );
@@ -269,18 +286,26 @@ export function CourseDetailsRatingsComponent({
 
     // Handler functions for ReviewItem with optimistic updates
     const handleLike = (reviewId: string) => {
-        const review = reviews.find(r => r.id === reviewId);
+        const review = reviews.find((r) => r.id === reviewId);
         if (review) {
             // Update the query cache optimistically
             queryClient.setQueryData(
-                ["GET_ALL_USER_COURSE_RATINGS", page, 10, { source_id: packageSessionId || "", source_type: "PACKAGE_SESSION" }],
+                [
+                    "GET_ALL_USER_COURSE_RATINGS",
+                    page,
+                    10,
+                    {
+                        source_id: packageSessionId || "",
+                        source_type: "PACKAGE_SESSION",
+                    },
+                ],
                 (oldData: any) => ({
                     ...oldData,
-                    content: oldData.content.map((rating: any) => 
-                        rating.id === reviewId 
+                    content: oldData.content.map((rating: any) =>
+                        rating.id === reviewId
                             ? { ...rating, likes: rating.likes + 1 }
                             : rating
-                    )
+                    ),
                 })
             );
 
@@ -297,18 +322,26 @@ export function CourseDetailsRatingsComponent({
     };
 
     const handleDislike = (reviewId: string) => {
-        const review = reviews.find(r => r.id === reviewId);
+        const review = reviews.find((r) => r.id === reviewId);
         if (review) {
             // Update the query cache optimistically
             queryClient.setQueryData(
-                ["GET_ALL_USER_COURSE_RATINGS", page, 10, { source_id: packageSessionId || "", source_type: "PACKAGE_SESSION" }],
+                [
+                    "GET_ALL_USER_COURSE_RATINGS",
+                    page,
+                    10,
+                    {
+                        source_id: packageSessionId || "",
+                        source_type: "PACKAGE_SESSION",
+                    },
+                ],
                 (oldData: any) => ({
                     ...oldData,
-                    content: oldData.content.map((rating: any) => 
-                        rating.id === reviewId 
+                    content: oldData.content.map((rating: any) =>
+                        rating.id === reviewId
                             ? { ...rating, dislikes: rating.dislikes + 1 }
                             : rating
-                    )
+                    ),
                 })
             );
 
@@ -325,15 +358,25 @@ export function CourseDetailsRatingsComponent({
     };
 
     const handleDelete = (reviewId: string) => {
-        const review = reviews.find(r => r.id === reviewId);
+        const review = reviews.find((r) => r.id === reviewId);
         if (review) {
             // Update the query cache optimistically
             queryClient.setQueryData(
-                ["GET_ALL_USER_COURSE_RATINGS", page, 10, { source_id: packageSessionId || "", source_type: "PACKAGE_SESSION" }],
+                [
+                    "GET_ALL_USER_COURSE_RATINGS",
+                    page,
+                    10,
+                    {
+                        source_id: packageSessionId || "",
+                        source_type: "PACKAGE_SESSION",
+                    },
+                ],
                 (oldData: any) => ({
                     ...oldData,
-                    content: oldData.content.filter((rating: any) => rating.id !== reviewId),
-                    totalElements: oldData.totalElements - 1
+                    content: oldData.content.filter(
+                        (rating: any) => rating.id !== reviewId
+                    ),
+                    totalElements: oldData.totalElements - 1,
                 })
             );
 
@@ -349,7 +392,8 @@ export function CourseDetailsRatingsComponent({
         }
     };
 
-    if (isRatingLoading || isOverallRatingLoading || !packageSessionId) return <DashboardLoader />;
+    if (isRatingLoading || isOverallRatingLoading || !packageSessionId)
+        return <DashboardLoader />;
 
     return (
         <div className="flex flex-col gap-5">

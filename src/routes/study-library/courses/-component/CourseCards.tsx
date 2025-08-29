@@ -63,13 +63,20 @@ const CourseCard: React.FC<CourseCardProps> = ({
         try {
             // Persist percentage locally as a fallback for details page
             const key = `COURSE_PCT_${id}`;
-            LocalStorageUtils.set(key, { value: percentageCompleted, ts: Date.now() });
+            LocalStorageUtils.set(key, {
+                value: percentageCompleted,
+                ts: Date.now(),
+            });
         } catch (e) {
             console.error("Failed to save percentage to localStorage", e);
         }
         router.navigate({
             to: "/study-library/courses/course-details",
-            search: { courseId: id, selectedTab: selectedTab, percentageCompleted },
+            search: {
+                courseId: id,
+                selectedTab: selectedTab,
+                percentageCompleted,
+            },
         });
     };
 
@@ -304,13 +311,23 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
                 {selectedTab === "PROGRESS" && (
                     <div className="mb-3 sm:mb-4 -mt-1 flex items-center gap-2">
-                        <ProgressBar value={percentageCompleted} />
-                        <span className="text-sm">
-                            {percentageCompleted
-                                ? percentageCompleted.toFixed(2)
-                                : 0}
-                            %
-                        </span>
+                        {percentageCompleted && (
+                            <ProgressBar
+                                value={
+                                    percentageCompleted > 100
+                                        ? 100
+                                        : percentageCompleted
+                                }
+                            />
+                        )}
+                        {percentageCompleted && (
+                            <span className="text-sm">
+                                {percentageCompleted > 100
+                                    ? 100
+                                    : percentageCompleted.toFixed(2)}
+                                %
+                            </span>
+                        )}
                     </div>
                 )}
 

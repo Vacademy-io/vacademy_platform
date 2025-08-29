@@ -86,7 +86,6 @@ export const getLearnerInfo = async (instituteId: string): Promise<LearnerInfo[]
 
     return response.data;
   } catch (error) {
-    console.error("Error fetching learner info:", error);
     throw error;
   }
 };
@@ -110,7 +109,6 @@ export const getUserPlanDetails = async (userPlanId: string): Promise<UserPlan> 
 
     return response.data;
   } catch (error) {
-    console.error("Error fetching user plan details:", error);
     throw error;
   }
 };
@@ -120,52 +118,29 @@ export const getUserPlanDetails = async (userPlanId: string): Promise<UserPlan> 
  */
 export const hasUserDonated = async (instituteId: string): Promise<boolean> => {
   try {
-    console.log('🔍 [HAS DONATED] Starting donation status check for institute:', instituteId);
-    
     // Get learner info to find user_plan_id
-    console.log('📋 [HAS DONATED] Fetching learner info...');
     const learnerInfo = await getLearnerInfo(instituteId);
-    console.log('📋 [HAS DONATED] Learner info received:', learnerInfo);
     
     if (!learnerInfo || learnerInfo.length === 0) {
-      console.log('⚠️ [HAS DONATED] No learner info found, user has not donated');
       return false;
     }
-    
-    console.log('🔍 [HAS DONATED] Checking', learnerInfo.length, 'learner records for user_plan_id');
     
     // Find the first learner record with a user_plan_id
     const learnerWithPlan = learnerInfo.find(learner => learner.user_plan_id);
     const userPlanId = learnerWithPlan?.user_plan_id;
-    console.log('🔑 [HAS DONATED] User plan ID extracted:', userPlanId);
     
     if (!userPlanId) {
-      console.log('⚠️ [HAS DONATED] No user plan ID found in any learner record, user has not donated');
       return false;
     }
 
     // Get user plan details to check payment logs
-    console.log('💳 [HAS DONATED] Fetching user plan details with payment logs...');
     const userPlan = await getUserPlanDetails(userPlanId);
-    console.log('💳 [HAS DONATED] User plan details received:', userPlan);
     
     // Check if any payment log has "Paid" status
     const hasDonated = userPlan.paymentLogs?.some(log => log.payment_status === "Paid") || false;
-    console.log('🎯 [HAS DONATED] Payment logs analysis:', {
-      totalLogs: userPlan.paymentLogs?.length || 0,
-      paidLogs: userPlan.paymentLogs?.filter(log => log.payment_status === "Paid").length || 0,
-      hasDonated: hasDonated
-    });
-    
-    if (hasDonated) {
-      console.log('✅ [HAS DONATED] User has donated!');
-    } else {
-      console.log('❌ [HAS DONATED] User has not donated yet');
-    }
     
     return hasDonated;
   } catch (error) {
-    console.error('❌ [HAS DONATED] Error checking donation status:', error);
     return false;
   }
 };
@@ -190,7 +165,6 @@ export const isUserEnrolledInCourse = async (
       learner.package_session_id && learner.institute_enrollment_id
     );
   } catch (error) {
-    console.error("Error checking enrollment status:", error);
     return false;
   }
 };

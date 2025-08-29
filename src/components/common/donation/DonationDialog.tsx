@@ -58,15 +58,7 @@ export const DonationDialog: React.FC<DonationDialogProps> = ({
   
   // Log when dialog opens
   React.useEffect(() => {
-    if (open) {
-      console.log('🎭 [DONATION DIALOG] Dialog opened with:', {
-        mode,
-        isUserEnrolled,
-        hasTargetSlideDetails: !!targetSlideDetails,
-        courseTitle,
-        instituteId: instituteId ? `${instituteId.substring(0, 8)}...` : 'null'
-      });
-    }
+    // Dialog opened effect
   }, [open, mode, isUserEnrolled, targetSlideDetails, courseTitle, instituteId]);
   // Use the shared payment dialog hook
   const {
@@ -371,17 +363,8 @@ export const DonationDialog: React.FC<DonationDialogProps> = ({
   };
 
   const handlePaymentAndEnrollment = async () => {
-    console.log('🚀 [DONATION DIALOG] Starting payment process...');
-    console.log('📊 [DONATION DIALOG] Current state:', {
-      isUserEnrolled,
-      mode,
-      hasTargetSlideDetails: !!targetSlideDetails,
-      amount: getAmount(),
-      email
-    });
     
     if (!enrollmentData || !paymentGatewayData || !selectedPaymentPlan || !selectedPaymentOption) {
-      console.error('❌ [DONATION DIALOG] Missing required data for payment');
       return;
     }
 
@@ -412,12 +395,9 @@ export const DonationDialog: React.FC<DonationDialogProps> = ({
       
       // Check if user is already enrolled and use appropriate API
       if (isUserEnrolled) {
-        console.log('🎯 [DONATION DIALOG] User is already enrolled, using donation payment API');
-        
         // Use donation payment API for already enrolled users
         const userPlanId = await getUserPlanId(instituteId);
         if (!userPlanId) {
-          console.log('⚠️ [DONATION DIALOG] No user plan ID found, falling back to enrollment API');
           // Fallback to enrollment API if no user plan ID exists
           await handlePayment({
             email: sanitizedEmail,
@@ -429,10 +409,7 @@ export const DonationDialog: React.FC<DonationDialogProps> = ({
             token,
             userData: userData || undefined
           });
-          console.log('✅ [DONATION DIALOG] Fallback enrollment with payment completed successfully');
         } else {
-          console.log('✅ [DONATION DIALOG] User plan ID retrieved:', userPlanId);
-          console.log('💳 [DONATION DIALOG] Processing donation payment...');
           await processDonationPayment(instituteId, userPlanId, {
             amount: getAmount() as number,
             email: sanitizedEmail,
@@ -441,11 +418,8 @@ export const DonationDialog: React.FC<DonationDialogProps> = ({
             customerId: paymentMethod.customer || "temp_customer_id",
             description: `Donation for ${selectedPaymentPlan.name}`,
           });
-          console.log('✅ [DONATION DIALOG] Donation payment completed successfully');
         }
       } else {
-        console.log('🎯 [DONATION DIALOG] User is not enrolled, using enrollment API with payment');
-        
         // Use enrollment API for new enrollments
         await handlePayment({
           email: sanitizedEmail,
@@ -457,14 +431,10 @@ export const DonationDialog: React.FC<DonationDialogProps> = ({
           token,
           userData: userData || undefined // Pass real user data for payment too
         });
-        console.log('✅ [DONATION DIALOG] Enrollment with payment completed successfully');
       }
-      
-      console.log('🎉 [DONATION DIALOG] Payment process completed successfully!');
       
       // Success - after donation, always redirect to slides if slide details are available
       if (targetSlideDetails) {
-        console.log('📱 [DONATION DIALOG] Redirecting to slides with target details');
         if (onSlideAccessSuccess) {
           onSlideAccessSuccess(
             targetSlideDetails.courseId,
@@ -475,7 +445,6 @@ export const DonationDialog: React.FC<DonationDialogProps> = ({
           );
         }
       } else if (mode === 'enrollment' && onEnrollmentSuccess) {
-        console.log('📚 [DONATION DIALOG] Calling enrollment success callback');
         // Fallback to enrollment success if no slide details
         onEnrollmentSuccess();
       }

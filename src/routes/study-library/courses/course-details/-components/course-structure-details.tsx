@@ -265,11 +265,7 @@ export const CourseStructureDetails = ({
     
     // Log enrollment status changes
     useEffect(() => {
-        console.log('🔄 [ENROLLMENT STATUS] Hook values updated:', {
-            instituteId,
-            userHasDonated,
-            isEnrolledInCourse
-        });
+
     }, [instituteId, userHasDonated, isEnrolledInCourse]);
 // const [thumbUrlById, setThumbUrlById] = useState<Record<string, string>>({});
 
@@ -294,9 +290,9 @@ export const CourseStructureDetails = ({
                 // Get auth token
                 const token = await getTokenFromStorage(TokenKey.accessToken);
                 setAuthToken(token || "");
-            } catch (error) {
-                console.error("Error fetching institute and auth data:", error);
-            }
+                    } catch (error) {
+            // Silent error handling
+        }
         };
 
         fetchInstituteAndAuth();
@@ -338,22 +334,10 @@ export const CourseStructureDetails = ({
         chapterId: string,
         slideId: string
     ) => {
-        console.log('🎯 [SLIDE NAVIGATION] Slide clicked:', { subjectId, moduleId, chapterId, slideId });
-        console.log('📊 [SLIDE NAVIGATION] Current state:', {
-            isEnrolledInCourse,
-            selectedTab,
-            userHasDonated,
-            courseId: searchParams.courseId
-        });
-        
         // Allow navigation if user is enrolled in the course OR if it's PROGRESS/COMPLETED tabs
         if (isEnrolledInCourse || selectedTab === "PROGRESS" || selectedTab === "COMPLETED") {
-            console.log('✅ [SLIDE NAVIGATION] User can access slides (enrolled or in progress/completed tab)');
-            
             // Always check donation status for enrolled users, regardless of tab
             if (userHasDonated === false) {
-                console.log('💸 [SLIDE NAVIGATION] User has not donated, showing donation dialog');
-                
                 // Show donation dialog for slide access
                 setTargetSlideDetails({
                     courseId: searchParams.courseId || "",
@@ -366,7 +350,6 @@ export const CourseStructureDetails = ({
                 return;
             }
             
-            console.log('✅ [SLIDE NAVIGATION] User has donated, navigating directly to slides');
             // If user has donated, navigate directly
             navigateTo(
                 `/study-library/courses/course-details/subjects/modules/chapters/slides`,
@@ -378,8 +361,6 @@ export const CourseStructureDetails = ({
                     slideId,
                 }
             );
-        } else {
-            console.log('❌ [SLIDE NAVIGATION] User cannot access slides (not enrolled and not in progress/completed tab)');
         }
         // For ALL tab when not enrolled, do nothing (view-only mode)
     };
@@ -409,10 +390,7 @@ export const CourseStructureDetails = ({
             const slides = await fetchSlidesByChapterId(chapterId);
             setSlidesMap((prev) => ({ ...prev, [chapterId]: slides }));
         } catch (err) {
-            console.error(
-                `Error fetching slides for chapter ${chapterId}:`,
-                err
-            );
+            // Silent error handling
         }
     };
 
@@ -425,10 +403,6 @@ export const CourseStructureDetails = ({
             }) => {
                 // Ensure packageSessionId is available for all course depths
                 if (!packageSessionId) {
-                    console.warn(
-                        "packageSessionId is not available for course depth:",
-                        courseStructure
-                    );
                     throw new Error(
                         "Package session ID is required for fetching modules"
                     );
@@ -481,9 +455,6 @@ export const CourseStructureDetails = ({
 
     const refreshData = async () => {
         if (!packageSessionId) {
-            console.warn(
-                "packageSessionId is not available for refreshing study library data"
-            );
             return;
         }
         // Refresh by reloading modules
@@ -502,7 +473,7 @@ export const CourseStructureDetails = ({
                 updateModuleStats(modulesMap);
             }
         } catch (error) {
-            console.error("Failed to refresh data:", error);
+            // Silent error handling
         }
     };
 
@@ -1789,10 +1760,6 @@ export const CourseStructureDetails = ({
             
             // Ensure packageSessionId is available before making API calls
             if (!packageSessionId) {
-                console.warn(
-                    "packageSessionId is not available, skipping module loading for course depth:",
-                    courseStructure
-                );
                 return;
             }
 
@@ -1843,10 +1810,6 @@ export const CourseStructureDetails = ({
                     updateModuleStats(modulesMap);
                 }
             } catch (error) {
-                console.error(
-                    "Failed to fetch modules or study library details:",
-                    error
-                );
                 setSubjectModulesMap({});
             } finally {
                 handleLoadingChange(false);
@@ -1901,10 +1864,6 @@ export const CourseStructureDetails = ({
                     updateModuleStats(modulesMap);
                 }
             } catch (error) {
-                console.error(
-                    "Failed to fetch modules or study library details:",
-                    error
-                );
                 setSubjectModulesMap({});
             } finally {
                 handleLoadingChange(false);
@@ -1940,7 +1899,7 @@ export const CourseStructureDetails = ({
                             const url = await getPublicUrlWithoutLogin(fileId);
                             setThumbUrlById((prev) => ({ ...prev, [key]: url }));
                         } catch (err) {
-                            console.debug('prefetch module thumbnail failed', err);
+                            // Silent error handling
                         }
                     }
                 }
@@ -1956,7 +1915,7 @@ export const CourseStructureDetails = ({
                             const url = await getPublicUrlWithoutLogin(fileId);
                             setThumbUrlById((prev) => ({ ...prev, [key]: url }));
                         } catch (err) {
-                            console.debug('prefetch chapter thumbnail failed', err);
+                            // Silent error handling
                         }
                     }
                 }

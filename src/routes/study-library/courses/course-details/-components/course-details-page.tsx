@@ -1149,7 +1149,6 @@ export const CourseDetailsPage = () => {
                     toast.success("Successfully enrolled in the course!");
                     
                     // Redirect to slides immediately after enrollment
-                    console.log('🎯 [ENROLLMENT SUCCESS] Redirecting to slides immediately');
                     
                     // Try to get course structure data from multiple sources
                     let subjectId = "";
@@ -1164,82 +1163,45 @@ export const CourseDetailsPage = () => {
                         selectedLevel
                     );
                     
-                    console.log('🔍 [ENROLLMENT SUCCESS] Debug data:', {
-                        formData: form.getValues(),
-                        selectedSession,
-                        selectedLevel,
-                        currentSubjects,
-                        subjectsCount: currentSubjects.length,
-                        packageSessionIdForCurrentLevel
-                    });
-                    
                     if (currentSubjects.length > 0) {
                         subjectId = currentSubjects[0]?.id || "";
-                        console.log('✅ [ENROLLMENT SUCCESS] Found subject ID:', subjectId);
                         
                         // Method 2: Fetch complete course structure using the same API
                         if (packageSessionIdForCurrentLevel && subjectId) {
                             try {
-                                console.log('🚀 [ENROLLMENT SUCCESS] Fetching complete course structure...');
-                                console.log('🔑 [ENROLLMENT SUCCESS] Using packageSessionId:', packageSessionIdForCurrentLevel);
-                                
                                 // Import the API function dynamically to avoid circular dependencies
                                 const { fetchModulesWithChapters } = await import('@/services/study-library/getModulesWithChapters');
                                 
                                 const modulesData = await fetchModulesWithChapters(subjectId, packageSessionIdForCurrentLevel);
-                                console.log('📚 [ENROLLMENT SUCCESS] Fetched modules data:', modulesData);
                                 
                                 if (modulesData && modulesData.length > 0) {
                                     const firstModule = modulesData[0];
                                     moduleId = firstModule.module.id || "";
-                                    console.log('✅ [ENROLLMENT SUCCESS] Found module ID:', moduleId);
                                     
                                     if (firstModule.chapters && firstModule.chapters.length > 0) {
                                         const firstChapter = firstModule.chapters[0];
                                         chapterId = firstChapter.id || "";
-                                        console.log('✅ [ENROLLMENT SUCCESS] Found chapter ID:', chapterId);
                                         
                                         // For slides, we need to fetch them separately
                                         if (chapterId) {
                                             try {
                                                 const { fetchSlidesByChapterId } = await import('@/hooks/study-library/use-slides');
                                                 const slides = await fetchSlidesByChapterId(chapterId);
-                                                console.log('📖 [ENROLLMENT SUCCESS] Fetched slides:', slides);
                                                 
                                                 if (slides && slides.length > 0) {
                                                     slideId = slides[0].id || "";
-                                                    console.log('✅ [ENROLLMENT SUCCESS] Found slide ID:', slideId);
                                                 }
                                             } catch (slideError) {
-                                                console.warn('⚠️ [ENROLLMENT SUCCESS] Could not fetch slides:', slideError);
+                                                // Silent fallback
                                             }
                                         }
                                     }
-                                } else {
-                                    console.warn('⚠️ [ENROLLMENT SUCCESS] No modules data returned from API');
                                 }
                             } catch (error) {
-                                console.warn('⚠️ [ENROLLMENT SUCCESS] Could not fetch complete course structure:', error);
-                                console.warn('⚠️ [ENROLLMENT SUCCESS] Error details:', {
-                                    message: error.message,
-                                    stack: error.stack
-                                });
+                                // Silent fallback
                             }
-                        } else {
-                            console.warn('⚠️ [ENROLLMENT SUCCESS] Missing required data for API calls:', {
-                                packageSessionIdForCurrentLevel: !!packageSessionIdForCurrentLevel,
-                                subjectId: !!subjectId
-                            });
                         }
                     }
-                    
-                    console.log('🎯 [ENROLLMENT SUCCESS] Final extracted IDs:', {
-                        courseId: searchParams.courseId,
-                        subjectId,
-                        moduleId,
-                        chapterId,
-                        slideId
-                    });
                     
                     // Navigate to slides with whatever IDs we found
                     // Even if some IDs are missing, the slides page should handle it gracefully
@@ -1250,8 +1212,6 @@ export const CourseDetailsPage = () => {
                         chapterId: chapterId || "",
                         slideId: slideId || "",
                     };
-                    
-                    console.log('🚀 [ENROLLMENT SUCCESS] Navigating with params:', navigationParams);
                     
                     navigateTo(
                         `/study-library/courses/course-details/subjects/modules/chapters/slides`,

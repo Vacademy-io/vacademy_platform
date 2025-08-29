@@ -42,7 +42,6 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
         setEnrolledSessions(sessions);
       }
     } catch (error) {
-      console.error("Error fetching enrolled sessions:", error);
       setEnrolledSessions([]);
     }
   }, []); // No dependencies needed
@@ -50,19 +49,15 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
   // Check donation status only when instituteId is available
   const checkDonationStatus = useCallback(async () => {
     if (!instituteId) {
-      console.log('⚠️ [ENROLLMENT STATUS] Institute ID is null, skipping donation check');
       setUserHasDonated(false);
       return;
     }
     
     try {
-      console.log('🔍 [ENROLLMENT STATUS] Checking donation status for institute:', instituteId);
       const hasDonated = await hasUserDonated(instituteId);
       setUserHasDonated(hasDonated);
       setDonationCheckCompleted(true);
-      console.log('✅ [ENROLLMENT STATUS] Donation status check completed:', hasDonated);
     } catch (error) {
-      console.error("Error checking donation status:", error);
       setUserHasDonated(false);
       setDonationCheckCompleted(true);
     }
@@ -76,16 +71,13 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
         value: JSON.stringify(updatedSessions)
       });
     } catch (error) {
-      console.error("Error updating preferences with new session:", error);
+      // Silent error handling
     }
   }, []); // No dependencies needed
 
   // Add a new enrolled session
   const addEnrolledSession = useCallback((newSession: EnrolledSession) => {
-    console.log('🎯 [ADD ENROLLED SESSION] Adding new session:', newSession);
     setEnrolledSessions(prev => {
-      console.log('📊 [ADD ENROLLED SESSION] Previous sessions:', prev);
-      
       // Check if session already exists
       const exists = prev.some(session => 
         session.package_dto.id === newSession.package_dto.id &&
@@ -94,13 +86,10 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
       );
       
       if (exists) {
-        console.log('⚠️ [ADD ENROLLED SESSION] Session already exists, not adding duplicate');
         return prev; // Don't add duplicate
       }
       
       const updatedSessions = [...prev, newSession];
-      console.log('✅ [ADD ENROLLED SESSION] Updated sessions:', updatedSessions);
-      console.log('🚀 [ADD ENROLLED SESSION] State update completed, ready for redirect');
       
       // Update preferences with the new sessions array
       updatePreferencesWithNewSession(updatedSessions);
@@ -123,13 +112,7 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
       return courseMatch;
     });
     
-    console.log('🔍 [IS ENROLLED IN COURSE]', {
-      courseId,
-      sessionId,
-      levelId,
-      enrolledSessions: enrolledSessions || [],
-      result
-    });
+
     
     return result;
   }, [enrolledSessions]); // Add enrolledSessions dependency
@@ -142,7 +125,7 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
         checkDonationStatus()
       ]);
     } catch (error) {
-      console.error("Error refreshing enrollment data:", error);
+      // Silent error handling
     } finally {
       setIsLoading(false);
     }
@@ -155,19 +138,13 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
 
   // Check donation status when instituteId changes
   useEffect(() => {
-    console.log('🔄 [ENROLLMENT STATUS] Hook effect triggered with instituteId:', instituteId);
-    
     if (instituteId) {
       // Only check donation status if we haven't completed it for this instituteId
       if (!donationCheckCompleted) {
-        console.log('✅ [ENROLLMENT STATUS] Institute ID available, checking donation status');
         setIsLoading(true);
         checkDonationStatus();
-      } else {
-        console.log('✅ [ENROLLMENT STATUS] Donation status already checked for this institute, skipping');
       }
     } else {
-      console.log('⚠️ [ENROLLMENT STATUS] Institute ID is null, resetting donation status');
       // Reset donation status when instituteId is null
       setUserHasDonated(false);
       setDonationCheckCompleted(false);
@@ -177,7 +154,6 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
   // Function to manually refresh donation status (useful after successful donation)
   const refreshDonationStatus = useCallback(async () => {
     if (instituteId) {
-      console.log('🔄 [ENROLLMENT STATUS] Manually refreshing donation status');
       setDonationCheckCompleted(false);
       setIsLoading(true);
       await checkDonationStatus();

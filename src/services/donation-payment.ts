@@ -51,24 +51,11 @@ export const processDonationPayment = async (
   }
 ): Promise<DonationPaymentResponse> => {
   try {
-    console.log('🚀 [DONATION PAYMENT] Starting donation payment process...');
-    console.log('📋 [DONATION PAYMENT] Parameters:', {
-      instituteId,
-      userPlanId,
-      amount: paymentData.amount,
-      email: paymentData.email,
-      paymentMethodId: paymentData.paymentMethodId,
-      cardLast4: paymentData.cardLast4,
-      customerId: paymentData.customerId,
-      description: paymentData.description
-    });
 
     const token = await getTokenFromStorage(TokenKey.accessToken);
     if (!token) {
-      console.error('❌ [DONATION PAYMENT] No access token found');
       throw new Error("No access token found");
     }
-    console.log('✅ [DONATION PAYMENT] Access token retrieved successfully');
 
     const payload: DonationPaymentRequest = {
       amount: paymentData.amount,
@@ -94,10 +81,7 @@ export const processDonationPayment = async (
       include_pending_items: true,
     };
 
-    console.log('📤 [DONATION PAYMENT] API Payload prepared:', payload);
-    console.log('🌐 [DONATION PAYMENT] Making API call to:', `${DONATION_PAYMENT_URL}?instituteId=${instituteId}&userPlanId=${userPlanId}`);
 
-    console.log('🌐 [DONATION PAYMENT] Making API call with exact curl format...');
     
     const response = await axios.post(
       `${DONATION_PAYMENT_URL}?instituteId=${instituteId}&userPlanId=${userPlanId}`,
@@ -115,8 +99,7 @@ export const processDonationPayment = async (
       }
     );
 
-    console.log('✅ [DONATION PAYMENT] API Response received:', response.data);
-    console.log('🎉 [DONATION PAYMENT] Donation payment successful!');
+
 
     return {
       success: true,
@@ -125,8 +108,6 @@ export const processDonationPayment = async (
       transaction_id: response.data?.transaction_id,
     };
   } catch (error) {
-    console.error('❌ [DONATION PAYMENT] Donation payment failed:', error);
-    
     if (error instanceof Error) {
       throw new Error(`Donation payment failed: ${error.message}`);
     } else {
@@ -140,16 +121,12 @@ export const processDonationPayment = async (
  */
 export const getUserPlanId = async (instituteId: string): Promise<string | null> => {
   try {
-    console.log('🔍 [USER PLAN] Fetching user plan ID for institute:', instituteId);
-    
     const token = await getTokenFromStorage(TokenKey.accessToken);
     if (!token) {
-      console.error('❌ [USER PLAN] No access token found');
       throw new Error("No access token found");
     }
-    console.log('✅ [USER PLAN] Access token retrieved successfully');
 
-    console.log('🌐 [USER PLAN] Making API call to learner info endpoint');
+
     
     const response = await axios.get(
       `https://backend-stage.vacademy.io/admin-core-service/learner/info/v1/details?instituteId=${instituteId}`,
@@ -172,26 +149,21 @@ export const getUserPlanId = async (instituteId: string): Promise<string | null>
     );
 
     const learnerInfo = response.data;
-    console.log('📋 [USER PLAN] Learner info response:', learnerInfo);
+
     
     if (learnerInfo && learnerInfo.length > 0) {
       // Find the first learner record with a user_plan_id
       const learnerWithPlan = learnerInfo.find(learner => learner.user_plan_id);
       
       if (learnerWithPlan) {
-        console.log('✅ [USER PLAN] User plan ID found:', learnerWithPlan.user_plan_id);
         return learnerWithPlan.user_plan_id;
       } else {
-        console.log('⚠️ [USER PLAN] No user plan ID found in any learner record - this means user needs to use enrollment API');
-        console.log('📊 [USER PLAN] All learner records have null user_plan_id, will fallback to enrollment API');
         return null;
       }
     }
 
-    console.log('⚠️ [USER PLAN] No learner info or user plan ID found');
     return null;
   } catch (error) {
-    console.error('❌ [USER PLAN] Error fetching user plan ID:', error);
     return null;
   }
 };

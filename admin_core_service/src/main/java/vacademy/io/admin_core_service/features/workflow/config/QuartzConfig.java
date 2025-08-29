@@ -23,7 +23,7 @@ public class QuartzConfig {
     }
 
     /**
-     * Define the trigger for workflow execution (runs every 5 minutes)
+     * Define the trigger for workflow execution (runs every 30 minutes)
      */
     @Bean
     public Trigger workflowExecutionTrigger() {
@@ -31,33 +31,7 @@ public class QuartzConfig {
                 .forJob(workflowExecutionJobDetail())
                 .withIdentity("workflowExecutionTrigger", "workflowGroup")
                 .withDescription("Trigger for workflow execution job")
-                .withSchedule(CronScheduleBuilder.cronSchedule("0 */5 * * * ?")) // Every 5 minutes
-                .build();
-    }
-
-    /**
-     * Alternative trigger for more frequent execution (every 1 minute)
-     */
-    @Bean
-    public Trigger frequentWorkflowExecutionTrigger() {
-        return TriggerBuilder.newTrigger()
-                .forJob(workflowExecutionJobDetail())
-                .withIdentity("frequentWorkflowExecutionTrigger", "workflowGroup")
-                .withDescription("Frequent trigger for workflow execution job")
-                .withSchedule(CronScheduleBuilder.cronSchedule("0 */1 * * * ?")) // Every 1 minute
-                .build();
-    }
-
-    /**
-     * Daily cleanup trigger (runs at 2 AM)
-     */
-    @Bean
-    public Trigger dailyCleanupTrigger() {
-        return TriggerBuilder.newTrigger()
-                .forJob(workflowExecutionJobDetail())
-                .withIdentity("dailyCleanupTrigger", "workflowGroup")
-                .withDescription("Daily cleanup trigger for workflow execution job")
-                .withSchedule(CronScheduleBuilder.cronSchedule("0 0 2 * * ?")) // Daily at 2 AM
+                .withSchedule(CronScheduleBuilder.cronSchedule("0 0/30 * * * ?")) // Every 30 minutes
                 .build();
     }
 }

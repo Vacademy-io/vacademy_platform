@@ -53,7 +53,6 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/course/ai/v1/**",
             "/admin-core-service/payments/webhook/callback/**",
             "/admin-core-service/v1/learner/enroll",
-            "/admin-core-service/workflow/test/**",
             "/admin-core-service/workflow/schedule/**",
 
             // User Resolution APIs for notification service - OPEN for internal

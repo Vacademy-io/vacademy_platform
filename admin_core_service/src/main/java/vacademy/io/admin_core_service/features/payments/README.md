@@ -40,6 +40,51 @@ Returns a `PaymentResponseDTO` with payment details including:
 -   Payment URL
 -   Customer email
 
+## New User Plan Payment API Endpoint
+
+### POST `/admin-core-service/payments/user-plan-payment`
+
+This endpoint allows logged-in users to make payments for their existing user plans.
+
+#### Request Body
+
+```json
+{
+    "amount": 99.99,
+    "currency": "USD",
+    "description": "Payment for premium plan",
+    "vendor": "STRIPE",
+    "vendorId": "stripe_vendor_id",
+    "stripeRequest": {
+        "customerId": "cus_xxx",
+        "paymentMethodId": "pm_xxx"
+    }
+}
+```
+
+#### Query Parameters
+
+-   `instituteId`: The ID of the institute
+-   `userId`: The ID of the logged-in user
+-   `userPlanId`: The ID of the user plan to pay for
+
+#### Response
+
+Returns a `PaymentResponseDTO` with payment details including:
+
+-   Invoice ID
+-   Payment status
+-   Payment URL
+-   Customer information
+
+#### Features
+
+-   **User Validation**: Verifies that the user plan belongs to the specified user
+-   **Payment Log Creation**: Creates payment logs linked to the specific user plan
+-   **Customer Management**: Creates or retrieves payment gateway customers for the user
+-   **Email Notifications**: Sends payment notifications to the authenticated user
+-   **Webhook Support**: Handles payment confirmations and triggers user plan activation
+
 ## How It Works
 
 ### 1. Payment Log Creation

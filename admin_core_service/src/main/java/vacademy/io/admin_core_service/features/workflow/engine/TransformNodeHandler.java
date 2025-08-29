@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.workflow.entity.NodeTemplate;
 import vacademy.io.admin_core_service.features.workflow.spel.SpelEvaluator;
 
 import java.util.*;
@@ -22,7 +23,7 @@ public class TransformNodeHandler implements NodeHandler {
     }
 
     @Override
-    public Map<String, Object> handle(Map<String, Object> context, String nodeConfigJson) {
+    public Map<String, Object> handle(Map<String, Object> context, String nodeConfigJson, Map<String, NodeTemplate> nodeTemplates,int countProcessed) {
         log.info("TransformNodeHandler.handle() invoked with context: {}, configJson: {}", context, nodeConfigJson);
 
         Map<String, Object> changes = new HashMap<>();

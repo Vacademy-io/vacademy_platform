@@ -14,12 +14,16 @@ import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan
 import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserInstitutePaymentGatewayMappingService;
+import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
 import vacademy.io.common.payment.enums.PaymentGateway;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -43,6 +47,12 @@ public class PaymentService {
 
     @Autowired
     private PaymentGatewaySpecificPaymentDetailService paymentGatewaySpecificPaymentDetailService;
+
+    @Autowired
+    private UserPlanService userPlanService;
+
+    @Autowired
+    private AuthService authService;
 
     public PaymentResponseDTO handlePayment(UserDTO user,
             LearnerPackageSessionsEnrollDTO enrollDTO,
@@ -152,6 +162,71 @@ public class PaymentService {
         return response;
     }
 
+    public PaymentResponseDTO handleUserPlanPayment(PaymentInitiationRequestDTO request,
+            String instituteId,
+            CustomUserDetails userDetails,
+            String userPlanId) {
+
+        String userId = userDetails.getUserId();
+
+        // Validate that user plan exists and belongs to the user
+        UserPlan userPlan = userPlanService.findById(userPlanId);
+
+        if (!userPlan.getUserId().equals(userId)) {
+            throw new RuntimeException("User plan does not belong to the specified user");
+        }
+
+        // Create payment log for the user plan
+        String paymentLogId = paymentLogService.createPaymentLog(
+                userId,
+                request.getAmount(),
+                request.getVendor(),
+                request.getVendorId(),
+                request.getCurrency(),
+                userPlan);
+
+        request.setOrderId(paymentLogId);
+
+        // Create or get customer for the user
+        UserDTO userDTO = getUserById(userId);
+        UserInstitutePaymentGatewayMapping gatewayMapping = createOrGetCustomer(
+                instituteId,
+                userDTO,
+                request.getVendor(),
+                request);
+
+        paymentGatewaySpecificPaymentDetailService.configureCustomerPaymentData(
+                gatewayMapping,
+                request.getVendor(),
+                request);
+
+        // Process the payment
+        PaymentResponseDTO response = makePayment(
+                request.getVendor(),
+                instituteId,
+                userDTO,
+                request);
+
+        // Send payment notification
+        paymentNotificatonService.sendPaymentNotification(
+                instituteId,
+                response,
+                request,
+                getUserById(userId),
+                request.getVendor());
+
+        // Update payment log with response
+        paymentLogService.updatePaymentLog(
+                paymentLogId,
+                PaymentLogStatusEnum.ACTIVE.name(),
+                (String) response.getResponseData().get("paymentStatus"),
+                JsonUtil.toJson(Map.of(
+                        "response", response,
+                        "originalRequest", request)));
+
+        return response;
+    }
+
     public PaymentResponseDTO makePayment(String vendor, String instituteId, UserDTO user,
             PaymentInitiationRequestDTO request) {
         Map<String, Object> paymentGatewaySpecificData = institutePaymentGatewayMappingService
@@ -203,5 +278,14 @@ public class PaymentService {
         // Create customer for unknown user if not found
         return paymentServiceStrategy.createCustomerForUnknownUser(email,
                 request, paymentGatewaySpecificData);
+    }
+
+    private UserDTO getUserById(String userId) {
+        // Get user details from auth service
+        List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(userId));
+        if (users.isEmpty()) {
+            throw new RuntimeException("User not found with ID: " + userId);
+        }
+        return users.get(0);
     }
 }

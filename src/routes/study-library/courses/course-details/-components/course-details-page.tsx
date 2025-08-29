@@ -58,7 +58,8 @@ import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore
 import { CourseStructureDetails } from "./course-structure-details";
 import { CourseStructureResponse } from "@/types/institute-details/course-details-interface";
 import { getIdByLevelAndSession } from "@/routes/courses/course-details/-utils/helper";
-import { EnrollmentPaymentDialog } from "./payment-dialogs";
+import { DonationDialog } from "@/components/common/donation/DonationDialog";
+import { useEnrollmentStatus } from "@/hooks/use-enrollment-status";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { getSubjectDetails } from "@/routes/courses/course-details/-utils/helper";
@@ -235,22 +236,19 @@ export const CourseDetailsPage = () => {
     const [selectedLevel, setSelectedLevel] = useState<string>("");
     const router = useRouter();
     const searchParams = router.state.location.search;
+    
+    // Navigation helper function
+    const navigateTo = (
+        pathname: string,
+        searchParamsObj: Record<string, string | undefined>
+    ) => router.navigate({ to: pathname, search: searchParamsObj });
     const [instituteId, setInstituteId] = useState<string | null>(null);
-    const [enrolledSessions, setEnrolledSessions] = useState<EnrolledSession[]>(
-        []
-    );
     const [certificateUrl, setCertificateUrl] = useState<string | null>(null);
     const [showConfetti, setShowConfetti] = useState<boolean>(false);
     const [certificateDialogOpen, setCertificateDialogOpen] =
         useState<boolean>(false);
 
     // Log certificate-related state changes
-    useEffect(() => {
-        console.debug("[certificates] state: certificateUrl", certificateUrl);
-    }, [certificateUrl]);
-    useEffect(() => {
-        console.debug("[certificates] state: showConfetti", showConfetti);
-    }, [showConfetti]);
 
     // Loading state management
     const [isLoading, setIsLoading] = useState(true);
@@ -301,6 +299,16 @@ export const CourseDetailsPage = () => {
     // Get selectedTab from route params, default to "ALL" if not provided
     const selectedTab = searchParams.selectedTab || "ALL";
 
+    // Use enrollment status hook - must be called early to avoid initialization errors
+    const {
+        enrolledSessions,
+        userHasDonated,
+        addEnrolledSession,
+        refreshData: refreshEnrollmentData
+    } = useEnrollmentStatus(instituteId);
+
+
+
     useEffect(() => {
         const fetchInstituteAndUserId = async () => {
             updateLoadingState("userData", true);
@@ -309,18 +317,7 @@ export const CourseDetailsPage = () => {
             });
             setInstituteId(instituteResult.value || null);
 
-            // Fetch user's enrolled sessions
-            const sessionListResult = await Preferences.get({
-                key: "sessionList",
-            });
-            if (sessionListResult.value) {
-                const sessionList = JSON.parse(sessionListResult.value);
-                setEnrolledSessions(
-                    Array.isArray(sessionList)
-                        ? (sessionList as EnrolledSession[])
-                        : [sessionList as EnrolledSession]
-                );
-            }
+                    // Note: Enrolled sessions and donation status are now handled by the useEnrollmentStatus hook
 
             // Fetch invite code from preferences or use default
             const inviteCodeResult = await Preferences.get({
@@ -348,29 +345,22 @@ export const CourseDetailsPage = () => {
 
     useEffect(() => {
         const fetchInstituteDetails = async () => {
-            console.log("Fetching institute details with:", {
-                instituteId,
-                selectedSession,
-                selectedLevel,
-                courseId: searchParams.courseId,
-            });
+            
             updateLoadingState("instituteDetails", true);
             const fetchedInstituteId = await getInstituteId();
             try {
                 const response = await axios.get(
                     `${urlInstituteDetails}/${fetchedInstituteId}`
                 );
-                console.log("Institute response:", response.data);
                 const packageSessionId = getIdByLevelAndSession(
                     response.data.batches_for_sessions,
                     selectedSession,
                     selectedLevel,
                     searchParams.courseId || ""
                 );
-                console.log("Package session ID:", packageSessionId);
                 setPackageSessionIdForCurrentLevel(packageSessionId);
-            } catch (error) {
-                console.log(error);
+            } catch {
+                // Error handling
             } finally {
                 updateLoadingState("instituteDetails", false);
             }
@@ -565,8 +555,8 @@ export const CourseDetailsPage = () => {
                                 if (Date.now() < end)
                                     requestAnimationFrame(frame);
                             })();
-                        } catch (e) {
-                            console.log("[certificates] confetti error", e);
+                        } catch {
+                            // Confetti error handling
                         }
                         setShowConfetti(true);
                         setTimeout(() => setShowConfetti(false), 3000);
@@ -579,8 +569,7 @@ export const CourseDetailsPage = () => {
                         LocalStorageUtils.set(celebrationKey, true);
                     }
                 }
-            } catch (err) {
-                console.error("Certificate generation failed", err);
+            } catch {
                 toast.error(
                     "Failed to generate certificate. Please try again later."
                 );
@@ -635,20 +624,20 @@ export const CourseDetailsPage = () => {
         { _id: string; value: string; label: string }[]
     >([]);
 
-    // Watch sessions so memo recomputes when form.reset updates course data
-    const watchedSessions = form.watch("courseData.sessions") || [];
+            // Watch sessions so memo recomputes when form.reset updates course data
+        const watchedSessions = form.watch("courseData.sessions") || [];
 
-    // Convert sessions to select options format - filter based on selectedTab
+            // Convert sessions to select options format - filter based on selectedTab
     const sessionOptions = useMemo(() => {
         const sessions = watchedSessions || [];
-        console.log("Form sessions:", sessions);
-        console.log("Enrolled sessions:", enrolledSessions);
-        console.log("Selected tab:", selectedTab);
+        const safeEnrolledSessions = enrolledSessions || [];
+
+
 
         // For PROGRESS and COMPLETED tabs, only show enrolled sessions
         // For ALL tab, show all available sessions
         if (selectedTab === "PROGRESS" || selectedTab === "COMPLETED") {
-            const enrolledSessionIds = enrolledSessions.map(
+            const enrolledSessionIds = safeEnrolledSessions.map(
                 (enrolled) => enrolled.session.id
             );
             const filteredSessions = sessions.filter((session) =>
@@ -677,7 +666,7 @@ export const CourseDetailsPage = () => {
                 label: toTitleCase(session.sessionDetails.session_name),
             }));
         }
-    }, [enrolledSessions, selectedTab, watchedSessions]);
+    }, [selectedTab, watchedSessions]); // Remove enrolledSessions dependency to avoid issues
 
     // Update level options when session changes - filter based on selectedTab
     const handleSessionChange = useCallback(
@@ -694,7 +683,8 @@ export const CourseDetailsPage = () => {
                 // For PROGRESS and COMPLETED tabs, only show enrolled levels
                 if (selectedTab === "PROGRESS" || selectedTab === "COMPLETED") {
                     // Find the enrolled session to get enrolled level IDs
-                    const enrolledSession = enrolledSessions.find(
+                    const safeEnrolledSessions = enrolledSessions || [];
+                    const enrolledSession = safeEnrolledSessions.find(
                         (enrolled) => enrolled.session.id === sessionId
                     );
 
@@ -752,7 +742,7 @@ export const CourseDetailsPage = () => {
                 }
             }
         },
-        [enrolledSessions, form, selectedTab]
+        [form, selectedTab] // Remove enrolledSessions dependency to avoid issues
     );
 
     // Handle level change - clear expanded items and reset state
@@ -760,39 +750,33 @@ export const CourseDetailsPage = () => {
         setSelectedLevel(levelId);
     };
 
-    // Set initial session and its levels - auto-select if only one option
-    useEffect(() => {
-        console.log("Session options:", sessionOptions);
-        console.log("Selected session:", selectedSession);
-        console.log("Selected level:", selectedLevel);
+            // Set initial session and its levels - auto-select if only one option
+        useEffect(() => {
 
-        if (
-            sessionOptions.length > 0 &&
-            !selectedSession &&
-            sessionOptions[0]?.value
-        ) {
-            const initialSessionId = sessionOptions[0].value;
-            console.log("Setting initial session:", initialSessionId);
-            handleSessionChange(initialSessionId);
-        }
+                    if (
+                sessionOptions.length > 0 &&
+                !selectedSession &&
+                sessionOptions[0]?.value
+            ) {
+                const initialSessionId = sessionOptions[0].value;
+                handleSessionChange(initialSessionId);
+            }
     }, [sessionOptions, selectedSession, selectedLevel, handleSessionChange]);
 
     useEffect(() => {
         const loadCourseData = async () => {
-            console.log("Loading course data:", courseDetailsData);
             if (courseDetailsData?.course) {
                 try {
                     const transformedData =
                         await transformApiDataToCourseData(courseDetailsData);
-                    console.log("Transformed data:", transformedData);
                     if (transformedData) {
                         form.reset({
                             courseData: transformedData,
                             mockCourses: mockCourses,
                         });
                     }
-                } catch (error) {
-                    console.error("Error transforming course data:", error);
+                } catch {
+                    // Error transforming course data
                 }
             }
         };
@@ -942,6 +926,7 @@ export const CourseDetailsPage = () => {
     }, [slideCountQuery.data]);
 
     const [enrollmentDialogOpen, setEnrollmentDialogOpen] = useState(false);
+    const [donationDialogOpen, setDonationDialogOpen] = useState(false);
     const [inviteCode, setInviteCode] = useState<string>("default");
     const [authToken, setAuthToken] = useState<string>("");
     const [moduleStats, setModuleStats] = useState({
@@ -958,36 +943,17 @@ export const CourseDetailsPage = () => {
     useEffect(() => {
         getStudentDisplaySettings(false)
             .then((settings) => {
-                console.log("Student Display Settings:", settings);
                 const cd = settings?.courseDetails;
-                console.log("Student Display Settings - courseDetails:", cd);
                 if (cd) {
                     const resolvedShowCourseConfiguration =
                         cd.showCourseConfiguration ?? true;
                     const resolvedOverviewVisible =
                         cd.courseOverview?.visible ?? true;
-                    const resolvedShowCourseContentPrefixes =
-                        cd.showCourseContentPrefixes ?? true;
-                    console.log("Student Display Settings - resolved flags:", {
-                        showCourseConfiguration:
-                            resolvedShowCourseConfiguration,
-                        overviewVisible: resolvedOverviewVisible,
-                        showCourseContentPrefixes:
-                            resolvedShowCourseContentPrefixes,
-                    });
                     setShowCourseConfiguration(resolvedShowCourseConfiguration);
                     setOverviewVisible(resolvedOverviewVisible);
-                } else {
-                    console.log(
-                        "Student Display Settings - courseDetails not found, using defaults"
-                    );
                 }
             })
-            .catch((error) => {
-                console.log(
-                    "Failed to load Student Display Settings, using defaults. Error:",
-                    error
-                );
+            .catch(() => {
                 setShowCourseConfiguration(true);
                 setOverviewVisible(true);
             });
@@ -1123,46 +1089,175 @@ export const CourseDetailsPage = () => {
         }
     };
 
-    // Debug logging
-    console.log("Loading states:", loadingStates);
-    console.log("isLoading:", isLoading);
-    console.log("instituteId:", instituteId);
-    console.log("studyLibraryData:", studyLibraryData);
-    console.log(
-        "packageSessionIdForCurrentLevel:",
-        packageSessionIdForCurrentLevel
-    );
-    console.log("Student Display Settings flags:", {
-        showCourseConfiguration,
-        overviewVisible,
-    });
+    // Debug logging removed
 
     // Show loading until essential data is ready; defer packageSessionId-dependent UI below
+
+    
     if (isLoading || !instituteId || !studyLibraryData) {
         return <DashboardLoader />;
     }
 
-    // Debug logging for CourseStructureDetails props
-    console.log("Rendering CourseStructureDetails with props:", {
-        selectedSession,
-        selectedLevel,
-        courseStructure: form.getValues("courseData.courseStructure"),
-        packageSessionId: packageSessionIdForCurrentLevel,
-        selectedTab,
-        courseData: form.getValues(),
-    });
+    // Debug logging removed
 
     return (
         <>
-            {/* Enrollment Payment Dialog */}
-            <EnrollmentPaymentDialog
-                open={enrollmentDialogOpen}
-                onOpenChange={setEnrollmentDialogOpen}
+            {/* Donation Dialog for Enrollment */}
+            <DonationDialog
+                open={donationDialogOpen}
+                onOpenChange={setDonationDialogOpen}
                 packageSessionId={packageSessionIdForCurrentLevel || ""}
                 instituteId={instituteId || ""}
                 token={authToken}
                 courseTitle={form.getValues("courseData").title}
                 inviteCode={inviteCode}
+                mode="enrollment"
+                isUserEnrolled={false} // User is not enrolled yet in enrollment mode
+                onEnrollmentSuccess={async () => {
+                    // Update enrolled sessions immediately using the hook
+                    const newEnrolledSession = {
+                        id: packageSessionIdForCurrentLevel || "",
+                        session: {
+                            id: selectedSession,
+                            session_name: sessionOptions.find(s => s.value === selectedSession)?.label || "",
+                            status: "ACTIVE",
+                            start_date: new Date().toISOString(),
+                        },
+                        level: {
+                            id: selectedLevel,
+                            level_name: levelOptions.find(l => l.value === selectedLevel)?.label || "",
+                            duration_in_days: null,
+                            thumbnail_id: null,
+                        },
+                        start_time: new Date().toISOString(),
+                        status: "ACTIVE",
+                        package_dto: {
+                            id: searchParams.courseId || "",
+                            package_name: form.getValues("courseData").title,
+                            thumbnail_id: null,
+                        },
+                    };
+                    
+                    // Add the enrolled session and wait for it to complete
+                    await addEnrolledSession(newEnrolledSession);
+                    
+                    // Close dialogs
+                    setEnrollmentDialogOpen(false);
+                    setDonationDialogOpen(false);
+                    
+                    // Show success message
+                    toast.success("Successfully enrolled in the course!");
+                    
+                    // Redirect to slides immediately after enrollment
+                    console.log('🎯 [ENROLLMENT SUCCESS] Redirecting to slides immediately');
+                    
+                    // Try to get course structure data from multiple sources
+                    let subjectId = "";
+                    let moduleId = "";
+                    let chapterId = "";
+                    let slideId = "";
+                    
+                    // Method 1: Try to get from form data
+                    const currentSubjects = getSubjectDetails(
+                        form.getValues(),
+                        selectedSession,
+                        selectedLevel
+                    );
+                    
+                    console.log('🔍 [ENROLLMENT SUCCESS] Debug data:', {
+                        formData: form.getValues(),
+                        selectedSession,
+                        selectedLevel,
+                        currentSubjects,
+                        subjectsCount: currentSubjects.length,
+                        packageSessionIdForCurrentLevel
+                    });
+                    
+                    if (currentSubjects.length > 0) {
+                        subjectId = currentSubjects[0]?.id || "";
+                        console.log('✅ [ENROLLMENT SUCCESS] Found subject ID:', subjectId);
+                        
+                        // Method 2: Fetch complete course structure using the same API
+                        if (packageSessionIdForCurrentLevel && subjectId) {
+                            try {
+                                console.log('🚀 [ENROLLMENT SUCCESS] Fetching complete course structure...');
+                                console.log('🔑 [ENROLLMENT SUCCESS] Using packageSessionId:', packageSessionIdForCurrentLevel);
+                                
+                                // Import the API function dynamically to avoid circular dependencies
+                                const { fetchModulesWithChapters } = await import('@/services/study-library/getModulesWithChapters');
+                                
+                                const modulesData = await fetchModulesWithChapters(subjectId, packageSessionIdForCurrentLevel);
+                                console.log('📚 [ENROLLMENT SUCCESS] Fetched modules data:', modulesData);
+                                
+                                if (modulesData && modulesData.length > 0) {
+                                    const firstModule = modulesData[0];
+                                    moduleId = firstModule.module.id || "";
+                                    console.log('✅ [ENROLLMENT SUCCESS] Found module ID:', moduleId);
+                                    
+                                    if (firstModule.chapters && firstModule.chapters.length > 0) {
+                                        const firstChapter = firstModule.chapters[0];
+                                        chapterId = firstChapter.id || "";
+                                        console.log('✅ [ENROLLMENT SUCCESS] Found chapter ID:', chapterId);
+                                        
+                                        // For slides, we need to fetch them separately
+                                        if (chapterId) {
+                                            try {
+                                                const { fetchSlidesByChapterId } = await import('@/hooks/study-library/use-slides');
+                                                const slides = await fetchSlidesByChapterId(chapterId);
+                                                console.log('📖 [ENROLLMENT SUCCESS] Fetched slides:', slides);
+                                                
+                                                if (slides && slides.length > 0) {
+                                                    slideId = slides[0].id || "";
+                                                    console.log('✅ [ENROLLMENT SUCCESS] Found slide ID:', slideId);
+                                                }
+                                            } catch (slideError) {
+                                                console.warn('⚠️ [ENROLLMENT SUCCESS] Could not fetch slides:', slideError);
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    console.warn('⚠️ [ENROLLMENT SUCCESS] No modules data returned from API');
+                                }
+                            } catch (error) {
+                                console.warn('⚠️ [ENROLLMENT SUCCESS] Could not fetch complete course structure:', error);
+                                console.warn('⚠️ [ENROLLMENT SUCCESS] Error details:', {
+                                    message: error.message,
+                                    stack: error.stack
+                                });
+                            }
+                        } else {
+                            console.warn('⚠️ [ENROLLMENT SUCCESS] Missing required data for API calls:', {
+                                packageSessionIdForCurrentLevel: !!packageSessionIdForCurrentLevel,
+                                subjectId: !!subjectId
+                            });
+                        }
+                    }
+                    
+                    console.log('🎯 [ENROLLMENT SUCCESS] Final extracted IDs:', {
+                        courseId: searchParams.courseId,
+                        subjectId,
+                        moduleId,
+                        chapterId,
+                        slideId
+                    });
+                    
+                    // Navigate to slides with whatever IDs we found
+                    // Even if some IDs are missing, the slides page should handle it gracefully
+                    const navigationParams = {
+                        courseId: searchParams.courseId,
+                        subjectId: subjectId || "",
+                        moduleId: moduleId || "",
+                        chapterId: chapterId || "",
+                        slideId: slideId || "",
+                    };
+                    
+                    console.log('🚀 [ENROLLMENT SUCCESS] Navigating with params:', navigationParams);
+                    
+                    navigateTo(
+                        `/study-library/courses/course-details/subjects/modules/chapters/slides`,
+                        navigationParams
+                    );
+                }}
             />
             <div className="min-h-screen bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 relative overflow-hidden w-full max-w-full">
                 {/* Animated background elements */}
@@ -1562,8 +1657,9 @@ export const CourseDetailsPage = () => {
                                                 {selectedTab === "ALL" &&
                                                     (() => {
                                                         // Check if user is enrolled in this course
+                                                        const safeEnrolledSessions = enrolledSessions || [];
                                                         const isEnrolledInCourse =
-                                                            enrolledSessions.some(
+                                                            safeEnrolledSessions.some(
                                                                 (
                                                                     enrolledSession
                                                                 ) => {
@@ -1799,7 +1895,7 @@ export const CourseDetailsPage = () => {
                                     }
                                     selectedTab={selectedTab}
                                     updateModuleStats={updateModuleStats}
-                                    isEnrolledInCourse={enrolledSessions.some(
+                                    isEnrolledInCourse={(enrolledSessions || []).some(
                                         (enrolledSession) =>
                                             enrolledSession.package_dto.id ===
                                             searchParams.courseId
@@ -1814,8 +1910,9 @@ export const CourseDetailsPage = () => {
                                 (() => {
                                     if (!selectedSession || !selectedLevel)
                                         return null;
+                                    const safeEnrolledSessions = enrolledSessions || [];
                                     const isAlreadyEnrolled =
-                                        enrolledSessions.some(
+                                        safeEnrolledSessions.some(
                                             (enrolledSession) =>
                                                 enrolledSession.package_dto
                                                     .id ===
@@ -2309,8 +2406,9 @@ export const CourseDetailsPage = () => {
                                                         }
 
                                                         // Check if user is already enrolled in this course
+                                                        const safeEnrolledSessions = enrolledSessions || [];
                                                         const isAlreadyEnrolled =
-                                                            enrolledSessions.some(
+                                                            safeEnrolledSessions.some(
                                                                 (
                                                                     enrolledSession
                                                                 ) => {
@@ -2342,7 +2440,7 @@ export const CourseDetailsPage = () => {
                                                                 layoutVariant="default"
                                                                 className="mt-2 !min-w-full !w-full text-xs h-8"
                                                                 onClick={() =>
-                                                                    setEnrollmentDialogOpen(
+                                                                    setDonationDialogOpen(
                                                                         true
                                                                     )
                                                                 }

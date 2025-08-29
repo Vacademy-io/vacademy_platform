@@ -57,7 +57,6 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
       }
     } catch (err) {
       setError("Failed to load enrollment options. Please try again.");
-      console.error("Error fetching enrollment data:", err);
     } finally {
       setLoading(false);
     }

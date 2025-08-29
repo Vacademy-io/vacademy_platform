@@ -652,7 +652,6 @@ export const createStripePaymentMethod = async (
 
     return paymentMethod;
   } catch (error) {
-    console.error('Error creating Stripe payment method:', error);
     throw error;
   }
 };
@@ -737,7 +736,6 @@ const loadStripe = async (publishableKey: string) => {
       document.head.appendChild(script);
     });
   } catch (error) {
-    console.error('❌ Error loading Stripe:', error);
     throw error;
   }
 };
@@ -889,7 +887,6 @@ export const initiatePaymentForEnrollment = async (
           throw new Error(`Payment failed: ${errorMessage}`);
         }
       } else if (error.request) {
-        console.error('📊 Request error:', error.request);
         throw new Error('Network error. Please check your connection and try again.');
       } else {
         throw new Error(`Payment failed: ${error.message}`);

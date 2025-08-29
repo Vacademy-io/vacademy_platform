@@ -81,7 +81,7 @@ const HeroSection = ({
                     );
                 }
             } catch (error) {
-                console.error("❌ Error auto-setting cookies:", error);
+                // Error auto-setting cookies
             }
         };
 

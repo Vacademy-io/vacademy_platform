@@ -31,7 +31,6 @@ const HeroSectionCourseCatalog: React.FC = () => {
             }
           }
         } catch (error) {
-          console.error("Error fetching banner image URL:", error);
           if (isMounted) {
             // On error, fallback based on theme_code.
             if (apiFetchedInstituteDetails.institute_theme_code) {

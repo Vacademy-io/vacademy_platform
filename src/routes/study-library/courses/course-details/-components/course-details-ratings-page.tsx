@@ -95,7 +95,6 @@ export function CourseDetailsRatingsComponent({
                 const userId = await getUserId();
                 setCurrentUserId(userId);
             } catch (error) {
-                console.error("Failed to get current user ID:", error);
                 setCurrentUserId(null);
             }
         };
@@ -261,7 +260,6 @@ export function CourseDetailsRatingsComponent({
                     className: "error-toast",
                     duration: 2000,
                 });
-                console.error("Unexpected error:", error);
             }
         },
     });
@@ -407,7 +405,6 @@ export function CourseDetailsRatingsComponent({
                     className: "error-toast",
                     duration: 2000,
                 });
-                console.error("Unexpected error:", error);
             }
             setSubmitting(false);
         },
@@ -633,13 +630,13 @@ export function CourseDetailsRatingsComponent({
                     className={`${reviews.length === 0 ? "mt-0" : "mt-4 lg:mt-6"} space-y-3 sm:space-y-4 animate-fade-in-up`}
                     style={{ animationDelay: "0.2s" }}
                 >
-                                            {isRatingLoading ? (
-                                <div className="space-y-3">
-                                    {[1, 2, 3].map((i) => (
-                                        <div
-                                            key={i}
-                                            className="bg-white/60 rounded-md p-3 sm:p-4 animate-pulse"
-                                        >
+                    {isRatingLoading ? (
+                        <div className="space-y-3">
+                            {[1, 2, 3].map((i) => (
+                                <div
+                                    key={i}
+                                    className="bg-white/60 rounded-md p-3 sm:p-4 animate-pulse"
+                                >
                                     <div className="flex items-center space-x-3 mb-3">
                                         <div className="w-10 h-10 bg-gray-200 rounded-full"></div>
                                         <div className="flex-1 space-y-1.5">
@@ -719,3 +716,5 @@ export function CourseDetailsRatingsComponent({
         </div>
     );
 }
+
+

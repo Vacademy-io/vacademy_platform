@@ -11,25 +11,63 @@ import {
   getCurrencySymbol,
   createStripePaymentMethodWithElements,
   validateAndSanitizeEmail,
-} from "../../-services/enrollment-api";
+} from "../../../routes/study-library/courses/course-details/-services/enrollment-api";
 import { Preferences } from "@capacitor/preferences";
 import {
   usePaymentDialog,
   getCurrencyWithPriority,
   parsePaymentOptionMetadata,
-  type PaymentDialogProps,
-} from "./payment-utils";
+} from "../../../routes/study-library/courses/course-details/-components/payment-dialogs/payment-utils";
+import { processDonationPayment, getUserPlanId } from "../../../services/donation-payment";
 
-export const DonationDialog: React.FC<PaymentDialogProps> = ({
+export interface DonationDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  packageSessionId: string;
+  instituteId: string;
+  token: string;
+  courseTitle?: string;
+  inviteCode?: string;
+  mode: 'enrollment' | 'slide-access';
+  isUserEnrolled?: boolean; // New prop to check if user is already enrolled
+  onEnrollmentSuccess?: () => void;
+  onSlideAccessSuccess?: (courseId: string, subjectId: string, moduleId: string, chapterId: string, slideId: string) => void;
+  targetSlideDetails?: {
+    courseId: string;
+    subjectId: string;
+    moduleId: string;
+    chapterId: string;
+    slideId: string;
+  };
+}
+
+export const DonationDialog: React.FC<DonationDialogProps> = ({
   open,
   onOpenChange,
-  onContinue,
-  onSkip,
   packageSessionId,
   instituteId,
   token,
+  courseTitle = "Course",
   inviteCode = "default",
+  mode,
+  isUserEnrolled = false, // Default to false
+  onEnrollmentSuccess,
+  onSlideAccessSuccess,
+  targetSlideDetails,
 }) => {
+  
+  // Log when dialog opens
+  React.useEffect(() => {
+    if (open) {
+      console.log('🎭 [DONATION DIALOG] Dialog opened with:', {
+        mode,
+        isUserEnrolled,
+        hasTargetSlideDetails: !!targetSlideDetails,
+        courseTitle,
+        instituteId: instituteId ? `${instituteId.substring(0, 8)}...` : 'null'
+      });
+    }
+  }, [open, mode, isUserEnrolled, targetSlideDetails, courseTitle, instituteId]);
   // Use the shared payment dialog hook
   const {
     enrollmentData,
@@ -50,7 +88,7 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
 
   const [selectedAmount, setSelectedAmount] = useState<number | 'other'>(0);
   const [customAmount, setCustomAmount] = useState('');
-  const [step, setStep] = useState<'select' | 'summary' | 'payment'>('select');
+  const [step, setStep] = useState<'select' | 'email' | 'payment'>('select');
   const [email, setEmail] = useState('');
   const [validationError, setValidationError] = useState<string>('');
   const [isApiLoading, setIsApiLoading] = useState<boolean>(false);
@@ -160,14 +198,14 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
   // Initialize Stripe Elements when payment gateway data is loaded
   useEffect(() => {
     const initializeStripeElements = async () => {
-      if (paymentGatewayData?.publishableKey && cardElementRef.current && !stripe) {
+      if (paymentGatewayData?.publishableKey && cardElementRef.current && !stripe && step === 'payment') {
         try {
           // First load Stripe
           const stripeInstance = await loadStripe(paymentGatewayData.publishableKey);
           setStripe(stripeInstance);
           
           // Then create elements
-          const elements = stripeInstance.elements();
+          const elements = (stripeInstance as any).elements();
           setStripeElements(elements);
           
           // Create card element
@@ -189,16 +227,21 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
             hidePostalCode: true,
           });
           
-          // Add a small delay to ensure DOM is ready
+          // Set card element immediately
+          setCardElement(card);
+          
+          // Mount card element with a small delay to ensure DOM is ready
           setTimeout(() => {
             try {
-              card.mount(cardElementRef.current);
-              setCardElementReady(true);
+              if (cardElementRef.current && card) {
+                card.mount(cardElementRef.current);
+                setCardElementReady(true);
+              }
             } catch (mountError) {
+              // Card mount error handled silently
               setCardElementError('Failed to load card input. Please refresh and try again.');
             }
-          }, 100);
-          setCardElement(card);
+          }, 200);
           
           // Handle card element errors
           card.on('change', (event: any) => {
@@ -219,6 +262,7 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
             // Blur event handled silently
           });
         } catch (error) {
+          // Stripe initialization error handled silently
           setCardElementError('Failed to load payment form. Please refresh and try again.');
         }
       }
@@ -305,8 +349,8 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
         }
       }
       
-      setStep('summary');
-    } else if (step === 'summary') {
+      setStep('email');
+    } else if (step === 'email') {
       // Validate email before proceeding to payment
       if (!email || !email.trim()) {
         setValidationError('Please enter your email address');
@@ -323,15 +367,21 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
       }
       
       setStep('payment');
-    } else if (step === 'payment') {
-      // Handle payment and enrollment
-      handlePaymentAndEnrollment();
     }
   };
 
-    const handlePaymentAndEnrollment = async () => {
-
+  const handlePaymentAndEnrollment = async () => {
+    console.log('🚀 [DONATION DIALOG] Starting payment process...');
+    console.log('📊 [DONATION DIALOG] Current state:', {
+      isUserEnrolled,
+      mode,
+      hasTargetSlideDetails: !!targetSlideDetails,
+      amount: getAmount(),
+      email
+    });
+    
     if (!enrollmentData || !paymentGatewayData || !selectedPaymentPlan || !selectedPaymentOption) {
+      console.error('❌ [DONATION DIALOG] Missing required data for payment');
       return;
     }
 
@@ -360,42 +410,106 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
       // Get real user data for payment as well
       const userData = await getRealUserData();
       
-      // Use the shared payment function with Stripe payment method
-      await handlePayment({
-        email: sanitizedEmail,
-        amount: getAmount() as number,
-        currency: getCurrency(),
-        description: `Donation for ${selectedPaymentPlan.name}`,
-        paymentType: 'donation',
-        paymentMethod,
-        token,
-        userData: userData || undefined // Pass real user data for payment too
-      });
-      
-      // Success - call the onContinue callback
-      if (onContinue) {
-        onContinue();
+      // Check if user is already enrolled and use appropriate API
+      if (isUserEnrolled) {
+        console.log('🎯 [DONATION DIALOG] User is already enrolled, using donation payment API');
+        
+        // Use donation payment API for already enrolled users
+        const userPlanId = await getUserPlanId(instituteId);
+        if (!userPlanId) {
+          console.log('⚠️ [DONATION DIALOG] No user plan ID found, falling back to enrollment API');
+          // Fallback to enrollment API if no user plan ID exists
+          await handlePayment({
+            email: sanitizedEmail,
+            amount: getAmount() as number,
+            currency: getCurrency(),
+            description: `Donation for ${selectedPaymentPlan.name}`,
+            paymentType: 'donation',
+            paymentMethod,
+            token,
+            userData: userData || undefined
+          });
+          console.log('✅ [DONATION DIALOG] Fallback enrollment with payment completed successfully');
+        } else {
+          console.log('✅ [DONATION DIALOG] User plan ID retrieved:', userPlanId);
+          console.log('💳 [DONATION DIALOG] Processing donation payment...');
+          await processDonationPayment(instituteId, userPlanId, {
+            amount: getAmount() as number,
+            email: sanitizedEmail,
+            paymentMethodId: paymentMethod.id,
+            cardLast4: paymentMethod.card?.last4 || "0000",
+            customerId: paymentMethod.customer || "temp_customer_id",
+            description: `Donation for ${selectedPaymentPlan.name}`,
+          });
+          console.log('✅ [DONATION DIALOG] Donation payment completed successfully');
+        }
+      } else {
+        console.log('🎯 [DONATION DIALOG] User is not enrolled, using enrollment API with payment');
+        
+        // Use enrollment API for new enrollments
+        await handlePayment({
+          email: sanitizedEmail,
+          amount: getAmount() as number,
+          currency: getCurrency(),
+          description: `Donation for ${selectedPaymentPlan.name}`,
+          paymentType: 'donation',
+          paymentMethod,
+          token,
+          userData: userData || undefined // Pass real user data for payment too
+        });
+        console.log('✅ [DONATION DIALOG] Enrollment with payment completed successfully');
       }
       
+      console.log('🎉 [DONATION DIALOG] Payment process completed successfully!');
+      
+      // Success - after donation, always redirect to slides if slide details are available
+      if (targetSlideDetails) {
+        console.log('📱 [DONATION DIALOG] Redirecting to slides with target details');
+        if (onSlideAccessSuccess) {
+          onSlideAccessSuccess(
+            targetSlideDetails.courseId,
+            targetSlideDetails.subjectId,
+            targetSlideDetails.moduleId,
+            targetSlideDetails.chapterId,
+            targetSlideDetails.slideId
+          );
+        }
+      } else if (mode === 'enrollment' && onEnrollmentSuccess) {
+        console.log('📚 [DONATION DIALOG] Calling enrollment success callback');
+        // Fallback to enrollment success if no slide details
+        onEnrollmentSuccess();
+      }
+      onOpenChange(false);
+      
     } catch (error) {
-      // Provide more user-friendly error messages
+      // Provide user-friendly error messages instead of backend technical errors
       let errorMessage = 'Payment failed. Please try again.';
       
       if (error instanceof Error) {
-        if (error.message.includes('Enrollment configuration error')) {
-          errorMessage = 'Enrollment configuration error. Please refresh the page and try again.';
-        } else if (error.message.includes('Payment Gateway Error') || error.message.includes('Payment gateway configuration')) {
-          errorMessage = 'Payment gateway configuration error. Please contact support.';
-        } else if (error.message.includes('Authentication Error') || error.message.includes('Authentication error')) {
-          errorMessage = 'Authentication error. Please log in again and try again.';
-        } else if (error.message.includes('Access denied')) {
+        const errorMsg = error.message.toLowerCase();
+        
+        // Handle specific backend errors with user-friendly messages
+        if (errorMsg.includes('duplicate key') || errorMsg.includes('already exists')) {
+          errorMessage = 'You are already enrolled in this course. Please check your enrolled courses.';
+        } else if (errorMsg.includes('enrollment configuration error')) {
+          errorMessage = 'Course configuration error. Please refresh the page and try again.';
+        } else if (errorMsg.includes('payment gateway error') || errorMsg.includes('payment gateway configuration')) {
+          errorMessage = 'Payment system error. Please try again or contact support.';
+        } else if (errorMsg.includes('authentication error') || errorMsg.includes('authentication required')) {
+          errorMessage = 'Please log in again and try again.';
+        } else if (errorMsg.includes('access denied')) {
           errorMessage = 'Access denied. Please check your permissions and try again.';
-        } else if (error.message.includes('enrollDTO') || error.message.includes('enrollInviteId')) {
-          errorMessage = 'Enrollment data error. Please refresh the page and try again.';
-        } else if (error.message.includes('Network authentication required')) {
-          errorMessage = 'Authentication required. Please log in again and try again.';
+        } else if (errorMsg.includes('enrolldto') || errorMsg.includes('enrollinviteid')) {
+          errorMessage = 'Course data error. Please refresh the page and try again.';
+        } else if (errorMsg.includes('network authentication required')) {
+          errorMessage = 'Please log in again and try again.';
+        } else if (errorMsg.includes('jdbc exception') || errorMsg.includes('sql')) {
+          errorMessage = 'System error. Please try again or contact support.';
+        } else if (errorMsg.includes('failed to link student')) {
+          errorMessage = 'Enrollment error. Please try again or contact support.';
         } else {
-          errorMessage = error.message;
+          // For any other errors, show a generic message
+          errorMessage = 'Something went wrong. Please try again or contact support.';
         }
       }
       
@@ -406,10 +520,30 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
   };
 
   const handleEdit = () => {
-    setStep('select');
+    if (step === 'payment') {
+      setStep('email');
+    } else if (step === 'email') {
+      setStep('select');
+    }
   };
 
   const handleSkip = async () => {
+    // For slide-access mode, just redirect to slides without calling enrollment API
+    if (mode === 'slide-access' && targetSlideDetails) {
+      if (onSlideAccessSuccess) {
+        onSlideAccessSuccess(
+          targetSlideDetails.courseId,
+          targetSlideDetails.subjectId,
+          targetSlideDetails.moduleId,
+          targetSlideDetails.chapterId,
+          targetSlideDetails.slideId
+        );
+      }
+      onOpenChange(false);
+      return;
+    }
+
+    // For enrollment mode, proceed with enrollment API call
     setIsApiLoading(true);
     try {
       // Get real user data from preferences
@@ -441,28 +575,39 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
         userData: userData || undefined // Pass real user data
       });
       
-      // Success - call the onSkip callback
-      if (onSkip) {
-        onSkip();
+      // Success - call enrollment success callback
+      if (onEnrollmentSuccess) {
+        onEnrollmentSuccess();
       }
+      onOpenChange(false);
       
     } catch (error) {
-      // Provide user-friendly error messages
+      // Provide user-friendly error messages instead of backend technical errors
       let errorMessage = 'Enrollment failed. Please try again.';
       
       if (error instanceof Error) {
-        if (error.message.includes('Enrollment configuration error')) {
-          errorMessage = 'Enrollment configuration error. Please refresh the page and try again.';
-        } else if (error.message.includes('Authentication Error') || error.message.includes('Authentication error')) {
-          errorMessage = 'Authentication error. Please log in again and try again.';
-        } else if (error.message.includes('Access denied')) {
+        const errorMsg = error.message.toLowerCase();
+        
+        // Handle specific backend errors with user-friendly messages
+        if (errorMsg.includes('duplicate key') || errorMsg.includes('already exists')) {
+          errorMessage = 'You are already enrolled in this course. Please check your enrolled courses.';
+        } else if (errorMsg.includes('enrollment configuration error')) {
+          errorMessage = 'Course configuration error. Please refresh the page and try again.';
+        } else if (errorMsg.includes('authentication error') || errorMsg.includes('authentication required')) {
+          errorMessage = 'Please log in again and try again.';
+        } else if (errorMsg.includes('access denied')) {
           errorMessage = 'Access denied. Please check your permissions and try again.';
-        } else if (error.message.includes('enrollDTO') || error.message.includes('enrollInviteId')) {
-          errorMessage = 'Enrollment data error. Please refresh the page and try again.';
-        } else if (error.message.includes('Network authentication required')) {
-          errorMessage = 'Authentication required. Please log in again and try again.';
+        } else if (errorMsg.includes('enrolldto') || errorMsg.includes('enrollinviteid')) {
+          errorMessage = 'Course data error. Please refresh the page and try again.';
+        } else if (errorMsg.includes('network authentication required')) {
+          errorMessage = 'Please log in again and try again.';
+        } else if (errorMsg.includes('jdbc exception') || errorMsg.includes('sql')) {
+          errorMessage = 'System error. Please try again or contact support.';
+        } else if (errorMsg.includes('failed to link student')) {
+          errorMessage = 'Enrollment error. Please try again or contact support.';
         } else {
-          errorMessage = error.message;
+          // For any other errors, show a generic message
+          errorMessage = 'Something went wrong. Please try again or contact support.';
         }
       }
       
@@ -475,8 +620,16 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
 
   // Reset step when dialog is closed
   React.useEffect(() => {
-    if (!open) setStep('select');
-  }, [open]);
+    if (!open) {
+      setStep('select');
+      // Clean up Stripe elements when dialog closes
+      if (cardElement) {
+        cardElement.destroy();
+        setCardElement(null);
+        setCardElementReady(false);
+      }
+    }
+  }, [open, cardElement]);
 
   // Show loading state
   if (loading) {
@@ -485,7 +638,7 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
         <DialogPrimitive.Portal>
           <DialogPrimitive.Overlay className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in" />
           <DialogPrimitive.Content
-            className="fixed left-1/2 top-1/2 z-[9999] w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4"
+            className="fixed left-1/2 top-1/2 z-[9999] w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4"
           >
             <div className="text-center py-8">
               <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
@@ -504,7 +657,7 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
         <DialogPrimitive.Portal>
           <DialogPrimitive.Overlay className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in" />
           <DialogPrimitive.Content
-            className="fixed left-1/2 top-1/2 z-[9999] w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4"
+            className="fixed left-1/2 top-1/2 z-[9999] w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4"
           >
             <div className="text-center py-6">
               <p className="text-red-600 mb-4">{error}</p>
@@ -527,7 +680,7 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in" />
         <DialogPrimitive.Content
-          className="fixed left-1/2 top-1/2 z-[9999] w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4"
+          className="fixed left-1/2 top-1/2 z-[9999] w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4"
         >
           <button
             className="absolute right-2 top-2 text-gray-400 hover:text-gray-700 focus:outline-none"
@@ -536,37 +689,20 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
           >
             <Cross2Icon className="h-4 w-4" />
           </button>
-          <h2 className="text-lg font-bold text-center text-primary-700 mb-1 flex items-center justify-center gap-2">
+          
+          <h2 className="text-lg font-semibold text-gray-900 flex items-center justify-center gap-2">
             <Heart className="w-5 h-5 text-red-500" />
             Support Free Learning
           </h2>
           
+          {step === 'select' && (
+            <p className="text-sm text-gray-600">
+              Choose an amount to donate
+            </p>
+          )}
 
           {step === 'select' ? (
             <>
-              {/* <div className="flex justify-center mb-1 -space-x-6">
-                <MyButton
-                  buttonType={donationType === 'one-time' ? 'primary' : 'secondary'}
-                  scale="medium"
-                  className="h-12 min-w-[160px] text-base rounded-full z-10 shadow-lg"
-                  onClick={() => setDonationType('one-time')}
-                >
-                  One-time
-                </MyButton>
-                <MyButton
-                  buttonType={donationType === 'monthly' ? 'primary' : 'secondary'}
-                  scale="medium"
-                  className="h-12 min-w-[160px] text-base rounded-full z-20 shadow-lg"
-                  onClick={() => setDonationType('monthly')}
-                >
-                  Monthly
-                </MyButton>
-              </div>
-
-              <p className="text-xs text-gray-700 text-center mt-1 mb-1">
-                Choose an amount to donate {donationType}
-              </p> */}
-<p className="text-sm text-gray-600 ">Choose an amount to donate</p>
               <div className="grid grid-cols-2 gap-3 justify-center mb-2">
                 {getDonationAmounts().map((amount) => (
                   <div
@@ -604,7 +740,7 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
                   <input
                     type="number"
                     min="0"
-                                            placeholder={`${getCurrencySymbol(getCurrency())} (min ${formatCurrency(getMinimumAmount(), getCurrency())})`}
+                    placeholder={`${getCurrencySymbol(getCurrency())} (min ${formatCurrency(getMinimumAmount(), getCurrency())})`}
                     className="border rounded p-2 text-xs w-full mt-1 mb-1 col-span-2 h-12"
                     value={customAmount}
                     onChange={(e) => {
@@ -623,7 +759,7 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
                 </div>
               )}
             </>
-          ) : step === 'summary' ? (
+          ) : step === 'email' ? (
             <>
               <div className="mb-2 bg-white border border-neutral-300 rounded-lg p-3">
                 <div className="flex items-center justify-between mb-2">
@@ -718,7 +854,7 @@ export const DonationDialog: React.FC<PaymentDialogProps> = ({
                     </div>
                   )}
                   <div ref={cardElementRef} className="w-full h-full" />
-                  </div>
+                </div>
                 
                 {cardElementError && (
                   <div className="text-red-600 text-xs mb-2 mt-1">

@@ -215,7 +215,7 @@ export const getCurrencyWithPriority = (
       }
     }
   } catch (error) {
-    console.error("Error parsing metadata currency:", error);
+    // Error parsing metadata currency
   }
   
   // Priority 3: Main response currency

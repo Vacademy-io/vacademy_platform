@@ -39,9 +39,14 @@ import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { useRouter } from "@tanstack/react-router";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
+import { Preferences } from "@capacitor/preferences";
 // import { CODE_CIRCLE_INSTITUTE_ID } from "@/constants/urls";
-// import { getInstituteId } from "@/constants/helper";
+// import { getInstituteId } from "@/constants/urls";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
+import { DonationDialog } from "@/components/common/donation/DonationDialog";
+import { useEnrollmentStatus } from "@/hooks/use-enrollment-status";
+import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
+import { TokenKey } from "@/constants/auth/tokens";
 import type { StudentCourseDetailsTabId } from "@/types/student-display-settings";
 import { PackageSessionMessages } from "@/components/announcements";
 
@@ -97,15 +102,7 @@ export const CourseStructureDetails = ({
     onLoadingChange?: (loading: boolean) => void;
     updateModuleStats?: (modulesData: Record<string, Array<{ chapters?: Array<unknown> }>>) => void;
 }) => {
-    // Debug logging
-    console.log('CourseStructureDetails props:', {
-        selectedSession,
-        selectedLevel,
-        courseStructure,
-        packageSessionId,
-        selectedTab,
-        isEnrolledInCourse
-    });
+
     const router = useRouter();
     const searchParams = router.state.location.search;
     const navigateTo = (
@@ -196,12 +193,7 @@ export const CourseStructureDetails = ({
             const shouldShowCourseDiscussion = settings?.notifications?.allowBatchStream === true;
             // setShowCourseDiscussion(shouldShowCourseDiscussion);
 
-            // Debug logs for visibility enforcement
-            console.group('[Course Details Settings] Visible tabs resolved');
-            console.log('Raw settings tabs:', settings?.courseDetails?.tabs);
-            console.log('Mapped & ordered visible tabs:', ordered);
-            console.log('Should show course discussion:', shouldShowCourseDiscussion);
-            console.groupEnd();
+
             
             // Fallback: ensure CONTENT_STRUCTURE appears if visible in settings but mapping missed
             const hasContentStructureSetting = tabsSetting.some((t) => t.id === 'CONTENT_STRUCTURE' && t.visible !== false);
@@ -216,12 +208,12 @@ export const CourseStructureDetails = ({
                 finalTabs.push({ label: 'Course Discussion', value: TabType.COURSE_DISCUSSION });
             }
             
-            console.log('[Course Details Settings] finalTabs to render:', finalTabs);
+
             if (finalTabs.length) setFilteredTabs(finalTabs as typeof tabs);
 
             // New: respect content prefix visibility
             const resolvedShowPrefixes = settings?.courseDetails?.showCourseContentPrefixes !== false;
-            console.log('[Course Details Settings] showCourseContentPrefixes resolved:', resolvedShowPrefixes);
+
             setShowContentPrefixes(resolvedShowPrefixes);
 
             const defaultTabId = settings?.courseDetails?.defaultTab || "OUTLINE";
@@ -229,12 +221,7 @@ export const CourseStructureDetails = ({
             const isDefaultVisible = ordered.some((t) => t.value === defaultValue);
             const firstVisible = (ordered[0]?.value as string) || TabType.OUTLINE;
             const resolvedDefault = isDefaultVisible ? (defaultValue as string) : firstVisible;
-            console.log('[Course Details Settings] Default tab resolved:', {
-                configuredDefault: defaultTabId,
-                mappedDefault: defaultValue,
-                isDefaultVisible,
-                finalDefault: resolvedDefault,
-            });
+
             setSelectedStructureTab(resolvedDefault);
         });
     }, []);
@@ -249,7 +236,7 @@ export const CourseStructureDetails = ({
             (t) => !priorityOrder.includes(t.value as TabType)
         );
         const finalArr = [...prioritized, ...rest];
-        console.log('[Course Details UI] renderTabs:', finalArr);
+
         return finalArr;
     }, [filteredTabs]);
     const [subjectModulesMap, setSubjectModulesMap] =
@@ -260,6 +247,30 @@ export const CourseStructureDetails = ({
     const [selectedModuleId, setSelectedModuleId] = useState<string | null>(null);
     const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
     const [thumbUrlById, setThumbUrlById] = useState<Record<string, string>>({});
+    
+    // Donation dialog state
+    const [donationDialogOpen, setDonationDialogOpen] = useState(false);
+    const [targetSlideDetails, setTargetSlideDetails] = useState<{
+        courseId: string;
+        subjectId: string;
+        moduleId: string;
+        chapterId: string;
+        slideId: string;
+    } | null>(null);
+    const [instituteId, setInstituteId] = useState<string | null>(null);
+    const [authToken, setAuthToken] = useState<string>("");
+
+    // Use enrollment status hook
+    const { userHasDonated } = useEnrollmentStatus(instituteId);
+    
+    // Log enrollment status changes
+    useEffect(() => {
+        console.log('🔄 [ENROLLMENT STATUS] Hook values updated:', {
+            instituteId,
+            userHasDonated,
+            isEnrolledInCourse
+        });
+    }, [instituteId, userHasDonated, isEnrolledInCourse]);
 // const [thumbUrlById, setThumbUrlById] = useState<Record<string, string>>({});
 
     // Helpers to safely extract optional thumbnail IDs without using any
@@ -271,6 +282,25 @@ export const CourseStructureDetails = ({
         return (mod as unknown as { thumbnail_id?: string | null })
             .thumbnail_id || undefined;
     };
+
+    // Fetch institute ID and auth token
+    useEffect(() => {
+        const fetchInstituteAndAuth = async () => {
+            try {
+                // Get institute ID from preferences
+                const instituteResult = await Preferences.get({ key: "InstituteId" });
+                setInstituteId(instituteResult.value || null);
+
+                // Get auth token
+                const token = await getTokenFromStorage(TokenKey.accessToken);
+                setAuthToken(token || "");
+            } catch (error) {
+                console.error("Error fetching institute and auth data:", error);
+            }
+        };
+
+        fetchInstituteAndAuth();
+    }, []);
 
     // Ensure subject thumbnails are fetched for Content Structure top level
     useEffect(() => {
@@ -302,14 +332,42 @@ export const CourseStructureDetails = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedSubjectId, studyLibraryData, thumbUrlById]);
 
-    const handleSlideNavigation = (
+    const handleSlideNavigation = async (
         subjectId: string,
         moduleId: string,
         chapterId: string,
         slideId: string
     ) => {
+        console.log('🎯 [SLIDE NAVIGATION] Slide clicked:', { subjectId, moduleId, chapterId, slideId });
+        console.log('📊 [SLIDE NAVIGATION] Current state:', {
+            isEnrolledInCourse,
+            selectedTab,
+            userHasDonated,
+            courseId: searchParams.courseId
+        });
+        
         // Allow navigation if user is enrolled in the course OR if it's PROGRESS/COMPLETED tabs
         if (isEnrolledInCourse || selectedTab === "PROGRESS" || selectedTab === "COMPLETED") {
+            console.log('✅ [SLIDE NAVIGATION] User can access slides (enrolled or in progress/completed tab)');
+            
+            // Always check donation status for enrolled users, regardless of tab
+            if (userHasDonated === false) {
+                console.log('💸 [SLIDE NAVIGATION] User has not donated, showing donation dialog');
+                
+                // Show donation dialog for slide access
+                setTargetSlideDetails({
+                    courseId: searchParams.courseId || "",
+                    subjectId,
+                    moduleId,
+                    chapterId,
+                    slideId,
+                });
+                setDonationDialogOpen(true);
+                return;
+            }
+            
+            console.log('✅ [SLIDE NAVIGATION] User has donated, navigating directly to slides');
+            // If user has donated, navigate directly
             navigateTo(
                 `/study-library/courses/course-details/subjects/modules/chapters/slides`,
                 {
@@ -320,6 +378,8 @@ export const CourseStructureDetails = ({
                     slideId,
                 }
             );
+        } else {
+            console.log('❌ [SLIDE NAVIGATION] User cannot access slides (not enrolled and not in progress/completed tab)');
         }
         // For ALL tab when not enrolled, do nothing (view-only mode)
     };
@@ -342,13 +402,11 @@ export const CourseStructureDetails = ({
     const getSlidesWithChapterId = async (chapterId: string) => {
         // Avoid duplicate fetch
         if (slidesMap[chapterId]) {
-            console.log('[Slides Debug] Skipping fetch, slides already loaded for chapter:', chapterId, 'count:', (slidesMap[chapterId] || []).length);
             return;
         }
 
         try {
             const slides = await fetchSlidesByChapterId(chapterId);
-            console.log('[Slides Debug] Fetched slides for chapter:', chapterId, 'count:', slides?.length || 0);
             setSlidesMap((prev) => ({ ...prev, [chapterId]: slides }));
         } catch (err) {
             console.error(
@@ -561,7 +619,7 @@ export const CourseStructureDetails = ({
                             const totalSlides = slidesCounts.reduce((a, b) => a + b, 0);
                             return { subjectId: subject.id, modules: modules.length, chapters: chapters.length, totalSlides };
                         });
-                        console.log('[Slides Debug] subject summary:', summary);
+
                         return null;
                     })()}
                     {courseStructure === 5 &&
@@ -612,9 +670,7 @@ export const CourseStructureDetails = ({
                                                         crossOrigin="anonymous"
                                                         referrerPolicy="no-referrer"
                                                         loading="eager"
-                                                        onLoad={() => console.log('[thumb] (study-library) subject img load', { id: subject.id })}
                                                         onError={(e) => {
-                                                            console.warn('[thumb] (study-library) subject img error', { id: subject.id, src: e.currentTarget.src });
                                                             e.currentTarget.classList.add('border-red-400');
                                                         }}
                                                     />
@@ -694,11 +750,9 @@ export const CourseStructureDetails = ({
                                                                             crossOrigin="anonymous"
                                                                             referrerPolicy="no-referrer"
                                                                             loading="eager"
-                                                                            onLoad={() => console.log('[thumb] (study-library) module img load', { id: mod.module.id })}
-                                                                            onError={(e) => {
-                                                                                console.warn('[thumb] (study-library) module img error', { id: mod.module.id, src: e.currentTarget.src });
-                                                                                e.currentTarget.classList.add('border-red-400');
-                                                                            }}
+                                                                                                                                    onError={(e) => {
+                                                            e.currentTarget.classList.add('border-red-400');
+                                                        }}
                                                                         />
                                                                     )}
                                                                     {showContentPrefixes && (
@@ -791,11 +845,9 @@ export const CourseStructureDetails = ({
                                                                                                     crossOrigin="anonymous"
                                                                                                     referrerPolicy="no-referrer"
                                                                                                     loading="eager"
-                                                                                                    onLoad={() => console.log('[thumb] (study-library) chapter img load', { id: ch.id })}
-                                                                                                    onError={(e) => {
-                                                                                                        console.warn('[thumb] (study-library) chapter img error', { id: ch.id, src: e.currentTarget.src });
-                                                                                                        e.currentTarget.classList.add('border-red-400');
-                                                                                                    }}
+                                                                                                                                                            onError={(e) => {
+                                                            e.currentTarget.classList.add('border-red-400');
+                                                        }}
                                                                                                 />
                                                                                             )}
                                                                                             {showContentPrefixes && (
@@ -1565,11 +1617,9 @@ export const CourseStructureDetails = ({
                                                 crossOrigin="anonymous"
                                                 referrerPolicy="no-referrer"
                                                 loading="eager"
-                                                onLoad={() => console.log('[thumb] (study-library) subject grid img load', { id: subject.id })}
-                                                onError={(e) => {
-                                                    console.warn('[thumb] (study-library) subject grid img error', { id: subject.id, src: e.currentTarget.src });
-                                                    e.currentTarget.classList.add('border-red-400');
-                                                }}
+                                                                                                        onError={(e) => {
+                                                            e.currentTarget.classList.add('border-red-400');
+                                                        }}
                                             />
                                         ) : (
                                             <Folder size={20} className="text-neutral-500" />
@@ -1598,11 +1648,9 @@ export const CourseStructureDetails = ({
                                                 crossOrigin="anonymous"
                                                 referrerPolicy="no-referrer"
                                                 loading="eager"
-                                                onLoad={() => console.log('[thumb] (study-library) module grid img load', { id: m.module.id })}
-                                                onError={(e) => {
-                                                    console.warn('[thumb] (study-library) module grid img error', { id: m.module.id, src: e.currentTarget.src });
-                                                    e.currentTarget.classList.add('border-red-400');
-                                                }}
+                                                                                                        onError={(e) => {
+                                                            e.currentTarget.classList.add('border-red-400');
+                                                        }}
                                             />
                                         ) : (
                                             <Folder size={20} className="text-neutral-500" />
@@ -1634,11 +1682,9 @@ export const CourseStructureDetails = ({
                                                     crossOrigin="anonymous"
                                                     referrerPolicy="no-referrer"
                                                     loading="eager"
-                                                    onLoad={() => console.log('[thumb] (study-library) chapter grid img load', { id: ch.id })}
-                                                    onError={(e) => {
-                                                        console.warn('[thumb] (study-library) chapter grid img error', { id: ch.id, src: e.currentTarget.src });
-                                                        e.currentTarget.classList.add('border-red-400');
-                                                    }}
+                                                                                                            onError={(e) => {
+                                                            e.currentTarget.classList.add('border-red-400');
+                                                        }}
                                                 />
                                             ) : (
                                                 <FileText size={18} className="text-neutral-500" />
@@ -1739,10 +1785,7 @@ export const CourseStructureDetails = ({
     useEffect(() => {
         const loadModules = async () => {
             // Debug logging
-            console.log('Loading modules with packageSessionId:', packageSessionId);
-            console.log('Course data:', courseData);
-            console.log('Selected session:', selectedSession);
-            console.log('Selected level:', selectedLevel);
+            
             
             // Ensure packageSessionId is available before making API calls
             if (!packageSessionId) {
@@ -1761,12 +1804,12 @@ export const CourseStructureDetails = ({
                     selectedSession,
                     selectedLevel
                 );
-                console.log('Subjects to fetch modules for:', subjects);
+
                 
                 const modulesMap = await fetchModules({
                     subjects: subjects,
                 });
-                console.log('Modules map result:', modulesMap);
+
                 setSubjectModulesMap(modulesMap);
 
                 // Auto-expand all sections by default
@@ -1877,7 +1920,7 @@ export const CourseStructureDetails = ({
             selectedSession,
             selectedLevel
         );
-        console.log('Study library data:', studyLibraryData);
+
         setStudyLibraryData(studyLibraryData);
     }, [selectedSession, selectedLevel, courseData]);
 
@@ -1924,12 +1967,7 @@ export const CourseStructureDetails = ({
     }, [selectedSubjectId, selectedModuleId, selectedChapterId, subjectModulesMap]);
 
     // Mount/unmount logs to verify which component is active
-    useEffect(() => {
-        console.log('[thumb] CourseStructureDetails (study-library) mounted');
-        return () => {
-            console.log('[thumb] CourseStructureDetails (study-library) unmounted');
-        };
-    }, []);
+
 
     // Global prefetch thumbnails for all subjects/modules/chapters
     useEffect(() => {
@@ -1942,10 +1980,7 @@ export const CourseStructureDetails = ({
                 // Avoid work/logs when nothing to prefetch yet
                 if (!hasSubjects && !hasModules) return;
 
-                console.log('[thumb] (study-library) prefetch start', {
-                    subjects: subjectsArr.map((s) => ({ id: s.id, thumbnail_id: getSubjectThumbnailId(s) })),
-                    subjectModulesMapKeys: moduleMapKeys,
-                });
+
 
                 const pending: Array<{ key: string; fileId: string }> = [];
 
@@ -1954,7 +1989,7 @@ export const CourseStructureDetails = ({
                     const key = `subject:${s.id}`;
                     const fileId = getSubjectThumbnailId(s);
                     if (fileId && !thumbUrlById[key]) {
-                        console.log('[thumb] (study-library) subject candidate', { key, fileId, hasUrl: Boolean(thumbUrlById[key]) });
+
                         pending.push({ key, fileId });
                     }
                 }
@@ -1965,7 +2000,7 @@ export const CourseStructureDetails = ({
                         const moduleKey = `module:${m.module.id}`;
                         const moduleFileId = getModuleThumbnailId(m.module);
                         if (moduleFileId && !thumbUrlById[moduleKey]) {
-                            console.log('[thumb] (study-library) module candidate', { moduleKey, moduleFileId, hasUrl: Boolean(thumbUrlById[moduleKey]) });
+
                             pending.push({ key: moduleKey, fileId: moduleFileId });
                         }
 
@@ -1973,7 +2008,7 @@ export const CourseStructureDetails = ({
                             const chapterKey = `chapter:${ch.id}`;
                             const chapterFileId = ch.file_id ?? undefined;
                             if (chapterFileId && !thumbUrlById[chapterKey]) {
-                                console.log('[thumb] (study-library) chapter candidate', { chapterKey, chapterFileId, hasUrl: Boolean(thumbUrlById[chapterKey]) });
+
                                 pending.push({ key: chapterKey, fileId: chapterFileId });
                             }
                         }
@@ -1988,10 +2023,10 @@ export const CourseStructureDetails = ({
                     unique.map(async ({ key, fileId }) => {
                         try {
                             const url = await getPublicUrlWithoutLogin(fileId);
-                            console.log('[thumb] (study-library) fetched', { key, fileId, url });
+
                             return { key, url } as const;
                         } catch (err) {
-                            console.debug('[thumb] (study-library) fetch failed', { key, fileId, err });
+
                             return { key, url: '' } as const;
                         }
                     })
@@ -2000,11 +2035,11 @@ export const CourseStructureDetails = ({
                 const updates: Record<string, string> = {};
                 for (const { key, url } of results) if (url) updates[key] = url;
                 if (Object.keys(updates).length > 0) {
-                    console.log('[thumb] (study-library) applying', updates);
+
                     setThumbUrlById((prev) => ({ ...prev, ...updates }));
                 }
             } catch (err) {
-                console.debug('[thumb] (study-library) unexpected error', err);
+
             }
         };
         prefetchAll();
@@ -2024,7 +2059,7 @@ export const CourseStructureDetails = ({
     const firstModuleId = modules[0]?.module.id;
     const firstChapterId = modules[0]?.chapters[0]?.id;
 
-    console.log('[ContentStructure] init depth', { courseStructure, firstSubjectId, firstModuleId, firstChapterId });
+
 
     if (courseStructure >= 5) {
       // subjects at top level - nothing to preselect
@@ -2056,16 +2091,43 @@ export const CourseStructureDetails = ({
     }, []);
 
     // Debug logging for render
-    console.log('Rendering CourseStructureDetails with:', {
-        studyLibraryData,
-        subjectModulesMap,
-        filteredTabs,
-        selectedStructureTab
-    });
+
 
     return (
-        <PullToRefreshWrapper onRefresh={refreshData}>
-            <div className="flex size-full flex-col gap-4 rounded-lg bg-gradient-to-br from-neutral-50/50 to-white pt-0 pb-4 text-neutral-700">
+        <>
+            {/* Donation Dialog for Slide Access */}
+            {donationDialogOpen && targetSlideDetails && (
+                <DonationDialog
+                    open={donationDialogOpen}
+                    onOpenChange={setDonationDialogOpen}
+                    packageSessionId={packageSessionId}
+                    instituteId={instituteId || ""}
+                    token={authToken}
+                    courseTitle={courseData.title}
+                    inviteCode="default"
+                    mode="slide-access"
+                    isUserEnrolled={isEnrolledInCourse} // Pass enrollment status
+                    targetSlideDetails={targetSlideDetails}
+                    onSlideAccessSuccess={(courseId, subjectId, moduleId, chapterId, slideId) => {
+                        // Navigate to slides after successful donation or skip
+                        navigateTo(
+                            `/study-library/courses/course-details/subjects/modules/chapters/slides`,
+                            {
+                                courseId,
+                                subjectId,
+                                moduleId,
+                                chapterId,
+                                slideId,
+                            }
+                        );
+                        setDonationDialogOpen(false);
+                        setTargetSlideDetails(null);
+                    }}
+                />
+            )}
+            
+            <PullToRefreshWrapper onRefresh={refreshData}>
+                <div className="flex size-full flex-col gap-4 rounded-lg bg-gradient-to-br from-neutral-50/50 to-white pt-0 pb-4 text-neutral-700">
                 <Tabs
                     value={selectedStructureTab}
                     onValueChange={handleTabChange}
@@ -2097,5 +2159,6 @@ export const CourseStructureDetails = ({
                 </Tabs>
             </div>
         </PullToRefreshWrapper>
+        </>
     );
 };

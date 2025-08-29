@@ -59,13 +59,13 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
     const router = useRouter();
     const handleViewCoureseDetails = (id: string) => {
-        // console.log("course-detailsIdis",id);
+
         try {
             // Persist percentage locally as a fallback for details page
             const key = `COURSE_PCT_${id}`;
             LocalStorageUtils.set(key, { value: percentageCompleted, ts: Date.now() });
         } catch (e) {
-            console.error("Failed to save percentage to localStorage", e);
+            // Failed to save percentage to localStorage
         }
         router.navigate({
             to: "/study-library/courses/course-details",
@@ -93,7 +93,6 @@ const CourseCard: React.FC<CourseCardProps> = ({
                 }
             } catch (error) {
                 if (isMounted) {
-                    console.error("Error fetching course image:", error);
                     setCourseImageUrl((prev) => (prev === null ? prev : null));
                 }
             } finally {

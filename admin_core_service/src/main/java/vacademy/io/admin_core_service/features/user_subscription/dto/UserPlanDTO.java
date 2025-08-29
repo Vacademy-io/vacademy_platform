@@ -1,36 +1,40 @@
 package vacademy.io.admin_core_service.features.user_subscription.dto;
 
-import com.fasterxml.jackson.databind.PropertyNamingStrategies;
-import com.fasterxml.jackson.databind.annotation.JsonNaming;
-import jakarta.persistence.Column;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
-import vacademy.io.admin_core_service.features.user_subscription.entity.AppliedCouponDiscount;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
-@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+/**
+ * Data Transfer Object for UserPlan entity.
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class UserPlanDTO {
-    private String id;
 
+    private String id;
     private String userId;
 
-    private String planId;
-
-    private String planJson; // Storing as JSON string
+    private String paymentPlanId;
+    private String planJson;
 
     private String appliedCouponDiscountId;
+    private String appliedCouponDiscountJson;
 
-    private String appliedCouponDiscountJson; // Storing as JSON string
+    private String enrollInviteId;
 
-    private String learnerInvitationToPackageSessionId;
+    private String paymentOptionId;
+    private String paymentOptionJson;
 
     private String status;
 
     private LocalDateTime createdAt;
-
     private LocalDateTime updatedAt;
 
-    private String jsonPaymentDetails;
+    private List<PaymentLogDTO>paymentLogs;
 }

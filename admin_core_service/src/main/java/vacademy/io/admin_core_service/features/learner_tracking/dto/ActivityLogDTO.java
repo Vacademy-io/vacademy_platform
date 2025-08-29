@@ -28,4 +28,5 @@ public class ActivityLogDTO {
     private boolean newActivity;
     private ConcentrationScoreDTO concentrationScore;
     private List<QuizSideActivityLogDTO> quizSides;
+    private boolean isCertificateCriteriaAchieved;
 }

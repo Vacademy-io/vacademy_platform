@@ -65,9 +65,10 @@ jobs:
           JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
           S3_AWS_ACCESS_KEY: ${{ secrets.S3_AWS_ACCESS_KEY }}
           S3_AWS_ACCESS_SECRET: ${{ secrets.S3_AWS_ACCESS_SECRET }}
+          S3_AWS_REGION: ${{ secrets.S3_AWS_REGION }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }} \
-          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }} \
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
 
@@ -104,6 +105,7 @@ jobs:
             MEDIA_SERVICE_DB_URL=${{ secrets.MEDIA_SERVICE_DB_URL }} \
             S3_AWS_ACCESS_KEY=${{ secrets.S3_AWS_ACCESS_KEY }} \
             S3_AWS_ACCESS_SECRET=${{ secrets.S3_AWS_ACCESS_SECRET }} \
+            S3_AWS_REGION=${{ secrets.S3_AWS_REGION }} \
             AWS_BUCKET_NAME=${{ secrets.AWS_BUCKET_NAME }} \
             AWS_S3_PUBLIC_BUCKET=${{ secrets.AWS_S3_PUBLIC_BUCKET }} \
             OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }} \

@@ -47,6 +47,7 @@ public class StudentDTO {
     private Date updatedAt;
     private String parentsToMotherMobileNumber;
     private String parentsToMotherEmail;
+    private String userPlanId;
 
     // Constructor that takes a Student entity
     public StudentDTO(Student student) {
@@ -120,6 +121,9 @@ public class StudentDTO {
             }
             if (objects.length > 26) {
                 this.parentsToMotherEmail = (String) objects[26]; // Additional field from mapping table
+            }
+            if (objects.length > 27){
+                this.userPlanId = (String) objects[27]; // Additional field from mapping table
             }
         }
     }

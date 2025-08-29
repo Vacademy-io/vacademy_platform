@@ -21,8 +21,9 @@ public class NotificationService {
     private final NotificationLogRepository notificationLogRepository;
     private final EmailService emailSenderService;
 
-    @Transactional
-    public String sendNotification(NotificationDTO notificationDTO, String instituteId) {
+
+    public String sendNotification(NotificationDTO notificationDTO,String instituteId) {
+
         List<NotificationToUserDTO> users = notificationDTO.getUsers();
         List<NotificationLog> notificationLogs = new ArrayList<>();
 

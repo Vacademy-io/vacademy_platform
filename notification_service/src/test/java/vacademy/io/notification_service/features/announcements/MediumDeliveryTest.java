@@ -81,7 +81,7 @@ class MediumDeliveryTest {
 
         // Mock email/push senders to do nothing
         Mockito.doNothing().when(emailService)
-                .sendHtmlEmail(ArgumentMatchers.anyString(), ArgumentMatchers.anyString(), ArgumentMatchers.anyString(), ArgumentMatchers.anyString());
+                .sendHtmlEmail(ArgumentMatchers.anyString(), ArgumentMatchers.anyString(), ArgumentMatchers.anyString(), ArgumentMatchers.anyString(),"");
         Mockito.doNothing().when(pushNotificationService)
                 .sendNotificationToUser(
                         ArgumentMatchers.anyString(),
@@ -101,7 +101,7 @@ class MediumDeliveryTest {
 
         // Verify both mediums called
         Mockito.verify(emailService, Mockito.atLeastOnce())
-                .sendHtmlEmail(ArgumentMatchers.eq("user@example.com"), ArgumentMatchers.anyString(), ArgumentMatchers.anyString(), ArgumentMatchers.anyString());
+                .sendHtmlEmail(ArgumentMatchers.eq("user@example.com"), ArgumentMatchers.anyString(), ArgumentMatchers.anyString(), ArgumentMatchers.anyString(),"");
         Mockito.verify(pushNotificationService, Mockito.atLeastOnce())
                 .sendNotificationToUser(
                         ArgumentMatchers.eq("INST_MEDIUM"),

@@ -5,6 +5,8 @@ import vacademy.io.admin_core_service.features.user_subscription.entity.UserInst
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.enums.PaymentGateway;
 
+import java.util.Map;
+
 @Service
 public class PaymentGatewaySpecificPaymentDetailService {
 
@@ -18,6 +20,24 @@ public class PaymentGatewaySpecificPaymentDetailService {
                 if (paymentInitiationRequestDTO.getStripeRequest() != null) {
                     paymentInitiationRequestDTO.getStripeRequest()
                             .setCustomerId(userInstitutePaymentGatewayMapping.getPaymentGatewayCustomerId());
+                }
+                break;
+
+            default:
+                throw new IllegalStateException("Unexpected value: " + vendor);
+        }
+    }
+
+    public void configureCustomerPaymentData(Map<String,Object> userInstitutePaymentGatewayMapping,
+                                             String vendor,
+                                             PaymentInitiationRequestDTO paymentInitiationRequestDTO) {
+        PaymentGateway paymentGateway = PaymentGateway.fromString(vendor);
+
+        switch (paymentGateway) {
+            case STRIPE:
+                if (paymentInitiationRequestDTO.getStripeRequest() != null) {
+                    paymentInitiationRequestDTO.getStripeRequest()
+                        .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
                 }
                 break;
 

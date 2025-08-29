@@ -24,10 +24,10 @@ public class SendUniqueLinkService {
     @Autowired
     private TemplateReader templateReader;
 
-    public void sendUniqueLinkByEmail(String instituteId, UserDTO user){
+    public void sendUniqueLinkByEmail(String instituteId, UserDTO user,String templateType){
         Institute institute=service.findById(instituteId);
         if(institute!=null){
-            String emailBody = templateReader.getEmailBody(institute.getSetting());
+            String emailBody = templateReader.getEmailBody(institute.getSetting(),templateType);
             if(emailBody!=null){
                 NotificationDTO notificationDTO=new NotificationDTO();
                 notificationDTO.setNotificationType(CommunicationType.EMAIL.name());
@@ -36,20 +36,22 @@ public class SendUniqueLinkService {
                 NotificationToUserDTO notificationToUserDTO = new NotificationToUserDTO();
                 notificationToUserDTO.setUserId(user.getId());
                 notificationToUserDTO.setChannelId(user.getEmail());
+                String leanerDashBoardUrl=templateReader.getLearnerDashBoardUrl(institute.getSetting());
                 Map<String,String> map=new HashMap<>();
                 map.put("name",user.getFullName());
-                map.put("unique_link",institute.getWebsiteUrl()+"/live/join/"+user.getUsername());
+                map.put("unique_link",leanerDashBoardUrl+user.getUsername());
                 notificationToUserDTO.setPlaceholders(map);
                 notificationDTO.setUsers(List.of(notificationToUserDTO));
                 notificationService.sendEmailToUsers(notificationDTO,instituteId);
             }
         }
     }
-    public void sendUniqueLinkByWhatsApp(String instituteId,UserDTO user){
+    public void sendUniqueLinkByWhatsApp(String instituteId,UserDTO user,String templateType){
         Institute institute=service.findById(instituteId);
         if(institute!=null) {
-            templateReader.sendWhatsAppMessage(institute.getSetting(),user,institute.getWebsiteUrl() + "/live/join/" + user.getUsername(),instituteId);
+            String leanerDashBoardUrl=templateReader.getLearnerDashBoardUrl(institute.getSetting());
+            if(leanerDashBoardUrl!=null)
+              templateReader.sendWhatsAppMessage(institute.getSetting(),user,leanerDashBoardUrl+ user.getUsername(),instituteId,templateType);
         }
-
     }
 }

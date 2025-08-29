@@ -28,6 +28,8 @@ import vacademy.io.admin_core_service.features.institute_learner.dto.student_lis
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.institute_learner.service.StudentFilterService;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.common.auth.dto.UserCredentials;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
@@ -186,8 +188,14 @@ public class StudentListManager {
 
             dto.setDestinationPackageSessionId(p.getDestinationPackageSessionId());
 
-            dto.setPaymentPlan(JsonUtil.fromJson(p.getPaymentPlanJson(), PaymentPlanDTO.class));
-            dto.setPaymentOption(JsonUtil.fromJson(p.getPaymentOptionJson(), PaymentOptionDTO.class));
+            PaymentPlan paymentPlan = JsonUtil.fromJson(p.getPaymentPlanJson(), PaymentPlan.class);
+            if (paymentPlan != null) {
+                dto.setPaymentPlan(paymentPlan.mapToPaymentPlanDTO());
+            }
+            PaymentOption paymentOption = JsonUtil.fromJson(p.getPaymentOptionJson(), PaymentOption.class);
+            if (paymentOption != null) {
+                dto.setPaymentOption(paymentOption.mapToPaymentOptionDTO());
+            }
             dto.setCustomFields(parseCustomFields(mapper, p.getCustomFieldsJson()));
             dto.setEnrollInviteId(p.getEnrollInviteId());
             dtos.add(dto);

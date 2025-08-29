@@ -37,7 +37,8 @@ class EmailLiveSendIT {
                 "shreyash@vidyayatan.com",
                 "Vacademy Notification Service - Email Medium Live Test",
                 "notification-service",
-                "<h3>Email medium live test</h3><p>If you received this, SMTP config works.</p>"
+                "<h3>Email medium live test</h3><p>If you received this, SMTP config works.</p>",
+                ""
         );
     }
 }

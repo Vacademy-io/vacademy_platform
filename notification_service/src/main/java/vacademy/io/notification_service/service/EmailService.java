@@ -44,7 +44,6 @@ public class EmailService {
     @Autowired
     private ObjectMapper objectMapper;
 
-
     @Autowired
     public EmailService(JavaMailSender mailSender) {
         this.mailSender = mailSender;
@@ -53,20 +52,19 @@ public class EmailService {
     private JavaMailSenderImpl createCustomMailSender(JsonNode emailSettings) {
         JavaMailSenderImpl mailSender = new JavaMailSenderImpl();
         mailSender.setHost(emailSettings.path(NotificationConstants.HOST).asText());
-        mailSender.setPort(emailSettings.path(NotificationConstants.PORT).asInt(587));
+        mailSender.setPort(emailSettings.path(NotificationConstants.PORT).asInt(2587));
         mailSender.setUsername(emailSettings.path(NotificationConstants.USERNAME).asText());
         mailSender.setPassword(emailSettings.path(NotificationConstants.PASSWORD).asText());
 
+        // Add these properties for TLS
         Properties props = mailSender.getJavaMailProperties();
         props.put("mail.transport.protocol", "smtp");
         props.put("mail.smtp.auth", "true");
-        props.put("mail.smtp.starttls.enable", "true");
-        props.put("mail.smtp.starttls.required", "true");
-        props.put("mail.debug", "true");
-
+        props.put("mail.smtp.starttls.enable", "true"); // This is the key part
+        props.put("mail.debug", "true"); // Optional: for debugging connection issues in logs
+        mailSender.setJavaMailProperties(props);
         return mailSender;
     }
-
 
     private AbstractMap.SimpleEntry<JavaMailSender, String> getMailSenderConfig(String instituteId) {
         JavaMailSender mailSenderToUse = mailSender;
@@ -101,7 +99,6 @@ public class EmailService {
 
         return new AbstractMap.SimpleEntry<>(mailSenderToUse, fromToUse);
     }
-
 
     public void sendEmail(String to, String subject, String text, String instituteId) {
         try {
@@ -174,8 +171,6 @@ public class EmailService {
             throw new RuntimeException("An error occurred while preparing the OTP email", e);
         }
     }
-
-
 
     // Method to create the email body
     private String createEmailBody(String service, String name, String otp) {
@@ -251,9 +246,9 @@ public class EmailService {
                 """.formatted(name, otp, service);
     }
 
-
     public void sendHtmlEmail(String to, String subject, String service, String body, String instituteId) {
         try {
+
             AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId);
             JavaMailSender mailSenderToUse = config.getKey();
             String fromToUse = config.getValue();
@@ -286,9 +281,8 @@ public class EmailService {
         }
     }
 
-
     public void sendAttachmentEmail(String to, String subject, String service, String body,
-                                    Map<String, byte[]> attachments, String instituteId) {
+            Map<String, byte[]> attachments, String instituteId) {
         try {
             logger.info("Preparing to send email to: {} with subject: {}", to, subject);
 

@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.learner.service;
 
 import jakarta.transaction.Transactional;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -8,6 +9,7 @@ import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInviteService;
 import vacademy.io.admin_core_service.features.institute.service.InstituteService;
+import vacademy.io.admin_core_service.features.learner.constants.TemplateConstants;
 import vacademy.io.admin_core_service.features.learner.utility.TemplateReader;
 import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.PaymentOptionOperationFactory;
 import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.PaymentOptionOperationStrategy;
@@ -29,6 +31,7 @@ import vacademy.io.common.institute.entity.Institute;
 import java.util.Map;
 import java.util.Optional;
 
+@Slf4j
 @Service
 public class LearnerEnrollRequestService {
 
@@ -60,14 +63,14 @@ public class LearnerEnrollRequestService {
             UserDTO user = authService.createUserFromAuthService(learnerEnrollRequestDTO.getUser(), learnerEnrollRequestDTO.getInstituteId());
             learnerEnrollRequestDTO.setUser(user);
         }
-        //by email and whatsapp
-        service.sendUniqueLinkByEmail(learnerEnrollRequestDTO.getInstituteId(),learnerEnrollRequestDTO.getUser());
-        service.sendUniqueLinkByWhatsApp(learnerEnrollRequestDTO.getInstituteId(),learnerEnrollRequestDTO.getUser());
-
         EnrollInvite enrollInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
         PaymentOption paymentOption = getValidatedPaymentOption(enrollDTO.getPaymentOptionId());
         PaymentPlan paymentPlan = getOptionalPaymentPlan(enrollDTO.getPlanId());
-
+        sendNotificationBasedOnPaymentOption(
+                learnerEnrollRequestDTO.getInstituteId(),
+                learnerEnrollRequestDTO.getUser(),
+                paymentOption
+        );
         UserPlan userPlan = createUserPlan(
             learnerEnrollRequestDTO.getUser().getId(),
             enrollDTO,
@@ -75,7 +78,6 @@ public class LearnerEnrollRequestService {
             paymentOption,
             paymentPlan
         );
-
         return enrollLearnerToBatch(
             learnerEnrollRequestDTO,
             enrollDTO,
@@ -83,6 +85,28 @@ public class LearnerEnrollRequestService {
             paymentOption,
             userPlan
         );
+    }
+    public void test(String instituteId,UserDTO user){
+        try{
+            System.out.println("send email");
+            service.sendUniqueLinkByEmail(instituteId, user, TemplateConstants.PAID_USER_EMAIL_TEMPLATE);
+//        service.sendUniqueLinkByWhatsApp(instituteId, user,TemplateConstants.PAID_USER_WHATSAPP_TEMPLATE);
+        }
+        catch (Exception e){
+            log.error("ERROR: " +e.getMessage());
+        }
+    }
+    private void sendNotificationBasedOnPaymentOption(String instituteId, UserDTO user, PaymentOption paymentOption) {
+        String type = paymentOption.getType();
+        if (PaymentOptionType.SUBSCRIPTION.name().equals(type)|| PaymentOptionType.ONE_TIME.name().equals(type)) {
+            //Paid User
+            service.sendUniqueLinkByEmail(instituteId, user, TemplateConstants.PAID_USER_EMAIL_TEMPLATE);
+            service.sendUniqueLinkByWhatsApp(instituteId, user,TemplateConstants.PAID_USER_WHATSAPP_TEMPLATE);
+        } else {
+            //Free User
+            service.sendUniqueLinkByEmail(instituteId, user,TemplateConstants.FREE_USER_EMAIL_TEMPLATE);
+            service.sendUniqueLinkByWhatsApp(instituteId, user,TemplateConstants.FREE_USER_WHATSAPP_TEMPLATE);
+        }
     }
 
     private EnrollInvite getValidatedEnrollInvite(String enrollInviteId) {

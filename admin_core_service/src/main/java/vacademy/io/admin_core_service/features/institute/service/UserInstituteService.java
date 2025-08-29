@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.institute.constants.ConstantsSubM
 import vacademy.io.admin_core_service.features.institute.dto.InstituteDashboardResponse;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteSubModuleRepository;
+import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
@@ -89,6 +90,12 @@ public class UserInstituteService {
                     instituteSettingService.createDefaultNamingSetting(savedInstitute, ConstantsSettingDefaultValue.getDefaultNamingSettingRequest());
                 } catch (Exception e) {
                     log.error("Error Occurred in Creating Default Setting: "+e.getMessage());
+                }
+
+                try{
+                    instituteSettingService.createDefaultCertificateSetting(institute);
+                } catch (Exception e) {
+                    log.error("Error Occurred in Creating Default Certificate Setting: "+e.getMessage());
                 }
 
                 createInstituteSubModulesMapping(allSubModules, savedInstitute);

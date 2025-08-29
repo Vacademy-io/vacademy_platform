@@ -2388,4 +2388,4 @@ CREATE TABLE public.node_execution (
 	CONSTRAINT node_execution_workflow_execution_id_fkey FOREIGN KEY (workflow_execution_id) REFERENCES public.workflow_execution(id) ON DELETE CASCADE
 );
 CREATE INDEX idx_node_exec_st ON public.node_execution USING btree (status, started_at);
-CREATE INDEX idx_node_exec_wf ON public.node_execution USING btree (workflow_execution_id, execution_order);
+CREATE INDEX idx_node_exec_wf ON public.node_execution USING btree (workflow_execution_id, execution_order);r

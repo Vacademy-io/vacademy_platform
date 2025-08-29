@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.workflow.dto.QueryNodeDTO;
+import vacademy.io.admin_core_service.features.workflow.entity.NodeTemplate;
 import vacademy.io.admin_core_service.features.workflow.spel.SpelEvaluator;
 
 import java.util.*;
@@ -23,68 +25,43 @@ public class QueryNodeHandler implements NodeHandler {
     }
 
     @Override
-    public Map<String, Object> handle(Map<String, Object> context, String nodeConfigJson) {
+    public Map<String, Object> handle(Map<String, Object> context,
+            String nodeConfigJson,
+            Map<String, NodeTemplate> nodeTemplates,
+            int countProcessed) {
         log.info("QueryNodeHandler.handle() invoked with context: {}, configJson: {}", context, nodeConfigJson);
 
         Map<String, Object> changes = new HashMap<>();
 
         try {
-            JsonNode config = objectMapper.readTree(nodeConfigJson);
+            // Deserialize JSON into DTO
+            QueryNodeDTO config = objectMapper.readValue(nodeConfigJson, QueryNodeDTO.class);
 
-            // Validate input data points
-            JsonNode inputs = config.path("input_data_points");
-            if (inputs.isArray()) {
-                for (JsonNode input : inputs) {
-                    String fieldName = input.path("field_name").asText("");
-                    boolean isRequired = input.path("is_required").asBoolean(true);
+            String prebuiltKey = config.getPrebuiltKey();
+            Map<String, Object> rawParams = config.getParams();
 
-                    if (isRequired && !context.containsKey(fieldName)) {
-                        log.error("Required input field '{}' not found in context", fieldName);
-                        return Map.of("error", "Required input field '" + fieldName + "' not found");
+            if (prebuiltKey != null && !prebuiltKey.isBlank()) {
+                Map<String, Object> queryParams = new HashMap<>();
+
+                if (rawParams != null) {
+                    for (Map.Entry<String, Object> entry : rawParams.entrySet()) {
+                        String key = entry.getKey();
+                        Object valueExpr = entry.getValue();
+
+                        Object value;
+                        if (valueExpr instanceof String) {
+                            value = spelEvaluator.eval((String) valueExpr, context);
+                        } else {
+                            value = valueExpr;
+                        }
+                        queryParams.put(key, value);
                     }
                 }
-            }
 
-            // Execute query
-            JsonNode queryConfig = config.path("query");
-            if (!queryConfig.isMissingNode()) {
-                String prebuiltKey = queryConfig.path("prebuilt_key").asText("");
-                JsonNode params = queryConfig.path("params");
-
-                if (!prebuiltKey.isBlank()) {
-                    Map<String, Object> queryParams = new HashMap<>();
-                    if (params.isObject()) {
-                        params.fieldNames().forEachRemaining(key -> {
-                            String valueExpr = params.get(key).asText();
-                            if (valueExpr.startsWith("#{") && valueExpr.endsWith("}")) {
-                                Object value = spelEvaluator.eval(valueExpr, context);
-                                queryParams.put(key, value);
-                            } else {
-                                queryParams.put(key, valueExpr);
-                            }
-                        });
-                    }
-
-                    log.debug("Executing query with key: {}, params: {}", prebuiltKey, queryParams);
-                    Map<String, Object> queryResult = queryService.execute(prebuiltKey, queryParams);
+                log.debug("Executing query with key: {}, params: {}", prebuiltKey, queryParams);
+                Map<String, Object> queryResult = queryService.execute(prebuiltKey, queryParams);
+                if (queryResult != null) {
                     changes.putAll(queryResult);
-                }
-            }
-
-            // Process output data points
-            JsonNode outputs = config.path("output_data_points");
-            if (outputs.isArray()) {
-                for (JsonNode output : outputs) {
-                    String fieldName = output.path("field_name").asText("");
-                    String creationPolicy = output.path("creation_policy").asText("CREATE");
-
-                    if (fieldName.isBlank())
-                        continue;
-
-                    if ("CREATE".equals(creationPolicy) && !changes.containsKey(fieldName)) {
-                        // Field should be created but wasn't by query service
-                        log.warn("Output field '{}' marked as CREATE but not provided by query service", fieldName);
-                    }
                 }
             }
 

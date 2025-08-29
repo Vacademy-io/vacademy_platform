@@ -3,6 +3,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import {
     handleEnrollLearnerForPayment,
     handleGetEnrollInviteData,
+    handleGetPublicInstituteDetails,
 } from "./-services/enroll-invite-services";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { GraduationCap } from "lucide-react";
@@ -13,7 +14,6 @@ import {
     safeJsonParse,
     transformApiDataToCourseDataForInvite,
 } from "./-utils/helper";
-import { useInstituteQuery } from "@/services/signup-api";
 import { useInstituteDetailsStore } from "@/stores/study-library/useInstituteDetails";
 import { getDynamicSchema } from "@/routes/register/-utils/helper";
 import z from "zod";
@@ -86,7 +86,7 @@ const EnrollByInvite = () => {
 
     const { instituteId, inviteCode } = Route.useSearch();
     const { data: instituteData, isLoading: isInstituteLoading } =
-        useSuspenseQuery(useInstituteQuery({ instituteId }));
+        useSuspenseQuery(handleGetPublicInstituteDetails({ instituteId }));
 
     const { getDetailsFromPackageSessionId } = useInstituteDetailsStore();
 

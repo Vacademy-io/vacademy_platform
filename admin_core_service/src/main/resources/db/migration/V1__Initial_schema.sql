@@ -1615,8 +1615,8 @@ CREATE TABLE public.schedule_notifications (
 	offset_minutes int4 NULL,
 	created_at timestamp DEFAULT CURRENT_TIMESTAMP NULL,
 	updated_at timestamp DEFAULT now() NULL,
-	CONSTRAINT schedule_notifications_pkey PRIMARY KEY (id),
-	CONSTRAINT fk_schedule_notifications FOREIGN KEY (session_id) REFERENCES public.live_session(id) ON DELETE CASCADE
+	schedule_id varchar(255) NULL,
+	CONSTRAINT schedule_notifications_pkey PRIMARY KEY (id)
 );
 
 

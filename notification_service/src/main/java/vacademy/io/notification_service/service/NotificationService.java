@@ -11,7 +11,10 @@ import vacademy.io.notification_service.features.notification_log.entity.Notific
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -21,46 +24,35 @@ public class NotificationService {
     private final NotificationLogRepository notificationLogRepository;
     private final EmailService emailSenderService;
 
-
+    @Transactional
     public String sendNotification(NotificationDTO notificationDTO,String instituteId) {
 
         List<NotificationToUserDTO> users = notificationDTO.getUsers();
-        List<NotificationLog> notificationLogs = new ArrayList<>();
+        List<NotificationLog> notificationLogs = new ArrayList<>(); // List to store all logs
 
         for (NotificationToUserDTO user : users) {
             String parsedBody = parsePlaceholders(notificationDTO.getBody(), user.getPlaceholders());
-            String formattedBody = formatEmailBody(parsedBody);
-
             String notificationType = notificationDTO.getNotificationType();
             String channelId = user.getChannelId();
             String userId = user.getUserId();
 
-            // Create log
-            NotificationLog log = createNotificationLog(
-                    notificationType,
-                    channelId,
-                    formattedBody,
-                    notificationDTO.getSource(),
-                    notificationDTO.getSourceId(),
-                    userId
-            );
+            // Create and add notification log to the list
+            NotificationLog log = createNotificationLog(notificationType, channelId, parsedBody, notificationDTO.getSource(), notificationDTO.getSourceId(), userId);
             notificationLogs.add(log);
 
-            // Send email
-            if ("EMAIL".equalsIgnoreCase(notificationType)) {
-                emailSenderService.sendHtmlEmail(
-                        channelId,
-                        notificationDTO.getSubject(),
-                        "email-service",
-                        formattedBody,
-                        instituteId
-                );
-            } else {
-                throw new IllegalArgumentException("Unsupported notification type: " + notificationType);
+            // Send notification based on type
+            switch (notificationType.toUpperCase()) {
+                case "EMAIL":
+                    emailSenderService.sendHtmlEmail(channelId, notificationDTO.getSubject(), "email-service", parsedBody,instituteId);
+                    break;
+                default:
+                    throw new IllegalArgumentException("Unsupported notification type: " + notificationType);
             }
         }
 
+        // Save all notification logs in a batch
         notificationLogRepository.saveAll(notificationLogs);
+
         return "Notification sent successfully";
     }
 
@@ -71,8 +63,7 @@ public class NotificationService {
         return body;
     }
 
-    private NotificationLog createNotificationLog(String notificationType, String channelId, String body,
-                                                  String source, String sourceId, String userId) {
+    private NotificationLog createNotificationLog(String notificationType, String channelId, String body, String source, String sourceId, String userId) {
         NotificationLog log = new NotificationLog();
         log.setNotificationType(notificationType);
         log.setChannelId(channelId);
@@ -85,7 +76,7 @@ public class NotificationService {
     }
 
     @Transactional
-    public Boolean sendAttachmentNotification(List<AttachmentNotificationDTO> attachmentNotificationDTOs, String instituteId) {
+    public Boolean sendAttachmentNotification(List<AttachmentNotificationDTO> attachmentNotificationDTOs,String instituteId) {
         List<NotificationLog> notificationLogs = new ArrayList<>();
 
         try {
@@ -94,17 +85,15 @@ public class NotificationService {
 
                 for (AttachmentUsersDTO user : users) {
                     String parsedBody = parsePlaceholders(attachmentNotificationDTO.getBody(), user.getPlaceholders());
-                    String formattedBody = formatEmailBody(parsedBody);
-
                     String notificationType = attachmentNotificationDTO.getNotificationType();
                     String channelId = user.getChannelId();
                     String userId = user.getUserId();
 
-                    // Create log
+                    // Create and store log
                     NotificationLog log = createNotificationLog(
                             notificationType,
                             channelId,
-                            formattedBody,
+                            parsedBody,
                             attachmentNotificationDTO.getSource(),
                             attachmentNotificationDTO.getSourceId(),
                             userId
@@ -122,7 +111,7 @@ public class NotificationService {
                                 channelId,
                                 attachmentNotificationDTO.getSubject(),
                                 "email-service",
-                                formattedBody,
+                                parsedBody,
                                 base64AttachmentNameAndAttachment,
                                 instituteId
                         );
@@ -140,29 +129,5 @@ public class NotificationService {
         }
     }
 
-    /**
-     * Ensures emails keep proper formatting:
-     * - Converts newlines to <br>
-     * - Preserves multiple spaces
-     * - Wraps body in styled div
-     */
-    private String formatEmailBody(String body) {
-        if (body == null || body.isEmpty()) {
-            return body;
-        }
 
-        // Convert escaped quotes if present
-        body = body.replace("\\\"", "\"");
-
-        // Convert newlines to <br>
-        body = body.replace("\n", "<br/>");
-
-        // Convert multiple spaces to &nbsp; for email readability
-        body = body.replace("  ", "&nbsp;&nbsp;");
-
-        // Wrap nicely for email clients
-        return "<div style='font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #333;'>"
-                + body
-                + "</div>";
-    }
 }

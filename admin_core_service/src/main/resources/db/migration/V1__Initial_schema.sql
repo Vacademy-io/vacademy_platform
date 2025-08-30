@@ -1604,6 +1604,12 @@ CREATE TABLE public.rating_action (
 
 -- DROP TABLE public.schedule_notifications;
 
+-- public.schedule_notifications definition
+
+-- Drop table
+
+-- DROP TABLE public.schedule_notifications;
+
 CREATE TABLE public.schedule_notifications (
 	id varchar(255) DEFAULT gen_random_uuid() NOT NULL,
 	session_id varchar(255) NOT NULL,
@@ -1620,6 +1626,9 @@ CREATE TABLE public.schedule_notifications (
 );
 
 
+-- public.schedule_notifications foreign keys
+
+ALTER TABLE public.schedule_notifications ADD CONSTRAINT fk_schedule_notifications FOREIGN KEY (session_id) REFERENCES public.live_session(id) ON DELETE CASCADE;
 -- public.sections definition
 
 -- Drop table

@@ -42,6 +42,9 @@ public class ScheduleNotification {
     @Column(name = "offset_minutes")
     private Integer offsetMinutes;
 
+    @Column(name = "schedule_id")
+    private String scheduleId;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 

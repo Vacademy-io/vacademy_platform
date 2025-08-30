@@ -19,6 +19,8 @@ import {
   MapPin,
   Users,
   ArrowSquareOut,
+  X,
+  FunnelSimple,
 } from "phosphor-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +29,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { calculateDuration } from "@/lib/live-class/utils";
 
 export const Route = createFileRoute("/study-library/live-class/")({
@@ -44,6 +55,18 @@ function RouteComponent() {
     date: Date;
     sessions: SessionDetails[];
   } | null>(null);
+
+  // Pagination states
+  const [liveSessionsCurrentPage, setLiveSessionsCurrentPage] =
+    useState<number>(1);
+  const [upcomingSessionsCurrentPage, setUpcomingSessionsCurrentPage] =
+    useState<number>(1);
+  const [sessionsPerPage] = useState<number>(5);
+
+  // Filter states
+  const [startDateFilter, setStartDateFilter] = useState<string>("");
+  const [endDateFilter, setEndDateFilter] = useState<string>("");
+
   const { mutateAsync: markAttendance } = useMarkAttendance();
 
   useEffect(() => {
@@ -95,7 +118,10 @@ function RouteComponent() {
   };
 
   const handleJoinSession = async (session: SessionDetails) => {
-    if (session.session_streaming_service_type === SessionStreamingServiceType.EMBED) {
+    if (
+      session.session_streaming_service_type ===
+      SessionStreamingServiceType.EMBED
+    ) {
       console.log("Embed session clicked:", session);
     }
     const now = new Date();
@@ -159,6 +185,55 @@ function RouteComponent() {
       }
     }
   };
+
+  // Helper function to filter sessions based on date range and subject
+  const filterSessions = (sessions: SessionDetails[]) => {
+    return sessions.filter((session) => {
+      const sessionDate = new Date(session.meeting_date);
+
+      // Date range filter
+      if (startDateFilter) {
+        const startDate = new Date(startDateFilter);
+        if (sessionDate < startDate) return false;
+      }
+
+      if (endDateFilter) {
+        const endDate = new Date(endDateFilter);
+        if (sessionDate > endDate) return false;
+      }
+
+      return true;
+    });
+  };
+
+  // Helper function to paginate sessions
+  const paginateSessions = (
+    sessions: SessionDetails[],
+    currentPage: number
+  ) => {
+    const startIndex = (currentPage - 1) * sessionsPerPage;
+    const endIndex = startIndex + sessionsPerPage;
+    return sessions.slice(startIndex, endIndex);
+  };
+
+  // Helper function to get total pages
+  const getTotalPages = (totalSessions: number) => {
+    return Math.ceil(totalSessions / sessionsPerPage);
+  };
+
+  // Clear all filters
+  const clearFilters = () => {
+    setStartDateFilter("");
+    setEndDateFilter("");
+    setLiveSessionsCurrentPage(1);
+    setUpcomingSessionsCurrentPage(1);
+  };
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setLiveSessionsCurrentPage(1);
+    setUpcomingSessionsCurrentPage(1);
+  }, [startDateFilter, endDateFilter]);
 
   const renderSession = (session: SessionDetails, isLive: boolean) => (
     isLive && console.log("session ", session),
@@ -262,7 +337,8 @@ function RouteComponent() {
       (session) => session.meeting_date === dateString
     );
 
-    return filteredSessions;
+    // Apply additional filters
+    return filterSessions(filteredSessions);
   };
 
   const handleDayClick = (date: Date, sessionsForDay: SessionDetails[]) => {
@@ -644,61 +720,312 @@ function RouteComponent() {
           </TabsList>
 
           <TabsContent value="list" className="mt-6">
-            <div className="space-y-8">
-              <div>
-                <h2 className="text-xl font-semibold mb-4 text-neutral-800">
-                  Live Sessions
-                </h2>
-                {liveSessions.length > 0 ? (
-                  <div className="space-y-4 w-full">
-                    {liveSessions.map((session) =>
-                      renderSession(session, true)
-                    )}
-                  </div>
-                ) : (
-                  <div className="text-neutral-600 p-6 bg-gradient-to-br from-neutral-50 to-neutral-100 rounded-lg w-full border border-neutral-200">
-                    <div className="text-center">
-                      <Users
-                        size={48}
-                        className="mx-auto text-neutral-400 mb-3"
-                      />
-                      <p className="font-medium">
-                        No live sessions at the moment
-                      </p>
-                      <p className="text-sm text-neutral-500 mt-1">
-                        Check back later or view upcoming sessions
-                      </p>
-                    </div>
-                  </div>
+            {/* Filters Section */}
+            <div className="mb-6 p-4 bg-gradient-to-r from-white to-neutral-50/50 border border-neutral-200 rounded-lg">
+              <div className="flex items-center gap-2 mb-4">
+                <FunnelSimple size={20} className="text-neutral-600" />
+                <h3 className="text-lg font-semibold text-neutral-800">
+                  Filters
+                </h3>
+                {(startDateFilter || endDateFilter) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={clearFilters}
+                    className="ml-auto border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400"
+                  >
+                    <X size={14} className="mr-1" />
+                    Clear
+                  </Button>
                 )}
               </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 mb-2">
+                    Start Date
+                  </label>
+                  <Input
+                    type="date"
+                    value={startDateFilter}
+                    onChange={(e) => setStartDateFilter(e.target.value)}
+                    className="w-full"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 mb-2">
+                    End Date
+                  </label>
+                  <Input
+                    type="date"
+                    value={endDateFilter}
+                    onChange={(e) => setEndDateFilter(e.target.value)}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-8">
               <div>
-                <h2 className="text-xl font-semibold mb-4 text-neutral-800">
-                  Upcoming Sessions
-                </h2>
-                {upcomingSessions.length > 0 ? (
-                  <div className="space-y-4 w-full">
-                    {upcomingSessions.map((session) =>
-                      renderSession(session, false)
-                    )}
-                  </div>
-                ) : (
-                  <div className="text-neutral-600 p-6 bg-gradient-to-br from-neutral-50 to-neutral-100 rounded-lg w-full border border-neutral-200">
-                    <div className="text-center">
-                      <Clock
-                        size={48}
-                        className="mx-auto text-neutral-400 mb-3"
-                      />
-                      <p className="font-medium">
-                        No upcoming sessions scheduled
-                      </p>
-                      <p className="text-sm text-neutral-500 mt-1">
-                        New sessions will appear here when scheduled
-                      </p>
-                    </div>
-                  </div>
-                )}
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-semibold text-neutral-800">
+                    Live Sessions
+                  </h2>
+                  {(() => {
+                    const filteredLiveSessions = filterSessions(liveSessions);
+                    return (
+                      filteredLiveSessions.length > 0 && (
+                        <span className="text-sm text-neutral-600">
+                          {filteredLiveSessions.length} session
+                          {filteredLiveSessions.length !== 1 ? "s" : ""} found
+                        </span>
+                      )
+                    );
+                  })()}
+                </div>
+                {(() => {
+                  const filteredLiveSessions = filterSessions(liveSessions);
+                  const paginatedLiveSessions = paginateSessions(
+                    filteredLiveSessions,
+                    liveSessionsCurrentPage
+                  );
+                  const totalPages = getTotalPages(filteredLiveSessions.length);
+
+                  return (
+                    <>
+                      {paginatedLiveSessions.length > 0 ? (
+                        <>
+                          <div className="space-y-4 w-full">
+                            {paginatedLiveSessions.map((session) =>
+                              renderSession(session, true)
+                            )}
+                          </div>
+
+                          {totalPages > 1 && (
+                            <div className="mt-6 flex justify-center">
+                              <Pagination>
+                                <PaginationContent>
+                                  <PaginationItem>
+                                    <PaginationPrevious
+                                      onClick={() =>
+                                        setLiveSessionsCurrentPage(
+                                          Math.max(
+                                            1,
+                                            liveSessionsCurrentPage - 1
+                                          )
+                                        )
+                                      }
+                                      className={
+                                        liveSessionsCurrentPage === 1
+                                          ? "pointer-events-none opacity-50"
+                                          : "cursor-pointer"
+                                      }
+                                    />
+                                  </PaginationItem>
+
+                                  {Array.from(
+                                    { length: totalPages },
+                                    (_, index) => (
+                                      <PaginationItem key={index + 1}>
+                                        <PaginationLink
+                                          onClick={() =>
+                                            setLiveSessionsCurrentPage(
+                                              index + 1
+                                            )
+                                          }
+                                          isActive={
+                                            liveSessionsCurrentPage ===
+                                            index + 1
+                                          }
+                                          className="cursor-pointer"
+                                        >
+                                          {index + 1}
+                                        </PaginationLink>
+                                      </PaginationItem>
+                                    )
+                                  )}
+
+                                  <PaginationItem>
+                                    <PaginationNext
+                                      onClick={() =>
+                                        setLiveSessionsCurrentPage(
+                                          Math.min(
+                                            totalPages,
+                                            liveSessionsCurrentPage + 1
+                                          )
+                                        )
+                                      }
+                                      className={
+                                        liveSessionsCurrentPage === totalPages
+                                          ? "pointer-events-none opacity-50"
+                                          : "cursor-pointer"
+                                      }
+                                    />
+                                  </PaginationItem>
+                                </PaginationContent>
+                              </Pagination>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="text-neutral-600 p-6 bg-gradient-to-br from-neutral-50 to-neutral-100 rounded-lg w-full border border-neutral-200">
+                          <div className="text-center">
+                            <Users
+                              size={48}
+                              className="mx-auto text-neutral-400 mb-3"
+                            />
+                            <p className="font-medium">
+                              {startDateFilter || endDateFilter
+                                ? "No live sessions match your filters"
+                                : "No live sessions at the moment"}
+                            </p>
+                            <p className="text-sm text-neutral-500 mt-1">
+                              {startDateFilter || endDateFilter
+                                ? "Try adjusting your filters or clear them to see all sessions"
+                                : "Check back later or view upcoming sessions"}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-semibold text-neutral-800">
+                    Upcoming Sessions
+                  </h2>
+                  {(() => {
+                    const filteredUpcomingSessions =
+                      filterSessions(upcomingSessions);
+                    return (
+                      filteredUpcomingSessions.length > 0 && (
+                        <span className="text-sm text-neutral-600">
+                          {filteredUpcomingSessions.length} session
+                          {filteredUpcomingSessions.length !== 1
+                            ? "s"
+                            : ""}{" "}
+                          found
+                        </span>
+                      )
+                    );
+                  })()}
+                </div>
+                {(() => {
+                  const filteredUpcomingSessions =
+                    filterSessions(upcomingSessions);
+                  const paginatedUpcomingSessions = paginateSessions(
+                    filteredUpcomingSessions,
+                    upcomingSessionsCurrentPage
+                  );
+                  const totalPages = getTotalPages(
+                    filteredUpcomingSessions.length
+                  );
+
+                  return (
+                    <>
+                      {paginatedUpcomingSessions.length > 0 ? (
+                        <>
+                          <div className="space-y-4 w-full">
+                            {paginatedUpcomingSessions.map((session) =>
+                              renderSession(session, false)
+                            )}
+                          </div>
+
+                          {totalPages > 1 && (
+                            <div className="mt-6 flex justify-center">
+                              <Pagination>
+                                <PaginationContent>
+                                  <PaginationItem>
+                                    <PaginationPrevious
+                                      onClick={() =>
+                                        setUpcomingSessionsCurrentPage(
+                                          Math.max(
+                                            1,
+                                            upcomingSessionsCurrentPage - 1
+                                          )
+                                        )
+                                      }
+                                      className={
+                                        upcomingSessionsCurrentPage === 1
+                                          ? "pointer-events-none opacity-50"
+                                          : "cursor-pointer"
+                                      }
+                                    />
+                                  </PaginationItem>
+
+                                  {Array.from(
+                                    { length: totalPages },
+                                    (_, index) => (
+                                      <PaginationItem key={index + 1}>
+                                        <PaginationLink
+                                          onClick={() =>
+                                            setUpcomingSessionsCurrentPage(
+                                              index + 1
+                                            )
+                                          }
+                                          isActive={
+                                            upcomingSessionsCurrentPage ===
+                                            index + 1
+                                          }
+                                          className="cursor-pointer"
+                                        >
+                                          {index + 1}
+                                        </PaginationLink>
+                                      </PaginationItem>
+                                    )
+                                  )}
+
+                                  <PaginationItem>
+                                    <PaginationNext
+                                      onClick={() =>
+                                        setUpcomingSessionsCurrentPage(
+                                          Math.min(
+                                            totalPages,
+                                            upcomingSessionsCurrentPage + 1
+                                          )
+                                        )
+                                      }
+                                      className={
+                                        upcomingSessionsCurrentPage ===
+                                        totalPages
+                                          ? "pointer-events-none opacity-50"
+                                          : "cursor-pointer"
+                                      }
+                                    />
+                                  </PaginationItem>
+                                </PaginationContent>
+                              </Pagination>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="text-neutral-600 p-6 bg-gradient-to-br from-neutral-50 to-neutral-100 rounded-lg w-full border border-neutral-200">
+                          <div className="text-center">
+                            <Clock
+                              size={48}
+                              className="mx-auto text-neutral-400 mb-3"
+                            />
+                            <p className="font-medium">
+                              {startDateFilter || endDateFilter
+                                ? "No upcoming sessions match your filters"
+                                : "No upcoming sessions scheduled"}
+                            </p>
+                            <p className="text-sm text-neutral-500 mt-1">
+                              {startDateFilter || endDateFilter
+                                ? "Try adjusting your filters or clear them to see all sessions"
+                                : "New sessions will appear here when scheduled"}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </div>
           </TabsContent>

@@ -39,6 +39,11 @@ Create a new announcement for delivery to users.
       "recipientType": "PACKAGE_SESSION",
       "recipientId": "math_8th_2024",
       "recipientName": "Math 8th Class 2024"
+    },
+    {
+      "recipientType": "TAG",
+      "recipientId": "tag_abc123",
+      "recipientName": "Scholarship Eligible"
     }
   ],
   "modes": [
@@ -165,6 +170,21 @@ Target specific users:
   "recipientName": "John Smith"
 }
 ```
+
+### 4. TAG-based Recipients
+Target users linked to one or more tags in an institute (ANY-of semantics):
+```json
+{
+  "recipientType": "TAG",
+  "recipientId": "tag_abc123",
+  "recipientName": "Scholarship Eligible"
+}
+```
+You can include multiple TAG recipients in the `recipients` array; the system resolves user IDs via admin-core `POST /admin-core-service/v1/institutes/{instituteId}/tags/users` and deduplicates across all recipient types.
+
+Notes:
+- `instituteId` on the announcement is required when using `TAG` recipients.
+- You may mix TAG with other recipient types; users are deduplicated across all recipients.
 
 ## Mode Types & Settings
 

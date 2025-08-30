@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import vacademy.io.admin_core_service.features.tag_management.dto.BulkUserTagOperationResultDTO;
+import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -19,6 +20,7 @@ import java.util.stream.Collectors;
 public class CsvTagService {
     
     private final TagService tagService;
+    private final InstituteStudentRepository studentRepository;
     
     /**
      * Process CSV file and add tag to all users in the file
@@ -185,6 +187,186 @@ public class CsvTagService {
             log.error("Error processing CSV file", e);
             throw new RuntimeException("Failed to process CSV file: " + e.getMessage());
         }
+    }
+    
+    /**
+     * Process CSV file with usernames and add tag to all users in the file
+     * CSV format: single column with username values
+     */
+    public BulkUserTagOperationResultDTO processCsvWithUsernamesAndAddTag(
+            MultipartFile csvFile, 
+            String tagId, 
+            String instituteId, 
+            String createdByUserId) {
+        
+        if (csvFile.isEmpty()) {
+            throw new IllegalArgumentException("CSV file is empty");
+        }
+        
+        if (!isValidCsvFile(csvFile)) {
+            throw new IllegalArgumentException("Invalid file format. Only CSV files are allowed");
+        }
+        
+        try {
+            List<String> usernames = parseCsvFileForUsernames(csvFile);
+            
+            if (usernames.isEmpty()) {
+                throw new IllegalArgumentException("No valid usernames found in CSV file");
+            }
+            
+            // Convert usernames to user IDs
+            List<String> userIds = studentRepository.findUserIdsByUsernames(usernames);
+            
+            if (userIds.isEmpty()) {
+                throw new IllegalArgumentException("No users found for the provided usernames");
+            }
+            
+            log.info("Processing CSV file with {} usernames, found {} matching users for tag: {}", 
+                    usernames.size(), userIds.size(), tagId);
+            
+            return tagService.addTagToUsers(userIds, tagId, instituteId, createdByUserId);
+            
+        } catch (IOException e) {
+            log.error("Error processing CSV file with usernames", e);
+            throw new RuntimeException("Failed to process CSV file: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Process CSV file with usernames and add tag by name to all users in the file
+     * CSV format: single column with username values
+     */
+    public BulkUserTagOperationResultDTO processCsvWithUsernamesAndAddTagByName(
+            MultipartFile csvFile, 
+            String tagName, 
+            String instituteId, 
+            String createdByUserId) {
+        
+        if (csvFile.isEmpty()) {
+            throw new IllegalArgumentException("CSV file is empty");
+        }
+        
+        if (!isValidCsvFile(csvFile)) {
+            throw new IllegalArgumentException("Invalid file format. Only CSV files are allowed");
+        }
+        
+        try {
+            List<String> usernames = parseCsvFileForUsernames(csvFile);
+            
+            if (usernames.isEmpty()) {
+                throw new IllegalArgumentException("No valid usernames found in CSV file");
+            }
+            
+            // Convert usernames to user IDs
+            List<String> userIds = studentRepository.findUserIdsByUsernames(usernames);
+            
+            if (userIds.isEmpty()) {
+                throw new IllegalArgumentException("No users found for the provided usernames");
+            }
+            
+            log.info("Processing CSV file with {} usernames, found {} matching users for tag name: '{}'", 
+                    usernames.size(), userIds.size(), tagName);
+            
+            return tagService.addTagByNameToUsers(userIds, tagName, instituteId, createdByUserId);
+            
+        } catch (IOException e) {
+            log.error("Error processing CSV file with usernames", e);
+            throw new RuntimeException("Failed to process CSV file: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Parse CSV file and extract usernames
+     * Expected format: single column with username values, optionally with header
+     */
+    private List<String> parseCsvFileForUsernames(MultipartFile csvFile) throws IOException {
+        List<String> usernames = new ArrayList<>();
+        
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(csvFile.getInputStream()))) {
+            String line;
+            boolean isFirstLine = true;
+            int lineNumber = 0;
+            
+            while ((line = reader.readLine()) != null) {
+                lineNumber++;
+                line = line.trim();
+                
+                // Skip empty lines
+                if (line.isEmpty()) {
+                    continue;
+                }
+                
+                // Check if first line might be a header
+                if (isFirstLine && isLikelyUsernameHeader(line)) {
+                    log.info("Skipping header line: {}", line);
+                    isFirstLine = false;
+                    continue;
+                }
+                
+                isFirstLine = false;
+                
+                // Handle CSV with commas (take first column) or single column
+                String username;
+                if (line.contains(",")) {
+                    String[] parts = line.split(",");
+                    username = parts[0].trim();
+                } else {
+                    username = line;
+                }
+                
+                // Remove quotes if present
+                username = username.replaceAll("^\"|\"$", "");
+                
+                // Validate username format (basic validation)
+                if (isValidUsername(username)) {
+                    usernames.add(username);
+                } else {
+                    log.warn("Invalid username format at line {}: {}", lineNumber, username);
+                }
+            }
+        }
+        
+        // Remove duplicates while preserving order
+        usernames = usernames.stream()
+                .distinct()
+                .collect(Collectors.toList());
+        
+        log.info("Parsed {} unique usernames from CSV file", usernames.size());
+        return usernames;
+    }
+    
+    /**
+     * Check if the first line is likely a username header
+     */
+    private boolean isLikelyUsernameHeader(String line) {
+        String lowerLine = line.toLowerCase();
+        return lowerLine.contains("username") || 
+               lowerLine.equals("user_name") ||
+               lowerLine.equals("user") ||
+               lowerLine.equals("login") ||
+               lowerLine.equals("student_username");
+    }
+    
+    /**
+     * Basic validation for username format
+     * Assumes usernames are non-empty strings with reasonable length and valid characters
+     */
+    private boolean isValidUsername(String username) {
+        return username != null && 
+               !username.trim().isEmpty() && 
+               username.length() <= 255 && 
+               username.length() >= 1 &&
+               username.matches("^[a-zA-Z0-9._-]+$"); // Basic username pattern
+    }
+    
+    /**
+     * Generate a sample CSV template content for usernames
+     */
+    public String generateUsernamesCsvTemplate() {
+        return "username\n" +
+               "johndoe\n" +
+               "janesmith\n" +
+               "bobjohnson\n";
     }
     
     /**

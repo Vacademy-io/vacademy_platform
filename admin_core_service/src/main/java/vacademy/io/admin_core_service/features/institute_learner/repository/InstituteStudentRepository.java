@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.institute_learner.dto.projection.
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Repository
@@ -429,5 +430,29 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             @Param("paymentStatuses") List<String> paymentStatuses,
             @Param("customFieldStatus") List<String> customFieldStatus,
             Pageable pageable);
+
+    // Get student details by user IDs for tag management
+    @Query(value = """
+            SELECT 
+                s.user_id as userId,
+                s.full_name as fullName,
+                s.username as username,
+                s.email as email,
+                s.mobile_number as phoneNumber,
+                ssigm.institute_enrollment_number as enrollmentId
+            FROM student s
+            LEFT JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id
+            WHERE s.user_id IN (:userIds)
+            ORDER BY s.full_name
+            """, nativeQuery = true)
+    List<Map<String, Object>> findStudentDetailsByUserIds(@Param("userIds") List<String> userIds);
+
+    // Get user IDs by usernames for CSV bulk operations
+    @Query(value = """
+            SELECT s.user_id 
+            FROM student s
+            WHERE s.username IN (:usernames)
+            """, nativeQuery = true)
+    List<String> findUserIdsByUsernames(@Param("usernames") List<String> usernames);
 
 }

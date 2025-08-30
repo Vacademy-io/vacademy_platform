@@ -78,4 +78,8 @@ public interface UserTagRepository extends JpaRepository<UserTag, String> {
     // Find user tags by multiple criteria for bulk operations
     @Query("SELECT ut FROM UserTag ut WHERE ut.userId IN :userIds AND ut.tagId IN :tagIds AND ut.instituteId = :instituteId")
     List<UserTag> findUserTagsByUserIdsAndTagIdsAndInstituteId(@Param("userIds") List<String> userIds, @Param("tagIds") List<String> tagIds, @Param("instituteId") String instituteId);
+    
+    // Get user count per tag for specific tags
+    @Query("SELECT ut.tagId, t.tagName, COUNT(DISTINCT ut.userId) as userCount FROM UserTag ut JOIN ut.tag t WHERE ut.tagId IN :tagIds AND ut.instituteId = :instituteId AND ut.status = 'ACTIVE' GROUP BY ut.tagId, t.tagName ORDER BY t.tagName")
+    List<Object[]> getUserCountPerSpecificTags(@Param("tagIds") List<String> tagIds, @Param("instituteId") String instituteId);
 }

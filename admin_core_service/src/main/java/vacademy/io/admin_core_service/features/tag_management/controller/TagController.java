@@ -190,6 +190,24 @@ public class TagController {
     }
     
     /**
+     * Add tag by name to multiple users (auto-creates tag if it doesn't exist)
+     */
+    @PostMapping("/institutes/{instituteId}/tags/by-name/{tagName}/users/add")
+    public ResponseEntity<BulkUserTagOperationResultDTO> addTagByNameToUsers(
+            @PathVariable String instituteId,
+            @PathVariable String tagName,
+            @RequestBody List<String> userIds,
+            @RequestAttribute("user") CustomUserDetails user) {
+        
+        BulkUserTagOperationResultDTO result = tagService.addTagByNameToUsers(userIds, tagName, instituteId, user.getUserId());
+        
+        log.info("Add tag by name '{}' to users operation completed - Success: {}, Skip: {}, Error: {}", 
+                tagName, result.getSuccessCount(), result.getSkipCount(), result.getErrorCount());
+        
+        return ResponseEntity.ok(result);
+    }
+    
+    /**
      * Deactivate user tags for specific users
      */
     @PostMapping("/institutes/{instituteId}/users/tags/deactivate")
@@ -205,6 +223,70 @@ public class TagController {
                 result.getSuccessCount(), result.getSkipCount(), result.getErrorCount());
         
         return ResponseEntity.ok(result);
+    }
+    
+    /**
+     * Get all user IDs that have a specific tag
+     */
+    @GetMapping("/institutes/{instituteId}/tags/{tagId}/users")
+    public ResponseEntity<List<String>> getUsersByTag(
+            @PathVariable String instituteId,
+            @PathVariable String tagId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        
+        List<String> userIds = tagService.getUserIdsByTag(tagId, instituteId);
+        
+        log.info("Found {} users with tag {} in institute {}", userIds.size(), tagId, instituteId);
+        
+        return ResponseEntity.ok(userIds);
+    }
+    
+    /**
+     * Get all user IDs that have any of the specified tags
+     */
+    @PostMapping("/institutes/{instituteId}/tags/users")
+    public ResponseEntity<List<String>> getUsersByTags(
+            @PathVariable String instituteId,
+            @RequestBody List<String> tagIds,
+            @RequestAttribute("user") CustomUserDetails user) {
+        
+        List<String> userIds = tagService.getUserIdsByTags(tagIds, instituteId);
+        
+        log.info("Found {} users with any of {} tags in institute {}", userIds.size(), tagIds.size(), instituteId);
+        
+        return ResponseEntity.ok(userIds);
+    }
+    
+    /**
+     * Get detailed user information for users that have any of the specified tags
+     */
+    @PostMapping("/institutes/{instituteId}/tags/users/details")
+    public ResponseEntity<List<Map<String, Object>>> getUserDetailsByTags(
+            @PathVariable String instituteId,
+            @RequestBody List<String> tagIds,
+            @RequestAttribute("user") CustomUserDetails user) {
+        
+        List<Map<String, Object>> userDetails = tagService.getUserDetailsByTags(tagIds, instituteId);
+        
+        log.info("Found {} users with detailed info for {} tags in institute {}", userDetails.size(), tagIds.size(), instituteId);
+        
+        return ResponseEntity.ok(userDetails);
+    }
+    
+    /**
+     * Get user counts for multiple tags
+     */
+    @PostMapping("/institutes/{instituteId}/tags/user-counts")
+    public ResponseEntity<Map<String, Object>> getUserCountsByTags(
+            @PathVariable String instituteId,
+            @RequestBody List<String> tagIds,
+            @RequestAttribute("user") CustomUserDetails user) {
+        
+        Map<String, Object> tagCounts = tagService.getUserCountsByTags(tagIds, instituteId);
+        
+        log.info("Retrieved user counts for {} tags in institute {}", tagIds.size(), instituteId);
+        
+        return ResponseEntity.ok(tagCounts);
     }
     
     // ========== CSV UPLOAD APIs ==========
@@ -240,7 +322,43 @@ public class TagController {
     }
     
     /**
-     * Download CSV template
+     * Upload CSV file with usernames and add tag to all users in the file
+     */
+    @PostMapping("/institutes/{instituteId}/tags/{tagId}/users/csv-upload-usernames")
+    public ResponseEntity<BulkUserTagOperationResultDTO> uploadCsvWithUsernamesAndAddTag(
+            @PathVariable String instituteId,
+            @PathVariable String tagId,
+            @RequestParam("file") MultipartFile csvFile,
+            @RequestAttribute("user") CustomUserDetails user) {
+        
+        BulkUserTagOperationResultDTO result = csvTagService.processCsvWithUsernamesAndAddTag(csvFile, tagId, instituteId, user.getUserId());
+        
+        log.info("CSV upload with usernames operation completed for tag {} - Success: {}, Skip: {}, Error: {}", 
+                tagId, result.getSuccessCount(), result.getSkipCount(), result.getErrorCount());
+        
+        return ResponseEntity.ok(result);
+    }
+    
+    /**
+     * Upload CSV file with usernames and add tag by name to all users in the file
+     */
+    @PostMapping("/institutes/{instituteId}/tags/by-name/{tagName}/users/csv-upload-usernames")
+    public ResponseEntity<BulkUserTagOperationResultDTO> uploadCsvWithUsernamesAndAddTagByName(
+            @PathVariable String instituteId,
+            @PathVariable String tagName,
+            @RequestParam("file") MultipartFile csvFile,
+            @RequestAttribute("user") CustomUserDetails user) {
+        
+        BulkUserTagOperationResultDTO result = csvTagService.processCsvWithUsernamesAndAddTagByName(csvFile, tagName, instituteId, user.getUserId());
+        
+        log.info("CSV upload with usernames operation completed for tag name '{}' - Success: {}, Skip: {}, Error: {}", 
+                tagName, result.getSuccessCount(), result.getSkipCount(), result.getErrorCount());
+        
+        return ResponseEntity.ok(result);
+    }
+    
+    /**
+     * Download CSV template for user IDs
      */
     @GetMapping("/csv/template")
     public ResponseEntity<String> downloadCsvTemplate(@RequestAttribute("user") CustomUserDetails user) {
@@ -248,6 +366,19 @@ public class TagController {
         
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"user_tags_template.csv\"")
+                .contentType(MediaType.TEXT_PLAIN)
+                .body(template);
+    }
+    
+    /**
+     * Download CSV template for usernames
+     */
+    @GetMapping("/csv/template-usernames")
+    public ResponseEntity<String> downloadUsernamesCsvTemplate(@RequestAttribute("user") CustomUserDetails user) {
+        String template = csvTagService.generateUsernamesCsvTemplate();
+        
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"user_tags_usernames_template.csv\"")
                 .contentType(MediaType.TEXT_PLAIN)
                 .body(template);
     }

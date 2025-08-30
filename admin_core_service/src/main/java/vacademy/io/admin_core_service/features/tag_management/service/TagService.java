@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.tag_management.entity.UserTag;
 import vacademy.io.admin_core_service.features.tag_management.enums.TagStatus;
 import vacademy.io.admin_core_service.features.tag_management.repository.TagRepository;
 import vacademy.io.admin_core_service.features.tag_management.repository.UserTagRepository;
+import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -21,6 +22,7 @@ public class TagService {
     
     private final TagRepository tagRepository;
     private final UserTagRepository userTagRepository;
+    private final InstituteStudentRepository studentRepository;
     
     /**
      * Create a new tag for an institute
@@ -327,6 +329,97 @@ public class TagService {
                     return result;
                 })
                 .collect(Collectors.toList());
+    }
+    
+    /**
+     * Get all user IDs that have a specific tag
+     */
+    public List<String> getUserIdsByTag(String tagId, String instituteId) {
+        // Validate that tag exists and is accessible
+        tagRepository.findActiveTagByIdAndInstituteId(tagId, instituteId)
+                .orElseThrow(() -> new IllegalArgumentException("Tag not found or not accessible"));
+        
+        return userTagRepository.findUserIdsByTagIdAndInstituteId(tagId, instituteId);
+    }
+    
+    /**
+     * Get all user IDs that have any of the specified tags
+     */
+    public List<String> getUserIdsByTags(List<String> tagIds, String instituteId) {
+        // Validate that all tags exist and are accessible
+        List<Tag> tags = tagRepository.findActiveTagsByIdsAndInstituteId(tagIds, instituteId);
+        if (tags.size() != tagIds.size()) {
+            throw new IllegalArgumentException("Some tags not found or not accessible");
+        }
+        
+        return userTagRepository.findUserIdsByTagIdsAndInstituteId(tagIds, instituteId);
+    }
+    
+    /**
+     * Get detailed user information for users that have any of the specified tags
+     */
+    public List<Map<String, Object>> getUserDetailsByTags(List<String> tagIds, String instituteId) {
+        // Validate that all tags exist and are accessible
+        List<Tag> tags = tagRepository.findActiveTagsByIdsAndInstituteId(tagIds, instituteId);
+        if (tags.size() != tagIds.size()) {
+            throw new IllegalArgumentException("Some tags not found or not accessible");
+        }
+        
+        // Get user IDs
+        List<String> userIds = userTagRepository.findUserIdsByTagIdsAndInstituteId(tagIds, instituteId);
+        
+        if (userIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+        
+        // Get student details for these user IDs
+        List<Map<String, Object>> userDetails = studentRepository.findStudentDetailsByUserIds(userIds);
+        
+        log.info("Retrieved detailed information for {} users with tags {} in institute {}", 
+                userDetails.size(), tagIds, instituteId);
+        
+        return userDetails;
+    }
+    
+    /**
+     * Get user counts for multiple tags
+     */
+    public Map<String, Object> getUserCountsByTags(List<String> tagIds, String instituteId) {
+        // Validate that all tags exist and are accessible
+        List<Tag> tags = tagRepository.findActiveTagsByIdsAndInstituteId(tagIds, instituteId);
+        Map<String, String> tagIdToNameMap = tags.stream()
+                .collect(Collectors.toMap(Tag::getId, Tag::getTagName));
+        
+        // Get user counts per tag
+        List<Object[]> counts = userTagRepository.getUserCountPerSpecificTags(tagIds, instituteId);
+        
+        Map<String, Object> result = new HashMap<>();
+        Map<String, Long> tagCounts = new HashMap<>();
+        
+        // Process the counts
+        for (Object[] count : counts) {
+            String tagId = (String) count[0];
+            String tagName = (String) count[1];
+            Long userCount = (Long) count[2];
+            
+            tagCounts.put(tagName, userCount);
+        }
+        
+        // Add zero counts for tags that have no users
+        for (Tag tag : tags) {
+            if (!tagCounts.containsKey(tag.getTagName())) {
+                tagCounts.put(tag.getTagName(), 0L);
+            }
+        }
+        
+        result.put("tagCounts", tagCounts);
+        result.put("totalTags", tagIds.size());
+        result.put("totalUsers", tagCounts.values().stream().mapToLong(Long::longValue).sum());
+        
+        log.info("Retrieved user counts for {} tags in institute {}: {}", 
+                tagIds.size(), instituteId, tagCounts);
+        
+        return result;
     }
     
     /**

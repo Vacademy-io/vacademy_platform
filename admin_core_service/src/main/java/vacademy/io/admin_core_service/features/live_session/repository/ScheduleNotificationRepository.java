@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.live_session.dto.NotificationQueryDTO;
 import vacademy.io.admin_core_service.features.live_session.entity.ScheduleNotification;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 
@@ -31,6 +32,29 @@ public interface ScheduleNotificationRepository extends JpaRepository<ScheduleNo
     WHERE sn.session_id = :sessionId
 """, nativeQuery = true)
     List<NotificationQueryDTO> findNotificationsBySessionId(@Param("sessionId") String sessionId);
+
+    @Query(value = """
+        SELECT *
+        FROM schedule_notifications
+        WHERE status = 'PENDING'
+          AND trigger_time IS NOT NULL
+          AND (trigger_time BETWEEN :now AND :windowEnd)
+        ORDER BY trigger_time ASC
+        LIMIT 500
+    """, nativeQuery = true)
+    List<ScheduleNotification> findPendingBetween(@Param("now") LocalDateTime now,
+                                                  @Param("windowEnd") LocalDateTime windowEnd);
+
+    @Query(value = """
+        SELECT *
+        FROM schedule_notifications
+        WHERE status = 'PENDING'
+          AND trigger_time IS NOT NULL
+          AND trigger_time < :now
+        ORDER BY trigger_time ASC
+        LIMIT 1000
+    """, nativeQuery = true)
+    List<ScheduleNotification> findPastDue(@Param("now") LocalDateTime now);
 
 
 }

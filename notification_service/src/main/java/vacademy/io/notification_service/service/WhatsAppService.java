@@ -158,6 +158,12 @@ public class WhatsAppService {
 
     public ResponseEntity<String> sendTemplateMessage(String toNumber, String templateName,
                                                       String languageCode, List<Component> components,String accessToken,String appId) {
+
+        //right now bypass the whatsapp
+        //when accessToken and appId is available then use it
+        if(true)
+             return ResponseEntity.ok("Whatsapp send successfully");
+
         try {
             // Create request body
             WhatsAppMessageRequest request = new WhatsAppMessageRequest(

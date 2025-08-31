@@ -24,6 +24,7 @@ export const useSystemAlerts = (options: UseSystemAlertsOptions = {}) => {
     fetchSystemAlertUnreadCount,
     markAlertAsRead,
     dismissAlert,
+    dismissAllAlerts,
   } = useAnnouncementStore();
 
   const { track } = useAnalytics();
@@ -136,6 +137,16 @@ export const useSystemAlerts = (options: UseSystemAlertsOptions = {}) => {
     }
   }, [dismissAlert, track]);
 
+  // Dismiss all alerts
+  const dismissAll = useCallback(async () => {
+    try {
+      await dismissAllAlerts();
+      track('System Alerts Dismissed All', { count: systemAlerts.items.length });
+    } catch (error) {
+      console.error('Failed to dismiss all alerts:', error);
+    }
+  }, [dismissAllAlerts, track, systemAlerts.items.length]);
+
   // Load more alerts
   const loadMore = useCallback(async () => {
     if (systemAlerts.loading || !systemAlerts.hasMore) return;
@@ -195,6 +206,7 @@ export const useSystemAlerts = (options: UseSystemAlertsOptions = {}) => {
     // Actions
     markAsRead,
     dismiss,
+    dismissAll,
     loadMore,
     refresh,
     handleAlertVisibility,

@@ -299,7 +299,7 @@ export const CourseStructureDetails = ({
             if (Object.keys(updates).length > 0) setThumbUrlById((prev) => ({ ...prev, ...updates }));
         };
         prefetchTopLevelSubjects();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, [selectedSubjectId, studyLibraryData, thumbUrlById]);
 
     const handleSlideNavigation = (

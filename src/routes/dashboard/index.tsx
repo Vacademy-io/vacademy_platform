@@ -52,6 +52,7 @@ import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import type { StudentDashboardWidgetConfig } from "@/types/student-display-settings";
 import { Card as DSCard } from "@/components/ui/card";
 import { DashboardPinsPanel } from "@/components/announcements";
+import { RecentSystemNotifications } from "./-components/RecentSystemNotifications";
 
 export const Route = createFileRoute("/dashboard/")({
   component: () => {
@@ -616,6 +617,11 @@ export function DashboardComponent() {
         {/* Dashboard Pins Panel */}
         <div className="animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
           <DashboardPinsPanel maxPins={3} />
+        </div>
+
+        {/* Recent System Notifications Widget */}
+        <div className="animate-fade-in-up" style={{ animationDelay: "0.15s" }}>
+          <RecentSystemNotifications />
         </div>
 
         {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (

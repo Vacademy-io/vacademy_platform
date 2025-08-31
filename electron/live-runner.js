@@ -1,4 +1,4 @@
-/* eslint-disable no-undef */
+ 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const cp = require('child_process');
 const chokidar = require('chokidar');

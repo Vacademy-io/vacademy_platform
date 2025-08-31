@@ -309,6 +309,27 @@ export const batchMarkAsRead = async (recipientMessageIds: string[]) => {
   }
 };
 
+// Batch operations for dismiss (for performance)
+export const batchDismissMessages = async (recipientMessageIds: string[]) => {
+  try {
+    const { userId } = await getUserContext();
+    if (!userId) throw new Error('User ID not found');
+
+    const promises = recipientMessageIds.map(recipientMessageId =>
+      notificationApi.post('/user-messages/interactions', {
+        recipientMessageId,
+        userId,
+        interactionType: 'DISMISSED',
+      } as MessageInteractionRequest)
+    );
+
+    await Promise.all(promises);
+    toast.success(`Dismissed ${recipientMessageIds.length} messages`);
+  } catch (error) {
+    handleApiError(error, 'batch dismiss messages');
+  }
+};
+
 // Export all functions
 export const announcementApi = {
   // System Alerts
@@ -329,6 +350,7 @@ export const announcementApi = {
   dismissMessage,
   recordInteraction,
   batchMarkAsRead,
+  batchDismissMessages,
   
   // Message Replies
   getAnnouncementReplies,

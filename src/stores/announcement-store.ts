@@ -17,6 +17,7 @@ interface AnnouncementStore {
   fetchSystemAlertUnreadCount: () => Promise<void>;
   markAlertAsRead: (messageId: string) => Promise<void>;
   dismissAlert: (messageId: string) => Promise<void>;
+  dismissAllAlerts: () => Promise<void>;
   addSystemAlert: (alert: UserMessage) => void;
   updateSystemAlert: (messageId: string, updates: Partial<UserMessage>) => void;
   removeSystemAlert: (messageId: string) => void;
@@ -172,6 +173,26 @@ export const useAnnouncementStore = create<AnnouncementStore>()(
           }));
         } catch (error) {
           console.error('Failed to dismiss alert:', error);
+        }
+      },
+
+      dismissAllAlerts: async () => {
+        try {
+          const currentAlerts = get().systemAlerts.items;
+          if (currentAlerts.length === 0) return;
+
+          const messageIds = currentAlerts.map(alert => alert.messageId);
+          await announcementApi.batchDismissMessages(messageIds);
+          
+          set((state) => ({
+            systemAlerts: {
+              ...state.systemAlerts,
+              items: [],
+              unreadCount: 0,
+            }
+          }));
+        } catch (error) {
+          console.error('Failed to dismiss all alerts:', error);
         }
       },
 

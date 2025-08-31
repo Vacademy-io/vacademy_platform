@@ -1,14 +1,24 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bell, X, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { Bell, X, ChevronDown, ChevronUp, Loader2, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { useSystemAlerts } from '@/hooks/useSystemAlerts';
 import { formatDistanceToNow } from 'date-fns';
-import { processHtmlString } from '@/lib/utils';
 import type { UserMessage } from '@/types/announcement';
 import { announcementApi } from '@/services/announcementApi';
 
@@ -27,6 +37,7 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
     isLoadingSettings,
     markAsRead,
     dismiss,
+    dismissAll,
     loadMore,
     refresh,
     handleAlertVisibility,
@@ -127,7 +138,7 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
       return (
         <div 
           className="prose prose-sm max-w-none"
-          dangerouslySetInnerHTML={{ __html: processHtmlString(alert.content.content) }}
+          dangerouslySetInnerHTML={{ __html: alert.content.content }}
         />
       );
     }
@@ -227,6 +238,39 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
             <div className="flex items-center justify-between">
               <h3 className="font-medium text-gray-900">System Alerts</h3>
               <div className="flex items-center gap-2">
+                {alerts.length > 0 && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        disabled={loading}
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        Clear All
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Clear All Notifications</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Are you sure you want to dismiss all {alerts.length} notification{alerts.length === 1 ? '' : 's'}? 
+                          This action cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={dismissAll}
+                          className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+                        >
+                          Clear All
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
                 <Button
                   variant="ghost"
                   size="sm"

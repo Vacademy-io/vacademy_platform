@@ -5,10 +5,11 @@ import { isTokenExpired } from "./sessionUtility"; // Utility for JWT expiration
 import { REFRESH_TOKEN_URL } from "@/constants/urls";
 
 // Helper functions to interact with Capacitor Preferences
-export const getTokenFromStorage = async (key: string): Promise<string | null> => {
+export const getTokenFromStorage = async (
+  key: string
+): Promise<string | null> => {
   try {
     const { value } = await Preferences.get({ key });
-    console.log(`[Auth] Retrieved ${key} from storage:`, value ? `${value.substring(0, 20)}...` : 'null');
     return value;
   } catch (error) {
     console.error(`[Auth] Error retrieving ${key} from storage:`, error);
@@ -33,7 +34,10 @@ const refreshTokens = async (refreshToken: string): Promise<void> => {
 
     // Store the new tokens and institute ID
     await Preferences.set({ key: TokenKey.accessToken, value: accessToken });
-    await Preferences.set({ key: TokenKey.refreshToken, value: newRefreshToken });
+    await Preferences.set({
+      key: TokenKey.refreshToken,
+      value: newRefreshToken,
+    });
     await Preferences.set({ key: "instituteId", value: instituteId });
   } catch (error) {
     console.error("Error refreshing token", error);
@@ -53,42 +57,22 @@ const authenticatedAxiosInstance = axios.create({
 // Request interceptor: gets called before every request
 authenticatedAxiosInstance.interceptors.request.use(
   async (request) => {
-    console.log(`[Auth] Making request to: ${request.method?.toUpperCase()} ${request.url}`);
-    
     const accessToken = await getTokenFromStorage(TokenKey.accessToken);
     const instituteId = await getTokenFromStorage("InstituteId");
-
-    console.log(`[Auth] Request details:`, {
-      url: request.url,
-      method: request.method,
-      hasAccessToken: !!accessToken,
-      accessTokenLength: accessToken?.length || 0,
-      hasInstituteId: !!instituteId,
-      instituteId: instituteId,
-      tokenStart: accessToken ? accessToken.substring(0, 20) + '...' : 'null'
-    });
 
     // Add instituteId to headers if available
     if (instituteId) {
       request.headers["clientId"] = instituteId;
       request.headers["X-Institute-Id"] = instituteId;
-      console.log(`[Auth] Added institute headers:`, { clientId: instituteId, "X-Institute-Id": instituteId });
     }
 
     // Check if the access token is expired
     const isExpired = isTokenExpired(accessToken);
-    console.log(`[Auth] Token expiration check:`, {
-      hasToken: !!accessToken,
-      isExpired: isExpired,
-      tokenStart: accessToken ? accessToken.substring(0, 20) + '...' : 'null'
-    });
-    
+
     if (!isExpired) {
       request.headers.Authorization = `Bearer ${accessToken}`;
-      console.log(`[Auth] Added Authorization header: Bearer ${accessToken?.substring(0, 20)}...`);
       return request;
     } else {
-      console.log(`[Auth] Access token expired, attempting refresh...`);
       // If the access token is expired, refresh it
       const refreshToken = await getTokenFromStorage(TokenKey.refreshToken);
       try {
@@ -100,7 +84,6 @@ authenticatedAxiosInstance.interceptors.request.use(
         // Get the new access token after refresh
         const newAccessToken = await getTokenFromStorage(TokenKey.accessToken);
         request.headers["Authorization"] = `Bearer ${newAccessToken}`;
-        console.log(`[Auth] Token refreshed, new Authorization header: Bearer ${newAccessToken?.substring(0, 20)}...`);
 
         return request;
       } catch (error) {
@@ -132,10 +115,10 @@ authenticatedAxiosInstance.interceptors.response.use(
         url: error.config?.url,
         method: error.config?.method,
         headers: error.config?.headers,
-        data: error.response.data
+        data: error.response.data,
       });
     }
-    
+
     // Handle unauthorized errors (401)
     if (error.response && error.response.status === 401) {
       console.error("[Auth] Unauthorized access. Logging out...");
@@ -146,11 +129,13 @@ authenticatedAxiosInstance.interceptors.response.use(
       // Optionally, you can add logic to redirect to login page
       // This might involve using a navigation library or window.location
     }
-    
+
     // Handle forbidden errors (403) - might be token issues
     if (error.response && error.response.status === 403) {
-      console.error("[Auth] Forbidden access (403). This might indicate token issues.");
-      
+      console.error(
+        "[Auth] Forbidden access (403). This might indicate token issues."
+      );
+
       // Log current token state for debugging
       try {
         const currentToken = await getTokenFromStorage(TokenKey.accessToken);
@@ -159,13 +144,16 @@ authenticatedAxiosInstance.interceptors.response.use(
           hasToken: !!currentToken,
           tokenLength: currentToken?.length || 0,
           hasInstituteId: !!currentInstituteId,
-          instituteId: currentInstituteId
+          instituteId: currentInstituteId,
         });
       } catch (tokenError) {
-        console.error("[Auth] Failed to check token state during 403 error:", tokenError);
+        console.error(
+          "[Auth] Failed to check token state during 403 error:",
+          tokenError
+        );
       }
     }
-    
+
     return Promise.reject(error);
   }
 );

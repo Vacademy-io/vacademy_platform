@@ -280,16 +280,21 @@ public class UserMessageService {
                     });
                 }
                 
-                // Load creator details from auth service
-                try {
-                    List<User> users = authServiceClient.getUsersByIds(List.of(announcement.getCreatedBy()));
-                    if (!users.isEmpty()) {
-                        User creator = users.get(0);
-                        response.setCreatedByName(creator.getFullName());
-                        // Note: Role would need to be fetched separately or included in User entity
+                // Use stored creator details from announcement
+                response.setCreatedByName(announcement.getCreatedByName());
+                response.setCreatedByRole(announcement.getCreatedByRole());
+                
+                // Fallback to auth service if createdByName is not stored
+                if (response.getCreatedByName() == null || response.getCreatedByName().trim().isEmpty()) {
+                    try {
+                        List<User> users = authServiceClient.getUsersByIds(List.of(announcement.getCreatedBy()));
+                        if (!users.isEmpty()) {
+                            User creator = users.get(0);
+                            response.setCreatedByName(creator.getFullName());
+                        }
+                    } catch (Exception e) {
+                        log.warn("Failed to load creator details for announcement: {}", announcement.getId(), e);
                     }
-                } catch (Exception e) {
-                    log.warn("Failed to load creator details for announcement: {}", announcement.getId(), e);
                 }
             });
         } catch (Exception e) {

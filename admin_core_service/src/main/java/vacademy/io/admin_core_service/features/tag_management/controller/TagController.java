@@ -247,8 +247,7 @@ public class TagController {
     @PostMapping("/institutes/{instituteId}/tags/users")
     public ResponseEntity<List<String>> getUsersByTags(
             @PathVariable String instituteId,
-            @RequestBody List<String> tagIds,
-            @RequestAttribute("user") CustomUserDetails user) {
+            @RequestBody List<String> tagIds) {
         
         List<String> userIds = tagService.getUserIdsByTags(tagIds, instituteId);
         

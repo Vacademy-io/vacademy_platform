@@ -113,7 +113,6 @@ public class AdminCoreServiceClient {
     /**
      * Get user IDs by tags for a given institute
      */
-    @Cacheable(value = "usersByTags", key = "#instituteId + ':' + #tagIds.hashCode()")
     @Retryable(value = {RestClientException.class}, maxAttempts = 3, backoff = @Backoff(delay = 1000))
     public List<String> getUsersByTags(String instituteId, List<String> tagIds) {
         log.debug("Calling admin-core service to get users by {} tags for institute {}", tagIds != null ? tagIds.size() : 0, instituteId);
@@ -123,7 +122,7 @@ public class AdminCoreServiceClient {
         }
 
         try {
-            String url = adminCoreServiceBaseUrl + "/admin-core-service/v1/institutes/" + instituteId + "/tags/users";
+            String url = adminCoreServiceBaseUrl + "/admin-core-service/tag-management/institutes/" + instituteId + "/tags/users";
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);

@@ -122,7 +122,7 @@ const CourseCatalougePage: React.FC = () => {
             );
             setData(response.data);
         } catch (error) {
-            console.log(error);
+            // Error handling
 
             // If enrolled courses fail, try to fetch available courses for the "ALL" tab
             if (tabType === "ALL") {
@@ -164,10 +164,7 @@ const CourseCatalougePage: React.FC = () => {
                     );
                     setData(response.data);
                 } catch (fallbackError) {
-                    console.log(
-                        "Fallback to available courses also failed:",
-                        fallbackError
-                    );
+                    // Fallback error handling
                 }
             }
         }
@@ -260,7 +257,7 @@ const CourseCatalougePage: React.FC = () => {
                 );
                 setInstituteData(response.data);
             } catch (error) {
-                console.log(error);
+                // Error handling
             }
         };
 
@@ -294,10 +291,9 @@ const CourseCatalougePage: React.FC = () => {
                         },
                     }
                 );
-                // console.log('Instructor response9999:', response.data);
                 setInstructors(response.data);
             } catch (error) {
-                console.log(error);
+                // Error handling
             }
         };
 
@@ -322,7 +318,7 @@ const CourseCatalougePage: React.FC = () => {
                 }
                 
             } catch (error) {
-                console.error('[CourseCatalougePage] Failed to load initial course data:', error);
+                // Failed to load initial course data
             }
         };
 

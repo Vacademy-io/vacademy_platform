@@ -73,7 +73,6 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
       }
     } catch (err) {
       setError("Failed to load free plan options. Please try again.");
-      console.error("Error fetching enrollment data:", err);
     } finally {
       setLoading(false);
     }
@@ -88,11 +87,7 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
     setProcessingEnrollment(true);
     try {
       // TODO: Implement actual free enrollment processing
-      console.log("Processing free enrollment with:", {
-        paymentOption: selectedPaymentOption,
-        paymentPlan: selectedPaymentPlan,
-        packageSessionId,
-      });
+
 
       // Simulate enrollment processing
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -103,7 +98,6 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
       // TODO: Show success message or redirect
     } catch (err) {
       setError("Enrollment failed. Please try again.");
-      console.error("Enrollment error:", err);
     } finally {
       setProcessingEnrollment(false);
     }

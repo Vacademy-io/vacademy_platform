@@ -12,7 +12,6 @@ export const getTokenFromStorage = async (
     const { value } = await Preferences.get({ key });
     return value;
   } catch (error) {
-    console.error(`[Auth] Error retrieving ${key} from storage:`, error);
     return null;
   }
 };
@@ -39,9 +38,9 @@ const refreshTokens = async (refreshToken: string): Promise<void> => {
       value: newRefreshToken,
     });
     await Preferences.set({ key: "instituteId", value: instituteId });
-  } catch (error) {
-    console.error("Error refreshing token", error);
-    throw error;
+  } 
+   catch (error) {
+    console.error("[Auth] Failed to refresh tokens:", error);
   }
 };
 
@@ -68,7 +67,7 @@ authenticatedAxiosInstance.interceptors.request.use(
 
     // Check if the access token is expired
     const isExpired = isTokenExpired(accessToken);
-
+    
     if (!isExpired) {
       request.headers.Authorization = `Bearer ${accessToken}`;
       return request;
@@ -87,7 +86,6 @@ authenticatedAxiosInstance.interceptors.request.use(
 
         return request;
       } catch (error) {
-        console.error("Error refreshing token: Logging out ...", error);
 
         // If token refresh fails, remove tokens and institute ID
         await removeTokensAndInstituteId();
@@ -98,7 +96,6 @@ authenticatedAxiosInstance.interceptors.request.use(
     }
   },
   async (error) => {
-    console.error(`[Auth] Request interceptor error:`, error);
     return Promise.reject(error);
   }
 );
@@ -107,22 +104,13 @@ authenticatedAxiosInstance.interceptors.request.use(
 authenticatedAxiosInstance.interceptors.response.use(
   (response) => response,
   async (error) => {
-    // Log all error responses for debugging
+    // Handle error responses
     if (error.response) {
-      console.error(`[Auth] API Error Response:`, {
-        status: error.response.status,
-        statusText: error.response.statusText,
-        url: error.config?.url,
-        method: error.config?.method,
-        headers: error.config?.headers,
-        data: error.response.data,
-      });
+      // Error response handling logic
     }
 
     // Handle unauthorized errors (401)
     if (error.response && error.response.status === 401) {
-      console.error("[Auth] Unauthorized access. Logging out...");
-
       // Remove tokens and institute ID
       await removeTokensAndInstituteId();
 
@@ -132,26 +120,7 @@ authenticatedAxiosInstance.interceptors.response.use(
 
     // Handle forbidden errors (403) - might be token issues
     if (error.response && error.response.status === 403) {
-      console.error(
-        "[Auth] Forbidden access (403). This might indicate token issues."
-      );
-
-      // Log current token state for debugging
-      try {
-        const currentToken = await getTokenFromStorage(TokenKey.accessToken);
-        const currentInstituteId = await getTokenFromStorage("InstituteId");
-        console.log("[Auth] Current token state during 403 error:", {
-          hasToken: !!currentToken,
-          tokenLength: currentToken?.length || 0,
-          hasInstituteId: !!currentInstituteId,
-          instituteId: currentInstituteId,
-        });
-      } catch (tokenError) {
-        console.error(
-          "[Auth] Failed to check token state during 403 error:",
-          tokenError
-        );
-      }
+      // Handle 403 errors silently
     }
 
     return Promise.reject(error);

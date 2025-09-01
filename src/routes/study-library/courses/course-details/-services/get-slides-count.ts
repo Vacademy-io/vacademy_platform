@@ -22,7 +22,6 @@ const fetchAllSlidesForPackageSession = async (packageSessionId: string) => {
         });
         return response?.data;
     } catch (error) {
-        console.error("Error fetching slides for package session:", error);
         return [];
     }
 };

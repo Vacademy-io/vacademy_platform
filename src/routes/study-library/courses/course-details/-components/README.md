@@ -37,8 +37,16 @@ A free plan enrollment dialog that:
 - Handles free enrollment processing
 - No payment required
 
-### payment-dialogs/DonationDialog.tsx
-A donation dialog that:
+### components/common/donation/DonationDialog.tsx
+A refactored donation dialog system with multiple components:
+- **DonationDialog.tsx**: Main orchestrator component
+- **DonationAmountSelector.tsx**: Amount selection step
+- **DonationEmailForm.tsx**: Email input step  
+- **DonationPaymentForm.tsx**: Payment processing step
+- **DonationSummary.tsx**: Reusable summary display
+- **useDonationDialog.ts**: Custom hook for shared logic
+
+Features:
 - Fetches donation options from the backend API
 - Displays suggested amounts from backend metadata (`suggestedAmounts`)
 - Enforces minimum amount restrictions from backend (`minimumAmount`)
@@ -47,6 +55,7 @@ A donation dialog that:
 - Includes optional skip functionality
 - Supports loading and error states
 - Validates custom amounts against minimum requirements with user-friendly error messages
+- Better maintainability with separated concerns
 
 ### course-details-page.tsx
 The main course details page that:

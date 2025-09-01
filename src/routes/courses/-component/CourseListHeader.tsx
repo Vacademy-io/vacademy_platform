@@ -4,6 +4,7 @@ import { AuthModal } from "@/components/common/auth/modal/AuthModal";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { Button } from "@/components/ui/button";
+import { CoursesDonationDialog } from "./CoursesDonationDialog";
 
 const CourseListHeader = ({
   fileId,
@@ -19,6 +20,7 @@ const CourseListHeader = ({
   const [imgUrl, setImgUrl] = useState("");
   const [logoLoading, setLogoLoading] = useState<boolean>(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isDonationDialogOpen, setIsDonationDialogOpen] = useState(false);
 
   useEffect(() => {
     setLogoLoading(true);
@@ -135,7 +137,13 @@ const CourseListHeader = ({
               </Button>
             }
           />
-          <Button size="sm" className="text-xs sm:text-sm">Donate</Button>
+          <Button 
+            size="sm" 
+            className="text-xs sm:text-sm"
+            onClick={() => setIsDonationDialogOpen(true)}
+          >
+            Donate
+          </Button>
         </div>
       </div>
 
@@ -176,9 +184,27 @@ const CourseListHeader = ({
             >
               Login
             </Button>
-            <Button size="sm" className="text-xs sm:text-sm">Donate</Button>
+            <Button 
+              size="sm" 
+              className="text-xs sm:text-sm"
+              onClick={() => {
+                closeMobileMenu();
+                setIsDonationDialogOpen(true);
+              }}
+            >
+              Donate
+            </Button>
           </div>
         </div>
+      )}
+
+      {/* Donation Dialog */}
+      {instituteId && (
+        <CoursesDonationDialog
+          open={isDonationDialogOpen}
+          onOpenChange={setIsDonationDialogOpen}
+          instituteId={instituteId}
+        />
       )}
     </nav>
   );

@@ -652,7 +652,6 @@ export const createStripePaymentMethod = async (
 
     return paymentMethod;
   } catch (error) {
-    console.error('Error creating Stripe payment method:', error);
     throw error;
   }
 };
@@ -737,7 +736,6 @@ const loadStripe = async (publishableKey: string) => {
       document.head.appendChild(script);
     });
   } catch (error) {
-    console.error('❌ Error loading Stripe:', error);
     throw error;
   }
 };
@@ -889,7 +887,6 @@ export const initiatePaymentForEnrollment = async (
           throw new Error(`Payment failed: ${errorMessage}`);
         }
       } else if (error.request) {
-        console.error('📊 Request error:', error.request);
         throw new Error('Network error. Please check your connection and try again.');
       } else {
         throw new Error(`Payment failed: ${error.message}`);
@@ -903,7 +900,8 @@ export const initiatePaymentForEnrollment = async (
  * @returns Promise<any>
  */
 export const handlePaymentForEnrollment = async (params: {
-  email: string;
+  userEmail: string; // profile email
+  receiptEmail: string; // dialog email
   instituteId: string;
   packageSessionId: string;
   enrollmentData: EnrollmentResponse;
@@ -938,7 +936,8 @@ export const handlePaymentForEnrollment = async (params: {
   };
 }): Promise<any> => {
   const {
-    email: rawEmail,
+    userEmail,
+    receiptEmail,
     instituteId,
     packageSessionId,
     enrollmentData,
@@ -955,8 +954,9 @@ export const handlePaymentForEnrollment = async (params: {
     userData
   } = params;
 
-  // Validate and sanitize email to ensure proper format
-  const email = validateAndSanitizeEmail(rawEmail);
+  // Validate and sanitize emails
+  const sanitizedUserEmail = validateAndSanitizeEmail(userEmail);
+  const sanitizedReceiptEmail = validateAndSanitizeEmail(receiptEmail);
 
   try {
     // Get the current user ID
@@ -1043,25 +1043,24 @@ export const handlePaymentForEnrollment = async (params: {
     // Prepare payment data according to the exact backend API specification
     const paymentPayload = {
       user: {
-        id: currentUserId, // Use the real user ID from authentication
-        username: userData?.username || email.split('@')[0] || `user_${Date.now()}`, // Use real username or generate from email
-        email: email,
-        full_name: userData?.full_name || "Donation User", // Use real name or default
-        mobile_number: userData?.mobile_number || "", // Use real mobile or empty
-        date_of_birth: userData?.date_of_birth || new Date().toISOString(), // Use real DOB or default
-        gender: userData?.gender || "Not Specified", // Use real gender or default
-        address_line: userData?.address_line || "", // Use real address or empty
-        city: userData?.city || "", // Use real city or empty
-        region: userData?.region || "", // Use real region or empty
-        pin_code: userData?.pin_code || "", // Use real pin code or empty
-        profile_pic_file_id: userData?.profile_pic_file_id || "", // Use real profile pic or empty
-        roles: ["STUDENT"], // Default role
+        id: currentUserId,
+        username: userData?.username || sanitizedUserEmail.split('@')[0] || `user_${Date.now()}`,
+        email: sanitizedUserEmail,
+        full_name: userData?.full_name || "Donation User",
+        mobile_number: userData?.mobile_number || "",
+        date_of_birth: userData?.date_of_birth || new Date().toISOString(),
+        gender: userData?.gender || "Not Specified",
+        address_line: userData?.address_line || "",
+        city: userData?.city || "",
+        region: userData?.region || "",
+        pin_code: userData?.pin_code || "",
+        profile_pic_file_id: userData?.profile_pic_file_id || "",
+        roles: ["STUDENT"],
         root_user: false
       },
       institute_id: instituteId,
-      subject_id: "", // Optional field from the specification
+      subject_id: "",
       vendor_id: paymentType === 'free' ? "FREE" : "STRIPE",
-      // Note: Payment gateway configuration is handled by the backend based on the stripe_request
       learner_package_session_enroll: {
         package_session_ids: [packageSessionId],
         plan_id: selectedPaymentPlan.id,
@@ -1073,15 +1072,21 @@ export const handlePaymentForEnrollment = async (params: {
           description: description,
           charge_automatically: true,
           institute_id: instituteId,
-
+          email: sanitizedReceiptEmail,
           stripe_request: {
             payment_method_id: paymentMethodId,
             card_last4: cardLast4,
             customer_id: customerId
           },
+          razorpay_request: {
+            customer_id: "",
+            contact: "",
+            email: sanitizedReceiptEmail
+          },
+          pay_pal_request: {},
           include_pending_items: true
         },
-        custom_field_values: [] // Empty array for now, can be populated if needed
+        custom_field_values: []
       }
     };
 

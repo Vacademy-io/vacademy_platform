@@ -38,8 +38,9 @@ const refreshTokens = async (refreshToken: string): Promise<void> => {
       value: newRefreshToken,
     });
     await Preferences.set({ key: "instituteId", value: instituteId });
-  } catch (error) {
-    throw error;
+  } 
+   catch (error) {
+    console.error("[Auth] Failed to refresh tokens:", error);
   }
 };
 

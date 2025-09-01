@@ -133,7 +133,8 @@ export const usePaymentDialog = (props: {
   }, [open, packageSessionId, instituteId]);
 
   const handlePayment = async (params: {
-    email: string;
+    userEmail: string; // profile email
+    receiptEmail: string; // dialog email
     amount: number;
     currency: string;
     description: string;
@@ -155,17 +156,15 @@ export const usePaymentDialog = (props: {
       country: string;
     };
   }) => {
-    const { email, amount, currency, description, paymentType, paymentMethod } = params;
+    const { userEmail, receiptEmail, amount, currency, description, paymentType, paymentMethod } = params;
     
     if (!state.enrollmentData || !state.paymentGatewayData || !state.selectedPaymentPlan || !state.selectedPaymentOption) {
       throw new Error('Payment configuration is incomplete. Please try again.');
     }
 
-    // Note: Token refresh is now handled automatically by authenticatedAxiosInstance
-    // No need to manually check or refresh tokens
-
     return await handlePaymentForEnrollment({
-      email,
+      userEmail,
+      receiptEmail,
       instituteId,
       packageSessionId,
       enrollmentData: state.enrollmentData,
@@ -177,8 +176,8 @@ export const usePaymentDialog = (props: {
       description,
       paymentType,
       paymentMethod,
-      token: params.token, // Use the token from params since we're not modifying it anymore
-      userData: params.userData, // Pass user data if provided
+      token: params.token,
+      userData: params.userData,
     });
   };
 

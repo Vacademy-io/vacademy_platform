@@ -68,14 +68,14 @@ export const createDonationRequest = (
   cardLast4: string,
   customerId: string = ""
 ): Omit<DonationRequest, 'institute_id'> => {
-  return {
-    amount: amount * 100, // Convert to cents
+  const request = {
+    amount: amount, // Send amount in dollars
     currency: "USD",
     description: `Donation of $${amount}`,
     charge_automatically: true,
     order_id: `donation_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     email: email,
-    vendor: "stripe",
+    vendor: "STRIPE",
     vendor_id: paymentMethodId,
     stripe_request: {
       payment_method_id: paymentMethodId,
@@ -90,4 +90,6 @@ export const createDonationRequest = (
     pay_pal_request: {},
     include_pending_items: true,
   };
+  
+  return request;
 };

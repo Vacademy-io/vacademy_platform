@@ -577,7 +577,8 @@ export const useDonationDialog = ({
       
       // Use the shared payment function with null payment method to enroll without payment
       await handlePayment({
-        email: sanitizedEmail,
+        userEmail: userData.email || sanitizedEmail,
+        receiptEmail: sanitizedEmail,
         amount: 0, // No payment amount
         currency: getCurrency(),
         description: `Free enrollment for ${selectedPaymentPlan?.name || 'course'}`,

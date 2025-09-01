@@ -56,7 +56,6 @@ export const processDonationPayment = async (
     const result = await response.json();
     return result;
   } catch (error) {
-    console.error("Donation payment error:", error);
     throw error;
   }
 };

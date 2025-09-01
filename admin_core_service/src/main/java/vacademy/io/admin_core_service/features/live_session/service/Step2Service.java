@@ -13,10 +13,15 @@ import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep2
 import vacademy.io.admin_core_service.features.live_session.entity.*;
 import vacademy.io.admin_core_service.features.live_session.enums.*;
 import vacademy.io.admin_core_service.features.live_session.repository.*;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
+import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
+import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
+import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.UUID;
+import java.util.List;
 
 @Service
 public class Step2Service {
@@ -41,6 +46,12 @@ public class Step2Service {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private StudentSessionInstituteGroupMappingRepository mappingRepository;
+
+    @Autowired
+    private NotificationService notificationService;
 
     public Boolean step2AddService(LiveSessionStep2RequestDTO request, CustomUserDetails user) {
         LiveSession session = getSessionOrThrow(request.getSessionId());
@@ -69,20 +80,29 @@ public class Step2Service {
     }
 
     private void processNotificationActions(LiveSessionStep2RequestDTO request, String sessionId) {
+        // Fetch all schedules for the session
+        List<SessionSchedule> schedules = scheduleRepository.findBySessionId(sessionId);
+
         // Add
-        if (request.getAddedNotificationActions() != null) {
+        if (request.getAddedNotificationActions() != null && schedules != null) {
+            System.out.println("DEBUG: Found " + schedules.size() + " schedules for session " + sessionId);
             for (LiveSessionStep2RequestDTO.NotificationActionDTO dto : request.getAddedNotificationActions()) {
-                ScheduleNotification notification = mapToNotificationEntity(dto, sessionId);
-                scheduleNotificationRepository.save(notification);
+                for (SessionSchedule schedule : schedules) {
+                    ScheduleNotification notification = mapToNotificationEntity(dto, sessionId);
+                    notification.setTriggerTime(computeTriggerTime(dto, schedule));
+                    notification.setScheduleId(schedule.getId());
+                    scheduleNotificationRepository.save(notification);
+                }
             }
         }
 
-        // Update
+        // Update only metadata; do not change schedule linkage here
         if (request.getUpdatedNotificationActions() != null) {
             for (LiveSessionStep2RequestDTO.NotificationActionDTO dto : request.getUpdatedNotificationActions()) {
                 ScheduleNotification existing = scheduleNotificationRepository.findById(dto.getId())
                         .orElseThrow(() -> new RuntimeException("Notification not found: " + dto.getId()));
                 updateNotificationEntity(existing, dto);
+                // recompute triggerTime requires schedule context; skip here to avoid mismatch
                 scheduleNotificationRepository.save(existing);
             }
         }
@@ -111,6 +131,28 @@ public class Step2Service {
                 .offsetMinutes(offset)
                 .triggerTime(null)
                 .build();
+    }
+
+    private java.time.LocalDateTime computeTriggerTime(LiveSessionStep2RequestDTO.NotificationActionDTO dto, SessionSchedule schedule) {
+        java.time.LocalDate meetingLocalDate = schedule.getMeetingDate().toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+        java.time.LocalTime startLocalTime = schedule.getStartTime().toLocalTime();
+        java.time.LocalTime lastEntryLocalTime = schedule.getLastEntryTime() != null ? schedule.getLastEntryTime().toLocalTime() : null;
+
+        java.time.LocalDateTime startDateTime = java.time.LocalDateTime.of(meetingLocalDate, startLocalTime);
+        if (dto.getType() == NotificationTypeEnum.BEFORE_LIVE) {
+            int minutes = extractMinutes(dto.getTime());
+            return startDateTime.minusMinutes(minutes);
+        } else if (dto.getType() == NotificationTypeEnum.ON_LIVE) {
+            return startDateTime;
+        } else if (dto.getType() == NotificationTypeEnum.POST) {
+            if (lastEntryLocalTime != null) {
+                return java.time.LocalDateTime.of(meetingLocalDate, lastEntryLocalTime);
+            }
+            return startDateTime; // fallback
+        } else if (dto.getType() == NotificationTypeEnum.ON_CREATE) {
+            return java.time.LocalDateTime.now();
+        }
+        return null;
     }
 
     private void updateNotificationEntity(ScheduleNotification notification,

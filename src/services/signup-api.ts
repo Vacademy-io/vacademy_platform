@@ -91,8 +91,6 @@ export const handlePostSignupAuth = async (
   isModalSignup: boolean = false
 ) => {
   try {
-    console.group('[Signup API] handlePostSignupAuth');
-
     // Store tokens in Capacitor Preferences
     await Preferences.set({ key: TokenKey.accessToken, value: accessToken });
     await Preferences.set({ key: TokenKey.refreshToken, value: refreshToken });
@@ -112,12 +110,9 @@ export const handlePostSignupAuth = async (
 
     // Navigate to dashboard
     navigate({ to: "/dashboard" });
-    console.groupEnd();
   } catch (error) {
-    console.error('[Signup API] handlePostSignupAuth failed:', error);
     // Fallback: redirect to login page
     navigate({ to: "/login" });
-    console.groupEnd();
   }
 };
 
@@ -126,8 +121,6 @@ export const registerUser = async (
   userData: RegisterUserRequest
 ): Promise<RegisterUserResponse> => {
   try {
-    console.group('[Signup API] Starting user registration');
-
     const response = await axios.post<RegisterUserResponse>(
       `${BASE_URL}/auth-service/learner/v1/register`,
       userData,
@@ -139,11 +132,8 @@ export const registerUser = async (
       }
     );
 
-    console.groupEnd();
     return response.data;
   } catch (error) {
-    console.error('[Signup API] Registration failed:', error);
-    console.groupEnd();
     throw new Error("Failed to register user");
   }
 };
@@ -259,11 +249,7 @@ export const useInstituteQuery = ({ instituteId }: { instituteId: string }) => {
 // Check if user is already enrolled by email in a specific institute
 export const checkUserEnrollment = async (email: string, instituteId: string): Promise<{ isEnrolled: boolean; userDetails?: any; enrollmentInfo?: string; password?: string }> => {
   try {
-    console.group('[Signup API] Checking user enrollment for:', email, 'in institute:', instituteId);
-    console.log('[Signup API] Using endpoint:', `${GET_USER_DETAILS_BY_EMAIL}?emailId=${encodeURIComponent(email)}`);
-    
     // Check if user exists in the system
-    console.log('[Signup API] Checking if user exists in system...');
     const userResponse = await axios.post(`${GET_USER_DETAILS_BY_EMAIL}?emailId=${encodeURIComponent(email)}`, {}, {
       headers: {
         accept: "*/*",
@@ -272,22 +258,15 @@ export const checkUserEnrollment = async (email: string, instituteId: string): P
     });
 
     if (!userResponse.data || !userResponse.data.roles || userResponse.data.roles.length === 0) {
-      console.log('[Signup API] User does not exist or has no roles');
-      console.groupEnd();
       return {
         isEnrolled: false,
         enrollmentInfo: "User is not enrolled in any institute"
       };
     }
-
-    console.log('[Signup API] User exists with roles:', userResponse.data.roles);
     
     // Since we can't determine institute-specific enrollment from the user-details API alone,
     // we'll assume the user is not enrolled in this specific institute and allow registration
     // The actual enrollment check will happen during the registration process if needed
-    
-    console.log('[Signup API] User exists in system, allowing registration (institute-specific enrollment will be checked during registration)');
-    console.groupEnd();
     
     return {
       isEnrolled: false,
@@ -298,16 +277,12 @@ export const checkUserEnrollment = async (email: string, instituteId: string): P
     
   } catch (error: any) {
     if (error.response?.status === 404) {
-      console.log('[Signup API] User does not exist in system (404 response)');
-      console.groupEnd();
       return {
         isEnrolled: false,
         enrollmentInfo: "User is not enrolled in any institute"
       };
     }
     
-    console.error('[Signup API] Error checking user enrollment:', error);
-    console.groupEnd();
     throw new Error("Failed to check user enrollment. Please try again.");
   }
 };
@@ -319,8 +294,6 @@ export const loginEnrolledUser = async (
   instituteId: string
 ): Promise<RegisterUserResponse> => {
   try {
-    console.group('[Signup API] Logging in enrolled user:', username);
-    
     const response = await axios.post(LOGIN_URL, {
       user_name: username,
       password: password,
@@ -332,9 +305,6 @@ export const loginEnrolledUser = async (
         "Content-Type": "application/json",
       },
     });
-
-    console.log('[Signup API] Login successful for enrolled user');
-    console.groupEnd();
     
     return {
       accessToken: response.data.accessToken,
@@ -348,9 +318,6 @@ export const loginEnrolledUser = async (
       }
     };
   } catch (error: any) {
-    console.error('[Signup API] Login failed for enrolled user:', error);
-    console.groupEnd();
-    
     // Provide more specific error messages
     if (error.response?.status === 401) {
       throw new Error("Invalid password for existing account. Please use your correct password or try 'Forgot Password'.");

@@ -7,13 +7,17 @@ import {
 import { SidebarMenu } from "@/components/ui/sidebar";
 
 import { SidebarItem } from "./sidebar-item";
-import { HamBurgerSidebarItemsData, filterHamburgerMenuItems } from "./utils";
+import {
+  HamBurgerSidebarItemsData,
+  filterHamburgerMenuItemsWithPermissions,
+} from "./utils";
 import "./scrollbarStyle.css";
 import useStore from "./useSidebar";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { useTheme as useModeTheme } from "@/providers/theme-provider";
+import { useStudentPermissions } from "@/hooks/use-student-permissions";
 
 export const LogoutSidebar = ({
   sidebarComponent,
@@ -23,6 +27,7 @@ export const LogoutSidebar = ({
   const { instituteName, instituteLogoFileUrl, sideBarOpen, setSidebarOpen } =
     useStore();
   const { theme, setTheme } = useModeTheme();
+  const { permissions } = useStudentPermissions();
   const isDark = theme === "dark";
 
   const [filteredHamburgerItems, setFilteredHamburgerItems] = useState(
@@ -30,7 +35,15 @@ export const LogoutSidebar = ({
   );
 
   useEffect(() => {
-    filterHamburgerMenuItems(HamBurgerSidebarItemsData).then((data) => {
+    if (isNullOrEmptyOrUndefined(permissions)) return;
+    filterHamburgerMenuItemsWithPermissions(
+      HamBurgerSidebarItemsData,
+      permissions || {
+        canViewProfile: false,
+        canEditProfile: false,
+        canDeleteProfile: false,
+      }
+    ).then((data) => {
       setFilteredHamburgerItems(data);
     });
   }, []);
@@ -72,10 +85,17 @@ export const LogoutSidebar = ({
 
         <div className="flex items-center justify-between px-5 py-3 border-b border-neutral-100 dark:border-neutral-800">
           <div className="flex flex-col">
-            <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">Dark mode</span>
-            <span className="text-xs text-neutral-500 dark:text-neutral-400">Toggle appearance</span>
+            <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+              Dark mode
+            </span>
+            <span className="text-xs text-neutral-500 dark:text-neutral-400">
+              Toggle appearance
+            </span>
           </div>
-          <Switch checked={isDark} onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")} />
+          <Switch
+            checked={isDark}
+            onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
+          />
         </div>
 
         <div className="flex-1 px-3 py-4 overflow-y-auto bg-gradient-to-b from-white to-neutral-50/50 dark:from-neutral-900 dark:to-neutral-900/50">
@@ -95,7 +115,11 @@ export const LogoutSidebar = ({
                       <div className="absolute inset-0 bg-gradient-to-r from-primary-500/5 to-primary-600/5 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300 transform scale-95 group-hover:scale-100"></div>
                       <SidebarItem
                         icon={obj.icon}
-                        subItems={obj.subItems as { subItem: string; subItemLink: string }[] | undefined}
+                        subItems={
+                          obj.subItems as
+                            | { subItem: string; subItemLink: string }[]
+                            | undefined
+                        }
                         title={obj.title}
                         to={(obj.to || "/") as string}
                       />

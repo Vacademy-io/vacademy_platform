@@ -1,10 +1,12 @@
 import {
+    BASE_URL,
     ENROLL_OPEN_STUDENT_URL,
     ENROLL_USER_INVITE_PAYMENT_URL,
     GET_STRIPE_KEY_URL,
     PEYMENT_LOG_STATUS_URL,
 } from "@/constants/urls";
 import axios from "axios";
+
 export const getEnrollInviteData = async ({
     instituteId,
     inviteCode,
@@ -175,6 +177,30 @@ export const handleGetPaymentCompletionStatus = ({
     return {
         queryKey: ["GET_PAYMENT_COMPLETION_STATUS", paymentLogId],
         queryFn: () => getPaymentCompletionStatus({ paymentLogId }),
+        staleTime: 60 * 60 * 1000,
+    };
+};
+
+export const getPublicInstituteDetails = async ({
+    instituteId,
+}: {
+    instituteId: string;
+}) => {
+    const response = await axios({
+        method: "GET",
+        url: `${BASE_URL}/admin-core-service/public/institute/v1/details/${instituteId}`,
+    });
+    return response?.data;
+};
+
+export const handleGetPublicInstituteDetails = ({
+    instituteId,
+}: {
+    instituteId: string;
+}) => {
+    return {
+        queryKey: ["GET_PUBLIC_INSTITUTE_DETAILS"],
+        queryFn: () => getPublicInstituteDetails({ instituteId }),
         staleTime: 60 * 60 * 1000,
     };
 };

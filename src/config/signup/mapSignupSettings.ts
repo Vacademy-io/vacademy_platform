@@ -16,136 +16,205 @@ export interface InstituteSignupSettings {
   passwordDelivery?: "showOnScreen" | "sendEmail" | " " | "none";
 }
 
-export const mapSignupSettings = (
-  apiSettings?: InstituteSignupSettings | null
-): SignupSettings => {
-  if (!apiSettings) {
-    console.log('[mapSignupSettings] No API settings provided - using defaults');
+export function mapSignupSettings(apiSettings: any): SignupSettings {
+  // If no API settings provided, return defaults
+  if (!apiSettings || typeof apiSettings !== 'object') {
     return defaultSignupSettings;
   }
 
-  // Backend settings received
-
-  // Check if backend has any provider settings at all
-  const hasAnyProviderSettings = apiSettings.providers && 
-    (apiSettings.providers.google !== undefined || 
-     apiSettings.providers.github !== undefined || 
-     apiSettings.providers.emailOtp !== undefined ||
-     apiSettings.providers.usernamePassword !== undefined);
-
-  // Check if backend explicitly disables ALL providers (intentional signup disable)
-  const hasExplicitDisableAll = apiSettings.providers && 
-    apiSettings.providers.google === false && 
-    apiSettings.providers.github === false && 
-    apiSettings.providers.emailOtp === false &&
-    apiSettings.providers.usernamePassword === false;
-
-  let mergedProviders: SignupSettings["providers"];
-
-  if (hasExplicitDisableAll) {
-    // Backend explicitly disabled ALL providers - respect this completely
-          // Backend explicitly disabled all signup providers
-      mergedProviders = {
-        google: false,
-        github: false,
-        emailOtp: false,
-        defaultProvider: "emailOtp" as const,
-      };
-  } else if (hasAnyProviderSettings) {
-    // Backend has some provider settings - merge with defaults intelligently
-    // Backend has partial provider settings - merging with defaults
-    mergedProviders = {
-      ...defaultSignupSettings.providers, // Start with defaults
-      ...apiSettings.providers, // Override with any explicit backend values
-      // Handle emailOtp/usernamePassword mapping
-      emailOtp: apiSettings.providers?.emailOtp ?? 
-                apiSettings.providers?.usernamePassword ?? 
-                defaultSignupSettings.providers.emailOtp,
-    };
-  } else {
-    // Backend has no provider settings at all - use defaults completely
-    // No backend provider settings - using defaults completely
-    mergedProviders = {
-      ...defaultSignupSettings.providers,
-    };
-  }
-
-  // Merged provider settings completed
-
-  // Ensure all provider flags are boolean
-  Object.keys(mergedProviders).forEach((key) => {
-    if (key !== "defaultProvider") {
-      mergedProviders[key as keyof Omit<typeof mergedProviders, "defaultProvider">] = 
-        Boolean(mergedProviders[key as keyof Omit<typeof mergedProviders, "defaultProvider">]);
-    }
-  });
-
-  // Check if any providers are enabled
-  const enabledProviders = Object.entries(mergedProviders)
-    .filter(([key, value]) => key !== "defaultProvider" && value === true)
-    .map(([key]) => key);
-
-  // Enabled providers: ${enabledProviders.length}
-
-  // If no providers are enabled, this means signup is disabled
-  if (enabledProviders.length === 0) {
-    console.warn('[mapSignupSettings] All signup providers are disabled - signup will not be available');
-    
-          // Return settings with all providers disabled
-      return {
-        providers: {
-          google: false,
-          github: false,
-          emailOtp: false,
-          defaultProvider: "emailOtp" as const,
-        },
-      googleSignupMode: "askCredentials",
-      githubSignupMode: "askCredentials",
-      emailOtpSignupMode: "askCredentials",
-      usernameStrategy: "manual",
-      passwordStrategy: "manual",
-      passwordDelivery: "none",
-    };
-  }
-
-  // Validate defaultProvider is one of the enabled providers
-  if (mergedProviders.defaultProvider && enabledProviders.length > 0) {
-    if (!enabledProviders.includes(mergedProviders.defaultProvider)) {
-      // If default provider is not enabled, use the first enabled provider
-      mergedProviders.defaultProvider = enabledProviders[0] as SignupSettings["providers"]["defaultProvider"];
-      console.log('[mapSignupSettings] Updated defaultProvider to:', mergedProviders.defaultProvider);
-    }
-  }
-
-  // Map username strategy with proper validation
-  let usernameStrategy = defaultSignupSettings.usernameStrategy;
-  if (apiSettings.usernameStrategy) {
-    if (["email", "random", "manual", "both", " "].includes(apiSettings.usernameStrategy)) {
-      usernameStrategy = apiSettings.usernameStrategy as SignupSettings["usernameStrategy"];
-    } else {
-      console.warn('[mapSignupSettings] Invalid usernameStrategy from backend:', apiSettings.usernameStrategy);
-    }
-  }
-
-  // Map password strategy with proper validation
-  let passwordStrategy = defaultSignupSettings.passwordStrategy;
-  if (apiSettings.passwordStrategy) {
-    if (["manual", "autoRandom", " "].includes(apiSettings.passwordStrategy)) {
-      passwordStrategy = apiSettings.passwordStrategy as SignupSettings["passwordStrategy"];
-    } else {
-      console.warn('[mapSignupSettings] Invalid passwordStrategy from backend:', apiSettings.passwordStrategy);
-    }
-  }
-
-  const result = {
-    providers: mergedProviders as SignupSettings["providers"],
-    googleSignupMode: apiSettings.googleSignupMode || defaultSignupSettings.googleSignupMode,
-    githubSignupMode: apiSettings.githubSignupMode || defaultSignupSettings.githubSignupMode,
-    emailOtpSignupMode: apiSettings.emailOtpSignupMode || defaultSignupSettings.emailOtpSignupMode,
-    usernameStrategy,
-    passwordStrategy,
-    passwordDelivery: apiSettings.passwordDelivery || defaultSignupSettings.passwordDelivery,
+  // Merge API settings with defaults
+  const mergedSettings: SignupSettings = {
+    ...defaultSignupSettings,
+    ...apiSettings,
   };
 
-  return result;
-};
+  // Validate and merge providers
+  if (apiSettings.providers && Array.isArray(apiSettings.providers)) {
+    const validProviders = apiSettings.providers.filter((provider: any) => 
+      provider && typeof provider === 'object' && 
+      typeof provider.enabled === 'boolean' && 
+      typeof provider.clientId === 'string' && 
+      provider.clientId.trim() !== ''
+    );
+
+    if (validProviders.length > 0) {
+      mergedSettings.providers = validProviders.map((provider: any) => ({
+        ...defaultSignupSettings.providers.find(p => p.name === provider.name),
+        ...provider,
+      }));
+    }
+  }
+
+  // Validate and merge credential strategies
+  if (apiSettings.usernameStrategy && typeof apiSettings.usernameStrategy === 'string') {
+    const validUsernameStrategies = ['email', 'custom', 'auto_generate'];
+    if (validUsernameStrategies.includes(apiSettings.usernameStrategy)) {
+      mergedSettings.usernameStrategy = apiSettings.usernameStrategy;
+    }
+  }
+
+  if (apiSettings.passwordStrategy && typeof apiSettings.passwordStrategy === 'string') {
+    const validPasswordStrategies = ['custom', 'auto_generate', 'email_based'];
+    if (validPasswordStrategies.includes(apiSettings.passwordStrategy)) {
+      mergedSettings.passwordStrategy = apiSettings.passwordStrategy;
+    }
+  }
+
+  // Validate and merge signup flow settings
+  if (apiSettings.requireEmailVerification !== undefined) {
+    mergedSettings.requireEmailVerification = Boolean(apiSettings.requireEmailVerification);
+  }
+
+  if (apiSettings.requirePhoneVerification !== undefined) {
+    mergedSettings.requirePhoneVerification = Boolean(apiSettings.requirePhoneVerification);
+  }
+
+  if (apiSettings.requireApproval !== undefined) {
+    mergedSettings.requireApproval = Boolean(apiSettings.requireApproval);
+  }
+
+  // Validate and merge UI settings
+  if (apiSettings.showSocialSignup !== undefined) {
+    mergedSettings.showSocialSignup = Boolean(apiSettings.showSocialSignup);
+  }
+
+  if (apiSettings.showEmailSignup !== undefined) {
+    mergedSettings.showEmailSignup = Boolean(apiSettings.showEmailSignup);
+  }
+
+  if (apiSettings.showPhoneSignup !== undefined) {
+    mergedSettings.showPhoneSignup = Boolean(apiSettings.showPhoneSignup);
+  }
+
+  // Validate and merge validation settings
+  if (apiSettings.passwordMinLength && typeof apiSettings.passwordMinLength === 'number') {
+    mergedSettings.passwordMinLength = Math.max(1, apiSettings.passwordMinLength);
+  }
+
+  if (apiSettings.passwordMaxLength && typeof apiSettings.passwordMaxLength === 'number') {
+    mergedSettings.passwordMaxLength = Math.max(mergedSettings.passwordMinLength, apiSettings.passwordMaxLength);
+  }
+
+  if (apiSettings.usernameMinLength && typeof apiSettings.usernameMinLength === 'number') {
+    mergedSettings.usernameMinLength = Math.max(1, apiSettings.usernameMinLength);
+  }
+
+  if (apiSettings.usernameMaxLength && typeof apiSettings.usernameMaxLength === 'number') {
+    mergedSettings.usernameMaxLength = Math.max(mergedSettings.usernameMinLength, apiSettings.usernameMaxLength);
+  }
+
+  // Validate and merge terms and privacy settings
+  if (apiSettings.requireTermsAcceptance !== undefined) {
+    mergedSettings.requireTermsAcceptance = Boolean(apiSettings.requireTermsAcceptance);
+  }
+
+  if (apiSettings.requirePrivacyAcceptance !== undefined) {
+    mergedSettings.requirePrivacyAcceptance = Boolean(apiSettings.requirePrivacyAcceptance);
+  }
+
+  if (apiSettings.termsUrl && typeof apiSettings.termsUrl === 'string') {
+    mergedSettings.termsUrl = apiSettings.termsUrl;
+  }
+
+  if (apiSettings.privacyUrl && typeof apiSettings.privacyUrl === 'string') {
+    mergedSettings.privacyUrl = apiSettings.privacyUrl;
+  }
+
+  // Validate and merge redirect settings
+  if (apiSettings.postSignupRedirectRoute && typeof apiSettings.postSignupRedirectRoute === 'string') {
+    mergedSettings.postSignupRedirectRoute = apiSettings.postSignupRedirectRoute;
+  }
+
+  if (apiSettings.postLoginRedirectRoute && typeof apiSettings.postLoginRedirectRoute === 'string') {
+    mergedSettings.postLoginRedirectRoute = apiSettings.postLoginRedirectRoute;
+  }
+
+  // Validate and merge notification settings
+  if (apiSettings.sendWelcomeEmail !== undefined) {
+    mergedSettings.sendWelcomeEmail = Boolean(apiSettings.sendWelcomeEmail);
+  }
+
+  if (apiSettings.sendWelcomeSMS !== undefined) {
+    mergedSettings.sendWelcomeSMS = Boolean(apiSettings.sendWelcomeSMS);
+  }
+
+  // Validate and merge security settings
+  if (apiSettings.requireCaptcha !== undefined) {
+    mergedSettings.requireCaptcha = Boolean(apiSettings.requireCaptcha);
+  }
+
+  if (apiSettings.requireTwoFactor !== undefined) {
+    mergedSettings.requireTwoFactor = Boolean(apiSettings.requireTwoFactor);
+  }
+
+  // Validate and merge custom fields
+  if (apiSettings.customFields && Array.isArray(apiSettings.customFields)) {
+    const validCustomFields = apiSettings.customFields.filter((field: any) => 
+      field && typeof field === 'object' && 
+      typeof field.name === 'string' && 
+      typeof field.type === 'string' && 
+      typeof field.required === 'boolean'
+    );
+
+    if (validCustomFields.length > 0) {
+      mergedSettings.customFields = validCustomFields;
+    }
+  }
+
+  // Validate and merge role settings
+  if (apiSettings.defaultRole && typeof apiSettings.defaultRole === 'string') {
+    mergedSettings.defaultRole = apiSettings.defaultRole;
+  }
+
+  if (apiSettings.allowedRoles && Array.isArray(apiSettings.allowedRoles)) {
+    const validRoles = apiSettings.allowedRoles.filter((role: any) => 
+      role && typeof role === 'string' && role.trim() !== ''
+    );
+
+    if (validRoles.length > 0) {
+      mergedSettings.allowedRoles = validRoles;
+    }
+  }
+
+  // Validate and merge institute settings
+  if (apiSettings.instituteId && typeof apiSettings.instituteId === 'string') {
+    mergedSettings.instituteId = apiSettings.instituteId;
+  }
+
+  if (apiSettings.instituteName && typeof apiSettings.instituteName === 'string') {
+    mergedSettings.instituteName = apiSettings.instituteName;
+  }
+
+  // Validate and merge branding settings
+  if (apiSettings.logoUrl && typeof apiSettings.logoUrl === 'string') {
+    mergedSettings.logoUrl = apiSettings.logoUrl;
+  }
+
+  if (apiSettings.primaryColor && typeof apiSettings.primaryColor === 'string') {
+    mergedSettings.primaryColor = apiSettings.primaryColor;
+  }
+
+  if (apiSettings.secondaryColor && typeof apiSettings.secondaryColor === 'string') {
+    mergedSettings.secondaryColor = apiSettings.secondaryColor;
+  }
+
+  // Validate and merge feature flags
+  if (apiSettings.features && typeof apiSettings.features === 'object') {
+    Object.keys(apiSettings.features).forEach(key => {
+      if (typeof apiSettings.features[key] === 'boolean') {
+        mergedSettings.features[key] = apiSettings.features[key];
+      }
+    });
+  }
+
+  // Validate and merge advanced settings
+  if (apiSettings.advanced && typeof apiSettings.advanced === 'object') {
+    Object.keys(apiSettings.advanced).forEach(key => {
+      if (typeof apiSettings.advanced[key] !== 'undefined') {
+        mergedSettings.advanced[key] = apiSettings.advanced[key];
+      }
+    });
+  }
+
+  return mergedSettings;
+}

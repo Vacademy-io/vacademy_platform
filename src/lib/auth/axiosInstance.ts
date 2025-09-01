@@ -5,7 +5,9 @@ import { isTokenExpired } from "./sessionUtility"; // Utility for JWT expiration
 import { REFRESH_TOKEN_URL } from "@/constants/urls";
 
 // Helper functions to interact with Capacitor Preferences
-export const getTokenFromStorage = async (key: string): Promise<string | null> => {
+export const getTokenFromStorage = async (
+  key: string
+): Promise<string | null> => {
   try {
     const { value } = await Preferences.get({ key });
     return value;
@@ -31,7 +33,10 @@ const refreshTokens = async (refreshToken: string): Promise<void> => {
 
     // Store the new tokens and institute ID
     await Preferences.set({ key: TokenKey.accessToken, value: accessToken });
-    await Preferences.set({ key: TokenKey.refreshToken, value: newRefreshToken });
+    await Preferences.set({
+      key: TokenKey.refreshToken,
+      value: newRefreshToken,
+    });
     await Preferences.set({ key: "instituteId", value: instituteId });
   } catch (error) {
     throw error;
@@ -102,7 +107,7 @@ authenticatedAxiosInstance.interceptors.response.use(
     if (error.response) {
       // Error response handling logic
     }
-    
+
     // Handle unauthorized errors (401)
     if (error.response && error.response.status === 401) {
       // Remove tokens and institute ID
@@ -111,12 +116,12 @@ authenticatedAxiosInstance.interceptors.response.use(
       // Optionally, you can add logic to redirect to login page
       // This might involve using a navigation library or window.location
     }
-    
+
     // Handle forbidden errors (403) - might be token issues
     if (error.response && error.response.status === 403) {
       // Handle 403 errors silently
     }
-    
+
     return Promise.reject(error);
   }
 );

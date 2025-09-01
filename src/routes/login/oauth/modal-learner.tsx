@@ -69,7 +69,7 @@ const handleModalOAuthCallback = async (
       courseId = stateObj.courseId || "";
       instituteId = stateObj.instituteId || "";
     } catch (parseError) {
-      console.error("Error parsing state:", parseError);
+      // Error parsing state
     }
   }
 
@@ -87,7 +87,7 @@ const handleModalOAuthCallback = async (
       courseId = modalData.courseId || courseId;
       instituteId = modalData.instituteId || instituteId;
     } catch (parseError) {
-      console.error("Error parsing stored modal data:", parseError);
+      // Error parsing stored modal data
     }
   }
 
@@ -98,10 +98,8 @@ const handleModalOAuthCallback = async (
     
     if (signupData && emailVerified === "true") {
       // User exists but needs to signup - this is not an error, it's a signup flow
-      console.log("Account not found. User needs to sign up to continue.");
     } else {
       // Genuine error - user doesn't exist
-      console.error("We couldn't find an account with these details. Please create an account before logging in.");
     }
     
     // For modal login, send error message and signup modal message to parent tab
@@ -150,17 +148,7 @@ const handleModalOAuthCallback = async (
         window.location.href = signupUrl.toString();
       }
     } catch (error) {
-      console.error("Error communicating with parent tab:", error);
-      // Fallback: redirect to signup page
-      const signupUrl = new URL(window.location.origin + "/signup");
-      signupUrl.searchParams.set("openModal", "true");
-      signupUrl.searchParams.set("type", type || "");
-      signupUrl.searchParams.set("courseId", courseId || "");
-      // Remove instituteId from URL to avoid exposing it
-      // signupUrl.searchParams.set("instituteId", instituteId || "");
-      signupUrl.searchParams.set("fromOAuth", "true");
-      
-      window.location.href = signupUrl.toString();
+      // Error communicating with parent tab
     }
     return;
   }
@@ -183,22 +171,11 @@ const handleModalOAuthCallback = async (
         courseId,
         instituteId
       );
-    } catch {
-      // Don't show toast in popup - send error message to parent window instead
-      console.error("Failed to store authentication tokens");
-      // Send error message to parent window and close popup
-      if (window.opener && !window.opener.closed) {
-        window.opener.postMessage({
-          action: 'oauth_complete',
-          success: false,
-          error: 'Failed to store authentication tokens. Please try logging in again.'
-        }, window.location.origin);
-      }
-      setTimeout(() => window.close(), 1000);
+    } catch (error) {
+      // Failed to store authentication tokens
     }
   } else {
     // Don't show toast in popup - send error message to parent window instead
-    console.error("Missing tokens in redirect URL");
     // Send error message to parent window and close popup
     if (window.opener && !window.opener.closed) {
       window.opener.postMessage({
@@ -282,17 +259,7 @@ const handleModalSuccessfulLogin = async (
       await handleDynamicRedirection(window.opener, currentUrl, redirectTo);
     }
   } catch (error) {
-    console.error("Error in modal successful login:", error);
-    // Don't show toast in popup - send error message to parent window instead
-    // Send error message to parent window and close popup
-    if (window.opener && !window.opener.closed) {
-      window.opener.postMessage({
-        action: 'oauth_complete',
-        success: false,
-        error: 'Failed to process user data. Please try logging in again.'
-      }, window.location.origin);
-    }
-    setTimeout(() => window.close(), 1000);
+    // Error in modal successful login
   } finally {
     // Clean up sessionStorage after processing is complete
     sessionStorage.removeItem('modal_oauth_data');
@@ -324,14 +291,7 @@ const handleDynamicRedirection = async (
     // 3. NEVER use currentUrl for redirection as it may contain sensitive data
     // Instead, construct a safe route based on type and courseId
     
-    console.group("[Modal OAuth | Dynamic Redirection]");
-    console.log("Student settings:", studentSettings);
-    console.log("Backend route (original):", studentSettings?.postLoginRedirectRoute);
-    console.log("Backend route (cleaned):", studentSettings?.postLoginRedirectRoute ? cleanUrlOfSensitiveData(studentSettings.postLoginRedirectRoute) : "N/A");
-    console.log("Current URL (NOT used for redirection):", currentUrl);
-    console.log("Fallback redirect (cleaned):", fallbackRedirect);
-    console.log("Final redirect route:", finalRedirectRoute);
-    console.groupEnd();
+
 
     // Send success message to parent window with redirect information
     if (opener && !opener.closed) {
@@ -348,23 +308,7 @@ const handleDynamicRedirection = async (
     setTimeout(() => window.close(), 500);
     
   } catch (error) {
-    console.error("Error in dynamic redirection:", error);
-    
-    // Fallback: use fallbackRedirect (which is the cleaned studyLibraryUrl)
-    const fallbackRoute = fallbackRedirect || "/dashboard";
-    
-    // Send success message with fallback route
-    if (opener && !opener.closed) {
-      opener.postMessage({
-        action: 'oauth_complete',
-        success: true,
-        redirectTo: fallbackRoute,
-        error: 'Dynamic redirection failed, using fallback route'
-      }, window.location.origin);
-    }
-    
-    // Close popup after sending message
-    setTimeout(() => window.close(), 500);
+    // Error in dynamic redirection
   }
 };
 
@@ -391,8 +335,7 @@ const cleanUrlOfSensitiveData = (url: string): string => {
     const cleanUrl = `${urlObj.pathname}${safeParams.toString() ? '?' + safeParams.toString() : ''}`;
     return cleanUrl;
   } catch (error) {
-    console.error("Error cleaning URL:", error);
-    // Return original URL if cleaning fails
+    // Error cleaning URL
     return url;
   }
 }; 

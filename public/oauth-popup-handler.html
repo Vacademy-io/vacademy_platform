@@ -119,7 +119,6 @@
                 });
 
             } catch (error) {
-                console.error('Error parsing OAuth data:', error);
                 showError('Failed to process OAuth response. Please try again.');
             }
         }
@@ -134,29 +133,17 @@
         try {
             const params = parseUrlParams();
             
-            console.log('OAuth Popup: Received parameters:', {
-                hasSignupData: !!params.signupData,
-                hasState: !!params.state,
-                emailVerified: params.emailVerified,
-                error: params.error,
-                errorDescription: params.error_description
-            });
-            
             // Special case: error=true with signupData means "email not found" (new user) - this is SUCCESS for signup
             if (params.error === 'true' && params.signupData && params.state) {
-                console.log('OAuth: Email not found (new user) - proceeding with signup');
                 handleOAuthSuccess(params);
             } else if (params.error && !params.signupData) {
                 // Real OAuth error (no user data)
-                console.log('OAuth: Real error detected - showing error');
                 handleOAuthError(params);
                 } else {
                 // Normal OAuth success
-                console.log('OAuth: Normal success - proceeding with signup');
                 handleOAuthSuccess(params);
             }
         } catch (error) {
-            console.error('Unexpected error:', error);
             showError('An unexpected error occurred. Please try again.');
         }
     </script>

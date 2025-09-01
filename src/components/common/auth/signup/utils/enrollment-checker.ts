@@ -30,12 +30,9 @@ export async function checkUserEnrollmentInInstitute(
   instituteId: string
 ): Promise<EnrollmentCheckResult> {
   try {
-    console.log('[DEBUG] enrollment-checker: Checking enrollment for:', { email, instituteId });
     const enrollmentCheck = await checkUserEnrollment(email, instituteId);
-    console.log('[DEBUG] enrollment-checker: API response:', enrollmentCheck);
     
     if (enrollmentCheck.userDetails && enrollmentCheck.password) {
-      console.log('[DEBUG] enrollment-checker: User is enrolled');
       return {
         isEnrolled: true,
         shouldRedirectToLogin: true,
@@ -44,14 +41,12 @@ export async function checkUserEnrollmentInInstitute(
       };
     }
     
-    console.log('[DEBUG] enrollment-checker: User is not enrolled');
     return {
       isEnrolled: false,
       shouldRedirectToLogin: false
     };
     
   } catch (error) {
-    console.log('[DEBUG] enrollment-checker: Error checking enrollment:', error);
     // If there's an error checking enrollment, assume user is not enrolled
     // to avoid blocking legitimate registrations
     return {

@@ -172,17 +172,38 @@ export const useDonationDialog = ({
   // Initialize Stripe Elements when payment gateway data is loaded
   useEffect(() => {
     const initializeStripeElements = async () => {
-      if (paymentGatewayData?.publishableKey && cardElementRef.current && !stripe && step === 'payment') {
+      if (paymentGatewayData?.publishableKey && cardElementRef.current && step === 'payment') {
+        // Clear any previous errors when starting initialization
+        setCardElementError('');
+        
         try {
-          // First load Stripe
-          const stripeInstance = await loadStripe(paymentGatewayData.publishableKey);
-          setStripe(stripeInstance);
+          let stripeInstance = stripe;
           
-          // Then create elements
-          const elements = (stripeInstance as any).elements();
-          setStripeElements(elements);
+          // Load Stripe if not already loaded
+          if (!stripeInstance) {
+            stripeInstance = await loadStripe(paymentGatewayData.publishableKey);
+            setStripe(stripeInstance);
+          }
           
-          // Create card element
+          // Create elements if not already created
+          let elements = stripeElements;
+          if (!elements) {
+            elements = (stripeInstance as any).elements();
+            setStripeElements(elements);
+          }
+          
+          // Clean up existing card element if it exists
+          if (cardElement) {
+            try {
+              cardElement.destroy();
+            } catch (destroyError) {
+              // Ignore destroy errors
+            }
+            setCardElement(null);
+            setCardElementReady(false);
+          }
+          
+          // Create new card element
           const card = elements.create('card', {
             style: {
               base: {
@@ -210,6 +231,8 @@ export const useDonationDialog = ({
               if (cardElementRef.current && card) {
                 card.mount(cardElementRef.current);
                 setCardElementReady(true);
+                // Clear any errors when successfully mounted
+                setCardElementError('');
               }
             } catch (mountError) {
               // Card mount error handled silently
@@ -243,7 +266,7 @@ export const useDonationDialog = ({
     };
 
     initializeStripeElements();
-  }, [paymentGatewayData, stripe, step, open, loadStripe]);
+  }, [paymentGatewayData, stripe, stripeElements, step, open, loadStripe]);
 
   // Parse donation metadata from payment option
   const getDonationMetadata = useCallback(() => {
@@ -623,12 +646,19 @@ export const useDonationDialog = ({
       setStep('select');
       // Clean up Stripe elements when dialog closes
       if (cardElement) {
-        cardElement.destroy();
+        try {
+          cardElement.destroy();
+        } catch (destroyError) {
+          // Ignore destroy errors
+        }
         setCardElement(null);
         setCardElementReady(false);
       }
+      // Reset Stripe state to allow fresh initialization on next open
+      setStripe(null);
+      setStripeElements(null);
     }
-  }, [open, cardElement]);
+  }, [open]);
 
   return {
     // Payment dialog data

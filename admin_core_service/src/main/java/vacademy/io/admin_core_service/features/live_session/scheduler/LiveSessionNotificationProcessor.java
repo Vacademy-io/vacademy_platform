@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
+import vacademy.io.admin_core_service.features.live_session.constants.LiveClassEmailBody;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
 import vacademy.io.admin_core_service.features.live_session.entity.ScheduleNotification;
 import vacademy.io.admin_core_service.features.live_session.enums.NotificationStatusEnum;
@@ -74,13 +75,6 @@ public class LiveSessionNotificationProcessor {
                 // Fetch schedule details for email template
                 Optional<SessionSchedule> scheduleOpt = sessionScheduleRepository.findById(sn.getScheduleId());
                 SessionSchedule schedule = scheduleOpt.orElse(null);
-                System.out.println("DEBUG: Notification scheduleId: " + sn.getScheduleId());
-                System.out.println("DEBUG: Found schedule: " + (schedule != null ? "YES" : "NO"));
-                if (schedule != null) {
-                    System.out.println("DEBUG: Schedule custom meeting link: " + schedule.getCustomMeetingLink());
-                    System.out.println("DEBUG: Schedule meeting date: " + schedule.getMeetingDate());
-                    System.out.println("DEBUG: Schedule start time: " + schedule.getStartTime());
-                }
                 // Fetch students for institute and package sessions (ACTIVE statuses)
                 List<Object[]> rows = mappingRepository.findMappingsWithStudentContactsByInstitute(
                         packageSessionIds,
@@ -95,7 +89,7 @@ public class LiveSessionNotificationProcessor {
                         notificationService.sendEmailToUsers(notification, session.getInstituteId());
                     }
                         if (sn.getType().equals(NotificationTypeEnum.ON_LIVE.name())) {
-                            NotificationDTO notification = buildEmailNotification(session, sn, schedule, rows);
+                            NotificationDTO notification = buildOnLiveEmailNotification(session, sn, schedule, rows);
                             notificationService.sendEmailToUsers(notification, session.getInstituteId());
                         }
                 }
@@ -121,9 +115,9 @@ public class LiveSessionNotificationProcessor {
         return new ArrayList<>(batchIds);
     }
 
-    private NotificationDTO buildEmailNotification(LiveSession session, ScheduleNotification sn, SessionSchedule schedule, List<Object[]> rows) {
+    private NotificationDTO buildOnLiveEmailNotification(LiveSession session, ScheduleNotification sn, SessionSchedule schedule, List<Object[]> rows) {
         NotificationDTO dto = new NotificationDTO();
-        dto.setBody(liveClassEmailBody());
+        dto.setBody(LiveClassEmailBody.Live_Class_Email_Body);
         dto.setSubject("Your Live Session has started – Join now!");
         dto.setNotificationType("EMAIL");
         dto.setSource("ADMIN_CORE");
@@ -175,7 +169,7 @@ public class LiveSessionNotificationProcessor {
     }
     private NotificationDTO buildBeforeLiveEmailNotification(LiveSession session, ScheduleNotification sn, SessionSchedule schedule, List<Object[]> rows) {
         NotificationDTO dto = new NotificationDTO();
-        dto.setBody(liveClassEmailBody());
+        dto.setBody(LiveClassEmailBody.Live_Class_Email_Body);
         dto.setSubject("Get Ready! Your session begins shortly.");
         dto.setNotificationType("EMAIL");
         dto.setSource("ADMIN_CORE");
@@ -226,74 +220,4 @@ public class LiveSessionNotificationProcessor {
         return dto;
     }
 
-
-    public String liveClassEmailBody() {
-        String body = """
-            <!DOCTYPE html>
-            <html>
-              <head>
-                <meta charset="UTF-8" />
-                <title>Live Class Invitation</title>
-              </head>
-              <body style="margin:0; padding:0; background-color:#fdf5f2; font-family: Arial, sans-serif;">
-                <table role="presentation" style="width:100%; border-collapse:collapse; background-color:#fdf5f2; padding:40px 0;">
-                  <tr>
-                    <td align="center">
-                      <table role="presentation" style="width:600px; background:#ffffff; border-radius:10px; overflow:hidden; box-shadow:0 4px 10px rgba(0,0,0,0.1);">
-                        <tr>
-                          <td style="background:#ff6f3c; padding:20px; text-align:center; color:#fff;">
-                            <h1 style="margin:0; font-size:24px;">📢 Live Class Invitation</h1>
-                          </td>
-                        </tr>
-                        <tr>
-                          <td style="padding:30px; color:#333;">
-                            <p style="font-size:16px;">Hi <strong>{{NAME}}</strong>,</p>
-                            
-                            <p style="font-size:16px; line-height:1.6;">
-                              We're excited to invite you to our upcoming <strong>{{SESSION_TITLE}}</strong>, designed to help you learn and grow with us. 
-                            </p>
-                            <table role="presentation" style="margin:20px 0; width:100%;">
-                                          <tr>
-                                            <td style="padding:10px; background:#fff3ec; border:1px solid #ffe0d1; border-radius:6px;">
-                                              <p style="margin:0; font-size:15px;"><strong>📅 Date:</strong> {{DATE}}</p>
-                                              <p style="margin:5px 0 0 0; font-size:15px;"><strong>⏰ Time:</strong> {{TIME}}</p>
-                                            </td>
-                                          </tr>
-                                        </table>
-
-                            <p style="font-size:16px; line-height:1.6;">
-                              Key takeaways from this session:
-                            </p>
-
-                            <div style="text-align:center; margin:30px 0;">
-                              <a href="{{LINK}}" target="_blank" 
-                                 style="display:inline-block; padding:12px 24px; background:#ff6f3c; color:#fff; 
-                                        font-size:16px; font-weight:bold; text-decoration:none; border-radius:6px;">
-                                Join the Live Class
-                              </a>
-                            </div>
-
-                            <p style="font-size:15px; line-height:1.6;">
-                              We look forward to seeing you there!
-                            </p>
-                            <p style="font-size:15px; line-height:1.6; margin-top:20px;">
-                              Best regards,<br/>
-                              <strong>Your Team</strong>
-                            </p>
-                          </td>
-                        </tr>
-                        <tr>
-                          <td style="background:#fbeae3; text-align:center; padding:15px; font-size:12px; color:#777;">
-                            © 2025 Your Organization. All rights reserved.
-                          </td>
-                        </tr>
-                      </table>
-                    </td>
-                  </tr>
-                </table>
-              </body>
-            </html>
-            """;
-        return body;
-    }
 }

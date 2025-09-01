@@ -88,17 +88,10 @@ public class Step2Service {
             System.out.println("DEBUG: Found " + schedules.size() + " schedules for session " + sessionId);
             for (LiveSessionStep2RequestDTO.NotificationActionDTO dto : request.getAddedNotificationActions()) {
                 for (SessionSchedule schedule : schedules) {
-                    System.out.println("DEBUG: Creating notification for schedule ID: " + schedule.getId());
-                    System.out.println("DEBUG: Schedule meeting date: " + schedule.getMeetingDate());
-                    System.out.println("DEBUG: Schedule start time: " + schedule.getStartTime());
-                    System.out.println("DEBUG: Schedule custom meeting link: " + schedule.getCustomMeetingLink());
-                    
                     ScheduleNotification notification = mapToNotificationEntity(dto, sessionId);
                     notification.setTriggerTime(computeTriggerTime(dto, schedule));
                     notification.setScheduleId(schedule.getId());
-                    System.out.println("DEBUG: Setting scheduleId to: " + notification.getScheduleId());
                     scheduleNotificationRepository.save(notification);
-                    System.out.println("DEBUG: Saved notification with ID: " + notification.getId());
                 }
             }
         }

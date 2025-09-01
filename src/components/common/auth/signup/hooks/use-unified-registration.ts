@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Preferences } from '@capacitor/preferences';
-import { registerUser, checkUserEnrollment, loginEnrolledUser, type RegisterUserRequest, type RegisterUserResponse } from '@/services/signup-api';
+import { registerUser, checkUserEnrollment, loginEnrolledUser, parseInstituteSettings, type RegisterUserRequest, type RegisterUserResponse } from '@/services/signup-api';
 import { TokenKey } from '@/constants/auth/tokens';
 import { useNavigate } from '@tanstack/react-router';
 import { getStudentDisplaySettings } from '@/services/student-display-settings';
@@ -68,22 +68,52 @@ export function useUnifiedRegistration(): UseUnifiedRegistrationReturn {
       // Get institute settings to determine roles
       let allowLearnersToCreateCourses = false;
       try {
-        const stored = await Preferences.get({ key: "InstituteDetails" });
-        if (stored?.value) {
-          const parsed = JSON.parse(stored.value);
-          const settingsString = parsed?.institute_settings_json;
+        // First try to get from localStorage (where institute details are stored after API call)
+        const storedDetails = localStorage.getItem("InstituteDetails");
+        
+        if (storedDetails) {
+          const parsed = JSON.parse(storedDetails);
+          const settingsString = parsed?.setting;
+          
           if (typeof settingsString === "string") {
-            const instSettings = JSON.parse(settingsString);
+            // The settingsString is a JSON string that needs to be parsed
+            const settingsData = JSON.parse(settingsString);
             
-            // Check for the correct permission setting
-            if (instSettings?.setting?.COURSE_SETTING?.data?.permissions?.allowLearnersToCreateCourses) {
-              allowLearnersToCreateCourses = true;
-            } else if (instSettings?.learnersCanCreateCourses) {
-              // Fallback to legacy setting
-              allowLearnersToCreateCourses = true;
+            // Check the nested structure: settingsData.setting.COURSE_SETTING.data.permissions.allowLearnersToCreateCourses
+            const directAllowLearnersToCreateCourses = settingsData?.setting?.COURSE_SETTING?.data?.permissions?.allowLearnersToCreateCourses;
+            
+            // Also try using the parseInstituteSettings function
+            const instituteSettings = parseInstituteSettings(settingsString);
+            
+            // Use the direct parsing result
+            allowLearnersToCreateCourses = directAllowLearnersToCreateCourses || instituteSettings.learnersCanCreateCourses;
+          }
+        } else {
+          // Fallback: try to get from Preferences (for backward compatibility)
+          const stored = await Preferences.get({ key: "InstituteDetails" });
+          
+          if (stored?.value) {
+            const parsed = JSON.parse(stored.value);
+            const settingsString = parsed?.institute_settings_json;
+            
+            if (typeof settingsString === "string") {
+              const instituteSettings = parseInstituteSettings(settingsString);
+              allowLearnersToCreateCourses = instituteSettings.learnersCanCreateCourses;
+            } else {
+              // Fetch fresh institute details from API if settings not available
+              try {
+                const { getInstituteDetails } = await import('@/services/signup-api');
+                const freshInstituteDetails = await getInstituteDetails(data.instituteId);
+                
+                if (freshInstituteDetails?.setting) {
+                  const settingsData = JSON.parse(freshInstituteDetails.setting);
+                  const directAllowLearnersToCreateCourses = settingsData?.setting?.COURSE_SETTING?.data?.permissions?.allowLearnersToCreateCourses;
+                  allowLearnersToCreateCourses = directAllowLearnersToCreateCourses || false;
+                }
+              } catch (apiError) {
+                // Silently handle API errors
+              }
             }
-            
-
           }
         }
       } catch (error) {

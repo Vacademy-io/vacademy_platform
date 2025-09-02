@@ -8,6 +8,7 @@ import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.UuidGenerator;
+import org.hibernate.annotations.Where;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.ReferralOption;
 
@@ -38,6 +39,7 @@ public class PackageSessionEnrollInvitePaymentOptionPlanToReferralOption {
     private PackageSessionLearnerInvitationToPaymentOption packageSessionLearnerInvitationToPaymentOption;
 
     @Column(name = "status", nullable = false)
+    @Where(clause = "status = 'ACTIVE'")
     private String status;
 
     @CreationTimestamp

@@ -45,7 +45,8 @@ public class PackageSessionLearnerInvitationToPaymentOption {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private LocalDateTime updatedAt;
 
-    public PackageSessionLearnerInvitationToPaymentOption(EnrollInvite enrollInvite, PackageSession packageSession, PaymentOption paymentOption, String status) {
+    public PackageSessionLearnerInvitationToPaymentOption(EnrollInvite enrollInvite, PackageSession packageSession,
+            PaymentOption paymentOption, String status) {
         this.enrollInvite = enrollInvite;
         this.packageSession = packageSession;
         this.paymentOption = paymentOption;
@@ -53,8 +54,11 @@ public class PackageSessionLearnerInvitationToPaymentOption {
     }
 
     public PackageSessionToPaymentOptionDTO mapToPackageSessionToPaymentOptionDTO() {
-        return PackageSessionToPaymentOptionDTO.builder().
-                packageSessionId(this.packageSession.getId())
+        return PackageSessionToPaymentOptionDTO.builder()
+                .id(this.id)
+                .packageSessionId(this.packageSession.getId())
+                .enrollInviteId(this.enrollInvite.getId())
+                .status(this.status)
                 .paymentOption(this.paymentOption.mapToPaymentOptionDTO())
                 .build();
     }

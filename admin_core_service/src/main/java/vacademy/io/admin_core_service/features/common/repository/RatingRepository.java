@@ -78,7 +78,7 @@ public interface RatingRepository extends JpaRepository<Rating, String> {
 
     @Query(value = """
     SELECT
-      FLOOR(AVG(points) + 0.5) AS averageRating,
+      ROUND(AVG(points), 2) AS averageRating,
       COUNT(*) AS totalReviews,
       ROUND(
         CAST((100.0 * COUNT(*) FILTER (WHERE FLOOR(points + 0.5) = 5) / NULLIF(COUNT(*), 0)) AS numeric), 2
@@ -113,7 +113,7 @@ public interface RatingRepository extends JpaRepository<Rating, String> {
 
     @Query(value = """
     SELECT
-      FLOOR(AVG(r.points) + 0.5) AS averageRating,
+      ROUND(AVG(r.points), 2) AS averageRating,
       COUNT(*) AS totalReviews,
       ROUND(CAST((100.0 * COUNT(*) FILTER (WHERE FLOOR(r.points + 0.5) = 5)) / NULLIF(COUNT(*), 0) AS numeric), 2) AS percentFiveStar,
       ROUND(CAST((100.0 * COUNT(*) FILTER (WHERE FLOOR(r.points + 0.5) = 4)) / NULLIF(COUNT(*), 0) AS numeric), 2) AS percentFourStar,

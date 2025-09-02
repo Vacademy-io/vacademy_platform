@@ -84,4 +84,15 @@ public interface StudentSessionInstituteGroupMappingRepository
                                                                                                                @Param("packageSessionIds") List<String> allPackageSessionIds,
                                                                                                                @Param("instituteId") String instituteId,
                                                                                                                @Param("statusList") List<String> status);
+
+    @Query(value = """
+    SELECT 
+        s.user_id AS user_id,
+        s.full_name AS full_name,
+        s.mobile_number AS mobile_number,
+        s.email AS email
+    FROM student s
+    WHERE s.user_id IN (:userIds)
+    """, nativeQuery = true)
+    List<Object[]> findStudentContactsByUserIds(@Param("userIds") List<String> userIds);
 }

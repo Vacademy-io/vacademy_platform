@@ -32,7 +32,7 @@ public class InviteUserService {
         user.setEmail(userDTO.getEmail());
         user.setPassword(userDTO.getPassword());
         userService.addUserRoles(instituteId, userDTO.getRoles(), user, UserRoleStatus.INVITED.name());
-        sendInvitationEmail(userDTO);
+        sendInvitationEmail(userDTO, instituteId);
         return userDTO;
     }
 
@@ -70,22 +70,27 @@ public class InviteUserService {
         roleService.addRolesToUser(addRoles, Optional.of(UserRoleStatus.INVITED.name()), userDetails);
     }
 
-    private void sendInvitationEmail(UserDTO userDTO) {
+    private void sendInvitationEmail(UserDTO userDTO, String instituteId) {
         GenericEmailRequest emailRequest = createEmailRequest(
                 userDTO.getEmail(), "Invitation Mail",
                 InviteUserEmailBody.createInviteUserEmail(
                         userDTO.getFullName(), userDTO.getUsername(), userDTO.getPassword(), userDTO.getRoles())
         );
-        notificationService.sendGenericHtmlMail(emailRequest);
+        notificationService.sendGenericHtmlMail(emailRequest, instituteId);
     }
 
     private void sendReminderEmail(User user) {
+        String instituteId = null;
+        if (user.getRoles() != null && !user.getRoles().isEmpty()) {
+            instituteId = user.getRoles().iterator().next().getInstituteId();
+        }
+        
         GenericEmailRequest emailRequest = createEmailRequest(
                 user.getEmail(), "Invitation Reminder Mail",
                 InviteUserEmailBody.createReminderEmail(
                         user.getFullName(), user.getUsername(), user.getPassword(), getUserRoleNames(user))
         );
-        notificationService.sendGenericHtmlMail(emailRequest);
+        notificationService.sendGenericHtmlMail(emailRequest, instituteId);
     }
 
     private ModifyUserRolesDTO createModifyRolesDTO(String userId, String instituteId, List<String> roles) {

@@ -91,6 +91,7 @@ export const CourseStructureDetails = ({
     isEnrolledInCourse,
     onLoadingChange,
     updateModuleStats,
+    paymentType,
 }: {
     selectedSession: string;
     selectedLevel: string;
@@ -101,6 +102,7 @@ export const CourseStructureDetails = ({
     isEnrolledInCourse?: boolean;
     onLoadingChange?: (loading: boolean) => void;
     updateModuleStats?: (modulesData: Record<string, Array<{ chapters?: Array<unknown> }>>) => void;
+    paymentType?: string | null;
 }) => {
 
     const router = useRouter();
@@ -334,23 +336,36 @@ export const CourseStructureDetails = ({
         chapterId: string,
         slideId: string
     ) => {
+        console.log('Slide navigation clicked:', { 
+            paymentType, 
+            isEnrolledInCourse, 
+            selectedTab, 
+            userHasDonated 
+        });
+        
         // Allow navigation if user is enrolled in the course OR if it's PROGRESS/COMPLETED tabs
         if (isEnrolledInCourse || selectedTab === "PROGRESS" || selectedTab === "COMPLETED") {
-            // Always check donation status for enrolled users, regardless of tab
-            if (userHasDonated === false) {
-                // Show donation dialog for slide access
-                setTargetSlideDetails({
-                    courseId: searchParams.courseId || "",
-                    subjectId,
-                    moduleId,
-                    chapterId,
-                    slideId,
-                });
-                setDonationDialogOpen(true);
-                return;
+            // Default behavior: Direct navigation for enrolled users
+            // Only show donation dialog if payment type is specifically "DONATION"
+            if (paymentType && paymentType.toLowerCase() === 'donation' && isEnrolledInCourse) {
+                // For donation type, check donation status
+                if (userHasDonated === false) {
+                    console.log('Donation type detected and user not donated, showing donation dialog');
+                    // Show donation dialog for slide access
+                    setTargetSlideDetails({
+                        courseId: searchParams.courseId || "",
+                        subjectId,
+                        moduleId,
+                        chapterId,
+                        slideId,
+                    });
+                    setDonationDialogOpen(true);
+                    return;
+                }
             }
             
-            // If user has donated, navigate directly
+            // Default: Navigate directly to slide (for all non-donation types or when payment type is not loaded)
+            console.log('Navigating directly to slide (default behavior)');
             navigateTo(
                 `/study-library/courses/course-details/subjects/modules/chapters/slides`,
                 {

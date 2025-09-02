@@ -205,7 +205,6 @@ export const transformApiDataToCourseData = async (
             })),
         };
     } catch (error) {
-        console.error("Error transforming course data:", error, apiData);
         return null;
     }
 };

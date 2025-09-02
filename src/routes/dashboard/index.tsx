@@ -49,6 +49,7 @@ import { toast } from "sonner";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
+import { useWeeklyAttendanceQuery } from "@/services/attendance/getWeeklyAttendance";
 import type { StudentDashboardWidgetConfig } from "@/types/student-display-settings";
 import { Card as DSCard } from "@/components/ui/card";
 import { DashboardPinsPanel } from "@/components/announcements";
@@ -140,10 +141,10 @@ const StatCard = ({
         </div>
 
         <div className="space-y-1 sm:space-y-2">
-              <div className="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-neutral-100 tracking-tight leading-tight">
+          <div className="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-neutral-100 tracking-tight leading-tight">
             {(count ?? 0).toLocaleString()}
           </div>
-              <div className="text-xs sm:text-sm font-medium text-gray-600 dark:text-neutral-300 group-hover:text-gray-700 dark:group-hover:text-neutral-200 transition-colors duration-300 line-clamp-2 break-words">
+          <div className="text-xs sm:text-sm font-medium text-gray-600 dark:text-neutral-300 group-hover:text-gray-700 dark:group-hover:text-neutral-200 transition-colors duration-300 line-clamp-2 break-words">
             {title}
           </div>
         </div>
@@ -249,10 +250,10 @@ const ContinueLearningCard = ({
                 </div>
               </div>
               <div className="flex-1 min-w-0 overflow-hidden dashboard-flex-container">
-                  <h4 className="font-medium text-gray-900 dark:text-neutral-100 group-hover:text-primary-600 dark:group-hover:text-neutral-100 transition-colors duration-300 text-xs sm:text-sm leading-tight slide-title dashboard-card-text">
+                <h4 className="font-medium text-gray-900 dark:text-neutral-100 group-hover:text-primary-600 dark:group-hover:text-neutral-100 transition-colors duration-300 text-xs sm:text-sm leading-tight slide-title dashboard-card-text">
                   {slide.slide_title}
                 </h4>
-                  <p className="text-xs text-gray-500 dark:text-neutral-400 mt-0.5 leading-tight slide-description dashboard-card-text">
+                <p className="text-xs text-gray-500 dark:text-neutral-400 mt-0.5 leading-tight slide-description dashboard-card-text">
                   {slide.slide_description ||
                     "Continue from where you left off"}
                 </p>
@@ -298,6 +299,10 @@ export function DashboardComponent() {
   const { setStudyLibraryData } = useStudyLibraryStore();
   const [data, setData] = useState<DashbaordResponse | null>(null);
   const { setActiveItem } = useContentStore();
+
+  // Add weekly attendance query
+  const { data: weeklyAttendance, isLoading: isLoadingAttendance } =
+    useWeeklyAttendanceQuery();
   const {
     data: liveSessions,
     isLoading: isLoadingLiveSessions,
@@ -306,7 +311,9 @@ export function DashboardComponent() {
 
   // Initialize analytics tracking
   const { trackPageView, track, trackLessonStarted } = useAnalytics();
-  const [widgetConfigs, setWidgetConfigs] = useState<StudentDashboardWidgetConfig[] | null>(null);
+  const [widgetConfigs, setWidgetConfigs] = useState<
+    StudentDashboardWidgetConfig[] | null
+  >(null);
   // If settings specify a different post-login route, redirect away from dashboard
   useEffect(() => {
     getStudentDisplaySettings(false)
@@ -397,8 +404,9 @@ export function DashboardComponent() {
     return cfg?.order ?? Number.MAX_SAFE_INTEGER;
   };
 
-  const customWidget = widgetConfigs?.find((w) => w.id === "custom" && w.visible !== false);
-
+  const customWidget = widgetConfigs?.find(
+    (w) => w.id === "custom" && w.visible !== false
+  );
 
   useEffect(() => {
     if (batchId) {
@@ -627,7 +635,10 @@ export function DashboardComponent() {
         {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
           <>
             {/* Stats and Widgets Grid - Enforced by Student Display Settings */}
-            <div className="animate-fade-in-up" style={{ animationDelay: "0.2s" }}>
+            <div
+              className="animate-fade-in-up"
+              style={{ animationDelay: "0.2s" }}
+            >
               <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fit,minmax(260px,1fr))] lg:grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-2.5 sm:gap-3.5 md:gap-5">
                 {[
                   {
@@ -635,11 +646,17 @@ export function DashboardComponent() {
                     className: "",
                     render: (
                       <StatCard
-                        title={`${getTerminology(ContentTerms.Course, SystemTerms.Course)}s`}
+                        title={`${getTerminology(
+                          ContentTerms.Course,
+                          SystemTerms.Course
+                        )}s`}
                         count={data?.courses || 0}
                         icon={BookOpen}
                         onClick={() => {
-                          track("Dashboard Card Clicked", { cardType: "Courses", count: data?.courses || 0 });
+                          track("Dashboard Card Clicked", {
+                            cardType: "Courses",
+                            count: data?.courses || 0,
+                          });
                           navigate({ to: "/study-library/courses" });
                         }}
                         gradient="from-blue-500/10 to-primary-500/10"
@@ -656,7 +673,10 @@ export function DashboardComponent() {
                         count={homeworkAssignedCount}
                         icon={Users}
                         onClick={() => {
-                          track("Dashboard Card Clicked", { cardType: "Assignments", count: homeworkAssignedCount });
+                          track("Dashboard Card Clicked", {
+                            cardType: "Assignments",
+                            count: homeworkAssignedCount,
+                          });
                           navigate({ to: "/homework/list" });
                         }}
                         gradient="from-green-500/10 to-emerald-500/10"
@@ -673,7 +693,10 @@ export function DashboardComponent() {
                         count={testAssignedCount}
                         icon={Trophy}
                         onClick={() => {
-                          track("Dashboard Card Clicked", { cardType: "Evaluations", count: testAssignedCount });
+                          track("Dashboard Card Clicked", {
+                            cardType: "Evaluations",
+                            count: testAssignedCount,
+                          });
                           navigate({ to: "/assessment/examination" });
                         }}
                         gradient="from-purple-500/10 to-pink-500/10"
@@ -685,14 +708,20 @@ export function DashboardComponent() {
                     id: "continueLearning" as const,
                     className: "lg:col-span-2",
                     render: (
-                      <ContinueLearningCard data={data} onResumeClick={handleResumeClick} />
+                      <ContinueLearningCard
+                        data={data}
+                        onResumeClick={handleResumeClick}
+                      />
                     ),
                   },
                   {
                     id: "learningAnalytics" as const,
                     className: "lg:col-span-2 xl:col-span-3",
                     render: (
-                      <div className="animate-fade-in-up" style={{ animationDelay: "0.6s" }}>
+                      <div
+                        className="animate-fade-in-up"
+                        style={{ animationDelay: "0.6s" }}
+                      >
                         <PastLearningInsights />
                       </div>
                     ),
@@ -739,7 +768,9 @@ export function DashboardComponent() {
                         </CardHeader>
                         <CardContent className="pt-0 px-3 sm:px-6">
                           {customWidget.subTitle && (
-                            <p className="text-xs sm:text-sm text-gray-600 mb-3">{customWidget.subTitle}</p>
+                            <p className="text-xs sm:text-sm text-gray-600 mb-3">
+                              {customWidget.subTitle}
+                            </p>
                           )}
                           {customWidget.link && (
                             <Button
@@ -766,7 +797,9 @@ export function DashboardComponent() {
                   .filter((w) => isWidgetVisible(w.id) && w.render)
                   .sort((a, b) => getWidgetOrder(a.id) - getWidgetOrder(b.id))
                   .map((w, idx) => (
-                    <div key={`${String(w.id)}-${idx}`} className={w.className}>{w.render}</div>
+                    <div key={`${String(w.id)}-${idx}`} className={w.className}>
+                      {w.render}
+                    </div>
                   ))}
               </div>
             </div>
@@ -839,49 +872,84 @@ export function DashboardComponent() {
               <div className="lg:col-span-4 space-y-3 sm:space-y-4 md:space-y-6">
                 <Card className="border-0 bg-gradient-to-br from-white/80 to-primary-50/30 shadow-lg">
                   <CardHeader className="pb-2 sm:pb-3 md:pb-4 px-3 sm:px-6">
-                    <CardTitle className="flex items-center space-x-2 text-sm sm:text-base md:text-lg">
-                      <CheckCircle
-                        weight="duotone"
-                        size={16}
-                        className="text-primary-600 sm:w-4 sm:h-4 md:w-5 md:h-5"
-                      />
-                      <span>This Week</span>
+                    <CardTitle className="flex items-center justify-between text-sm sm:text-base md:text-lg">
+                      <div className="flex items-center space-x-2">
+                        <CheckCircle
+                          weight="duotone"
+                          size={16}
+                          className="text-primary-600 sm:w-4 sm:h-4 md:w-5 md:h-5"
+                        />
+                        <span>This Week</span>
+                      </div>
+                      {weeklyAttendance?.weekRange && (
+                        <span className="text-xs text-gray-500 font-normal">
+                          {weeklyAttendance.weekRange}
+                        </span>
+                      )}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="pt-0 px-3 sm:px-6">
                     <div className="flex items-center justify-center gap-1 sm:gap-2">
-                      {["Mon", "Tue", "Wed", "Thu", "Fri"].map((day, index) => {
-                        const icons = [
-                          CheckCircle,
-                          XCircle,
-                          CheckCircle,
-                          Hourglass,
-                          Hourglass,
-                        ];
-                        const colors = [
-                          "text-success-500",
-                          "text-danger-500",
-                          "text-success-500",
-                          "text-warning-500",
-                          "text-warning-500",
-                        ];
-                        const Icon = icons[index];
-                        return (
-                          <div
-                            key={day}
-                            className="flex flex-col items-center space-y-1 p-1.5 sm:p-2 md:p-3 bg-white rounded-md sm:rounded-lg border border-gray-200 min-w-0 flex-1"
-                          >
-                            <Icon
-                              size={14}
-                              className={colors[index]}
-                              weight="duotone"
-                            />
-                            <span className="text-xs font-medium text-gray-600 truncate">
-                              {day}
-                            </span>
-                          </div>
-                        );
-                      })}
+                      {isLoadingAttendance
+                        ? // Loading state
+                          ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(
+                            (day) => (
+                              <div
+                                key={day}
+                                className="flex flex-col items-center space-y-1 p-1.5 sm:p-2 md:p-3 bg-white rounded-md sm:rounded-lg border border-gray-200 min-w-0 flex-1"
+                              >
+                                <div className="w-3.5 h-3.5 bg-gray-200 rounded-full animate-pulse"></div>
+                                <span className="text-xs font-medium text-gray-600 truncate">
+                                  {day}
+                                </span>
+                              </div>
+                            )
+                          )
+                        : // Real attendance data
+                          (weeklyAttendance?.days || []).map((dayData) => {
+                            let Icon = Hourglass;
+                            let colorClass = "text-gray-400";
+
+                            switch (dayData.status) {
+                              case "PRESENT":
+                                Icon = CheckCircle;
+                                colorClass = "text-success-500";
+                                break;
+                              case "ABSENT":
+                                Icon = XCircle;
+                                colorClass = "text-danger-500";
+                                break;
+                              case "PENDING":
+                                Icon = Hourglass;
+                                colorClass = "text-warning-500";
+                                break;
+                              case "NO_CLASS":
+                                Icon = Clock;
+                                colorClass = "text-gray-400";
+                                break;
+                            }
+
+                            return (
+                              <div
+                                key={dayData.day}
+                                className={`flex flex-col items-center space-y-1 p-1.5 sm:p-2 md:p-3 bg-white rounded-md sm:rounded-lg border border-gray-200 min-w-0 flex-1 ${
+                                  dayData.status === "PENDING" ||
+                                  dayData.status === "NO_CLASS"
+                                    ? "opacity-60"
+                                    : ""
+                                }`}
+                              >
+                                <Icon
+                                  size={14}
+                                  className={colorClass}
+                                  weight="duotone"
+                                />
+                                <span className="text-xs font-medium text-gray-600 truncate">
+                                  {dayData.day}
+                                </span>
+                              </div>
+                            );
+                          })}
                     </div>
                   </CardContent>
                 </Card>
@@ -1014,7 +1082,7 @@ export function DashboardComponent() {
                         .map((session, index) => (
                           <div
                             key={`upcoming-${session.session_id}-${index}`}
-                          className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 md:gap-4 p-2.5 sm:p-3 md:p-4 bg-white border border-gray-200 rounded-md sm:rounded-lg hover:bg-white transition-all duration-200 w-full min-h-[60px] sm:min-h-[64px] max-w-full overflow-hidden"
+                            className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 md:gap-4 p-2.5 sm:p-3 md:p-4 bg-white border border-gray-200 rounded-md sm:rounded-lg hover:bg-white transition-all duration-200 w-full min-h-[60px] sm:min-h-[64px] max-w-full overflow-hidden"
                           >
                             <div className="flex items-center space-x-1.5 sm:space-x-2 md:space-x-3 min-w-0 flex-1 overflow-hidden">
                               <div className="p-1 sm:p-1.5 md:p-2 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg flex-shrink-0">

@@ -75,7 +75,6 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
       }
     } catch (err) {
       setError("Failed to load payment options. Please try again.");
-      console.error("Error fetching enrollment data:", err);
     } finally {
       setLoading(false);
     }
@@ -90,11 +89,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
     setProcessingPayment(true);
     try {
       // TODO: Implement actual one-time payment processing
-      console.log("Processing one-time payment with:", {
-        paymentOption: selectedPaymentOption,
-        paymentPlan: selectedPaymentPlan,
-        packageSessionId,
-      });
+
 
       // Simulate payment processing
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -105,7 +100,6 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
       // TODO: Show success message or redirect
     } catch (err) {
       setError("Payment processing failed. Please try again.");
-      console.error("Payment error:", err);
     } finally {
       setProcessingPayment(false);
     }

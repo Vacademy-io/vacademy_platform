@@ -75,7 +75,6 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
 
   const handlePaymentAndEnrollment = async () => {
     if (!selectedPaymentPlan) {
-      console.error('No payment plan selected');
       return;
     }
 
@@ -93,7 +92,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
         onContinue();
       }
     } catch (error) {
-      console.error('❌ Error during subscription payment:', error);
+      // Error during subscription payment
     }
   };
 

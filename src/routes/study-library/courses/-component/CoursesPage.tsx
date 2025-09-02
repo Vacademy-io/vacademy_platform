@@ -23,7 +23,7 @@ interface CoursesPageProps {
     setSelectedInstructors: (instructors: string[]) => void;
     clearAllFilters: () => void;
     onApplyFilters: () => void;
-    page: number;
+
     handlePageChange: (page: number) => void;
     showFilters?: boolean;
     selectedTab: string;
@@ -43,7 +43,6 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
     setSelectedInstructors,
     clearAllFilters,
     onApplyFilters,
-    page,
     handlePageChange,
     showFilters = true,
     selectedTab,
@@ -76,7 +75,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
             setter([...list, itemId]);
         }
     };
-    console.log("page", page);
+
     // Convert thumbnail_file_id to URLs with individual loading (more reliable)
     useEffect(() => {
         const convertThumbnailsToUrls = async () => {
@@ -90,7 +89,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                 .filter((item) => item.fileId && item.fileId.trim() !== "");
 
             if (validFileIds.length === 0) {
-                console.log("No valid file IDs to process");
+        
                 return;
             }
         };

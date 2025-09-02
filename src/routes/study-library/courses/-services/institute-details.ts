@@ -39,10 +39,9 @@ export const fetchUserRolesDetails = async () => {
             if (accessToken) {
                 const decodedData = getTokenDecodedData(accessToken);
                 userId = decodedData?.user || "";
-                console.log('[fetchUserRolesDetails] User ID from token:', userId);
             }
         } catch (error) {
-            console.warn('[fetchUserRolesDetails] Failed to get userId from token:', error);
+            // Failed to get userId from token
         }
         
         // Fallback: try to get userId from StudentDetails if not available from token
@@ -52,9 +51,9 @@ export const fetchUserRolesDetails = async () => {
                 try {
                     const parsedDetails = JSON.parse(StudentDetails.value);
                     userId = parsedDetails?.user_id || "";
-                    console.log('[fetchUserRolesDetails] User ID from StudentDetails:', userId);
+                    // User ID from StudentDetails
                 } catch (error) {
-                    console.error("[fetchUserRolesDetails] Error parsing StudentDetails:", error);
+                    // Error parsing StudentDetails
                 }
             }
         }
@@ -67,7 +66,7 @@ export const fetchUserRolesDetails = async () => {
             throw new Error("Could not determine instituteId");
         }
         
-        console.log('[fetchUserRolesDetails] Making API call with:', { userId, instituteId });
+        // Making API call with userId and instituteId
         
         const response = await authenticatedAxiosInstance({
             method: "GET",
@@ -79,7 +78,7 @@ export const fetchUserRolesDetails = async () => {
         });
         return response?.data;
     } catch (error) {
-        console.error('[fetchUserRolesDetails] Failed to fetch user roles:', error);
+        // Failed to fetch user roles
         throw error;
     }
 };

@@ -25,7 +25,6 @@ const Header: React.FC = () => {
             }
           }
         } catch (error) {
-          console.error("Error fetching dynamic institute logo URL:", error);
           if (isMounted) setLogoUrlToDisplay(defaultLogoUrl);
         } finally {
           if (isMounted) setLogoLoading(false);

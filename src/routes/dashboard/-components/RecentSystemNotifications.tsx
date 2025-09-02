@@ -2,11 +2,22 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Bell, ChevronRight, Clock } from 'lucide-react';
+import { Bell, ChevronRight, Clock, Trash2 } from 'lucide-react';
 import { useSystemAlerts } from '@/hooks/useSystemAlerts';
 import { isAfter, subDays } from 'date-fns';
 import { formatLocalDateTime } from '@/helpers/formatISOTime';
 import type { UserMessage } from '@/types/announcement';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 interface RecentSystemNotificationsProps {
   className?: string;
@@ -15,7 +26,7 @@ interface RecentSystemNotificationsProps {
 export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps> = ({ 
   className = '' 
 }) => {
-  const { alerts, loading, error, isEnabled, isLoadingSettings } = useSystemAlerts({
+  const { alerts, loading, error, isEnabled, isLoadingSettings, dismissAll } = useSystemAlerts({
     enablePolling: false, // Don't poll in dashboard widget
     autoMarkAsRead: false, // Don't auto-mark as read in dashboard
   });
@@ -88,9 +99,44 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
             <Bell className="h-5 w-5 text-blue-600" />
             Recent System Notifications
           </CardTitle>
-          <Badge variant="secondary" className="text-xs">
-            {recentNotifications.length} recent
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="text-xs">
+              {recentNotifications.length} recent
+            </Badge>
+            {alerts.length > 0 && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                    disabled={loading}
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Clear All
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Clear All Notifications</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Are you sure you want to dismiss all {alerts.length} notification{alerts.length === 1 ? '' : 's'}?
+                      This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={dismissAll}
+                      className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+                    >
+                      Clear All
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
+          </div>
         </div>
       </CardHeader>
       

@@ -28,16 +28,21 @@ public interface SessionGuestRegistrationRepository extends JpaRepository<Sessio
                 (
                     SELECT cfv.value
                     FROM custom_field_values cfv
+                    JOIN custom_fields cf ON cf.id = cfv.custom_field_id
                     WHERE cfv.source_id = sgr.id
-                    ORDER BY cfv.id ASC
+                    AND (cf.field_key ILIKE '%name%' OR cf.field_name ILIKE '%name%')
+                    ORDER BY cf.form_order ASC
                     LIMIT 1
                 ) AS guestName,
                 (
-                  SELECT cfv.value
-                  FROM custom_field_values cfv
-                  WHERE cfv.source_id = sgr.id
-                  ORDER BY cfv.id ASC
-                  LIMIT 1 OFFSET 3
+                    SELECT cfv.value
+                    FROM custom_field_values cfv
+                    JOIN custom_fields cf ON cf.id = cfv.custom_field_id
+                    WHERE cfv.source_id = sgr.id
+                    AND (cf.field_key ILIKE '%mobile%' OR cf.field_key ILIKE '%phone%' 
+                         OR cf.field_name ILIKE '%mobile%' OR cf.field_name ILIKE '%phone%')
+                    ORDER BY cf.form_order ASC
+                    LIMIT 1
                 ) AS mobileNumber
             FROM session_guest_registrations sgr
             LEFT JOIN live_session_logs lsl

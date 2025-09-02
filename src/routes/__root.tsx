@@ -196,10 +196,17 @@ export const Route = createRootRouteWithContext<{
           throw redirect({ to: "/courses" });
         }
       } catch (error) {
+        if (error instanceof Response && [301, 302, 303, 307, 308].includes(error.status)) {
+          console.log("[__root] Caught redirect Response in root block. Rethrowing.", {
+            status: error.status,
+          });
+          throw error;
+        }
         console.error("Error resolving domain routing:", error);
         // Domain routing error, continuing to fallback logic
       }
 
+      console.log("[__root] Redirecting unauthenticated user to /login");
       throw redirect({ to: "/login" });
     }
 
@@ -246,6 +253,12 @@ export const Route = createRootRouteWithContext<{
           throw redirect({ to: "/courses" });
         }
       } catch (error) {
+        if (error instanceof Response && [301, 302, 303, 307, 308].includes(error.status)) {
+          console.log("[__root] (protected) Caught redirect Response. Rethrowing.", {
+            status: error.status,
+          });
+          throw error;
+        }
         console.error("Error resolving domain routing:", error);
         // Domain routing error for protected route, continuing to fallback logic
       }

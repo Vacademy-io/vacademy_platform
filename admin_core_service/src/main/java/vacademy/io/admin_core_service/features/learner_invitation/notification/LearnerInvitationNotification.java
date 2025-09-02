@@ -55,7 +55,7 @@ public class LearnerInvitationNotification {
                 genericEmailRequest.setSubject("Response recorded for " + instituteName);
                 genericEmailRequest.setTo(email);
                 genericEmailRequest.setBody(LearnerInvitationEmailBody.getLearnerStatusUpdateEmailBody(instituteName));
-                notificationService.sendGenericHtmlMail(genericEmailRequest);
+                notificationService.sendGenericHtmlMail(genericEmailRequest, null);
             } catch (Exception e) {
                 System.err.println("Error sending invitation response email: " + e.getMessage());
             }

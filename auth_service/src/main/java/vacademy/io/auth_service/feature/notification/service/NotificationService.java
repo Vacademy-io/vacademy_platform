@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.auth_service.feature.notification.constants.NotificationConstant;
 import vacademy.io.auth_service.feature.notification.dto.NotificationDTO;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
@@ -54,9 +55,13 @@ public class NotificationService {
         }
     }
 
-    public Boolean sendGenericHtmlMail(GenericEmailRequest request) {
 
-        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(), notificationServerBaseUrl, NotificationConstant.SEND_HTML_EMAIL, request);
+    public Boolean sendGenericHtmlMail(GenericEmailRequest request, String instituteId) {
+        String endpoint = NotificationConstant.SEND_HTML_EMAIL;
+        if (StringUtils.hasText(instituteId)) {
+            endpoint += "?instituteId=" + instituteId;
+        }
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(), notificationServerBaseUrl, endpoint, request);
 
         ObjectMapper objectMapper = new ObjectMapper();
         try {

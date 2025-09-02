@@ -92,6 +92,11 @@ public class UserOperationService {
 
     @Async
     public String sendPasswordToUser(User user) {
+        String instituteId = null;
+        if (user.getRoles() != null && !user.getRoles().isEmpty()) {
+            instituteId = user.getRoles().iterator().next().getInstituteId();
+        }
+        
         String emailBody = NotificationEmailBody.sendUpdatedUserPasswords(
                 "auth-service", user.getFullName(), user.getUsername(), user.getPassword());
 
@@ -100,7 +105,7 @@ public class UserOperationService {
         genericEmailRequest.setSubject("Your Updated Account Credentials for Accessing the App");
         genericEmailRequest.setBody(emailBody);
 
-        if (!notificationService.sendGenericHtmlMail(genericEmailRequest)) {
+        if (!notificationService.sendGenericHtmlMail(genericEmailRequest, instituteId)) {
             throw new VacademyException("Email not sent");
         }
 

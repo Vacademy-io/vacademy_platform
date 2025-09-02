@@ -7,7 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
-import vacademy.io.admin_core_service.features.live_session.controller.AttendanceReport;
 import vacademy.io.admin_core_service.features.live_session.dto.AttendanceReportDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.AttendanceReportProjection;
 import vacademy.io.admin_core_service.features.live_session.dto.ScheduleAttendanceProjection;
@@ -15,7 +14,6 @@ import vacademy.io.admin_core_service.features.live_session.entity.LiveSessionPa
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.UUID;
 
 @Repository
 public interface LiveSessionParticipantRepository extends JpaRepository<LiveSessionParticipants, String> {
@@ -71,6 +69,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         s.date_of_birth AS dateOfBirth,
         m.institute_enrollment_number AS instituteEnrollmentNumber,
         m.status AS enrollmentStatus,
+        m.enrolled_date AS enrolledDate,
         lsl.status AS attendanceStatus,
         lsl.details AS attendanceDetails,
         lsl.created_at AS attendanceTimestamp,
@@ -99,6 +98,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         AND lsl.log_type = 'ATTENDANCE_RECORDED'
     WHERE lsp.source_id = :batchSessionId
       AND ss.meeting_date BETWEEN :startDate AND :endDate
+      AND (m.enrolled_date IS NULL OR ss.meeting_date >= m.enrolled_date)
     """, nativeQuery = true)
     List<AttendanceReportProjection> getAttendanceReportWithinDateRange(
             @Param("batchSessionId") String batchSessionId,
@@ -120,6 +120,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
           AND (:name IS NULL OR LOWER(s.full_name) LIKE LOWER(CONCAT('%', :name, '%')))
           AND (:batchIdsSize = 0 OR lsp.source_id IN (:batchIds))
           AND (:liveSessionIdsSize = 0 OR lsp.session_id IN (:liveSessionIds))
+          AND (m.enrolled_date IS NULL OR m.enrolled_date <= :endDate)
         """,
             countQuery = """
         SELECT COUNT(DISTINCT s.user_id)
@@ -134,6 +135,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
           AND (:name IS NULL OR LOWER(s.full_name) LIKE LOWER(CONCAT('%', :name, '%')))
           AND (:batchIdsSize = 0 OR lsp.source_id IN (:batchIds))
           AND (:liveSessionIdsSize = 0 OR lsp.session_id IN (:liveSessionIds))
+          AND (m.enrolled_date IS NULL OR m.enrolled_date <= :endDate)
         """,
             nativeQuery = true
     )
@@ -158,6 +160,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         s.date_of_birth AS dateOfBirth,
         m.institute_enrollment_number AS instituteEnrollmentNumber,
         m.status AS enrollmentStatus,
+        m.enrolled_date AS enrolledDate,
         lsl.status AS attendanceStatus,
         lsl.details AS attendanceDetails,
         lsl.created_at AS attendanceTimestamp,
@@ -186,6 +189,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         AND lsl.log_type = 'ATTENDANCE_RECORDED'
     WHERE s.user_id IN (:studentIds)
     AND ss.meeting_date BETWEEN :startDate AND :endDate
+    AND (m.enrolled_date IS NULL OR ss.meeting_date >= m.enrolled_date)
     ORDER BY LOWER(s.full_name), ss.meeting_date
 """,nativeQuery = true)
     List<AttendanceReportProjection> getAttendanceReportForStudentIds(

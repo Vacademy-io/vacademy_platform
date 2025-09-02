@@ -1,4 +1,4 @@
-import { Steps } from "@phosphor-icons/react";
+   import { Steps } from "@phosphor-icons/react";
 import { useRouter } from "@tanstack/react-router";
 import {
     ChalkboardTeacher,
@@ -59,6 +59,7 @@ import { CourseStructureDetails } from "./course-structure-details";
 import { CourseStructureResponse } from "@/types/institute-details/course-details-interface";
 import { getIdByLevelAndSession } from "@/routes/courses/course-details/-utils/helper";
 import { DonationDialog } from "@/components/common/donation/DonationDialog";
+import { EnrollmentPaymentDialog } from "./payment-dialogs/EnrollmentPaymentDialog";
 import { useEnrollmentStatus } from "@/hooks/use-enrollment-status";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
@@ -386,15 +387,18 @@ export const CourseDetailsPage = () => {
                 try {
                     console.log('Fetching payment options for institute:', instituteId);
                     const paymentOption = await fetchPaymentOptions(instituteId);
-                    if (paymentOption) {
+                    if (paymentOption && paymentOption.type) {
                         console.log('Payment type fetched:', paymentOption.type);
                         setPaymentType(paymentOption.type);
+                    } else {
+                        console.log('No payment option returned, defaulting to SUBSCRIPTION type for direct navigation');
+                        setPaymentType("SUBSCRIPTION");
                     }
                 } catch (error) {
                     console.error("Error fetching payment options:", error);
-                    // Default to donation type if fetch fails
-                    console.log('Defaulting to DONATION type due to error');
-                    setPaymentType("DONATION");
+                    // Default to non-donation type for direct navigation if fetch fails
+                    console.log('API failed, defaulting to SUBSCRIPTION type for direct navigation');
+                    setPaymentType("SUBSCRIPTION");
                 }
             }
         };
@@ -1244,6 +1248,18 @@ export const CourseDetailsPage = () => {
                     );
                 }}
             />
+
+            {/* Enrollment Payment Dialog for Non-Donation Payment Types */}
+            <EnrollmentPaymentDialog
+                open={enrollmentDialogOpen}
+                onOpenChange={setEnrollmentDialogOpen}
+                packageSessionId={packageSessionIdForCurrentLevel || ""}
+                instituteId={instituteId || ""}
+                token={authToken}
+                courseTitle={form.getValues("courseData").title}
+                inviteCode={inviteCode}
+            />
+
             <div className="min-h-screen bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 relative overflow-hidden w-full max-w-full">
                 {/* Animated background elements */}
                 <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -1917,11 +1933,17 @@ export const CourseDetailsPage = () => {
                                                 buttonType="primary"
                                                 layoutVariant="default"
                                                 className="!min-w-full !w-full text-xs h-8"
-                                                onClick={() =>
-                                                    setEnrollmentDialogOpen(
-                                                        true
-                                                    )
-                                                }
+                                                onClick={() => {
+                                                    console.log('Enrollment button clicked, payment type:', paymentType);
+                                                    // Check payment type first - if not donation, use enrollment dialog
+                                                    if (paymentType && paymentType.toLowerCase() !== 'donation') {
+                                                        console.log('Non-donation payment type, opening enrollment dialog');
+                                                        setEnrollmentDialogOpen(true);
+                                                    } else {
+                                                        console.log('Donation payment type, opening donation dialog');
+                                                        setDonationDialogOpen(true);
+                                                    }
+                                                }}
                                             >
                                                 Enroll
                                             </MyButton>
@@ -2425,11 +2447,17 @@ export const CourseDetailsPage = () => {
                                                                 buttonType="primary"
                                                                 layoutVariant="default"
                                                                 className="mt-2 !min-w-full !w-full text-xs h-8"
-                                                                onClick={() =>
-                                                                    setDonationDialogOpen(
-                                                                        true
-                                                                    )
-                                                                }
+                                                                onClick={() => {
+                                                                    console.log('Enrollment button clicked, payment type:', paymentType);
+                                                                    // Check payment type first - if not donation, use enrollment dialog
+                                                                    if (paymentType && paymentType.toLowerCase() !== 'donation') {
+                                                                        console.log('Non-donation payment type, opening enrollment dialog');
+                                                                        setEnrollmentDialogOpen(true);
+                                                                    } else {
+                                                                        console.log('Donation payment type, opening donation dialog');
+                                                                        setDonationDialogOpen(true);
+                                                                    }
+                                                                }}
                                                             >
                                                                 Enroll
                                                             </MyButton>

@@ -365,7 +365,10 @@ export const CourseStructureDetails = ({
             }
             
             // Default: Navigate directly to slide (for all non-donation types or when payment type is not loaded)
-            console.log('Navigating directly to slide (default behavior)');
+            console.log('Navigating directly to slide (default behavior)', { 
+                paymentType, 
+                reason: paymentType ? 'non-donation type' : 'payment type not loaded' 
+            });
             navigateTo(
                 `/study-library/courses/course-details/subjects/modules/chapters/slides`,
                 {
@@ -382,6 +385,8 @@ export const CourseStructureDetails = ({
 
     // Helper function to determine if slides should be clickable
     const isSlideClickable = () => {
+        // If user is enrolled, slides are clickable in ALL tabs
+        // If not enrolled, slides are only clickable in PROGRESS/COMPLETED tabs
         return isEnrolledInCourse || selectedTab === "PROGRESS" || selectedTab === "COMPLETED";
     };
 
@@ -1496,14 +1501,7 @@ export const CourseStructureDetails = ({
                                                                                                     key={
                                                                                                         slide.id
                                                                                                     }
-                                                                                                    className={`group flex items-center gap-1.5 px-2 py-1 text-sm text-neutral-500 rounded border border-transparent transition-all duration-200 ${
-                                                                                                        selectedTab ===
-                                                                                                            "PROGRESS" ||
-                                                                                                        selectedTab ===
-                                                                                                            "COMPLETED"
-                                                                                                            ? "cursor-pointer hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40"
-                                                                                                            : "cursor-default opacity-60"
-                                                                                                    }`}
+                                                                                                    className={getSlideStyling("sm")}
                                                                                                     onClick={() => {
                                                                                                         handleSlideNavigation(
                                                                                                             subject.id,

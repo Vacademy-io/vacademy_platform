@@ -60,16 +60,16 @@ export const fetchPaymentOptions = async (instituteId: string): Promise<PaymentO
       const data = await response.json();
       return data;
     } else {
-      // Return hardcoded defaults if API fails
+      // Return hardcoded defaults if API fails - default to subscription for direct navigation
       return {
         id: 'default',
-        name: 'Default Donation',
-        type: 'DONATION',
+        name: 'Default Subscription',
+        type: 'SUBSCRIPTION',
         status: 'ACTIVE',
         require_approval: false,
         payment_plans: [],
         payment_option_metadata_json: JSON.stringify({
-          donationData: {
+          subscriptionData: {
             suggestedAmounts: '5,10,25,50,100',
             minimumAmount: '1',
             allowCustomAmount: true
@@ -78,16 +78,16 @@ export const fetchPaymentOptions = async (instituteId: string): Promise<PaymentO
       };
     }
   } catch (error) {
-    // Return hardcoded defaults if API fails
+    // Return hardcoded defaults if API fails - default to subscription for direct navigation
     return {
       id: 'default',
-      name: 'Default Donation',
-      type: 'DONATION',
+      name: 'Default Subscription',
+      type: 'SUBSCRIPTION',
       status: 'ACTIVE',
       require_approval: false,
       payment_plans: [],
       payment_option_metadata_json: JSON.stringify({
-        donationData: {
+        subscriptionData: {
           suggestedAmounts: '5,10,25,50,100',
           minimumAmount: '1',
           allowCustomAmount: true

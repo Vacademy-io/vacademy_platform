@@ -6,7 +6,7 @@ import {
   fetchEnrollmentDetails,
   type EnrollmentResponse,
 } from "../../-services/enrollment-api";
-import { DonationDialog } from "./DonationDialog";
+import { DonationDialog } from "@/components/common/donation/DonationDialog";
 import { SubscriptionPaymentDialog } from "./SubscriptionPaymentDialog";
 import { OneTimePaymentDialog } from "./OneTimePaymentDialog";
 import { FreePlanDialog } from "./FreePlanDialog";

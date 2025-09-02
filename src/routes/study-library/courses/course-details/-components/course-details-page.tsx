@@ -77,6 +77,7 @@ import LocalStorageUtils from "@/utils/localstorage";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { MyButton } from "@/components/design-system/button";
 import { extractTextFromHTML } from "@/components/common/helper";
+import { fetchPaymentOptions } from "@/routes/courses/-services/payment-options-api";
 
 type SlideType = {
     id: string;
@@ -377,6 +378,29 @@ export const CourseDetailsPage = () => {
         searchParams.courseId,
         updateLoadingState,
     ]);
+
+    // Fetch payment type when institute ID is available
+    useEffect(() => {
+        const fetchPaymentType = async () => {
+            if (instituteId) {
+                try {
+                    console.log('Fetching payment options for institute:', instituteId);
+                    const paymentOption = await fetchPaymentOptions(instituteId);
+                    if (paymentOption) {
+                        console.log('Payment type fetched:', paymentOption.type);
+                        setPaymentType(paymentOption.type);
+                    }
+                } catch (error) {
+                    console.error("Error fetching payment options:", error);
+                    // Default to donation type if fetch fails
+                    console.log('Defaulting to DONATION type due to error');
+                    setPaymentType("DONATION");
+                }
+            }
+        };
+
+        fetchPaymentType();
+    }, [instituteId]);
 
     // Only run the query if instituteId is available
     const { data: studyLibraryData, isLoading: isCourseDetailsLoading } =
@@ -929,6 +953,7 @@ export const CourseDetailsPage = () => {
     const [donationDialogOpen, setDonationDialogOpen] = useState(false);
     const [inviteCode, setInviteCode] = useState<string>("default");
     const [authToken, setAuthToken] = useState<string>("");
+    const [paymentType, setPaymentType] = useState<string | null>(null);
     const [moduleStats, setModuleStats] = useState({
         totalModules: 0,
         totalChapters: 0,
@@ -1861,6 +1886,7 @@ export const CourseDetailsPage = () => {
                                             searchParams.courseId
                                     )}
                                     onLoadingChange={handleModulesLoadingChange}
+                                    {...(paymentType && { paymentType })}
                                 />
                             </div>
 

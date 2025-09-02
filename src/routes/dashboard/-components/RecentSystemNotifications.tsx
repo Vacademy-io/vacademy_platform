@@ -4,7 +4,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Bell, ChevronRight, Clock } from 'lucide-react';
 import { useSystemAlerts } from '@/hooks/useSystemAlerts';
-import { formatDistanceToNow, isAfter, subDays } from 'date-fns';
+import { isAfter, subDays } from 'date-fns';
+import { formatLocalDateTime } from '@/helpers/formatISOTime';
 import type { UserMessage } from '@/types/announcement';
 
 interface RecentSystemNotificationsProps {
@@ -161,7 +162,7 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
                         <div className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
                           <span>
-                            {formatDistanceToNow(new Date(alert.createdAt), { addSuffix: true })}
+                            {formatLocalDateTime(alert.createdAt)}
                           </span>
                           {alert.createdByName && (
                             <>

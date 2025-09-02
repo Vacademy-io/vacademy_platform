@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Loader2, MessageSquare, Send, User, Clock, AlertCircle, Info } from 'lucide-react';
 import { usePackageSessionMessages } from '@/hooks/usePackageSessionMessages';
 import { formatDistanceToNow } from 'date-fns';
+import { formatLocalDateTime } from '@/helpers/formatISOTime';
 import type { UserMessage } from '@/types/announcement';
 import { announcementApi } from '@/services/announcementApi';
 
@@ -174,7 +175,7 @@ export const PackageSessionMessages: React.FC<PackageSessionMessagesProps> = ({
             {message.createdAt && (
               <span className="flex items-center gap-1">
                 <Clock className="h-3 w-3" />
-                {formatDistanceToNow(new Date(message.createdAt), { addSuffix: true })}
+                {formatLocalDateTime(message.createdAt)}
               </span>
             )}
           </div>

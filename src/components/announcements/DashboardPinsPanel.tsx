@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useDashboardPins } from '@/hooks/useDashboardPins';
 import { formatDistanceToNow } from 'date-fns';
+import { formatLocalDateTime } from '@/helpers/formatISOTime';
 import { processHtmlString } from '@/lib/utils';
 import type { UserMessage } from '@/types/announcement';
 import { announcementApi } from '@/services/announcementApi';
@@ -191,7 +192,7 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
                         </span>
                       )}
                       {pin.createdAt && (
-                        <span>{formatDistanceToNow(new Date(pin.createdAt), { addSuffix: true })}</span>
+                        <span>{formatLocalDateTime(pin.createdAt)}</span>
                       )}
                     </div>
                     
@@ -237,7 +238,7 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
                     )}
                     {selectedPin.createdByName && <span>By {selectedPin.createdByName}</span>}
                     {selectedPin.createdAt && (
-                      <span>{formatDistanceToNow(new Date(selectedPin.createdAt), { addSuffix: true })}</span>
+                      <span>{formatLocalDateTime(selectedPin.createdAt)}</span>
                     )}
                   </div>
                 </div>

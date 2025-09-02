@@ -18,7 +18,8 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { useSystemAlerts } from '@/hooks/useSystemAlerts';
-import { formatDistanceToNow } from 'date-fns';
+ 
+import { formatLocalDateTime } from '@/helpers/formatISOTime';
 import type { UserMessage } from '@/types/announcement';
 import { announcementApi } from '@/services/announcementApi';
 
@@ -188,7 +189,7 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
               <span>
                 {alert.createdByName && `By ${alert.createdByName}`}
                 {alert.createdByName && alert.createdAt && ' • '}
-                {alert.createdAt && formatDistanceToNow(new Date(alert.createdAt), { addSuffix: true })}
+                {alert.createdAt && formatLocalDateTime(alert.createdAt)}
               </span>
             </div>
           </div>
@@ -351,7 +352,7 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
                     )}
                     {selectedAlert.createdByName && <span>By {selectedAlert.createdByName}</span>}
                     {selectedAlert.createdAt && (
-                      <span>{formatDistanceToNow(new Date(selectedAlert.createdAt), { addSuffix: true })}</span>
+                      <span>{formatLocalDateTime(selectedAlert.createdAt)}</span>
                     )}
                   </div>
                 </div>

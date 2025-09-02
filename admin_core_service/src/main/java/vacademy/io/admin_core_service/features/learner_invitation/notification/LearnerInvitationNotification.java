@@ -48,14 +48,14 @@ public class LearnerInvitationNotification {
     }
 
     @Async
-    public void sendLearnerInvitationResponseNotification(String email, String instituteName, String responseId) {
+    public void sendLearnerInvitationResponseNotification(String email, String instituteName, String responseId,String instituteId) {
         CompletableFuture.runAsync(() -> {
             try {
                 GenericEmailRequest genericEmailRequest = new GenericEmailRequest();
                 genericEmailRequest.setSubject("Response recorded for " + instituteName);
                 genericEmailRequest.setTo(email);
                 genericEmailRequest.setBody(LearnerInvitationEmailBody.getLearnerStatusUpdateEmailBody(instituteName));
-                notificationService.sendGenericHtmlMail(genericEmailRequest, null);
+                notificationService.sendGenericHtmlMail(genericEmailRequest, instituteId);
             } catch (Exception e) {
                 System.err.println("Error sending invitation response email: " + e.getMessage());
             }

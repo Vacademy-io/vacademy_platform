@@ -82,4 +82,44 @@ public class LearnerService {
         return instituteStudentRepository.findStudentsByPackageSessionIdAndInstituteIdAndStatus(packageSessionId, instituteId, List.of(LearnerStatusEnum.ACTIVE.name())).stream()
                 .map(student -> new LearnerDetailsDTO(student.getFullName(), student.getUserId())).collect(Collectors.toList());
     }
+
+
+    public String updateLearnerDetail(UserDTO userDTO) {
+        Student student = instituteStudentRepository.findTopByUserId(userDTO.getId())
+            .orElseThrow(() -> new VacademyException("User not found"));
+
+        if (StringUtils.hasText(userDTO.getUsername())) {
+            student.setUsername(userDTO.getUsername());
+        }
+        if (StringUtils.hasText(userDTO.getEmail())) {
+            student.setEmail(userDTO.getEmail());
+        }
+        if (StringUtils.hasText(userDTO.getFullName())) {
+            student.setFullName(userDTO.getFullName());
+        }
+        if (StringUtils.hasText(userDTO.getAddressLine())) {
+            student.setAddressLine(userDTO.getAddressLine());
+        }
+        if (StringUtils.hasText(userDTO.getRegion())) {
+            student.setRegion(userDTO.getRegion());
+        }
+        if (StringUtils.hasText(userDTO.getCity())) {
+            student.setCity(userDTO.getCity());
+        }
+        if (StringUtils.hasText(userDTO.getPinCode())) {
+            student.setPinCode(userDTO.getPinCode());
+        }
+        if (StringUtils.hasText(userDTO.getMobileNumber())) {
+            student.setMobileNumber(userDTO.getMobileNumber());
+        }
+        if (userDTO.getDateOfBirth() != null) {
+            student.setDateOfBirth(userDTO.getDateOfBirth());
+        }
+        if (StringUtils.hasText(userDTO.getGender())) {
+            student.setGender(userDTO.getGender());
+        }
+
+        instituteStudentRepository.save(student);
+        return "done";
+    }
 }

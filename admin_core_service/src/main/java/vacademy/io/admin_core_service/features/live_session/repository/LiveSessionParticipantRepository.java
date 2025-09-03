@@ -28,6 +28,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
     List<LiveSessionParticipants> findBySessionId(String sessionId);
 
         @Query(value = """
+        -- Query for BATCH source type participants
         SELECT 
             s.user_id AS studentId,
             s.full_name AS fullName,
@@ -52,6 +53,34 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
             AND lsl.schedule_id = :scheduleId
             AND lsl.log_type = 'ATTENDANCE_RECORDED'
         WHERE lsp.session_id = :sessionId
+        AND lsp.source_type = 'BATCH'
+        
+        UNION ALL
+        
+        -- Query for USER source type participants
+        SELECT 
+            s.user_id AS studentId,
+            s.full_name AS fullName,
+            s.email AS email,
+            s.mobile_number AS mobileNumber,
+            s.gender AS gender,
+            s.date_of_birth AS dateOfBirth,
+            NULL AS instituteEnrollmentNumber,
+            NULL AS enrollmentStatus,
+            lsl.status AS attendanceStatus,
+            lsl.details AS attendanceDetails,
+            lsl.created_at AS attendanceTimestamp
+        FROM live_session_participants lsp
+        JOIN student s
+            ON s.user_id = lsp.source_id
+        LEFT JOIN live_session_logs lsl
+            ON lsl.user_source_id = s.user_id
+            AND lsl.user_source_type = 'USER'
+            AND lsl.session_id = :sessionId
+            AND lsl.schedule_id = :scheduleId
+            AND lsl.log_type = 'ATTENDANCE_RECORDED'
+        WHERE lsp.session_id = :sessionId
+        AND lsp.source_type = 'USER'
     """, nativeQuery = true)
         List<AttendanceReportDTO> getAttendanceReportBySessionIds(
                 @Param("sessionId") String sessionId,

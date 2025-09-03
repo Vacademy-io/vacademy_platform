@@ -161,9 +161,17 @@ public class AttendanceReportService {
             details.setAttendanceStatus(record.getAttendanceStatus());
             details.setAttendanceDetails(record.getAttendanceDetails());
             details.setAttendanceTimestamp(record.getAttendanceTimestamp());
+            details.setDailyAttendance(record.getDailyAttendance());
 
             groupedData.get(record.getStudentId()).getSessions().add(details);
         }
+        
+        // Calculate attendance percentage for each student
+        for (StudentAttendanceDTO student : groupedData.values()) {
+            double attendancePercentage = calculateAttendancePercentage(student.getSessions());
+            student.setAttendancePercentage(attendancePercentage);
+        }
+        
         return new PageImpl<>(
                 new ArrayList<>(groupedData.values()),
                 pageable,
@@ -205,8 +213,15 @@ public class AttendanceReportService {
             details.setAttendanceStatus(record.getAttendanceStatus());
             details.setAttendanceDetails(record.getAttendanceDetails());
             details.setAttendanceTimestamp(record.getAttendanceTimestamp());
+            details.setDailyAttendance(record.getDailyAttendance());
 
             groupedData.get(studentId).getSessions().add(details);
+        }
+
+        // Calculate attendance percentage for each student
+        for (StudentAttendanceDTO student : groupedData.values()) {
+            double attendancePercentage = calculateAttendancePercentage(student.getSessions());
+            student.setAttendancePercentage(attendancePercentage);
         }
 
         return new ArrayList<>(groupedData.values());
@@ -229,6 +244,75 @@ public class AttendanceReportService {
                     .attendanceTimestamp(guestDto.getAttendanceTimestamp())
                     .build();
         }
+    }
+
+    /**
+     * Calculates attendance percentage based on daily_attendance field logic.
+     * 
+     * Business Rules:
+     * 1. Group sessions by meeting date
+     * 2. For each date group:
+     *    - If any session has daily_attendance = true: count the entire group as 1 attendance unit
+     *    - If all sessions have daily_attendance = false: count each session individually
+     * 3. A student is considered "attended" if they have any attendance record for that session
+     * 
+     * @param sessions List of attendance details for the student
+     * @return Attendance percentage (0.0 to 100.0), rounded to 2 decimal places
+     */
+    private double calculateAttendancePercentage(List<AttendanceDetailsDTO> sessions) {
+        if (sessions == null || sessions.isEmpty()) {
+            return 0.0;
+        }
+        
+        // Group sessions by meeting date
+        Map<LocalDate, List<AttendanceDetailsDTO>> sessionsByDate = sessions.stream()
+                .filter(session -> session.getMeetingDate() != null)
+                .collect(Collectors.groupingBy(AttendanceDetailsDTO::getMeetingDate));
+        
+        if (sessionsByDate.isEmpty()) {
+            return 0.0;
+        }
+        
+        int totalAttendanceUnits = 0;
+        int attendedUnits = 0;
+        
+        for (Map.Entry<LocalDate, List<AttendanceDetailsDTO>> dateEntry : sessionsByDate.entrySet()) {
+            List<AttendanceDetailsDTO> dateSessions = dateEntry.getValue();
+            
+            // Check if any session in this date has daily_attendance = true
+            boolean hasDailyAttendance = dateSessions.stream()
+                    .anyMatch(session -> Boolean.TRUE.equals(session.getDailyAttendance()));
+            
+            if (hasDailyAttendance) {
+                // If any session has daily_attendance = true, count the entire date as 1 unit
+                totalAttendanceUnits += 1;
+                
+                // Check if student attended any session on this date
+                boolean attendedThisDate = dateSessions.stream()
+                        .anyMatch(session -> session.getAttendanceStatus() != null);
+                
+                if (attendedThisDate) {
+                    attendedUnits += 1;
+                }
+            } else {
+                // If all sessions have daily_attendance = false, count each session individually
+                for (AttendanceDetailsDTO session : dateSessions) {
+                    totalAttendanceUnits += 1;
+                    
+                    if (session.getAttendanceStatus() != null) {
+                        attendedUnits += 1;
+                    }
+                }
+            }
+        }
+        
+        if (totalAttendanceUnits == 0) {
+            return 0.0;
+        }
+        
+        // Calculate percentage and round to 2 decimal places
+        double percentage = (attendedUnits * 100.0) / totalAttendanceUnits;
+        return Math.round(percentage * 100.0) / 100.0;
     }
 
 }

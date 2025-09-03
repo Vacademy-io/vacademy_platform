@@ -23,4 +23,5 @@ public interface AttendanceReportProjection {
     LocalDate getMeetingDate();
     LocalTime getStartTime();
     LocalTime getLastEntryTime();
+    Boolean getDailyAttendance();
 }

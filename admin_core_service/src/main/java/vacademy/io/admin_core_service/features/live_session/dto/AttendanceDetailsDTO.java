@@ -20,6 +20,7 @@ public class AttendanceDetailsDTO {
     private String attendanceStatus;
     private String attendanceDetails;
     private LocalDateTime attendanceTimestamp;
+    private Boolean dailyAttendance;
     // Getters & setters
 }
 

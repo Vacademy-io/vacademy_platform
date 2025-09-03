@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -15,11 +15,24 @@ import {
   getPaymentOptions,
   getPaymentPlans,
   formatCurrency,
+  handlePaymentForEnrollment,
+  fetchPaymentGatewayDetails,
+  createStripePaymentMethodWithElements,
+  validateAndSanitizeEmail,
   type EnrollmentResponse,
   type PaymentOption,
   type PaymentPlan,
 } from "../../-services/enrollment-api";
 import { MyButton } from "@/components/design-system/button";
+import { EnrollmentSuccessDialog } from "./EnrollmentSuccessDialog";
+import { EnrollmentPendingDialog } from "./EnrollmentPendingDialog";
+
+// TypeScript declarations for Stripe
+declare global {
+  interface Window {
+    Stripe?: (publishableKey: string) => any;
+  }
+}
 
 interface OneTimePaymentDialogProps {
   open: boolean;
@@ -29,6 +42,7 @@ interface OneTimePaymentDialogProps {
   token: string;
   courseTitle?: string;
   inviteCode?: string;
+  onEnrollmentSuccess?: () => void;
 }
 
 export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
@@ -39,6 +53,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
   token,
   courseTitle = "Course",
   inviteCode = "default",
+  onEnrollmentSuccess,
 }) => {
   const [enrollmentData, setEnrollmentData] = useState<EnrollmentResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -47,6 +62,16 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
   const [selectedPaymentPlan, setSelectedPaymentPlan] = useState<PaymentPlan | null>(null);
   const [processingPayment, setProcessingPayment] = useState(false);
   const [step, setStep] = useState<'select' | 'payment'>('select');
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [showPendingDialog, setShowPendingDialog] = useState(false);
+  
+  // Stripe Elements state
+  const [stripe, setStripe] = useState<any>(null);
+  const [stripeElements, setStripeElements] = useState<any>(null);
+  const [cardElement, setCardElement] = useState<any>(null);
+  const [cardElementError, setCardElementError] = useState<string>('');
+  const [cardElementReady, setCardElementReady] = useState<boolean>(false);
+  const cardElementRef = useRef<HTMLDivElement>(null);
 
   // Fetch enrollment data when dialog opens
   useEffect(() => {
@@ -54,6 +79,128 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
       fetchEnrollmentData();
     }
   }, [open, packageSessionId]);
+
+  // Simple loadStripe function
+  const loadStripe = useCallback(async (publishableKey: string) => {
+    try {
+      // Check if Stripe is already loaded
+      if (window.Stripe) {
+        return window.Stripe(publishableKey);
+      }
+
+      // Load Stripe.js script
+      const script = document.createElement('script');
+      script.src = 'https://js.stripe.com/v3/';
+      script.async = true;
+      
+      return new Promise((resolve, reject) => {
+        script.onload = () => {
+          if (window.Stripe) {
+            const stripe = window.Stripe(publishableKey);
+            resolve(stripe);
+          } else {
+            reject(new Error('Stripe failed to load'));
+          }
+        };
+        script.onerror = () => {
+          reject(new Error('Failed to load Stripe script'));
+        };
+        document.head.appendChild(script);
+      });
+    } catch (error) {
+      throw error;
+    }
+  }, []);
+
+  // Initialize Stripe Elements when payment gateway data is loaded
+  useEffect(() => {
+    const initializeStripeElements = async () => {
+      if (enrollmentData && cardElementRef.current && step === 'payment') {
+        // Clear any previous errors when starting initialization
+        setCardElementError('');
+        
+        try {
+          // Fetch payment gateway details
+          const paymentGatewayData = await fetchPaymentGatewayDetails(instituteId, 'STRIPE', token);
+          
+          let stripeInstance = stripe;
+          
+          // Load Stripe if not already loaded
+          if (!stripeInstance) {
+            stripeInstance = await loadStripe(paymentGatewayData.publishableKey);
+            setStripe(stripeInstance);
+          }
+          
+          // Create elements if not already created
+          let elements = stripeElements;
+          if (!elements) {
+            elements = (stripeInstance as any).elements();
+            setStripeElements(elements);
+          }
+          
+          // Clean up existing card element if it exists
+          if (cardElement) {
+            try {
+              cardElement.destroy();
+            } catch (destroyError) {
+              // Ignore destroy errors
+            }
+            setCardElement(null);
+            setCardElementReady(false);
+          }
+          
+          // Create new card element
+          const card = elements.create('card', {
+            style: {
+              base: {
+                fontSize: '16px',
+                color: '#374151',
+                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                '::placeholder': {
+                  color: '#9CA3AF',
+                },
+                padding: '8px 0',
+              },
+              invalid: {
+                color: '#DC2626',
+              },
+            },
+            hidePostalCode: true,
+          });
+          
+          // Set card element immediately
+          setCardElement(card);
+          
+          // Mount card element with a small delay to ensure DOM is ready
+          setTimeout(() => {
+            if (cardElementRef.current && card) {
+              card.mount(cardElementRef.current);
+              
+              // Set up event listeners
+              card.on('ready', () => {
+                setCardElementReady(true);
+                setCardElementError('');
+              });
+              
+              card.on('change', (event: any) => {
+                if (event.error) {
+                  setCardElementError(event.error.message);
+                } else {
+                  setCardElementError('');
+                }
+              });
+            }
+          }, 100);
+          
+        } catch (error) {
+          console.error('Stripe initialization error:', error);
+          setCardElementError('Failed to load payment form. Please refresh and try again.');
+        }
+      }
+    };
+
+    initializeStripeElements();
+  }, [enrollmentData, stripe, stripeElements, step, open, loadStripe, instituteId, token]);
 
   const fetchEnrollmentData = async () => {
     setLoading(true);
@@ -81,27 +228,77 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
   };
 
   const handleEnroll = async () => {
-    if (!selectedPaymentOption || !selectedPaymentPlan) {
+    if (!selectedPaymentOption || !selectedPaymentPlan || !enrollmentData) {
       setError("Please select a payment plan.");
       return;
     }
 
     setProcessingPayment(true);
+    setError(null);
+    setCardElementError('');
+    
     try {
-      // TODO: Implement actual one-time payment processing
+      // Validate Stripe Elements
+      if (!stripe || !cardElement || !cardElementReady) {
+        setCardElementError('Payment form not loaded. Please refresh and try again.');
+        return;
+      }
 
-
-      // Simulate payment processing
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Create payment method using Stripe Elements
+      const paymentMethod = await createStripePaymentMethodWithElements(stripe, cardElement);
       
-      // Close dialog on success
+      // Fetch payment gateway details (needed for enrollment API)
+      const paymentGatewayData = await fetchPaymentGatewayDetails(instituteId, 'STRIPE', token);
+      
+      // Call the enrollment API with payment
+      await handlePaymentForEnrollment({
+        userEmail: "user@example.com", // This should come from user profile
+        receiptEmail: "user@example.com", // This should come from user profile
+        instituteId,
+        packageSessionId,
+        enrollmentData,
+        paymentGatewayData,
+        selectedPaymentPlan,
+        selectedPaymentOption,
+        amount: selectedPaymentPlan.actual_price,
+        currency: selectedPaymentPlan.currency || enrollmentData.currency,
+        description: `One-time payment for ${courseTitle}`,
+        paymentType: 'one-time',
+        paymentMethod,
+        token,
+      });
+
+      // Close the main dialog
       onOpenChange(false);
       
-      // TODO: Show success message or redirect
+      // Check if approval is required
+      if (selectedPaymentOption.require_approval) {
+        setShowPendingDialog(true);
+      } else {
+        setShowSuccessDialog(true);
+      }
+      
     } catch (err) {
-      setError("Payment processing failed. Please try again.");
+      console.error('One-time payment error:', err);
+      if (err instanceof Error) {
+        const errorMsg = err.message.toLowerCase();
+        if (errorMsg.includes('card') || errorMsg.includes('payment method')) {
+          setCardElementError(err.message);
+        } else {
+          setError(err.message);
+        }
+      } else {
+        setError("Payment processing failed. Please try again.");
+      }
     } finally {
       setProcessingPayment(false);
+    }
+  };
+
+  const handleExploreCourse = () => {
+    setShowSuccessDialog(false);
+    if (onEnrollmentSuccess) {
+      onEnrollmentSuccess();
     }
   };
 
@@ -144,8 +341,9 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
   const paymentOptions = enrollmentData ? getPaymentOptions(enrollmentData) : [];
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold">
             One-Time Payment for {courseTitle}
@@ -239,7 +437,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                                       <span>Valid for {plan.validity_in_days} days</span>
                                     )}
                                     {plan.currency && (
-                                      <span>Currency: {plan.currency}</span>
+                                      <span>Currency: {plan.currency.toUpperCase()}</span>
                                     )}
                                   </div>
                                 </div>
@@ -332,36 +530,25 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
               <CardContent className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Card Number
+                    Card Details
                   </label>
-                  <input
-                    type="text"
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    placeholder="1234 5678 9012 3456"
-                  />
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Expiry Date
-                    </label>
-                    <input
-                      type="text"
-                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                      placeholder="MM/YY"
-                    />
+                  <div className={`border rounded-lg p-3 min-h-[48px] ${
+                    cardElementError ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                  }`}>
+                    {!cardElementReady && (
+                      <div className="flex items-center justify-center h-full text-gray-500">
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        Loading payment form...
+                      </div>
+                    )}
+                    <div ref={cardElementRef} className="w-full h-full" />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      CVC
-                    </label>
-                    <input
-                      type="text"
-                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                      placeholder="123"
-                    />
-                  </div>
+                  
+                  {cardElementError && (
+                    <div className="text-red-600 text-sm mt-2">
+                      {cardElementError}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-center space-x-3 pt-4">
@@ -400,7 +587,23 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
             </Card>
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+
+      {/* Success Dialog */}
+      <EnrollmentSuccessDialog
+        open={showSuccessDialog}
+        onOpenChange={setShowSuccessDialog}
+        courseTitle={courseTitle}
+        onExploreCourse={handleExploreCourse}
+      />
+
+      {/* Pending Dialog */}
+      <EnrollmentPendingDialog
+        open={showPendingDialog}
+        onOpenChange={setShowPendingDialog}
+        courseTitle={courseTitle}
+      />
+    </>
   );
 }; 

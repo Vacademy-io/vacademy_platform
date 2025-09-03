@@ -1258,6 +1258,128 @@ export const CourseDetailsPage = () => {
                 token={authToken}
                 courseTitle={form.getValues("courseData").title}
                 inviteCode={inviteCode}
+                onEnrollmentSuccess={async () => {
+                    // Update enrolled sessions immediately using the hook
+                    const newEnrolledSession = {
+                        id: packageSessionIdForCurrentLevel || "",
+                        session: {
+                            id: selectedSession,
+                            session_name: sessionOptions.find(s => s.value === selectedSession)?.label || "",
+                            status: "ACTIVE",
+                        },
+                        level: {
+                            id: selectedLevel,
+                            level_name: levelOptions.find(l => l.value === selectedLevel)?.label || "",
+                            status: "ACTIVE",
+                        },
+                        package_dto: {
+                            id: searchParams.courseId || "",
+                            title: form.getValues("courseData").title,
+                            description: form.getValues("courseData").description,
+                            thumbnail_id: null,
+                        },
+                    };
+                    
+                    // Add the enrolled session and wait for it to complete
+                    await addEnrolledSession(newEnrolledSession);
+                    
+                    // Close dialogs
+                    setEnrollmentDialogOpen(false);
+                    
+                    // Show success message
+                    toast.success("Successfully enrolled in the course!");
+                    
+                    // Redirect to slides immediately after enrollment
+                    
+                    // Try to get course structure data from multiple sources
+                    let subjectId = "";
+                    
+                    // First try to get from the current form data
+                    if (form.getValues("courseData")?.sessions) {
+                        const currentSession = form.getValues("courseData").sessions.find(
+                            (s: any) => s.sessionDetails.id === selectedSession
+                        );
+                        if (currentSession?.levelDetails) {
+                            const currentLevel = currentSession.levelDetails.find(
+                                (l: any) => l.id === selectedLevel
+                            );
+                            if (currentLevel?.subjectDetails) {
+                                subjectId = currentLevel.subjectDetails.id;
+                            }
+                        }
+                    }
+                    
+                    // If not found in form data, try to get from the course structure query
+                    if (!subjectId && courseStructureQuery.data?.sessions) {
+                        const sessionData = courseStructureQuery.data.sessions.find(
+                            (s: any) => s.sessionDetails.id === selectedSession
+                        );
+                        if (sessionData?.levelDetails) {
+                            const levelData = sessionData.levelDetails.find(
+                                (l: any) => l.id === selectedLevel
+                            );
+                            if (levelData?.subjectDetails) {
+                                subjectId = levelData.subjectDetails.id;
+                            }
+                        }
+                    }
+                    
+                    // If still not found, try to get from the slide count query data
+                    if (!subjectId && slideCountQuery.data?.sessions) {
+                        const sessionData = slideCountQuery.data.sessions.find(
+                            (s: any) => s.sessionDetails.id === selectedSession
+                        );
+                        if (sessionData?.levelDetails) {
+                            const levelData = sessionData.levelDetails.find(
+                                (l: any) => l.id === selectedLevel
+                            );
+                            if (levelData?.subjectDetails) {
+                                subjectId = levelData.subjectDetails.id;
+                            }
+                        }
+                    }
+                    
+                    // If we still don't have a subject ID, try to get it from the helper function
+                    if (!subjectId) {
+                        try {
+                            const subjectDetails = await getSubjectDetails(
+                                selectedSession,
+                                selectedLevel,
+                                instituteId || ""
+                            );
+                            if (subjectDetails && subjectDetails.length > 0) {
+                                subjectId = subjectDetails[0].id;
+                            }
+                        } catch (error) {
+                            console.error("Error getting subject details:", error);
+                        }
+                    }
+                    
+                    // If we have a subject ID, navigate to the slides
+                    if (subjectId) {
+                        const navigationParams = {
+                            courseId: searchParams.courseId,
+                            sessionId: selectedSession,
+                            levelId: selectedLevel,
+                            subjectId: subjectId,
+                        };
+                        
+                        navigate(
+                            `/study-library/courses/course-details/slides?${new URLSearchParams(navigationParams).toString()}`
+                        );
+                    } else {
+                        // Fallback: navigate without subject ID
+                        const navigationParams = {
+                            courseId: searchParams.courseId,
+                            sessionId: selectedSession,
+                            levelId: selectedLevel,
+                        };
+                        
+                        navigate(
+                            `/study-library/courses/course-details/slides?${new URLSearchParams(navigationParams).toString()}`
+                        );
+                    }
+                }}
             />
 
             <div className="min-h-screen bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 relative overflow-hidden w-full max-w-full">

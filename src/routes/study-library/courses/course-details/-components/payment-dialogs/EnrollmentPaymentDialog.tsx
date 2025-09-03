@@ -19,6 +19,7 @@ interface EnrollmentPaymentRouterProps {
   token: string;
   courseTitle?: string;
   inviteCode?: string;
+  onEnrollmentSuccess?: () => void;
 }
 
 export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = ({
@@ -29,6 +30,7 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
   token,
   courseTitle = "Course",
   inviteCode = "default",
+  onEnrollmentSuccess,
 }) => {
   const [enrollmentData, setEnrollmentData] = useState<EnrollmentResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -103,6 +105,7 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
       token,
       courseTitle,
       inviteCode,
+      onEnrollmentSuccess,
     };
 
     switch (paymentType.toLowerCase()) {

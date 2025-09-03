@@ -14,11 +14,15 @@ import {
   getPaymentOptions,
   getPaymentPlans,
   formatCurrency,
+  handlePaymentForEnrollment,
+  fetchPaymentGatewayDetails,
   type EnrollmentResponse,
   type PaymentOption,
   type PaymentPlan,
 } from "../../-services/enrollment-api";
 import { MyButton } from "@/components/design-system/button";
+import { EnrollmentSuccessDialog } from "./EnrollmentSuccessDialog";
+import { EnrollmentPendingDialog } from "./EnrollmentPendingDialog";
 
 interface FreePlanDialogProps {
   open: boolean;
@@ -28,6 +32,7 @@ interface FreePlanDialogProps {
   token: string;
   courseTitle?: string;
   inviteCode?: string;
+  onEnrollmentSuccess?: () => void;
 }
 
 export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
@@ -38,6 +43,7 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
   token,
   courseTitle = "Course",
   inviteCode = "default",
+  onEnrollmentSuccess,
 }) => {
   const [enrollmentData, setEnrollmentData] = useState<EnrollmentResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -45,6 +51,8 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
   const [selectedPaymentOption, setSelectedPaymentOption] = useState<PaymentOption | null>(null);
   const [selectedPaymentPlan, setSelectedPaymentPlan] = useState<PaymentPlan | null>(null);
   const [processingEnrollment, setProcessingEnrollment] = useState(false);
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [showPendingDialog, setShowPendingDialog] = useState(false);
 
   // Fetch enrollment data when dialog opens
   useEffect(() => {
@@ -79,27 +87,57 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
   };
 
   const handleEnroll = async () => {
-    if (!selectedPaymentOption || !selectedPaymentPlan) {
+    if (!selectedPaymentOption || !selectedPaymentPlan || !enrollmentData) {
       setError("Please select a free plan.");
       return;
     }
 
     setProcessingEnrollment(true);
+    setError(null);
+    
     try {
-      // TODO: Implement actual free enrollment processing
-
-
-      // Simulate enrollment processing
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Fetch payment gateway details (needed for enrollment API)
+      const paymentGatewayData = await fetchPaymentGatewayDetails(instituteId, 'STRIPE', token);
       
-      // Close dialog on success
+      // Call the enrollment API
+      await handlePaymentForEnrollment({
+        userEmail: "user@example.com", // This should come from user profile
+        receiptEmail: "user@example.com", // This should come from user profile
+        instituteId,
+        packageSessionId,
+        enrollmentData,
+        paymentGatewayData,
+        selectedPaymentPlan,
+        selectedPaymentOption,
+        amount: selectedPaymentPlan.actual_price,
+        currency: selectedPaymentPlan.currency || enrollmentData.currency,
+        description: `Free enrollment for ${courseTitle}`,
+        paymentType: 'free',
+        token,
+      });
+
+      // Close the main dialog
       onOpenChange(false);
       
-      // TODO: Show success message or redirect
+      // Check if approval is required
+      if (selectedPaymentOption.require_approval) {
+        setShowPendingDialog(true);
+      } else {
+        setShowSuccessDialog(true);
+      }
+      
     } catch (err) {
-      setError("Enrollment failed. Please try again.");
+      console.error('Free enrollment error:', err);
+      setError(err instanceof Error ? err.message : "Enrollment failed. Please try again.");
     } finally {
       setProcessingEnrollment(false);
+    }
+  };
+
+  const handleExploreCourse = () => {
+    setShowSuccessDialog(false);
+    if (onEnrollmentSuccess) {
+      onEnrollmentSuccess();
     }
   };
 
@@ -145,8 +183,9 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
   );
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold flex items-center space-x-2">
             <Gift className="w-6 h-6 text-green-600" />
@@ -266,7 +305,7 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
                                 <span>Valid for {plan.validity_in_days} days</span>
                               )}
                               {plan.currency && (
-                                <span>Currency: {plan.currency}</span>
+                                <span>Currency: {plan.currency.toUpperCase()}</span>
                               )}
                             </div>
                           </div>
@@ -334,7 +373,23 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
             </div>
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+
+      {/* Success Dialog */}
+      <EnrollmentSuccessDialog
+        open={showSuccessDialog}
+        onOpenChange={setShowSuccessDialog}
+        courseTitle={courseTitle}
+        onExploreCourse={handleExploreCourse}
+      />
+
+      {/* Pending Dialog */}
+      <EnrollmentPendingDialog
+        open={showPendingDialog}
+        onOpenChange={setShowPendingDialog}
+        courseTitle={courseTitle}
+      />
+    </>
   );
 }; 

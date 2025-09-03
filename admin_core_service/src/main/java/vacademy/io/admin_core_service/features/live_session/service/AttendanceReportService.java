@@ -92,13 +92,22 @@ public class AttendanceReportService {
 
 
     public List<AttendanceReportDTO> generateReport(String sessionId , String scheduleId , String accessType) {
-        if(Objects.equals(accessType, "private"))
-        return liveSessionParticipantRepository.getAttendanceReportBySessionIds(sessionId , scheduleId);
-        else {
-            List<GuestAttendanceDTO> guests =  sessionGuestRegistrationRepository.findGuestAttendanceBySessionAndSchedule(sessionId, scheduleId);
-            return guests.stream()
+        if(Objects.equals(accessType, "private")) {
+            return liveSessionParticipantRepository.getAttendanceReportBySessionIds(sessionId , scheduleId);
+        } else {
+            // For public access, combine both regular participants and guest attendees
+            List<AttendanceReportDTO> regularParticipants = liveSessionParticipantRepository.getAttendanceReportBySessionIds(sessionId , scheduleId);
+            List<GuestAttendanceDTO> guests = sessionGuestRegistrationRepository.findGuestAttendanceBySessionAndSchedule(sessionId, scheduleId);
+            List<AttendanceReportDTO> guestReports = guests.stream()
                     .map(AttendanceMapper::convertGuestToAttendanceReport)
                     .collect(Collectors.toList());
+            
+            // Combine both lists
+            List<AttendanceReportDTO> combinedResults = new ArrayList<>();
+            combinedResults.addAll(regularParticipants);
+            combinedResults.addAll(guestReports);
+            
+            return combinedResults;
         }
     }
     public Page<StudentAttendanceDTO> getAllByAttendanceFilterRequest(AttendanceFilterRequest filter, Pageable pageable) {

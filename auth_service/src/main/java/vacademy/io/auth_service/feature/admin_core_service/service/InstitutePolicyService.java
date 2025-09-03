@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.auth_service.feature.admin_core_service.dto.InstituteSignupPolicy;
+import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 
 @Service
@@ -83,6 +84,19 @@ public class InstitutePolicyService {
                     .build();
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    public void updateLearnerDetails(UserDTO userDTO){
+        try {
+            ResponseEntity<String> resp = internalClientUtils.makeHmacRequest(
+                applicationName,
+                HttpMethod.PATCH.name(),
+                adminCoreServiceBaseUrl,
+                "/admin-core-service/internal/learner/v1/update",
+                userDTO);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 }

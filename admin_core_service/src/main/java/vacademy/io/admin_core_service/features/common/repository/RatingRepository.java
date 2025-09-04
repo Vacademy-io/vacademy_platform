@@ -16,7 +16,7 @@ import java.util.List;
 public interface RatingRepository extends JpaRepository<Rating, String> {
 
     List<Rating> findBySourceIdAndSourceTypeAndStatusIn(String sourceId, String sourceType, List<String>statusList);
-    
+
     @Query(
         value = "SELECT DISTINCT r.* FROM rating r " +
             "LEFT JOIN package_session ps ON ps.id = r.source_id " +
@@ -78,8 +78,14 @@ public interface RatingRepository extends JpaRepository<Rating, String> {
 
     @Query(value = """
     SELECT
-      FLOOR(AVG(points) + 0.5) AS averageRating,
+      -- Corrected: Calculate the average and round it to 2 decimal places.
+      ROUND(CAST(AVG(points) AS numeric), 2) AS averageRating,
+
+      -- Total number of reviews remains the same.
       COUNT(*) AS totalReviews,
+
+      -- The percentage calculations are correct for categorizing each rating
+      -- (e.g., treating a 4.6 as a 5-star for percentage purposes).
       ROUND(
         CAST((100.0 * COUNT(*) FILTER (WHERE FLOOR(points + 0.5) = 5) / NULLIF(COUNT(*), 0)) AS numeric), 2
       ) AS percentFiveStar,
@@ -99,15 +105,16 @@ public interface RatingRepository extends JpaRepository<Rating, String> {
     WHERE source_id = :sourceId
       AND source_type = :sourceType
       AND (
+        -- This SpEL expression correctly handles an empty or null list of statuses.
         :#{#ratingStatuses == null || #ratingStatuses.isEmpty()} = true
         OR status IN (:ratingStatuses)
       )
     """,
-            nativeQuery = true)
+        nativeQuery = true)
     RatingSummaryProjection getRatingSummary(
-            @Param("sourceId") String sourceId,
-            @Param("sourceType") String sourceType,
-            @Param("ratingStatuses") List<String> ratingStatuses
+        @Param("sourceId") String sourceId,
+        @Param("sourceType") String sourceType,
+        @Param("ratingStatuses") List<String> ratingStatuses
     );
 
 

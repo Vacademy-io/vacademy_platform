@@ -86,18 +86,8 @@ public class UserInstituteService {
 
             if (institute.getInstituteName() != null) {
                 Institute savedInstitute = instituteRepository.save(institute);
-                try{
-                    instituteSettingService.createDefaultNamingSetting(savedInstitute, ConstantsSettingDefaultValue.getDefaultNamingSettingRequest());
-                } catch (Exception e) {
-                    log.error("Error Occurred in Creating Default Setting: "+e.getMessage());
-                }
 
-                try{
-                    instituteSettingService.createDefaultCertificateSetting(institute);
-                } catch (Exception e) {
-                    log.error("Error Occurred in Creating Default Certificate Setting: "+e.getMessage());
-                }
-
+                instituteSettingService.createDefaultSettingsForInstitute(savedInstitute);
                 createInstituteSubModulesMapping(allSubModules, savedInstitute);
                 instituteDefaultUserSubscriptionService.createDefaultPaymentOption(institute.getId());
                 return new InstituteIdAndNameDTO(savedInstitute.getId(), savedInstitute.getInstituteName());

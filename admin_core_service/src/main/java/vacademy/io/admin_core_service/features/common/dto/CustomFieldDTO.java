@@ -24,6 +24,9 @@ public class CustomFieldDTO {
     private String sessionId;
     private String liveSessionId;
     private String customFieldValue;
+    private String groupName;
+    private Integer groupInternalOrder;
+    private Integer individualOrder;
 
     // Getters and Setters (or use Lombok @Data/@Getter/@Setter)
 }

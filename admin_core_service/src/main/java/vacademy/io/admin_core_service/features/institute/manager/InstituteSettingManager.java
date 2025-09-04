@@ -3,9 +3,11 @@ package vacademy.io.admin_core_service.features.institute.manager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.institute.dto.settings.GenericSettingRequest;
 import vacademy.io.admin_core_service.features.institute.dto.settings.InstituteSettingDto;
 import vacademy.io.admin_core_service.features.institute.dto.settings.SettingDto;
+import vacademy.io.admin_core_service.features.institute.dto.settings.custom_field.CustomFieldSettingRequest;
 import vacademy.io.admin_core_service.features.institute.dto.settings.naming.NameSettingRequest;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
@@ -97,5 +99,24 @@ public class InstituteSettingManager {
 
         String rawJson = instituteSettingService.getSettingsAsRawJson(institute.get());
         return ResponseEntity.ok(rawJson != null ? rawJson : "{}");
+    }
+
+    public ResponseEntity<String> updateCustomFieldSetting(CustomUserDetails userDetails, String instituteId, CustomFieldSettingRequest request, String isPresent) {
+        Optional<Institute> institute = instituteRepository.findById(instituteId);
+        if(institute.isEmpty()) throw new VacademyException("Institute Not Found");
+        if(StringUtils.hasText(isPresent)){
+            return ResponseEntity.ok(handleCaseCustomFieldSettingPresent(institute.get(), request));
+        }
+        return ResponseEntity.ok(handleCaseCustomFieldSettingNotPresent(institute.get()));
+    }
+
+    private String handleCaseCustomFieldSettingNotPresent(Institute institute) {
+        instituteSettingService.createDefaultCustomFieldSetting(institute);
+        return "Done";
+    }
+
+    private String handleCaseCustomFieldSettingPresent(Institute institute, CustomFieldSettingRequest request) {
+        instituteSettingService.updateCustomFieldSetting(institute,request);
+        return "Done";
     }
 }

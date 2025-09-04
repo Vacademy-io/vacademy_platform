@@ -1,7 +1,6 @@
 package vacademy.io.auth_service.feature.auth.service;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import vacademy.io.auth_service.feature.auth.constants.AuthConstants;
 import vacademy.io.auth_service.feature.auth.enums.ClientNameEnum;
@@ -46,7 +45,12 @@ public class PasswordResetManager {
         genericEmailRequest.setSubject("Your Account Credentials for Accessing the App"); // More intuitive subject
         genericEmailRequest.setBody(emailBody);
 
-        if (!notificationService.sendGenericHtmlMail(genericEmailRequest)) {
+        String instituteId = null;
+        if (user.getRoles() != null && !user.getRoles().isEmpty()) {
+            instituteId = user.getRoles().iterator().next().getInstituteId();
+        }
+        
+        if (!notificationService.sendGenericHtmlMail(genericEmailRequest, instituteId)) {
             throw new VacademyException("Email not sent");
         }
 

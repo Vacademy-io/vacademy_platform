@@ -174,6 +174,7 @@ public class Step2Service {
     // }
 
     private void linkParticipants(LiveSessionStep2RequestDTO request) {
+        // Handle batch participants (existing functionality)
         if (request.getPackageSessionIds() != null) {
             for (String packageSessionId : request.getPackageSessionIds()) {
                 LiveSessionParticipants participant = LiveSessionParticipants.builder()
@@ -189,6 +190,25 @@ public class Step2Service {
             for (String deletedId : request.getDeletedPackageSessionIds()) {
                 liveSessionParticipantRepository.deleteBySessionIdAndSourceId(
                         request.getSessionId(), deletedId);
+            }
+        }
+
+        // Handle individual user participants (new functionality)
+        if (request.getIndividualUserIds() != null) {
+            for (String userId : request.getIndividualUserIds()) {
+                LiveSessionParticipants participant = LiveSessionParticipants.builder()
+                        .sessionId(request.getSessionId())
+                        .sourceType(LiveSessionParticipantsEnum.USER.name())
+                        .sourceId(userId)
+                        .build();
+                liveSessionParticipantRepository.save(participant);
+            }
+        }
+
+        if (request.getDeletedIndividualUserIds() != null) {
+            for (String deletedUserId : request.getDeletedIndividualUserIds()) {
+                liveSessionParticipantRepository.deleteBySessionIdAndSourceId(
+                        request.getSessionId(), deletedUserId);
             }
         }
     }

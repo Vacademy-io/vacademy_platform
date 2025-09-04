@@ -19,6 +19,8 @@ import vacademy.io.auth_service.feature.auth.dto.AuthRequestDto;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
 import vacademy.io.auth_service.feature.auth.enums.ClientNameEnum;
 import vacademy.io.auth_service.feature.auth.service.AuthService;
+import vacademy.io.auth_service.feature.institute.InstituteInfoDTO;
+import vacademy.io.auth_service.feature.institute.InstituteInternalService;
 import vacademy.io.auth_service.feature.notification.service.NotificationEmailBody;
 import vacademy.io.auth_service.feature.notification.service.NotificationService;
 import vacademy.io.auth_service.feature.util.UsernameGenerator;
@@ -93,6 +95,9 @@ public class LearnerAuthManager {
 
     @Autowired
     private UserPermissionRepository userPermissionRepository;
+
+    @Autowired
+    private InstituteInternalService instituteInternalService;
 
     public JwtResponseDto registerLearner(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
         if (learnerEnrollRequestDTO == null) {
@@ -203,12 +208,24 @@ public class LearnerAuthManager {
     }
 
     public void sendWelcomeMailToUser(User user) {
+        String instituteId = null;
+        InstituteInfoDTO instituteInfoDTO=null;
+        if (user.getRoles() != null && !user.getRoles().isEmpty()) {
+            instituteId = user.getRoles().iterator().next().getInstituteId();
+        }
+        String instituteName = "Vacademy"; // Default fallback
+        if (StringUtils.hasText(instituteId)) {
+            instituteInfoDTO=instituteInternalService.getInstituteByInstituteId(instituteId);
+            if(instituteInfoDTO.getInstituteName()!=null)
+                instituteName=instituteInfoDTO.getInstituteName();
+        }
+        
         GenericEmailRequest emailRequest = new GenericEmailRequest();
         emailRequest.setTo(user.getEmail());
-        emailRequest.setSubject("Welcome to Vacademy");
-        emailRequest.setBody(NotificationEmailBody.createWelcomeEmailBody("Vacademy", user.getFullName(),
+        emailRequest.setSubject("Welcome to "+instituteName);
+        emailRequest.setBody(NotificationEmailBody.createWelcomeEmailBody(instituteName, user.getFullName(),
                 user.getUsername(), user.getPassword()));
-        notificationService.sendGenericHtmlMail(emailRequest);
+        notificationService.sendGenericHtmlMail(emailRequest, instituteId);
     }
 
     public JwtResponseDto loginUser(AuthRequestDto authRequestDTO) {

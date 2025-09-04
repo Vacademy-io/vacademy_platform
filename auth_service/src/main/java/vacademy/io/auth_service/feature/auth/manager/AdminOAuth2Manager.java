@@ -10,10 +10,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import vacademy.io.auth_service.feature.auth.constants.AuthConstants;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
 import vacademy.io.auth_service.feature.auth.dto.RegisterRequest;
 import vacademy.io.auth_service.feature.auth.service.AuthService;
+import vacademy.io.auth_service.feature.institute.InstituteInfoDTO;
+import vacademy.io.auth_service.feature.institute.InstituteInternalService;
 import vacademy.io.auth_service.feature.notification.service.NotificationEmailBody;
 import vacademy.io.auth_service.feature.notification.service.NotificationService;
 import vacademy.io.auth_service.feature.user.util.RandomCredentialGenerator;
@@ -26,7 +29,6 @@ import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.auth.service.RefreshTokenService;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.InstituteIdAndNameDTO;
-import vacademy.io.common.institute.dto.InstituteInfoDTO;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
 
 import java.util.*;
@@ -51,6 +53,9 @@ public class AdminOAuth2Manager {
 
     @Autowired
     private UserPermissionRepository userPermissionRepository;
+
+    @Autowired
+    private InstituteInternalService instituteInternalService;
 
     public JwtResponseDto loginUserByEmail(String email) {
         Optional<User> userOptional = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(email,
@@ -131,12 +136,25 @@ public class AdminOAuth2Manager {
     }
 
     public void sendWelcomeMailToUser(User user) {
+        String instituteId = null;
+        InstituteInfoDTO instituteInfoDTO=null;
+
+        if (user.getRoles() != null && !user.getRoles().isEmpty()) {
+            instituteId = user.getRoles().iterator().next().getInstituteId();
+        }
+        String instituteName = "Vacademy"; // Default fallback
+        if (StringUtils.hasText(instituteId)) {
+            instituteInfoDTO=instituteInternalService.getInstituteByInstituteId(instituteId);
+            if(instituteInfoDTO.getInstituteName()!=null)
+                instituteName=instituteInfoDTO.getInstituteName();
+        }
+        
         GenericEmailRequest genericEmailRequest = new GenericEmailRequest();
         genericEmailRequest.setTo(user.getEmail());
-        genericEmailRequest.setBody(NotificationEmailBody.createWelcomeEmailBody("Vacademy", user.getFullName(),
+        genericEmailRequest.setBody(NotificationEmailBody.createWelcomeEmailBody(instituteName, user.getFullName(),
                 user.getUsername(), user.getPassword()));
-        genericEmailRequest.setSubject("Welcome to Vacademy");
-        notificationService.sendGenericHtmlMail(genericEmailRequest);
+        genericEmailRequest.setSubject("Welcome to "+instituteName);
+        notificationService.sendGenericHtmlMail(genericEmailRequest, instituteId);
     }
 
     /**

@@ -22,7 +22,7 @@ import vacademy.io.admin_core_service.features.notification_service.service.Noti
 
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+import java.time.ZoneId;
 import java.util.*;
 
 @Service
@@ -39,9 +39,11 @@ public class LiveSessionNotificationProcessor {
 
     @Transactional
     public void processDueNotifications() {
-        LocalDateTime now = LocalDateTime.now();
+        // Use Asia/Kolkata timezone (IST - UTC+5:30)
+        ZoneId kolkataZone = ZoneId.of("Asia/Kolkata");
+        LocalDateTime now = LocalDateTime.now(kolkataZone);
         LocalDateTime windowEnd = now.plusMinutes(15);
-        System.out.println("current time is:"+now);
+        System.out.println("current time (Asia/Kolkata): " + now);
 
         // 1) Mark past-due PENDING notifications as EXPIRED (no send)
         List<ScheduleNotification> pastDue = scheduleNotificationRepository.findPastDue(now.minusMinutes(2));
@@ -64,9 +66,9 @@ public class LiveSessionNotificationProcessor {
                 }
                 LiveSession session = sessionOpt.get();
 
-                // Derive package_session_ids from live_session_participants (source_type=BATCH)
-                List<String> packageSessionIds = getBatchIdsForSession(sn.getSessionId());
-                if (packageSessionIds.isEmpty()) {
+                // Get all participants (both BATCH and USER types)
+                List<LiveSessionParticipants> participants = liveSessionParticipantRepository.findBySessionId(sn.getSessionId());
+                if (participants == null || participants.isEmpty()) {
                     sn.setStatus(NotificationStatusEnum.SENT.name());
                     scheduleNotificationRepository.save(sn);
                     continue;
@@ -75,12 +77,9 @@ public class LiveSessionNotificationProcessor {
                 // Fetch schedule details for email template
                 Optional<SessionSchedule> scheduleOpt = sessionScheduleRepository.findById(sn.getScheduleId());
                 SessionSchedule schedule = scheduleOpt.orElse(null);
-                // Fetch students for institute and package sessions (ACTIVE statuses)
-                List<Object[]> rows = mappingRepository.findMappingsWithStudentContactsByInstitute(
-                        packageSessionIds,
-                        session.getInstituteId(),
-                        Arrays.asList("ACTIVE", "ENROLLED")
-                );
+                
+                // Fetch students from both batch and individual user participants
+                List<Object[]> rows = getStudentsForNotification(participants, session.getInstituteId());
 
                 if (!rows.isEmpty()) {
 
@@ -115,6 +114,40 @@ public class LiveSessionNotificationProcessor {
         return new ArrayList<>(batchIds);
     }
 
+    private List<Object[]> getStudentsForNotification(List<LiveSessionParticipants> participants, String instituteId) {
+        List<Object[]> allStudents = new ArrayList<>();
+        
+        // Separate batch and individual user participants
+        List<String> batchIds = new ArrayList<>();
+        List<String> individualUserIds = new ArrayList<>();
+        
+        for (LiveSessionParticipants p : participants) {
+            if ("BATCH".equalsIgnoreCase(p.getSourceType())) {
+                batchIds.add(p.getSourceId());
+            } else if ("USER".equalsIgnoreCase(p.getSourceType())) {
+                individualUserIds.add(p.getSourceId());
+            }
+        }
+        
+        // Fetch students from batch participants (existing functionality)
+        if (!batchIds.isEmpty()) {
+            List<Object[]> batchStudents = mappingRepository.findMappingsWithStudentContactsByInstitute(
+                    batchIds,
+                    instituteId,
+                    Arrays.asList("ACTIVE", "ENROLLED")
+            );
+            allStudents.addAll(batchStudents);
+        }
+        
+        // Fetch individual users directly
+        if (!individualUserIds.isEmpty()) {
+            List<Object[]> individualStudents = mappingRepository.findStudentContactsByUserIds(individualUserIds);
+            allStudents.addAll(individualStudents);
+        }
+        
+        return allStudents;
+    }
+
     private NotificationDTO buildOnLiveEmailNotification(LiveSession session, ScheduleNotification sn, SessionSchedule schedule, List<Object[]> rows) {
         NotificationDTO dto = new NotificationDTO();
         dto.setBody(LiveClassEmailBody.Live_Class_Email_Body);
@@ -125,9 +158,20 @@ public class LiveSessionNotificationProcessor {
 
         List<NotificationToUserDTO> users = new ArrayList<>();
         for (Object[] r : rows) {
-            String userId = (String) r[1];
-            String fullName = (String) r[3];
-            String email = (String) r[5];
+            // Handle different data structures from batch vs individual user queries
+            String userId, fullName, email;
+            
+            if (r.length >= 6) {
+                // Batch query result: [mapping_id, user_id, expiry_date, full_name, mobile_number, email, package_session_id]
+                userId = (String) r[1];
+                fullName = (String) r[3];
+                email = (String) r[5];
+            } else {
+                // Individual user query result: [user_id, full_name, mobile_number, email]
+                userId = (String) r[0];
+                fullName = (String) r[1];
+                email = (String) r[3];
+            }
             NotificationToUserDTO u = new NotificationToUserDTO();
             Map<String, String> placeholders = new HashMap<>();
             placeholders.put("NAME", fullName);
@@ -177,9 +221,20 @@ public class LiveSessionNotificationProcessor {
 
         List<NotificationToUserDTO> users = new ArrayList<>();
         for (Object[] r : rows) {
-            String userId = (String) r[1];
-            String fullName = (String) r[3];
-            String email = (String) r[5];
+            // Handle different data structures from batch vs individual user queries
+            String userId, fullName, email;
+            
+            if (r.length >= 6) {
+                // Batch query result: [mapping_id, user_id, expiry_date, full_name, mobile_number, email, package_session_id]
+                userId = (String) r[1];
+                fullName = (String) r[3];
+                email = (String) r[5];
+            } else {
+                // Individual user query result: [user_id, full_name, mobile_number, email]
+                userId = (String) r[0];
+                fullName = (String) r[1];
+                email = (String) r[3];
+            }
             NotificationToUserDTO u = new NotificationToUserDTO();
             Map<String, String> placeholders = new HashMap<>();
             placeholders.put("NAME", fullName);

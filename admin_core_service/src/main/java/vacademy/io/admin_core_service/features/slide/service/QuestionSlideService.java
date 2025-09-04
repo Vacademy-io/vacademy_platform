@@ -147,7 +147,7 @@ public class QuestionSlideService {
         List<String> optionIds = optionDTOS.stream()
                 .map(OptionDTO::getId)
                 .filter(StringUtils::hasText)
-                .toList();
+                .collect(Collectors.toList());
 
         List<Option> existingOptions = optionRepository.findAllById(optionIds);
         Map<String, Option> optionMap = existingOptions.stream()

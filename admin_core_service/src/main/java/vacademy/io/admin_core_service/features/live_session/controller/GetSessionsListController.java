@@ -40,8 +40,13 @@ public class GetSessionsListController {
     }
 
     @GetMapping("/learner/live-and-upcoming")
-    ResponseEntity<List<GroupedSessionsByDateDTO>> getLiveAndUpcomingSessions(@RequestParam("batchId") String batchId , @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok( getLiveSessionService.getLiveAndUpcomingSession( batchId , user));
+    ResponseEntity<List<GroupedSessionsByDateDTO>> getLiveAndUpcomingSessions(@RequestParam("batchId") String batchId,@RequestAttribute("user") CustomUserDetails user) {
+            return ResponseEntity.ok(getLiveSessionService.getLiveAndUpcomingSessionsForUserAndBatch(batchId, user.getUserId(), user));
+    }
+
+    @GetMapping("/by-user-id")
+    ResponseEntity<List<GroupedSessionsByDateDTO>> getLiveAndUpcomingSessionsForUser(@RequestParam("userId") String userId , @RequestAttribute("user") CustomUserDetails user){
+        return ResponseEntity.ok(getLiveSessionService.getLiveAndUpcomingSessionsForUser(userId,user));
     }
 
     @GetMapping("/by-session-id")

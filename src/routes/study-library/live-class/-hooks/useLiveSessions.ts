@@ -2,6 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { DaySession, SessionDetails } from "../-types/types";
 import { LIVE_SESSION_GET_LIVE_AND_UPCOMING } from "@/constants/urls";
+import {
+  getTokenDecodedData,
+  getTokenFromStorage,
+} from "@/lib/auth/sessionUtility";
+import { TokenKey } from "@/constants/auth/tokens";
 
 const isSessionLive = (session: SessionDetails): boolean => {
   const now = new Date();
@@ -27,11 +32,14 @@ const fetchLiveAndUpcomingSessions = async (
   upcoming_sessions: SessionDetails[];
 }> => {
   try {
+    const accessToken = await getTokenFromStorage(TokenKey.accessToken);
+    const tokenData = getTokenDecodedData(accessToken);
     const response = await authenticatedAxiosInstance({
       method: "GET",
       url: LIVE_SESSION_GET_LIVE_AND_UPCOMING,
       params: {
         batchId,
+        userId: tokenData?.user,
       },
     });
 

@@ -7,8 +7,8 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Lock, CheckCircle } from "lucide-react";
-import { EnvelopeSimple } from "phosphor-react";
+import { Badge } from "@/components/ui/badge";
+import { Loader2, CheckCircle, Lock } from "lucide-react";
 import { SiStripe } from "react-icons/si";
 import {
   fetchEnrollmentDetails,
@@ -26,7 +26,6 @@ import {
 import { MyButton } from "@/components/design-system/button";
 import { EnrollmentSuccessDialog } from "./EnrollmentSuccessDialog";
 import { EnrollmentPendingDialog } from "./EnrollmentPendingDialog";
-import { EnrollmentPendingApprovalDialog } from "./EnrollmentPendingApprovalDialog";
 
 // TypeScript declarations for Stripe
 declare global {
@@ -62,12 +61,9 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
   const [selectedPaymentOption, setSelectedPaymentOption] = useState<PaymentOption | null>(null);
   const [selectedPaymentPlan, setSelectedPaymentPlan] = useState<PaymentPlan | null>(null);
   const [processingPayment, setProcessingPayment] = useState(false);
-  const [step, setStep] = useState<'select' | 'email' | 'payment'>('select');
-  const [email, setEmail] = useState('');
-  const [validationError, setValidationError] = useState<string>('');
+  const [step, setStep] = useState<'select' | 'payment'>('select');
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [showPendingDialog, setShowPendingDialog] = useState(false);
-  const [showPendingApprovalDialog, setShowPendingApprovalDialog] = useState(false);
   
   // Stripe Elements state
   const [stripe, setStripe] = useState<any>(null);
@@ -83,22 +79,6 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
       fetchEnrollmentData();
     }
   }, [open, packageSessionId]);
-
-  // Auto-select first payment option but let user choose plan
-  useEffect(() => {
-    if (enrollmentData && !selectedPaymentOption) {
-      const paymentOptions = getPaymentOptions(enrollmentData);
-      const oneTimeOptions = paymentOptions.filter(option => 
-        option.payment_option_type === 'ONE_TIME'
-      );
-      
-      if (oneTimeOptions.length > 0) {
-        const option = oneTimeOptions[0];
-        setSelectedPaymentOption(option);
-        // Don't auto-select plan - let user choose from available plans
-      }
-    }
-  }, [enrollmentData, selectedPaymentOption]);
 
   // Simple loadStripe function
   const loadStripe = useCallback(async (publishableKey: string) => {
@@ -229,12 +209,16 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
       const data = await fetchEnrollmentDetails(inviteCode, instituteId, packageSessionId, token);
       setEnrollmentData(data);
       
-      // Auto-select first payment option but let user choose plan
+      // Auto-select first payment option and plan
       const paymentOptions = getPaymentOptions(data);
       if (paymentOptions.length > 0) {
         const firstOption = paymentOptions[0];
         setSelectedPaymentOption(firstOption);
-        // Don't auto-select plan - let user choose from available plans
+        
+        const plans = getPaymentPlans(firstOption);
+        if (plans.length > 0) {
+          setSelectedPaymentPlan(plans[0]);
+        }
       }
     } catch (err) {
       setError("Failed to load payment options. Please try again.");
@@ -296,13 +280,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
       
     } catch (err) {
       console.error('One-time payment error:', err);
-      
-      // Handle specific error cases
-      if (err instanceof Error && err.message === 'ENROLLMENT_PENDING_APPROVAL') {
-        // User already has a pending enrollment request
-        onOpenChange(false);
-        setShowPendingApprovalDialog(true);
-      } else if (err instanceof Error) {
+      if (err instanceof Error) {
         const errorMsg = err.message.toLowerCase();
         if (errorMsg.includes('card') || errorMsg.includes('payment method')) {
           setCardElementError(err.message);
@@ -310,7 +288,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
           setError(err.message);
         }
       } else {
-      setError("Payment processing failed. Please try again.");
+        setError("Payment processing failed. Please try again.");
       }
     } finally {
       setProcessingPayment(false);
@@ -364,47 +342,52 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
 
   return (
     <>
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-bold">
-            One-Time Payment for {courseTitle}
-          </DialogTitle>
-          {enrollmentData && (
-            <p className="text-sm text-gray-600">
-              Complete your one-time payment to access the course
-            </p>
-          )}
-        </DialogHeader>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0">
+          {/* Header */}
+          <div className="bg-primary-50 px-6 py-4 rounded-t-lg">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <Lock className="w-6 h-6 text-blue-600" />
+              </div>
+              <div>
+                <DialogTitle className="text-xl font-semibold text-gray-900">
+                  One-Time Payment for {courseTitle}
+                </DialogTitle>
+                {enrollmentData && (
+                  <p className="text-gray-600 text-sm">
+                    Complete your one-time payment to access the course
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+          
+          {/* Content */}
+          <div className="p-6 space-y-6">
 
         {enrollmentData && step === 'select' && (
-          <Card className="shadow-lg border bg-white w-full">
-            <CardContent className="p-5 sm:p-6">
-              {/* Small Subheading */}
-              <div className="mb-4">
-                <h3 className="text-sm font-medium text-gray-700">Choose your plan</h3>
-              </div>
-
+          <div className="space-y-6">
             {/* Course Info */}
-            <Card className="bg-blue-50 border-blue-200">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg text-blue-700">Course Information</CardTitle>
+            <Card className="shadow-sm border border-gray-200">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold text-gray-900">Course Information</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2">
+              <CardContent className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-blue-600">Course:</span>
-                  <span className="font-medium text-blue-900">{courseTitle}</span>
+                  <span className="text-gray-600">Course:</span>
+                  <span className="font-medium text-gray-900">{courseTitle}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-blue-600">Access Period:</span>
-                  <span className="text-sm text-blue-900">
+                  <span className="text-gray-600">Access Period:</span>
+                  <span className="text-sm text-gray-900">
                     {new Date(enrollmentData.start_date).toLocaleDateString()} - {new Date(enrollmentData.end_date).toLocaleDateString()}
                   </span>
                 </div>
                 {enrollmentData.learner_access_days > 0 && (
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-blue-600">Access Duration:</span>
-                    <span className="text-sm text-blue-900">{enrollmentData.learner_access_days} days</span>
+                    <span className="text-gray-600">Access Duration:</span>
+                    <span className="text-sm text-gray-900">{enrollmentData.learner_access_days} days</span>
                   </div>
                 )}
               </CardContent>
@@ -412,8 +395,18 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
 
             {/* Payment Plans */}
             <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <CheckCircle className="w-5 h-5 text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Select Payment Plan</h3>
+                  <p className="text-gray-600 text-sm">Choose the plan that best suits your needs</p>
+                </div>
+              </div>
+              
               {paymentOptions.length === 0 ? (
-                <Card>
+                <Card className="shadow-sm border border-gray-200">
                   <CardContent className="py-8 text-center">
                     <p className="text-gray-600">No payment plans available at the moment.</p>
                   </CardContent>
@@ -421,15 +414,23 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
               ) : (
                 <div className="space-y-4">
                   {paymentOptions.map((option) => (
-                    <div key={option.id} className="space-y-4">
-                      <div className="grid gap-4">
+                    <div key={option.id} className="space-y-3">
+                      <div className="flex items-center space-x-3">
+                        <CheckCircle className="w-5 h-5 text-blue-600" />
+                        <div>
+                          <h4 className="font-semibold text-gray-900">{option.name}</h4>
+                          <p className="text-sm text-gray-600">{option.tag}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="grid gap-3">
                         {getPaymentPlans(option).map((plan) => (
                           <Card
                             key={plan.id}
-                            className={`cursor-pointer transition-all duration-200 hover:shadow-md ${
+                            className={`cursor-pointer transition-all duration-200 shadow-sm ${
                               selectedPaymentPlan?.id === plan.id
-                                ? "ring-2 ring-blue-500 bg-blue-50"
-                                : "hover:bg-gray-50"
+                                ? "ring-2 ring-blue-500 border-blue-500 bg-blue-50"
+                                : "border-gray-200 hover:border-gray-300 hover:shadow-md"
                             }`}
                             onClick={() => {
                               setSelectedPaymentOption(option);
@@ -437,20 +438,31 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                             }}
                           >
                             <CardContent className="p-6">
-                              {/* Plan Name */}
-                              <h4 className="text-xl font-bold text-gray-900 mb-2">
-                                {plan.name}
-                              </h4>
-
-                              {/* Price Information */}
-                              <div className="mb-3">
-                                <div className="text-xl font-bold text-primary-500">
-                                  {formatCurrency(plan.actual_price, plan.currency)}
-                                    {plan.validity_in_days > 0 && (
-                                    <span className="text-sm font-normal text-gray-500">
-                                      &nbsp;/ {plan.validity_in_days} days
-                                    </span>
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <div className="flex items-center space-x-2 mb-2">
+                                    <h5 className="font-semibold text-gray-900">{plan.name}</h5>
+                                    {plan.tag && (
+                                      <Badge variant="secondary" className="text-xs">
+                                        {plan.tag}
+                                      </Badge>
                                     )}
+                                  </div>
+                                  <p className="text-sm text-gray-600 mb-3">
+                                    {plan.description}
+                                  </p>
+                                  <div className="flex items-center space-x-4 text-xs text-gray-500">
+                                    {plan.validity_in_days > 0 && (
+                                      <span>Valid for {plan.validity_in_days} days</span>
+                                    )}
+                                    {plan.currency && (
+                                      <span>Currency: {plan.currency.toUpperCase()}</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <div className="text-2xl font-bold text-blue-600">
+                                    {formatCurrency(plan.actual_price, plan.currency)}
                                   </div>
                                   {plan.elevated_price > plan.actual_price && (
                                     <div className="text-sm text-gray-500 line-through">
@@ -458,37 +470,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                                     </div>
                                   )}
                                 </div>
-
-                              {/* Description */}
-                              {plan.description && (
-                                <p className="text-sm text-gray-600 mb-3">
-                                  {plan.description}
-                                </p>
-                              )}
-
-                              {/* Features */}
-                              {plan.feature_json && (
-                                <div className="space-y-2">
-                                  {(() => {
-                                    try {
-                                      const features = JSON.parse(plan.feature_json);
-                                      return Array.isArray(features) ? features.slice(0, 4).map((feature: string, index: number) => (
-                                        <div key={index} className="flex items-center space-x-2">
-                                          <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
-                                          <span className="text-sm text-gray-700">{feature}</span>
-                                        </div>
-                                      )) : [];
-                                    } catch {
-                                      return [
-                                        <div key="default" className="flex items-center space-x-2">
-                                          <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
-                                          <span className="text-sm text-gray-700">Course access included</span>
-                                        </div>
-                                      ];
-                                    }
-                                  })()}
                               </div>
-                              )}
                             </CardContent>
                           </Card>
                         ))}
@@ -502,157 +484,39 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
             {/* Error Message */}
             {error && (
               <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-red-600 text-sm">{error}</p>
+                <strong className="text-red-800">❌ Error</strong>
+                <p className="text-red-700 text-sm mt-1">{error}</p>
               </div>
             )}
-
-            {/* Action Buttons */}
-            <div className="flex justify-end space-x-3 pt-4">
-              <Button
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                disabled={processingPayment}
-              >
-                Cancel
-              </Button>
-              <MyButton
-                type="button"
-                scale="large"
-                buttonType="primary"
-                layoutVariant="default"
-                disabled={!selectedPaymentOption || !selectedPaymentPlan || processingPayment}
-                onClick={() => setStep('email')}
-              >
-                Continue to Payment
-              </MyButton>
-            </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Email Step */}
-        {step === 'email' && selectedPaymentPlan && (
-          <div className="space-y-6">
-            {/* Selected Plan Summary */}
-            <Card className="bg-blue-50 border-blue-200">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-semibold text-blue-700">Selected Plan</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setStep('select')}
-                    className="text-blue-600 hover:text-blue-700"
-                  >
-                    Change Plan
-                  </Button>
-                </div>
-                <div className="flex items-center justify-between text-sm mb-1">
-                  <span className="text-blue-600">Plan:</span>
-                  <span className="font-semibold text-blue-900">{selectedPaymentPlan.name}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm mb-1">
-                  <span className="text-blue-600">Price:</span>
-                  <span className="font-semibold text-blue-900">
-                    {formatCurrency(selectedPaymentPlan.actual_price, selectedPaymentPlan.currency)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-sm mb-1">
-                  <span className="text-blue-600">Validity:</span>
-                  <span className="font-semibold text-blue-900">
-                    {selectedPaymentPlan.validity_in_days} days
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-            
-            {/* Email Input */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700" htmlFor="one-time-email">
-                Email Address
-              </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-                  <EnvelopeSimple size={18} />
-                </span>
-                <input
-                  id="one-time-email"
-                  type="email"
-                  className={`border rounded-lg pl-10 pr-4 py-3 text-sm w-full h-12 focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                    validationError ? 'border-red-500 bg-red-50' : 'border-gray-300'
-                  }`}
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    setValidationError('');
-                  }}
-                  placeholder="you@example.com"
-                />
-              </div>
-              {validationError && (
-                <p className="text-red-600 text-xs">{validationError}</p>
-              )}
-              <p className="text-sm text-gray-500">We'll send your receipt and payment details to this email address</p>
-            </div>
-
-            {/* Navigation Buttons */}
-            <div className="flex gap-3">
-              <MyButton
-                type="button"
-                scale="large"
-                buttonType="primary"
-                layoutVariant="default"
-                disabled={!email.trim()}
-                onClick={() => {
-                  // Validate email before proceeding to payment
-                  if (!email || !email.trim()) {
-                    setValidationError('Please enter your email address');
-                    return;
-                  }
-                  
-                  // Enhanced email validation and sanitization
-                  try {
-                    const sanitizedEmail = validateAndSanitizeEmail(email);
-                    setEmail(sanitizedEmail);
-                  } catch (error) {
-                    setValidationError(error instanceof Error ? error.message : 'Please enter a valid email address');
-                    return;
-                  }
-                  
-                  setStep('payment');
-                }}
-              >
-                Continue to Payment
-              </MyButton>
-              <MyButton
-                type="button"
-                scale="large"
-                buttonType="secondary"
-                layoutVariant="default"
-                onClick={() => setStep('select')}
-              >
-                Back to Plans
-              </MyButton>
-            </div>
           </div>
         )}
 
         {/* Payment Step */}
         {step === 'payment' && selectedPaymentPlan && (
           <div className="space-y-6">
-            {/* Payment Summary */}
-            <Card className="bg-blue-50 border-blue-200">
-              <CardHeader>
-                <CardTitle className="text-blue-700">Payment Summary</CardTitle>
+            {/* Summary */}
+            <Card className="shadow-sm border border-gray-200">
+              <CardHeader className="pb-4">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg font-semibold text-gray-900">Payment Summary</CardTitle>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setStep('select')}
+                    className="text-blue-600 border-blue-200 bg-blue-50 hover:bg-blue-100"
+                  >
+                    Change Plan
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-blue-600">Plan:</span>
-                  <span className="font-medium text-blue-900">{selectedPaymentPlan.name}</span>
+                  <span className="text-gray-600">Plan:</span>
+                  <span className="font-medium text-gray-900">{selectedPaymentPlan.name}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-blue-600">Amount:</span>
-                  <span className="font-bold text-lg text-blue-600">
+                  <span className="text-gray-600">Amount:</span>
+                  <span className="font-bold text-xl text-blue-600">
                     {formatCurrency(selectedPaymentPlan.actual_price, selectedPaymentPlan.currency)}
                   </span>
                 </div>
@@ -660,72 +524,115 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
             </Card>
 
             {/* Payment Form */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Payment Details</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <Lock className="w-5 h-5 text-blue-600" />
+                </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Card Details
-                  </label>
-                  <div className={`border rounded-lg p-3 min-h-[48px] ${
+                  <h3 className="text-lg font-semibold text-gray-900">💳 Secure Payment</h3>
+                  <p className="text-gray-600 text-sm">Enter your card details below.</p>
+                </div>
+              </div>
+              
+              <Card className="shadow-sm border border-gray-200">
+                <CardContent className="p-6">
+                  <div className={`border rounded-lg p-4 bg-white ${
                     cardElementError ? 'border-red-500 bg-red-50' : 'border-gray-300'
                   }`}>
                     {!cardElementReady && (
-                      <div className="flex items-center justify-center h-full text-gray-500">
-                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      <div className="flex items-center justify-center h-12 text-gray-500">
+                        <Loader2 className="w-5 h-5 animate-spin mr-2" />
                         Loading payment form...
-                </div>
+                      </div>
                     )}
                     <div ref={cardElementRef} className="w-full h-full" />
                   </div>
                   
                   {cardElementError && (
-                    <div className="text-red-600 text-sm mt-2">
-                      {cardElementError}
-                  </div>
+                    <div className="p-4 bg-red-50 border border-red-200 rounded-lg mt-4">
+                      <strong className="text-red-800">❌ Error</strong>
+                      <p className="text-red-700 text-sm mt-1">{cardElementError}</p>
+                    </div>
                   )}
-                </div>
 
-                <div className="flex items-center justify-center space-x-3 pt-4">
-                  <MyButton
-                    type="button"
-                    scale="large"
-                    buttonType="primary"
-                    layoutVariant="default"
-                    disabled={processingPayment}
-                    onClick={handleEnroll}
-                    className="flex items-center space-x-2"
-                  >
-                    {processingPayment ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        <Lock className="w-4 h-4" />
-                        Pay Now
-                      </>
-                    )}
-                  </MyButton>
-                </div>
-
-                <div className="text-center text-xs text-gray-500 flex items-center justify-center space-x-1">
-                  <Lock className="w-3 h-3" />
-                  Secure payment powered by
-                  <span className="font-semibold flex items-center space-x-1 ml-1">
-                    <SiStripe className="w-4 h-4 text-indigo-600" />
-                    Stripe
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
+                  <div className="flex flex-col gap-3 mt-6">
+                    <MyButton
+                      type="button"
+                      scale="large"
+                      buttonType="primary"
+                      layoutVariant="default"
+                      disabled={processingPayment}
+                      onClick={handleEnroll}
+                      className="w-full h-12 text-base flex items-center justify-center gap-2"
+                    >
+                      {processingPayment ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          Processing Payment...
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="w-5 h-5" />
+                          Pay Now
+                        </>
+                      )}
+                    </MyButton>
+                    
+                    <div className="text-sm text-gray-500 text-center flex items-center justify-center gap-2">
+                      <Lock size={16} />
+                      Secure payment powered by
+                      <span className="font-semibold flex items-center gap-1">
+                        <SiStripe size={18} className="text-indigo-600" />
+                        Stripe
+                      </span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+          </div>
+          
+          {/* Footer */}
+          <div className="border-t border-gray-200 px-6 py-4 bg-gray-50 rounded-b-lg">
+            {step === 'select' ? (
+              <div className="flex gap-3">
+                <MyButton
+                  buttonType="secondary"
+                  scale="large"
+                  layoutVariant="default"
+                  className="flex-1 h-11"
+                  onClick={() => onOpenChange(false)}
+                >
+                  Cancel
+                </MyButton>
+                <MyButton
+                  buttonType="primary"
+                  scale="large"
+                  layoutVariant="default"
+                  className="flex-1 h-11"
+                  disabled={!selectedPaymentOption || !selectedPaymentPlan}
+                  onClick={() => setStep('payment')}
+                >
+                  Continue to Payment
+                </MyButton>
+              </div>
+            ) : (
+              <MyButton
+                buttonType="secondary"
+                scale="large"
+                layoutVariant="default"
+                className="w-full h-11"
+                onClick={() => onOpenChange(false)}
+              >
+                Cancel
+              </MyButton>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Success Dialog */}
       <EnrollmentSuccessDialog
@@ -740,14 +647,6 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
         open={showPendingDialog}
         onOpenChange={setShowPendingDialog}
         courseTitle={courseTitle}
-      />
-
-      {/* Pending Approval Dialog */}
-      <EnrollmentPendingApprovalDialog
-        open={showPendingApprovalDialog}
-        onOpenChange={setShowPendingApprovalDialog}
-        courseTitle={courseTitle}
-        onClose={() => setShowPendingApprovalDialog(false)}
       />
     </>
   );

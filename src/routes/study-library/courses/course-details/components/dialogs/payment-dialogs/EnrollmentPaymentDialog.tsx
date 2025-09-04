@@ -54,10 +54,7 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
       
       // Determine payment type from the first payment option
       if (data.package_session_to_payment_options && data.package_session_to_payment_options.length > 0) {
-        console.log('EnrollmentPaymentDialog - All payment options:', data.package_session_to_payment_options);
         const firstPaymentOption = data.package_session_to_payment_options[0].payment_option;
-        console.log('EnrollmentPaymentDialog - First payment option:', firstPaymentOption);
-        console.log('EnrollmentPaymentDialog - Payment type:', firstPaymentOption.type);
         setPaymentType(firstPaymentOption.type);
       }
     } catch (err) {
@@ -149,6 +146,7 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
       
       case 'free':
       case 'free_plan':
+      case 'freep plan':
         return (
           <FreePlanDialog
             open={open}

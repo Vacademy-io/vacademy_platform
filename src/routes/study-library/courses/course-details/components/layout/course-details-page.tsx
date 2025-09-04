@@ -19,7 +19,7 @@ import {
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { handleGetSlideCountDetails } from "../-services/get-slides-count";
-import { CourseDetailsRatingsComponent } from "./course-details-ratings-page";
+import { CourseDetailsRatingsComponent } from "../ui/course-details-ratings-page";
 import { transformApiDataToCourseData } from "../-utils/helper";
 
 import { handleGetAllCourseDetails } from "../-services/get-course-details";
@@ -1327,39 +1327,39 @@ export const CourseDetailsPage = () => {
 
 
                             {/* Content Sections */}
-                            <CourseContentSections
-                                courseData={form.getValues("courseData")}
+                            <CourseContentSections 
+                                courseData={form.getValues("courseData")} 
                             />
 
                         </div>
 
                         {/* Right Column - Course Stats Sidebar (1/4) */}
-                            <CourseSidebar
+                        <CourseSidebar
                             hasRightSidebar={hasRightSidebar}
-                                levelOptions={levelOptions}
+                            levelOptions={levelOptions}
                             selectedLevel={selectedLevel}
-                                slideCountQuery={slideCountQuery}
-                                overviewVisible={overviewVisible}
+                            slideCountQuery={slideCountQuery}
+                            overviewVisible={overviewVisible}
                             processedSlideCounts={processedSlideCounts}
-                                moduleStats={moduleStats}
+                            moduleStats={moduleStats}
                             currentSubjects={getSubjectDetails(
                                                                             form.getValues(),
                                                                             selectedSession,
-                                                                        selectedLevel
+                                                                            selectedLevel
                             )}
                             courseStructure={form.getValues("courseData.courseStructure")}
                             instructorsCount={form.getValues("courseData").instructors.length}
-                                    selectedTab={selectedTab}
+                            selectedTab={selectedTab}
                             selectedSession={selectedSession}
                             enrolledSessions={enrolledSessions || []}
                             courseId={searchParams.courseId || ""}
                             paymentType={paymentType}
                             packageSessionIdForCurrentLevel={packageSessionIdForCurrentLevel}
                             onEnrollmentClick={() => {
-                                                    console.log('Enrollment button clicked, payment type:', paymentType);
+                                                                    console.log('Enrollment button clicked, payment type:', paymentType);
                                                                     // Always open enrollment dialog - it will determine the correct payment type from API data
                                                                     console.log('Opening enrollment dialog to determine payment type');
-                                                        setEnrollmentDialogOpen(true);
+                                                                        setEnrollmentDialogOpen(true);
                                                                 }}
                             onRatingsLoadingChange={handleRatingsLoadingChange}
                         />

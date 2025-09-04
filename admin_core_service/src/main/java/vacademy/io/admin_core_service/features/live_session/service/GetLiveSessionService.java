@@ -259,7 +259,7 @@ public class GetLiveSessionService {
                 sessionRepository.findUpcomingSessionsForBatch(batchId);
         
         // Get sessions for user
-        System.out.println(userId);
+        System.out.println("userid is:"+userId);
         List<LiveSessionRepository.LiveSessionListProjection> userProjections =
                 sessionRepository.findUpcomingSessionsForUser(userId);
 

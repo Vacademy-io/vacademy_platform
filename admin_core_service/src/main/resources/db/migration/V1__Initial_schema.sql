@@ -1,3 +1,35 @@
+-- Enable required extensions
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "vector";
+
+-- Create sequences
+CREATE SEQUENCE IF NOT EXISTS live_session_logs_id_seq;
+
+-- Create trigger functions
+CREATE OR REPLACE FUNCTION update_updated_on_user_task()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION trim_and_lowercase_column(column_name text)
+RETURNS TRIGGER AS $$
+BEGIN
+    EXECUTE format('NEW.%I = TRIM(LOWER(NEW.%I))', column_name, column_name);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION trim_and_titlecase_package_name()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.package_name = TRIM(INITCAP(NEW.package_name));
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 -- public.assessments definition
 
 -- Drop table
@@ -1059,7 +1091,7 @@ CREATE TABLE public.concentration_score (
 	concentration_score float8 NOT NULL,
 	tab_switch_count int4 NOT NULL,
 	pause_count int4 NOT NULL,
-	answer_times_in_sec _int4 NULL,
+	answer_times_in_sec integer[] NULL,
 	activity_id varchar(255) NOT NULL,
 	CONSTRAINT concentration_score_pkey PRIMARY KEY (id),
 	CONSTRAINT fk_activity FOREIGN KEY (activity_id) REFERENCES public.activity_log(id)
@@ -1615,11 +1647,14 @@ CREATE TABLE public.schedule_notifications (
 	offset_minutes int4 NULL,
 	created_at timestamp DEFAULT CURRENT_TIMESTAMP NULL,
 	updated_at timestamp DEFAULT now() NULL,
-	CONSTRAINT schedule_notifications_pkey PRIMARY KEY (id),
-	CONSTRAINT fk_schedule_notifications FOREIGN KEY (session_id) REFERENCES public.live_session(id) ON DELETE CASCADE
+	schedule_id varchar(255) NULL,
+	CONSTRAINT schedule_notifications_pkey PRIMARY KEY (id)
 );
 
 
+-- public.schedule_notifications foreign keys
+
+ALTER TABLE public.schedule_notifications ADD CONSTRAINT fk_schedule_notifications FOREIGN KEY (session_id) REFERENCES public.live_session(id) ON DELETE CASCADE;
 -- public.sections definition
 
 -- Drop table
@@ -2356,4 +2391,4 @@ CREATE TABLE public.node_execution (
 	CONSTRAINT node_execution_workflow_execution_id_fkey FOREIGN KEY (workflow_execution_id) REFERENCES public.workflow_execution(id) ON DELETE CASCADE
 );
 CREATE INDEX idx_node_exec_st ON public.node_execution USING btree (status, started_at);
-CREATE INDEX idx_node_exec_wf ON public.node_execution USING btree (workflow_execution_id, execution_order);
+CREATE INDEX idx_node_exec_wf ON public.node_execution USING btree (workflow_execution_id, execution_order);r

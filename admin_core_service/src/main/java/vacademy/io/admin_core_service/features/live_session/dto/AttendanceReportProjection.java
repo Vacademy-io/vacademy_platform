@@ -13,6 +13,7 @@ public interface AttendanceReportProjection {
     LocalDate getDateOfBirth();
     String getInstituteEnrollmentNumber();
     String getEnrollmentStatus();
+    LocalDate getEnrolledDate();
     String getAttendanceStatus();
     String getAttendanceDetails();
     LocalDateTime getAttendanceTimestamp();
@@ -22,4 +23,5 @@ public interface AttendanceReportProjection {
     LocalDate getMeetingDate();
     LocalTime getStartTime();
     LocalTime getLastEntryTime();
+    Boolean getDailyAttendance();
 }

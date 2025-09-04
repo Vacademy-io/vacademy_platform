@@ -19,6 +19,10 @@ public class LiveSessionStep2RequestDTO {
 
     private List<String> packageSessionIds;
     private List<String> deletedPackageSessionIds;
+    
+    // === Individual User Operations ===
+    private List<String> individualUserIds;       //new added fields
+    private List<String> deletedIndividualUserIds;
 
     private String joinLink;
 
@@ -55,6 +59,7 @@ public class LiveSessionStep2RequestDTO {
         private String label;
         private boolean required;
         private boolean isDefault;
+        private boolean isHidden;
         private String type;
         private List<FieldOptionDTO> options;
     }

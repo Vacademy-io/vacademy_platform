@@ -111,6 +111,7 @@ public class AnnouncementService {
         }
     }
 
+
     @Transactional(readOnly = true)
     public AnnouncementResponse getAnnouncement(String announcementId) {
         if (announcementId == null || announcementId.trim().isEmpty()) {

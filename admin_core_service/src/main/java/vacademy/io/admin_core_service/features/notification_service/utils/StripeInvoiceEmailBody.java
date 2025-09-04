@@ -152,7 +152,7 @@ public class StripeInvoiceEmailBody {
                         </tr>
                         <tr>
                             <td class="content">
-                                <p>Hi %s,</p>
+                                <p>Hello %s,</p>
                                 <p>This is a friendly reminder that a new invoice has been generated for you on behalf of <strong>%s</strong>.</p>
 
                                 <table class="invoice-total" width="100%%">

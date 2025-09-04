@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.notification.constants.NotificationConstant;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
 import vacademy.io.admin_core_service.features.notification.dto.WhatsappRequest;
@@ -44,8 +45,16 @@ public class NotificationService {
         return response.getBody();
     }
     public Boolean sendGenericHtmlMail(GenericEmailRequest request) {
+        return sendGenericHtmlMail(request, null);
+    }
 
-        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(), notificationServerBaseUrl, NotificationConstant.SEND_HTML_EMAIL, request);
+    public Boolean sendGenericHtmlMail(GenericEmailRequest request, String instituteId) {
+        String endpoint = NotificationConstant.SEND_HTML_EMAIL;
+        if (StringUtils.hasText(instituteId)) {
+            endpoint += "?instituteId=" + instituteId;
+        }
+
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(), notificationServerBaseUrl, endpoint, request);
 
         ObjectMapper objectMapper = new ObjectMapper();
         try {
@@ -76,7 +85,7 @@ public class NotificationService {
     public List<Map<String, Boolean>> sendWhatsappToUsers(WhatsappRequest request,String instituteId) {
         // Call notification microservice via HMAC request
         String url=NotificationConstant.SEND_WHATSAPP_TO_USER+"?instituteId="+instituteId;
-        System.out.println("url is:"+url);
+        System.out.println(url);
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                 clientName,
                 HttpMethod.POST.name(),

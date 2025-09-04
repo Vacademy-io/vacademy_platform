@@ -81,7 +81,7 @@ public class CreateAnnouncementRequest {
     public static class RecipientRequest {
         
         @NotBlank(message = "Recipient type is required")
-        @Pattern(regexp = "^(ROLE|USER|PACKAGE_SESSION)$", message = "Recipient type must be one of: ROLE, USER, PACKAGE_SESSION")
+        @Pattern(regexp = "^(ROLE|USER|PACKAGE_SESSION|TAG)$", message = "Recipient type must be one of: ROLE, USER, PACKAGE_SESSION, TAG")
         private String recipientType; // ROLE, USER, PACKAGE_SESSION
         
         @NotBlank(message = "Recipient ID is required")

@@ -26,11 +26,6 @@ public class SpelEvaluator {
         }
 
         String exprStr = expressionString.trim();
-        if (exprStr.startsWith("#{") && exprStr.endsWith("}")) {
-            exprStr = exprStr.substring(2, exprStr.length() - 1);
-        }
-
-        exprStr = '#' + exprStr;
 
         ExpressionParser parser = new SpelExpressionParser();
         StandardEvaluationContext context = new StandardEvaluationContext();

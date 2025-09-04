@@ -4,6 +4,7 @@ package vacademy.io.auth_service.feature.user.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.auth_service.feature.admin_core_service.service.InstitutePolicyService;
 import vacademy.io.auth_service.feature.user.dto.UserBasicDetailsDto;
 import vacademy.io.common.auth.dto.UserJwtUpdateDetail;
 import vacademy.io.auth_service.feature.user.service.UserDetailService;
@@ -28,6 +29,9 @@ public class UserDetailController {
 
     @Autowired
     private UserOperationService userOperationService;
+
+    @Autowired
+    private InstitutePolicyService institutePolicyService;
 
     @GetMapping("/by-user-id")
     public ResponseEntity<UserDTO> getUserDetailByUserId(String userId, @RequestAttribute("user") CustomUserDetails customUserDetails) {
@@ -62,10 +66,11 @@ public class UserDetailController {
     @PutMapping("/update-user")
     public ResponseEntity<UserDTO> updateUser(@RequestBody UserDTO userDTO, @RequestParam("userId") String userId) {
         try {
+            institutePolicyService.updateLearnerDetails(userDTO);
             return ResponseEntity.ok(userService.updateUserDetails(userDTO, userId));
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());
         }
     }
-    
+
 }

@@ -7,6 +7,14 @@ import vacademy.io.common.payment.dto.PaymentResponseDTO;
 import java.util.Map;
 
 public interface PaymentServiceStrategy {
-    PaymentResponseDTO initiatePayment(UserDTO user,PaymentInitiationRequestDTO request, Map<String, Object> paymentGatewaySpecificData);
-    Map<String, Object> createCustomer(UserDTO user,PaymentInitiationRequestDTO request, Map<String, Object> paymentGatewaySpecificData);
+    PaymentResponseDTO initiatePayment(UserDTO user, PaymentInitiationRequestDTO request,
+            Map<String, Object> paymentGatewaySpecificData);
+
+    Map<String, Object> createCustomer(UserDTO user, PaymentInitiationRequestDTO request,
+            Map<String, Object> paymentGatewaySpecificData);
+
+    Map<String, Object> createCustomerForUnknownUser(String email, PaymentInitiationRequestDTO request,
+            Map<String, Object> paymentGatewaySpecificData);
+
+    Map<String, Object> findCustomerByEmail(String email, Map<String, Object> paymentGatewaySpecificData);
 }

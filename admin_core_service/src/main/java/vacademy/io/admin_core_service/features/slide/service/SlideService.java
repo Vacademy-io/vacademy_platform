@@ -235,7 +235,7 @@ public class SlideService {
         return updateSlideOrderDTOs.stream()
                 .map(UpdateSlideOrderDTO::getSlideId)
                 .distinct()
-                .toList();
+                .collect(Collectors.toList());
     }
 
     private List<ChapterToSlides> fetchMappings(String chapterId, List<String> slideIds) {

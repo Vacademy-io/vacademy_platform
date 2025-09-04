@@ -107,6 +107,7 @@ public class InstituteCustomFiledService {
         customFieldDTO.setIsMandatory(cf.getIsMandatory());
         customFieldDTO.setIsFilter(cf.getIsFilter());
         customFieldDTO.setIsSortable(cf.getIsSortable());
+        customFieldDTO.setIsHidden(cf.getIsHidden());
         if (cf.getCreatedAt() != null) {
             customFieldDTO.setCreatedAt(new Timestamp(cf.getCreatedAt().getTime()));
         }
@@ -137,6 +138,7 @@ public class InstituteCustomFiledService {
         setupDTO.setFieldName(cf.getFieldName());
         setupDTO.setFieldType(cf.getFieldType());
         setupDTO.setFormOrder(cf.getFormOrder());
+        setupDTO.setIsHidden(cf.getIsHidden());
         setupDTO.setGroupName(icf.getGroupName());
         setupDTO.setType(icf.getType());
         setupDTO.setTypeId(icf.getTypeId());

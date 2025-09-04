@@ -17,6 +17,8 @@ public class PaymentInitiationRequestDTO {
     private String orderId;
     private String instituteId;
     private String email;
+    private String vendor;
+    private String vendorId;
 
     private StripeRequestDTO stripeRequest;
     private RazorpayRequestDTO razorpayRequest;

@@ -9,6 +9,7 @@ import vacademy.io.admin_core_service.features.slide.dto.AssignmentSlideDTO;
 import java.sql.Date;
 import java.sql.Timestamp;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Entity
 @Table(name = "assignment_slide")
@@ -66,7 +67,9 @@ public class AssignmentSlide {
         this.reAttemptCount = dto.getReAttemptCount();
         this.commaSeparatedMediaIds = dto.getCommaSeparatedMediaIds();
         if (dto.getQuestions() != null) {
-            this.assignmentSlideQuestions = dto.getQuestions().stream().map((question) -> new AssignmentSlideQuestion(question,this)).toList();
+            this.assignmentSlideQuestions = dto.getQuestions().stream()
+                    .map(question -> new AssignmentSlideQuestion(question, this))
+                    .collect(Collectors.toList());
         }
     }
 

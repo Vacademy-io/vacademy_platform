@@ -18,7 +18,8 @@ public class CacheConfig {
                 "usersByRole",
                 "usersById", 
                 "facultyByPackageSessions",
-                "studentsByPackageSessions"
+                "studentsByPackageSessions",
+                "usersByTags"
         );
         return cacheManager;
     }

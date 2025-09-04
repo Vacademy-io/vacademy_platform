@@ -45,6 +45,7 @@ public class RecipientResolutionService {
             log.warn("Failed to fetch announcement {} while resolving recipients", announcementId, e);
         }
         Set<String> resolvedUserIds = new HashSet<>(); // Using Set for automatic deduplication
+        List<String> tagIdsToResolve = new ArrayList<>();
         
         for (AnnouncementRecipient recipient : recipients) {
             switch (recipient.getRecipientType()) {
@@ -64,9 +65,30 @@ public class RecipientResolutionService {
                     resolvedUserIds.addAll(sessionUsers);
                     log.debug("Resolved package session {} to {} users", recipient.getRecipientId(), sessionUsers.size());
                     break;
+                
+                case TAG:
+                    // Collect tag IDs to resolve in a single batched call
+                    if (recipient.getRecipientId() != null && !recipient.getRecipientId().isBlank()) {
+                        tagIdsToResolve.add(recipient.getRecipientId());
+                    }
+                    break;
                     
                 default:
                     log.warn("Unknown recipient type: {}", recipient.getRecipientType());
+            }
+        }
+        // Resolve TAG recipients in one admin-core call (ANY-of tags semantics)
+        if (!tagIdsToResolve.isEmpty()) {
+            if (announcementInstituteId == null || announcementInstituteId.isBlank()) {
+                log.warn("Institute ID unavailable while resolving TAG recipients; skipping tag resolution");
+            } else {
+                try {
+                    List<String> tagUserIds = adminCoreServiceClient.getUsersByTags(announcementInstituteId, tagIdsToResolve);
+                    resolvedUserIds.addAll(tagUserIds);
+                    log.debug("Resolved {} users from {} tag(s)", tagUserIds.size(), tagIdsToResolve.size());
+                } catch (Exception e) {
+                    log.error("Error resolving users by tags {} for institute {}", tagIdsToResolve, announcementInstituteId, e);
+                }
             }
         }
         

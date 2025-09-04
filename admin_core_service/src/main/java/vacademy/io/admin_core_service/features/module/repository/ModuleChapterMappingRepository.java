@@ -35,7 +35,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                 END) AS FLOAT
             ), 0.0),
             'chapters', COALESCE(json_agg(
-                DISTINCT jsonb_build_object(
+                jsonb_build_object(
                     'id', c.id,
                     'chapter_name', c.chapter_name,
                     'status', c.status,
@@ -50,7 +50,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                     'assignment_slide_count', chap_data.assignment_slide_count,
                     'survey_slide_count', chap_data.survey_slide_count,
                     'unknown_count', chap_data.unknown_count
-                )
+                ) ORDER BY c.created_at
             ) FILTER (WHERE c.id IS NOT NULL), CAST('[]' AS json))
         ) AS module_data
         FROM subject_module_mapping smm
@@ -127,7 +127,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                 'module_name', m.module_name,
                 'description', m.description
             ),
-            'chapters', COALESCE(json_agg(DISTINCT jsonb_build_object(
+            'chapters', COALESCE(json_agg(jsonb_build_object(
                 'id', c.id,
                 'chapter_name', c.chapter_name,
                 'status', c.status,
@@ -140,7 +140,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                 'assignment_slide_count', counts.assignment_slide_count,
                 'survey_slide_count', counts.survey_slide_count,
                 'unknown_count', counts.unknown_count
-            )) FILTER (WHERE c.id IS NOT NULL), CAST('[]' AS json))
+            ) ORDER BY c.created_at) FILTER (WHERE c.id IS NOT NULL), CAST('[]' AS json))
         ) AS module_data
         FROM subject_module_mapping smm
         JOIN modules m ON smm.module_id = m.id AND m.status IN (:moduleStatusList)

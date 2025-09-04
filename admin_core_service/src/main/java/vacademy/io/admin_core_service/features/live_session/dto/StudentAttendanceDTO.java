@@ -19,6 +19,7 @@ public class StudentAttendanceDTO {
     private String instituteEnrollmentNumber;
     private String enrollmentStatus;
     private List<AttendanceDetailsDTO> sessions;
+    private Double attendancePercentage;
     // Getters & setters
 }
 

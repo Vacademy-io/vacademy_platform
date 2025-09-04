@@ -40,7 +40,7 @@ android {
 
 		seven_cs {
 			dimension "client"
-			applicationId "com.sevencs.learner"
+			applicationId "com.sevencs.app"
 			// Change app name for Seven CS
 			resValue "string", "app_name", "The 7Cs"
 			// Set the deep link host for Seven CS (adjust to your domain)

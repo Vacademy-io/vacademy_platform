@@ -7,9 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:117550803134:android:686a47ce92d2670dbdd6ef",
+        "mobilesdk_app_id": "1:117550803134:android:0a8659d196f1c2ddbdd6ef",
         "android_client_info": {
-          "package_name": "com.sevencs.learner"
+          "package_name": "com.sevencs.app"
         }
       },
       "oauth_client": [],

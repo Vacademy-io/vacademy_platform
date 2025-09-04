@@ -218,6 +218,97 @@ public class GetLiveSessionService {
                 .toList();
     }
 
+    public List<GroupedSessionsByDateDTO> getLiveAndUpcomingSessionsForUser(String userId, CustomUserDetails user) {
+        List<LiveSessionRepository.LiveSessionListProjection> projections =
+                sessionRepository.findUpcomingSessionsForUser(userId);
+
+        List<LiveSessionListDTO> flatList = projections.stream().map(p -> new LiveSessionListDTO(
+                p.getSessionId(),
+                p.getWaitingRoomTime(),
+                p.getThumbnailFileId(),
+                p.getBackgroundScoreFileId(),
+                p.getSessionStreamingServiceType(),
+                p.getScheduleId(),
+                p.getMeetingDate(),
+                p.getStartTime(),
+                p.getLastEntryTime(),
+                p.getRecurrenceType(),
+                p.getAccessLevel(),
+                p.getTitle(),
+                p.getSubject(),
+                p.getMeetingLink(),
+                p.getRegistrationFormLinkForPublicSessions()
+        )).toList();
+
+        // Group by date
+        return flatList.stream()
+                .collect(Collectors.groupingBy(
+                        LiveSessionListDTO::getMeetingDate,
+                        TreeMap::new, // to keep dates sorted
+                        Collectors.toList()
+                ))
+                .entrySet()
+                .stream()
+                .map(entry -> new GroupedSessionsByDateDTO(entry.getKey(), entry.getValue()))
+                .toList();
+    }
+
+    public List<GroupedSessionsByDateDTO> getLiveAndUpcomingSessionsForUserAndBatch(String batchId, String userId, CustomUserDetails user) {
+        // Get sessions for batch
+        List<LiveSessionRepository.LiveSessionListProjection> batchProjections =
+                sessionRepository.findUpcomingSessionsForBatch(batchId);
+        
+        // Get sessions for user
+        System.out.println(userId);
+        List<LiveSessionRepository.LiveSessionListProjection> userProjections =
+                sessionRepository.findUpcomingSessionsForUser(userId);
+
+        // Combine both lists and remove duplicates based on sessionId and scheduleId
+        Map<String, LiveSessionRepository.LiveSessionListProjection> uniqueSessions = new LinkedHashMap<>();
+        
+        // Add batch sessions
+        for (LiveSessionRepository.LiveSessionListProjection p : batchProjections) {
+            String key = p.getSessionId() + "_" + p.getScheduleId();
+            uniqueSessions.put(key, p);
+        }
+        
+        // Add user sessions (will override batch sessions if same key exists)
+        for (LiveSessionRepository.LiveSessionListProjection p : userProjections) {
+            String key = p.getSessionId() + "_" + p.getScheduleId();
+            uniqueSessions.put(key, p);
+        }
+
+        List<LiveSessionListDTO> flatList = uniqueSessions.values().stream().map(p -> new LiveSessionListDTO(
+                p.getSessionId(),
+                p.getWaitingRoomTime(),
+                p.getThumbnailFileId(),
+                p.getBackgroundScoreFileId(),
+                p.getSessionStreamingServiceType(),
+                p.getScheduleId(),
+                p.getMeetingDate(),
+                p.getStartTime(),
+                p.getLastEntryTime(),
+                p.getRecurrenceType(),
+                p.getAccessLevel(),
+                p.getTitle(),
+                p.getSubject(),
+                p.getMeetingLink(),
+                p.getRegistrationFormLinkForPublicSessions()
+        )).toList();
+
+        // Group by date
+        return flatList.stream()
+                .collect(Collectors.groupingBy(
+                        LiveSessionListDTO::getMeetingDate,
+                        TreeMap::new, // to keep dates sorted
+                        Collectors.toList()
+                ))
+                .entrySet()
+                .stream()
+                .map(entry -> new GroupedSessionsByDateDTO(entry.getKey(), entry.getValue()))
+                .toList();
+    }
+
     public String deleteLiveSessions(List<String> ids, String type) {
         if (ids == null || ids.isEmpty()) {
             return "Id can't be empty";

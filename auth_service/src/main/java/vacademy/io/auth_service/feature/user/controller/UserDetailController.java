@@ -66,6 +66,7 @@ public class UserDetailController {
     @PutMapping("/update-user")
     public ResponseEntity<UserDTO> updateUser(@RequestBody UserDTO userDTO, @RequestParam("userId") String userId) {
         try {
+            userDTO.setId(userId);
             institutePolicyService.updateLearnerDetails(userDTO);
             return ResponseEntity.ok(userService.updateUserDetails(userDTO, userId));
         } catch (Exception e) {

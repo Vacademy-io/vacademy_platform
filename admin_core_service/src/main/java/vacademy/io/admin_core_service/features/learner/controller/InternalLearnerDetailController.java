@@ -2,10 +2,7 @@ package vacademy.io.admin_core_service.features.learner.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PatchMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.learner.service.LearnerService;
 import vacademy.io.common.auth.dto.UserDTO;
 
@@ -16,7 +13,7 @@ public class InternalLearnerDetailController {
     @Autowired
     private LearnerService learnerService;
 
-    @PatchMapping("/update")
+    @PutMapping("/update")
     public ResponseEntity<String> updateLearnerDetail(@RequestBody UserDTO userDTO){
         return ResponseEntity.ok(learnerService.updateLearnerDetail(userDTO));
     }

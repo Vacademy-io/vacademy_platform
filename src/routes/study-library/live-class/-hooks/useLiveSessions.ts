@@ -47,8 +47,6 @@ const fetchLiveAndUpcomingSessions = async (
       SessionDetails[]
     >((acc, day) => [...acc, ...day.sessions], []);
 
-    console.log("allSessions ", allSessions);
-
     const now = new Date();
     const live_sessions = allSessions.filter(isSessionLive);
     const upcoming_sessions = allSessions.filter((session) => {
@@ -85,7 +83,7 @@ export const useLiveSessions = (batchId: string | null) => {
   return useQuery({
     queryKey: ["liveSessions", batchId],
     queryFn: () => fetchLiveAndUpcomingSessions(batchId!),
-    enabled: !!batchId,
+    // enabled: !!batchId,
     refetchInterval: 60000, // Refetch every minute to keep live status updated
   });
 };

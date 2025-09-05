@@ -60,22 +60,34 @@ export const useWeeklyAttendanceQuery = () => {
           // Determine if this day is past, today, or future
           const isDayInPast = isPast(dayDate) && !isToday(dayDate);
 
-          // Find if there's a class scheduled for this day
-          const daySchedule = response.schedules.find(
+          // Find all classes scheduled for this day
+          const daySchedules = response.schedules.filter(
             (schedule: ScheduleItem) =>
               isSameDay(parseISO(schedule.meetingDate), dayDate)
           );
 
           let status: WeeklyAttendanceDay["status"];
 
-          if (daySchedule) {
-            // There's a class scheduled for this day
-            if (daySchedule.attendanceStatus === "PRESENT") {
+          if (daySchedules.length > 0) {
+            // There are classes scheduled for this day
+            const hasAnyPresent = daySchedules.some(
+              (schedule) => schedule.attendanceStatus === "PRESENT"
+            );
+            const hasAnyAbsent = daySchedules.some(
+              (schedule) => schedule.attendanceStatus === "ABSENT"
+            );
+            const hasAnyPending = daySchedules.some(
+              (schedule) => !schedule.attendanceStatus
+            );
+
+            if (hasAnyPresent) {
+              // If present in any class, mark the day as present
               status = "PRESENT";
-            } else if (daySchedule.attendanceStatus === "ABSENT") {
+            } else if (hasAnyAbsent && !hasAnyPending) {
+              // If absent from all classes and no pending classes
               status = "ABSENT";
             } else {
-              // No attendance status recorded yet
+              // Has pending classes or mix of absent and pending
               if (isDayInPast) {
                 status = "ABSENT";
               } else {
@@ -98,7 +110,7 @@ export const useWeeklyAttendanceQuery = () => {
             dayName: dayName,
             status,
             date: dayDate,
-            hasClass: !!daySchedule,
+            hasClass: daySchedules.length > 0,
           };
         });
 

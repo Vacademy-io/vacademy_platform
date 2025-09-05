@@ -16,7 +16,6 @@ import {
   formatCurrency,
   handlePaymentForEnrollment,
   fetchPaymentGatewayDetails,
-  formatAccessPeriod,
   type EnrollmentResponse,
   type PaymentOption,
   type PaymentPlan,
@@ -24,7 +23,6 @@ import {
 import { MyButton } from "@/components/design-system/button";
 import { EnrollmentSuccessDialog } from "./EnrollmentSuccessDialog";
 import { EnrollmentPendingDialog } from "./EnrollmentPendingDialog";
-import { EnrollmentPendingApprovalDialog } from "./EnrollmentPendingApprovalDialog";
 
 interface FreePlanDialogProps {
   open: boolean;
@@ -55,7 +53,6 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
   const [processingEnrollment, setProcessingEnrollment] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [showPendingDialog, setShowPendingDialog] = useState(false);
-  const [showPendingApprovalDialog, setShowPendingApprovalDialog] = useState(false);
 
   // Fetch enrollment data when dialog opens
   useEffect(() => {
@@ -69,34 +66,17 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
     setError(null);
     try {
       const data = await fetchEnrollmentDetails(inviteCode, instituteId, packageSessionId, token);
-      console.log('FreePlanDialog - Enrollment data:', data);
       setEnrollmentData(data);
       
-      // Auto-select first FREE payment option and plan
+      // Auto-select first payment option and plan
       const paymentOptions = getPaymentOptions(data);
-      console.log('FreePlanDialog - Payment options:', paymentOptions);
-      const freeOptions = paymentOptions.filter(option => 
-        option.payment_option_type === 'FREE' || option.type === 'FREE'
-      );
-      console.log('FreePlanDialog - Free options:', freeOptions);
-      
-      if (freeOptions.length > 0) {
-        const firstFreeOption = freeOptions[0];
-        setSelectedPaymentOption(firstFreeOption);
-        
-        const plans = getPaymentPlans(firstFreeOption);
-        if (plans.length > 0) {
-          setSelectedPaymentPlan(plans[0]);
-        }
-      } else if (paymentOptions.length > 0) {
-        // Fallback to any option with free plans
+      if (paymentOptions.length > 0) {
         const firstOption = paymentOptions[0];
         setSelectedPaymentOption(firstOption);
         
         const plans = getPaymentPlans(firstOption);
-        const freePlans = plans.filter(plan => plan.actual_price === 0);
-        if (freePlans.length > 0) {
-          setSelectedPaymentPlan(freePlans[0]);
+        if (plans.length > 0) {
+          setSelectedPaymentPlan(plans[0]);
         }
       }
     } catch (err) {
@@ -148,24 +128,16 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
       
     } catch (err) {
       console.error('Free enrollment error:', err);
-      
-      // Handle specific error cases
-      if (err instanceof Error && err.message === 'ENROLLMENT_PENDING_APPROVAL') {
-        // User already has a pending enrollment request
-        onOpenChange(false);
-        setShowPendingApprovalDialog(true);
-      } else {
-        setError(err instanceof Error ? err.message : "Enrollment failed. Please try again.");
-      }
+      setError(err instanceof Error ? err.message : "Enrollment failed. Please try again.");
     } finally {
       setProcessingEnrollment(false);
     }
   };
 
-  const handleExploreCourse = async () => {
+  const handleExploreCourse = () => {
     setShowSuccessDialog(false);
     if (onEnrollmentSuccess) {
-      await onEnrollmentSuccess();
+      onEnrollmentSuccess();
     }
   };
 
@@ -206,18 +178,14 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
   }
 
   const paymentOptions = enrollmentData ? getPaymentOptions(enrollmentData) : [];
-  const freePlans = paymentOptions.flatMap(option => {
-    // Filter for FREE payment options or plans with zero price
-    if (option.payment_option_type === 'FREE' || option.type === 'FREE') {
-      return getPaymentPlans(option);
-    }
-    return getPaymentPlans(option).filter(plan => plan.actual_price === 0);
-  });
+  const freePlans = paymentOptions.flatMap(option => 
+    getPaymentPlans(option).filter(plan => plan.actual_price === 0)
+  );
 
   return (
     <>
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold flex items-center space-x-2">
             <Gift className="w-6 h-6 text-green-600" />
@@ -245,38 +213,17 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">Access Period:</span>
                   <span className="text-sm">
-                    {formatAccessPeriod(enrollmentData.start_date, enrollmentData.end_date)}
+                    {new Date(enrollmentData.start_date).toLocaleDateString()} - {new Date(enrollmentData.end_date).toLocaleDateString()}
                   </span>
                 </div>
+                {enrollmentData.learner_access_days > 0 && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Access Duration:</span>
+                    <span className="text-sm">{enrollmentData.learner_access_days} days</span>
+                  </div>
+                )}
               </CardContent>
             </Card>
-
-            {/* Approval Required Message */}
-            {(() => {
-              console.log('FreePlanDialog - selectedPaymentPlan:', selectedPaymentPlan);
-              console.log('FreePlanDialog - selectedPaymentOption:', selectedPaymentOption);
-              console.log('FreePlanDialog - require_approval:', selectedPaymentOption?.require_approval);
-              return null;
-            })()}
-            {selectedPaymentPlan && (
-              <Card className="bg-yellow-50 border-yellow-200">
-                <CardContent className="p-4">
-                  <div className="text-center">
-                    <h3 className="text-lg font-semibold text-yellow-800 mb-3">Admin will review your enrollment request</h3>
-                    <div className="space-y-2 text-sm text-yellow-700">
-                      <div className="flex items-center justify-center space-x-2">
-                        <CheckCircle className="w-4 h-4" />
-                        <span>You'll receive notification once approved</span>
-                      </div>
-                      <div className="flex items-center justify-center space-x-2">
-                        <CheckCircle className="w-4 h-4" />
-                        <span>Access to course slides will be granted</span>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
 
             {/* Free Plans */}
             <div className="space-y-4">
@@ -301,16 +248,7 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
                           ? "ring-2 ring-green-500 border-green-500 bg-green-50"
                           : "border-gray-200 hover:border-gray-300"
                       }`}
-                      onClick={() => {
-                        setSelectedPaymentPlan(plan);
-                        // Also set the corresponding payment option
-                        const parentOption = paymentOptions.find(option => 
-                          getPaymentPlans(option).some(p => p.id === plan.id)
-                        );
-                        if (parentOption) {
-                          setSelectedPaymentOption(parentOption);
-                        }
-                      }}
+                      onClick={() => setSelectedPaymentPlan(plan)}
                     >
                       <CardContent className="p-6">
                         <div className="flex items-center justify-between">
@@ -377,7 +315,11 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
                               FREE
                             </div>
                             <div className="text-sm text-gray-500">
-                              {plan.validity_in_days > 0 ? `${plan.validity_in_days} days` : 'No limit'}
+                              {plan.validity_in_days === 30 ? '1 month' : 
+                               plan.validity_in_days === 90 ? '3 months' :
+                               plan.validity_in_days === 180 ? '6 months' :
+                               plan.validity_in_days === 365 ? '1 year' :
+                               `${plan.validity_in_days} days`}
                             </div>
                             {selectedPaymentPlan?.id === plan.id && (
                               <CheckCircle className="w-5 h-5 text-green-600 mt-2" />
@@ -431,8 +373,8 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
             </div>
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
 
       {/* Success Dialog */}
       <EnrollmentSuccessDialog
@@ -447,14 +389,6 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
         open={showPendingDialog}
         onOpenChange={setShowPendingDialog}
         courseTitle={courseTitle}
-      />
-
-      {/* Pending Approval Dialog */}
-      <EnrollmentPendingApprovalDialog
-        open={showPendingApprovalDialog}
-        onOpenChange={setShowPendingApprovalDialog}
-        courseTitle={courseTitle}
-        onClose={() => setShowPendingApprovalDialog(false)}
       />
     </>
   );

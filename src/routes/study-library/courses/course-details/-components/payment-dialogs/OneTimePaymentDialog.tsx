@@ -6,10 +6,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Lock, CheckCircle } from "lucide-react";
+import { Loader2, Lock } from "lucide-react";
 import { EnvelopeSimple } from "phosphor-react";
 import { SiStripe } from "react-icons/si";
+import { Preferences } from "@capacitor/preferences";
 import {
   fetchEnrollmentDetails,
   getPaymentOptions,
@@ -77,6 +77,61 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
   const [cardElementReady, setCardElementReady] = useState<boolean>(false);
   const cardElementRef = useRef<HTMLDivElement>(null);
 
+  // Track if we already prefilled the email for this dialog open
+  const hasPrefilledEmailRef = useRef<boolean>(false);
+
+  // Helper function to get real user data from preferences
+  const getRealUserData = useCallback(async () => {
+    try {
+      const { value } = await Preferences.get({ key: "StudentDetails" });
+      if (!value) {
+        return null;
+      }
+
+      const studentData = JSON.parse(value);
+      // Handle both array and object formats
+      const student = Array.isArray(studentData) ? studentData[0] : studentData;
+      
+      return {
+        email: student.email || '',
+        username: student.username || '',
+        full_name: student.full_name || '',
+        mobile_number: student.mobile_number || '',
+        date_of_birth: student.date_of_birth || new Date().toISOString(),
+        gender: student.gender || 'Not Specified',
+        address_line: student.address_line || '',
+        city: student.city || '',
+        region: student.region || '',
+        pin_code: student.pin_code || '',
+        profile_pic_file_id: student.face_file_id || '',
+        country: student.country || ''
+      };
+    } catch (error) {
+      return null;
+    }
+  }, []);
+
+  // Prefill email when dialog opens (only once per open)
+  useEffect(() => {
+    const prefillEmail = async () => {
+      if (open && !hasPrefilledEmailRef.current) {
+        const userData = await getRealUserData();
+        if (userData?.email) {
+          // Only set if user hasn't typed anything yet
+          setEmail((prev) => (prev ? prev : userData.email));
+        }
+        hasPrefilledEmailRef.current = true;
+      }
+
+      if (!open) {
+        // Reset flag when dialog closes so next open can prefill again
+        hasPrefilledEmailRef.current = false;
+      }
+    };
+
+    prefillEmail();
+  }, [open, getRealUserData]);
+
   // Fetch enrollment data when dialog opens
   useEffect(() => {
     if (open && packageSessionId) {
@@ -84,7 +139,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
     }
   }, [open, packageSessionId]);
 
-  // Auto-select first payment option but let user choose plan
+  // Auto-select first payment option and best plan
   useEffect(() => {
     if (enrollmentData && !selectedPaymentOption) {
       const paymentOptions = getPaymentOptions(enrollmentData);
@@ -95,41 +150,73 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
       if (oneTimeOptions.length > 0) {
         const option = oneTimeOptions[0];
         setSelectedPaymentOption(option);
-        // Don't auto-select plan - let user choose from available plans
+        
+        // Auto-select the best plan (prefer discounted plans, then default)
+        const plans = getPaymentPlans(option);
+        console.log('OneTimePaymentDialog - Available plans:', plans);
+        
+        if (plans.length > 0) {
+          // Remove duplicate plans by ID to prevent React key warnings
+          const uniquePlans = plans.filter((plan, index, self) => 
+            index === self.findIndex(p => p.id === plan.id)
+          );
+          
+          console.log('OneTimePaymentDialog - Unique plans after deduplication:', uniquePlans);
+          
+          // Sort plans: discounted plans first, then by price
+          const sortedPlans = uniquePlans.sort((a, b) => {
+            // Check if plan has discount (elevated_price > actual_price)
+            const aHasDiscount = a.elevated_price && a.elevated_price > a.actual_price;
+            const bHasDiscount = b.elevated_price && b.elevated_price > b.actual_price;
+            
+            // Prioritize discounted plans
+            if (aHasDiscount && !bHasDiscount) return -1;
+            if (!aHasDiscount && bHasDiscount) return 1;
+            
+            // If both have discount, prefer the one with higher discount percentage
+            if (aHasDiscount && bHasDiscount) {
+              const aDiscountPercent = ((a.elevated_price - a.actual_price) / a.elevated_price) * 100;
+              const bDiscountPercent = ((b.elevated_price - b.actual_price) / b.elevated_price) * 100;
+              return bDiscountPercent - aDiscountPercent; // Higher discount first
+            }
+            
+            // If neither has discount, sort by price (lowest first)
+            return a.actual_price - b.actual_price;
+          });
+          
+          console.log('OneTimePaymentDialog - Selected plan:', sortedPlans[0]);
+          setSelectedPaymentPlan(sortedPlans[0]);
+        }
       }
     }
   }, [enrollmentData, selectedPaymentOption]);
 
   // Simple loadStripe function
   const loadStripe = useCallback(async (publishableKey: string) => {
-    try {
-      // Check if Stripe is already loaded
-      if (window.Stripe) {
-        return window.Stripe(publishableKey);
-      }
-
-      // Load Stripe.js script
-      const script = document.createElement('script');
-      script.src = 'https://js.stripe.com/v3/';
-      script.async = true;
-      
-      return new Promise((resolve, reject) => {
-        script.onload = () => {
-          if (window.Stripe) {
-            const stripe = window.Stripe(publishableKey);
-            resolve(stripe);
-          } else {
-            reject(new Error('Stripe failed to load'));
-          }
-        };
-        script.onerror = () => {
-          reject(new Error('Failed to load Stripe script'));
-        };
-        document.head.appendChild(script);
-      });
-    } catch (error) {
-      throw error;
+    // Check if Stripe is already loaded
+    if (window.Stripe) {
+      return window.Stripe(publishableKey);
     }
+
+    // Load Stripe.js script
+    const script = document.createElement('script');
+    script.src = 'https://js.stripe.com/v3/';
+    script.async = true;
+    
+    return new Promise((resolve, reject) => {
+      script.onload = () => {
+        if (window.Stripe) {
+          const stripe = window.Stripe(publishableKey);
+          resolve(stripe);
+        } else {
+          reject(new Error('Stripe failed to load'));
+        }
+      };
+      script.onerror = () => {
+        reject(new Error('Failed to load Stripe script'));
+      };
+      document.head.appendChild(script);
+    });
   }, []);
 
   // Initialize Stripe Elements when payment gateway data is loaded
@@ -229,12 +316,17 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
       const data = await fetchEnrollmentDetails(inviteCode, instituteId, packageSessionId, token);
       setEnrollmentData(data);
       
-      // Auto-select first payment option but let user choose plan
+      // Auto-select first payment option and first plan
       const paymentOptions = getPaymentOptions(data);
       if (paymentOptions.length > 0) {
         const firstOption = paymentOptions[0];
         setSelectedPaymentOption(firstOption);
-        // Don't auto-select plan - let user choose from available plans
+        
+        // Auto-select the first plan since there's only one
+        const plans = getPaymentPlans(firstOption);
+        if (plans.length > 0) {
+          setSelectedPaymentPlan(plans[0]);
+        }
       }
     } catch (err) {
       setError("Failed to load payment options. Please try again.");
@@ -266,10 +358,14 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
       // Fetch payment gateway details (needed for enrollment API)
       const paymentGatewayData = await fetchPaymentGatewayDetails(instituteId, 'STRIPE', token);
       
+      // Get real user data for payment
+      const userData = await getRealUserData();
+      const userProfileEmail = userData?.email || email;
+      
       // Call the enrollment API with payment
       await handlePaymentForEnrollment({
-        userEmail: "user@example.com", // This should come from user profile
-        receiptEmail: "user@example.com", // This should come from user profile
+        userEmail: userProfileEmail,
+        receiptEmail: email,
         instituteId,
         packageSessionId,
         enrollmentData,
@@ -317,10 +413,10 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
     }
   };
 
-  const handleExploreCourse = () => {
+  const handleExploreCourse = async () => {
     setShowSuccessDialog(false);
     if (onEnrollmentSuccess) {
-      onEnrollmentSuccess();
+      await onEnrollmentSuccess();
     }
   };
 
@@ -360,196 +456,117 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
     );
   }
 
-  const paymentOptions = enrollmentData ? getPaymentOptions(enrollmentData) : [];
 
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold">
-            One-Time Payment for {courseTitle}
+          <DialogTitle className="text-xl font-bold text-center">
+            One-Time Payment
           </DialogTitle>
           {enrollmentData && (
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-gray-600 text-center">
               Complete your one-time payment to access the course
             </p>
           )}
         </DialogHeader>
 
         {enrollmentData && step === 'select' && (
-          <Card className="shadow-lg border bg-white w-full">
-            <CardContent className="p-5 sm:p-6">
-              {/* Small Subheading */}
-              <div className="mb-4">
-                <h3 className="text-sm font-medium text-gray-700">Choose your plan</h3>
-              </div>
-
-            {/* Course Info */}
-            <Card className="bg-blue-50 border-blue-200">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg text-blue-700">Course Information</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-blue-600">Course:</span>
-                  <span className="font-medium text-blue-900">{courseTitle}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-blue-600">Access Period:</span>
-                  <span className="text-sm text-blue-900">
-                    {new Date(enrollmentData.start_date).toLocaleDateString()} - {new Date(enrollmentData.end_date).toLocaleDateString()}
-                  </span>
-                </div>
-                {enrollmentData.learner_access_days > 0 && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-blue-600">Access Duration:</span>
-                    <span className="text-sm text-blue-900">{enrollmentData.learner_access_days} days</span>
+          <>
+            {/* Plan Summary */}
+            {selectedPaymentPlan && (
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6 mb-6">
+                <div className="text-center">
+                  <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
+                    <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                    </svg>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Payment Plans */}
-            <div className="space-y-4">
-              {paymentOptions.length === 0 ? (
-                <Card>
-                  <CardContent className="py-8 text-center">
-                    <p className="text-gray-600">No payment plans available at the moment.</p>
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="space-y-4">
-                  {paymentOptions.map((option) => (
-                    <div key={option.id} className="space-y-4">
-                      <div className="grid gap-4">
-                        {getPaymentPlans(option).map((plan) => (
-                          <Card
-                            key={plan.id}
-                            className={`cursor-pointer transition-all duration-200 hover:shadow-md ${
-                              selectedPaymentPlan?.id === plan.id
-                                ? "ring-2 ring-blue-500 bg-blue-50"
-                                : "hover:bg-gray-50"
-                            }`}
-                            onClick={() => {
-                              setSelectedPaymentOption(option);
-                              setSelectedPaymentPlan(plan);
-                            }}
-                          >
-                            <CardContent className="p-6">
-                              {/* Plan Name */}
-                              <h4 className="text-xl font-bold text-gray-900 mb-2">
-                                {plan.name}
-                              </h4>
-
-                              {/* Price Information */}
-                              <div className="mb-3">
-                                <div className="text-xl font-bold text-primary-500">
-                                  {formatCurrency(plan.actual_price, plan.currency)}
-                                    {plan.validity_in_days > 0 && (
-                                    <span className="text-sm font-normal text-gray-500">
-                                      &nbsp;/ {plan.validity_in_days} days
-                                    </span>
-                                    )}
+                  <h3 className="text-2xl font-bold text-gray-900 mb-2">
+                    {selectedPaymentOption?.name || selectedPaymentPlan.name}
+                  </h3>
+                  <div className="flex items-center justify-center gap-3 mb-3">
+                    {selectedPaymentPlan.elevated_price && selectedPaymentPlan.elevated_price > selectedPaymentPlan.actual_price && (
+                      <div className="text-2xl font-bold text-gray-400 line-through">
+                        {formatCurrency(selectedPaymentPlan.elevated_price, selectedPaymentPlan.currency)}
+                      </div>
+                    )}
+                    <div className="text-4xl font-bold text-blue-600">
+                      {formatCurrency(selectedPaymentPlan.actual_price, selectedPaymentPlan.currency)}
                                   </div>
-                                  {plan.elevated_price > plan.actual_price && (
-                                    <div className="text-sm text-gray-500 line-through">
-                                      {formatCurrency(plan.elevated_price, plan.currency)}
+                    {selectedPaymentPlan.elevated_price && selectedPaymentPlan.elevated_price > selectedPaymentPlan.actual_price && (
+                      <div className="inline-flex items-center px-2 py-1 bg-green-100 text-green-700 text-sm font-medium rounded-full">
+                        {Math.round(((selectedPaymentPlan.elevated_price - selectedPaymentPlan.actual_price) / selectedPaymentPlan.elevated_price) * 100)}% OFF
                                     </div>
                                   )}
                                 </div>
-
-                              {/* Description */}
-                              {plan.description && (
-                                <p className="text-sm text-gray-600 mb-3">
-                                  {plan.description}
-                                </p>
-                              )}
-
-                              {/* Features */}
-                              {plan.feature_json && (
-                                <div className="space-y-2">
-                                  {(() => {
-                                    try {
-                                      const features = JSON.parse(plan.feature_json);
-                                      return Array.isArray(features) ? features.slice(0, 4).map((feature: string, index: number) => (
-                                        <div key={index} className="flex items-center space-x-2">
-                                          <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
-                                          <span className="text-sm text-gray-700">{feature}</span>
-                                        </div>
-                                      )) : [];
-                                    } catch {
-                                      return [
-                                        <div key="default" className="flex items-center space-x-2">
-                                          <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
-                                          <span className="text-sm text-gray-700">Course access included</span>
-                                        </div>
-                                      ];
-                                    }
-                                  })()}
-                              </div>
-                              )}
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
+                  <div className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-700 text-sm font-medium rounded-full">
+                    One-time payment
                     </div>
-                  ))}
+                </div>
                 </div>
               )}
-            </div>
 
             {/* Error Message */}
             {error && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-center">
+                  <svg className="w-5 h-5 text-red-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
                 <p className="text-red-600 text-sm">{error}</p>
+                </div>
               </div>
             )}
 
-            {/* Action Buttons */}
-            <div className="flex justify-end space-x-3 pt-4">
-              <Button
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                disabled={processingPayment}
-              >
-                Cancel
-              </Button>
+            {/* Action Button */}
+            <div className="space-y-4">
               <MyButton
                 type="button"
                 scale="large"
                 buttonType="primary"
                 layoutVariant="default"
+                className="w-full h-14 text-lg font-semibold"
                 disabled={!selectedPaymentOption || !selectedPaymentPlan || processingPayment}
                 onClick={() => setStep('email')}
               >
-                Continue to Payment
+                {processingPayment ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                    </svg>
+                    Continue to Payment
+                  </>
+                )}
               </MyButton>
+              
+              <div className="text-center">
+                <p className="text-xs text-gray-500">
+                  Secure payment • Instant access • 30-day money-back guarantee
+                </p>
+              </div>
             </div>
-            </CardContent>
-          </Card>
+          </>
         )}
 
         {/* Email Step */}
         {step === 'email' && selectedPaymentPlan && (
-          <div className="space-y-6">
+          <>
             {/* Selected Plan Summary */}
-            <Card className="bg-blue-50 border-blue-200">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-semibold text-blue-700">Selected Plan</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setStep('select')}
-                    className="text-blue-600 hover:text-blue-700"
-                  >
-                    Change Plan
-                  </Button>
+            {selectedPaymentPlan && (
+              <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="mb-2">
+                  <span className="font-semibold text-blue-700">Payment Summary</span>
                 </div>
                 <div className="flex items-center justify-between text-sm mb-1">
                   <span className="text-blue-600">Plan:</span>
-                  <span className="font-semibold text-blue-900">{selectedPaymentPlan.name}</span>
+                  <span className="font-semibold text-blue-900">{selectedPaymentOption?.name || selectedPaymentPlan.name}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm mb-1">
                   <span className="text-blue-600">Price:</span>
@@ -557,18 +574,23 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                     {formatCurrency(selectedPaymentPlan.actual_price, selectedPaymentPlan.currency)}
                   </span>
                 </div>
-                <div className="flex items-center justify-between text-sm mb-1">
-                  <span className="text-blue-600">Validity:</span>
-                  <span className="font-semibold text-blue-900">
-                    {selectedPaymentPlan.validity_in_days} days
-                  </span>
+                <div className="flex justify-end mt-3">
+                  <MyButton
+                    buttonType="secondary"
+                    scale="small"
+                    layoutVariant="default"
+                    className="text-xs"
+                    onClick={() => setStep('select')}
+                  >
+                    Back
+                  </MyButton>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            )}
             
             {/* Email Input */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700" htmlFor="one-time-email">
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="one-time-email">
                 Email Address
               </label>
               <div className="relative">
@@ -590,18 +612,19 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                 />
               </div>
               {validationError && (
-                <p className="text-red-600 text-xs">{validationError}</p>
+                <p className="text-red-600 text-xs mt-1">{validationError}</p>
               )}
-              <p className="text-sm text-gray-500">We'll send your receipt and payment details to this email address</p>
+              <p className="text-sm text-gray-500 mt-2">We'll send your receipt and course details to this email address</p>
             </div>
 
-            {/* Navigation Buttons */}
-            <div className="flex gap-3">
+            {/* Continue Button */}
+            <div className="flex justify-center">
               <MyButton
                 type="button"
                 scale="large"
                 buttonType="primary"
                 layoutVariant="default"
+                className="w-full"
                 disabled={!email.trim()}
                 onClick={() => {
                   // Validate email before proceeding to payment
@@ -624,79 +647,80 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
               >
                 Continue to Payment
               </MyButton>
-              <MyButton
-                type="button"
-                scale="large"
-                buttonType="secondary"
-                layoutVariant="default"
-                onClick={() => setStep('select')}
-              >
-                Back to Plans
-              </MyButton>
             </div>
-          </div>
+          </>
         )}
 
         {/* Payment Step */}
         {step === 'payment' && selectedPaymentPlan && (
-          <div className="space-y-6">
+          <>
             {/* Payment Summary */}
-            <Card className="bg-blue-50 border-blue-200">
-              <CardHeader>
-                <CardTitle className="text-blue-700">Payment Summary</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-blue-600">Plan:</span>
-                  <span className="font-medium text-blue-900">{selectedPaymentPlan.name}</span>
+            {selectedPaymentPlan && (
+              <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="mb-2">
+                  <span className="font-semibold text-blue-700">Payment Summary</span>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-blue-600">Amount:</span>
-                  <span className="font-bold text-lg text-blue-600">
+                <div className="flex items-center justify-between text-sm mb-1">
+                  <span className="text-blue-600">Plan:</span>
+                  <span className="font-semibold text-blue-900">{selectedPaymentOption?.name || selectedPaymentPlan.name}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm mb-1">
+                  <span className="text-blue-600">Amount:</span>
+                  <span className="font-semibold text-blue-900">
                     {formatCurrency(selectedPaymentPlan.actual_price, selectedPaymentPlan.currency)}
                   </span>
                 </div>
-              </CardContent>
-            </Card>
-
-            {/* Payment Form */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Payment Details</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Card Details
-                  </label>
-                  <div className={`border rounded-lg p-3 min-h-[48px] ${
-                    cardElementError ? 'border-red-500 bg-red-50' : 'border-gray-300'
-                  }`}>
-                    {!cardElementReady && (
-                      <div className="flex items-center justify-center h-full text-gray-500">
-                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                        Loading payment form...
+                <div className="flex items-center justify-between text-sm mb-1">
+                  <span className="text-blue-600">Email:</span>
+                  <span className="font-semibold text-blue-900">{email}</span>
                 </div>
-                    )}
-                    <div ref={cardElementRef} className="w-full h-full" />
+                <div className="flex justify-end mt-3">
+                  <MyButton
+                    buttonType="secondary"
+                    scale="small"
+                    layoutVariant="default"
+                    className="text-xs"
+                    onClick={() => setStep('email')}
+                  >
+                    Edit
+                  </MyButton>
+                </div>
+              </div>
+            )}
+            
+            <div className="mb-2">
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs text-gray-600">Card Details</label>
+                </div>
+                
+              <div className={`border rounded p-3 text-sm w-full min-h-[48px] ${
+                cardElementError ? 'border-red-500 bg-red-50' : 'border-gray-300'
+              }`}>
+                {!cardElementReady && (
+                  <div className="flex items-center justify-center h-full text-gray-500">
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    Loading payment form...
                   </div>
-                  
-                  {cardElementError && (
-                    <div className="text-red-600 text-sm mt-2">
-                      {cardElementError}
+                )}
+                <div ref={cardElementRef} className="w-full h-full" />
                   </div>
-                  )}
+              
+              {cardElementError && (
+                <div className="text-red-600 text-sm mt-2">
+                  {cardElementError}
+                </div>
+              )}
                 </div>
 
-                <div className="flex items-center justify-center space-x-3 pt-4">
+            <div className="space-y-4">
                   <MyButton
                     type="button"
                     scale="large"
                     buttonType="primary"
                     layoutVariant="default"
+                className="w-full"
                     disabled={processingPayment}
                     onClick={handleEnroll}
-                    className="flex items-center space-x-2"
                   >
                     {processingPayment ? (
                       <>
@@ -710,19 +734,17 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                       </>
                     )}
                   </MyButton>
-                </div>
 
-                <div className="text-center text-xs text-gray-500 flex items-center justify-center space-x-1">
-                  <Lock className="w-3 h-3" />
+              <div className="text-xs text-gray-500 text-center flex items-center justify-center gap-1">
+                <Lock size={14} className="inline-block mr-1" />
                   Secure payment powered by
-                  <span className="font-semibold flex items-center space-x-1 ml-1">
-                    <SiStripe className="w-4 h-4 text-indigo-600" />
+                <span className="font-semibold flex items-center gap-1 ml-1">
+                  <SiStripe size={16} className="text-indigo-600" /> 
                     Stripe
                   </span>
                 </div>
-              </CardContent>
-            </Card>
           </div>
+          </>
         )}
       </DialogContent>
     </Dialog>

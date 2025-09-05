@@ -386,6 +386,12 @@ export const CourseDetailsPage = () => {
         const tryGenerateCertificate = async () => {
             try {
                 const settings = await getStudentDisplaySettings(false);
+                
+                // Check if certificate generation is enabled
+                if (!settings.certificates?.enabled) {
+                    return; // Exit early if certificate generation is disabled
+                }
+                
                 const threshold =
                     settings.certificates?.generationThresholdPercent ?? 80;
                 // percent can come from query param (carried over from list) or course data
@@ -551,10 +557,15 @@ export const CourseDetailsPage = () => {
                         LocalStorageUtils.set(celebrationKey, true);
                     }
                 }
-            } catch {
-                toast.error(
-                    "Failed to generate certificate. Please try again later."
-                );
+            } catch (error) {
+                // Only show error toast if certificate generation is enabled
+                // This prevents showing error when certificate generation is disabled in settings
+                const settings = await getStudentDisplaySettings(false);
+                if (settings.certificates?.enabled) {
+                    toast.error(
+                        "Failed to generate certificate. Please try again later."
+                    );
+                }
             }
         };
 

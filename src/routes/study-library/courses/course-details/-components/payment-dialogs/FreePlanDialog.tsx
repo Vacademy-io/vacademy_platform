@@ -16,6 +16,7 @@ import {
   formatCurrency,
   handlePaymentForEnrollment,
   fetchPaymentGatewayDetails,
+  formatAccessPeriod,
   type EnrollmentResponse,
   type PaymentOption,
   type PaymentPlan,
@@ -161,10 +162,10 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
     }
   };
 
-  const handleExploreCourse = () => {
+  const handleExploreCourse = async () => {
     setShowSuccessDialog(false);
     if (onEnrollmentSuccess) {
-      onEnrollmentSuccess();
+      await onEnrollmentSuccess();
     }
   };
 
@@ -215,8 +216,8 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold flex items-center space-x-2">
             <Gift className="w-6 h-6 text-green-600" />
@@ -244,17 +245,38 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">Access Period:</span>
                   <span className="text-sm">
-                    {new Date(enrollmentData.start_date).toLocaleDateString()} - {new Date(enrollmentData.end_date).toLocaleDateString()}
+                    {formatAccessPeriod(enrollmentData.start_date, enrollmentData.end_date)}
                   </span>
                 </div>
-                {enrollmentData.learner_access_days > 0 && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Access Duration:</span>
-                    <span className="text-sm">{enrollmentData.learner_access_days} days</span>
-                  </div>
-                )}
               </CardContent>
             </Card>
+
+            {/* Approval Required Message */}
+            {(() => {
+              console.log('FreePlanDialog - selectedPaymentPlan:', selectedPaymentPlan);
+              console.log('FreePlanDialog - selectedPaymentOption:', selectedPaymentOption);
+              console.log('FreePlanDialog - require_approval:', selectedPaymentOption?.require_approval);
+              return null;
+            })()}
+            {selectedPaymentPlan && (
+              <Card className="bg-yellow-50 border-yellow-200">
+                <CardContent className="p-4">
+                  <div className="text-center">
+                    <h3 className="text-lg font-semibold text-yellow-800 mb-3">Admin will review your enrollment request</h3>
+                    <div className="space-y-2 text-sm text-yellow-700">
+                      <div className="flex items-center justify-center space-x-2">
+                        <CheckCircle className="w-4 h-4" />
+                        <span>You'll receive notification once approved</span>
+                      </div>
+                      <div className="flex items-center justify-center space-x-2">
+                        <CheckCircle className="w-4 h-4" />
+                        <span>Access to course slides will be granted</span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Free Plans */}
             <div className="space-y-4">
@@ -355,11 +377,7 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
                               FREE
                             </div>
                             <div className="text-sm text-gray-500">
-                              {plan.validity_in_days === 30 ? '1 month' : 
-                               plan.validity_in_days === 90 ? '3 months' :
-                               plan.validity_in_days === 180 ? '6 months' :
-                               plan.validity_in_days === 365 ? '1 year' :
-                               `${plan.validity_in_days} days`}
+                              {plan.validity_in_days > 0 ? `${plan.validity_in_days} days` : 'No limit'}
                             </div>
                             {selectedPaymentPlan?.id === plan.id && (
                               <CheckCircle className="w-5 h-5 text-green-600 mt-2" />
@@ -413,8 +431,8 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
             </div>
           </div>
         )}
-        </DialogContent>
-      </Dialog>
+      </DialogContent>
+    </Dialog>
 
       {/* Success Dialog */}
       <EnrollmentSuccessDialog

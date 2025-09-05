@@ -28,6 +28,31 @@ export const validateAndSanitizeEmail = (email: string): string => {
   return sanitizedEmail;
 };
 
+// Helper function to safely format dates with null/undefined checks
+export const formatDateSafely = (dateString: string | null | undefined, fallback: string = 'Not specified'): string => {
+  if (!dateString) {
+    return fallback;
+  }
+  
+  try {
+    const date = new Date(dateString);
+    // Check if the date is valid (not NaN and not Unix epoch for null dates)
+    if (isNaN(date.getTime()) || date.getTime() === 0) {
+      return fallback;
+    }
+    return date.toLocaleDateString();
+  } catch (error) {
+    return fallback;
+  }
+};
+
+// Helper function to format access period with safe date handling
+export const formatAccessPeriod = (startDate: string | null | undefined, endDate: string | null | undefined): string => {
+  const start = formatDateSafely(startDate, 'Not specified');
+  const end = formatDateSafely(endDate, 'No end date');
+  return `${start} - ${end}`;
+};
+
 // Types for the enrollment API response
 export interface CustomField {
   guestId: string;

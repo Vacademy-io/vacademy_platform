@@ -119,8 +119,9 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
             instituteId={instituteId}
             token={token}
             inviteCode={inviteCode}
-            onContinue={() => onOpenChange(false)}
-            onSkip={() => onOpenChange(false)}
+            mode="enrollment"
+            isUserEnrolled={false}
+            onEnrollmentSuccess={onEnrollmentSuccess}
           />
         );
       

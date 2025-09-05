@@ -3,21 +3,18 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Cross2Icon } from "@radix-ui/react-icons";
 import { MyButton } from "@/components/design-system/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { Lock } from "lucide-react";
 import { SiStripe } from "react-icons/si";
 import { EnvelopeSimple } from "phosphor-react";
-import { Loader2, CreditCard, CheckCircle } from "lucide-react";
+import { Loader2, CheckCircle,CreditCard  } from "lucide-react";
+import { Preferences } from "@capacitor/preferences";
 import {
   formatCurrency,
-  getCurrencySymbol,
   handlePaymentForEnrollment,
-  fetchPaymentGatewayDetails,
   createStripePaymentMethodWithElements,
   validateAndSanitizeEmail,
   getPaymentOptions,
   getPaymentPlans,
-  type PaymentOption,
   type PaymentPlan,
 } from "../../-services/enrollment-api";
 import {
@@ -32,15 +29,14 @@ import { EnrollmentPendingApprovalDialog } from "./EnrollmentPendingApprovalDial
 // TypeScript declarations for Stripe
 declare global {
   interface Window {
-    Stripe?: (publishableKey: string) => any;
+    Stripe?: any;
   }
 }
 
 export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
   open,
   onOpenChange,
-  onContinue,
-  onSkip,
+  onEnrollmentSuccess,
   packageSessionId,
   instituteId,
   token,
@@ -53,8 +49,6 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
     loading,
     error,
     selectedPaymentOption,
-    selectedPaymentPlan,
-    handlePayment,
     retryFetch,
   } = usePaymentDialog({
     open,
@@ -81,78 +75,129 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
   const [cardElementReady, setCardElementReady] = useState<boolean>(false);
   const cardElementRef = useRef<HTMLDivElement>(null);
 
+  // Track if we already prefilled the email for this dialog open
+  const hasPrefilledEmailRef = useRef<boolean>(false);
+
+  // Helper function to get real user data from preferences
+  const getRealUserData = useCallback(async () => {
+    try {
+      const { value } = await Preferences.get({ key: "StudentDetails" });
+      if (!value) {
+        return null;
+      }
+
+      const studentData = JSON.parse(value);
+      // Handle both array and object formats
+      const student = Array.isArray(studentData) ? studentData[0] : studentData;
+      
+      return {
+        email: student.email || '',
+        username: student.username || '',
+        full_name: student.full_name || '',
+        mobile_number: student.mobile_number || '',
+        date_of_birth: student.date_of_birth || new Date().toISOString(),
+        gender: student.gender || 'Not Specified',
+        address_line: student.address_line || '',
+        city: student.city || '',
+        region: student.region || '',
+        pin_code: student.pin_code || '',
+        profile_pic_file_id: student.face_file_id || '',
+        country: student.country || ''
+      };
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // Prefill email when dialog opens (only once per open)
+  useEffect(() => {
+    const prefillEmail = async () => {
+      if (open && !hasPrefilledEmailRef.current) {
+        const userData = await getRealUserData();
+        if (userData?.email) {
+          // Only set if user hasn't typed anything yet
+          setEmail((prev) => (prev ? prev : userData.email));
+        }
+        hasPrefilledEmailRef.current = true;
+      }
+
+      if (!open) {
+        // Reset flag when dialog closes so next open can prefill again
+        hasPrefilledEmailRef.current = false;
+      }
+    };
+
+    prefillEmail();
+  }, [open, getRealUserData]);
+
   const getCurrency = (): string => {
     return getCurrencyWithPriority(selectedPlan, selectedPaymentOption, enrollmentData);
   };
 
   // Simple loadStripe function
   const loadStripe = useCallback(async (publishableKey: string) => {
-    try {
-      // Check if Stripe is already loaded
-      if (window.Stripe) {
-        return window.Stripe(publishableKey);
-      }
-
-      // Load Stripe.js script
-      const script = document.createElement('script');
-      script.src = 'https://js.stripe.com/v3/';
-      script.async = true;
-      
-      return new Promise((resolve, reject) => {
-        script.onload = () => {
-          if (window.Stripe) {
-            const stripe = window.Stripe(publishableKey);
-            resolve(stripe);
-          } else {
-            reject(new Error('Stripe failed to load'));
-          }
-        };
-        script.onerror = () => {
-          reject(new Error('Failed to load Stripe script'));
-        };
-        document.head.appendChild(script);
-      });
-    } catch (error) {
-      throw error;
+    // Check if Stripe is already loaded
+    if (window.Stripe) {
+      return window.Stripe(publishableKey);
     }
+
+    // Load Stripe.js script
+    const script = document.createElement('script');
+    script.src = 'https://js.stripe.com/v3/';
+    script.async = true;
+    
+    return new Promise((resolve, reject) => {
+      script.onload = () => {
+        if (window.Stripe) {
+          const stripe = window.Stripe(publishableKey);
+          resolve(stripe);
+        } else {
+          reject(new Error('Stripe failed to load'));
+        }
+      };
+      script.onerror = () => {
+        reject(new Error('Failed to load Stripe script'));
+      };
+      document.head.appendChild(script);
+    });
   }, []);
 
-  // Initialize Stripe Elements when payment gateway data is loaded
+  // Load Stripe when payment gateway data is available
   useEffect(() => {
-    const initializeStripeElements = async () => {
-      if (paymentGatewayData?.publishableKey && cardElementRef.current && step === 'payment') {
-        // Clear any previous errors when starting initialization
-        setCardElementError('');
+    const loadStripeInstance = async () => {
+      if (paymentGatewayData?.publishableKey && !stripe) {
+        try {
+          console.log('Loading Stripe instance...');
+          const stripeInstance = await loadStripe(paymentGatewayData.publishableKey);
+          setStripe(stripeInstance);
+        } catch (error) {
+          console.error('Failed to load Stripe:', error);
+          setCardElementError('Failed to load payment system. Please refresh and try again.');
+        }
+      }
+    };
+
+    loadStripeInstance();
+  }, [paymentGatewayData, loadStripe]);
+
+  // Create Stripe Elements when Stripe is loaded
+  useEffect(() => {
+    if (stripe && !stripeElements) {
+      console.log('Creating Stripe Elements...');
+      const elements = stripe.elements();
+      setStripeElements(elements);
+    }
+  }, [stripe]);
+
+  // Initialize card element when on payment step
+  useEffect(() => {
+    const initializeCardElement = () => {
+      if (step === 'payment' && stripeElements && cardElementRef.current && !cardElement) {
+        console.log('Initializing card element...');
         
         try {
-          let stripeInstance = stripe;
-          
-          // Load Stripe if not already loaded
-          if (!stripeInstance) {
-            stripeInstance = await loadStripe(paymentGatewayData.publishableKey);
-            setStripe(stripeInstance);
-          }
-          
-          // Create elements if not already created
-          let elements = stripeElements;
-          if (!elements) {
-            elements = (stripeInstance as any).elements();
-            setStripeElements(elements);
-          }
-          
-          // Clean up existing card element if it exists
-          if (cardElement) {
-            try {
-              cardElement.destroy();
-            } catch (destroyError) {
-              // Ignore destroy errors
-            }
-            setCardElement(null);
-            setCardElementReady(false);
-          }
-          
-          // Create new card element
-          const card = elements.create('card', {
+          // Create card element
+          const card = stripeElements.create('card', {
             style: {
               base: {
                 fontSize: '16px',
@@ -169,47 +214,65 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
             },
             hidePostalCode: true,
           });
+
+          // Mount the card element
+          card.mount(cardElementRef.current);
           
-          // Set card element immediately
+          // Set up event listeners
+          card.on('ready', () => {
+            console.log('Card element ready');
+            setCardElementReady(true);
+            setCardElementError('');
+          });
+          
+          card.on('change', (event: any) => {
+            if (event.error) {
+              setCardElementError(event.error.message);
+            } else {
+              setCardElementError('');
+            }
+          });
+
+          // Store the card element
           setCardElement(card);
           
-          // Mount card element with a small delay to ensure DOM is ready
-          setTimeout(() => {
-            if (cardElementRef.current && card) {
-              card.mount(cardElementRef.current);
-              
-              // Set up event listeners
-              card.on('ready', () => {
-                setCardElementReady(true);
-                setCardElementError('');
-              });
-              
-              card.on('change', (event: any) => {
-                if (event.error) {
-                  setCardElementError(event.error.message);
-                } else {
-                  setCardElementError('');
-                }
-              });
-            }
-          }, 100);
-          
         } catch (error) {
-          console.error('Stripe initialization error:', error);
-          setCardElementError('Failed to load payment form. Please refresh and try again.');
+          console.error('Failed to create card element:', error);
+          setCardElementError('Failed to create payment form. Please try again.');
         }
       }
     };
 
-    initializeStripeElements();
-  }, [paymentGatewayData, stripe, stripeElements, step, open, loadStripe]);
+    // Small delay to ensure DOM is ready
+    const timer = setTimeout(initializeCardElement, 100);
+    return () => clearTimeout(timer);
+  }, [step, stripeElements, cardElement]);
+
+  // Cleanup when component unmounts or step changes
+  useEffect(() => {
+    return () => {
+      if (cardElement) {
+        try {
+          cardElement.unmount();
+          cardElement.destroy();
+        } catch (error) {
+          console.log('Error cleaning up card element:', error);
+        }
+      }
+    };
+  }, [cardElement]);
 
   const handleContinue = () => {
+    console.log('handleContinue called, current step:', step);
+    console.log('selectedPlan:', selectedPlan);
+    console.log('email:', email);
+    
     if (step === 'plans') {
       if (!selectedPlan) {
         setValidationError('Please select a subscription plan');
         return;
       }
+      console.log('Moving from plans to email step');
       setStep('email');
     } else if (step === 'email') {
       // Validate email before proceeding to payment
@@ -222,12 +285,13 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
       try {
         const sanitizedEmail = validateAndSanitizeEmail(email);
         setEmail(sanitizedEmail);
+        console.log('Email validation passed, moving to payment step');
+        setStep('payment');
       } catch (error) {
+        console.log('Email validation failed:', error);
         setValidationError(error instanceof Error ? error.message : 'Please enter a valid email address');
         return;
       }
-      
-      setStep('payment');
     } else if (step === 'payment') {
       handlePaymentAndEnrollment();
     }
@@ -267,9 +331,13 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
       // Create payment method using Stripe Elements
       const paymentMethod = await createStripePaymentMethodWithElements(stripe, cardElement);
       
+      // Get real user data for payment
+      const userData = await getRealUserData();
+      const userProfileEmail = userData?.email || email;
+      
       // Call the enrollment API with payment
       await handlePaymentForEnrollment({
-        userEmail: "user@example.com", // This should come from user profile
+        userEmail: userProfileEmail,
         receiptEmail: sanitizedEmail,
         instituteId,
         packageSessionId,
@@ -318,10 +386,10 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
     }
   };
 
-  const handleExploreCourse = () => {
+  const handleExploreCourse = async () => {
     setShowSuccessDialog(false);
-    if (onContinue) {
-      onContinue();
+    if (onEnrollmentSuccess) {
+      await onEnrollmentSuccess();
     }
   };
 
@@ -340,8 +408,43 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
       setSelectedPlan(null);
       setEmail('');
       setValidationError('');
+      // Clean up Stripe elements
+      if (cardElement) {
+        try {
+          cardElement.unmount();
+          cardElement.destroy();
+        } catch (error) {
+          console.log('Error cleaning up card element on close:', error);
+        }
+        setCardElement(null);
+        setCardElementReady(false);
+        setCardElementError('');
+      }
     }
-  }, [open]);
+  }, [open, cardElement]);
+
+  // Debug step changes and cleanup when leaving payment step
+  React.useEffect(() => {
+    console.log('Step changed to:', step);
+    
+    // Clean up Stripe elements when leaving payment step
+    if (step !== 'payment' && cardElement) {
+      try {
+        cardElement.unmount();
+        cardElement.destroy();
+      } catch (error) {
+        console.log('Error cleaning up card element on step change:', error);
+      }
+      setCardElement(null);
+      setCardElementReady(false);
+      setCardElementError('');
+    }
+  }, [step, cardElement]);
+
+  // Debug payment gateway data
+  React.useEffect(() => {
+    console.log('Payment gateway data changed:', paymentGatewayData);
+  }, [paymentGatewayData]);
 
   // Show loading state
   if (loading) {
@@ -397,7 +500,11 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in" />
         <DialogPrimitive.Content
-          className="fixed left-1/2 top-1/2 z-[9999] w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4"
+          className={`fixed left-1/2 top-1/2 z-[9999] w-full -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-4 sm:p-6 shadow-xl focus:outline-none flex flex-col gap-4 max-h-[90vh] overflow-y-auto ${
+            step === 'plans' 
+              ? 'max-w-sm sm:max-w-2xl lg:max-w-4xl' 
+              : 'max-w-md'
+          }`}
         >
           <DialogPrimitive.Title className="sr-only">Subscription Payment</DialogPrimitive.Title>
           <DialogPrimitive.Description className="sr-only">Choose a subscription plan and complete your payment to enroll in this course.</DialogPrimitive.Description>
@@ -417,10 +524,10 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
            {step === 'plans' ? (
              <Card className="shadow-lg border bg-white w-full">
                <CardContent className="p-5 sm:p-6">
-                 {/* Small Subheading */}
-                 <div className="mb-4">
-                   <h3 className="text-sm font-medium text-gray-700">Choose your plan</h3>
-                 </div>
+                                    {/* Small Subheading */}
+                   <div className="mb-4">
+                    <h3 className="text-sm font-medium text-gray-700">Select your subscription plan</h3>
+                   </div>
 
                  {/* Plan Selection */}
                  {enrollmentData && (
@@ -430,7 +537,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                      const paymentOptions = getPaymentOptions(enrollmentData);
                      console.log('SubscriptionPaymentDialog - All payment options:', paymentOptions);
                      const subscriptionOptions = paymentOptions.filter(option => 
-                       option.payment_option_type === 'SUBSCRIPTION' || option.type === 'SUBSCRIPTION'
+                       option.type === 'SUBSCRIPTION'
                      );
                      console.log('SubscriptionPaymentDialog - Subscription options:', subscriptionOptions);
                      
@@ -447,11 +554,17 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                        console.log(`SubscriptionPaymentDialog - Plans for option ${option.name}:`, plans);
                        return (
                          <div key={option.id} className="space-y-4">
-                           <div className="flex gap-4 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                           <div 
+                             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto scrollbar-hide" 
+                             style={{ 
+                               scrollbarWidth: 'none', 
+                               msOverflowStyle: 'none'
+                             }}
+                           >
                              {plans.map((plan) => (
                                <Card
                                  key={plan.id}
-                                 className={`cursor-pointer transition-all duration-200 hover:shadow-md min-w-[280px] flex-shrink-0 ${
+                                 className={`cursor-pointer transition-all duration-200 hover:shadow-md ${
                                    selectedPlan?.id === plan.id
                                      ? "ring-2 ring-blue-500 bg-blue-50"
                                      : "hover:bg-gray-50"
@@ -534,35 +647,38 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
              </Card>
            ) : step === 'email' ? (
             <>
-              {/* Selected Plan Summary */}
-              {selectedPlan && (
-                <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <div className="mb-2">
-                    <span className="font-semibold text-blue-700">Selected Plan</span>
+                              {/* Selected Plan Summary */}
+                {selectedPlan && (
+                 <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                   <div className="mb-2">
+                     <span className="font-semibold text-blue-700">Payment Summary</span>
                   </div>
                   <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="text-blue-600">Plan:</span>
-                    <span className="font-semibold text-blue-900">{selectedPlan.name}</span>
+                     <span className="text-blue-600">Plan:</span>
+                     <span className="font-semibold text-blue-900">{selectedPlan.name}</span>
                   </div>
                   <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="text-blue-600">Price:</span>
-                    <span className="font-semibold text-blue-900">
-                      {formatCurrency(selectedPlan.actual_price, getCurrency())}
+                     <span className="text-blue-600">Price:</span>
+                     <span className="font-semibold text-blue-900">
+                       {formatCurrency(selectedPlan.actual_price, getCurrency())}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="text-blue-600">Validity:</span>
-                    <span className="font-semibold text-blue-900">
-                      {selectedPlan.validity_in_days} days
+                     <span className="text-blue-600">Validity:</span>
+                     <span className="font-semibold text-blue-900">
+                       {selectedPlan.validity_in_days} days
                     </span>
-                  </div>
-                  <div className="flex justify-end mt-2">
-                    <button
-                      className="text-xs font-medium text-blue-600 hover:text-blue-700"
-                      onClick={handleBackToPlans}
-                    >
-                      Change Plan
-                    </button>
+                    </div>
+                   <div className="flex justify-end mt-3">
+                     <MyButton
+                       buttonType="secondary"
+                       scale="small"
+                       layoutVariant="default"
+                       className="text-xs"
+                       onClick={handleBackToPlans}
+                     >
+                       Change Plan
+                     </MyButton>
                   </div>
                 </div>
               )}
@@ -593,39 +709,44 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                 {validationError && (
                   <p className="text-red-600 text-xs mt-1">{validationError}</p>
                 )}
-                <p className="text-sm text-gray-500 mt-2">We'll send your receipt and subscription details to this email address</p>
+                <p className="text-sm text-gray-500 mt-2">We'll send your subscription details to this email address</p>
               </div>
             </>
           ) : (
             <>
-              {/* Payment Summary */}
-              {selectedPlan && (
-                <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-2">
-                    <span className="font-semibold text-blue-700">Payment Summary</span>
-                <button
-                      className="text-xs font-medium text-blue-600 hover:text-blue-700"
+                              {/* Payment Summary */}
+                {selectedPlan && (
+                 <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                   <div className="mb-2">
+                     <span className="font-semibold text-blue-700">Payment Summary</span>
+                </div>
+                    <div className="flex items-center justify-between text-sm mb-1">
+                     <span className="text-blue-600">Plan:</span>
+                     <span className="font-semibold text-blue-900">{selectedPlan.name}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm mb-1">
+                     <span className="text-blue-600">Amount:</span>
+                     <span className="font-semibold text-blue-900">
+                       {formatCurrency(selectedPlan.actual_price, getCurrency())}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm mb-1">
+                     <span className="text-blue-600">Email:</span>
+                     <span className="font-semibold text-blue-900">{email}</span>
+                    </div>
+                   <div className="flex justify-end mt-3">
+                     <MyButton
+                       buttonType="secondary"
+                       scale="small"
+                       layoutVariant="default"
+                       className="text-xs"
                   onClick={handleEdit}
                 >
                   Edit
-                </button>
+                     </MyButton>
+                   </div>
               </div>
-                  <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="text-blue-600">Plan:</span>
-                    <span className="font-semibold text-blue-900">{selectedPlan.name}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="text-blue-600">Amount:</span>
-                    <span className="font-semibold text-blue-900">
-                      {formatCurrency(selectedPlan.actual_price, getCurrency())}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="text-blue-600">Email:</span>
-                    <span className="font-semibold text-blue-900">{email}</span>
-                  </div>
-                </div>
-              )}
+                )}
               
               <div className="mb-2">
                 <div className="flex items-center justify-between mb-1">
@@ -634,13 +755,34 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                 
                 {!paymentGatewayData ? (
                   <div className="border border-orange-300 bg-orange-50 rounded p-4 text-sm">
-                    <div className="flex items-center gap-2 text-orange-700">
+                    <div className="flex items-center gap-2 text-orange-700 mb-2">
                       <Lock size={16} />
                       <span className="font-medium">Payment Processing Unavailable</span>
                     </div>
-                    <p className="text-orange-600 mt-1">
-                      Payment processing is currently unavailable. Please contact support for assistance.
+                    <p className="text-orange-600 mb-3">
+                      Payment processing is currently unavailable. You can still proceed with enrollment and complete payment later.
                     </p>
+                    <div className="flex gap-2">
+                      <MyButton
+                        buttonType="secondary"
+                        scale="small"
+                        layoutVariant="default"
+                        className="flex-1"
+                        onClick={retryFetch}
+                      >
+                        Retry Payment Setup
+                      </MyButton>
+                      <MyButton
+                        buttonType="primary"
+                        scale="small"
+                        layoutVariant="default"
+                        className="flex-1"
+                        onClick={handlePaymentAndEnrollment}
+                        disabled={processingPayment}
+                      >
+                        {processingPayment ? 'Processing...' : 'Continue Without Payment'}
+                      </MyButton>
+                    </div>
                   </div>
                 ) : (
                   <div className={`border rounded p-3 text-sm w-full min-h-[48px] ${
@@ -682,15 +824,6 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                       </>
                     )}
                   </MyButton>
-                  <MyButton
-                    buttonType="secondary"
-                    scale="medium"
-                    layoutVariant="default"
-                    className="w-full h-10 text-sm border-none"
-                    onClick={onSkip}
-                  >
-                    Cancel
-                  </MyButton>
                 </div>
                 
                 <div className="text-xs text-gray-500 text-center mt-2 flex items-center justify-center gap-1">
@@ -706,25 +839,19 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
           )}
 
                                            {(step === 'plans' || step === 'email') && (
-            <div className="flex flex-col gap-2 w-full mt-3">
+            <div className={`flex w-full mt-3 ${step === 'plans' ? 'justify-end' : 'justify-center'}`}>
               <MyButton
                 buttonType="primary"
                 scale="medium"
                 layoutVariant="default"
-                className="w-full h-11 text-base"
-                onClick={handleContinue}
+                className={`h-11 text-base ${step === 'plans' ? 'w-1/2' : 'w-full'}`}
+                onClick={() => {
+                  console.log('Continue button clicked, step:', step, 'selectedPlan:', selectedPlan, 'email:', email);
+                  handleContinue();
+                }}
                  disabled={(step === 'plans' && !selectedPlan) || (step === 'email' && !email.trim())}
               >
                  {step === 'plans' ? 'Continue' : step === 'email' ? 'Continue to Payment' : 'Subscribe Now'}
-              </MyButton>
-              <MyButton
-                buttonType="secondary"
-                scale="medium"
-                layoutVariant="default"
-                className="w-full h-10 text-sm border-none"
-                onClick={onSkip}
-              >
-                Cancel
               </MyButton>
             </div>
           )}

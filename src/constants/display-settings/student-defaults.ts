@@ -97,7 +97,8 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
     allowBatchStream: true,
   },
   certificates: {
-    generationThresholdPercent: 800,
+    enabled: true,
+    generationThresholdPercent: 80,
   },
   postLoginRedirectRoute: "/dashboard",
 };

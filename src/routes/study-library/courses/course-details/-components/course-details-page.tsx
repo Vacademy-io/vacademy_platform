@@ -386,6 +386,12 @@ export const CourseDetailsPage = () => {
         const tryGenerateCertificate = async () => {
             try {
                 const settings = await getStudentDisplaySettings(false);
+                
+                // Check if certificate generation is enabled
+                if (!settings.certificates?.enabled) {
+                    return; // Exit early if certificate generation is disabled
+                }
+                
                 const threshold =
                     settings.certificates?.generationThresholdPercent ?? 80;
                 // percent can come from query param (carried over from list) or course data
@@ -551,10 +557,15 @@ export const CourseDetailsPage = () => {
                         LocalStorageUtils.set(celebrationKey, true);
                     }
                 }
-            } catch {
+            } catch (error) {
+                // Only show error toast if certificate generation is enabled
+                // This prevents showing error when certificate generation is disabled in settings
+                const settings = await getStudentDisplaySettings(false);
+                if (settings.certificates?.enabled) {
                 toast.error(
                     "Failed to generate certificate. Please try again later."
                 );
+                }
             }
         };
 
@@ -1019,7 +1030,12 @@ export const CourseDetailsPage = () => {
                     };
                     
                     // Add the enrolled session and wait for it to complete
-                    await addEnrolledSession(newEnrolledSession);
+                    try {
+                        await addEnrolledSession(newEnrolledSession);
+                    } catch (error) {
+                        toast.error("Failed to update enrollment status. Please refresh the page.");
+                        return;
+                    }
                     
                     // Close dialogs
                     setEnrollmentDialogOpen(false);
@@ -1028,7 +1044,8 @@ export const CourseDetailsPage = () => {
                     // Show success message
                     toast.success("Successfully enrolled in the course!");
                     
-                    // Redirect to slides immediately after enrollment
+                    // Add a small delay to ensure enrollment is fully processed
+                    await new Promise(resolve => setTimeout(resolve, 1000));
                     
                     // Try to get course structure data from multiple sources
                     let subjectId = "";
@@ -1135,7 +1152,12 @@ export const CourseDetailsPage = () => {
                     };
                     
                     // Add the enrolled session and wait for it to complete
-                    await addEnrolledSession(newEnrolledSession);
+                    try {
+                        await addEnrolledSession(newEnrolledSession);
+                    } catch (error) {
+                        toast.error("Failed to update enrollment status. Please refresh the page.");
+                        return;
+                    }
                     
                     // Close dialogs
                     setEnrollmentDialogOpen(false);
@@ -1143,7 +1165,8 @@ export const CourseDetailsPage = () => {
                     // Show success message
                     toast.success("Successfully enrolled in the course!");
                     
-                    // Redirect to slides immediately after enrollment
+                    // Add a small delay to ensure enrollment is fully processed
+                    await new Promise(resolve => setTimeout(resolve, 1000));
                     
                     // Try to get course structure data from multiple sources
                     let subjectId = "";
@@ -1205,36 +1228,67 @@ export const CourseDetailsPage = () => {
                                 subjectId = subjectDetails[0].id;
                             }
                         } catch (error) {
-                            console.error("Error getting subject details:", error);
+                            // Silent fallback
                         }
                     }
                     
-                    // If we have a subject ID, navigate to the slides
+                    // Try to get course structure data from multiple sources
+                    let moduleId = "";
+                    let chapterId = "";
+                    let slideId = "";
+                    
                     if (subjectId) {
-                        const navigationParams = {
-                            courseId: searchParams.courseId,
-                            sessionId: selectedSession,
-                            levelId: selectedLevel,
-                            subjectId: subjectId,
-                        };
-                        
-                        navigateTo(
-                            `/study-library/courses/course-details/slides`,
-                            navigationParams
-                        );
-                    } else {
-                        // Fallback: navigate without subject ID
-                        const navigationParams = {
-                            courseId: searchParams.courseId,
-                            sessionId: selectedSession,
-                            levelId: selectedLevel,
-                        };
-                        
-                        navigateTo(
-                            `/study-library/courses/course-details/slides`,
-                            navigationParams
-                        );
+                        // Method 2: Fetch complete course structure using the same API
+                        if (packageSessionIdForCurrentLevel && subjectId) {
+                            try {
+                                // Import the API function dynamically to avoid circular dependencies
+                                const { fetchModulesWithChapters } = await import('@/services/study-library/getModulesWithChapters');
+                                
+                                const modulesData = await fetchModulesWithChapters(subjectId, packageSessionIdForCurrentLevel);
+                                
+                                if (modulesData && modulesData.length > 0) {
+                                    const firstModule = modulesData[0];
+                                    moduleId = firstModule.module.id || "";
+                                    
+                                    if (firstModule.chapters && firstModule.chapters.length > 0) {
+                                        const firstChapter = firstModule.chapters[0];
+                                        chapterId = firstChapter.id || "";
+                                        
+                                        // For slides, we need to fetch them separately
+                                        if (chapterId) {
+                                            try {
+                                                const { fetchSlidesByChapterId } = await import('@/hooks/study-library/use-slides');
+                                                const slides = await fetchSlidesByChapterId(chapterId);
+                                                
+                                                if (slides && slides.length > 0) {
+                                                    slideId = slides[0].id || "";
+                                                }
+                                            } catch (slideError) {
+                                                // Silent fallback
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (error) {
+                                // Silent fallback
+                            }
+                        }
                     }
+                    
+                    // Navigate to slides with whatever IDs we found
+                    // Even if some IDs are missing, the slides page should handle it gracefully
+                    const navigationParams = {
+                        courseId: searchParams.courseId,
+                        subjectId: subjectId || "",
+                        moduleId: moduleId || "",
+                        chapterId: chapterId || "",
+                        slideId: slideId || "",
+                    };
+                    
+                    navigateTo(
+                        `/study-library/courses/course-details/subjects/modules/chapters/slides`,
+                        navigationParams
+                    );
                 }}
             />
 
@@ -1345,7 +1399,7 @@ export const CourseDetailsPage = () => {
                             currentSubjects={getSubjectDetails(
                                                                             form.getValues(),
                                                                             selectedSession,
-                                                                        selectedLevel
+                                                                            selectedLevel
                             )}
                             courseStructure={form.getValues("courseData.courseStructure")}
                             instructorsCount={form.getValues("courseData").instructors.length}
@@ -1356,10 +1410,10 @@ export const CourseDetailsPage = () => {
                             paymentType={paymentType}
                             packageSessionIdForCurrentLevel={packageSessionIdForCurrentLevel}
                             onEnrollmentClick={() => {
-                                                    console.log('Enrollment button clicked, payment type:', paymentType);
+                                                                    console.log('Enrollment button clicked, payment type:', paymentType);
                                                                     // Always open enrollment dialog - it will determine the correct payment type from API data
                                                                     console.log('Opening enrollment dialog to determine payment type');
-                                                        setEnrollmentDialogOpen(true);
+                                                                        setEnrollmentDialogOpen(true);
                                                                 }}
                             onRatingsLoadingChange={handleRatingsLoadingChange}
                         />

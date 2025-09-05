@@ -10,6 +10,7 @@ import { DonationDialog } from "@/components/common/donation/DonationDialog";
 import { SubscriptionPaymentDialog } from "./SubscriptionPaymentDialog";
 import { OneTimePaymentDialog } from "./OneTimePaymentDialog";
 import { FreePlanDialog } from "./FreePlanDialog";
+import { FreeEnrollmentConfirmationDialog } from "./FreeEnrollmentConfirmationDialog";
 
 interface EnrollmentPaymentRouterProps {
   open: boolean;
@@ -58,6 +59,7 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
         const firstPaymentOption = data.package_session_to_payment_options[0].payment_option;
         console.log('EnrollmentPaymentDialog - First payment option:', firstPaymentOption);
         console.log('EnrollmentPaymentDialog - Payment type:', firstPaymentOption.type);
+        console.log('EnrollmentPaymentDialog - Payment type (lowercase):', firstPaymentOption.type.toLowerCase());
         setPaymentType(firstPaymentOption.type);
       }
     } catch (err) {
@@ -102,6 +104,9 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
   const renderPaymentDialog = () => {
     if (!paymentType) return null;
 
+    console.log('EnrollmentPaymentDialog - Rendering dialog for payment type:', paymentType);
+    console.log('EnrollmentPaymentDialog - Payment type (lowercase):', paymentType.toLowerCase());
+
     const commonProps = {
       packageSessionId,
       instituteId,
@@ -122,8 +127,9 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
             instituteId={instituteId}
             token={token}
             inviteCode={inviteCode}
-            onContinue={() => onOpenChange(false)}
-            onSkip={() => onOpenChange(false)}
+            mode="enrollment"
+            isUserEnrolled={false}
+            onEnrollmentSuccess={onEnrollmentSuccess}
           />
         );
       
@@ -139,6 +145,7 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
       case 'one-time':
       case 'one_time':
       case 'onetime':
+      case 'one_time_payment':
         return (
           <OneTimePaymentDialog
             open={open}
@@ -150,7 +157,7 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
       case 'free':
       case 'free_plan':
         return (
-          <FreePlanDialog
+          <FreeEnrollmentConfirmationDialog
             open={open}
             onOpenChange={onOpenChange}
             {...commonProps}
@@ -159,6 +166,7 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
       
       default:
         // Fallback to subscription dialog for unknown types
+        console.log('EnrollmentPaymentDialog - Unknown payment type:', paymentType, 'falling back to subscription dialog');
         return (
           <SubscriptionPaymentDialog
             open={open}

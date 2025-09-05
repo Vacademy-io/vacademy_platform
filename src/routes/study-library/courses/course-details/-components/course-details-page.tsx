@@ -384,13 +384,20 @@ export const CourseDetailsPage = () => {
     // Trigger certificate generation after entering this page once essentials are available
     useEffect(() => {
         const tryGenerateCertificate = async () => {
+            let settings;
             try {
-                const settings = await getStudentDisplaySettings(false);
-                
-                // Check if certificate generation is enabled
-                if (!settings.certificates?.enabled) {
-                    return; // Exit early if certificate generation is disabled
-                }
+                settings = await getStudentDisplaySettings(false);
+            } catch (settingsError) {
+                // If we can't fetch settings, assume certificate generation is disabled
+                return;
+            }
+            
+            // Check if certificate generation is enabled
+            if (!settings.certificates?.enabled) {
+                return; // Exit early if certificate generation is disabled
+            }
+            
+            try {
                 
                 const threshold =
                     settings.certificates?.generationThresholdPercent ?? 80;
@@ -558,14 +565,18 @@ export const CourseDetailsPage = () => {
                     }
                 }
             } catch (error) {
-                // Only show error toast if certificate generation is enabled
-                // This prevents showing error when certificate generation is disabled in settings
-                const settings = await getStudentDisplaySettings(false);
-                if (settings.certificates?.enabled) {
+                // Since we already checked that certificate generation is enabled above,
+                // we can safely show the error toast
+                
+                // Handle specific error types for better user experience
+                if (error instanceof Error && error.message.includes('404')) {
+                    // Don't show error toast for 404 - this suggests the API endpoint is not configured
+                    return;
+                }
+                
                 toast.error(
                     "Failed to generate certificate. Please try again later."
                 );
-                }
             }
         };
 

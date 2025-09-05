@@ -55,4 +55,6 @@ public class LiveSession {
 
     @Column(name="allow_play_pause")
     private boolean allowPlayPause;
+
+    private String timezone;
 }

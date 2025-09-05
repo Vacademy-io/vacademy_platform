@@ -74,6 +74,7 @@ public class Step1Service {
 
         // New Field
         session.setAllowPlayPause(request.isAllowPlayPause());
+        if(request.getTimeZone()!=null) session.setTimezone(request.getTimeZone());
 
         session.setCreatedByUserId(user.getUserId());
     }

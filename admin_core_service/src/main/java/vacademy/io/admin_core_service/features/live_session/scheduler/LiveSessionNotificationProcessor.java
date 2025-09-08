@@ -317,7 +317,7 @@ public class LiveSessionNotificationProcessor {
         for (String scheduleId : scheduleIds) {
             try {
                 // Get session ID from schedule
-                String sessionId = sessionScheduleRepository.findSessionIdByScheduleId(scheduleId, "DELETED");
+                String sessionId = sessionScheduleRepository.findSessionIdByScheduleId(scheduleId, NotificationStatusEnum.DELETED.name());
                 if (sessionId == null) {
                     System.out.println("Session ID not found for schedule: " + scheduleId);
                     continue;

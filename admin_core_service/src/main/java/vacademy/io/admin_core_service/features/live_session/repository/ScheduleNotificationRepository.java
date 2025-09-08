@@ -59,13 +59,13 @@ public interface ScheduleNotificationRepository extends JpaRepository<ScheduleNo
 
     @Modifying
     @Transactional
-    @Query(value = "UPDATE schedule_notifications SET status = 'DISABLE' WHERE schedule_id IN (:scheduleIds)", nativeQuery = true)
-    int disableNotificationsByScheduleIds(@Param("scheduleIds") List<String> scheduleIds);
+    @Query(value = "UPDATE schedule_notifications SET status = :status WHERE schedule_id IN (:scheduleIds)", nativeQuery = true)
+    int disableNotificationsByScheduleIds(@Param("scheduleIds") List<String> scheduleIds,@Param("status")String status);
 
     @Modifying
     @Transactional
-    @Query(value = "UPDATE schedule_notifications SET status = 'DISABLE' WHERE session_id = :sessionId", nativeQuery = true)
-    int disableNotificationsBySessionId(@Param("sessionId") String sessionId);
+    @Query(value = "UPDATE schedule_notifications SET status = :status WHERE session_id = :sessionId", nativeQuery = true)
+    int disableNotificationsBySessionId(@Param("sessionId") String sessionId,@Param("status")String status);
 
 
 }

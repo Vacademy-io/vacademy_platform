@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.live_session.dto.GroupedSessionsByDateDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionListDTO;
+import vacademy.io.admin_core_service.features.live_session.enums.NotificationStatusEnum;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.ScheduleNotificationRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
@@ -338,14 +339,14 @@ public class GetLiveSessionService {
             sessionRepository.softDeleteLiveSessionById(sessionId);
             scheduleRepository.softDeleteScheduleBySessionId(sessionId);
             // Disable all notifications for this session
-            scheduleNotificationRepository.disableNotificationsBySessionId(sessionId);
+            scheduleNotificationRepository.disableNotificationsBySessionId(sessionId,NotificationStatusEnum.DISABLED.name());
         } else if (Objects.equals(type, "schedule")) {
             List<String> scheduleIdsToNotify = new ArrayList<>();
             String instituteId = null;
 
             for (String scheduleId : ids) {
-                String sessionId = scheduleRepository.findSessionIdByScheduleId(scheduleId, "DELETED");
-                int activeSchedules = scheduleRepository.countActiveSchedulesBySessionId(sessionId, "DELETED");
+                String sessionId = scheduleRepository.findSessionIdByScheduleId(scheduleId, NotificationStatusEnum.DELETED.name());
+                int activeSchedules = scheduleRepository.countActiveSchedulesBySessionId(sessionId, NotificationStatusEnum.DELETED.name());
 
                 // Get institute ID from the first session for notification
                 if (instituteId == null) {
@@ -362,7 +363,7 @@ public class GetLiveSessionService {
                     scheduleRepository.softDeleteScheduleByIdIn(List.of(scheduleId));
                     sessionRepository.softDeleteLiveSessionById(sessionId);
                     // Disable all notifications for this session
-                    scheduleNotificationRepository.disableNotificationsBySessionId(sessionId);
+                    scheduleNotificationRepository.disableNotificationsBySessionId(sessionId,NotificationStatusEnum.DISABLED.name());
                 } else {
                     // Only schedule deletion, collect for batch notification
                     scheduleIdsToNotify.add(scheduleId);
@@ -374,7 +375,7 @@ public class GetLiveSessionService {
             if (!scheduleIdsToNotify.isEmpty() && instituteId != null) {
                 notificationProcessor.sendDeleteNotificationForSchedules(scheduleIdsToNotify, instituteId);
                 // Disable notifications for the deleted schedules
-                scheduleNotificationRepository.disableNotificationsByScheduleIds(scheduleIdsToNotify);
+                scheduleNotificationRepository.disableNotificationsByScheduleIds(scheduleIdsToNotify, NotificationStatusEnum.DISABLED.name());
             }
         }
         return type + " is deleted";

@@ -596,7 +596,7 @@ export function ModularDynamicSignupContainer({
 
       {/* Login Link */}
       <SignupStep delay={0.8}>
-        <div className="text-center text-xs text-gray-600">
+        <div className="text-center text-xs text-gray-600 p-4">
           <p>
             Already have an account? {" "}
             <motion.button

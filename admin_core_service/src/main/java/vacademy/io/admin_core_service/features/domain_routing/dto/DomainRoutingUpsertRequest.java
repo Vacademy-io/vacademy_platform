@@ -9,6 +9,14 @@ public class DomainRoutingUpsertRequest {
     private String role;
     private String instituteId;
     private String redirect;
+    private String privacyPolicyUrl;
+    private String afterLoginRoute;
+    private String termsAndConditionUrl;
+    private String theme;
+    private String tabText;
+    private Boolean allowSignup;
+    private String tabIconFileId;
+    private String fontFamily;
 }
 
 

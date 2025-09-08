@@ -42,6 +42,14 @@ public class DomainRoutingService {
                 .instituteThemeCode(institute.getInstituteThemeCode())
                 .role(mapping.getRole())
                 .redirect(mapping.getRedirect())
+                .privacyPolicyUrl(mapping.getPrivacyPolicyUrl())
+                .afterLoginRoute(mapping.getAfterLoginRoute())
+                .termsAndConditionUrl(mapping.getTermsAndConditionUrl())
+                .theme(mapping.getTheme())
+                .tabText(mapping.getTabText())
+                .allowSignup(mapping.getAllowSignup())
+                .tabIconFileId(mapping.getTabIconFileId())
+                .fontFamily(mapping.getFontFamily())
                 .build();
         return Optional.of(response);
     }

@@ -612,7 +612,8 @@ export function ModularDynamicSignupContainer({
 
       {/* Security Notice */}
       <SignupStep delay={0.9}>
-        <div className="mt-1 p-3 bg-gray-50/80 border border-gray-200/60 rounded-lg">
+        {/* Security message removed as requested */}
+        {/* <div className="mt-1 p-3 bg-gray-50/80 border border-gray-200/60 rounded-lg">
           <div className="flex items-start space-x-2">
             <Shield className="w-4 h-4 text-gray-600 mt-0.5 flex-shrink-0" />
             <div>
@@ -624,7 +625,7 @@ export function ModularDynamicSignupContainer({
               </p>
             </div>
           </div>
-        </div>
+        </div> */}
       </SignupStep>
 
       {/* Terms and Privacy Policy */}

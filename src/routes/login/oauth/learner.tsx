@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { setToStorage } from "@/components/common/auth/login/forms/page/login-form";
@@ -22,8 +22,12 @@ export const Route = createFileRoute("/login/oauth/learner")({
 function OAuthRedirectHandler() {
   const navigate = useNavigate();
   const { setPrimaryColor } = useTheme();
+  const hasProcessed = useRef(false);
 
   useEffect(() => {
+    if (hasProcessed.current) return;
+    hasProcessed.current = true;
+    
     handleOAuthCallback(
       navigate,
       setPrimaryColor
@@ -64,12 +68,9 @@ const handleOAuthCallback = async (
   }
 
   if (error) {
-    toast.error("We couldn't find an account with these details. Please create an account before logging in.");
-    // Redirect to signup page with parameters instead of just signup page for failed OAuth
-    const signupUrl = new URL(window.location.origin + "/signup");
-    signupUrl.searchParams.set("fromOAuth", "true");
-    
-    navigate({ to: signupUrl.pathname + signupUrl.search });
+    toast.error("We couldn't find an account with these details. Please try a different login method or contact support.");
+    // Redirect back to login page instead of signup page
+    navigate({ to: "/login" });
     return;
   }
 
@@ -89,20 +90,14 @@ const handleOAuthCallback = async (
         currentUrl
       );
     } catch {
-      toast.error("Failed to store authentication tokens");
-      // Redirect to signup page with parameters when token storage fails
-      const signupUrl = new URL(window.location.origin + "/signup");
-      signupUrl.searchParams.set("fromOAuth", "true");
-      
-      navigate({ to: signupUrl.pathname + signupUrl.search });
+      toast.error("Failed to store authentication tokens. Please try again.");
+      // Redirect back to login page instead of signup page
+      navigate({ to: "/login" });
     }
   } else {
-    toast.error("Missing tokens in redirect URL");
-    // Redirect to signup page with parameters when tokens are missing
-    const signupUrl = new URL(window.location.origin + "/signup");
-    signupUrl.searchParams.set("fromOAuth", "true");
-    
-    navigate({ to: signupUrl.pathname + signupUrl.search });
+    toast.error("Missing tokens in redirect URL. Please try logging in again.");
+    // Redirect back to login page instead of signup page
+    navigate({ to: "/login" });
   }
 };
 
@@ -132,7 +127,8 @@ const handleSuccessfulLogin = async (
     const authorityKeys = authorities ? Object.keys(authorities) : [];
 
     if (!userId || authorityKeys.length === 0) {
-      toast.error("Invalid user or institute data.");
+      toast.error("Invalid user or institute data. Please try logging in again.");
+      navigate({ to: "/login" });
       return;
     }
 
@@ -189,7 +185,8 @@ const handleSuccessfulLogin = async (
       });
     }
   } catch {
-    toast.error("Failed to process user data.");
+    toast.error("Failed to process user data. Please try logging in again.");
+    navigate({ to: "/login" });
   }
 };
  

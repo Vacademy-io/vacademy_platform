@@ -33,14 +33,11 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 import {
-  getAuthSettings,
   getStudentDisplaySettings,
 } from "@/services/student-display-settings";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { AuthPageBranding } from "@/components/common/institute-branding";
 import { identifyUser } from "@/lib/analytics";
-import { useQuery } from "@tanstack/react-query";
-import { handleGetPublicInstituteDetails } from "@/components/common/enroll-by-invite/-services/enroll-invite-services";
 
 export const getFromStorage = async (key: string) => {
   const result = await Preferences.get({ key });
@@ -69,19 +66,11 @@ export function LoginForm({
   const [isEmailLogin, setIsEmailLogin] = useState(isPublic === "true");
   const { setInstituteId } = useInstituteFeatureStore();
   const domainRouting = useDomainRouting();
-  const { data: instituteData } = useQuery(
-    handleGetPublicInstituteDetails({
-      instituteId: domainRouting.instituteId ?? "",
-    })
-  );
-  const { data: authProviders } = useQuery({
-    queryKey: ["authSettings", domainRouting.instituteId],
-    queryFn: () =>
-      getAuthSettings({
-        details: instituteData?.setting ?? "",
-      }),
-    enabled: !!instituteData?.setting,
-  });
+  // Static OAuth providers - always show both Google and GitHub
+  const authProviders = {
+    google: true,
+    github: true,
+  };
 
   useEffect(() => {
     const ssoLoginSuccess = handleSSOLogin();

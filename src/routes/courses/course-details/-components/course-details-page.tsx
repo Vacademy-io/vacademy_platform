@@ -1,5 +1,5 @@
 import { Steps } from "@phosphor-icons/react";
-import { useNavigate, useRouter } from "@tanstack/react-router";
+import { useRouter } from "@tanstack/react-router";
 import {
     Code,
     File,
@@ -14,7 +14,7 @@ import {
     FileDoc,
     Notebook,
 } from "phosphor-react";
-import { isNullOrEmptyOrUndefined, toTitleCase } from "@/lib/utils";
+import { toTitleCase } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
     Select,
@@ -36,7 +36,7 @@ import {
     QuestionSlide,
     AssignmentSlide,
 } from "../../-services/getAllSlides";
-import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { CourseDetailsRatingsComponent } from "./course-details-ratings-page";
 import {
     getIdByLevelAndSession,
@@ -178,12 +178,12 @@ const mockCourses: Course[] = [
 ];
 
 export const CourseDetailsPage = () => {
-    const navigate = useNavigate();
     const [selectedSession, setSelectedSession] = useState<string>("");
     const [selectedLevel, setSelectedLevel] = useState<string>("");
     const router = useRouter();
     const searchParams = router.state.location.search;
     const subdomain = getSubdomain(window.location.hostname);
+
 
     // Loading state management
     const [isLoading, setIsLoading] = useState(true);
@@ -216,6 +216,8 @@ export const CourseDetailsPage = () => {
         }
     }, [isAllLoadingComplete]);
 
+
+
     // Memoized callback functions for child components
     const handleModulesLoadingChange = useCallback(
         (loading: boolean) => {
@@ -231,13 +233,14 @@ export const CourseDetailsPage = () => {
         [updateLoadingState]
     );
 
-    // Get instituteId from API using subdomain
+    // Get instituteId from API using subdomain - Changed from useSuspenseQuery to useQuery to prevent infinite re-renders
     const { data: instituteIdFromApi, isLoading: isLoadingInstituteId } =
-        useSuspenseQuery(
+        useQuery(
             handleGetInstituteIdWithLocalStorageCheck({
                 subdomain: subdomain || "",
             })
         );
+
 
     const instituteId = instituteIdFromApi;
 
@@ -680,7 +683,7 @@ export const CourseDetailsPage = () => {
 
     // Show loading until essential APIs are complete
     // Note: packageSessionIdForCurrentLevel is not required for initial render
-    if (isLoading || !instituteId || !studyLibraryData) {
+    if (isLoading || isLoadingInstituteId || !instituteId || !studyLibraryData) {
         return <DashboardLoader />;
     }
 

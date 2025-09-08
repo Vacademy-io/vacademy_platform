@@ -34,6 +34,13 @@ function CoursesContainerComponent() {
 
     useEffect(() => {
         const redirectToDashboardIfAuthenticated = async () => {
+            const currentPath = window.location.pathname;
+            
+            // Only redirect if we're on the exact /courses/ route, not on sub-routes like /courses/course-details/
+            if (currentPath !== "/courses/" && currentPath !== "/courses") {
+                return; // Don't redirect if we're on a sub-route
+            }
+            
             const token = await getTokenFromStorage(TokenKey.accessToken);
             const studentDetails = await Preferences.get({
                 key: "StudentDetails",

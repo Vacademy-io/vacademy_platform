@@ -208,7 +208,7 @@ export const useDomainRouting = () => {
       // Redirecting to resolved path: ${state.redirectPath}
       navigate({ to: state.redirectPath as never });
     } else if (state.instituteId) {
-      // Don't automatically redirect to courses if we're on a public route
+      // Don't automatically redirect to courses if we're on a public route or course details page
       const currentPath = window.location.pathname;
       const publicRoutes = [
         "/login",
@@ -220,9 +220,11 @@ export const useDomainRouting = () => {
       const isOnPublicRoute = publicRoutes.some((route) =>
         currentPath.startsWith(route)
       );
+      
+      // Don't redirect if we're on course details page
+      const isOnCourseDetailsPage = currentPath.startsWith("/courses/course-details");
 
-      if (isOnPublicRoute) {
-        // Skipping automatic redirect to courses on public route: ${currentPath}
+      if (isOnPublicRoute || isOnCourseDetailsPage) {
         return;
       }
 
@@ -243,7 +245,7 @@ export const useDomainRouting = () => {
     if (!state.isLoading && state.redirectPath) {
       // State updated, redirecting to: ${state.redirectPath}
 
-      // Don't redirect if we're on public routes
+      // Don't redirect if we're on public routes or course details page
       const currentPath = window.location.pathname;
       const publicRoutes = [
         "/login",
@@ -255,9 +257,11 @@ export const useDomainRouting = () => {
       const isOnPublicRoute = publicRoutes.some((route) =>
         currentPath.startsWith(route)
       );
+      
+      // Don't redirect if we're on course details page
+      const isOnCourseDetailsPage = currentPath.startsWith("/courses/course-details");
 
-      if (isOnPublicRoute) {
-        // Skipping redirect on public route: ${currentPath}
+      if (isOnPublicRoute || isOnCourseDetailsPage) {
         return;
       }
 
@@ -265,8 +269,6 @@ export const useDomainRouting = () => {
       if (window.location.pathname !== "/") {
         // Executing redirect to: ${state.redirectPath}
         redirectToResolvedPath();
-      } else {
-        // Skipping redirect on root route to avoid conflicts
       }
     }
   }, [state.isLoading, state.redirectPath]);

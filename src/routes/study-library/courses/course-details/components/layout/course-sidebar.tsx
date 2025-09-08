@@ -17,6 +17,7 @@ import {
     Terminal,
     File,
 } from "phosphor-react";
+import { Steps } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
@@ -234,7 +235,7 @@ export const CourseSidebar = ({
                         {/* Header */}
                         <div className="flex items-center space-x-2 mb-4">
                             <div className="p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg shadow-sm">
-                                <TreeStructure
+                                <Steps
                                     size={18}
                                     className="text-primary-600"
                                     weight="duotone"
@@ -259,7 +260,7 @@ export const CourseSidebar = ({
                                 )?.label !== "default" && (
                                     <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-primary-50 to-primary-100 rounded-lg border border-primary-200">
                                         <div className="flex items-center space-x-2">
-                                            <TreeStructure
+                                            <Steps
                                                 size={16}
                                                 className="text-primary-600"
                                                 weight="duotone"

@@ -259,7 +259,13 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         (
             (lsp.source_type = 'USER' AND lsp.source_id = :userId)
             OR 
-            (lsp.source_type = 'BATCH' AND lsp.source_id = :batchId)
+            (lsp.source_type = 'BATCH' AND lsp.source_id = :batchId 
+             AND EXISTS (
+                 SELECT 1 FROM student_session_institute_group_mapping 
+                 WHERE user_id = :userId 
+                   AND package_session_id = :batchId 
+                   AND status = 'ACTIVE'
+             ))
         )
         AND ss.meeting_date BETWEEN :startDate AND :endDate
         AND ss.meeting_date >= COALESCE((

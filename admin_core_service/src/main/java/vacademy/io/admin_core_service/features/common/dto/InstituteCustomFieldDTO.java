@@ -19,5 +19,9 @@ public class InstituteCustomFieldDTO {
 
     private CustomFieldDTO customField;
 
+    private Integer individualOrder;
+
+    private Integer groupInternalOrder;
+
     private String status;
 }

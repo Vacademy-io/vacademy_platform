@@ -5,17 +5,18 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDeleteRequestDTO;
+import vacademy.io.admin_core_service.features.common.enums.CustomFieldTypeEnum;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteCustomFieldSetupDTO;
 import vacademy.io.admin_core_service.features.common.entity.CustomFields;
 import vacademy.io.admin_core_service.features.common.entity.InstituteCustomField;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldRepository;
 import vacademy.io.admin_core_service.features.common.repository.InstituteCustomFieldRepository;
+import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.institute.entity.Institute;
 
 import java.sql.Timestamp;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -145,4 +146,140 @@ public class InstituteCustomFiledService {
 
         return setupDTO;
     }
+
+    public List<InstituteCustomField> createDefaultCustomFieldsForInstitute(Institute institute){
+        CustomFields nameCustomFields = CustomFields.builder()
+                .fieldKey("name")
+                .fieldName("name")
+                .defaultValue(null)
+                .fieldType("text")
+                .config("{}")
+                .isMandatory(false)
+                .isFilter(true)
+                .isSortable(true)
+                .build();
+
+        CustomFields emailCustomFields = CustomFields.builder()
+                .fieldKey("email")
+                .fieldName("email")
+                .defaultValue(null)
+                .fieldType("text")
+                .config("{}")
+                .isMandatory(false)
+                .isFilter(true)
+                .isSortable(true)
+                .build();
+
+        CustomFields phoneCustomFields = CustomFields.builder()
+                .fieldKey("phone")
+                .fieldName("phone")
+                .defaultValue(null)
+                .fieldType("number")
+                .config("{}")
+                .isMandatory(false)
+                .isFilter(true)
+                .isSortable(true)
+                .build();
+
+        CustomFields usernameCustomFields = CustomFields.builder()
+                .fieldKey("username")
+                .fieldName("username")
+                .defaultValue(null)
+                .fieldType("text")
+                .config("{}")
+                .isMandatory(false)
+                .isFilter(true)
+                .isSortable(true)
+                .build();
+
+        CustomFields passwordCustomFields = CustomFields.builder()
+                .fieldKey("password")
+                .fieldName("password")
+                .defaultValue(null)
+                .fieldType("text")
+                .config("{}")
+                .isMandatory(false)
+                .isFilter(true)
+                .isSortable(true)
+                .build();
+
+        CustomFields batchCustomFields = CustomFields.builder()
+                .fieldKey("batch")
+                .fieldName("batch")
+                .defaultValue(null)
+                .fieldType("text")
+                .config("{}")
+                .isMandatory(false)
+                .isFilter(true)
+                .isSortable(true)
+                .build();
+
+        List<CustomFields> allDefaultCustomFields = List.of(nameCustomFields,emailCustomFields,usernameCustomFields,passwordCustomFields,batchCustomFields,phoneCustomFields);
+        List<CustomFields> allSavedCustomFields = customFieldRepository.saveAll(allDefaultCustomFields);
+        List<InstituteCustomField> defaultInstituteCustomFields = new ArrayList<>();
+
+        allSavedCustomFields.forEach(customField->{
+            defaultInstituteCustomFields.add(InstituteCustomField.builder()
+                    .customFieldId(customField.getId())
+                    .instituteId(institute.getId())
+                    .status("ACTIVE")
+                    .type(CustomFieldTypeEnum.DEFAULT_CUSTOM_FIELD.name())
+                    .build());
+        });
+
+       return instituteCustomFieldRepository.saveAll(defaultInstituteCustomFields);
+    }
+
+    public Optional<CustomFields> getCustomFieldById(String customFieldId) {
+        return customFieldRepository.findById(customFieldId);
+    }
+
+    public CustomFields createCustomFieldFromRequest(CustomFieldDTO request) {
+        if(Objects.isNull(request)) throw new VacademyException("Invalid Request");
+
+        return customFieldRepository.save(CustomFields.builder()
+                .fieldName(request.getFieldName())
+                .fieldKey(request.getFieldKey())
+                .fieldType(request.getFieldType())
+                .defaultValue(request.getDefaultValue())
+                .config(request.getConfig())
+                .isSortable(request.getIsSortable())
+                .isMandatory(request.getIsMandatory()).build());
+    }
+
+    public InstituteCustomField createInstituteMappingFromCustomField(CustomFields savedCustomField, Institute institute, CustomFieldDTO request) {
+        return instituteCustomFieldRepository.save(InstituteCustomField.builder()
+                .customFieldId(savedCustomField.getId())
+                .instituteId(institute.getId())
+                .type(CustomFieldTypeEnum.DEFAULT_CUSTOM_FIELD.name())
+                .individualOrder(request.getIndividualOrder())
+                .groupInternalOrder(request.getGroupInternalOrder()).build());
+    }
+
+    public String updateCustomField(Institute institute, CustomFieldDTO request, String fieldId) {
+        Optional<CustomFields> customFieldsOptional = customFieldRepository.findById(fieldId);
+        if (customFieldsOptional.isEmpty()) {
+            throw new VacademyException("Custom Field Not Found");
+        }
+
+        CustomFields customField = customFieldsOptional.get();
+
+        // Update fields from request DTO
+        if (request.getFieldKey() != null) customField.setFieldKey(request.getFieldKey());
+        if (request.getFieldName() != null) customField.setFieldName(request.getFieldName());
+        if (request.getFieldType() != null) customField.setFieldType(request.getFieldType());
+        if (request.getDefaultValue() != null) customField.setDefaultValue(request.getDefaultValue());
+        if (request.getConfig() != null) customField.setConfig(request.getConfig());
+
+        if (request.getFormOrder() != null) customField.setFormOrder(request.getFormOrder());
+        if (request.getIsMandatory() != null) customField.setIsMandatory(request.getIsMandatory());
+        if (request.getIsFilter() != null) customField.setIsFilter(request.getIsFilter());
+        if (request.getIsSortable() != null) customField.setIsSortable(request.getIsSortable());
+
+        // Save updated field
+        customFieldRepository.save(customField);
+
+        return "Custom Field with id " + fieldId + " updated successfully.";
+    }
+
 }

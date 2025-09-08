@@ -91,7 +91,7 @@ public class InstitutePolicyService {
         try {
             ResponseEntity<String> resp = internalClientUtils.makeHmacRequest(
                 applicationName,
-                HttpMethod.PATCH.name(),
+                HttpMethod.PUT.name(),
                 adminCoreServiceBaseUrl,
                 "/admin-core-service/internal/learner/v1/update",
                 userDTO);

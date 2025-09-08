@@ -34,6 +34,7 @@ public class LiveSessionStep1RequestDTO {
     private String sessionStreamingServiceType;
 
     private boolean allowPlayPause; //new added
+    private String timeZone;
 
     private List<ScheduleDTO> addedSchedules;
     private List<ScheduleDTO> updatedSchedules;

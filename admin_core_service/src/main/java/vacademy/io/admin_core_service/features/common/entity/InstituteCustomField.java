@@ -1,9 +1,6 @@
 package vacademy.io.admin_core_service.features.common.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -42,6 +39,12 @@ public class InstituteCustomField {
     @Column(name = "group_name")
     private String groupName;
 
+    @Column(name = "group_internal_order")
+    private Integer groupInternalOrder;
+
+    @Column(name = "individual_order")
+    private Integer individualOrder;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 
@@ -58,6 +61,8 @@ public class InstituteCustomField {
         this.type = instituteCustomFieldDTO.getType();
         this.typeId = instituteCustomFieldDTO.getTypeId();
         this.groupName = instituteCustomFieldDTO.getGroupName();
+        this.individualOrder = instituteCustomFieldDTO.getIndividualOrder();
+        this.groupInternalOrder = instituteCustomFieldDTO.getGroupInternalOrder();
         if (instituteCustomFieldDTO.getStatus() != null) {
             this.status = instituteCustomFieldDTO.getStatus();
         }else{

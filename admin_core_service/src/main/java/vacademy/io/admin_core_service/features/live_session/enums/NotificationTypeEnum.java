@@ -6,4 +6,5 @@ public enum NotificationTypeEnum {
     ON_LIVE,
     ON_CREATE,
     ATTENDANCE,
+    DELETE,
 }

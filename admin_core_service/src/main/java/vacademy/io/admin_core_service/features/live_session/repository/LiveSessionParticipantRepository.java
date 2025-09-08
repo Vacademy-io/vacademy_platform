@@ -256,14 +256,31 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         LIMIT 1
     ) lsl ON TRUE
     WHERE
-        lsp.source_type = 'BATCH'
-        AND lsp.source_id = :batchId
+        (
+            (lsp.source_type = 'USER' AND lsp.source_id = :userId)
+            OR 
+            (lsp.source_type = 'BATCH' AND lsp.source_id = :batchId 
+             AND EXISTS (
+                 SELECT 1 FROM student_session_institute_group_mapping 
+                 WHERE user_id = :userId 
+                   AND package_session_id = :batchId 
+                   AND status = 'ACTIVE'
+             ))
+        )
         AND ss.meeting_date BETWEEN :startDate AND :endDate
+        AND ss.meeting_date >= COALESCE((
+            SELECT enrolled_date 
+            FROM student_session_institute_group_mapping 
+            WHERE user_id = :userId 
+              AND (:batchId IS NULL OR package_session_id = :batchId)
+            ORDER BY created_at DESC 
+            LIMIT 1
+        ), :startDate)
     ORDER BY ss.id, ls.id
     """, nativeQuery = true)
-    List<ScheduleAttendanceProjection> findAttendanceForUserInBatch(
-            @Param("batchId") String batchId,
+    List<ScheduleAttendanceProjection> findAttendanceForUser(
             @Param("userId") String userId,
+            @Param("batchId") String batchId,
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate
     );

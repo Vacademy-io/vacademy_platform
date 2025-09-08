@@ -6,6 +6,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.live_session.dto.*;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionParticipantRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionGuestRegistrationRepository;
@@ -55,13 +56,14 @@ public class AttendanceReportService {
     }
 
     public StudentAttendanceReportDTO getStudentReport(String userId, String batchId, LocalDate start, LocalDate end) {
-        List<ScheduleAttendanceProjection> projections = liveSessionParticipantRepository
-                .findAttendanceForUserInBatch(batchId, userId, start, end);
+        // Fetch attendance data for both USER and BATCH
+        List<ScheduleAttendanceProjection> attendanceData = liveSessionParticipantRepository
+                .findAttendanceForUser(userId, batchId, start, end);
 
         List<ScheduleDetailDTO> scheduleDetails = new ArrayList<>();
         int presentCount = 0;
 
-        for (ScheduleAttendanceProjection projection : projections) {
+        for (ScheduleAttendanceProjection projection : attendanceData) {
             ScheduleDetailDTO dto = new ScheduleDetailDTO();
             dto.setScheduleId(projection.getScheduleId());
             dto.setMeetingDate(projection.getMeetingDate());
@@ -76,11 +78,17 @@ public class AttendanceReportService {
             String attendanceStatus = projection.getAttendanceStatus();
             dto.setAttendanceStatus(attendanceStatus);
 
+            if("PRESENT".equals(attendanceStatus)) {
+                presentCount++;
+            }
 
             scheduleDetails.add(dto);
         }
 
-        double attendancePercentage = liveSessionParticipantRepository.getAttendancePercentage(batchId,userId,start,end);
+        //double attendancePercentage = liveSessionParticipantRepository.getAttendancePercentage(batchId, userId, start, end);
+        double attendancePercentage=0.0;
+        if(presentCount!=0 && scheduleDetails.size()!=0)
+             attendancePercentage=((double)presentCount/scheduleDetails.size())*100;
         StudentAttendanceReportDTO report = new StudentAttendanceReportDTO();
         report.setUserId(userId);
         report.setAttendancePercentage(attendancePercentage);

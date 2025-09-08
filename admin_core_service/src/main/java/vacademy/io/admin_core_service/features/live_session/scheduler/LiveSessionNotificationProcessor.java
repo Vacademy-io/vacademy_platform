@@ -275,4 +275,145 @@ public class LiveSessionNotificationProcessor {
         return dto;
     }
 
+
+    @Transactional
+    public void sendDeleteNotification(String sessionId, String instituteId) {
+        try {
+            // Get session details before deletion
+            Optional<LiveSession> sessionOpt = liveSessionRepository.findById(sessionId);
+            if (sessionOpt.isEmpty()) {
+                System.out.println("Session not found for delete notification: " + sessionId);
+                return;
+            }
+            LiveSession session = sessionOpt.get();
+
+            // Get all participants (both BATCH and USER types)
+            List<LiveSessionParticipants> participants = liveSessionParticipantRepository.findBySessionId(sessionId);
+            if (participants == null || participants.isEmpty()) {
+                System.out.println("No participants found for session: " + sessionId);
+                return;
+            }
+
+            // Get the most recent schedule for date/time information
+            List<SessionSchedule> schedules = sessionScheduleRepository.findBySessionId(sessionId);
+            SessionSchedule schedule = schedules.isEmpty() ? null : schedules.get(0);
+
+            // Fetch students from both batch and individual user participants
+            List<Object[]> rows = getStudentsForNotification(participants, instituteId);
+
+            if (!rows.isEmpty()) {
+                NotificationDTO notification = buildDeleteEmailNotification(session, schedule, rows);
+                notificationService.sendEmailToUsers(notification, instituteId);
+                System.out.println("Delete notification sent for session: " + sessionId + " to " + rows.size() + " participants");
+            }
+        } catch (Exception ex) {
+            System.out.println("Error sending delete notification for session " + sessionId + ": " + ex.getMessage());
+            // Don't rethrow - we don't want to prevent deletion if notification fails
+        }
+    }
+
+    @Transactional
+    public void sendDeleteNotificationForSchedules(List<String> scheduleIds, String instituteId) {
+        for (String scheduleId : scheduleIds) {
+            try {
+                // Get session ID from schedule
+                String sessionId = sessionScheduleRepository.findSessionIdByScheduleId(scheduleId, "DELETED");
+                if (sessionId == null) {
+                    System.out.println("Session ID not found for schedule: " + scheduleId);
+                    continue;
+                }
+
+                // Get session details
+                Optional<LiveSession> sessionOpt = liveSessionRepository.findById(sessionId);
+                if (sessionOpt.isEmpty()) {
+                    System.out.println("Session not found for schedule delete notification: " + sessionId);
+                    continue;
+                }
+                LiveSession session = sessionOpt.get();
+
+                // Get participants
+                List<LiveSessionParticipants> participants = liveSessionParticipantRepository.findBySessionId(sessionId);
+                if (participants == null || participants.isEmpty()) {
+                    System.out.println("No participants found for session: " + sessionId);
+                    continue;
+                }
+
+                // Get the specific schedule being deleted
+                Optional<SessionSchedule> scheduleOpt = sessionScheduleRepository.findById(scheduleId);
+                SessionSchedule schedule = scheduleOpt.orElse(null);
+
+                // Fetch students
+                List<Object[]> rows = getStudentsForNotification(participants, instituteId);
+
+                if (!rows.isEmpty()) {
+                    NotificationDTO notification = buildDeleteEmailNotification(session, schedule, rows);
+                    notificationService.sendEmailToUsers(notification, instituteId);
+                    System.out.println("Delete notification sent for schedule: " + scheduleId + " to " + rows.size() + " participants");
+                }
+            } catch (Exception ex) {
+                System.out.println("Error sending delete notification for schedule " + scheduleId + ": " + ex.getMessage());
+            }
+        }
+    }
+
+    private NotificationDTO buildDeleteEmailNotification(LiveSession session, SessionSchedule schedule, List<Object[]> rows) {
+        NotificationDTO dto = new NotificationDTO();
+        dto.setBody(LiveClassEmailBody.Live_Class_Delete_Email_Body);
+        dto.setSubject("Live Class Cancelled - " + (session.getTitle() != null ? session.getTitle() : "Live Class"));
+        dto.setNotificationType("EMAIL");
+        dto.setSource("ADMIN_CORE");
+        dto.setSourceId(session.getId());
+
+        List<NotificationToUserDTO> users = new ArrayList<>();
+        for (Object[] r : rows) {
+            // Handle different data structures from batch vs individual user queries
+            String userId, fullName, email;
+            
+            if (r.length >= 6) {
+                // Batch query result: [mapping_id, user_id, expiry_date, full_name, mobile_number, email, package_session_id]
+                userId = (String) r[1];
+                fullName = (String) r[3];
+                email = (String) r[5];
+            } else {
+                // Individual user query result: [user_id, full_name, mobile_number, email]
+                userId = (String) r[0];
+                fullName = (String) r[1];
+                email = (String) r[3];
+            }
+            
+            NotificationToUserDTO u = new NotificationToUserDTO();
+            Map<String, String> placeholders = new HashMap<>();
+            placeholders.put("NAME", fullName);
+            placeholders.put("SESSION_TITLE", session.getTitle() != null ? session.getTitle() : "Live Class");
+
+            // Add schedule details if available
+            if (schedule != null) {
+                // Format date and time
+                if (schedule.getMeetingDate() != null && schedule.getStartTime() != null) {
+                    // format date
+                    String date = new SimpleDateFormat("EEEE, MMMM d, yyyy").format(schedule.getMeetingDate());
+
+                    // format time in 12-hour with AM/PM
+                    String time = new SimpleDateFormat("h:mm a").format(schedule.getStartTime());
+
+                    placeholders.put("DATE", date);
+                    placeholders.put("TIME", time);
+                } else {
+                    placeholders.put("DATE", "TBD");
+                    placeholders.put("TIME", "TBD");
+                }
+            } else {
+                placeholders.put("DATE", "TBD");
+                placeholders.put("TIME", "TBD");
+            }
+
+            u.setPlaceholders(placeholders);
+            u.setUserId(userId);
+            u.setChannelId(email);
+            users.add(u);
+        }
+        dto.setUsers(users);
+        return dto;
+    }
+
 }

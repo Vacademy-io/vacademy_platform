@@ -209,7 +209,8 @@ export function ModalSpecificLoginForm({
             </motion.div>
 
             {/* Security Notice */}
-            <motion.div
+            {/* Security message removed as requested */}
+            {/* <motion.div
                 initial={{ y: 10, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 1.3 }}
@@ -226,7 +227,7 @@ export function ModalSpecificLoginForm({
                         </p>
                     </div>
                 </div>
-            </motion.div>
+            </motion.div> */}
 
             {/* Footer Links */}
             <motion.div

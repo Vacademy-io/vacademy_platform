@@ -4,5 +4,5 @@ public enum NotificationStatusEnum {
     SENT,
     PENDING,
     DISABLED,
-    // DELETED, //this is not needed yet
+    DELETED, //this is not needed yet
 }

@@ -1,6 +1,7 @@
 package vacademy.io.media_service.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -19,40 +20,71 @@ public class InternalFileController {
     private FileService fileService;
 
     @GetMapping("/get-url/id")
-    public ResponseEntity<String> getFileUrlById(@RequestParam String fileId, @RequestParam Integer expiryDays) throws FileDownloadException {
+    public ResponseEntity<String> getFileUrlById(@RequestParam String fileId,
+                                                 @RequestParam Integer expiryDays,
+                                                 @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) throws FileDownloadException {
         String url = fileService.getUrlWithExpiryAndId(fileId, expiryDays);
-        return ResponseEntity.ok(url);
+
+        String etag = "W/\"" + fileId + ":" + expiryDays + "\"";
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Cache-Control", "public, max-age=3600, stale-while-revalidate=60");
+        headers.setETag(etag);
+
+        if (etag.equals(ifNoneMatch)) {
+            return new ResponseEntity<>(null, headers, HttpStatus.NOT_MODIFIED);
+        }
+
+        return ResponseEntity.ok().headers(headers).body(url);
     }
 
     @GetMapping("/get-details/id")
     public ResponseEntity<FileDetailsDTO> getFileDetailsById(@RequestParam String fileId, @RequestParam Integer expiryDays) throws FileDownloadException {
         FileDetailsDTO fileDetailsDTO = fileService.getFileDetailsWithExpiryAndId(fileId, expiryDays);
-        return ResponseEntity.ok(fileDetailsDTO);
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
+        String etag = "W/\"" + fileId + ":" + expiryDays + "\"";
+        headers.setETag(etag);
+        return ResponseEntity.ok().headers(headers).body(fileDetailsDTO);
     }
 
     @GetMapping("/get-details/ids")
     public ResponseEntity<List<FileDetailsDTO>> getFileDetailsByIds(@RequestParam String fileIds, @RequestParam Integer expiryDays) throws FileDownloadException {
         List<FileDetailsDTO> fileDetailsDTO = fileService.getMultipleFileDetailsWithExpiryAndId(fileIds, expiryDays);
-
-        return ResponseEntity.ok(fileDetailsDTO);
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
+        String etag = "W/\"" + fileIds + ":" + expiryDays + "\"";
+        headers.setETag(etag);
+        return ResponseEntity.ok().headers(headers).body(fileDetailsDTO);
     }
 
     @GetMapping("/get-url/id/many")
     public ResponseEntity<List<Map<String, String>>> getMultipleFileUrlById(@RequestParam String fileIds, @RequestParam Integer expiryDays) throws FileDownloadException {
         List<Map<String, String>> url = fileService.getMultipleUrlWithExpiryAndId(fileIds, expiryDays);
-        return ResponseEntity.ok(url);
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Cache-Control", "public, max-age=3600, stale-while-revalidate=60");
+        String etag = "W/\"" + fileIds + ":" + expiryDays + "\"";
+        headers.setETag(etag);
+        return ResponseEntity.ok().headers(headers).body(url);
     }
 
     @GetMapping("/get-public-url/id/many")
     public ResponseEntity<List<Map<String, String>>> getMultipleFilePublicUrlById(@RequestParam String fileIds) throws FileDownloadException {
         List<Map<String, String>> url = fileService.getMultiplePublicUrlWithExpiryAndId(fileIds);
-        return ResponseEntity.ok(url);
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Cache-Control", "public, max-age=3600, stale-while-revalidate=60");
+        String etag = "W/\"" + fileIds + ":public\"";
+        headers.setETag(etag);
+        return ResponseEntity.ok().headers(headers).body(url);
     }
 
     @GetMapping("/get-public-url/source")
     public ResponseEntity<String> getFileUrlBySource(@RequestParam String source, @RequestParam String sourceId, @RequestParam Integer expiryDays) throws FileDownloadException {
         String url = fileService.getPublicUrlWithExpiryAndSource(source, sourceId, expiryDays);
-        return ResponseEntity.ok(url);
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Cache-Control", "public, max-age=3600, stale-while-revalidate=60");
+        String etag = "W/\"" + source + ":" + sourceId + ":" + expiryDays + "\"";
+        headers.setETag(etag);
+        return ResponseEntity.ok().headers(headers).body(url);
     }
 
     @PutMapping("/upload-file")

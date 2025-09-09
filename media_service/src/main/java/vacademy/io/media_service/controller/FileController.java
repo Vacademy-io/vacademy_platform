@@ -1,6 +1,7 @@
 package vacademy.io.media_service.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -26,10 +27,23 @@ public class FileController {
     }
 
     @GetMapping("/get-public-url")
-    public ResponseEntity<String> getFileUrl(@RequestAttribute("user") CustomUserDetails userDetails, @RequestParam String fileId, @RequestParam Integer expiryDays) throws FileDownloadException {
+    public ResponseEntity<String> getFileUrl(@RequestAttribute("user") CustomUserDetails userDetails,
+                                             @RequestParam String fileId,
+                                             @RequestParam Integer expiryDays,
+                                             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) throws FileDownloadException {
 
         String url = fileService.getUrlWithExpiryAndId(fileId, expiryDays);
-        return ResponseEntity.ok(url);
+
+        String etag = "W/\"" + fileId + ":" + expiryDays + "\"";
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Cache-Control", "public, max-age=3600, stale-while-revalidate=60");
+        headers.setETag(etag);
+
+        if (etag.equals(ifNoneMatch)) {
+            return ResponseEntity.status(304).headers(headers).build();
+        }
+
+        return ResponseEntity.ok().headers(headers).body(url);
     }
 
     @PostMapping("/acknowledge")
@@ -41,7 +55,11 @@ public class FileController {
     public ResponseEntity<List<FileDetailsDTO>> getFileDetailsByIds(@RequestAttribute("user") CustomUserDetails userDetails, @RequestParam String fileIds, @RequestParam Integer expiryDays) throws FileDownloadException {
         List<FileDetailsDTO> fileDetailsDTO = fileService.getMultipleFileDetailsWithExpiryAndId(fileIds, expiryDays);
 
-        return ResponseEntity.ok(fileDetailsDTO);
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
+        String etag = "W/\"" + fileIds + ":" + expiryDays + "\"";
+        headers.setETag(etag);
+        return ResponseEntity.ok().headers(headers).body(fileDetailsDTO);
     }
 
     @PostMapping("/acknowledge-get-details")

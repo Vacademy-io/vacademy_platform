@@ -7,6 +7,8 @@ import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.slide.dto.SlideDetailWithOperationProjection;
 import vacademy.io.admin_core_service.features.slide.service.LearnerSlideService;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.admin_core_service.config.cache.ClientCacheable;
+import vacademy.io.admin_core_service.config.cache.CacheScope;
 
 import java.util.List;
 
@@ -18,6 +20,7 @@ public class LearnerSlideController {
     private final LearnerSlideService learnerSlideService;
 
     @GetMapping("/get-slides-with-status")
+    @ClientCacheable(maxAgeSeconds = 60, scope = CacheScope.PRIVATE, varyHeaders = {"X-User-Id"})
     public ResponseEntity<List<SlideDetailWithOperationProjection>> getLearnerSlides(@RequestParam("userId") String userId, @RequestParam("chapterId") String chapterId, @RequestAttribute("user") CustomUserDetails userDetails) {
         return ResponseEntity.ok(learnerSlideService.getLearnerSlides(userId, chapterId, userDetails));
     }

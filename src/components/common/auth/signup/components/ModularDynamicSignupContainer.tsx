@@ -732,10 +732,7 @@ export function ModularDynamicSignupContainer({
             <CredentialsForm
               settings={effectiveSettings}
               initialData={{
-                // Only pre-fill full name if usernameStrategy is not "email"
-                ...(effectiveSettings.usernameStrategy !== "email" ? {
-                  fullName: (selectedProvider === "oauth" && oauthData?.signupData?.name) || fullNameForOtp || ""
-                } : {}),
+                fullName: (selectedProvider === "oauth" && oauthData?.signupData?.name) || fullNameForOtp || "",
                 ...(effectiveSettings.usernameStrategy === "manual" || effectiveSettings.usernameStrategy === " " ? {
                   username: selectedProvider === "oauth" && oauthData?.signupData?.email ? oauthData.signupData.email : ""
                 } : {}),
@@ -748,15 +745,10 @@ export function ModularDynamicSignupContainer({
                     : emailForOtp;
                   
                   // Use unified registration hook with settings
-                  // When usernameStrategy is "email", use email as full name for OAuth flows
-                  const fullNameToUse = effectiveSettings.usernameStrategy === "email" && selectedProvider === "oauth" 
-                    ? email 
-                    : (data.fullName || fullNameForOtp);
-                  
                   await registerUserUnified({
                     username: data.username,
                     email: email,
-                    full_name: fullNameToUse,
+                    full_name: data.fullName || fullNameForOtp,
                     password: data.password,
                     instituteId: instituteId!,
                     settings: effectiveSettings, // Pass settings for credential generation
@@ -779,14 +771,17 @@ export function ModularDynamicSignupContainer({
               isOAuth={selectedProvider === "oauth"}
               oauthProvider={selectedProvider === "oauth" && oauthData?.signupData?.provider ? oauthData.signupData.provider : ""}
               hideFullName={
-                // Hide full name if:
-                // 1. OAuth flow with usernameStrategy = "email", OR
-                // 2. OAuth flow with name available AND no manual credentials needed
-                (selectedProvider === "oauth" && effectiveSettings.usernameStrategy === "email") ||
-                (selectedProvider === "oauth" && 
-                 oauthData?.signupData?.name && 
-                 !(effectiveSettings.usernameStrategy === "manual" || effectiveSettings.usernameStrategy === " ") &&
-                 !(effectiveSettings.passwordStrategy === "manual" || effectiveSettings.passwordStrategy === " "))
+                // For OAuth flows: hide full name if:
+                // 1. We have OAuth name AND no manual credentials are needed, OR
+                // 2. usernameStrategy is "email" (hide field but still use OAuth name)
+                // For Email OTP: never hide full name (always ask for it after OTP verification)
+                selectedProvider === "oauth" && 
+                oauthData?.signupData?.name && 
+                (
+                  (!(effectiveSettings.usernameStrategy === "manual" || effectiveSettings.usernameStrategy === " ") &&
+                   !(effectiveSettings.passwordStrategy === "manual" || effectiveSettings.passwordStrategy === " ")) ||
+                  effectiveSettings.usernameStrategy === "email"
+                )
               }
             />
           </>

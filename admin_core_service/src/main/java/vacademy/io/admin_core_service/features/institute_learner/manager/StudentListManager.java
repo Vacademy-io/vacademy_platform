@@ -28,6 +28,7 @@ import vacademy.io.admin_core_service.features.institute_learner.dto.student_lis
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.institute_learner.service.StudentFilterService;
+import vacademy.io.admin_core_service.features.live_session.service.AttendanceReportService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.common.auth.dto.UserCredentials;
@@ -38,6 +39,7 @@ import vacademy.io.common.core.utils.DataToCsvConverter;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.sql.Timestamp;
+import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -57,6 +59,9 @@ public class StudentListManager {
 
     @Autowired
     StudentFilterService studentFilterService;
+
+    @Autowired
+    AttendanceReportService attendanceReportService;
 
     @Value("${auth.server.baseurl}")
     private String authServerBaseUrl;
@@ -90,10 +95,48 @@ public class StudentListManager {
 
     }
 
+    /**
+     * Enriches students with attendance percentage data
+     * @param students List of students to enrich with attendance data
+     */
+    private void enrichStudentsWithAttendancePercentage(List<StudentDTO> students) {
+        if (students == null || students.isEmpty()) {
+            return;
+        }
+
+        // Calculate attendance percentage for each student
+        for (StudentDTO student : students) {
+            try {
+                // Get the package session ID for the student
+                String packageSessionId = student.getPackageSessionId();
+                String userId = student.getUserId();
+                
+                if (packageSessionId != null && userId != null) {
+                    // Calculate attendance for the last 30 days as a reasonable default period
+                    LocalDate endDate = LocalDate.now();
+                    LocalDate startDate = endDate.minusDays(30);
+                    
+                    // Get attendance report for the student
+                    var attendanceReport = attendanceReportService.getStudentReport(userId, packageSessionId, startDate, endDate);
+                    student.setAttendancePercent(attendanceReport.getAttendancePercentage());
+                } else {
+                    // Set to 0.0 if no package session or user ID
+                    student.setAttendancePercent(0.0);
+                }
+            } catch (Exception e) {
+                // Log error and set attendance to 0.0 in case of any issues
+                // You might want to add proper logging here
+                student.setAttendancePercent(0.0);
+            }
+        }
+    }
+
     private AllStudentResponse createAllStudentResponseFromPaginatedData(Page<StudentDTO> studentPage) {
         List<StudentDTO> content = new ArrayList<>();
         if (!Objects.isNull(studentPage)) {
             content = studentPage.getContent();
+            // Calculate attendance percentage for each student
+            enrichStudentsWithAttendancePercentage(content);
             return AllStudentResponse.builder().content(content).pageNo(studentPage.getNumber())
                     .last(studentPage.isLast()).pageSize(studentPage.getSize()).totalPages(studentPage.getTotalPages())
                     .totalElements(studentPage.getTotalElements()).build();

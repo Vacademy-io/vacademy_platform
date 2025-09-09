@@ -177,12 +177,19 @@ public class Step2Service {
         // Handle batch participants (existing functionality)
         if (request.getPackageSessionIds() != null) {
             for (String packageSessionId : request.getPackageSessionIds()) {
-                LiveSessionParticipants participant = LiveSessionParticipants.builder()
-                        .sessionId(request.getSessionId())
-                        .sourceType(LiveSessionParticipantsEnum.BATCH.name())
-                        .sourceId(packageSessionId)
-                        .build();
-                liveSessionParticipantRepository.save(participant);
+                // Check if participant already exists to prevent duplicates
+                if (!liveSessionParticipantRepository.existsBySessionIdAndSourceTypeAndSourceId(
+                        request.getSessionId(), 
+                        LiveSessionParticipantsEnum.BATCH.name(), 
+                        packageSessionId)) {
+                    
+                    LiveSessionParticipants participant = LiveSessionParticipants.builder()
+                            .sessionId(request.getSessionId())
+                            .sourceType(LiveSessionParticipantsEnum.BATCH.name())
+                            .sourceId(packageSessionId)
+                            .build();
+                    liveSessionParticipantRepository.save(participant);
+                }
             }
         }
 
@@ -196,12 +203,19 @@ public class Step2Service {
         // Handle individual user participants (new functionality)
         if (request.getIndividualUserIds() != null) {
             for (String userId : request.getIndividualUserIds()) {
-                LiveSessionParticipants participant = LiveSessionParticipants.builder()
-                        .sessionId(request.getSessionId())
-                        .sourceType(LiveSessionParticipantsEnum.USER.name())
-                        .sourceId(userId)
-                        .build();
-                liveSessionParticipantRepository.save(participant);
+                // Check if participant already exists to prevent duplicates
+                if (!liveSessionParticipantRepository.existsBySessionIdAndSourceTypeAndSourceId(
+                        request.getSessionId(), 
+                        LiveSessionParticipantsEnum.USER.name(), 
+                        userId)) {
+                    
+                    LiveSessionParticipants participant = LiveSessionParticipants.builder()
+                            .sessionId(request.getSessionId())
+                            .sourceType(LiveSessionParticipantsEnum.USER.name())
+                            .sourceId(userId)
+                            .build();
+                    liveSessionParticipantRepository.save(participant);
+                }
             }
         }
 

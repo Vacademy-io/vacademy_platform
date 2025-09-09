@@ -48,6 +48,7 @@ public class StudentDTO {
     private String parentsToMotherMobileNumber;
     private String parentsToMotherEmail;
     private String userPlanId;
+    private Double attendancePercent;
 
     // Constructor that takes a Student entity
     public StudentDTO(Student student) {
@@ -124,6 +125,9 @@ public class StudentDTO {
             }
             if (objects.length > 27){
                 this.userPlanId = (String) objects[27]; // Additional field from mapping table
+            }
+            if (objects.length > 28){
+                this.attendancePercent = (Double) objects[28]; // Additional field for attendance percentage
             }
         }
     }

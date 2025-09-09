@@ -11,8 +11,8 @@ interface StoreState {
   setSidebarOpen: () => void;
   setSideBarState: (sidebarstate: sideBarStateType) => void;
   setInstituteDetails: (
-    instituteName: string,
-    instituteLogoFileUrl: string
+    instituteName?: string,
+    instituteLogoFileUrl?: string
   ) => void;
 }
 
@@ -24,8 +24,18 @@ const useStore = create<StoreState>((set) => ({
   setSidebarOpen: () => set((state) => ({ sideBarOpen: !state.sideBarOpen })),
   setSideBarState: (sidebarstate) => set({ sideBarState: sidebarstate }),
 
-  setInstituteDetails: async () => {
+  setInstituteDetails: async (name?: string, logoUrl?: string) => {
     try {
+      // If explicit values are provided, set them directly
+      if (typeof name === 'string') {
+        set({
+          instituteName: name,
+          instituteLogoFileUrl: logoUrl ?? "",
+        });
+        return;
+      }
+
+      // Fallback: fetch from Preferences
       const InstituteDetailsData = await Preferences.get({
         key: "InstituteDetails",
       });

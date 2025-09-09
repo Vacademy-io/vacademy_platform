@@ -8,7 +8,7 @@ function RootErrorComponent() {
     return (
         <>
             <Helmet>
-                <title>Unknown error occurred (500)</title>
+                <title>{document?.title || "Unknown error occurred (500)"}</title>
                 <meta
                     name="description"
                     content="An unexpected error occurred on the server. Please try again later or contact support."

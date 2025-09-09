@@ -540,7 +540,7 @@ const AssessmentRegistrationForm = () => {
                 />
             )}
             {!userHasAttemptCount && case2Status && (
-                <div className="flex w-full items-center justify-center bg-[linear-gradient(180deg,#FFF9F4_0%,#E6E6FA_100%)] gap-8 flex-col sm:flex-row">
+                <div className="flex w-full items-center justify-center bg-background gap-8 flex-col sm:flex-row">
                     <div className="flex justify-center items-center w-full mt-4">
                         <div className="flex flex-col w-full sm:w-3/4 items-center justify-center gap-6">
                             <VacademyLogoWeb />

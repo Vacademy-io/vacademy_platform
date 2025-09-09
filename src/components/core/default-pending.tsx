@@ -5,7 +5,7 @@ function RootPendingComponent() {
     return (
         <>
             <Helmet>
-                <title>Page Loading...</title>
+                <title>{document?.title || "Page Loading..."}</title>
                 <meta
                     name="description"
                     content="Please wait a moment while we prepare the page. Your experience is just around the corner!"

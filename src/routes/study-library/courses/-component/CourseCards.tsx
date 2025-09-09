@@ -56,6 +56,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
     const instructorImage = instructor?.image_url || fallbackInstructorImage;
 
     const ratingValue = rating || 0;
+    const cappedPercentageCompleted = Math.min(percentageCompleted, 100);
 
     const router = useRouter();
     const handleViewCoureseDetails = (id: string) => {
@@ -64,10 +65,10 @@ const CourseCard: React.FC<CourseCardProps> = ({
             // Persist percentage locally as a fallback for details page
             const key = `COURSE_PCT_${id}`;
             LocalStorageUtils.set(key, {
-                value: percentageCompleted,
+                value: cappedPercentageCompleted,
                 ts: Date.now(),
             });
-        } catch (e) {
+        } catch {
             // Failed to save percentage to localStorage
         }
         router.navigate({
@@ -75,7 +76,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
             search: {
                 courseId: id,
                 selectedTab: selectedTab,
-                percentageCompleted,
+                percentageCompleted: cappedPercentageCompleted,
             },
         });
     };
@@ -98,7 +99,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                     const next = url || null;
                     setCourseImageUrl((prev) => (prev === next ? prev : next));
                 }
-            } catch (error) {
+            } catch {
                 if (isMounted) {
                     setCourseImageUrl((prev) => (prev === null ? prev : null));
                 }
@@ -312,18 +313,12 @@ const CourseCard: React.FC<CourseCardProps> = ({
                     <div className="mb-3 sm:mb-4 -mt-1 flex items-center gap-2">
                         {percentageCompleted && (
                             <ProgressBar
-                                value={
-                                    percentageCompleted > 100
-                                        ? 100
-                                        : percentageCompleted
-                                }
+                                value={cappedPercentageCompleted}
                             />
                         )}
                         {percentageCompleted && (
                             <span className="text-sm">
-                                {percentageCompleted > 100
-                                    ? 100
-                                    : percentageCompleted.toFixed(2)}
+                                {cappedPercentageCompleted.toFixed(2)}
                                 %
                             </span>
                         )}
@@ -332,12 +327,9 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
                 {/* Action button */}
                 <button
-                    className="relative mt-auto w-full overflow-hidden bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white py-2.5 sm:py-3 px-3 sm:px-4 rounded-md sm:rounded-lg font-semibold text-sm transition-all duration-200 group/btn flex items-center justify-center space-x-2 shadow-md"
+                    className="relative mt-auto w-full overflow-hidden bg-primary text-primary-foreground hover:bg-primary/90 py-2.5 sm:py-3 px-3 sm:px-4 rounded-md sm:rounded-lg font-semibold text-sm transition-all duration-200 group/btn flex items-center justify-center space-x-2 shadow-md"
                     onClick={() => handleViewCoureseDetails(courseId)}
                 >
-                    {/* Shimmer effect */}
-                    <div className="absolute inset-0 -skew-x-12 -translate-x-full group-hover/btn:translate-x-full bg-gradient-to-r from-transparent via-white/40 to-transparent transition-transform duration-700"></div>
-
                     <BookOpen
                         size={14}
                         className="transition-transform duration-300 group-hover/btn:scale-110 sm:w-4 sm:h-4"

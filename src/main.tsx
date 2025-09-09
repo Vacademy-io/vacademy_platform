@@ -96,7 +96,7 @@ if (!rootElement.innerHTML) {
   const root = ReactDOM.createRoot(rootElement);
   root.render(
     <StrictMode>
-      <ModeThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
+      <ModeThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
       <ColorThemeProvider>
         <QueryClientProvider client={queryClient}>
           <NotificationInitializer>

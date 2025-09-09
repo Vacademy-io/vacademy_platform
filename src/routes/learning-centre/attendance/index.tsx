@@ -162,7 +162,7 @@ function RouteComponent() {
   return (
     <LayoutContainer>
       <Helmet>
-        <title>My Attendance</title>
+        <title>{document?.title || "My Attendance"}</title>
         <meta
           name="description"
           content="Track your attendance for live classes and sessions"
@@ -172,7 +172,7 @@ function RouteComponent() {
       <div className="flex flex-col gap-4">
         {/* Heading */}
         <div>
-          <h1 className="text-2xl font-semibold text-neutral-800">
+          <h1 className="text-xl font-semibold text-neutral-800 sm:text-2xl">
             My Attendance
           </h1>
           <p className="text-neutral-600">
@@ -208,9 +208,61 @@ function RouteComponent() {
           )}
         </div>
 
-        {/* Table */}
+        {/* Mobile cards (visible on small screens) */}
+        <div className="md:hidden">
+          {isLoading ? (
+            <div className="rounded-lg border border-neutral-200 bg-white p-4 text-center text-neutral-500">
+              Loading attendance data...
+            </div>
+          ) : error ? (
+            <div className="rounded-lg border border-danger-200 bg-white p-4 text-center text-danger-600">
+              Error: {(error as Error)?.message || "An error occurred"}
+            </div>
+          ) : !isNullOrEmptyOrUndefined(paginatedData) ? (
+            <div className="space-y-3">
+              {paginatedData?.map((cls, idx) => (
+                <div
+                  key={idx}
+                  className="rounded-lg border border-neutral-200 bg-white p-3"
+                >
+                  <div className="mb-2 text-sm font-semibold text-neutral-800">
+                    {cls.sessionTitle}
+                  </div>
+                  <div className="mb-2 text-xs text-neutral-600">
+                    {format(parseISO(cls.meetingDate), "MMM dd, yyyy")} • {selectedBatchLabel}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                        cls.accessLevel === "private"
+                          ? "bg-primary-50 text-primary-600"
+                          : "bg-purple-50 text-purple-600"
+                      }`}
+                    >
+                      {cls.accessLevel === "private" ? "Private" : "Public"}
+                    </span>
+                    <span
+                      className={`rounded-full px-3 py-0.5 text-[10px] font-medium ${
+                        cls.attendanceStatus === "PRESENT"
+                          ? "bg-success-50 text-success-600"
+                          : "bg-danger-100 text-danger-600"
+                      }`}
+                    >
+                      {cls.attendanceStatus}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-neutral-200 bg-white p-4 text-center text-neutral-500">
+              No classes found for the selected filters.
+            </div>
+          )}
+        </div>
 
-        <div className="overflow-hidden rounded-lg border border-neutral-200">
+        {/* Table (visible on md and larger) */}
+        <div className="hidden overflow-hidden rounded-lg border border-neutral-200 md:block">
           <div className="w-full overflow-x-auto">
             <table className="w-full min-w-[800px] table-auto border-collapse">
               <thead>
@@ -306,7 +358,7 @@ function RouteComponent() {
         </div>
 
         {/* Pagination controls */}
-        <div className="mt-4">
+        <div className="mt-4 flex justify-center md:justify-end">
           <MyPagination
             currentPage={page}
             totalPages={totalPages}
@@ -330,7 +382,7 @@ function RangeDateFilter({ range, onChange }: RangeDateFilterProps) {
       <Popover>
         <PopoverTrigger asChild>
           <button
-            className={`flex h-9 w-full items-center justify-between rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm ${
+            className={`flex h-11 w-full items-center justify-between rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm ${
               from || to ? "text-neutral-900" : "text-neutral-500"
             } focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500`}
           >
@@ -346,15 +398,15 @@ function RangeDateFilter({ range, onChange }: RangeDateFilterProps) {
             <CalendarIcon className="ml-2 size-4 text-neutral-500" />
           </button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-3" align="start">
-          <div className="flex gap-3">
+        <PopoverContent className="w-[min(92vw,720px)] p-3 sm:w-auto" align="start">
+          <div className="flex flex-col gap-3 sm:flex-row">
             <Calendar
               mode="range"
               selected={range}
               onSelect={(sel: { from?: Date; to?: Date } | undefined) =>
                 onChange(sel || {})
               }
-              className="border-r border-neutral-100 pr-3"
+              className="sm:border-r sm:border-neutral-100 sm:pr-3"
             />
             {/* Quick presets */}
             <div className="flex flex-col gap-2 pt-1">
@@ -385,7 +437,7 @@ function RangeDateFilter({ range, onChange }: RangeDateFilterProps) {
                   onClick={() =>
                     onChange({ from: preset.from, to: new Date() })
                   }
-                  className="w-full rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-left text-xs hover:border-neutral-300 hover:bg-neutral-50"
+                  className="w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-left text-xs hover:border-neutral-300 hover:bg-neutral-50"
                 >
                   {preset.label}
                 </button>
@@ -416,7 +468,7 @@ function BatchDropdown({
       <Popover>
         <PopoverTrigger asChild>
           <button
-            className={`flex h-9 w-full items-center justify-between rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm ${
+            className={`flex h-11 w-full items-center justify-between rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm ${
               value !== "All Batches" ? "text-neutral-900" : "text-neutral-500"
             } focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500`}
           >
@@ -424,8 +476,8 @@ function BatchDropdown({
             <CaretDownIcon className="ml-2 size-4 text-neutral-500" />
           </button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-3" align="start">
-          <div className="flex flex-col gap-2">
+        <PopoverContent className="w-[min(92vw,360px)] p-3 sm:w-auto" align="start">
+          <div className="flex max-h-[50vh] flex-col gap-2 overflow-auto">
             <h4 className="mb-1 text-xs font-medium text-neutral-500">
               {label}
             </h4>
@@ -433,7 +485,7 @@ function BatchDropdown({
               <button
                 key={opt.value || "all"}
                 onClick={() => onSelect(opt.value)}
-                className={`w-full rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-left text-xs hover:border-neutral-300 hover:bg-neutral-50 ${
+                className={`w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-left text-xs hover:border-neutral-300 hover:bg-neutral-50 ${
                   value === opt.label ? "bg-primary-50 text-primary-600" : ""
                 }`}
               >

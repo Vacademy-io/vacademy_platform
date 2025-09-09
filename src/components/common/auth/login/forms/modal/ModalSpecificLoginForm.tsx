@@ -113,7 +113,7 @@ export function ModalSpecificLoginForm({
                         Welcome Back
                     </h3>
                     <p className="text-sm text-gray-600">
-                        Sign in to continue your learning journey
+                        Sign in to continue your journey
                     </p>
                 </div>
             </motion.div>

@@ -1,27 +1,11 @@
-import {
-    TreeStructure,
-    FileText,
-    PresentationChart,
-    Folder,
-    ChalkboardTeacher,
-    PlayCircle,
-    Code,
-    FilePdf,
-    FileDoc,
-    Question,
-    ClipboardText,
-    Presentation,
-    Notebook,
-    GameController,
-    Exam,
-    Terminal,
-    File,
-} from "phosphor-react";
+import { FileText, PresentationChart, Folder, ChalkboardTeacher } from "phosphor-react";
 import { Steps } from "@phosphor-icons/react";
+import { useEffect } from "react";
 import { MyButton } from "@/components/design-system/button";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { CourseDetailsRatingsComponent } from "./course-details-ratings-page";
+import { formatTotalCourseDuration, SlideCountEntry } from "@/utils/courseTime";
 
 interface LevelOption {
     _id: string;
@@ -69,124 +53,32 @@ interface CourseSidebarProps {
     selectedLevel: string;
     slideCountQuery: {
         isLoading: boolean;
-        error: any;
+        error: unknown;
+        // data is optional but if present, can be used for precise totals
+        data?: Array<{
+            slide_count: number;
+            total_read_time_minutes: number | null;
+            source_type: string;
+        }>;
     };
     overviewVisible: boolean;
     processedSlideCounts: SlideCount[];
     moduleStats: ModuleStats;
-    currentSubjects: any[];
+    currentSubjects: unknown[];
     courseStructure: number;
     instructorsCount: number;
     selectedTab: string;
     selectedSession: string;
     enrolledSessions: EnrolledSession[];
     courseId: string;
+    primaryInstructorName?: string;
     paymentType?: string | null;
     packageSessionIdForCurrentLevel?: string | null;
     onEnrollmentClick: () => void;
     onRatingsLoadingChange: (loading: boolean) => void;
 }
 
-const getSlideTypeIcon = (sourceType: string) => {
-    switch (sourceType.toLowerCase()) {
-        case "video":
-            return (
-                <PlayCircle
-                    size={16}
-                    className="text-blue-600 group-hover/item:scale-110 transition-transform duration-300"
-                    weight="duotone"
-                />
-            );
-        case "code":
-            return (
-                <Code
-                    size={16}
-                    className="text-green-600 group-hover/item:scale-110 transition-transform duration-300"
-                    weight="duotone"
-                />
-            );
-        case "pdf":
-            return (
-                <FilePdf
-                    size={16}
-                    className="text-red-600 group-hover/item:scale-110 transition-transform duration-300"
-                    weight="duotone"
-                />
-            );
-        case "document":
-            return (
-                <FileDoc
-                    size={16}
-                    className="text-purple-600 group-hover/item:scale-110 transition-transform duration-300"
-                    weight="duotone"
-                />
-            );
-        case "question":
-            return (
-                <Question
-                    size={16}
-                    className="text-orange-600 group-hover/item:scale-110 transition-transform duration-300"
-                    weight="duotone"
-                />
-            );
-        case "assignment":
-            return (
-                <ClipboardText
-                    size={16}
-                    className="text-indigo-600 group-hover/item:scale-110 transition-transform duration-300"
-                    weight="duotone"
-                />
-            );
-        case "presentation":
-            return (
-                <Presentation
-                    size={16}
-                    className="text-cyan-600 group-hover/item:scale-110 transition-transform duration-300"
-                    weight="duotone"
-                />
-            );
-        case "notes":
-            return (
-                <Notebook
-                    size={16}
-                    className="text-yellow-600 group-hover/item:scale-110 transition-transform duration-300"
-                    weight="duotone"
-                />
-            );
-        case "game":
-            return (
-                <GameController
-                    size={16}
-                    className="text-pink-600 group-hover/item:scale-110 transition-transform duration-300"
-                    weight="duotone"
-                />
-            );
-        case "exam":
-            return (
-                <Exam
-                    size={16}
-                    className="text-teal-600 group-hover/item:scale-110 transition-transform duration-300"
-                    weight="duotone"
-                />
-            );
-        case "terminal":
-            return (
-                <Terminal
-                    size={16}
-                    className="text-gray-600 group-hover/item:scale-110 transition-transform duration-300"
-                    weight="duotone"
-                />
-            );
-        default:
-            return (
-                <File
-                    size={16}
-                    className="text-gray-500 group-hover/item:scale-110 transition-transform duration-300"
-                    weight="duotone"
-                />
-            );
-    }
-};
+// Removed per-type slide icon rendering; sidebar now shows only aggregate time
 
 export const CourseSidebar = ({
     hasRightSidebar,
@@ -203,12 +95,17 @@ export const CourseSidebar = ({
     selectedSession,
     enrolledSessions,
     courseId,
-    paymentType,
+    primaryInstructorName,
     packageSessionIdForCurrentLevel,
     onEnrollmentClick,
     onRatingsLoadingChange,
 }: CourseSidebarProps) => {
     if (!hasRightSidebar) return null;
+
+    const capitalizeFirst = (text: string): string => {
+        if (!text) return text;
+        return text.charAt(0).toUpperCase() + text.slice(1);
+    };
 
     const safeEnrolledSessions = enrolledSessions || [];
     const isAlreadyEnrolled = safeEnrolledSessions.some(
@@ -218,9 +115,40 @@ export const CourseSidebar = ({
             enrolledSession.level.id === selectedLevel
     );
 
+    // Compute total duration from either provided raw data or processed counts as fallback
+    const totalDuration = (() => {
+        const raw = (slideCountQuery as unknown as { data?: SlideCountEntry[] })?.data;
+        if (raw && Array.isArray(raw)) {
+            return formatTotalCourseDuration(raw);
+        }
+        // fallback: map processedSlideCounts into SlideCountEntry with null minutes
+        const mapped: SlideCountEntry[] = (processedSlideCounts || []).map((c) => ({
+            slide_count: c.slide_count,
+            total_read_time_minutes: null,
+            source_type: c.source_type,
+        }));
+        return formatTotalCourseDuration(mapped);
+    })();
+
+    const displayAuthorName = (() => {
+        if (primaryInstructorName && String(primaryInstructorName).trim().length > 0) {
+            return primaryInstructorName;
+        }
+        // Fallback label when instructors exist but no name available in form
+        if (instructorsCount > 0) {
+            return "Unknown Instructor";
+        }
+        return undefined;
+    })();
+
+    useEffect(() => {
+        // We intentionally depend on these to log when inputs change
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [primaryInstructorName, instructorsCount, slideCountQuery?.isLoading, slideCountQuery?.error, (slideCountQuery as unknown as { data?: SlideCountEntry[] })?.data, processedSlideCounts, totalDuration]);
+
     return (
         <div className="lg:col-span-1">
-            <div className="sticky top-4 space-y-4">
+            <div className="sticky top-4 space-y-4 lg:max-h-[calc(100vh-1rem)] overflow-y-auto">
                 <div
                     className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
                     style={{ animationDelay: "0.7s" }}
@@ -242,16 +170,26 @@ export const CourseSidebar = ({
                                 />
                             </div>
                             <h2 className="text-base font-bold text-gray-900">
-                                {getTerminology(
-                                    ContentTerms.Course,
-                                    SystemTerms.Course
-                                ).toLocaleLowerCase()}{" "}
+                                {(() => {
+                                    const term = getTerminology(
+                                        ContentTerms.Course,
+                                        SystemTerms.Course
+                                    ).toLocaleLowerCase();
+                                    return term.charAt(0).toUpperCase() + term.slice(1);
+                                })()}{" "}
                                 Overview
                             </h2>
                         </div>
 
                         {/* Course Stats */}
                         <div className="space-y-3">
+                            {/* Author Name (always show row with placeholder if missing) */}
+                            <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg">
+                                <span className="text-xs font-medium text-gray-700">Author</span>
+                                <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
+                                    {displayAuthorName || "—"}
+                                </span>
+                            </div>
                             {/* Level Badge */}
                             {levelOptions.length > 0 &&
                                 selectedLevel &&
@@ -266,66 +204,45 @@ export const CourseSidebar = ({
                                                 weight="duotone"
                                             />
                                             <span className="text-xs font-medium text-primary-700">
-                                                {getTerminology(
-                                                    ContentTerms.Level,
-                                                    SystemTerms.Level
-                                                ).toLocaleLowerCase()}
+                                                {capitalizeFirst(
+                                                    getTerminology(
+                                                        ContentTerms.Level,
+                                                        SystemTerms.Level
+                                                    ).toLocaleLowerCase()
+                                                )}
                                             </span>
                                         </div>
                                         <span className="text-xs font-bold text-primary-800">
-                                            {
+                                            {capitalizeFirst(
                                                 levelOptions.find(
                                                     (option) =>
                                                         option.value === selectedLevel
-                                                )?.label
-                                            }
+                                                )?.label || ""
+                                            )}
                                         </span>
                                     </div>
                                 )}
 
-                            {/* Slide Counts */}
+                            {/* Total Time (hide per-type counts) */}
                             {slideCountQuery.isLoading ? (
                                 <div className="space-y-2">
-                                    {[1, 2, 3, 4, 5].map((i) => (
-                                        <div
-                                            key={i}
-                                            className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg animate-pulse"
-                                        >
-                                            <div className="h-3 w-16 bg-gray-200 rounded"></div>
-                                            <div className="h-3 w-6 bg-gray-200 rounded"></div>
-                                        </div>
-                                    ))}
+                                    <div className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg animate-pulse">
+                                        <div className="h-3 w-24 bg-gray-200 rounded" />
+                                        <div className="h-3 w-10 bg-gray-200 rounded" />
+                                    </div>
                                 </div>
                             ) : slideCountQuery.error ? (
                                 <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg">
-                                    <p className="text-xs text-red-600 font-medium">
-                                        Error loading{" "}
-                                        {getTerminology(
-                                            ContentTerms.Slides,
-                                            SystemTerms.Slides
-                                        ).toLocaleLowerCase()}
-                                        counts
-                                    </p>
+                                    <p className="text-xs text-red-600 font-medium">Unable to load total time</p>
                                 </div>
                             ) : (
                                 <div className="space-y-2">
-                                    {overviewVisible &&
-                                        processedSlideCounts.map((count) => (
-                                            <div
-                                                key={count.source_type}
-                                                className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item"
-                                            >
-                                                <div className="flex items-center space-x-2">
-                                                    {getSlideTypeIcon(count.source_type)}
-                                                    <span className="text-xs font-medium text-gray-700">
-                                                        {count.display_name}
-                                                    </span>
-                                                </div>
-                                                <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                                                    {count.slide_count}
-                                                </span>
-                                            </div>
-                                        ))}
+                                    <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg">
+                                        <span className="text-xs font-medium text-gray-700">Course Time</span>
+                                        <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
+                                            {totalDuration}
+                                        </span>
+                                    </div>
 
                                     {/* Module Statistics */}
                                     {overviewVisible && (
@@ -340,9 +257,11 @@ export const CourseSidebar = ({
                                                             weight="duotone"
                                                         />
                                                         <span className="text-xs font-medium text-gray-700">
-                                                            {getTerminology(
-                                                                ContentTerms.Modules,
-                                                                SystemTerms.Modules
+                                                            {capitalizeFirst(
+                                                                getTerminology(
+                                                                    ContentTerms.Modules,
+                                                                    SystemTerms.Modules
+                                                                ).toLocaleLowerCase()
                                                             )}
                                                         </span>
                                                     </div>
@@ -362,9 +281,11 @@ export const CourseSidebar = ({
                                                             weight="duotone"
                                                         />
                                                         <span className="text-xs font-medium text-gray-700">
-                                                            {getTerminology(
-                                                                ContentTerms.Chapters,
-                                                                SystemTerms.Chapters
+                                                            {capitalizeFirst(
+                                                                getTerminology(
+                                                                    ContentTerms.Chapters,
+                                                                    SystemTerms.Chapters
+                                                                ).toLocaleLowerCase()
                                                             )}
                                                         </span>
                                                     </div>
@@ -384,9 +305,11 @@ export const CourseSidebar = ({
                                                             weight="duotone"
                                                         />
                                                         <span className="text-xs font-medium text-gray-700">
-                                                            {getTerminology(
-                                                                ContentTerms.Subjects,
-                                                                SystemTerms.Subjects
+                                                            {capitalizeFirst(
+                                                                getTerminology(
+                                                                    ContentTerms.Subjects,
+                                                                    SystemTerms.Subjects
+                                                                ).toLocaleLowerCase()
                                                             )}
                                                         </span>
                                                     </div>

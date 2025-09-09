@@ -1,12 +1,13 @@
 import { motion } from "framer-motion";
 import { FcGoogle } from "react-icons/fc";
-import { FaGithub } from "react-icons/fa";
-import { ArrowRight, Shield } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { LOGIN_URL_GOOGLE_GITHUB } from "@/constants/urls";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { GitHubLogoIcon } from "@radix-ui/react-icons";
+import { Preferences } from "@capacitor/preferences";
+import { useTheme } from "@/providers/theme/theme-provider";
 import { ModalEmailLogin } from "../../forms/modal/ModalEmailOtpForm";
 import { ModalUsernameLogin } from "../../forms/modal/ModalUsernamePasswordForm";
 import { LoginSettings } from "@/config/login/defaultLoginSettings";
@@ -36,6 +37,7 @@ export function ModularDynamicLoginContainer({
   className = ""
 }: ModularDynamicLoginContainerProps) {
   const navigate = useNavigate();
+  const { setPrimaryColor } = useTheme();
   
   // Use backend settings if available, otherwise fall back to defaults
   const effectiveSettings = settings || {
@@ -57,10 +59,10 @@ export function ModularDynamicLoginContainer({
     .map(([key]) => key);
 
   // Check if signup is available
-  const isSignupAvailable = signupSettings && 
+  const isSignupAvailable = !!(signupSettings && 
     Object.entries(signupSettings.providers)
       .filter(([key, value]) => key !== "defaultProvider" && value === true)
-      .length > 0;
+      .length > 0);
 
   // Determine initial provider based on defaultProvider
   const defaultProvider = effectiveSettings.providers.defaultProvider;
@@ -76,7 +78,7 @@ export function ModularDynamicLoginContainer({
   });
 
   // Always show at least one provider, even if only one is enabled
-  const shouldShowProviderSelection = enabledProviders.length > 0;
+  // (selection UI currently always shown via enabled providers list)
 
   // Update current provider only if current provider is disabled AND default provider is not available
   useEffect(() => {
@@ -244,6 +246,69 @@ export function ModularDynamicLoginContainer({
     }
   };
 
+  // Apply institute theme and font (pre-login) from Preferences
+  useEffect(() => {
+    (async () => {
+      try {
+        const storedInstitute = instituteId || (await Preferences.get({ key: "InstituteId" })).value || "";
+        if (!storedInstitute) return;
+        const stored = await Preferences.get({ key: `LEARNER_${storedInstitute}` });
+        if (!stored?.value) return;
+        const parsed = JSON.parse(stored.value);
+        if (parsed?.theme) {
+          setPrimaryColor(parsed.theme);
+        }
+        if (parsed?.fontFamily) {
+          const mapFamily = (f: string) => {
+            const key = String(f).toUpperCase();
+            if (key === "INTER") return 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
+            return f;
+          };
+          const family = mapFamily(parsed.fontFamily);
+          document.documentElement.style.setProperty("--app-font-family", family);
+          document.body.style.fontFamily = family;
+        }
+      } catch {
+        // Ignore
+      }
+    })();
+  }, [instituteId, setPrimaryColor]);
+
+  // Open Terms/Privacy using institute-specific URLs if available, else fallback
+  const openTerms = async () => {
+    try {
+      const storedInstitute = instituteId || (await Preferences.get({ key: "InstituteId" })).value || "";
+      if (storedInstitute) {
+        const stored = await Preferences.get({ key: `LEARNER_${storedInstitute}` });
+        if (stored?.value) {
+          const parsed = JSON.parse(stored.value);
+          if (parsed?.termsAndConditionUrl) {
+            window.open(parsed.termsAndConditionUrl, "_blank");
+            return;
+          }
+        }
+      }
+    } catch {}
+    navigate({ to: "/terms-and-conditions" });
+  };
+
+  const openPrivacy = async () => {
+    try {
+      const storedInstitute = instituteId || (await Preferences.get({ key: "InstituteId" })).value || "";
+      if (storedInstitute) {
+        const stored = await Preferences.get({ key: `LEARNER_${storedInstitute}` });
+        if (stored?.value) {
+          const parsed = JSON.parse(stored.value);
+          if (parsed?.privacyPolicyUrl) {
+            window.open(parsed.privacyPolicyUrl, "_blank");
+            return;
+          }
+        }
+      }
+    } catch {}
+    navigate({ to: "/privacy-policy" });
+  };
+
   return (
     <div className={`space-y-6 ${className}`}>
       {/* Header */}
@@ -258,7 +323,7 @@ export function ModularDynamicLoginContainer({
             Welcome Back
           </h3>
           <p className="text-sm text-gray-600">
-            Sign in to continue your learning journey
+            Sign in to continue your journey
           </p>
         </div>
       </motion.div>
@@ -446,11 +511,7 @@ export function ModularDynamicLoginContainer({
           By signing in, you agree to our{" "}
           <motion.button
             whileHover={{ scale: 1.02 }}
-            onClick={() =>
-              navigate({
-                to: "/terms-and-conditions",
-              })
-            }
+            onClick={openTerms}
             className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
           >
             Terms of Service
@@ -458,9 +519,7 @@ export function ModularDynamicLoginContainer({
           and{" "}
           <motion.button
             whileHover={{ scale: 1.02 }}
-            onClick={() =>
-              navigate({ to: "/privacy-policy" })
-            }
+            onClick={openPrivacy}
             className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
           >
             Privacy Policy

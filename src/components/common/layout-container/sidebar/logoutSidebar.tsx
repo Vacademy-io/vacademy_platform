@@ -29,6 +29,8 @@ export const LogoutSidebar = ({
   const { theme, setTheme } = useModeTheme();
   const { permissions } = useStudentPermissions();
   const isDark = theme === "dark";
+  const hideModeChangeButton =
+    import.meta.env.VITE_HIDE_MODE_CHANGE_BUTTON === "true";
 
   const [filteredHamburgerItems, setFilteredHamburgerItems] = useState(
     HamBurgerSidebarItemsData
@@ -83,20 +85,22 @@ export const LogoutSidebar = ({
           </div>
         </SheetHeader>
 
-        <div className="flex items-center justify-between px-5 py-3 border-b border-neutral-100 dark:border-neutral-800">
-          <div className="flex flex-col">
-            <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
-              Dark mode
-            </span>
-            <span className="text-xs text-neutral-500 dark:text-neutral-400">
-              Toggle appearance
-            </span>
+        {!hideModeChangeButton && (
+          <div className="flex items-center justify-between px-5 py-3 border-b border-neutral-100 dark:border-neutral-800">
+            <div className="flex flex-col">
+              <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                Dark mode
+              </span>
+              <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                Toggle appearance
+              </span>
+            </div>
+            <Switch
+              checked={isDark}
+              onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
+            />
           </div>
-          <Switch
-            checked={isDark}
-            onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
-          />
-        </div>
+        )}
 
         <div className="flex-1 px-3 py-4 overflow-y-auto bg-gradient-to-b from-white to-neutral-50/50 dark:from-neutral-900 dark:to-neutral-900/50">
           <SidebarMenu className="space-y-1.5">

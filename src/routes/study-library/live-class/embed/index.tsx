@@ -121,7 +121,7 @@ function EmbedComponent() {
   return (
     <LayoutContainer>
       <Helmet>
-        <title>{sessionDetails.title || "Live Session"}</title>
+        <title>{document?.title || sessionDetails.title || "Live Session"}</title>
         <meta
           name="description"
           content={`Live session: ${sessionDetails.title}`}

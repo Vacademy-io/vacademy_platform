@@ -116,7 +116,7 @@ const StatCard = ({
     >
       {/* Background gradient overlay - Reduced on mobile for performance */}
       <div
-        className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-md sm:rounded-lg hidden sm:block`}
+        className="absolute inset-0 bg-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-md sm:rounded-lg hidden sm:block"
       ></div>
 
       {/* Main card */}
@@ -125,7 +125,7 @@ const StatCard = ({
         <div className="absolute top-0 right-0 w-12 h-12 md:w-20 md:h-20 bg-primary-100/30 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-2 md:-translate-y-4 translate-x-2 md:translate-x-4 hidden sm:block"></div>
 
         <div className="flex items-center justify-between mb-2 sm:mb-3 md:mb-5">
-          <div className="p-1.5 sm:p-2 md:p-3 bg-gradient-to-br from-primary-50 to-primary-100 rounded-md sm:rounded-lg text-primary-600 group-hover:scale-110 transition-transform duration-300 shadow-sm">
+          <div className="p-1.5 sm:p-2 md:p-3 bg-primary-100 rounded-md sm:rounded-lg text-primary-600 group-hover:scale-110 transition-transform duration-300 shadow-sm">
             <Icon
               weight="duotone"
               size={18}
@@ -150,7 +150,7 @@ const StatCard = ({
         </div>
 
         {/* Progress indicator */}
-        <div className="absolute bottom-0 left-0 h-0.5 sm:h-1 bg-gradient-to-r from-primary-400 to-primary-600 w-0 group-hover:w-full transition-all duration-700 ease-out rounded-b-md sm:rounded-b-lg"></div>
+        <div className="absolute bottom-0 left-0 h-0.5 sm:h-1 bg-primary-500 w-0 group-hover:w-full transition-all duration-700 ease-out rounded-b-md sm:rounded-b-lg"></div>
       </div>
     </div>
   );
@@ -166,9 +166,9 @@ const ContinueLearningCard = ({
 }) => {
   if (!data?.slides || data.slides.length === 0) {
     return (
-      <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-primary-50/80 via-white to-primary-100/30 shadow-sm hover:shadow-lg transition-all duration-500">
+      <Card className="relative overflow-hidden border-0 bg-white shadow-sm hover:shadow-lg transition-all duration-500">
         <CardContent className="p-4 sm:p-6 md:p-8 text-center">
-          <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 bg-gradient-to-br from-primary-100 to-primary-200 rounded-md sm:rounded-lg flex items-center justify-center mx-auto mb-2 sm:mb-3 md:mb-4">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 bg-primary-100 rounded-md sm:rounded-lg flex items-center justify-center mx-auto mb-2 sm:mb-3 md:mb-4">
             <Target
               weight="duotone"
               size={20}
@@ -199,11 +199,11 @@ const ContinueLearningCard = ({
   }
 
   return (
-    <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-gray-50/80 via-white to-primary-50/30 dark:from-neutral-900 dark:via-neutral-900 dark:to-neutral-800 shadow-sm hover:shadow-lg transition-all duration-500 continue-learning-card">
+    <Card className="relative overflow-hidden border-0 bg-white dark:bg-neutral-900 shadow-sm hover:shadow-lg transition-all duration-500 continue-learning-card">
       <CardHeader className="pb-2 sm:pb-3 md:pb-4 px-3 sm:px-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 md:gap-4">
           <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
-            <div className="p-1.5 sm:p-2 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg flex-shrink-0">
+            <div className="p-1.5 sm:p-2 bg-primary-100 rounded-lg flex-shrink-0">
               <Play
                 weight="duotone"
                 size={16}
@@ -243,7 +243,7 @@ const ContinueLearningCard = ({
               className="group flex items-center gap-1.5 sm:gap-2 md:gap-3 p-2 sm:p-2.5 md:p-3 bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md sm:rounded-lg hover:bg-white dark:hover:bg-neutral-800 transition-all duration-200 cursor-pointer hover:shadow-md active:scale-[0.98] w-full overflow-hidden min-h-[52px] sm:min-h-[56px] md:min-h-[64px] max-w-full"
             >
               <div className="flex-shrink-0">
-                <div className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg flex items-center justify-center">
+                <div className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 bg-primary-100 rounded-lg flex items-center justify-center">
                   <span className="text-primary-600 font-semibold text-xs">
                     {index + 1}
                   </span>
@@ -529,9 +529,9 @@ export function DashboardComponent() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-900 relative overflow-hidden w-full dashboard-container smooth-scroll">
+    <div className="min-h-screen bg-white dark:bg-neutral-950 relative overflow-hidden w-full dashboard-container smooth-scroll">
       <Helmet>
-        <title>Dashboard</title>
+        <title>{document?.title || "Dashboard"}</title>
         <meta
           name="description"
           content="Enterprise Dashboard - Learning Management System"
@@ -543,13 +543,7 @@ export function DashboardComponent() {
       </Helmet>
 
       {/* Animated background elements - Simplified for mobile performance */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-20 h-20 md:w-32 md:h-32 lg:w-64 lg:h-64 bg-gradient-to-br from-primary-100/20 to-transparent rounded-full blur-3xl animate-gentle-pulse hidden sm:block"></div>
-        <div
-          className="absolute bottom-1/3 right-1/3 w-24 h-24 md:w-40 md:h-40 lg:w-80 lg:h-80 bg-gradient-to-br from-primary-50/30 to-transparent rounded-full blur-3xl animate-gentle-pulse hidden sm:block"
-          style={{ animationDelay: "2s" }}
-        ></div>
-      </div>
+      <div className="absolute inset-0 overflow-hidden pointer-events-none"></div>
 
       <div className="relative z-10 space-y-3 sm:space-y-4 md:space-y-5 p-3 sm:p-4 md:p-5 max-w-7xl mx-auto w-full">
         {/* Enhanced Header Section */}
@@ -557,7 +551,7 @@ export function DashboardComponent() {
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2.5 sm:gap-3.5 lg:gap-5">
             <div className="flex flex-col sm:flex-row sm:items-center space-y-3 sm:space-y-0 sm:space-x-3 md:space-x-4 min-w-0">
               <div className="relative flex-shrink-0">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 bg-gradient-to-br from-primary-100 to-primary-200 rounded-md sm:rounded-lg md:rounded-xl flex items-center justify-center shadow-md">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 bg-primary-100 rounded-md sm:rounded-lg md:rounded-xl flex items-center justify-center shadow-md">
                   <span className="text-base sm:text-lg font-semibold text-primary-700">
                     {username?.charAt(0)?.toUpperCase() || "U"}
                   </span>
@@ -659,7 +653,7 @@ export function DashboardComponent() {
                           });
                           navigate({ to: "/study-library/courses" });
                         }}
-                        gradient="from-blue-500/10 to-primary-500/10"
+                        gradient=""
                         isLoading={isLoading}
                       />
                     ),
@@ -679,7 +673,7 @@ export function DashboardComponent() {
                           });
                           navigate({ to: "/homework/list" });
                         }}
-                        gradient="from-green-500/10 to-emerald-500/10"
+                        gradient=""
                         isLoading={isLoading}
                       />
                     ),
@@ -699,7 +693,7 @@ export function DashboardComponent() {
                           });
                           navigate({ to: "/assessment/examination" });
                         }}
-                        gradient="from-purple-500/10 to-pink-500/10"
+                        gradient=""
                         isLoading={isLoading}
                       />
                     ),
@@ -760,7 +754,7 @@ export function DashboardComponent() {
                     id: "custom" as const,
                     className: "",
                     render: customWidget ? (
-                      <DSCard className="border-0 bg-gradient-to-br from-white/80 to-primary-50/30 shadow-sm">
+                      <DSCard className="border-0 bg-white shadow-sm">
                         <CardHeader className="pb-2 sm:pb-3 md:pb-4 px-3 sm:px-6">
                           <CardTitle className="flex items-center space-x-2 text-sm sm:text-base md:text-lg">
                             <span>{customWidget.title || "Custom Widget"}</span>
@@ -856,9 +850,9 @@ export function DashboardComponent() {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 lg:gap-8">
               {/* Hero Section */}
               <div className="lg:col-span-8">
-                <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-purple-50/80 via-white to-pink-50/60 shadow-lg hover:shadow-xl transition-all duration-500">
+                <Card className="relative overflow-hidden border-0 bg-white shadow-lg hover:shadow-xl transition-all duration-500">
                   <CardContent className="p-3 sm:p-4 md:p-6 lg:p-0 relative">
-                    <div className="absolute inset-0 bg-gradient-to-br from-purple-100/20 to-pink-100/20 hidden sm:block"></div>
+                    <div className="absolute inset-0 bg-transparent hidden sm:block"></div>
                     <img
                       src="/yoga-dashboard.png"
                       alt="Yoga illustration"
@@ -870,7 +864,7 @@ export function DashboardComponent() {
 
               {/* Attendance Section */}
               <div className="lg:col-span-4 space-y-3 sm:space-y-4 md:space-y-6">
-                <Card className="border-0 bg-gradient-to-br from-white/80 to-primary-50/30 shadow-lg">
+                <Card className="border-0 bg-white shadow-lg">
                   <CardHeader className="pb-2 sm:pb-3 md:pb-4 px-3 sm:px-6">
                     <CardTitle className="flex items-center justify-between text-sm sm:text-base md:text-lg">
                       <div className="flex items-center space-x-2">
@@ -954,10 +948,10 @@ export function DashboardComponent() {
                   </CardContent>
                 </Card>
 
-                <Card className="border-0 bg-gradient-to-br from-white/80 to-blue-50/30 shadow-lg">
+                <Card className="border-0 bg-white shadow-lg">
                   <CardContent className="p-3 sm:p-4 md:p-6">
                     <div className="flex items-center space-x-2 sm:space-x-3 md:space-x-4">
-                      <div className="p-1.5 sm:p-2 md:p-3 bg-gradient-to-br from-blue-100 to-blue-200 rounded-md sm:rounded-lg flex-shrink-0">
+                      <div className="p-1.5 sm:p-2 md:p-3 bg-blue-100 rounded-md sm:rounded-lg flex-shrink-0">
                         <Users
                           weight="duotone"
                           size={16}
@@ -987,11 +981,11 @@ export function DashboardComponent() {
 
             {/* Live Classes Section */}
             <div className="w-full">
-              <Card className="border-0 bg-gradient-to-br from-white/80 to-green-50/30 shadow-lg live-session-card">
+              <Card className="border-0 bg-white shadow-lg live-session-card">
                 <CardHeader className="pb-2 sm:pb-3 md:pb-4 px-3 sm:px-6">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 md:gap-4">
                     <CardTitle className="flex items-center space-x-2 sm:space-x-3 text-sm sm:text-base md:text-lg">
-                      <div className="p-1.5 sm:p-2 bg-gradient-to-br from-green-100 to-green-200 rounded-lg flex-shrink-0">
+                      <div className="p-1.5 sm:p-2 bg-green-100 rounded-lg flex-shrink-0">
                         <BookOpen
                           weight="duotone"
                           size={16}
@@ -1037,7 +1031,7 @@ export function DashboardComponent() {
                           className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 md:gap-4 p-2.5 sm:p-3 md:p-4 bg-white border border-gray-200 rounded-md sm:rounded-lg hover:bg-white transition-all duration-200 w-full min-h-[60px] sm:min-h-[64px] max-w-full overflow-hidden"
                         >
                           <div className="flex items-center space-x-1.5 sm:space-x-2 md:space-x-3 min-w-0 flex-1 overflow-hidden">
-                            <div className="p-1 sm:p-1.5 md:p-2 bg-gradient-to-br from-green-100 to-green-200 rounded-lg flex-shrink-0">
+                            <div className="p-1 sm:p-1.5 md:p-2 bg-green-100 rounded-lg flex-shrink-0">
                               <BookOpen
                                 weight="duotone"
                                 size={14}
@@ -1085,7 +1079,7 @@ export function DashboardComponent() {
                             className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 md:gap-4 p-2.5 sm:p-3 md:p-4 bg-white border border-gray-200 rounded-md sm:rounded-lg hover:bg-white transition-all duration-200 w-full min-h-[60px] sm:min-h-[64px] max-w-full overflow-hidden"
                           >
                             <div className="flex items-center space-x-1.5 sm:space-x-2 md:space-x-3 min-w-0 flex-1 overflow-hidden">
-                              <div className="p-1 sm:p-1.5 md:p-2 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg flex-shrink-0">
+                              <div className="p-1 sm:p-1.5 md:p-2 bg-blue-100 rounded-lg flex-shrink-0">
                                 <Clock
                                   weight="duotone"
                                   size={14}
@@ -1128,7 +1122,7 @@ export function DashboardComponent() {
                       {!liveSessions?.live_sessions?.length &&
                         !liveSessions?.upcoming_sessions?.length && (
                           <div className="text-center py-6 sm:py-8 md:py-12">
-                            <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 bg-gradient-to-br from-gray-100 to-gray-200 rounded-md sm:rounded-lg flex items-center justify-center mx-auto mb-2 sm:mb-3 md:mb-4">
+                            <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 bg-gray-100 rounded-md sm:rounded-lg flex items-center justify-center mx-auto mb-2 sm:mb-3 md:mb-4">
                               <BookOpen
                                 weight="duotone"
                                 size={20}

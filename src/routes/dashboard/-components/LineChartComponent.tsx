@@ -102,9 +102,7 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                     <span className="text-xs sm:text-sm font-medium text-gray-700">Your Study Time</span>
                 </div>
                 <div className="flex items-center space-x-2">
-                    <div className="w-3 sm:w-4 h-0.5 sm:h-1 rounded-full bg-gray-400 shadow-sm" style={{ 
-                        backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(255,255,255,0.3) 2px, rgba(255,255,255,0.3) 4px)' 
-                    }}></div>
+                    <div className="w-3 sm:w-4 h-0.5 sm:h-1 rounded-full bg-muted-foreground/60 shadow-sm"></div>
                     <span className="text-xs sm:text-sm font-medium text-gray-700">Batch Average</span>
                 </div>
                 <div className="ml-auto flex items-center space-x-1 text-xs text-gray-500">
@@ -116,7 +114,7 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
             {/* Enhanced Chart Container */}
             <div className="relative w-full max-w-full overflow-hidden">
                 {/* Background pattern */}
-                <div className="absolute inset-0 bg-gradient-to-br from-primary-50/10 via-transparent to-primary-100/10 rounded-lg sm:rounded-xl"></div>
+                <div className="absolute inset-0 rounded-lg sm:rounded-xl bg-transparent"></div>
                 
                 <div className="relative bg-white/50 backdrop-blur-sm rounded-lg sm:rounded-xl border border-gray-200/40 p-2 sm:p-4 overflow-hidden w-full max-w-full">
                     <ResponsiveContainer width="100%" height={280}>
@@ -131,12 +129,7 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                                 }}
                                 className="w-full h-full"
                             >
-                                <defs>
-                                    <linearGradient id="primaryGradient" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.1} />
-                                        <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                                    </linearGradient>
-                                </defs>
+                                {/* Gradients removed */}
                                 
                                 <CartesianGrid 
                                     vertical={false} 
@@ -272,7 +265,7 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                                     name="Your Time"
                                     stroke="hsl(var(--primary))"
                                     strokeWidth={3}
-                                    fill="url(#primaryGradient)"
+                                    fill="none"
                                     dot={{
                                         fill: "hsl(var(--primary))",
                                         r: 4,
@@ -296,7 +289,7 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
             {/* Performance Insights */}
             {chartData.length > 0 && (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-                    <div className="bg-gradient-to-br from-primary-50/50 to-white/80 dark:from-neutral-800/40 dark:to-neutral-800 rounded-lg p-3 sm:p-4 border border-primary-200/40 dark:border-neutral-800">
+                    <div className="bg-card/60 rounded-lg p-3 sm:p-4 border border-border">
                         <div className="flex items-center space-x-2 mb-2">
                             <TrendingUp size={14} className="text-primary-600" />
                             <span className="text-xs sm:text-sm font-semibold text-gray-900">Consistency</span>
@@ -306,7 +299,7 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                         </p>
                     </div>
                     
-                    <div className="bg-gradient-to-br from-success-50/50 to-white/80 dark:from-neutral-800/40 dark:to-neutral-800 rounded-lg p-3 sm:p-4 border border-success-200/40 dark:border-neutral-800">
+                    <div className="bg-card/60 rounded-lg p-3 sm:p-4 border border-border">
                         <div className="flex items-center space-x-2 mb-2">
                             <Clock size={14} className="text-success-600" />
                             <span className="text-xs sm:text-sm font-semibold text-gray-900">Peak Day</span>
@@ -316,7 +309,7 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                         </p>
                     </div>
                     
-                    <div className="bg-gradient-to-br from-info-50/50 to-white/80 dark:from-neutral-800/40 dark:to-neutral-800 rounded-lg p-3 sm:p-4 border border-info-200/40 dark:border-neutral-800">
+                    <div className="bg-card/60 rounded-lg p-3 sm:p-4 border border-border">
                         <div className="flex items-center space-x-2 mb-2">
                             <Users size={14} className="text-info-600" />
                             <span className="text-xs sm:text-sm font-semibold text-gray-900">Vs Batch</span>

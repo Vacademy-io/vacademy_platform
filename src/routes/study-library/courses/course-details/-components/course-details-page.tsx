@@ -22,7 +22,7 @@ import { handleGetSlideCountDetails } from "../-services/get-slides-count";
 import { CourseDetailsRatingsComponent } from "./course-details-ratings-page";
 import { transformApiDataToCourseData } from "../-utils/helper";
 
-import { handleGetAllCourseDetails } from "../-services/get-course-details";
+import { handleGetAllCourseDetails, handleGetCourseDetails } from "../-services/get-course-details";
 import axios from "axios";
 import { urlInstituteDetails } from "@/constants/urls";
 import { getInstituteId } from "@/constants/helper";
@@ -832,6 +832,23 @@ export const CourseDetailsPage = () => {
         updateLoadingState("slideCount", slideCountQuery.isLoading);
     }, [slideCountQuery.isLoading, updateLoadingState]);
 
+    // Fetch single course details to derive author if needed (ensures call happens)
+    const singleCourseQuery = useQuery({
+        ...handleGetCourseDetails({ packageId: (searchParams.courseId as string) || "" }),
+        enabled: !!searchParams.courseId,
+    });
+
+    // Log when single course details are fetched
+    useEffect(() => {
+        if (singleCourseQuery.data) {
+            console.log('[CourseDetailsPage] singleCourseQuery fetched', {
+                hasData: !!singleCourseQuery.data,
+                courseKeys: singleCourseQuery?.data?.course ? Object.keys(singleCourseQuery.data.course) : [],
+                instructors: (singleCourseQuery.data as unknown as { instructors?: Array<{ full_name?: string; username?: string }> })?.instructors?.map(i => i.full_name || i.username) || [],
+            });
+        }
+    }, [singleCourseQuery.data]);
+
     // Custom slide count calculation to handle special document types
     const processedSlideCounts = useMemo(() => {
         if (!slideCountQuery.data) return [];
@@ -931,6 +948,7 @@ export const CourseDetailsPage = () => {
     const [inviteCode, setInviteCode] = useState<string>("default");
     const [authToken, setAuthToken] = useState<string>("");
     const [paymentType, setPaymentType] = useState<string | null>(null);
+    const [primaryInstructorNameFromApi, setPrimaryInstructorNameFromApi] = useState<string | undefined>(undefined);
     const [moduleStats, setModuleStats] = useState({
         totalModules: 0,
         totalChapters: 0,
@@ -960,6 +978,26 @@ export const CourseDetailsPage = () => {
                 setOverviewVisible(true);
             });
     }, []);
+
+    useEffect(() => {
+        // Prefer react-query fetched data to set author; avoids duplicate network calls
+        try {
+            const hasInstructorInForm = (form.getValues("courseData").instructors || []).length > 0;
+            if (hasInstructorInForm) return;
+            const q1 = singleCourseQuery?.data as unknown as { instructors?: Array<{ full_name?: string; username?: string }> };
+            const fromInstructors = q1?.instructors?.[0]?.full_name || q1?.instructors?.[0]?.username;
+            if (fromInstructors && typeof fromInstructors === 'string') {
+                setPrimaryInstructorNameFromApi(fromInstructors);
+                return;
+            }
+            const q2 = singleCourseQuery?.data as unknown as { course?: { created_by_name?: string; author_name?: string; owner_name?: string } };
+            const fromCourse = q2?.course?.created_by_name || q2?.course?.author_name || q2?.course?.owner_name || undefined;
+            if (fromCourse && typeof fromCourse === 'string') {
+                setPrimaryInstructorNameFromApi(fromCourse);
+            }
+        } catch (e) { void e; }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [singleCourseQuery.data]);
 
     const hasRightSidebar = true;
 
@@ -1303,7 +1341,7 @@ export const CourseDetailsPage = () => {
                 }}
             />
 
-            <div className="min-h-screen bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 relative overflow-hidden w-full max-w-full">
+            <div className="min-h-screen bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 relative w-full max-w-full">
                 {/* Animated background elements */}
                 <div className="absolute inset-0 overflow-hidden pointer-events-none">
                     <div className="absolute top-1/4 left-1/4 w-32 md:w-64 h-32 md:h-64 bg-gradient-to-br from-primary-100/20 to-transparent rounded-full blur-3xl animate-gentle-pulse"></div>
@@ -1399,35 +1437,69 @@ export const CourseDetailsPage = () => {
                         </div>
 
                         {/* Right Column - Course Stats Sidebar (1/4) */}
-                            <CourseSidebar
-                            hasRightSidebar={hasRightSidebar}
-                                levelOptions={levelOptions}
-                            selectedLevel={selectedLevel}
-                                slideCountQuery={slideCountQuery}
-                                overviewVisible={overviewVisible}
-                            processedSlideCounts={processedSlideCounts}
-                                moduleStats={moduleStats}
-                            currentSubjects={getSubjectDetails(
-                                                                            form.getValues(),
-                                                                            selectedSession,
-                                                                            selectedLevel
-                            )}
-                            courseStructure={form.getValues("courseData.courseStructure")}
-                            instructorsCount={form.getValues("courseData").instructors.length}
-                                    selectedTab={selectedTab}
-                            selectedSession={selectedSession}
-                            enrolledSessions={enrolledSessions || []}
-                            courseId={searchParams.courseId || ""}
-                            paymentType={paymentType}
-                            packageSessionIdForCurrentLevel={packageSessionIdForCurrentLevel}
-                            onEnrollmentClick={() => {
-                                                                    console.log('Enrollment button clicked, payment type:', paymentType);
-                                                                    // Always open enrollment dialog - it will determine the correct payment type from API data
-                                                                    console.log('Opening enrollment dialog to determine payment type');
-                                                                        setEnrollmentDialogOpen(true);
-                                                                }}
-                            onRatingsLoadingChange={handleRatingsLoadingChange}
-                        />
+                        <div className="lg:col-span-1">
+                            <div className="sticky top-24 self-start h-fit">
+                                <div className="max-h-[calc(100vh-6rem)] overflow-auto pt-2">
+                                    <CourseSidebar
+                                        hasRightSidebar={hasRightSidebar}
+                                        levelOptions={levelOptions}
+                                        selectedLevel={selectedLevel}
+                                        slideCountQuery={slideCountQuery}
+                                        overviewVisible={overviewVisible}
+                                        processedSlideCounts={processedSlideCounts}
+                                        moduleStats={moduleStats}
+                                        currentSubjects={getSubjectDetails(
+                                            form.getValues(),
+                                            selectedSession,
+                                            selectedLevel
+                                        )}
+                                        courseStructure={form.getValues("courseData.courseStructure")}
+                                        instructorsCount={form.getValues("courseData").instructors.length}
+                                        primaryInstructorName={
+                                            (form.getValues("courseData").instructors?.[0] as unknown as { name?: string; full_name?: string } | undefined)?.name ||
+                                            (form.getValues("courseData").instructors?.[0] as unknown as { name?: string; full_name?: string } | undefined)?.full_name ||
+                                            (singleCourseQuery.data as unknown as { instructors?: Array<{ full_name?: string; username?: string }> })?.instructors?.[0]?.full_name ||
+                                            (singleCourseQuery.data as unknown as { instructors?: Array<{ full_name?: string; username?: string }> })?.instructors?.[0]?.username ||
+                                            (courseDetailsData as unknown as { course?: { created_by_name?: string; author_name?: string; owner_name?: string } })?.course?.created_by_name ||
+                                            (courseDetailsData as unknown as { course?: { created_by_name?: string; author_name?: string; owner_name?: string } })?.course?.author_name ||
+                                            (courseDetailsData as unknown as { course?: { created_by_name?: string; author_name?: string; owner_name?: string } })?.course?.owner_name ||
+                                            primaryInstructorNameFromApi
+                                        }
+                                        selectedTab={selectedTab}
+                                        selectedSession={selectedSession}
+                                        enrolledSessions={enrolledSessions || []}
+                                        courseId={searchParams.courseId || ""}
+                                        paymentType={paymentType}
+                                        packageSessionIdForCurrentLevel={packageSessionIdForCurrentLevel}
+                                        onEnrollmentClick={() => {
+                                            console.log('Enrollment button clicked, payment type:', paymentType);
+                                            // Always open enrollment dialog - it will determine the correct payment type from API data
+                                            console.log('Opening enrollment dialog to determine payment type');
+                                            setEnrollmentDialogOpen(true);
+                                        }}
+                                        onRatingsLoadingChange={handleRatingsLoadingChange}
+                                    />
+                                    {/* Debug logs for author/time sourcing */}
+                                    {(() => {
+                                        try {
+                                            const instructors = form.getValues("courseData").instructors || [];
+                                            const fromForm = (instructors?.[0] as unknown as { name?: string; full_name?: string } | undefined)?.name || (instructors?.[0] as unknown as { name?: string; full_name?: string } | undefined)?.full_name;
+                                            const fromCourse = (courseDetailsData as unknown as { course?: { created_by_name?: string; author_name?: string; owner_name?: string } })?.course?.created_by_name || (courseDetailsData as unknown as { course?: { created_by_name?: string; author_name?: string; owner_name?: string } })?.course?.author_name || (courseDetailsData as unknown as { course?: { created_by_name?: string; author_name?: string; owner_name?: string } })?.course?.owner_name;
+                                            console.log('[CourseDetailsPage] Debug author sources', {
+                                                fromForm,
+                                                fromCourse,
+                                                fromApiState: primaryInstructorNameFromApi,
+                                                fromSingleCourseInstructors: (singleCourseQuery.data as unknown as { instructors?: Array<{ full_name?: string; username?: string }> })?.instructors?.map(i => i.full_name || i.username) || [],
+                                                slideCountHasData: Array.isArray((slideCountQuery as unknown as { data?: Array<{ slide_count: number; total_read_time_minutes: number | null; source_type: string }> })?.data),
+                                                slideCountLength: ((slideCountQuery as unknown as { data?: Array<{ slide_count: number; total_read_time_minutes: number | null; source_type: string }> })?.data || []).length,
+                                                processedSlideCountsLength: (processedSlideCounts || []).length,
+                                            });
+                                        } catch (e) { void e; }
+                                        return null;
+                                    })()}
+                                </div>
+                            </div>
+                        </div>
 
 
                     </div>

@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import axios from "axios";
 import { LIVE_SESSION_VERIFY_OTP, LIVE_SESSION_REQUEST_OTP } from "@/constants/urls";
 import { checkUserEnrollmentInInstitute, handleEnrolledUser } from "../../utils/enrollment-checker";
+import { SignupSettings } from "@/config/signup/defaultSignupSettings";
 
 interface OtpFormData {
   otp: string[];
@@ -24,6 +25,7 @@ interface OtpVerificationFormProps {
   instituteId?: string; // Add instituteId for enrollment checking
   onEnrolledUserDetected?: () => void; // Callback for when enrolled user is detected
   checkEnrollmentOnce?: (email: string) => Promise<any>; // Function to check enrollment once
+  settings?: SignupSettings; // Add settings to check usernameStrategy
 }
 
 const otpSchema = z.object({
@@ -38,7 +40,8 @@ export function OtpVerificationForm({
   className = "",
   instituteId,
   onEnrolledUserDetected,
-  checkEnrollmentOnce
+  checkEnrollmentOnce,
+  settings
 }: OtpVerificationFormProps) {
   const [isVerifying, setIsVerifying] = useState(false);
   const [timer, setTimer] = useState(60);
@@ -129,7 +132,9 @@ export function OtpVerificationForm({
       }
 
       // OTP verified, call the callback
-      await onOtpVerified(email, fullName);
+      // When usernameStrategy is "email", use email as full name
+      const fullNameToUse = settings?.usernameStrategy === "email" ? email : fullName;
+      await onOtpVerified(email, fullNameToUse);
     } catch (error) {
       toast.error("Invalid OTP. Please try again.");
     } finally {
@@ -141,11 +146,14 @@ export function OtpVerificationForm({
     if (timer > 0) return;
 
     try {
+      // When usernameStrategy is "email", use email as full name
+      const fullNameToUse = settings?.usernameStrategy === "email" ? email : (fullName || "User");
+      
       await axios.post(LIVE_SESSION_REQUEST_OTP, {
         to: email,
         subject: "Email Verification",
         service: "signup",
-        name: fullName || "User",
+        name: fullNameToUse,
         otp: "",
       });
 

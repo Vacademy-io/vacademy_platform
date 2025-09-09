@@ -27,6 +27,8 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
     @Transactional
     List<LiveSessionParticipants> findBySessionId(String sessionId);
 
+    boolean existsBySessionIdAndSourceTypeAndSourceId(String sessionId, String sourceType, String sourceId);
+
         @Query(value = """
         -- Query for BATCH source type participants
         SELECT 

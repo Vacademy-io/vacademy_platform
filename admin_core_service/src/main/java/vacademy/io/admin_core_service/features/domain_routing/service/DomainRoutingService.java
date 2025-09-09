@@ -50,6 +50,10 @@ public class DomainRoutingService {
                 .allowSignup(mapping.getAllowSignup())
                 .tabIconFileId(mapping.getTabIconFileId())
                 .fontFamily(mapping.getFontFamily())
+                .allowGoogleAuth(mapping.getAllowGoogleAuth())
+                .allowGithubAuth(mapping.getAllowGithubAuth())
+                .allowEmailOtpAuth(mapping.getAllowEmailOtpAuth())
+                .allowUsernamePasswordAuth(mapping.getAllowUsernamePasswordAuth())
                 .build();
         return Optional.of(response);
     }

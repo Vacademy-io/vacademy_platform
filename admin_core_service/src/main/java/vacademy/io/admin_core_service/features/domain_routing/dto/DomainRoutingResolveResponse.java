@@ -24,6 +24,10 @@ public class DomainRoutingResolveResponse {
     private Boolean allowSignup;
     private String tabIconFileId;
     private String fontFamily;
+    private Boolean allowGoogleAuth;
+    private Boolean allowGithubAuth;
+    private Boolean allowEmailOtpAuth;
+    private Boolean allowUsernamePasswordAuth;
 }
 
 

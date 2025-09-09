@@ -59,6 +59,18 @@ public class InstituteDomainRouting {
 
     @Column(name = "font_family")
     private String fontFamily;
+
+    @Column(name = "allow_google_auth")
+    private Boolean allowGoogleAuth;
+
+    @Column(name = "allow_github_auth")
+    private Boolean allowGithubAuth;
+
+    @Column(name = "allow_email_otp_auth")
+    private Boolean allowEmailOtpAuth;
+
+    @Column(name = "allow_username_password_auth")
+    private Boolean allowUsernamePasswordAuth;
 }
 
 

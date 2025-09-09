@@ -31,6 +31,10 @@ public class DomainRoutingAdminService {
                 .allowSignup(request.getAllowSignup())
                 .tabIconFileId(request.getTabIconFileId() == null ? null : request.getTabIconFileId().trim())
                 .fontFamily(request.getFontFamily() == null ? null : request.getFontFamily().trim())
+                .allowGoogleAuth(request.getAllowGoogleAuth())
+                .allowGithubAuth(request.getAllowGithubAuth())
+                .allowEmailOtpAuth(request.getAllowEmailOtpAuth())
+                .allowUsernamePasswordAuth(request.getAllowUsernamePasswordAuth())
                 .build();
         return repository.save(entity);
     }
@@ -55,6 +59,10 @@ public class DomainRoutingAdminService {
             existing.setAllowSignup(request.getAllowSignup());
             existing.setTabIconFileId(request.getTabIconFileId() == null ? null : request.getTabIconFileId().trim());
             existing.setFontFamily(request.getFontFamily() == null ? null : request.getFontFamily().trim());
+            existing.setAllowGoogleAuth(request.getAllowGoogleAuth());
+            existing.setAllowGithubAuth(request.getAllowGithubAuth());
+            existing.setAllowEmailOtpAuth(request.getAllowEmailOtpAuth());
+            existing.setAllowUsernamePasswordAuth(request.getAllowUsernamePasswordAuth());
             return repository.save(existing);
         });
     }

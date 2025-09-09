@@ -273,8 +273,10 @@ export function ModularDynamicSignupContainer({
       setFullNameForOtp(oauthData.signupData.name); // Use the OAuth full name
     } else {
       // For regular email OTP flows, use the provided full name
+      // When usernameStrategy is "email", use email as full name
+      const fullNameToUse = effectiveSettings.usernameStrategy === "email" ? email : (fullName || "");
       setEmailForOtp(email);
-      setFullNameForOtp(fullName || "");
+      setFullNameForOtp(fullNameToUse);
     }
     
     setCurrentStep("otpVerification");
@@ -458,7 +460,9 @@ export function ModularDynamicSignupContainer({
       setFullNameForOtp(oauthData.signupData.name);
     } else {
       // For non-OAuth flows, use the provided fullName
-      setFullNameForOtp(fullName || "");
+      // When usernameStrategy is "email", use email as full name
+      const fullNameToUse = effectiveSettings.usernameStrategy === "email" ? email : (fullName || "");
+      setFullNameForOtp(fullNameToUse);
     }
 
     if (needsUsername || needsPassword) {
@@ -479,13 +483,16 @@ export function ModularDynamicSignupContainer({
         });
       } else {
         // For email OTP flows (non-OAuth), we need to ask for full name first
-        if (!fullName) {
+        // When usernameStrategy is "email", use email as full name
+        const fullNameToUse = effectiveSettings.usernameStrategy === "email" ? email : fullName;
+        
+        if (!fullNameToUse) {
           setCurrentStep("credentials");
         } else {
           // We have everything needed for registration
           await registerUserUnified({
             email: email,
-            full_name: fullName,
+            full_name: fullNameToUse,
             instituteId: instituteId!,
             settings: effectiveSettings,
           });
@@ -716,6 +723,7 @@ export function ModularDynamicSignupContainer({
               onSignupSuccess?.();
             }}
             checkEnrollmentOnce={checkEnrollmentOnce}
+            settings={effectiveSettings}
           />
         )}
         
@@ -763,12 +771,17 @@ export function ModularDynamicSignupContainer({
               isOAuth={selectedProvider === "oauth"}
               oauthProvider={selectedProvider === "oauth" && oauthData?.signupData?.provider ? oauthData.signupData.provider : ""}
               hideFullName={
-                // For OAuth flows: only hide full name if we have it AND no manual credentials are needed
+                // For OAuth flows: hide full name if:
+                // 1. We have OAuth name AND no manual credentials are needed, OR
+                // 2. usernameStrategy is "email" (hide field but still use OAuth name)
                 // For Email OTP: never hide full name (always ask for it after OTP verification)
                 selectedProvider === "oauth" && 
                 oauthData?.signupData?.name && 
-                !(effectiveSettings.usernameStrategy === "manual" || effectiveSettings.usernameStrategy === " ") &&
-                !(effectiveSettings.passwordStrategy === "manual" || effectiveSettings.passwordStrategy === " ")
+                (
+                  (!(effectiveSettings.usernameStrategy === "manual" || effectiveSettings.usernameStrategy === " ") &&
+                   !(effectiveSettings.passwordStrategy === "manual" || effectiveSettings.passwordStrategy === " ")) ||
+                  effectiveSettings.usernameStrategy === "email"
+                )
               }
             />
           </>

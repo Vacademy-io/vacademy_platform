@@ -1,12 +1,12 @@
 // src/lib/excalidrawUtils.ts
-import axios from 'axios';
+import { getWithETag } from '@/lib/http/etagClient';
 import { GET_PUBLIC_URL_PUBLIC as GET_PUBLIC_URL_PUBLIC_CONST } from '@/constants/urls';
 
 // Define the type locally with proper typing
 export interface ExcalidrawSceneData {
-  elements: any[]; // Using any for now to avoid type complexity
-  appState?: any;
-  files?: any;
+  elements: unknown[];
+  appState?: Record<string, unknown>;
+  files?: Record<string, unknown>;
 }
 
 // Mocked data for fallback (kept for development/testing purposes)
@@ -58,10 +58,12 @@ const MOCKED_EXCALIDRAW_DATA: Record<string, ExcalidrawSceneData> = {
 export const GET_PUBLIC_URL_PUBLIC = GET_PUBLIC_URL_PUBLIC_CONST;
 
 export const getPublicUrl = async (fileId: string | undefined | null): Promise<string> => {
-    const response = await axios.get(GET_PUBLIC_URL_PUBLIC, {
-        params: { fileId, expiryDays: 1 },
-    });
-    return response?.data;
+    return getWithETag<string>(
+        undefined,
+        GET_PUBLIC_URL_PUBLIC,
+        { fileId, expiryDays: 7 },
+        { withCredentials: false }
+    );
 };
 
 export const fetchExcalidrawContent = async (fileId: string): Promise<ExcalidrawSceneData | null> => {

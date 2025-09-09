@@ -3,6 +3,7 @@ import { Elements } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
 import { PaymentForm } from "./PaymentForm";
 import { GET_STRIPE_KEY_URL } from "@/constants/urls";
+import { cachedGet } from "@/lib/http/clientCache";
 
 interface DonationPaymentStepProps {
   amount: number;
@@ -29,15 +30,12 @@ export const DonationPaymentStep = ({
     const fetchStripeKey = async () => {
       try {
         setLoading(true);
-        const response = await fetch(`${GET_STRIPE_KEY_URL}?instituteId=${instituteId}&vendor=STRIPE`, {
+        const data = await cachedGet<Record<string, any>>(`${GET_STRIPE_KEY_URL}?instituteId=${instituteId}&vendor=STRIPE`, {
           method: 'GET',
           headers: {
             'accept': '*/*'
           }
         });
-
-        if (response.ok) {
-          const data = await response.json();
           
           let publishableKey: string | undefined;
           
@@ -66,9 +64,7 @@ export const DonationPaymentStep = ({
           } else {
             onError('Payment gateway not configured');
           }
-        } else {
-          onError('Failed to load payment gateway');
-        }
+        
       } catch (error) {
         onError('Failed to load payment gateway');
       } finally {

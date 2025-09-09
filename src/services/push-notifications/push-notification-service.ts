@@ -390,7 +390,10 @@ class PushNotificationService {
       } else if (platform === 'web') {
         // Web browsers don't support badge counts in the same way
         // Could update document title or show in UI
-        document.title = count > 0 ? `(${count}) Vacademy Learner` : 'Vacademy Learner';
+        const baseTitle = document.title && !document.title.toLowerCase().includes('vacademy')
+          ? document.title
+          : 'Learner';
+        document.title = count > 0 ? `(${count}) ${baseTitle}` : baseTitle;
       }
     } catch (error) {
       console.error('Error updating badge count:', error);

@@ -9,6 +9,8 @@ import {
 import { useTheme } from "@/providers/theme/theme-provider";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
+import { applyTabBranding } from "@/utils/branding";
+import { getPublicUrl } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/excalidrawUtils";
 
 export interface DomainRoutingState {
   isLoading: boolean;
@@ -63,6 +65,40 @@ export const useDomainRouting = () => {
           institute_theme_code: data.instituteThemeCode,
         }),
       });
+
+      // Store per-institute learner settings for quick access
+      // Key: LEARNER_<instituteId>, Values: privacyPolicyUrl, termsAndConditionUrl
+      const learnerKey = `LEARNER_${data.instituteId}`;
+      const learnerSettings = {
+        privacyPolicyUrl: data.privacyPolicyUrl || null,
+        termsAndConditionUrl: data.termsAndConditionUrl || null,
+        theme: data.theme || data.instituteThemeCode || null,
+        fontFamily: data.fontFamily || null,
+        allowSignup: typeof data.allowSignup === "boolean" ? data.allowSignup : null,
+        tabText: data.tabText || null,
+        tabIconFileId: data.tabIconFileId || null,
+        allowGoogleAuth: typeof data.allowGoogleAuth === "boolean" ? data.allowGoogleAuth : null,
+        allowGithubAuth: typeof data.allowGithubAuth === "boolean" ? data.allowGithubAuth : null,
+        allowEmailOtpAuth: typeof data.allowEmailOtpAuth === "boolean" ? data.allowEmailOtpAuth : null,
+        allowUsernamePasswordAuth: typeof data.allowUsernamePasswordAuth === "boolean" ? data.allowUsernamePasswordAuth : null,
+      } as const;
+      await Preferences.set({
+        key: learnerKey,
+        value: JSON.stringify(learnerSettings),
+      });
+
+      // Update tab title and favicon immediately after storing
+      await applyTabBranding(document.title);
+
+      // Mirror branding into localStorage for earliest-possible application on next load
+      try {
+        const tabIconUrl = data.tabIconFileId ? await getPublicUrl(data.tabIconFileId) : null;
+        const brandingMirror = {
+          tabText: data.tabText || null,
+          tabIconUrl,
+        };
+        localStorage.setItem("TabBranding", JSON.stringify(brandingMirror));
+      } catch {}
 
       // Update global state
       setInstituteId(data.instituteId);
@@ -208,7 +244,7 @@ export const useDomainRouting = () => {
       // Redirecting to resolved path: ${state.redirectPath}
       navigate({ to: state.redirectPath as never });
     } else if (state.instituteId) {
-      // Don't automatically redirect to courses if we're on a public route
+      // Don't automatically redirect to courses if we're on a public route or course details page
       const currentPath = window.location.pathname;
       const publicRoutes = [
         "/login",
@@ -220,9 +256,11 @@ export const useDomainRouting = () => {
       const isOnPublicRoute = publicRoutes.some((route) =>
         currentPath.startsWith(route)
       );
+      
+      // Don't redirect if we're on course details page
+      const isOnCourseDetailsPage = currentPath.startsWith("/courses/course-details");
 
-      if (isOnPublicRoute) {
-        // Skipping automatic redirect to courses on public route: ${currentPath}
+      if (isOnPublicRoute || isOnCourseDetailsPage) {
         return;
       }
 
@@ -243,7 +281,7 @@ export const useDomainRouting = () => {
     if (!state.isLoading && state.redirectPath) {
       // State updated, redirecting to: ${state.redirectPath}
 
-      // Don't redirect if we're on public routes
+      // Don't redirect if we're on public routes or course details page
       const currentPath = window.location.pathname;
       const publicRoutes = [
         "/login",
@@ -255,9 +293,11 @@ export const useDomainRouting = () => {
       const isOnPublicRoute = publicRoutes.some((route) =>
         currentPath.startsWith(route)
       );
+      
+      // Don't redirect if we're on course details page
+      const isOnCourseDetailsPage = currentPath.startsWith("/courses/course-details");
 
-      if (isOnPublicRoute) {
-        // Skipping redirect on public route: ${currentPath}
+      if (isOnPublicRoute || isOnCourseDetailsPage) {
         return;
       }
 
@@ -265,8 +305,6 @@ export const useDomainRouting = () => {
       if (window.location.pathname !== "/") {
         // Executing redirect to: ${state.redirectPath}
         redirectToResolvedPath();
-      } else {
-        // Skipping redirect on root route to avoid conflicts
       }
     }
   }, [state.isLoading, state.redirectPath]);

@@ -12,6 +12,7 @@ import {
     TreeStructure,
     FolderOpen,
 } from "phosphor-react";
+import { Steps } from "@phosphor-icons/react";
 import {
     Collapsible,
     CollapsibleContent,
@@ -570,7 +571,7 @@ export const CourseStructureDetails = ({
                 {/* Expand/Collapse Controls */}
                 <div className="flex items-center justify-between border-b border-neutral-200 pb-3">
                     <div className="flex items-center gap-2">
-                        <TreeStructure size={18} className="text-primary-600" />
+                        <Steps size={18} className="text-primary-600" />
                         <span className="text-sm font-medium text-neutral-700">
                             {getTerminology(
                                 ContentTerms.Course,

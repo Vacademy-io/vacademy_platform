@@ -4,7 +4,7 @@ import {
   Outlet,
   redirect,
 } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   AppUpdate,
   AppUpdateAvailability,
@@ -18,6 +18,7 @@ import useStore from "@/components/common/layout-container/sidebar/useSidebar";
 import { Preferences } from "@capacitor/preferences";
 import { useTheme } from "@/providers/theme/theme-provider";
 import { HOLISTIC_INSTITUTE_ID } from "@/constants/urls";
+import { applyTabBranding } from "@/utils/branding";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
@@ -91,6 +92,7 @@ const RootComponent = () => {
   const vacademyUrl = "/vacademy-logo.svg";
   const { setPrimaryColor } = useTheme();
   const { setInstituteId } = useInstituteFeatureStore();
+  const [faviconUrl, setFaviconUrl] = useState<string | null>(null);
 
   const setPrimaryColorFromStorage = async () => {
     const details = await Preferences.get({ key: "InstituteDetails" });
@@ -110,6 +112,14 @@ const RootComponent = () => {
   };
 
   useEffect(() => {
+    // Apply tab branding from Preferences (tabText and tabIconFileId) with fallback title
+    (async () => {
+      const result = await applyTabBranding(document.title);
+      if (result?.iconUrl) {
+        // Bust cache to ensure latest icon displays
+        setFaviconUrl(`${result.iconUrl}?v=${Date.now()}`);
+      }
+    })();
     const checkForUpdate = async () => {
       if (Capacitor.getPlatform() === "web") return;
 
@@ -138,7 +148,7 @@ const RootComponent = () => {
   return (
     <>
       <Outlet />
-      <Favicon url={getFallbackLogoUrl(instituteLogoFileUrl)} />
+      <Favicon url={getFallbackLogoUrl(faviconUrl || instituteLogoFileUrl)} />
     </>
   );
 };

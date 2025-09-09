@@ -28,6 +28,31 @@ export const validateAndSanitizeEmail = (email: string): string => {
   return sanitizedEmail;
 };
 
+// Helper function to safely format dates with null/undefined checks
+export const formatDateSafely = (dateString: string | null | undefined, fallback: string = 'Not specified'): string => {
+  if (!dateString) {
+    return fallback;
+  }
+  
+  try {
+    const date = new Date(dateString);
+    // Check if the date is valid (not NaN and not Unix epoch for null dates)
+    if (isNaN(date.getTime()) || date.getTime() === 0) {
+      return fallback;
+    }
+    return date.toLocaleDateString();
+  } catch (error) {
+    return fallback;
+  }
+};
+
+// Helper function to format access period with safe date handling
+export const formatAccessPeriod = (startDate: string | null | undefined, endDate: string | null | undefined): string => {
+  const start = formatDateSafely(startDate, 'Not specified');
+  const end = formatDateSafely(endDate, 'No end date');
+  return `${start} - ${end}`;
+};
+
 // Types for the enrollment API response
 export interface CustomField {
   guestId: string;
@@ -785,6 +810,17 @@ export const initiatePaymentForEnrollment = async (
     return response.data;
       } catch (error: any) {
       if (error.response) {
+        // Handle duplicate enrollment error (user already requested enrollment)
+        if (error.response.status === 400 || error.response.status === 409) {
+          const errorMessage = error.response.data?.message || error.response.data?.error || '';
+          
+          if (errorMessage.includes('duplicate key value violates unique constraint') || 
+              errorMessage.includes('uq_destination_pkg_inst_status_pkg_user') ||
+              errorMessage.includes('PENDING_FOR_APPROVAL')) {
+            throw new Error('ENROLLMENT_PENDING_APPROVAL');
+          }
+        }
+        
         // Handle 510 Payment Gateway Configuration error
         if (error.response.status === 510) {
           // Try to extract the actual error message from the nested response
@@ -823,6 +859,13 @@ export const initiatePaymentForEnrollment = async (
             }
           } catch (extractError) {
             // Silent error handling
+          }
+          
+          // Check if this is actually a duplicate enrollment error
+          if (actualErrorMessage.includes('duplicate key value violates unique constraint') || 
+              actualErrorMessage.includes('uq_destination_pkg_inst_status_pkg_user') ||
+              actualErrorMessage.includes('PENDING_FOR_APPROVAL')) {
+            throw new Error('ENROLLMENT_PENDING_APPROVAL');
           }
           
           throw new Error(`Payment Gateway Error: ${actualErrorMessage}`);
@@ -865,6 +908,13 @@ export const initiatePaymentForEnrollment = async (
             // Silent error handling
           }
           
+          // Check if this is actually a duplicate enrollment error
+          if (actualErrorMessage.includes('duplicate key value violates unique constraint') || 
+              actualErrorMessage.includes('uq_destination_pkg_inst_status_pkg_user') ||
+              actualErrorMessage.includes('PENDING_FOR_APPROVAL')) {
+            throw new Error('ENROLLMENT_PENDING_APPROVAL');
+          }
+          
           throw new Error(`Authentication Error: ${actualErrorMessage}`);
         } else if (error.response.status === 403) {
           throw new Error('Access forbidden. Please check your permissions or try logging in again.');
@@ -882,6 +932,13 @@ export const initiatePaymentForEnrollment = async (
             } else if (typeof error.response.data === 'string') {
               errorMessage = error.response.data;
             }
+          }
+          
+          // Check if this is actually a duplicate enrollment error
+          if (errorMessage.includes('duplicate key value violates unique constraint') || 
+              errorMessage.includes('uq_destination_pkg_inst_status_pkg_user') ||
+              errorMessage.includes('PENDING_FOR_APPROVAL')) {
+            throw new Error('ENROLLMENT_PENDING_APPROVAL');
           }
           
           throw new Error(`Payment failed: ${errorMessage}`);

@@ -1,12 +1,12 @@
 import { GET_ALL_COURSE_DETAILS, GET_COURSE_DETAILS } from "@/constants/urls";
-import axios from "axios";
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 
 export const getCourseDetailsData = async ({
     packageId,
 }: {
     packageId: string;
 }) => {
-    const response = await axios({
+    const response = await authenticatedAxiosInstance({
         method: "GET",
         url: GET_COURSE_DETAILS,
         params: {
@@ -33,7 +33,7 @@ export const getAllCourseDetailsData = async ({
     instituteId: string;
 }) => {
     if (!instituteId) return null;
-    const response = await axios({
+    const response = await authenticatedAxiosInstance({
         method: "GET",
         url: GET_ALL_COURSE_DETAILS,
         params: {

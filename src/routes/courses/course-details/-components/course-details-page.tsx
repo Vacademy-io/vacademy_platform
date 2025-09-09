@@ -1,20 +1,7 @@
 import { Steps } from "@phosphor-icons/react";
-import { useNavigate, useRouter } from "@tanstack/react-router";
-import {
-    Code,
-    File,
-    FilePdf,
-    PlayCircle,
-    Question,
-    Presentation,
-    GameController,
-    Exam,
-    Terminal,
-    ClipboardText,
-    FileDoc,
-    Notebook,
-} from "phosphor-react";
-import { isNullOrEmptyOrUndefined, toTitleCase } from "@/lib/utils";
+import { useRouter } from "@tanstack/react-router";
+// Removed unused icon imports to improve modularity and avoid linter warnings
+import { toTitleCase } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
     Select,
@@ -36,7 +23,7 @@ import {
     QuestionSlide,
     AssignmentSlide,
 } from "../../-services/getAllSlides";
-import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { CourseDetailsRatingsComponent } from "./course-details-ratings-page";
 import {
     getIdByLevelAndSession,
@@ -65,6 +52,9 @@ import { getSubdomain } from "@/helpers/helper";
 import { handleGetInstituteIdWithLocalStorageCheck } from "../../-services/courses-services";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { extractTextFromHTML } from "@/components/common/helper";
+import { SlideCountEntry } from "@/utils/courseTime";
+import { CourseStatsSidebar } from "@/routes/study-library/courses/course-details/-components/course-stats-sidebar";
+import { formatTotalCourseDuration } from "@/utils/courseTime";
 
 type SlideType = {
     id: string;
@@ -121,10 +111,7 @@ type Course = {
     };
 };
 
-type SlideCountType = {
-    slide_count: number;
-    source_type: string;
-};
+// Using SlideCountEntry from courseTime util instead
 
 const mockCourses: Course[] = [
     {
@@ -178,12 +165,12 @@ const mockCourses: Course[] = [
 ];
 
 export const CourseDetailsPage = () => {
-    const navigate = useNavigate();
     const [selectedSession, setSelectedSession] = useState<string>("");
     const [selectedLevel, setSelectedLevel] = useState<string>("");
     const router = useRouter();
     const searchParams = router.state.location.search;
     const subdomain = getSubdomain(window.location.hostname);
+
 
     // Loading state management
     const [isLoading, setIsLoading] = useState(true);
@@ -216,6 +203,8 @@ export const CourseDetailsPage = () => {
         }
     }, [isAllLoadingComplete]);
 
+
+
     // Memoized callback functions for child components
     const handleModulesLoadingChange = useCallback(
         (loading: boolean) => {
@@ -231,13 +220,14 @@ export const CourseDetailsPage = () => {
         [updateLoadingState]
     );
 
-    // Get instituteId from API using subdomain
+    // Get instituteId from API using subdomain - Changed from useSuspenseQuery to useQuery to prevent infinite re-renders
     const { data: instituteIdFromApi, isLoading: isLoadingInstituteId } =
-        useSuspenseQuery(
+        useQuery(
             handleGetInstituteIdWithLocalStorageCheck({
                 subdomain: subdomain || "",
             })
         );
+
 
     const instituteId = instituteIdFromApi;
 
@@ -251,12 +241,12 @@ export const CourseDetailsPage = () => {
         setPackageSessionIdForCurrentLevel,
     ] = useState<string | null>(null);
 
-    const findIdByPackageId = (data: BatchForSessionType[]) => {
+    const findIdByPackageId = useCallback((data: BatchForSessionType[]) => {
         const result = data?.find(
             (item) => item.package_dto?.id === searchParams.courseId
         );
         return result?.id || "";
-    };
+    }, [searchParams.courseId]);
 
     const [packageSessionIds, setPackageSessionIds] = useState<string | null>(
         null
@@ -295,7 +285,7 @@ export const CourseDetailsPage = () => {
         };
 
         fetchInstituteDetails();
-    }, [instituteId, selectedSession, selectedLevel, updateLoadingState]);
+    }, [instituteId, selectedSession, selectedLevel, searchParams?.courseId, updateLoadingState, findIdByPackageId]);
 
     // Only run the query if instituteId is available
     const { data: studyLibraryData, isLoading: isCourseDetailsLoading } =
@@ -316,7 +306,7 @@ export const CourseDetailsPage = () => {
             (item: CourseStructureResponse) =>
                 item.course.id === searchParams.courseId
         );
-    }, [studyLibraryData]);
+    }, [studyLibraryData, searchParams.courseId]);
 
     const form = useForm<CourseDetailsFormValues>({
         resolver: zodResolver(courseDetailsSchema),
@@ -357,17 +347,33 @@ export const CourseDetailsPage = () => {
     >([]);
 
     // Convert sessions to select options format
+    const watchedSessions = form.watch("courseData.sessions");
     const sessionOptions = useMemo(() => {
-        const sessions = form.getValues("courseData")?.sessions || [];
+        const sessions = watchedSessions || [];
         return sessions.map((session) => ({
             _id: session.sessionDetails.id,
             value: session.sessionDetails.id,
             label: toTitleCase(session.sessionDetails.session_name),
         }));
-    }, [form.watch("courseData.sessions")]);
+    }, [watchedSessions]);
+
+    // Determine if selectors should be hidden when names are 'default'
+    const isSessionDefault = useMemo(() => {
+        return (
+            sessionOptions.length === 1 &&
+            (sessionOptions[0]?.label || "").toLowerCase() === "default"
+        );
+    }, [sessionOptions]);
+
+    const isLevelDefault = useMemo(() => {
+        return (
+            levelOptions.length === 1 &&
+            (levelOptions[0]?.label || "").toLowerCase() === "default"
+        );
+    }, [levelOptions]);
 
     // Update level options when session changes
-    const handleSessionChange = (sessionId: string) => {
+    const handleSessionChange = useCallback((sessionId: string) => {
         setSelectedSession(sessionId);
         const sessions = form.getValues("courseData")?.sessions || [];
         const selectedSessionData = sessions.find(
@@ -391,7 +397,7 @@ export const CourseDetailsPage = () => {
                 setSelectedLevel("");
             }
         }
-    };
+    }, [form]);
 
     // Handle level change - clear expanded items and reset state
     const handleLevelChange = (levelId: string) => {
@@ -408,7 +414,7 @@ export const CourseDetailsPage = () => {
             const initialSessionId = sessionOptions[0].value;
             handleSessionChange(initialSessionId);
         }
-    }, [sessionOptions]);
+    }, [sessionOptions, handleSessionChange, selectedSession]);
 
     useEffect(() => {
         const loadCourseData = async () => {
@@ -429,7 +435,7 @@ export const CourseDetailsPage = () => {
         };
 
         loadCourseData();
-    }, [courseDetailsData]);
+    }, [courseDetailsData, form]);
 
     // Add this with other queries at the top level of the component
     const slideCountQuery = useQuery({
@@ -442,202 +448,7 @@ export const CourseDetailsPage = () => {
         updateLoadingState("slideCount", slideCountQuery.isLoading);
     }, [slideCountQuery.isLoading, updateLoadingState]);
 
-    // Custom slide count calculation to handle special document types
-    const processedSlideCounts = useMemo(() => {
-        if (!slideCountQuery.data) return [];
-
-        const counts = slideCountQuery.data as SlideCountType[];
-
-        const processedCounts: {
-            source_type: string;
-            slide_count: number;
-            display_name: string;
-        }[] = [];
-
-        // Create a map to track counts for different types
-        const typeCounts: { [key: string]: number } = {};
-
-        // Track if we have specific document types to avoid duplicates
-        const hasSpecificDocumentTypes = counts.some(
-            (count) =>
-                count.source_type === "JUPYTER_NOTEBOOK" ||
-                count.source_type === "CODE_EDITOR" ||
-                count.source_type === "PRESENTATION" ||
-                count.source_type === "SCRATCH_PROJECT"
-        );
-
-        counts.forEach((count) => {
-            let canonicalType = count.source_type;
-            if (canonicalType === "JUPYTER") canonicalType = "JUPYTER_NOTEBOOK";
-            if (canonicalType === "SCRATCH") canonicalType = "SCRATCH_PROJECT";
-            if (canonicalType === "DOCUMENT") {
-                // Only add DOCUMENT count if we don't have specific document types
-                // This prevents duplicates when we have JUPYTER_NOTEBOOK, CODE_EDITOR, etc.
-                if (!hasSpecificDocumentTypes) {
-                    typeCounts["DOCUMENT"] =
-                        (typeCounts["DOCUMENT"] || 0) + count.slide_count;
-                }
-            } else {
-                typeCounts[canonicalType] =
-                    (typeCounts[canonicalType] || 0) + count.slide_count;
-            }
-        });
-
-        // Convert the map to the required format
-        Object.entries(typeCounts).forEach(([sourceType, slideCount]) => {
-            let displayName = "";
-            switch (sourceType) {
-                case "VIDEO":
-                    displayName = "Video slides";
-                    break;
-                case "CODE":
-                    displayName = "Code slides";
-                    break;
-                case "PDF":
-                    displayName = "PDF slides";
-                    break;
-                case "DOCUMENT":
-                    displayName = "DOC slides";
-                    break;
-                case "QUESTION":
-                    displayName = "Question slides";
-                    break;
-                case "ASSIGNMENT":
-                    displayName = "Assignment slides";
-                    break;
-                case "PRESENTATION":
-                    displayName = "Presentation slides";
-                    break;
-                case "JUPYTER_NOTEBOOK":
-                case "JUPYTER":
-                    displayName = "Jupyter Notebook slides";
-                    break;
-                case "SCRATCH_PROJECT":
-                case "SCRATCH":
-                    displayName = "Scratch Project slides";
-                    break;
-                case "QUIZ":
-                    displayName = "Quiz slides";
-                    break;
-                case "CODE_EDITOR":
-                    displayName = "Code Editor slides";
-                    break;
-                default:
-                    displayName = `${sourceType} slides`;
-            }
-
-            processedCounts.push({
-                source_type: sourceType,
-                slide_count: slideCount,
-                display_name: displayName,
-            });
-        });
-
-        return processedCounts;
-    }, [slideCountQuery.data]);
-
-    const getSlideTypeIcon = (type: string) => {
-        switch (type) {
-            case "VIDEO":
-                return (
-                    <PlayCircle
-                        size={16}
-                        className="text-blue-600 group-hover/item:scale-110 transition-transform duration-300"
-                        weight="duotone"
-                    />
-                );
-            case "CODE":
-                return (
-                    <Code
-                        size={16}
-                        className="text-green-600 group-hover/item:scale-110 transition-transform duration-300"
-                        weight="duotone"
-                    />
-                );
-            case "PDF":
-                return (
-                    <FilePdf
-                        size={16}
-                        className="text-red-600 group-hover/item:scale-110 transition-transform duration-300"
-                        weight="duotone"
-                    />
-                );
-            case "DOCUMENT":
-                return (
-                    <FileDoc
-                        size={16}
-                        className="text-purple-600 group-hover/item:scale-110 transition-transform duration-300"
-                        weight="duotone"
-                    />
-                );
-            case "QUESTION":
-                return (
-                    <Question
-                        size={16}
-                        className="text-orange-600 group-hover/item:scale-110 transition-transform duration-300"
-                        weight="duotone"
-                    />
-                );
-            case "ASSIGNMENT":
-                return (
-                    <ClipboardText
-                        size={16}
-                        className="text-indigo-600 group-hover/item:scale-110 transition-transform duration-300"
-                        weight="duotone"
-                    />
-                );
-            case "PRESENTATION":
-                return (
-                    <Presentation
-                        size={16}
-                        className="text-cyan-600 group-hover/item:scale-110 transition-transform duration-300"
-                        weight="duotone"
-                    />
-                );
-            case "JUPYTER_NOTEBOOK":
-            case "JUPYTER":
-                return (
-                    <Notebook
-                        size={16}
-                        className="text-yellow-600 group-hover/item:scale-110 transition-transform duration-300"
-                        weight="duotone"
-                    />
-                );
-            case "SCRATCH_PROJECT":
-            case "SCRATCH":
-                return (
-                    <GameController
-                        size={16}
-                        className="text-pink-600 group-hover/item:scale-110 transition-transform duration-300"
-                        weight="duotone"
-                    />
-                );
-            case "QUIZ":
-                return (
-                    <Exam
-                        size={16}
-                        className="text-teal-600 group-hover/item:scale-110 transition-transform duration-300"
-                        weight="duotone"
-                    />
-                );
-            case "CODE_EDITOR":
-                return (
-                    <Terminal
-                        size={16}
-                        className="text-gray-600 group-hover/item:scale-110 transition-transform duration-300"
-                        weight="duotone"
-                    />
-                );
-            default:
-                return (
-                    <File
-                        size={16}
-                        className="text-gray-500 group-hover/item:scale-110 transition-transform duration-300"
-                        weight="duotone"
-                    />
-                );
-        }
-    };
+    // Total duration is computed via utility where needed
 
     // Temporarily disabled automatic redirect to prevent redirect loops
     // useEffect(() => {
@@ -680,7 +491,7 @@ export const CourseDetailsPage = () => {
 
     // Show loading until essential APIs are complete
     // Note: packageSessionIdForCurrentLevel is not required for initial render
-    if (isLoading || !instituteId || !studyLibraryData) {
+    if (isLoading || isLoadingInstituteId || !instituteId || !studyLibraryData) {
         return <DashboardLoader />;
     }
 
@@ -762,6 +573,23 @@ export const CourseDetailsPage = () => {
                                         <h1 className="mb-3 sm:mb-4 text-2xl sm:text-3xl md:text-4xl font-bold leading-tight">
                                             {form.getValues("courseData").title}
                                         </h1>
+                                        <div className="hidden lg:block">
+                                            <AuthModal
+                                                type="courseDetailsPage"
+                                                courseId={searchParams.courseId}
+                                                trigger={
+                                                    <MyButton
+                                                        type="button"
+                                                        scale="large"
+                                                        buttonType="primary"
+                                                        layoutVariant="default"
+                                                        className="mt-2"
+                                                    >
+                                                        Enroll
+                                                    </MyButton>
+                                                }
+                                            />
+                                        </div>
                                         <p
                                             className="text-base sm:text-lg opacity-90 leading-relaxed"
                                             dangerouslySetInnerHTML={{
@@ -795,6 +623,7 @@ export const CourseDetailsPage = () => {
                         {/* Left Column - Full width on mobile, 2/3 on larger screens */}
                         <div className="w-full lg:w-2/3 lg:grow">
                             {/* Session and Level Selectors */}
+                            {!(isSessionDefault || isLevelDefault) && (
                             <div className=" px-0 pb-4 sm:pb-6">
                                 {/* Video Player for smaller screens - positioned above levels */}
                                 {form.watch("courseData").courseMediaId && (
@@ -896,6 +725,7 @@ export const CourseDetailsPage = () => {
                                     ) : null}
                                 </div>
                             </div>
+                            )}
                             {/* Enroll Button Card - shown above CourseStructureDetails for smaller screens */}
                             <div className="lg:hidden mb-6">
                                 <div className="w-full max-w-[350px] rounded-lg border bg-white p-4 sm:p-6 shadow-lg">
@@ -915,10 +745,12 @@ export const CourseDetailsPage = () => {
                                                 />
                                             </div>
                                             <h2 className="text-sm sm:text-base font-bold text-gray-900">
-                                                {getTerminology(
-                                                    ContentTerms.Course,
-                                                    SystemTerms.Course
-                                                ).toLocaleLowerCase()}{" "}
+                                                {toTitleCase(
+                                                    getTerminology(
+                                                        ContentTerms.Course,
+                                                        SystemTerms.Course
+                                                    )
+                                                )} {" "}
                                                 Overview
                                             </h2>
                                         </div>
@@ -941,10 +773,12 @@ export const CourseDetailsPage = () => {
                                                                 weight="duotone"
                                                             />
                                                             <span className="text-xs font-medium text-primary-700">
-                                                                {getTerminology(
-                                                                    ContentTerms.Level,
-                                                                    SystemTerms.Level
-                                                                ).toLocaleLowerCase()}
+                                                                {toTitleCase(
+                                                                    getTerminology(
+                                                                        ContentTerms.Level,
+                                                                        SystemTerms.Level
+                                                                    )
+                                                                )}
                                                             </span>
                                                         </div>
                                                         <span className="text-xs font-bold text-primary-800">
@@ -959,64 +793,28 @@ export const CourseDetailsPage = () => {
                                                     </div>
                                                 )}
 
-                                            {/* Slide Counts */}
+                                            {/* Total Duration */}
                                             {slideCountQuery.isLoading ? (
                                                 <div className="space-y-2">
-                                                    {[1, 2, 3, 4, 5].map(
-                                                        (i) => (
-                                                            <div
-                                                                key={i}
-                                                                className="flex items-center justify-between p-2 sm:p-2.5 bg-gray-50 rounded-lg animate-pulse"
-                                                            >
-                                                                <div className="h-3 w-16 bg-gray-200 rounded"></div>
-                                                                <div className="h-3 w-6 bg-gray-200 rounded"></div>
-                                                            </div>
-                                                        )
-                                                    )}
+                                                    <div className="flex items-center justify-between p-2 sm:p-2.5 bg-gray-50 rounded-lg animate-pulse">
+                                                        <div className="h-3 w-24 bg-gray-200 rounded"></div>
+                                                        <div className="h-3 w-10 bg-gray-200 rounded"></div>
+                                                    </div>
                                                 </div>
                                             ) : slideCountQuery.error ? (
                                                 <div className="p-2 sm:p-2.5 bg-red-50 border border-red-200 rounded-lg">
                                                     <p className="text-xs text-red-600 font-medium">
-                                                        Error loading{" "}
-                                                        {getTerminology(
-                                                            ContentTerms.Slides,
-                                                            SystemTerms.Slides
-                                                        ).toLocaleLowerCase()}
-                                                        counts
+                                                        Error loading total duration
                                                     </p>
                                                 </div>
                                             ) : (
                                                 <div className="space-y-2">
-                                                    {processedSlideCounts.map(
-                                                        (count: {
-                                                            source_type: string;
-                                                            slide_count: number;
-                                                            display_name: string;
-                                                        }) => (
-                                                            <div
-                                                                key={
-                                                                    count.source_type
-                                                                }
-                                                                className="flex items-center justify-between p-2 sm:p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item"
-                                                            >
-                                                                <div className="flex items-center space-x-2 min-w-0 flex-1">
-                                                                    {getSlideTypeIcon(
-                                                                        count.source_type
-                                                                    )}
-                                                                    <span className="text-xs font-medium text-gray-700 truncate">
-                                                                        {
-                                                                            count.display_name
-                                                                        }
-                                                                    </span>
-                                                                </div>
-                                                                <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm flex-shrink-0 ml-2">
-                                                                    {
-                                                                        count.slide_count
-                                                                    }
-                                                                </span>
-                                                            </div>
-                                                        )
-                                                    )}
+                                                    <div className="flex items-center justify-between p-2 sm:p-2.5 bg-gray-50/80 rounded-lg">
+                                                        <span className="text-xs font-medium text-gray-700">Total Duration</span>
+                                                        <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
+                                                            {formatTotalCourseDuration(slideCountQuery.data as unknown as Array<{ slide_count: number; total_read_time_minutes: number | null; source_type: string }>)}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
@@ -1035,6 +833,12 @@ export const CourseDetailsPage = () => {
                                                 </MyButton>
                                             }
                                         />
+                                        <div className="mt-4">
+                                            <CourseDetailsRatingsComponent
+                                                packageSessionId={packageSessionIdForCurrentLevel}
+                                                onRatingsLoadingChange={handleRatingsLoadingChange}
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1161,126 +965,13 @@ export const CourseDetailsPage = () => {
 
                         {/* Right Column - Full width on mobile, 1/3 on larger screens */}
                         <div className="hidden lg:block max-w-[350px] lg:w-1/3 lg:max-w-sm mb-12">
-                            <div className="sticky top-4 rounded-lg border bg-white p-4 sm:p-6 shadow-lg">
-                                {/* Course Stats */}
-                                <h2 className="mb-3 sm:mb-4 text-base sm:text-lg font-bold line-clamp-2">
-                                    {form.getValues("courseData").title}
-                                </h2>
-
-                                <div className="relative">
-                                    {/* Header */}
-                                    <div className="flex items-center space-x-2 mb-3 sm:mb-4">
-                                        <div className="p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg shadow-sm">
-                                            <Steps
-                                                size={16}
-                                                className="text-primary-600"
-                                                weight="duotone"
-                                            />
-                                        </div>
-                                        <h2 className="text-sm sm:text-base font-bold text-gray-900">
-                                            {getTerminology(
-                                                ContentTerms.Course,
-                                                SystemTerms.Course
-                                            ).toLocaleLowerCase()}{" "}
-                                            Overview
-                                        </h2>
-                                    </div>
-
-                                    {/* Course Stats */}
-                                    <div className="space-y-2 sm:space-y-3">
-                                        {/* Level Badge */}
-                                        {levelOptions.length > 0 &&
-                                            selectedLevel &&
-                                            levelOptions.find(
-                                                (option) =>
-                                                    option.value ===
-                                                    selectedLevel
-                                            )?.label !== "default" && (
-                                                <div className="flex items-center justify-between p-2 sm:p-2.5 bg-gradient-to-r from-primary-50 to-primary-100 rounded-lg border border-primary-200">
-                                                    <div className="flex items-center space-x-2">
-                                                        <Steps
-                                                            size={14}
-                                                            className="text-primary-600"
-                                                            weight="duotone"
-                                                        />
-                                                        <span className="text-xs font-medium text-primary-700">
-                                                            {getTerminology(
-                                                                ContentTerms.Level,
-                                                                SystemTerms.Level
-                                                            ).toLocaleLowerCase()}
-                                                        </span>
-                                                    </div>
-                                                    <span className="text-xs font-bold text-primary-800">
-                                                        {
-                                                            levelOptions.find(
-                                                                (option) =>
-                                                                    option.value ===
-                                                                    selectedLevel
-                                                            )?.label
-                                                        }
-                                                    </span>
-                                                </div>
-                                            )}
-
-                                        {/* Slide Counts */}
-                                        {slideCountQuery.isLoading ? (
-                                            <div className="space-y-2">
-                                                {[1, 2, 3, 4, 5].map((i) => (
-                                                    <div
-                                                        key={i}
-                                                        className="flex items-center justify-between p-2 sm:p-2.5 bg-gray-50 rounded-lg animate-pulse"
-                                                    >
-                                                        <div className="h-3 w-16 bg-gray-200 rounded"></div>
-                                                        <div className="h-3 w-6 bg-gray-200 rounded"></div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : slideCountQuery.error ? (
-                                            <div className="p-2 sm:p-2.5 bg-red-50 border border-red-200 rounded-lg">
-                                                <p className="text-xs text-red-600 font-medium">
-                                                    Error loading{" "}
-                                                    {getTerminology(
-                                                        ContentTerms.Slides,
-                                                        SystemTerms.Slides
-                                                    ).toLocaleLowerCase()}
-                                                    counts
-                                                </p>
-                                            </div>
-                                        ) : (
-                                            <div className="space-y-2">
-                                                {processedSlideCounts.map(
-                                                    (count: {
-                                                        source_type: string;
-                                                        slide_count: number;
-                                                        display_name: string;
-                                                    }) => (
-                                                        <div
-                                                            key={
-                                                                count.source_type
-                                                            }
-                                                            className="flex items-center justify-between p-2 sm:p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item"
-                                                        >
-                                                            <div className="flex items-center space-x-2 min-w-0 flex-1">
-                                                                {getSlideTypeIcon(
-                                                                    count.source_type
-                                                                )}
-                                                                <span className="text-xs font-medium text-gray-700 truncate">
-                                                                    {
-                                                                        count.display_name
-                                                                    }
-                                                                </span>
-                                                            </div>
-                                                            <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm flex-shrink-0 ml-2">
-                                                                {
-                                                                    count.slide_count
-                                                                }
-                                                            </span>
-                                                        </div>
-                                                    )
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
+                            <CourseStatsSidebar
+                                title={form.getValues("courseData").title}
+                                levelOptions={levelOptions}
+                                selectedLevel={selectedLevel}
+                                slideCounts={slideCountQuery.data as SlideCountEntry[]}
+                                authorName={form.getValues("courseData").instructors?.[0]?.name}
+                                ctaSlot={
                                     <AuthModal
                                         type="courseDetailsPage"
                                         courseId={searchParams.courseId}
@@ -1290,20 +981,25 @@ export const CourseDetailsPage = () => {
                                                 scale="large"
                                                 buttonType="primary"
                                                 layoutVariant="default"
-                                                className="mt-3 sm:mt-4 !min-w-full !w-full"
+                                                className="!min-w-full !w-full"
                                             >
                                                 Enroll
                                             </MyButton>
                                         }
                                     />
-                                </div>
-                            </div>
+                                }
+                                ratingsSlot={
+                                    packageSessionIdForCurrentLevel ? (
+                                        <CourseDetailsRatingsComponent
+                                            packageSessionId={packageSessionIdForCurrentLevel}
+                                            onRatingsLoadingChange={handleRatingsLoadingChange}
+                                        />
+                                     ) : null
+                                }
+                            />
                         </div>
                     </div>
-                    <CourseDetailsRatingsComponent
-                        packageSessionId={packageSessionIdForCurrentLevel}
-                        onRatingsLoadingChange={handleRatingsLoadingChange}
-                    />
+                    {/* Ratings moved to sidebar below overview */}
                 </div>
             </div>
         </>

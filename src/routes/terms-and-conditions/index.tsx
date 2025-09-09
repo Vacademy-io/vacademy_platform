@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { FileText, ArrowLeft, Users, CreditCard, AlertCircle, BookOpen } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { Preferences } from "@capacitor/preferences";
 
 export const Route = createFileRoute("/terms-and-conditions/")({
   component: TermsAndConditions,
@@ -9,6 +11,24 @@ export const Route = createFileRoute("/terms-and-conditions/")({
 
 function TermsAndConditions() {
   const navigate = useNavigate();
+  
+  // Redirect to institute-specific terms if configured
+  useEffect(() => {
+    (async () => {
+      try {
+        const instituteId = (await Preferences.get({ key: "InstituteId" })).value || "";
+        if (!instituteId) return;
+        const stored = await Preferences.get({ key: `LEARNER_${instituteId}` });
+        if (!stored?.value) return;
+        const parsed = JSON.parse(stored.value);
+        if (parsed?.termsAndConditionUrl) {
+          window.location.assign(parsed.termsAndConditionUrl);
+        }
+      } catch {
+        // Ignore and show internal terms page
+      }
+    })();
+  }, []);
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">

@@ -1,4 +1,5 @@
 import { getInstituteId } from "@/constants/helper";
+import { cachedGet } from "@/lib/http/clientCache";
 import { GET_SUBDOMAIN_OR_INSTITUTEID } from "@/constants/urls";
 import axios from "axios";
 import { Preferences } from "@capacitor/preferences";
@@ -6,13 +7,8 @@ import { Preferences } from "@capacitor/preferences";
 export const fetchCourseDetails = async (courseId: string) => {
     const instituteId = getInstituteId();
     // Replace with your actual API endpoint
-    const response = await fetch(
-        `/api/institutes/${instituteId}/courses/${courseId}`
-    );
-    if (!response.ok) {
-        throw new Error("Failed to fetch course details");
-    }
-    return response.json();
+    const data = await cachedGet(`/api/institutes/${instituteId}/courses/${courseId}`, { method: 'GET' });
+    return data;
 };
 
 export const getInstituteIdBySubdomain = async ({

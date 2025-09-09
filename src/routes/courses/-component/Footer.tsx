@@ -1,5 +1,6 @@
 import React, { ChangeEvent, FormEvent } from "react";
 import { FaTwitter, FaFacebookF, FaInstagram, FaYoutube } from "react-icons/fa";
+import { Preferences } from "@capacitor/preferences";
 
 const Footer: React.FC = () => {
   const [name, setName] = React.useState<string>("");
@@ -117,7 +118,53 @@ const Footer: React.FC = () => {
 
       <div className="border-t-2 border-gray-700 h-[80px] flex flex-col items-center justify-center text-sm text-white gap-2">
         <p>© 2025 Codecircle.org. All rights reserved</p>
-        <p>Privacy Policy | Terms of Service</p>
+        <p className="flex gap-2">
+          <button
+            onClick={async () => {
+              try {
+                const instituteId = (await Preferences.get({ key: "InstituteId" })).value || "";
+                if (instituteId) {
+                  const stored = await Preferences.get({ key: `LEARNER_${instituteId}` });
+                  if (stored?.value) {
+                    const parsed = JSON.parse(stored.value);
+                    if (parsed?.privacyPolicyUrl) {
+                      window.open(parsed.privacyPolicyUrl, "_blank");
+                      return;
+                    }
+                  }
+                }
+              } catch {}
+              window.open("/privacy-policy", "_blank");
+            }}
+            className="underline hover:text-blue-300"
+            type="button"
+          >
+            Privacy Policy
+          </button>
+          |
+          <button
+            onClick={async () => {
+              try {
+                const instituteId = (await Preferences.get({ key: "InstituteId" })).value || "";
+                if (instituteId) {
+                  const stored = await Preferences.get({ key: `LEARNER_${instituteId}` });
+                  if (stored?.value) {
+                    const parsed = JSON.parse(stored.value);
+                    if (parsed?.termsAndConditionUrl) {
+                      window.open(parsed.termsAndConditionUrl, "_blank");
+                      return;
+                    }
+                  }
+                }
+              } catch {}
+              window.open("/terms-and-conditions", "_blank");
+            }}
+            className="underline hover:text-blue-300"
+            type="button"
+          >
+            Terms of Service
+          </button>
+        </p>
       </div>
     </footer>
   );

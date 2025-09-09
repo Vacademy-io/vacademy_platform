@@ -1,4 +1,5 @@
 import { GET_PAYMENT_OPTIONS } from "@/constants/urls";
+import { cachedGet } from "@/lib/http/clientCache";
 
 export interface PaymentOption {
   id: string;
@@ -49,15 +50,13 @@ export interface DonationMetadata {
 
 export const fetchPaymentOptions = async (instituteId: string): Promise<PaymentOption | null> => {
   try {
-    const response = await fetch(`${GET_PAYMENT_OPTIONS}?source=INSTITUTE&sourceId=${instituteId}`, {
+    const data = await cachedGet<PaymentOption>(`${GET_PAYMENT_OPTIONS}?source=INSTITUTE&sourceId=${instituteId}`, {
       method: 'GET',
       headers: {
         'accept': '*/*'
       }
     });
-
-    if (response.ok) {
-      const data = await response.json();
+    if (data) {
       return data;
     } else {
       // Return hardcoded defaults if API fails - default to subscription for direct navigation

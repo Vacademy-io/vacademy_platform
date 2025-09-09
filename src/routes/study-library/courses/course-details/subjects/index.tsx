@@ -25,7 +25,7 @@ function RouteComponent() {
     return (
         <LayoutContainer>
             <Helmet>
-                <title>Learning Center</title>
+                <title>{document?.title || "Learning Center"}</title>
                 <meta name="description" content="Learning Center page" />
             </Helmet>
             <InitStudyLibraryProvider>

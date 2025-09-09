@@ -109,6 +109,11 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
         let cancelled = false;
         (async () => {
             try {
+                // Only run this effect if the modal is actually open
+                if (!isOpen) {
+                    return;
+                }
+                
                 // First try domain routing
                 if (domainRouting.instituteId && !cancelled) {
                     setInstituteIdFromStorage(domainRouting.instituteId);
@@ -134,7 +139,7 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
             }
         })();
         return () => { cancelled = true; };
-    }, [handleInstituteSelect, domainRouting.instituteId]);
+    }, [handleInstituteSelect, domainRouting.instituteId, isOpen]);
 
     // If user switches to signup and details aren't ready, prefetch (guarded against duplicate)
     useEffect(() => {
@@ -387,6 +392,14 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
         return <div onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
+            
+            console.group("[AuthModal] Trigger Clicked");
+            console.log("Opening modal from trigger");
+            console.log("Current path:", window.location.pathname);
+            console.log("Type:", type);
+            console.log("CourseId:", courseId);
+            console.groupEnd();
+            
             setInternalIsOpen(true);
             // Call the optional callback when modal opens, but delay it slightly
             if (onModalOpen) {

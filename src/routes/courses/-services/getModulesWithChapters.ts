@@ -2,10 +2,10 @@
 import { MODULES_WITH_CHAPTERS } from '@/constants/urls';
 import { useModulesWithChaptersStore } from '@/stores/study-library/use-modules-with-chapters-store';
 import { useQuery } from '@tanstack/react-query';
-import axios from 'axios';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 
 export const fetchModulesWithChapters = async (subjectId: string, packageSessionId: string) => {
-    const response = await axios.get(MODULES_WITH_CHAPTERS, {
+    const response = await authenticatedAxiosInstance.get(MODULES_WITH_CHAPTERS, {
         params: {
             subjectId: subjectId,
             packageSessionId: packageSessionId,

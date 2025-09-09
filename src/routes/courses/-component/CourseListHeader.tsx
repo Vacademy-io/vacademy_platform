@@ -52,7 +52,7 @@ const CourseListHeader = ({
     { href: "#impact", label: "Impact" },
     {
       href: "#courses",
-      label: getTerminology(ContentTerms.Course, SystemTerms.Course) + "s",
+      label: getTerminology(ContentTerms.Course, SystemTerms.Course) ,
     },
     { href: "#involved", label: "Get Involved" },
     { href: "#contact", label: "Contact" },

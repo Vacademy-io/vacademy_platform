@@ -119,6 +119,8 @@ export interface StudentNotificationSettings {
 
 // Certificates
 export interface StudentCertificateSettings {
+  // Whether certificate generation is enabled
+  enabled: boolean;
   // Percentage threshold after which certificate can be generated
   generationThresholdPercent: number;
 }

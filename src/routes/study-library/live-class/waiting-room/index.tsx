@@ -103,7 +103,7 @@ function WaitingRoomComponent() {
   return (
     <LayoutContainer>
       <Helmet>
-        <title>Live Classes</title>
+        <title>{document?.title || "Live Classes"}</title>
         <meta name="description" content="Live and upcoming class sessions" />
       </Helmet>
 

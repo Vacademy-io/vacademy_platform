@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { Shield, ArrowLeft, Eye, Lock, Database, Users, Globe, Mail } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { Preferences } from "@capacitor/preferences";
 
 export const Route = createFileRoute("/privacy-policy/")({
   component: PrivacyPolicy,
@@ -9,6 +11,24 @@ export const Route = createFileRoute("/privacy-policy/")({
 
 function PrivacyPolicy() {
   const navigate = useNavigate();
+  
+  // Redirect to institute-specific privacy policy if configured
+  useEffect(() => {
+    (async () => {
+      try {
+        const instituteId = (await Preferences.get({ key: "InstituteId" })).value || "";
+        if (!instituteId) return;
+        const stored = await Preferences.get({ key: `LEARNER_${instituteId}` });
+        if (!stored?.value) return;
+        const parsed = JSON.parse(stored.value);
+        if (parsed?.privacyPolicyUrl) {
+          window.location.assign(parsed.privacyPolicyUrl);
+        }
+      } catch {
+        // Ignore and show internal policy page
+      }
+    })();
+  }, []);
 
   const sections = [
     {

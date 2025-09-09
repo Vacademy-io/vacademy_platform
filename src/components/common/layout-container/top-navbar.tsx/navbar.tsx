@@ -1,4 +1,4 @@
-import { SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { List } from "@phosphor-icons/react";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { FiSidebar } from "react-icons/fi";
@@ -55,7 +55,7 @@ export function Navbar() {
     }, [userRoleDetails, roleNames]);
 
     const { navHeading } = useNavHeadingStore();
-    const { setInstituteDetails, setSidebarOpen, instituteName, instituteLogoFileUrl, sideBarOpen } = useStore();
+    const { setInstituteDetails, setSidebarOpen, instituteName, instituteLogoFileUrl, hasCustomSidebar } = useStore();
 
     const handleNavigateToAdmin = () => {
         const accessToken = getTokenFromCookie(TokenKey.accessToken);
@@ -88,6 +88,7 @@ export function Navbar() {
     }
 
     const [showSidebarControls, setShowSidebarControls] = useState(true);
+    const { isMobile, openMobile } = useSidebar();
 
     useEffect(() => {
         // setNotifications(true);
@@ -110,7 +111,8 @@ export function Navbar() {
         getStudentDisplaySettings(false)
             .then((s) => setShowSidebarControls(s?.sidebar?.visible !== false))
             .catch(() => setShowSidebarControls(true));
-    }, [instituteDetails, setInstituteDetails]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [instituteDetails]);
 
     if (isLoading) return <DashboardLoader />;
 
@@ -137,7 +139,7 @@ export function Navbar() {
                         </SidebarTrigger>
                     )}
                     
-                    {!sideBarOpen && (
+                    {!((showSidebarControls && (isMobile ? openMobile : true)) || hasCustomSidebar) && (
                     <div className="flex items-center gap-3">
                         {/* Institute brand */}
                         <div className="flex items-center gap-2">
@@ -196,7 +198,7 @@ export function Navbar() {
                     </SidebarTrigger>
                 )}
 
-                {!sideBarOpen && (
+                {!((showSidebarControls && (isMobile ? openMobile : true)) || hasCustomSidebar) && (
                 <div className="flex items-center gap-3">
                     {/* Institute brand */}
                     <div className="flex items-center gap-2">

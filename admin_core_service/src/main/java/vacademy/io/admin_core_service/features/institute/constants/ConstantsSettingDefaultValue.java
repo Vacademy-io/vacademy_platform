@@ -12,7 +12,7 @@ public class ConstantsSettingDefaultValue {
     private static final Map<String, String> nameDefaultValues = new HashMap<>();
     private static final Map<String, String> certificateTypeDefaultValues = new HashMap<>();
     private static final List<String> defaultCustomFieldsLocations = new ArrayList<>();
-    private static final Map<String, String> fixedColumnsNameMapping = new HashMap<>();
+    private static final Map<String, FixedFieldRenameDto> fixedColumnsNameMapping = new HashMap<>();
 
     @Getter
     private static final Map<String, String> defaultPlaceHolders = new HashMap<>();
@@ -52,33 +52,30 @@ public class ConstantsSettingDefaultValue {
         defaultCustomFieldsLocations.add("Live Session Registration Form");
         defaultCustomFieldsLocations.add("Learner Profile");
 
-        fixedColumnsNameMapping.put("username","username");
-        fixedColumnsNameMapping.put("email","email");
-        fixedColumnsNameMapping.put("fullName","fullName");
-        fixedColumnsNameMapping.put("addressLine","addressLine");
-        fixedColumnsNameMapping.put("region","region");
-        fixedColumnsNameMapping.put("city","city");
-        fixedColumnsNameMapping.put("pinCode","pinCode");
-        fixedColumnsNameMapping.put("mobileNumber","mobileNumber");
-        fixedColumnsNameMapping.put("dateOfBerth","dateOfBerth");
-        fixedColumnsNameMapping.put("gender","gender");
-        fixedColumnsNameMapping.put("fatherName","fatherName");
-        fixedColumnsNameMapping.put("motherName","motherName");
-        fixedColumnsNameMapping.put("parentMobileName","parentMobileName");
-        fixedColumnsNameMapping.put("parentEmail","parentEmail");
-        fixedColumnsNameMapping.put("linkedInstituteName","linkedInstituteName");
-        fixedColumnsNameMapping.put("parentToMotherMobileNumber","parentToMotherMobileNumber");
-        fixedColumnsNameMapping.put("parentsToMotherEmail","parentsToMotherEmail");
+        fixedColumnsNameMapping.put("username",new FixedFieldRenameDto(toUpperSnakeCase("username"),"username","username",1,true));
+        fixedColumnsNameMapping.put("email",new FixedFieldRenameDto(toUpperSnakeCase("email"),"email","email",2,true));
+        fixedColumnsNameMapping.put("fullName",new FixedFieldRenameDto(toUpperSnakeCase("fullName"),"fullName","fullName",3,true));
+        fixedColumnsNameMapping.put("addressLine",new FixedFieldRenameDto(toUpperSnakeCase("addressLine"),"addressLine","addressLine",4,true));
+        fixedColumnsNameMapping.put("region",new FixedFieldRenameDto(toUpperSnakeCase("region"),"region","region",5,true));
+        fixedColumnsNameMapping.put("city",new FixedFieldRenameDto(toUpperSnakeCase("city"),"city","city",6,true));
+        fixedColumnsNameMapping.put("pinCode",new FixedFieldRenameDto(toUpperSnakeCase("pinCode"),"pinCode","pinCode",7,true));
+        fixedColumnsNameMapping.put("mobileNumber",new FixedFieldRenameDto(toUpperSnakeCase("mobileNumber"),"mobileNumber","mobileNumber",8,true));
+        fixedColumnsNameMapping.put("dateOfBerth",new FixedFieldRenameDto(toUpperSnakeCase("dateOfBerth"),"dateOfBerth","dateOfBerth",9,true));
+        fixedColumnsNameMapping.put("gender",new FixedFieldRenameDto(toUpperSnakeCase("gender"),"gender","gender",10,true));
+        fixedColumnsNameMapping.put("fatherName",new FixedFieldRenameDto(toUpperSnakeCase("fatherName"),"fatherName","fatherName",11,true));
+        fixedColumnsNameMapping.put("motherName",new FixedFieldRenameDto(toUpperSnakeCase("motherName"),"motherName","motherName",12,true));
+        fixedColumnsNameMapping.put("parentMobileName",new FixedFieldRenameDto(toUpperSnakeCase("parentMobileName"),"parentMobileName","parentMobileName",13,true));
+        fixedColumnsNameMapping.put("parentEmail",new FixedFieldRenameDto(toUpperSnakeCase("parentEmail"),"parentEmail","parentEmail",14,true));
+        fixedColumnsNameMapping.put("linkedInstituteName",new FixedFieldRenameDto(toUpperSnakeCase("linkedInstituteName"),"linkedInstituteName","linkedInstituteName",15,true));
+        fixedColumnsNameMapping.put("parentToMotherMobileNumber",new FixedFieldRenameDto(toUpperSnakeCase("parentToMotherMobileNumber"),"parentToMotherMobileNumber","parentToMotherMobileNumber",16,true));
+        fixedColumnsNameMapping.put("parentsToMotherEmail",new FixedFieldRenameDto(toUpperSnakeCase("parentsToMotherEmail"),"parentsToMotherEmail","parentsToMotherEmail",17,true));
     }
 
     public static List<FixedFieldRenameDto> getFixedColumnsRenameDto(){
         List<FixedFieldRenameDto> fixedFieldRenameDtos = new ArrayList<>();
 
         fixedColumnsNameMapping.forEach((key,value)->{
-            fixedFieldRenameDtos.add(FixedFieldRenameDto.builder()
-                    .key(toUpperSnakeCase(key))
-                    .defaultValue(value)
-                    .customValue(value).build());
+            fixedFieldRenameDtos.add(value);
         });
 
         return fixedFieldRenameDtos;

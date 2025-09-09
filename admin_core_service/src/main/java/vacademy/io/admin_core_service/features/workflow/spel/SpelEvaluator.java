@@ -20,7 +20,7 @@ public class SpelEvaluator {
 
     private final ExpressionParser parser = new SpelExpressionParser();
 
-    public Object eval(String expressionString, Map<String, Object> contextVars) {
+    public Object evaluate(String expressionString, Map<String, Object> contextVars) {
         if (expressionString == null || expressionString.isBlank()) {
             return null;
         }
@@ -31,7 +31,6 @@ public class SpelEvaluator {
         StandardEvaluationContext context = new StandardEvaluationContext();
         // to remove from here for better performance
         context.setVariable("ctx", contextVars);
-        context.setVariable("transformNodeHandler", contextVars.get("transformNodeHandler"));
         try {
             Expression expr = parser.parseExpression(exprStr);
             return expr.getValue(context);

@@ -81,15 +81,28 @@ public class WorkflowScheduleService {
             }
 
             WorkflowSchedule existing = existingSchedule.get();
+            
+            // Update all fields from the provided schedule details
             existing.setWorkflowId(scheduleDetails.getWorkflowId());
             existing.setScheduleType(scheduleDetails.getScheduleType());
             existing.setCronExpression(scheduleDetails.getCronExpression());
-            existing.setNextRunAt(scheduleDetails.getNextRunAt());
+            existing.setIntervalMinutes(scheduleDetails.getIntervalMinutes());
+            existing.setDayOfMonth(scheduleDetails.getDayOfMonth());
+            existing.setTimezone(scheduleDetails.getTimezone());
+            existing.setStartDate(scheduleDetails.getStartDate());
+            existing.setEndDate(scheduleDetails.getEndDate());
             existing.setStatus(scheduleDetails.getStatus());
+            
+            // Update execution timing fields
+            existing.setLastRunAt(scheduleDetails.getLastRunAt());
+            existing.setNextRunAt(scheduleDetails.getNextRunAt());
+            
+            // Always update the updated_at timestamp
             existing.setUpdatedAt(LocalDateTime.now());
 
             WorkflowSchedule updatedSchedule = workflowScheduleRepository.save(existing);
-            log.info("Updated workflow schedule: {}", updatedSchedule.getId());
+            log.info("Updated workflow schedule: {} - lastRunAt: {}, nextRunAt: {}", 
+                    updatedSchedule.getId(), updatedSchedule.getLastRunAt(), updatedSchedule.getNextRunAt());
             return updatedSchedule;
         } catch (Exception e) {
             log.error("Error updating workflow schedule: {}", id, e);

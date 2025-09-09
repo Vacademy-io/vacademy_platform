@@ -32,9 +32,9 @@ public class SendEmailNodeHandler implements NodeHandler {
 
     @Override
     public Map<String, Object> handle(Map<String, Object> context,
-            String nodeConfigJson,
-            Map<String, NodeTemplate> nodeTemplates,
-            int countProcessed) {
+                                      String nodeConfigJson,
+                                      Map<String, NodeTemplate> nodeTemplates,
+                                      int countProcessed) {
 
         log.info("SendEmailNodeHandler.handle() invoked with context: {}, configJson: {}", context, nodeConfigJson);
 
@@ -54,7 +54,7 @@ public class SendEmailNodeHandler implements NodeHandler {
             }
 
             // Evaluate the list expression
-            Object listObj = spelEvaluator.eval(onExpression, context);
+            Object listObj = spelEvaluator.evaluate(onExpression, context);
             if (listObj == null) {
                 log.warn("No list found for expression: {}", onExpression);
                 changes.put("status", "no_items_found");
@@ -90,72 +90,52 @@ public class SendEmailNodeHandler implements NodeHandler {
                 }
             }
 
-            // Group requests by subject for optimization and create proper structure
             if (!allEmailRequests.isEmpty()) {
-                // Group requests by subject for optimization
-                Map<String, List<Map<String, Object>>> requestsBySubject = allEmailRequests
-                        .stream()
-                        .collect(Collectors.groupingBy(req -> (String) req.get("subject")));
-
-                // Create NotificationDTO objects for each subject group
                 List<NotificationDTO> notificationDTOs = new ArrayList<>();
 
-                for (Map.Entry<String, List<Map<String, Object>>> entry : requestsBySubject.entrySet()) {
-                    List<Map<String, Object>> emailRequests = entry.getValue();
-                    String subject = entry.getKey();
+                for (Map<String, Object> request : allEmailRequests) {
+                    String recipient = (String) request.get("recipient");
+                    String subject = (String) request.get("subject");
+                    String body = (String) request.get("body");
 
-                    // Create NotificationDTO for this subject group
-                    NotificationDTO notificationDTO = new NotificationDTO();
-                    notificationDTO.setSubject(subject);
-                    notificationDTO.setNotificationType("EMAIL");
-                    notificationDTO.setSource("WORKFLOW");
-                    notificationDTO.setSourceId("send_email_node");
+                    if (recipient != null && !recipient.isBlank()) {
+                        NotificationDTO notificationDTO = new NotificationDTO();
+                        notificationDTO.setSubject(subject);
+                        notificationDTO.setBody(body);
+                        notificationDTO.setNotificationType("EMAIL");
+                        notificationDTO.setSource("WORKFLOW");
+                        notificationDTO.setSourceId("send_email_node");
 
-                    // Get body from first request (assuming same body for same subject)
-                    String body = (String) emailRequests.get(0).get("body");
-                    notificationDTO.setBody(body);
+                        // Create NotificationToUserDTO for the single recipient
+                        NotificationToUserDTO userDTO = new NotificationToUserDTO();
+                        userDTO.setChannelId(recipient); // Email address goes in channelId
+                        userDTO.setUserId(recipient); // For now, use email as userId
 
-                    // Create NotificationToUserDTO for each recipient
-                    List<NotificationToUserDTO> users = new ArrayList<>();
-                    for (Map<String, Object> request : emailRequests) {
-                        String recipient = (String) request.get("recipient");
-                        if (recipient != null && !recipient.isBlank()) {
-                            NotificationToUserDTO userDTO = new NotificationToUserDTO();
-                            userDTO.setChannelId(recipient); // Email address goes in channelId
-                            userDTO.setUserId(recipient); // For now, use email as userId
+                        // Create placeholders map for personalization
+                        Map<String, String> placeholders = new HashMap<>();
+                        placeholders.put("email", recipient);
 
-                            // Create placeholders map for personalization
-                            Map<String, String> placeholders = new HashMap<>();
-                            placeholders.put("email", recipient);
-
-                            // Add any other placeholders from the request
-                            if (request.containsKey("placeholders")) {
-                                Object placeholdersObj = request.get("placeholders");
-                                if (placeholdersObj instanceof Map) {
-                                    Map<String, Object> reqPlaceholders = (Map<String, Object>) placeholdersObj;
-                                    for (Map.Entry<String, Object> placeholder : reqPlaceholders.entrySet()) {
-                                        if (placeholder.getValue() != null) {
-                                            placeholders.put(placeholder.getKey(),
-                                                    String.valueOf(placeholder.getValue()));
-                                        }
+                        // Add any other placeholders from the request
+                        if (request.containsKey("placeholders")) {
+                            Object placeholdersObj = request.get("placeholders");
+                            if (placeholdersObj instanceof Map) {
+                                Map<String, Object> reqPlaceholders = (Map<String, Object>) placeholdersObj;
+                                for (Map.Entry<String, Object> placeholder : reqPlaceholders.entrySet()) {
+                                    if (placeholder.getValue() != null) {
+                                        placeholders.put(placeholder.getKey(),
+                                                String.valueOf(placeholder.getValue()));
                                     }
                                 }
                             }
-
-                            userDTO.setPlaceholders(placeholders);
-                            users.add(userDTO);
                         }
+
+                        userDTO.setPlaceholders(placeholders);
+                        notificationDTO.setUsers(Collections.singletonList(userDTO));
+                        notificationDTOs.add(notificationDTO);
                     }
-
-                    notificationDTO.setUsers(users);
-                    notificationDTOs.add(notificationDTO);
-
-                    log.debug("Created NotificationDTO for subject '{}' with {} recipients",
-                            subject, users.size());
                 }
 
-                log.info("Created {} NotificationDTO objects for {} subject groups",
-                        notificationDTOs.size(), requestsBySubject.size());
+                log.info("Created {} NotificationDTO objects for individual emails", notificationDTOs.size());
 
                 // Send emails using notification service
                 String instituteId = (String) context.get("instituteId");
@@ -175,12 +155,10 @@ public class SendEmailNodeHandler implements NodeHandler {
                 changes.put("email_requests", allEmailRequests);
                 changes.put("notification_dtos", notificationDTOs);
                 changes.put("request_count", allEmailRequests.size());
-                changes.put("subject_groups", notificationDTOs.size());
                 changes.put("email_results", emailResults);
                 changes.put("status", "emails_sent");
 
-                log.info("Successfully processed {} email requests in {} subject groups",
-                        allEmailRequests.size(), notificationDTOs.size());
+                log.info("Successfully processed and sent {} individual email requests", allEmailRequests.size());
             } else {
                 changes.put("status", "no_requests_created");
             }
@@ -216,7 +194,7 @@ public class SendEmailNodeHandler implements NodeHandler {
 
         try {
             // Evaluate the email data expression
-            Object emailDataObj = spelEvaluator.eval(emailDataExpr, itemContext);
+            Object emailDataObj = spelEvaluator.evaluate(emailDataExpr, itemContext);
             if (emailDataObj == null) {
                 log.warn("No email data found for expression: {}", emailDataExpr);
                 return Collections.emptyList();
@@ -242,7 +220,7 @@ public class SendEmailNodeHandler implements NodeHandler {
             }
 
             // Evaluate the switch expression
-            Object switchValue = spelEvaluator.eval(onExpr, itemContext);
+            Object switchValue = spelEvaluator.evaluate(onExpr, itemContext);
             String key = String.valueOf(switchValue);
             log.debug("SWITCH operation evaluated '{}' to key: {}", onExpr, key);
 
@@ -372,7 +350,7 @@ public class SendEmailNodeHandler implements NodeHandler {
                 return expression;
             }
 
-            Object result = spelEvaluator.eval(expression, context);
+            Object result = spelEvaluator.evaluate(expression, context);
             return result != null ? String.valueOf(result) : expression;
         } catch (Exception e) {
             log.warn("Error evaluating SPEL expression: {}", expression, e);

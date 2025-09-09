@@ -23,7 +23,8 @@ public class TransformNodeHandler implements NodeHandler {
     }
 
     @Override
-    public Map<String, Object> handle(Map<String, Object> context, String nodeConfigJson, Map<String, NodeTemplate> nodeTemplates,int countProcessed) {
+    public Map<String, Object> handle(Map<String, Object> context, String nodeConfigJson,
+            Map<String, NodeTemplate> nodeTemplates, int countProcessed) {
         log.info("TransformNodeHandler.handle() invoked with context: {}, configJson: {}", context, nodeConfigJson);
 
         Map<String, Object> changes = new HashMap<>();
@@ -58,7 +59,7 @@ public class TransformNodeHandler implements NodeHandler {
 
                     if (computeExpr != null && !computeExpr.isBlank()) {
                         // Evaluate compute expression
-                        Object value = spelEvaluator.eval(computeExpr, context);
+                        Object value = spelEvaluator.evaluate(computeExpr, context);
                         changes.put(fieldName, value);
                         log.debug("Field '{}' computed via SpEL to value: {}", fieldName, value);
                     } else if ("CREATE".equals(creationPolicy)) {

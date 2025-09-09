@@ -113,8 +113,8 @@ export function ForgotPassword() {
 
   return (
     <div className="min-h-screen bg-gray-50 relative overflow-hidden">
-      {/* Subtle Background Pattern */}
-      <div className="absolute inset-0 bg-grid-gray-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] -z-10" />
+      {/* Subtle Background Pattern (gradients removed) */}
+      <div className="absolute inset-0 -z-10" />
       
       {/* Subtle Floating Background Elements */}
       <motion.div 
@@ -128,7 +128,7 @@ export function ForgotPassword() {
           repeat: Infinity,
           ease: "easeInOut" 
         }}
-        className="absolute top-20 left-20 w-48 h-48 bg-gradient-to-br from-gray-200/10 to-gray-300/10 rounded-full blur-3xl"
+        className="absolute top-20 left-20 w-48 h-48 bg-muted/10 rounded-full blur-3xl"
       />
       <motion.div
         animate={{
@@ -142,7 +142,7 @@ export function ForgotPassword() {
           ease: "easeInOut",
           delay: 3,
         }}
-        className="absolute bottom-20 right-20 w-64 h-64 bg-gradient-to-br from-gray-300/10 to-gray-400/10 rounded-full blur-3xl"
+        className="absolute bottom-20 right-20 w-64 h-64 bg-muted/10 rounded-full blur-3xl"
       />
 
       <div className="flex min-h-screen">
@@ -160,12 +160,8 @@ export function ForgotPassword() {
             transition={{ delay: 0.2 }}
             className="mb-8"
           >
-            <h1 className="text-4xl xl:text-5xl font-bold text-gray-900 mb-4 leading-tight">
-              Reset Your
-              <span className="bg-gradient-to-r from-gray-700 to-gray-900 bg-clip-text text-transparent">
-                {" "}
-                Password
-              </span>
+            <h1 className="text-4xl xl:text-5xl font-bold text-foreground mb-4 leading-tight">
+              Reset Your Password
               <br />
               Securely
             </h1>

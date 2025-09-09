@@ -11,9 +11,9 @@ function TermsAndConditions() {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-gray-50 relative overflow-hidden">
-      {/* Subtle Background Pattern */}
-      <div className="absolute inset-0 bg-grid-gray-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] -z-10" />
+    <div className="min-h-screen bg-background relative overflow-hidden">
+      {/* Subtle Background Pattern (gradients removed) */}
+      <div className="absolute inset-0 -z-10" />
       
       {/* Subtle Floating Background Elements */}
       <motion.div 
@@ -27,7 +27,7 @@ function TermsAndConditions() {
           repeat: Infinity,
           ease: "easeInOut" 
         }}
-        className="absolute top-20 left-20 w-48 h-48 bg-gradient-to-br from-gray-200/10 to-gray-300/10 rounded-full blur-3xl"
+        className="absolute top-20 left-20 w-48 h-48 bg-muted/10 rounded-full blur-3xl"
       />
 
       <div className="max-w-4xl mx-auto px-4 py-8">

@@ -249,8 +249,8 @@ export function LoginForm({
         animate={{ opacity: 1 }}
         className="min-h-screen bg-background flex flex-col items-center justify-center relative overflow-hidden"
       >
-        {/* Subtle Background Elements */}
-        <div className="absolute inset-0 bg-grid-gray-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] -z-10" />
+        {/* Subtle Background Elements (gradients removed) */}
+        <div className="absolute inset-0 -z-10" />
         <motion.div
           animate={{
             scale: [1, 1.05, 1],
@@ -261,7 +261,7 @@ export function LoginForm({
             repeat: Infinity,
             ease: "easeInOut",
           }}
-          className="absolute top-20 left-20 w-24 h-24 bg-gray-200/20 rounded-full blur-xl"
+          className="absolute top-20 left-20 w-24 h-24 bg-muted/20 rounded-full blur-xl"
         />
         <motion.div
           animate={{
@@ -274,7 +274,7 @@ export function LoginForm({
             ease: "easeInOut",
             delay: 1,
           }}
-          className="absolute bottom-20 right-20 w-32 h-32 bg-gray-300/20 rounded-full blur-xl"
+          className="absolute bottom-20 right-20 w-32 h-32 bg-muted/20 rounded-full blur-xl"
         />
 
         <motion.div
@@ -323,8 +323,8 @@ export function LoginForm({
         type ? "h-[400px] overflow-auto" : "min-h-screen overflow-hidden"
       } bg-background relative `}
     >
-      {/* Subtle Background Pattern */}
-      <div className="absolute inset-0 bg-grid-gray-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] -z-10" />
+      {/* Subtle Background Pattern (gradients removed) */}
+      <div className="absolute inset-0 -z-10" />
 
       {/* Subtle Floating Background Elements */}
       <motion.div
@@ -338,7 +338,7 @@ export function LoginForm({
           repeat: Infinity,
           ease: "easeInOut",
         }}
-        className="absolute top-20 left-20 w-48 h-48 bg-gradient-to-br from-gray-200/10 to-gray-300/10 rounded-full blur-3xl"
+        className="absolute top-20 left-20 w-48 h-48 bg-muted/10 rounded-full blur-3xl"
       />
       <motion.div
         animate={{
@@ -352,7 +352,7 @@ export function LoginForm({
           ease: "easeInOut",
           delay: 3,
         }}
-        className="absolute bottom-20 right-20 w-64 h-64 bg-gradient-to-br from-gray-300/10 to-gray-400/10 rounded-full blur-3xl"
+        className="absolute bottom-20 right-20 w-64 h-64 bg-muted/10 rounded-full blur-3xl"
       />
 
       <div className="flex">
@@ -371,12 +371,8 @@ export function LoginForm({
               transition={{ delay: 0.2 }}
               className="mb-8"
             >
-              <h1 className="text-4xl xl:text-5xl font-bold text-gray-900 mb-4 leading-tight">
-                Transform Your
-                <span className="bg-gradient-to-r from-gray-700 to-gray-900 bg-clip-text text-transparent">
-                  {" "}
-                  Learning
-                </span>
+              <h1 className="text-4xl xl:text-5xl font-bold text-foreground mb-4 leading-tight">
+                Transform Your Learning
                 <br />
                 Journey
               </h1>

@@ -91,12 +91,12 @@ const HeroSection = ({
     if (isLoading) return <DashboardLoader />;
 
     return (
-        <div className="relative min-h-[180px] sm:min-h-[200px] bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-900 overflow-hidden w-full max-w-full">
+        <div className="relative min-h-[180px] sm:min-h-[200px] bg-background dark:bg-background overflow-hidden w-full max-w-full">
             {/* Animated background elements */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="absolute top-1/4 left-1/4 w-12 h-12 sm:w-16 sm:h-16 md:w-32 md:h-32 bg-gradient-to-br from-primary-100/20 to-transparent rounded-full blur-3xl animate-gentle-pulse"></div>
+                <div className="absolute top-1/4 left-1/4 w-12 h-12 sm:w-16 sm:h-16 md:w-32 md:h-32 bg-primary-100/20 rounded-full blur-3xl animate-gentle-pulse"></div>
                 <div
-                    className="absolute bottom-1/3 right-1/3 w-16 h-16 sm:w-20 sm:h-20 md:w-40 md:h-40 bg-gradient-to-br from-primary-50/30 to-transparent rounded-full blur-3xl animate-gentle-pulse"
+                    className="absolute bottom-1/3 right-1/3 w-16 h-16 sm:w-20 sm:h-20 md:w-40 md:h-40 bg-primary-50/30 rounded-full blur-3xl animate-gentle-pulse"
                     style={{ animationDelay: "2s" }}
                 ></div>
             </div>
@@ -107,7 +107,7 @@ const HeroSection = ({
                     <div className="animate-fade-in-up max-w-2xl text-center lg:text-left">
                         {/* Header with Icon */}
                         <div className="flex items-center justify-center lg:justify-start space-x-1.5 mb-1 sm:mb-2">
-                            <div className="p-0.5 sm:p-1 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg shadow-sm">
+                            <div className="p-0.5 sm:p-1 bg-primary-100 rounded-lg shadow-sm">
                                 <BookOpen
                                     size={16}
                                     className="text-primary-600 sm:w-[18px] sm:h-[18px]"

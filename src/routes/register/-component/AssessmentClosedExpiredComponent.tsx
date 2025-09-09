@@ -15,7 +15,7 @@ const AssessmentClosedExpiredComponent = ({
   isPrivate?: boolean;
 }) => {
   return (
-    <div className="flex flex-col w-screen h-screen items-center justify-center gap-2 p-10 bg-[linear-gradient(180deg,#FFF9F4_0%,#E6E6FA_100%)]">
+    <div className="flex flex-col w-screen h-screen items-center justify-center gap-2 p-10 bg-background">
       <VacademyLogoWeb />
       <h1 className="text-sm sm:text-lg text-center">{assessmentName}</h1>
       <Separator className="mt-2" />

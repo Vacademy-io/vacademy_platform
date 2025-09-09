@@ -20,4 +20,5 @@ public class PaymentLogDTO {
     private Date date;
     private String currency;
     private String paymentSpecificData;
+    private Double paymentAmount;
 }

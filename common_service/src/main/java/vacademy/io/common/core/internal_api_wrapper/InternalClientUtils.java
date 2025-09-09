@@ -3,8 +3,13 @@ package vacademy.io.common.core.internal_api_wrapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.util.UriComponentsBuilder;
+
+import java.io.IOException;
 
 
 @Component
@@ -39,6 +44,41 @@ public class InternalClientUtils {
 
         return response;
     }
+
+    public ResponseEntity<String> makeHmacRequestForMultipartFile(String clientName,
+                                                                  String method,
+                                                                  String baseUrl,
+                                                                  String route,
+                                                                  MultipartFile file) throws IOException {
+        // Retrieve the secret key from the database
+        String secretKey = hmacUtils.retrieveSecretKeyFromDatabase(clientName);
+        if (secretKey == null) {
+            throw new RuntimeException("Secret key not found for client: " + clientName);
+        }
+
+        // Build the request URL
+        UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(baseUrl + route);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("clientName", clientName);
+        headers.set("Signature", secretKey);
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+        // Prepare body as multipart
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("file", new MultipartInputStreamFileResource(file.getInputStream(), file.getOriginalFilename()));
+
+        HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
+
+        RestTemplate restTemplate = new RestTemplate();
+        return restTemplate.exchange(
+                builder.toUriString(),
+                HttpMethod.valueOf(method),
+                requestEntity,
+                String.class
+        );
+    }
+
 
 
     public ResponseEntity<String> makeHmacRequest(String clientName, String method, String baseUrl, String route, Object content, HttpHeaders headers) {

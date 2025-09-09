@@ -185,10 +185,13 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         AND lsl.schedule_id = ss.id
         AND lsl.log_type = 'ATTENDANCE_RECORDED'
     WHERE s.user_id IN (:studentIds)
+    AND ss.meeting_date BETWEEN :startDate AND :endDate
     ORDER BY LOWER(s.full_name), ss.meeting_date
 """,nativeQuery = true)
     List<AttendanceReportProjection> getAttendanceReportForStudentIds(
-            @Param("studentIds") List<String> studentIds
+            @Param("studentIds") List<String> studentIds,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
     );
 
     @Query(value = """
@@ -224,6 +227,45 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
     ORDER BY ss.id, ls.id
     """, nativeQuery = true)
     List<ScheduleAttendanceProjection> findAttendanceForUserInBatch(
+            @Param("batchId") String batchId,
+            @Param("userId") String userId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
+
+    @Query(value = """
+    SELECT 
+        CASE 
+            WHEN total_days = 0 THEN 0
+            ELSE ROUND((attended_days * 100.0) / total_days, 2)
+        END AS attendance_percentage
+    FROM (
+        -- Total scheduled days in the batch
+        SELECT COUNT(DISTINCT ss.meeting_date) AS total_days
+        FROM session_schedules ss
+        JOIN live_session_participants lsp 
+            ON lsp.session_id = ss.session_id
+        WHERE lsp.source_type = 'BATCH'
+          AND lsp.source_id = :batchId
+          AND ss.meeting_date BETWEEN :startDate AND :endDate
+    ) total
+    CROSS JOIN (
+        SELECT COUNT(DISTINCT ss.meeting_date) AS attended_days
+        FROM session_schedules ss
+        JOIN live_session_participants lsp 
+            ON lsp.session_id = ss.session_id
+        JOIN live_session_logs lsl 
+            ON lsl.session_id = ss.session_id
+           AND lsl.schedule_id = ss.id
+           AND lsl.user_source_type = 'USER'
+           AND lsl.user_source_id = :userId
+           AND lsl.log_type = 'ATTENDANCE_RECORDED'
+        WHERE lsp.source_type = 'BATCH'
+          AND lsp.source_id = :batchId
+          AND ss.meeting_date BETWEEN :startDate AND :endDate
+    ) attended
+    """, nativeQuery = true)
+    Double getAttendancePercentage(
             @Param("batchId") String batchId,
             @Param("userId") String userId,
             @Param("startDate") LocalDate startDate,

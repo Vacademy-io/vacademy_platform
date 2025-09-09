@@ -150,7 +150,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             "s.mothers_name, s.parents_mobile_number, s.parents_email, s.linked_institute_name, " +
             "s.created_at, s.updated_at, ssigm.package_session_id, ssigm.institute_enrollment_number, ssigm.status, "
             +
-            "ssigm.institute_id, ssigm.expiry_date, s.face_file_id, s.parents_to_mother_mobile_number, s.parents_to_mother_email "
+            "ssigm.institute_id, ssigm.expiry_date, s.face_file_id, s.parents_to_mother_mobile_number, s.parents_to_mother_email, ssigm.user_plan_id "
             +
             "FROM student s " +
             "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +

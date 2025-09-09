@@ -7,6 +7,9 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
+import vacademy.io.admin_core_service.features.user_subscription.entity.AppliedCouponDiscount;
 
 import java.time.LocalDateTime;
 

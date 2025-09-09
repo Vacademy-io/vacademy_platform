@@ -51,6 +51,9 @@ public class CustomFields {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Date updatedAt;
 
+    @Column(name = "is_hidden")
+    private Boolean isHidden = false;
+
     public CustomFields(CustomFieldDTO customFieldDTO) {
         this.id = customFieldDTO.getId();
         this.fieldKey = customFieldDTO.getFieldKey();
@@ -62,5 +65,6 @@ public class CustomFields {
         this.isMandatory = customFieldDTO.getIsMandatory();
         this.isFilter = customFieldDTO.getIsFilter();
         this.isSortable = customFieldDTO.getIsSortable();
+        this.isHidden = customFieldDTO.getIsHidden();
     }
 }

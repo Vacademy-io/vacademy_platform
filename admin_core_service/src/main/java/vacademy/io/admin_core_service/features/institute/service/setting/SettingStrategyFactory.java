@@ -1,6 +1,5 @@
-package vacademy.io.admin_core_service.features.institute.service;
+package vacademy.io.admin_core_service.features.institute.service.setting;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import vacademy.io.admin_core_service.features.institute.enums.SettingKeyEnums;
 import vacademy.io.common.institute.entity.Institute;
 
@@ -15,6 +14,7 @@ public class SettingStrategyFactory {
 
     public SettingStrategyFactory() {
         strategies.put(SettingKeyEnums.NAMING_SETTING.name(), new NameSettingStrategy());
+        strategies.put(SettingKeyEnums.CERTIFICATE_SETTING.name(), new CertificateSettingStrategy());
         // strategies.put("branding", new BrandingSettingStrategy(objectMapper));
         // Add more strategies here
     }

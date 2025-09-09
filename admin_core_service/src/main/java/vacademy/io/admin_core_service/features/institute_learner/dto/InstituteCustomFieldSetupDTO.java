@@ -12,6 +12,7 @@ public class InstituteCustomFieldSetupDTO {
     private String fieldName;
     private String fieldType;
     private Integer formOrder;
+    private Boolean isHidden;
     private String groupName;
     private String type;
     private String typeId;

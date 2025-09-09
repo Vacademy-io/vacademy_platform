@@ -28,7 +28,8 @@ public class StripePaymentManager implements PaymentServiceStrategy {
     private static final Logger logger = LoggerFactory.getLogger(StripePaymentManager.class);
 
     @Override
-    public Map<String, Object> createCustomer(UserDTO user, PaymentInitiationRequestDTO request, Map<String, Object> paymentGatewaySpecificData) {
+    public Map<String, Object> createCustomer(UserDTO user, PaymentInitiationRequestDTO request,
+            Map<String, Object> paymentGatewaySpecificData) {
         logger.info("Starting Stripe customer creation for user: {}", user.getId());
 
         try {
@@ -51,8 +52,9 @@ public class StripePaymentManager implements PaymentServiceStrategy {
     }
 
     @Override
-    public PaymentResponseDTO initiatePayment(UserDTO user, PaymentInitiationRequestDTO request, Map<String, Object> paymentGatewaySpecificData) {
-        logger.info("Initiating Stripe payment for user: {}", user.getId());
+    public PaymentResponseDTO initiatePayment(UserDTO user, PaymentInitiationRequestDTO request,
+            Map<String, Object> paymentGatewaySpecificData) {
+        logger.info("Initiating Stripe payment for user: {}", user != null ? user.getId() : "unknown user (donation)");
 
         try {
             validateRequest(request);
@@ -77,6 +79,64 @@ public class StripePaymentManager implements PaymentServiceStrategy {
         }
     }
 
+    @Override
+    public Map<String, Object> createCustomerForUnknownUser(String email, PaymentInitiationRequestDTO request,
+            Map<String, Object> paymentGatewaySpecificData) {
+        logger.info("Starting Stripe customer creation for unknown user with email: {}", email);
+
+        try {
+            String apiKey = extractApiKey(paymentGatewaySpecificData);
+            validateInputForUnknownUser(email, request);
+
+            Stripe.apiKey = apiKey;
+            Map<String, Object> stripeParams = buildStripeCustomerParamsForUnknownUser(email, request);
+
+            logger.debug("Stripe customer creation parameters for unknown user: {}", stripeParams);
+            Customer stripeCustomer = Customer.create(stripeParams);
+            logger.info("Stripe customer created successfully for unknown user. Customer ID: {}",
+                    stripeCustomer.getId());
+
+            return buildCustomerResponse(stripeCustomer);
+
+        } catch (StripeException e) {
+            logger.error("StripeException during customer creation for unknown user: {}", e.getMessage(), e);
+            throw new VacademyException("Error creating Stripe customer for unknown user: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public Map<String, Object> findCustomerByEmail(String email, Map<String, Object> paymentGatewaySpecificData) {
+        logger.info("Searching for existing Stripe customer with email: {}", email);
+
+        try {
+            String apiKey = extractApiKey(paymentGatewaySpecificData);
+            Stripe.apiKey = apiKey;
+
+            // Search for customers by email using Stripe's list API
+            Map<String, Object> searchParams = new HashMap<>();
+            searchParams.put("email", email);
+            searchParams.put("limit", 1);
+
+            CustomerCollection customers = Customer.list(searchParams);
+
+            if (customers.getData() != null && !customers.getData().isEmpty()) {
+                Customer existingCustomer = customers.getData().get(0);
+                logger.info("Found existing Stripe customer with ID: {}", existingCustomer.getId());
+                return buildCustomerResponse(existingCustomer);
+            } else {
+                logger.info("No existing Stripe customer found with email: {}", email);
+                return null;
+            }
+
+        } catch (StripeException e) {
+            logger.error("Stripe error while searching for customer by email: {}", e.getMessage(), e);
+            // Don't throw exception, just return null to indicate customer not found
+            return null;
+        } catch (Exception e) {
+            logger.error("Unexpected error while searching for customer by email: {}", e.getMessage(), e);
+            return null;
+        }
+    }
 
     private long convertAmountToCents(double amount) {
         return BigDecimal.valueOf(amount)
@@ -85,7 +145,8 @@ public class StripePaymentManager implements PaymentServiceStrategy {
                 .longValue();
     }
 
-    private void createInvoiceItem(StripeRequestDTO stripeRequestDTO, long amountInCents, PaymentInitiationRequestDTO request) throws StripeException {
+    private void createInvoiceItem(StripeRequestDTO stripeRequestDTO, long amountInCents,
+            PaymentInitiationRequestDTO request) throws StripeException {
         if (amountInCents <= 0) {
             throw new VacademyException("Invoice item amount must be greater than 0");
         }
@@ -94,14 +155,17 @@ public class StripePaymentManager implements PaymentServiceStrategy {
         invoiceItemParams.put("customer", stripeRequestDTO.getCustomerId());
         invoiceItemParams.put("amount", amountInCents);
         invoiceItemParams.put("currency", request.getCurrency().toLowerCase());
-        invoiceItemParams.put("description", request.getDescription() != null ? request.getDescription() : "No description");
-        invoiceItemParams.put("metadata", Map.of("orderId",request.getOrderId(),"instituteId",request.getInstituteId()));
+        invoiceItemParams.put("description",
+                request.getDescription() != null ? request.getDescription() : "No description");
+        invoiceItemParams.put("metadata",
+                Map.of("orderId", request.getOrderId(), "instituteId", request.getInstituteId()));
         logger.debug("Creating invoice item with params: {}", invoiceItemParams);
         InvoiceItem invoiceItem = InvoiceItem.create(invoiceItemParams);
         logger.info("Invoice item created with ID: {}", invoiceItem.getId());
     }
 
-    private Invoice createAndAutoChargeInvoice(StripeRequestDTO stripeRequestDTO, PaymentInitiationRequestDTO request) throws StripeException {
+    private Invoice createAndAutoChargeInvoice(StripeRequestDTO stripeRequestDTO, PaymentInitiationRequestDTO request)
+            throws StripeException {
         Map<String, Object> invoiceParams = new HashMap<>();
         invoiceParams.put("customer", stripeRequestDTO.getCustomerId());
         invoiceParams.put("collection_method", "charge_automatically");
@@ -126,14 +190,11 @@ public class StripePaymentManager implements PaymentServiceStrategy {
         // Manually finalize the invoice
         invoice = invoice.finalizeInvoice();
 
-        logger.info("Invoice finalized: {}, hosted_url: {}, pdf: {}", invoice.getId(), invoice.getHostedInvoiceUrl(), invoice.getInvoicePdf());
+        logger.info("Invoice finalized: {}, hosted_url: {}, pdf: {}", invoice.getId(), invoice.getHostedInvoiceUrl(),
+                invoice.getInvoicePdf());
 
         return invoice;
     }
-
-
-
-
 
     private void attachPaymentMethodIfNeeded(String customerId, String paymentMethodId) throws StripeException {
         logger.info("Verifying if payment method {} is attached to customer {}", paymentMethodId, customerId);
@@ -175,13 +236,23 @@ public class StripePaymentManager implements PaymentServiceStrategy {
                 ? invoice.getStatusTransitions().getPaidAt()
                 : null);
 
+        // Add customer email for donations
+        if (invoice.getCustomer() != null) {
+            try {
+                Customer customer = Customer.retrieve(invoice.getCustomer());
+                response.put("customerEmail", customer.getEmail());
+            } catch (Exception e) {
+                logger.warn("Could not retrieve customer email from Stripe", e);
+            }
+        }
+
         PaymentResponseDTO dto = new PaymentResponseDTO();
         dto.setResponseData(response);
-        dto.setOrderId(invoice.getMetadata().get("orderId") != null ? invoice.getMetadata().get("orderId").toString() : null);
+        dto.setOrderId(
+                invoice.getMetadata().get("orderId") != null ? invoice.getMetadata().get("orderId").toString() : null);
         logger.debug("Built payment response: {}", dto);
         return dto;
     }
-
 
     private void validateRequest(PaymentInitiationRequestDTO request) {
         StripeRequestDTO stripeRequestDTO = request.getStripeRequest();
@@ -225,6 +296,16 @@ public class StripePaymentManager implements PaymentServiceStrategy {
         }
     }
 
+    private void validateInputForUnknownUser(String email, PaymentInitiationRequestDTO request) {
+        if (request == null) {
+            throw new VacademyException("PaymentInitiationRequestDTO cannot be null.");
+        }
+
+        if (!StringUtils.hasText(email)) {
+            throw new VacademyException("Email is required for unknown user.");
+        }
+    }
+
     private Map<String, Object> buildStripeCustomerParams(UserDTO user, PaymentInitiationRequestDTO request) {
         Map<String, Object> params = new HashMap<>();
         params.put("email", user.getEmail());
@@ -233,6 +314,21 @@ public class StripePaymentManager implements PaymentServiceStrategy {
         if (StringUtils.hasText(user.getMobileNumber())) {
             params.put("phone", user.getMobileNumber());
         }
+
+        StripeRequestDTO stripeRequest = request.getStripeRequest();
+        if (stripeRequest != null && StringUtils.hasText(stripeRequest.getPaymentMethodId())) {
+            params.put("payment_method", stripeRequest.getPaymentMethodId());
+            params.put("invoice_settings", Map.of("default_payment_method", stripeRequest.getPaymentMethodId()));
+        }
+
+        return params;
+    }
+
+    private Map<String, Object> buildStripeCustomerParamsForUnknownUser(String email,
+            PaymentInitiationRequestDTO request) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("email", email);
+        params.put("name", "Anonymous User"); // Default name for unknown users
 
         StripeRequestDTO stripeRequest = request.getStripeRequest();
         if (stripeRequest != null && StringUtils.hasText(stripeRequest.getPaymentMethodId())) {

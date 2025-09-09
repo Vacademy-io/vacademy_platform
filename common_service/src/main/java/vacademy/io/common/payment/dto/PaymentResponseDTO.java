@@ -11,4 +11,6 @@ import java.util.Map;
 public class PaymentResponseDTO {
     public Map<String,Object> responseData;
     private String orderId;
+    private String status;
+    private String message;
 }

@@ -21,6 +21,7 @@ public class LearnerPackageDetailController {
     private LearnerPackageService learnerPackageService;
 
     @PostMapping("/search")
+    @ClientCacheable(maxAgeSeconds = 60, scope = CacheScope.PRIVATE, varyHeaders = {"X-Institute-Id", "X-User-Id"})
     public ResponseEntity<Page<PackageDetailDTO>> getLearnerPackages(
             @RequestBody LearnerPackageFilterDTO filterDTO,
             @RequestAttribute("user") CustomUserDetails user,

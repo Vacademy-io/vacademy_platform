@@ -10,6 +10,8 @@ import vacademy.io.admin_core_service.features.learner.dto.LearnerDetailsEditDTO
 import vacademy.io.admin_core_service.features.learner.manager.LearnerProfileManager;
 import vacademy.io.admin_core_service.features.learner.service.LearnerService;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.admin_core_service.config.cache.ClientCacheable;
+import vacademy.io.admin_core_service.config.cache.CacheScope;
 
 import java.util.List;
 
@@ -24,6 +26,7 @@ public class LearnerUserInfoController {
     private LearnerService learnerService;
 
     @GetMapping("/details")
+    @ClientCacheable(maxAgeSeconds = 60, scope = CacheScope.PRIVATE, varyHeaders = {"X-Institute-Id", "X-User-Id"})
     public ResponseEntity<List<StudentDTO>> getLearnerInfo(@RequestAttribute("user") CustomUserDetails user, @RequestParam("instituteId") String instituteId) {
 
         return learnerProfileManager.getLearnerInfo(user, instituteId);

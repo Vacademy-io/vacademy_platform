@@ -32,7 +32,10 @@ interface CredentialsFormProps {
 const createCredentialsSchema = (settings: SignupSettings, hideFullName: boolean = false) => {
   const baseSchema: any = {};
   
-  if (!hideFullName) {
+  // Hide full name field if:
+  // 1. hideFullName is true, OR
+  // 2. usernameStrategy is "email" (we'll use email as full name)
+  if (!hideFullName && settings.usernameStrategy !== "email") {
     baseSchema.fullName = z.string().min(2, "Full name must be at least 2 characters");
   }
 
@@ -98,8 +101,13 @@ export function CredentialsForm({
   const needsUsername = settings.usernameStrategy === "manual" || settings.usernameStrategy === " ";
   const needsPassword = settings.passwordStrategy === "manual" || settings.passwordStrategy === " ";
 
-  // Show full name field if we have a value or if any credentials are manual
-  const showFullName = !hideFullName || initialData.fullName || needsUsername || needsPassword;
+  // Show full name field if:
+  // 1. hideFullName is false AND
+  // 2. usernameStrategy is not "email" AND
+  // 3. (we have initial data OR any credentials are manual)
+  const showFullName = !hideFullName && 
+                      settings.usernameStrategy !== "email" && 
+                      (initialData.fullName || needsUsername || needsPassword);
 
   return (
     <motion.div

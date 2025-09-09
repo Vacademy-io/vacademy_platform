@@ -40,7 +40,7 @@ public class SendWhatsAppActionHandler implements ActionHandlerService {
             }
 
             // Evaluate the key to get the template category
-            String key = String.valueOf(spelEvaluator.eval(keyExpr, Map.of("item", item, "ctx", context)));
+            String key = String.valueOf(spelEvaluator.evaluate(keyExpr, Map.of("item", item, "ctx", context)));
             log.debug("Matrix key evaluated to: {}", key);
 
             // Get templates for this key, fallback to DEFAULT if not found
@@ -64,13 +64,9 @@ public class SendWhatsAppActionHandler implements ActionHandlerService {
                     continue;
                 }
 
-                // Build WhatsApp message body based on template and remaining days
-                String messageBody = buildWhatsAppMessage(templateId, item);
-                
-                log.debug("Sending WhatsApp - Template: {}, Body: {}", templateId, messageBody);
 
                 try {
-                    Map<String, Object> result = notificationClient.sendWhatsApp(item, messageBody);
+                    Map<String, Object> result = notificationClient.sendWhatsApp(item, templateId);
                     results.add(Map.of(
                         "success", true,
                         "template_key", key,
@@ -98,38 +94,6 @@ public class SendWhatsAppActionHandler implements ActionHandlerService {
         } catch (Exception e) {
             log.error("Error in SendWhatsAppActionHandler", e);
             return Map.of("success", false, "error", e.getMessage());
-        }
-    }
-
-    private String buildWhatsAppMessage(String templateId, Map<String, Object> item) {
-        Integer remainingDays = (Integer) item.getOrDefault("remaining_days", 0);
-        String name = String.valueOf(item.getOrDefault("full_name", ""));
-        String liveLink = String.valueOf(item.getOrDefault("live_link", ""));
-        String paymentLink = String.valueOf(item.getOrDefault("payment_link", "https://aanandham.app/pay"));
-        
-        switch (templateId) {
-            case "wa_membership_ended":
-                return String.format("🌟 Namasthey %s ji\nYour membership has ended. Renew: %s", name, paymentLink);
-                
-            case "wa_daily_reminder":
-                return String.format("Namasthey %s ji 🌞\nDaily reminder\n🔗 %s", name, liveLink);
-                
-            case "wa_trial_ended":
-                return String.format("🌼 Namasthey %s ji\nYour trial has ended. Join paid: %s", name, paymentLink);
-                
-            case "wa_default_update":
-                if (remainingDays > 2) {
-                    return String.format("Hi %s, join today's live: %s", name, liveLink);
-                } else if (remainingDays > 0 && remainingDays <= 2) {
-                    return String.format("Hi %s, %d days left. Link: %s Pay: %s", name, remainingDays, liveLink, paymentLink);
-                } else if (remainingDays == 0) {
-                    return String.format("Hi %s, membership ended. Renew: %s", name, paymentLink);
-                } else {
-                    return String.format("Hi %s, trial ended. Join paid: %s", name, paymentLink);
-                }
-                
-            default:
-                return String.format("Hi %s, join today: %s", name, liveLink);
         }
     }
 }

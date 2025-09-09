@@ -43,7 +43,7 @@ public class QueryProcessorStrategy implements DataProcessorStrategy {
             JsonNode paramsNode = configNode.path("params");
             Map<String, Object> params = new HashMap<>();
             paramsNode.fields().forEachRemaining(e -> {
-                Object value = spelEvaluator.eval(e.getValue().asText(), itemContext);
+                Object value = spelEvaluator.evaluate(e.getValue().asText(), itemContext);
                 params.put(e.getKey(), value);
             });
 

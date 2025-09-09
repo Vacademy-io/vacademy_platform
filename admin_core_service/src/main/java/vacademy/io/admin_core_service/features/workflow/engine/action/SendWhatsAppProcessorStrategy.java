@@ -39,7 +39,7 @@ public class SendWhatsAppProcessorStrategy implements DataProcessorStrategy {
             }
 
             // Evaluate the templates expression
-            Object templatesObj = spelEvaluator.eval(onExpr, itemContext);
+            Object templatesObj = spelEvaluator.evaluate(onExpr, itemContext);
             if (templatesObj == null) {
                 log.warn("No templates found for expression: {}", onExpr);
                 changes.put("status", "no_templates_found");

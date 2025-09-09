@@ -33,7 +33,7 @@ public class SwitchProcessorStrategy implements DataProcessorStrategy {
 
             // Evaluate the switch expression
             String onExpr = forEachConfig.getOn();
-            Object switchValue = spelEvaluator.eval(onExpr, itemContext);
+            Object switchValue = spelEvaluator.evaluate(onExpr, itemContext);
             String key = String.valueOf(switchValue);
 
             // Find matching case

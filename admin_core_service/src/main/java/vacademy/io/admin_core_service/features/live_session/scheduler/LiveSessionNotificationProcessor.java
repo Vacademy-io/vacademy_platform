@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.live_session.scheduler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
@@ -36,6 +37,8 @@ public class LiveSessionNotificationProcessor {
     private final SessionScheduleRepository sessionScheduleRepository;
     private final NotificationService notificationService;
     private final ObjectMapper objectMapper; // kept for future template rendering
+    @Autowired
+    private SessionScheduleRepository scheduleRepository;
 
     @Transactional
     public void processDueNotifications() {
@@ -341,6 +344,7 @@ public class LiveSessionNotificationProcessor {
                 // Get the specific schedule being deleted
                 Optional<SessionSchedule> scheduleOpt = sessionScheduleRepository.findById(scheduleId);
                 SessionSchedule schedule = scheduleOpt.orElse(null);
+                scheduleRepository.softDeleteScheduleByIdIn(List.of(scheduleId));
 
                 // Fetch students
                 List<Object[]> rows = getStudentsForNotification(participants, instituteId);

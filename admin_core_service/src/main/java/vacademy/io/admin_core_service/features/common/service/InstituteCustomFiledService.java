@@ -29,14 +29,13 @@ public class InstituteCustomFiledService {
 
     public void addOrUpdateCustomField(List<InstituteCustomFieldDTO> customFieldDTOs) {
         List<InstituteCustomField> instituteCustomFields = new ArrayList<>();
-        List<CustomFields> customFields = new ArrayList<>();
         for (InstituteCustomFieldDTO customFieldDTO : customFieldDTOs) {
             CustomFields customField = new CustomFields(customFieldDTO.getCustomField());
-            customFields.add(customField);
+            customField = customFieldRepository.save(customField);
             InstituteCustomField instituteCustomField = new InstituteCustomField(customFieldDTO);
+            instituteCustomField.setCustomFieldId(customField.getId());
             instituteCustomFields.add(instituteCustomField);
         }
-        customFieldRepository.saveAll(customFields);
         instituteCustomFieldRepository.saveAll(instituteCustomFields);
     }
 

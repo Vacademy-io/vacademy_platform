@@ -367,7 +367,6 @@ public class GetLiveSessionService {
                 } else {
                     // Only schedule deletion, collect for batch notification
                     scheduleIdsToNotify.add(scheduleId);
-                    scheduleRepository.softDeleteScheduleByIdIn(List.of(scheduleId));
                 }
             }
 

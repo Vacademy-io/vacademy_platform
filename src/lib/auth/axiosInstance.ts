@@ -12,7 +12,7 @@ export const getTokenFromStorage = async (
   try {
     const { value } = await Preferences.get({ key });
     return value;
-  } catch (error) {
+  } catch {
     return null;
   }
 };
@@ -21,6 +21,7 @@ const removeTokensAndInstituteId = async () => {
   await Preferences.remove({ key: TokenKey.accessToken });
   await Preferences.remove({ key: TokenKey.refreshToken });
   await Preferences.remove({ key: "instituteId" });
+  await Preferences.remove({ key: "InstituteId" });
 };
 
 const refreshTokens = async (refreshToken: string): Promise<void> => {
@@ -38,7 +39,10 @@ const refreshTokens = async (refreshToken: string): Promise<void> => {
       key: TokenKey.refreshToken,
       value: newRefreshToken,
     });
-    await Preferences.set({ key: "instituteId", value: instituteId });
+    if (instituteId) {
+      await Preferences.set({ key: "instituteId", value: instituteId });
+      await Preferences.set({ key: "InstituteId", value: instituteId });
+    }
   } 
    catch (error) {
     console.error("[Auth] Failed to refresh tokens:", error);
@@ -59,16 +63,31 @@ authenticatedAxiosInstance.interceptors.request.use(
   async (request) => {
     const requestUrl = String(request.url || "");
     const isPublicDomainRouting = requestUrl.includes("/public/domain-routing/");
+    const isOpenEndpoint = requestUrl.includes("/open/");
 
-    // For public domain routing endpoint, do not attach auth or institute headers
-    if (isPublicDomainRouting) {
-      // Serve from client cache for GET when possible
+    // For public/open endpoints, do not attach auth or perform refresh logic
+    if (isPublicDomainRouting || isOpenEndpoint) {
+      try {
+        let instituteId = await getTokenFromStorage("InstituteId");
+        if (!instituteId) {
+          instituteId = await getTokenFromStorage("instituteId");
+        }
+        if (instituteId) {
+          request.headers["clientId"] = instituteId;
+          request.headers["X-Institute-Id"] = instituteId;
+        }
+      } catch {
+        // no-op
+      }
       request = maybeServeFromCache(request);
       return request;
     }
 
     const accessToken = await getTokenFromStorage(TokenKey.accessToken);
-    const instituteId = await getTokenFromStorage("InstituteId");
+    let instituteId = await getTokenFromStorage("InstituteId");
+    if (!instituteId) {
+      instituteId = await getTokenFromStorage("instituteId");
+    }
     // Attempt to populate user and package session for Vary-aware caching
     try {
       const studentDetailsStr = await Preferences.get({ key: "StudentDetails" });
@@ -83,7 +102,9 @@ authenticatedAxiosInstance.interceptors.request.use(
           request.headers["X-Package-Session-Id"] = String(packageSessionId);
         }
       }
-    } catch {}
+    } catch {
+      // no-op
+    }
 
     // Add instituteId to headers if available
     if (instituteId) {
@@ -114,7 +135,7 @@ authenticatedAxiosInstance.interceptors.request.use(
         // Serve from client cache for GET when possible
         request = maybeServeFromCache(request);
         return request;
-      } catch (error) {
+      } catch {
 
         // If token refresh fails, remove tokens and institute ID
         await removeTokensAndInstituteId();

@@ -8,12 +8,14 @@ interface StoreState {
   sideBarOpen: boolean;
   instituteName: string;
   instituteLogoFileUrl: string;
+  hasCustomSidebar: boolean;
   setSidebarOpen: () => void;
   setSideBarState: (sidebarstate: sideBarStateType) => void;
   setInstituteDetails: (
     instituteName?: string,
     instituteLogoFileUrl?: string
   ) => void;
+  setHasCustomSidebar: (value: boolean) => void;
 }
 
 const useStore = create<StoreState>((set) => ({
@@ -21,8 +23,10 @@ const useStore = create<StoreState>((set) => ({
   sideBarOpen: false,
   instituteName: "",
   instituteLogoFileUrl: "",
+  hasCustomSidebar: false,
   setSidebarOpen: () => set((state) => ({ sideBarOpen: !state.sideBarOpen })),
   setSideBarState: (sidebarstate) => set({ sideBarState: sidebarstate }),
+  setHasCustomSidebar: (value: boolean) => set({ hasCustomSidebar: value }),
 
   setInstituteDetails: async (name?: string, logoUrl?: string) => {
     try {

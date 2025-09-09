@@ -3,6 +3,7 @@ import { SidebarInset } from "@/components/ui/sidebar";
 import { Navbar } from "./top-navbar.tsx/navbar";
 import { cn } from "@/lib/utils";
 import React from "react";
+import useStore from "./sidebar/useSidebar";
 
 export const LayoutContainer = ({
     children,
@@ -13,6 +14,11 @@ export const LayoutContainer = ({
     className?: string;
     sidebarComponent?: React.ReactNode;
 }) => {
+    const { setHasCustomSidebar } = useStore();
+    React.useEffect(() => {
+        setHasCustomSidebar(!!sidebarComponent);
+        return () => setHasCustomSidebar(false);
+    }, [sidebarComponent, setHasCustomSidebar]);
     return (
         <>
             <MySidebar sidebarComponent={sidebarComponent} />

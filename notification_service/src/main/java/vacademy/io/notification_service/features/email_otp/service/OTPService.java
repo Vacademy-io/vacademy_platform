@@ -2,6 +2,7 @@ package vacademy.io.notification_service.features.email_otp.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.notification_service.features.email_otp.entity.EmailOtp;
 import vacademy.io.notification_service.features.email_otp.repository.OtpRepository;
 import vacademy.io.notification_service.service.EmailService;
@@ -39,14 +40,24 @@ public class OTPService {
 
     public Boolean verifyEmailOtp(String otp, String email) {
         Optional<EmailOtp> otpOptional = otpRepository.findTopByEmailOrderByCreatedAtDesc(email);
+
         if (otpOptional.isPresent()) {
             EmailOtp emailOtp = otpOptional.get();
+
+            // Check expiration (10 minutes = 600000 ms)
+            long now = System.currentTimeMillis();
+            long createdAt = emailOtp.getCreatedAt().getTime();
+            if (now - createdAt > 10 * 60 * 1000) {
+                throw new VacademyException("OTP has expired. Please request a new one.");
+            }
+            // Validate OTP
             if (emailOtp.getOtp().equals(otp)) {
                 emailOtp.setIsVerified("true");
                 otpRepository.save(emailOtp);
                 return true;
             }
         }
+
         return false;
     }
 

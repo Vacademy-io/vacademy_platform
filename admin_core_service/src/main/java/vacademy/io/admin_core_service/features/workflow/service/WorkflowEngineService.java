@@ -250,7 +250,7 @@ public class WorkflowEngineService {
                     }
                 } else if ("conditional".equalsIgnoreCase(type)) {
                     String cond = route.path("condition").asText("");
-                    Object val = spelEvaluator.eval(cond, ctx);
+                    Object val = spelEvaluator.evaluate(cond, ctx);
                     boolean b = (val instanceof Boolean bo) ? bo : Boolean.parseBoolean(String.valueOf(val));
                     nextNodeId = b ? route.path("trueNodeId").asText(null) : route.path("falseNodeId").asText(null);
                     if (nextNodeId != null) {
@@ -297,7 +297,7 @@ public class WorkflowEngineService {
      */
     private String evaluateSwitchRouting(JsonNode route, Map<String, Object> ctx) {
         String expr = route.path("expression").asText("");
-        Object key = spelEvaluator.eval(expr, ctx);
+        Object key = spelEvaluator.evaluate(expr, ctx);
         for (JsonNode c : route.path("cases")) {
             if (Objects.equals(String.valueOf(key), c.path("value").asText())) {
                 String nextNodeId = c.path("targetNodeId").asText(null);
@@ -321,7 +321,7 @@ public class WorkflowEngineService {
         }
 
         // Evaluate the switch expression
-        Object switchValue = spelEvaluator.eval(onExpr, ctx);
+        Object switchValue = spelEvaluator.evaluate(onExpr, ctx);
         String key = String.valueOf(switchValue);
         log.info("SWITCH operation evaluating '{}' to key: '{}'", onExpr, key);
 

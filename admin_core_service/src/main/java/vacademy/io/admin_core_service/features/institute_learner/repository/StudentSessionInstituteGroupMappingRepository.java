@@ -21,6 +21,7 @@ public interface StudentSessionInstituteGroupMappingRepository
         s.full_name AS full_name,
         s.mobile_number AS mobile_number,
         s.email AS email,
+        s.username AS username,
         ps.id AS package_session_id
     FROM student_session_institute_group_mapping ssigm
     JOIN student s ON s.user_id = ssigm.user_id

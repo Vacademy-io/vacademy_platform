@@ -31,10 +31,9 @@ public class WorkflowExecutionJob implements Job {
 
     @Override
     public void execute(JobExecutionContext context) throws JobExecutionException {
-        try {
-            log.info("Starting workflow execution job at {}", LocalDateTime.now());
+        log.info("Starting workflow execution job");
 
-            // Get schedules that are due for execution
+        try {
             List<WorkflowSchedule> dueSchedules = workflowScheduleService.getDueSchedules();
 
             if (dueSchedules.isEmpty()) {
@@ -45,13 +44,15 @@ public class WorkflowExecutionJob implements Job {
             log.info("Found {} schedules due for execution", dueSchedules.size());
 
             for (WorkflowSchedule schedule : dueSchedules) {
-                try {
-                    log.info("Processing schedule: {} (workflow: {})", schedule.getId(), schedule.getWorkflowId());
+                log.info("Processing schedule: {} - workflow: {}, cron: {}, lastRunAt: {}, nextRunAt: {}",
+                        schedule.getId(), schedule.getWorkflowId(), schedule.getCronExpression(),
+                        schedule.getLastRunAt(), schedule.getNextRunAt());
 
+                try {
                     // Check idempotency
                     String idempotencyKey = generateIdempotencyKey(schedule);
                     if (idempotencyService.isAlreadyProcessed(idempotencyKey)) {
-                        log.info("Workflow schedule {} already processed, skipping", schedule.getId());
+                        log.info("Schedule {} already executed (idempotency check passed)", schedule.getId());
                         continue;
                     }
 
@@ -60,7 +61,6 @@ public class WorkflowExecutionJob implements Job {
 
                     log.info("Executing workflow schedule: {} - {}", schedule.getId(), schedule.getWorkflowId());
 
-                    // Execute the workflow
                     Map<String, Object> result = executeWorkflowFromSchedule(schedule);
 
                     // Mark as completed
@@ -68,6 +68,15 @@ public class WorkflowExecutionJob implements Job {
 
                     log.info("Successfully executed workflow schedule: {} - Status: {}",
                             schedule.getId(), result.get("status"));
+
+                    // Log the updated schedule details
+                    WorkflowSchedule updatedSchedule = workflowScheduleService.getScheduleById(schedule.getId())
+                            .orElse(null);
+                    if (updatedSchedule != null) {
+                        log.info("Schedule {} updated - lastRunAt: {}, nextRunAt: {}",
+                                updatedSchedule.getId(), updatedSchedule.getLastRunAt(),
+                                updatedSchedule.getNextRunAt());
+                    }
 
                 } catch (Exception e) {
                     log.error("Error executing workflow schedule: {}", schedule.getId(), e);
@@ -77,12 +86,8 @@ public class WorkflowExecutionJob implements Job {
                     idempotencyService.markAsFailed(idempotencyKey, e.getMessage());
                 }
             }
-
-            log.info("Completed workflow execution job at {}", LocalDateTime.now());
-
         } catch (Exception e) {
             log.error("Error in workflow execution job", e);
-            throw new JobExecutionException(e);
         }
     }
 
@@ -142,15 +147,21 @@ public class WorkflowExecutionJob implements Job {
      */
     private void updateScheduleExecutionTime(WorkflowSchedule schedule) {
         try {
-            schedule.setLastRunAt(LocalDateTime.now());
-            // Note: execution_count field doesn't exist in database, so we skip it
+            LocalDateTime now = LocalDateTime.now();
+
+            // Update last run time
+            schedule.setLastRunAt(now);
+            schedule.setUpdatedAt(now);
 
             // Calculate next run time based on cron expression
             LocalDateTime nextRunTime = calculateNextRunTime(schedule.getCronExpression());
             schedule.setNextRunAt(nextRunTime);
 
-            workflowScheduleService.updateSchedule(schedule.getId(), schedule);
-            log.debug("Updated execution time for schedule: {} to {}", schedule.getId(), nextRunTime);
+            // Save the updated schedule
+            WorkflowSchedule updatedSchedule = workflowScheduleService.updateSchedule(schedule.getId(), schedule);
+
+            log.info("Updated execution time for schedule: {} - lastRunAt: {}, nextRunAt: {}",
+                    schedule.getId(), updatedSchedule.getLastRunAt(), updatedSchedule.getNextRunAt());
 
         } catch (Exception e) {
             log.error("Error updating schedule execution time: {}", schedule.getId(), e);

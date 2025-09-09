@@ -50,7 +50,7 @@ public class QueryNodeHandler implements NodeHandler {
 
                         Object value;
                         if (valueExpr instanceof String) {
-                            value = spelEvaluator.eval((String) valueExpr, context);
+                            value = spelEvaluator.evaluate((String) valueExpr, context);
                         } else {
                             value = valueExpr;
                         }

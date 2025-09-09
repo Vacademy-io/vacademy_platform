@@ -50,7 +50,7 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
             }
 
             // Evaluate the list expression (e.g., #ctx['ssigmList'])
-            Object listObj = spelEvaluator.eval(onExpr, context);
+            Object listObj = spelEvaluator.evaluate(onExpr, context);
             if (listObj == null) {
                 log.warn("No list found for expression: {}", onExpr);
                 changes.put("status", "no_list_found");
@@ -132,7 +132,6 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
                 String instituteId = (String) context.get("instituteId");
                 Map<String, Object> notificationResult = sendBulkWhatsAppRequests(groupedRequests, instituteId);
 
-
                 log.info("Successfully sent {} WhatsApp requests in {} template groups",
                         allWhatsappRequests.size(), groupedRequests.size());
             } else {
@@ -164,7 +163,7 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
 
         try {
             // Evaluate the templates expression
-            Object templatesObj = spelEvaluator.eval(templatesExpr, itemContext);
+            Object templatesObj = spelEvaluator.evaluate(templatesExpr, itemContext);
             if (templatesObj == null) {
                 log.warn("No templates found for expression: {}", templatesExpr);
                 return Collections.emptyList();
@@ -269,7 +268,7 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
         Map<String, String> evaluatedPlaceholders = new HashMap<>();
         for (Map.Entry<String, String> entry : placeholders.entrySet()) {
             String key = entry.getKey();
-            Object value = spelEvaluator.eval(entry.getValue(), itemContext);
+            Object value = spelEvaluator.evaluate(entry.getValue(), itemContext);
             evaluatedPlaceholders.put(key, String.valueOf(value));
         }
         return evaluatedPlaceholders;
@@ -322,7 +321,7 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
             // Call the notification service for each request
             // to do: actual send notificatios
             for (WhatsappRequest whatsappRequest : allRequests) {
-//                notificationService.sendWhatsappToUsers(whatsappRequest, instituteId);
+                // notificationService.sendWhatsappToUsers(whatsappRequest, instituteId);
             }
 
             result.put("status", "success");

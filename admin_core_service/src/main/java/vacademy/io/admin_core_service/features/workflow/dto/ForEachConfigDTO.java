@@ -15,15 +15,6 @@ public class ForEachConfigDTO {
     private String prebuiltKey;
     private Map<String, Object> params;
 
-    // For UPDATE operations
-    private String updateField;
-    private Object updateValue;
-
-    // For message operations
-    private String messageType; // EMAIL, WHATSAPP, SMS
-    private String template; // Template name or content for message operations
-    private Map<String, Object> messageConfig;
-
     // For nested ITERATOR operations
     private ForEachConfigDTO forEach; // This allows nested forEach configurations
 }

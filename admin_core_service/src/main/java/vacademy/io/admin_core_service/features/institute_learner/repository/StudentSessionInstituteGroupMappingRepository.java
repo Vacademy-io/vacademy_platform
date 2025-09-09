@@ -14,7 +14,7 @@ public interface StudentSessionInstituteGroupMappingRepository
         extends JpaRepository<StudentSessionInstituteGroupMapping, String> {
 
     @Query(value = """
-    SELECT 
+    SELECT
         ssigm.id AS mapping_id,
         ssigm.user_id AS user_id,
         ssigm.expiry_date AS expiry_date,
@@ -35,7 +35,7 @@ public interface StudentSessionInstituteGroupMappingRepository
     );
 
     @Query(value = """
-    SELECT 
+    SELECT
         ssigm.id AS mapping_id,
         ssigm.user_id AS user_id,
         ssigm.expiry_date AS expiry_date,
@@ -87,7 +87,7 @@ public interface StudentSessionInstituteGroupMappingRepository
                                                                                                                @Param("statusList") List<String> status);
 
     @Query(value = """
-    SELECT 
+    SELECT
         s.user_id AS user_id,
         s.full_name AS full_name,
         s.mobile_number AS mobile_number,
@@ -96,4 +96,16 @@ public interface StudentSessionInstituteGroupMappingRepository
     WHERE s.user_id IN (:userIds)
     """, nativeQuery = true)
     List<Object[]> findStudentContactsByUserIds(@Param("userIds") List<String> userIds);
+
+
+    @Query("SELECT s FROM StudentSessionInstituteGroupMapping s " +
+        "WHERE s.destinationPackageSession.id = :destinationPackageSessionId " +
+        "AND s.status IN :statusList " +
+        "AND s.userId = :userId " +
+        "ORDER BY s.createdAt DESC")
+    Optional<StudentSessionInstituteGroupMapping> findLatestByDestinationPackageSessionIdAndStatusInAndUserId(
+        @Param("destinationPackageSessionId") String destinationPackageSessionId,
+        @Param("statusList") List<String> statusList,
+        @Param("userId") String userId);
+
 }

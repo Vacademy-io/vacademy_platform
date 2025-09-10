@@ -505,6 +505,7 @@ export function LoginForm({
                             type={type}
                             courseId={courseId}
                             onSwitchToSignup={onSwitchToSignup}
+                            allowUsernamePasswordAuth={providerFlags.allowUsernamePasswordAuth}
                           />
                         </motion.div>
                       );
@@ -522,6 +523,7 @@ export function LoginForm({
                         >
                           <UsernameLogin
                             onSwitchToEmail={() => { /* no email route enabled */ }}
+                            allowEmailOtpAuth={false}
                             type={type}
                             courseId={courseId}
                             onSwitchToSignup={onSwitchToSignup}
@@ -545,6 +547,7 @@ export function LoginForm({
                             type={type}
                             courseId={courseId}
                             onSwitchToSignup={onSwitchToSignup}
+                            allowUsernamePasswordAuth={providerFlags.allowUsernamePasswordAuth}
                           />
                         </motion.div>
                       ) : (
@@ -557,6 +560,7 @@ export function LoginForm({
                         >
                           <UsernameLogin
                             onSwitchToEmail={() => setIsEmailLogin(true)}
+                            allowEmailOtpAuth={providerFlags.allowEmailOtpAuth}
                             type={type}
                             courseId={courseId}
                             onSwitchToSignup={onSwitchToSignup}

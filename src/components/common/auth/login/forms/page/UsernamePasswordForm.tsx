@@ -31,6 +31,7 @@ interface UsernameLoginProps {
     onSwitchToEmail: () => void;
     type?: string;
     courseId?: string;
+    allowEmailOtpAuth?: boolean;
 }
 export function UsernameLogin({
     onSwitchToEmail,
@@ -38,6 +39,7 @@ export function UsernameLogin({
     courseId,
     onSwitchToSignup,
     onSwitchToForgotPassword,
+    allowEmailOtpAuth,
 }: UsernameLoginProps & {
     onSwitchToSignup?: () => void;
     onSwitchToForgotPassword?: () => void;
@@ -389,27 +391,17 @@ export function UsernameLogin({
                 transition={{ delay: 0.4 }}
                 className="text-center pt-3 space-y-2"
             >
-                {(() => {
-                    try {
-                        const raw = localStorage.getItem("InstituteId");
-                        const instituteId = raw || "";
-                        if (!instituteId) return null;
-                        const stored = localStorage.getItem(`LEARNER_${instituteId}`);
-                        const allow = stored ? JSON.parse(stored).allowEmailOtpAuth === true : true;
-                        if (!allow) return null;
-                    } catch { return null; }
-                    return (
-                        <motion.button
-                            type="button"
-                            whileHover={{ scale: 1.02 }}
-                            className="text-sm text-gray-600 hover:text-gray-800 transition-colors duration-200 relative group font-medium"
-                            onClick={onSwitchToEmail}
-                        >
-                            Prefer email login?
-                            <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
-                        </motion.button>
-                    );
-                })()}
+                {(allowEmailOtpAuth ?? true) && (
+                    <motion.button
+                        type="button"
+                        whileHover={{ scale: 1.02 }}
+                        className="text-sm text-gray-600 hover:text-gray-800 transition-colors duration-200 relative group font-medium"
+                        onClick={onSwitchToEmail}
+                    >
+                        Use email OTP instead?
+                        <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
+                    </motion.button>
+                )}
  
                 {(() => {
                     try {

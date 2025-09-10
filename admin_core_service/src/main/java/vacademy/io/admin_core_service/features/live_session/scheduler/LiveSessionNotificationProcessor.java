@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.live_session.scheduler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
@@ -36,6 +37,8 @@ public class LiveSessionNotificationProcessor {
     private final SessionScheduleRepository sessionScheduleRepository;
     private final NotificationService notificationService;
     private final ObjectMapper objectMapper; // kept for future template rendering
+    @Autowired
+    private SessionScheduleRepository scheduleRepository;
 
     @Transactional
     public void processDueNotifications() {
@@ -341,6 +344,7 @@ public class LiveSessionNotificationProcessor {
                 // Get the specific schedule being deleted
                 Optional<SessionSchedule> scheduleOpt = sessionScheduleRepository.findById(scheduleId);
                 SessionSchedule schedule = scheduleOpt.orElse(null);
+                scheduleRepository.softDeleteScheduleByIdIn(List.of(scheduleId));
 
                 // Fetch students
                 List<Object[]> rows = getStudentsForNotification(participants, instituteId);
@@ -416,4 +420,168 @@ public class LiveSessionNotificationProcessor {
         return dto;
     }
 
+    public void sendOnCreateNotification(String sessionId, List<SessionSchedule> schedules) {
+        try {
+            // Get session details
+            LiveSession session = liveSessionRepository.findById(sessionId)
+                    .orElseThrow(() -> new RuntimeException("Session not found: " + sessionId));
+
+            // Group schedules by meeting_date and find the earliest schedule >= current date
+            SessionSchedule selectedSchedule = findEarliestUpcomingSchedule(schedules);
+            if (selectedSchedule == null) {
+                System.out.println("No upcoming schedule found for session: " + sessionId);
+                return;
+            }
+
+            // Get all participants (both BATCH and USER types)
+            List<LiveSessionParticipants> participants = liveSessionParticipantRepository.findBySessionId(sessionId);
+            if (participants == null || participants.isEmpty()) {
+                System.out.println("No participants found for session: " + sessionId);
+                return;
+            }
+
+            // Fetch students from both batch and individual user participants
+            List<Object[]> rows = getStudentsForNotification(participants, session.getInstituteId());
+            if (rows.isEmpty()) {
+                System.out.println("No students found for notification for session: " + sessionId);
+                return;
+            }
+
+            // Build and send notification
+            NotificationDTO notification = buildOnCreateEmailNotification(session, selectedSchedule, rows);
+            notificationService.sendEmailToUsers(notification, session.getInstituteId());
+
+            System.out.println("ON_CREATE notification sent for session: " + sessionId + " to " + rows.size() + " participants");
+
+        } catch (Exception ex) {
+            System.out.println("Error sending ON_CREATE notification for session " + sessionId + ": " + ex.getMessage());
+            // Don't rethrow - we don't want to prevent session creation if notification fails
+        }
+    }
+
+    /**
+     * Groups schedules by meeting_date and returns the earliest schedule >= current date
+     * If meeting_date = current date, then start_time must be >= current time
+     */
+    private SessionSchedule findEarliestUpcomingSchedule(List<SessionSchedule> schedules) {
+        if (schedules == null || schedules.isEmpty()) {
+            return null;
+        }
+
+        java.time.LocalDate currentDate = java.time.LocalDate.now();
+        java.time.LocalTime currentTime = java.time.LocalTime.now();
+
+        return schedules.stream()
+                .filter(schedule -> schedule.getMeetingDate() != null)
+                .filter(schedule -> {
+                    java.time.LocalDate meetingDate = schedule.getMeetingDate().toInstant()
+                            .atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+
+                    // If meeting is in the future, include it
+                    if (meetingDate.isAfter(currentDate)) {
+                        return true;
+                    }
+
+                    // If meeting is today, check if start time is >= current time
+                    if (meetingDate.isEqual(currentDate)) {
+                        if (schedule.getStartTime() != null) {
+                            java.time.LocalTime startTime = schedule.getStartTime().toLocalTime();
+                            return !startTime.isBefore(currentTime);
+                        }
+                        return false; // No start time for today's meeting
+                    }
+
+                    // Meeting is in the past
+                    return false;
+                })
+                .min((s1, s2) -> {
+                    java.time.LocalDate date1 = s1.getMeetingDate().toInstant()
+                            .atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+                    java.time.LocalDate date2 = s2.getMeetingDate().toInstant()
+                            .atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+
+                    int dateComparison = date1.compareTo(date2);
+                    if (dateComparison != 0) {
+                        return dateComparison;
+                    }
+
+                    // If dates are equal, compare by start time
+                    if (s1.getStartTime() != null && s2.getStartTime() != null) {
+                        return s1.getStartTime().compareTo(s2.getStartTime());
+                    }
+                    return 0;
+                })
+                .orElse(null);
+    }
+
+    /**
+     * Gets students for notification from both batch and individual user participants
+     /**
+     * Builds ON_CREATE email notification
+     */
+    private NotificationDTO buildOnCreateEmailNotification(LiveSession session, SessionSchedule schedule, List<Object[]> rows) {
+        NotificationDTO dto = new NotificationDTO();
+        dto.setBody(LiveClassEmailBody.Live_Class_Email_Body);
+        dto.setSubject("New Live Class Created - " + (session.getTitle() != null ? session.getTitle() : "Live Class"));
+        dto.setNotificationType("EMAIL");
+        dto.setSource("ADMIN_CORE");
+        dto.setSourceId(session.getId());
+
+        List<NotificationToUserDTO> users = new java.util.ArrayList<>();
+        for (Object[] r : rows) {
+            // Handle different data structures from batch vs individual user queries
+            String userId, fullName, email;
+
+            if (r.length >= 6) {
+                // Batch query result: [mapping_id, user_id, expiry_date, full_name, mobile_number, email, package_session_id]
+                userId = (String) r[1];
+                fullName = (String) r[3];
+                email = (String) r[5];
+            } else {
+                // Individual user query result: [user_id, full_name, mobile_number, email]
+                userId = (String) r[0];
+                fullName = (String) r[1];
+                email = (String) r[3];
+            }
+
+            NotificationToUserDTO u = new NotificationToUserDTO();
+            Map<String, String> placeholders = new java.util.HashMap<>();
+            placeholders.put("NAME", fullName);
+            placeholders.put("SESSION_TITLE", session.getTitle() != null ? session.getTitle() : "Live Class");
+
+            // Add schedule details if available
+            if (schedule != null) {
+                String meetingLink = schedule.getCustomMeetingLink() != null ?
+                        schedule.getCustomMeetingLink() : session.getDefaultMeetLink();
+                placeholders.put("LINK", meetingLink != null ? meetingLink : "#");
+
+                // Format date and time
+                if (schedule.getMeetingDate() != null && schedule.getStartTime() != null) {
+                    // format date
+                    String date = new java.text.SimpleDateFormat("EEEE, MMMM d, yyyy").format(schedule.getMeetingDate());
+
+                    // format time in 12-hour with AM/PM
+                    String time = new java.text.SimpleDateFormat("h:mm a").format(schedule.getStartTime());
+
+                    placeholders.put("DATE", date);
+                    placeholders.put("TIME", time);
+                } else {
+                    placeholders.put("DATE", "TBD");
+                    placeholders.put("TIME", "TBD");
+                }
+            } else {
+                placeholders.put("LINK", "#");
+                placeholders.put("DATE", "TBD");
+                placeholders.put("TIME", "TBD");
+            }
+
+            u.setPlaceholders(placeholders);
+            u.setUserId(userId);
+            u.setChannelId(email);
+            users.add(u);
+        }
+        dto.setUsers(users);
+        return dto;
+    }
 }
+

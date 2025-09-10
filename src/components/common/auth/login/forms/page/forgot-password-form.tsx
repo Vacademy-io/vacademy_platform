@@ -212,7 +212,7 @@ export function ForgotPassword() {
                     transition={{ delay: 0.2 }}
                     className="text-center mb-6"
                   >
-                    <div className="w-12 h-12 bg-primary-600 rounded-lg mx-auto flex items-center justify-center mb-4">
+                    <div className="w-12 h-12 bg-primary rounded-lg mx-auto flex items-center justify-center mb-4">
                       <Key className="w-6 h-6 text-white" />
                     </div>
                     <h2 className="text-xl lg:text-2xl font-bold text-gray-900 mb-2">
@@ -265,7 +265,7 @@ export function ForgotPassword() {
                         disabled={isLoading}
                         whileHover={{ scale: 1.01 }}
                         whileTap={{ scale: 0.99 }}
-                        className="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
+                        className="w-full bg-primary hover:bg-primary-400 text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
                       >
                         {isLoading ? (
                           <div className="flex items-center justify-center space-x-2">
@@ -322,7 +322,7 @@ export function ForgotPassword() {
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
                     transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-                    className="w-16 h-16 bg-primary-600 rounded-full mx-auto flex items-center justify-center mb-6"
+                    className="w-16 h-16 bg-primary rounded-full mx-auto flex items-center justify-center mb-6"
                   >
                     <CheckCircle className="w-8 h-8 text-white" />
                   </motion.div>
@@ -359,7 +359,7 @@ export function ForgotPassword() {
                       whileHover={{ scale: 1.01 }}
                       whileTap={{ scale: 0.99 }}
                       onClick={() => navigate({ to: "/login" })}
-                      className="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md"
+                      className="w-full bg-primary hover:bg-primary-400 text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md"
                     >
                       <div className="flex items-center justify-center space-x-2">
                         <ArrowLeft className="w-4 h-4" />

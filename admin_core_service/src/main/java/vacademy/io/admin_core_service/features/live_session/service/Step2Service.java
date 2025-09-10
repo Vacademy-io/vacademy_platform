@@ -13,13 +13,16 @@ import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep2
 import vacademy.io.admin_core_service.features.live_session.entity.*;
 import vacademy.io.admin_core_service.features.live_session.enums.*;
 import vacademy.io.admin_core_service.features.live_session.repository.*;
+import vacademy.io.admin_core_service.features.live_session.constants.LiveClassEmailBody;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
+import vacademy.io.admin_core_service.features.live_session.scheduler.LiveSessionNotificationProcessor;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
 import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
+import java.util.Map;
 import java.util.UUID;
 import java.util.List;
 
@@ -53,12 +56,15 @@ public class Step2Service {
     @Autowired
     private NotificationService notificationService;
 
+    @Autowired
+    private LiveSessionNotificationProcessor liveSessionNotificationProcessor;
+
     public Boolean step2AddService(LiveSessionStep2RequestDTO request, CustomUserDetails user) {
         LiveSession session = getSessionOrThrow(request.getSessionId());
 
         updateSessionAccessLevel(session, request);
-        processNotificationActions(request, session.getId());
         linkParticipants(request);
+        processNotificationActions(request, session.getId());
         processCustomFields(request);
 
         session.setStatus(LiveSessionStatus.LIVE.name());
@@ -87,6 +93,11 @@ public class Step2Service {
         if (request.getAddedNotificationActions() != null && schedules != null) {
             System.out.println("DEBUG: Found " + schedules.size() + " schedules for session " + sessionId);
             for (LiveSessionStep2RequestDTO.NotificationActionDTO dto : request.getAddedNotificationActions()) {
+                // Handle ON_CREATE notification immediately
+                if (dto.getType() == NotificationTypeEnum.ON_CREATE && dto.getNotify()) {
+                    liveSessionNotificationProcessor.sendOnCreateNotification(sessionId, schedules);
+                    continue;
+                }
                 for (SessionSchedule schedule : schedules) {
                     ScheduleNotification notification = mapToNotificationEntity(dto, sessionId);
                     notification.setTriggerTime(computeTriggerTime(dto, schedule));
@@ -116,7 +127,7 @@ public class Step2Service {
     }
 
     private ScheduleNotification mapToNotificationEntity(LiveSessionStep2RequestDTO.NotificationActionDTO dto,
-            String sessionId) {
+                                                         String sessionId) {
         int offset = dto.getType() == NotificationTypeEnum.BEFORE_LIVE
                 ? extractMinutes(dto.getTime())
                 : 0;
@@ -156,7 +167,7 @@ public class Step2Service {
     }
 
     private void updateNotificationEntity(ScheduleNotification notification,
-            LiveSessionStep2RequestDTO.NotificationActionDTO dto) {
+                                          LiveSessionStep2RequestDTO.NotificationActionDTO dto) {
         notification.setType(dto.getType().name());
         // TODO : change this what whatsapp service is available
         notification.setChannel(NotificationMediaTypeEnum.MAIL.name());

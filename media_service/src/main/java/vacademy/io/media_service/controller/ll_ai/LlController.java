@@ -60,7 +60,7 @@ public class LlController {
         Prompt prompt = new PromptTemplate(template).create(promptMap);
 
 
-        DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.0-flash-exp:free", prompt.getContents().trim(), 30000);
+        DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash", prompt.getContents().trim(), 30000);
 
         if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
             throw new VacademyException("Failed to get response from deepseek");

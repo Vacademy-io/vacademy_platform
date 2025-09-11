@@ -203,7 +203,7 @@ public class InstituteSettingService {
     }
 
     public void updateCustomFieldSetting(Institute institute, CustomFieldSettingRequest request){
-        String settingJsonString = settingStrategyFactory.rebuildOldSettingAndGetSettingJsonString(institute,request, SettingKeyEnums.NAMING_SETTING.name());
+        String settingJsonString = settingStrategyFactory.rebuildOldSettingAndGetSettingJsonString(institute,request, SettingKeyEnums.CUSTOM_FIELD_SETTING.name());
         institute.setSetting(settingJsonString);
         instituteRepository.save(institute);
     }

@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.learner.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
@@ -28,6 +29,10 @@ public class LearnerUserPlanService {
     private UserPlanService userPlanService;
 
     public LearnerPaymentPlanStatusDTO getUserPaymentPlanStatus(String packageSessionId, CustomUserDetails userDetails) {
+        Optional<StudentSessionInstituteGroupMapping>studentSessionInstituteGroupMapping = studentSessionInstituteGroupMappingRepository.findByUserIdAndStatusInAndPackageSessionId(userDetails.getUserId(),List.of(StatusEnum.ACTIVE.name()),packageSessionId);
+        if (studentSessionInstituteGroupMapping.isPresent()){
+            return new LearnerPaymentPlanStatusDTO(studentSessionInstituteGroupMapping.get().getStatus(),studentSessionInstituteGroupMapping.get().getStatus());
+        }
         Optional<StudentSessionInstituteGroupMapping>optionalStudentSessionInstituteGroupMapping = studentSessionInstituteGroupMappingRepository.findLatestByDestinationPackageSessionIdAndStatusInAndUserId(packageSessionId,List.of(LearnerStatusEnum.INVITED.name(),LearnerStatusEnum.PENDING_FOR_APPROVAL.name()),userDetails.getUserId());
         if (optionalStudentSessionInstituteGroupMapping.isEmpty()){
             throw new VacademyException("Student has not submitted the request to enroll.");

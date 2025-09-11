@@ -29,6 +29,7 @@ public class LiveSessionListDTO {
     private String subject;
     private String meetingLink;
     private String registrationFormLinkForPublicSessions;
+    private String timezone;
 
     // Getters and Setters
 }

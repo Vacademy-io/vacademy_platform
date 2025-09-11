@@ -48,7 +48,8 @@ public class GetLiveSessionService {
                 p.getTitle(),
                 p.getSubject(),
                 p.getMeetingLink(),
-                p.getRegistrationFormLinkForPublicSessions()
+                p.getRegistrationFormLinkForPublicSessions(),
+                p.getTimezone()
         )).toList();
     }
 
@@ -71,7 +72,8 @@ public class GetLiveSessionService {
                 p.getTitle(),
                 p.getSubject(),
                 p.getMeetingLink(),
-                p.getRegistrationFormLinkForPublicSessions()
+                p.getRegistrationFormLinkForPublicSessions(),
+                p.getTimezone()
         )).toList();
 
         // Group by date
@@ -106,7 +108,8 @@ public class GetLiveSessionService {
                 p.getTitle(),
                 p.getSubject(),
                 p.getMeetingLink(),
-                p.getRegistrationFormLinkForPublicSessions()
+                p.getRegistrationFormLinkForPublicSessions(),
+                p.getTimezone()
         )).toList();
 
         // Group by date
@@ -182,7 +185,8 @@ public class GetLiveSessionService {
                         p.getTitle(),
                         p.getSubject(),
                         p.getMeetingLink(),
-                        p.getRegistrationFormLinkForPublicSessions()
+                        p.getRegistrationFormLinkForPublicSessions(),
+                        p.getTimezone()
                 );
                 uniqueSessions.put(sessionId, dto);
             }
@@ -211,7 +215,8 @@ public class GetLiveSessionService {
                 p.getTitle(),
                 p.getSubject(),
                 p.getMeetingLink(),
-                p.getRegistrationFormLinkForPublicSessions()
+                p.getRegistrationFormLinkForPublicSessions(),
+                p.getTimezone()
         )).toList();
 
         // Group by date
@@ -246,7 +251,8 @@ public class GetLiveSessionService {
                 p.getTitle(),
                 p.getSubject(),
                 p.getMeetingLink(),
-                p.getRegistrationFormLinkForPublicSessions()
+                p.getRegistrationFormLinkForPublicSessions(),
+                p.getTimezone()
         )).toList();
 
         // Group by date
@@ -302,7 +308,8 @@ public class GetLiveSessionService {
                 p.getTitle(),
                 p.getSubject(),
                 p.getMeetingLink(),
-                p.getRegistrationFormLinkForPublicSessions()
+                p.getRegistrationFormLinkForPublicSessions(),
+                p.getTimezone()
         )).toList();
 
         // Group by date

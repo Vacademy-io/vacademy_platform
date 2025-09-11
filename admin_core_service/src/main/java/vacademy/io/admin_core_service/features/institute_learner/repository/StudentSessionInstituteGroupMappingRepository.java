@@ -108,4 +108,14 @@ public interface StudentSessionInstituteGroupMappingRepository
         @Param("statusList") List<String> statusList,
         @Param("userId") String userId);
 
+    @Query("SELECT s FROM StudentSessionInstituteGroupMapping s " +
+        "WHERE s.userId = :userId " +
+        "AND s.status IN :statuses " +
+        "AND s.packageSession.id = :packageSessionId")
+    Optional<StudentSessionInstituteGroupMapping> findByUserIdAndStatusInAndPackageSessionId(
+        @Param("userId") String userId,
+        @Param("statuses") List<String> statuses,
+        @Param("packageSessionId") String packageSessionId
+    );
+
 }

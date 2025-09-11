@@ -290,6 +290,7 @@ export default function LiveClassRegistrationPage() {
       <EmailVerificationDialog
         open={dialog}
         sessionId={data?.sessionId || ""}
+        instituteId={data?.instituteId || ""}
         onEmailVerified={handleEmailVerified}
       />
     </>

@@ -1212,6 +1212,12 @@ update
 
 -- DROP TABLE public.institute_custom_fields;
 
+-- public.institute_custom_fields definition
+
+-- Drop table
+
+-- DROP TABLE public.institute_custom_fields;
+
 CREATE TABLE public.institute_custom_fields (
 	id varchar(255) NOT NULL,
 	institute_id varchar(36) NOT NULL,
@@ -1222,9 +1228,15 @@ CREATE TABLE public.institute_custom_fields (
 	updated_at timestamp DEFAULT CURRENT_TIMESTAMP NULL,
 	status varchar(50) DEFAULT 'ACTIVE'::character varying NULL,
 	group_name varchar(255) NULL,
-	CONSTRAINT institute_custom_fields_pkey PRIMARY KEY (id),
-	CONSTRAINT fk_custom_field_id FOREIGN KEY (custom_field_id) REFERENCES public.custom_fields(id) ON DELETE CASCADE
+	individual_order int4 NULL,
+	group_internal_order int4 NULL,
+	CONSTRAINT institute_custom_fields_pkey PRIMARY KEY (id)
 );
+
+
+-- public.institute_custom_fields foreign keys
+
+ALTER TABLE public.institute_custom_fields ADD CONSTRAINT fk_custom_field_id FOREIGN KEY (custom_field_id) REFERENCES public.custom_fields(id) ON DELETE CASCADE;
 
 
 -- public.institute_metadata definition

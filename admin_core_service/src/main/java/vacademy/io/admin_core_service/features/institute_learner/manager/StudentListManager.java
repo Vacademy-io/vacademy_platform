@@ -81,14 +81,15 @@ public class StudentListManager {
 
         // Check if the filter contains a numeric name
         if (StringUtils.hasText(studentListFilter.getName())) {
-            studentPage = studentFilterService.getAllStudentWithSearch(studentListFilter.getName(),
-                    studentListFilter.getInstituteIds(), pageable);
+            studentPage = studentFilterService.getAllStudentWithSearch(studentListFilter.getName(),studentListFilter.getStatuses(),
+                    studentListFilter.getGender(), studentListFilter.getInstituteIds(), studentListFilter.getGroupIds(),
+                    studentListFilter.getPackageSessionIds(),studentListFilter.getCustomFields(), pageable);
         }
 
         if (Objects.isNull(studentPage) && !studentListFilter.getInstituteIds().isEmpty()) {
-            studentPage = studentFilterService.getAllStudentWithFilter(studentListFilter.getStatuses(),
+            studentPage = studentFilterService.getAllStudentWithFilterAndCustomFields(studentListFilter.getStatuses(),
                     studentListFilter.getGender(), studentListFilter.getInstituteIds(), studentListFilter.getGroupIds(),
-                    studentListFilter.getPackageSessionIds(), pageable);
+                    studentListFilter.getPackageSessionIds(),studentListFilter.getCustomFields(), pageable);
         }
 
         return ResponseEntity.ok(createAllStudentResponseFromPaginatedData(studentPage));

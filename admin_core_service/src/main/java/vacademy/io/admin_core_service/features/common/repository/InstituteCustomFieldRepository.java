@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.common.entity.InstituteCustomField;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface InstituteCustomFieldRepository extends JpaRepository<InstituteCustomField, String> {
@@ -55,4 +56,19 @@ public interface InstituteCustomFieldRepository extends JpaRepository<InstituteC
                         @Param("instituteId") String instituteId,
                         @Param("status") String status);
 
+        @Query(value = """
+                SELECT icf.* FROM institute_custom_fields icf
+                JOIN custom_fields cf ON cf.id = icf.custom_field_id
+                WHERE icf.institute_id = :instituteId
+                AND cf.field_name = :fieldName
+                AND icf.status = 'ACTIVE'
+                """,nativeQuery = true)
+        Optional<InstituteCustomField> findByInstituteIdAndFieldName(@Param("instituteId") String instituteId,
+                                                                     @Param("fieldName") String fieldName);
+
+        Optional<InstituteCustomField> findByInstituteIdAndCustomFieldIdAndTypeAndTypeId(String instituteId, String fieldId, String type, String typeId);
+
+        List<InstituteCustomField> findByInstituteIdAndTypeAndTypeIdAndStatusIn(String instituteId, String type, String typeId, List<String> status);
+
+        List<InstituteCustomField> findByInstituteIdAndCustomFieldIdInAndStatusIn(String instituteId, List<String> list, List<String> status);
 }

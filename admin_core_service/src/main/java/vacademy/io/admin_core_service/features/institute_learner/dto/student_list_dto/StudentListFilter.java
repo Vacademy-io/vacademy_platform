@@ -21,5 +21,6 @@ public class StudentListFilter {
     private List<String> groupIds;
     private List<String> gender;
     private List<String> paymentStatuses;
+    private List<String> customFields;
     private Map<String, String> sortColumns;
 }

@@ -32,7 +32,7 @@ public class FileController {
                                              @RequestParam Integer expiryDays,
                                              @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) throws FileDownloadException {
 
-        String url = fileService.getUrlWithExpiryAndId(fileId, 365);
+        String url = fileService.getUrlWithExpiryAndId(fileId, 6);
 
         String etag = "W/\"" + fileId + ":" + expiryDays + "\"";
         HttpHeaders headers = new HttpHeaders();

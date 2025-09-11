@@ -16,6 +16,7 @@ public class LearnerPackageSessionsEnrollDTO {
     private String planId;
     private String paymentOptionId;
     private String enrollInviteId;
+    private ReferRequestDTO referRequest;
     private PaymentInitiationRequestDTO paymentInitiationRequest;
     private List<CustomFieldValueDTO>customFieldValues;
 }

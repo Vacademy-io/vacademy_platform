@@ -41,4 +41,8 @@ public class ReferralOptionService {
     public Optional<ReferralOption> getReferralOptionBySourceAndSourceIdAndTag(String source, String sourceId, String tag) {
         return referralOptionRepository.findFirstBySourceAndSourceIdAndTagAndStatusInOrderByCreatedAtDesc(source, sourceId, tag,List.of(StatusEnum.ACTIVE.name()));
     }
+
+    public Optional<ReferralOption> findById(String id){
+        return referralOptionRepository.findById(id);
+    }
 }

@@ -172,22 +172,7 @@ export const SplitScreenVideoSlide: React.FC<SplitScreenVideoSlideProps> = ({
     <div className="h-full p-1">
       <Card className="h-full flex flex-col">
         {/* Header */}
-        <div className="flex-shrink-0 border-b border-neutral-200 p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-1 h-6 bg-primary-500 rounded-full"></div>
-              <div>
-                <h3 className="font-medium text-sm text-neutral-900">
-                  Split Screen Learning
-                </h3>
-                <p className="text-xs text-neutral-500">
-                  Video with{" "}
-                  {videoSlide.embedded_type?.toLowerCase() || "content"}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
+      
 
         {/* Split Screen Content */}
         <div className="flex-1 relative overflow-hidden" ref={containerRef}>

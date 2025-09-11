@@ -8,7 +8,7 @@ function RootNotFoundComponent() {
     return (
         <>
             <Helmet>
-                <title>Page Not Found (404)</title>
+                <title>{document?.title || "Page Not Found (404)"}</title>
                 <meta
                     name="description"
                     content="Page not found. We couldn't find the page you were looking for. Please check the URL or try searching."

@@ -1,18 +1,14 @@
 import { getInstituteId } from "@/constants/helper";
-import { GET_SUBDOMAIN_OR_INSTITUTEID } from "@/constants/urls";
+import { cachedGet } from "@/lib/http/clientCache";
+import { GET_SUBDOMAIN_OR_INSTITUTEID, INSTITUTE_ID } from "@/constants/urls";
 import axios from "axios";
 import { Preferences } from "@capacitor/preferences";
 
 export const fetchCourseDetails = async (courseId: string) => {
     const instituteId = getInstituteId();
     // Replace with your actual API endpoint
-    const response = await fetch(
-        `/api/institutes/${instituteId}/courses/${courseId}`
-    );
-    if (!response.ok) {
-        throw new Error("Failed to fetch course details");
-    }
-    return response.json();
+    const data = await cachedGet(`/api/institutes/${instituteId}/courses/${courseId}`, { method: 'GET' });
+    return data;
 };
 
 export const getInstituteIdBySubdomain = async ({
@@ -50,11 +46,14 @@ export const getInstituteIdWithLocalStorageCheck = async (subdomain: string) => 
         const storedInstituteId = localStorageInstituteId?.value;
 
         // Get instituteId from API
-        const apiResult = await getInstituteIdBySubdomain({ subdomain });
+        const apiResult = subdomain
+            ? await getInstituteIdBySubdomain({ subdomain })
+            : "Data not found";
 
         // If API returns "Data not found", use localStorage instituteId
         if (apiResult === "Data not found") {
-            return storedInstituteId || null;
+            // On localhost/no subdomain fall back to env default if nothing in storage
+            return storedInstituteId || INSTITUTE_ID || null;
         }
 
         // If we get instituteId from API and it matches localStorage, use it
@@ -73,17 +72,17 @@ export const getInstituteIdWithLocalStorageCheck = async (subdomain: string) => 
         }
 
         // Default fallback
-        const finalResult = apiResult || storedInstituteId || null;
+        const finalResult = apiResult || storedInstituteId || INSTITUTE_ID || null;
         return finalResult;
     } catch (error) {
         console.error("Error in getInstituteIdWithLocalStorageCheck:", error);
         // Fallback to localStorage if API fails
         try {
             const localStorageInstituteId = await Preferences.get({ key: "InstituteId" });
-            return localStorageInstituteId?.value || null;
+            return localStorageInstituteId?.value || INSTITUTE_ID || null;
         } catch (localStorageError) {
             console.error("Error accessing localStorage:", localStorageError);
-            return null;
+            return INSTITUTE_ID || null;
         }
     }
 };

@@ -112,9 +112,6 @@ export const InstituteBrandingComponent: React.FC<InstituteBrandingProps> = ({
 
 // Specialized component for auth pages
 export const AuthPageBranding: React.FC<{ branding: InstituteBranding }> = ({ branding }) => {
-  const getInstituteDisplayName = (instituteName: string | null): string => {
-    return instituteName || "Learning Platform";
-  };
 
   return (
     <motion.div
@@ -130,18 +127,6 @@ export const AuthPageBranding: React.FC<{ branding: InstituteBranding }> = ({ br
         className="justify-center mb-4"
       />
       
-      {branding.instituteName && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-          className="mt-4"
-        >
-          <div className="inline-block px-4 py-2 rounded-full bg-primary-500 text-white text-sm font-medium">
-            Welcome to {getInstituteDisplayName(branding.instituteName)}
-          </div>
-        </motion.div>
-      )}
     </motion.div>
   );
 };

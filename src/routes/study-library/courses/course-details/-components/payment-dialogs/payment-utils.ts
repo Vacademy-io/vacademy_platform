@@ -25,6 +25,7 @@ export interface PaymentDialogProps {
   onOpenChange: (open: boolean) => void;
   onContinue?: () => void;
   onSkip?: () => void;
+  onEnrollmentSuccess?: () => void;
   packageSessionId: string;
   instituteId: string;
   token: string;
@@ -56,11 +57,9 @@ export const usePaymentDialog = (props: {
     setState(prev => ({ ...prev, loading: true, error: null }));
     
     try {
-      // Step 1: Fetch payment gateway details first
-      const gatewayData = await fetchPaymentGatewayDetails(instituteId, 'STRIPE', token);
-
-      // Step 2: Fetch enrollment details
+      // Step 1: Fetch enrollment details first to determine payment type
       const enrollmentData = await fetchEnrollmentDetails(inviteCode, instituteId, packageSessionId, token);
+      console.log('usePaymentDialog - Raw enrollment data:', enrollmentData);
       
       // Validate enrollment data
       if (!enrollmentData || !enrollmentData.id) {
@@ -69,6 +68,7 @@ export const usePaymentDialog = (props: {
       
       // Auto-select first payment option and plan
       const paymentOptions = getPaymentOptions(enrollmentData);
+      console.log('usePaymentDialog - Payment options:', paymentOptions);
       let selectedPaymentOption: PaymentOption | null = null;
       let selectedPaymentPlan: PaymentPlan | null = null;
       
@@ -83,6 +83,24 @@ export const usePaymentDialog = (props: {
       // Validate that we have the required payment configuration
       if (!selectedPaymentOption || !selectedPaymentPlan) {
         throw new Error('No payment options available for this enrollment');
+      }
+
+      // Step 2: Only fetch payment gateway details for non-FREE payment types
+      let gatewayData = null;
+      const paymentType = selectedPaymentOption.type?.toLowerCase();
+      if (paymentType && paymentType !== 'free') {
+        console.log('usePaymentDialog - Fetching payment gateway for payment type:', paymentType);
+        try {
+          gatewayData = await fetchPaymentGatewayDetails(instituteId, 'STRIPE', token);
+          console.log('usePaymentDialog - Payment gateway data:', gatewayData);
+        } catch (gatewayError) {
+          console.error('usePaymentDialog - Payment gateway fetch failed:', gatewayError);
+          console.log('usePaymentDialog - Continuing without payment gateway data - will show plans but payment will be disabled');
+          // Don't throw error - continue without payment gateway data
+          // The dialog will show plans but disable payment functionality
+        }
+      } else {
+        console.log('usePaymentDialog - Skipping payment gateway fetch for FREE payment type');
       }
 
       setState(prev => ({

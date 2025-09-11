@@ -14,11 +14,17 @@ import {
   getPaymentOptions,
   getPaymentPlans,
   formatCurrency,
+  handlePaymentForEnrollment,
+  fetchPaymentGatewayDetails,
+  formatAccessPeriod,
   type EnrollmentResponse,
   type PaymentOption,
   type PaymentPlan,
 } from "../../-services/enrollment-api";
 import { MyButton } from "@/components/design-system/button";
+import { EnrollmentSuccessDialog } from "./EnrollmentSuccessDialog";
+import { EnrollmentPendingDialog } from "./EnrollmentPendingDialog";
+import { EnrollmentPendingApprovalDialog } from "./EnrollmentPendingApprovalDialog";
 
 interface FreePlanDialogProps {
   open: boolean;
@@ -28,6 +34,7 @@ interface FreePlanDialogProps {
   token: string;
   courseTitle?: string;
   inviteCode?: string;
+  onEnrollmentSuccess?: () => void;
 }
 
 export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
@@ -38,6 +45,7 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
   token,
   courseTitle = "Course",
   inviteCode = "default",
+  onEnrollmentSuccess,
 }) => {
   const [enrollmentData, setEnrollmentData] = useState<EnrollmentResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -45,6 +53,9 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
   const [selectedPaymentOption, setSelectedPaymentOption] = useState<PaymentOption | null>(null);
   const [selectedPaymentPlan, setSelectedPaymentPlan] = useState<PaymentPlan | null>(null);
   const [processingEnrollment, setProcessingEnrollment] = useState(false);
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [showPendingDialog, setShowPendingDialog] = useState(false);
+  const [showPendingApprovalDialog, setShowPendingApprovalDialog] = useState(false);
 
   // Fetch enrollment data when dialog opens
   useEffect(() => {
@@ -58,17 +69,34 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
     setError(null);
     try {
       const data = await fetchEnrollmentDetails(inviteCode, instituteId, packageSessionId, token);
+      console.log('FreePlanDialog - Enrollment data:', data);
       setEnrollmentData(data);
       
-      // Auto-select first payment option and plan
+      // Auto-select first FREE payment option and plan
       const paymentOptions = getPaymentOptions(data);
-      if (paymentOptions.length > 0) {
+      console.log('FreePlanDialog - Payment options:', paymentOptions);
+      const freeOptions = paymentOptions.filter(option => 
+        option.payment_option_type === 'FREE' || option.type === 'FREE'
+      );
+      console.log('FreePlanDialog - Free options:', freeOptions);
+      
+      if (freeOptions.length > 0) {
+        const firstFreeOption = freeOptions[0];
+        setSelectedPaymentOption(firstFreeOption);
+        
+        const plans = getPaymentPlans(firstFreeOption);
+        if (plans.length > 0) {
+          setSelectedPaymentPlan(plans[0]);
+        }
+      } else if (paymentOptions.length > 0) {
+        // Fallback to any option with free plans
         const firstOption = paymentOptions[0];
         setSelectedPaymentOption(firstOption);
         
         const plans = getPaymentPlans(firstOption);
-        if (plans.length > 0) {
-          setSelectedPaymentPlan(plans[0]);
+        const freePlans = plans.filter(plan => plan.actual_price === 0);
+        if (freePlans.length > 0) {
+          setSelectedPaymentPlan(freePlans[0]);
         }
       }
     } catch (err) {
@@ -79,27 +107,65 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
   };
 
   const handleEnroll = async () => {
-    if (!selectedPaymentOption || !selectedPaymentPlan) {
+    if (!selectedPaymentOption || !selectedPaymentPlan || !enrollmentData) {
       setError("Please select a free plan.");
       return;
     }
 
     setProcessingEnrollment(true);
+    setError(null);
+    
     try {
-      // TODO: Implement actual free enrollment processing
-
-
-      // Simulate enrollment processing
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Fetch payment gateway details (needed for enrollment API)
+      const paymentGatewayData = await fetchPaymentGatewayDetails(instituteId, 'STRIPE', token);
       
-      // Close dialog on success
+      // Call the enrollment API
+      await handlePaymentForEnrollment({
+        userEmail: "user@example.com", // This should come from user profile
+        receiptEmail: "user@example.com", // This should come from user profile
+        instituteId,
+        packageSessionId,
+        enrollmentData,
+        paymentGatewayData,
+        selectedPaymentPlan,
+        selectedPaymentOption,
+        amount: selectedPaymentPlan.actual_price,
+        currency: selectedPaymentPlan.currency || enrollmentData.currency,
+        description: `Free enrollment for ${courseTitle}`,
+        paymentType: 'free',
+        token,
+      });
+
+      // Close the main dialog
       onOpenChange(false);
       
-      // TODO: Show success message or redirect
+      // Check if approval is required
+      if (selectedPaymentOption.require_approval) {
+        setShowPendingDialog(true);
+      } else {
+        setShowSuccessDialog(true);
+      }
+      
     } catch (err) {
-      setError("Enrollment failed. Please try again.");
+      console.error('Free enrollment error:', err);
+      
+      // Handle specific error cases
+      if (err instanceof Error && err.message === 'ENROLLMENT_PENDING_APPROVAL') {
+        // User already has a pending enrollment request
+        onOpenChange(false);
+        setShowPendingApprovalDialog(true);
+      } else {
+        setError(err instanceof Error ? err.message : "Enrollment failed. Please try again.");
+      }
     } finally {
       setProcessingEnrollment(false);
+    }
+  };
+
+  const handleExploreCourse = async () => {
+    setShowSuccessDialog(false);
+    if (onEnrollmentSuccess) {
+      await onEnrollmentSuccess();
     }
   };
 
@@ -140,11 +206,16 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
   }
 
   const paymentOptions = enrollmentData ? getPaymentOptions(enrollmentData) : [];
-  const freePlans = paymentOptions.flatMap(option => 
-    getPaymentPlans(option).filter(plan => plan.actual_price === 0)
-  );
+  const freePlans = paymentOptions.flatMap(option => {
+    // Filter for FREE payment options or plans with zero price
+    if (option.payment_option_type === 'FREE' || option.type === 'FREE') {
+      return getPaymentPlans(option);
+    }
+    return getPaymentPlans(option).filter(plan => plan.actual_price === 0);
+  });
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -174,17 +245,38 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">Access Period:</span>
                   <span className="text-sm">
-                    {new Date(enrollmentData.start_date).toLocaleDateString()} - {new Date(enrollmentData.end_date).toLocaleDateString()}
+                    {formatAccessPeriod(enrollmentData.start_date, enrollmentData.end_date)}
                   </span>
                 </div>
-                {enrollmentData.learner_access_days > 0 && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Access Duration:</span>
-                    <span className="text-sm">{enrollmentData.learner_access_days} days</span>
-                  </div>
-                )}
               </CardContent>
             </Card>
+
+            {/* Approval Required Message */}
+            {(() => {
+              console.log('FreePlanDialog - selectedPaymentPlan:', selectedPaymentPlan);
+              console.log('FreePlanDialog - selectedPaymentOption:', selectedPaymentOption);
+              console.log('FreePlanDialog - require_approval:', selectedPaymentOption?.require_approval);
+              return null;
+            })()}
+            {selectedPaymentPlan && (
+              <Card className="bg-yellow-50 border-yellow-200">
+                <CardContent className="p-4">
+                  <div className="text-center">
+                    <h3 className="text-lg font-semibold text-yellow-800 mb-3">Admin will review your enrollment request</h3>
+                    <div className="space-y-2 text-sm text-yellow-700">
+                      <div className="flex items-center justify-center space-x-2">
+                        <CheckCircle className="w-4 h-4" />
+                        <span>You'll receive notification once approved</span>
+                      </div>
+                      <div className="flex items-center justify-center space-x-2">
+                        <CheckCircle className="w-4 h-4" />
+                        <span>Access to course slides will be granted</span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Free Plans */}
             <div className="space-y-4">
@@ -209,7 +301,16 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
                           ? "ring-2 ring-green-500 border-green-500 bg-green-50"
                           : "border-gray-200 hover:border-gray-300"
                       }`}
-                      onClick={() => setSelectedPaymentPlan(plan)}
+                      onClick={() => {
+                        setSelectedPaymentPlan(plan);
+                        // Also set the corresponding payment option
+                        const parentOption = paymentOptions.find(option => 
+                          getPaymentPlans(option).some(p => p.id === plan.id)
+                        );
+                        if (parentOption) {
+                          setSelectedPaymentOption(parentOption);
+                        }
+                      }}
                     >
                       <CardContent className="p-6">
                         <div className="flex items-center justify-between">
@@ -266,7 +367,7 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
                                 <span>Valid for {plan.validity_in_days} days</span>
                               )}
                               {plan.currency && (
-                                <span>Currency: {plan.currency}</span>
+                                <span>Currency: {plan.currency.toUpperCase()}</span>
                               )}
                             </div>
                           </div>
@@ -276,11 +377,7 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
                               FREE
                             </div>
                             <div className="text-sm text-gray-500">
-                              {plan.validity_in_days === 30 ? '1 month' : 
-                               plan.validity_in_days === 90 ? '3 months' :
-                               plan.validity_in_days === 180 ? '6 months' :
-                               plan.validity_in_days === 365 ? '1 year' :
-                               `${plan.validity_in_days} days`}
+                              {plan.validity_in_days > 0 ? `${plan.validity_in_days} days` : 'No limit'}
                             </div>
                             {selectedPaymentPlan?.id === plan.id && (
                               <CheckCircle className="w-5 h-5 text-green-600 mt-2" />
@@ -336,5 +433,29 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
         )}
       </DialogContent>
     </Dialog>
+
+      {/* Success Dialog */}
+      <EnrollmentSuccessDialog
+        open={showSuccessDialog}
+        onOpenChange={setShowSuccessDialog}
+        courseTitle={courseTitle}
+        onExploreCourse={handleExploreCourse}
+      />
+
+      {/* Pending Dialog */}
+      <EnrollmentPendingDialog
+        open={showPendingDialog}
+        onOpenChange={setShowPendingDialog}
+        courseTitle={courseTitle}
+      />
+
+      {/* Pending Approval Dialog */}
+      <EnrollmentPendingApprovalDialog
+        open={showPendingApprovalDialog}
+        onOpenChange={setShowPendingApprovalDialog}
+        courseTitle={courseTitle}
+        onClose={() => setShowPendingApprovalDialog(false)}
+      />
+    </>
   );
 }; 

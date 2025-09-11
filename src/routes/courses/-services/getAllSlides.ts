@@ -1,11 +1,11 @@
 import { CHAPTERS_WITH_SLIDES, GET_SLIDES } from "@/constants/urls";
-import axios from "axios";
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 
 export const fetchChaptersWithSlides = async (
     moduleId: string,
     packageSessionId: string
 ) => {
-    const response = await axios.get(CHAPTERS_WITH_SLIDES, {
+    const response = await authenticatedAxiosInstance.get(CHAPTERS_WITH_SLIDES, {
         params: {
             moduleId,
             packageSessionId,
@@ -26,7 +26,7 @@ export const handleFetchChaptersWithSlides = (
 };
 
 export const fetchSlidesOnly = async (chapterId: string) => {
-    const response = await axios.get(`${GET_SLIDES}`, {
+    const response = await authenticatedAxiosInstance.get(`${GET_SLIDES}`, {
         params: {
             chapterId,
         },

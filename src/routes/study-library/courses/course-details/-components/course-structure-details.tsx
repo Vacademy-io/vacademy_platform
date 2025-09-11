@@ -12,6 +12,7 @@ import {
     TreeStructure,
     FolderOpen,
 } from "phosphor-react";
+import { Steps } from "@phosphor-icons/react";
 import {
     Collapsible,
     CollapsibleContent,
@@ -394,7 +395,7 @@ export const CourseStructureDetails = ({
     const getSlideStyling = (textSize: "xs" | "sm" = "xs") => {
         const sizeClass = textSize === "sm" ? "text-sm" : "text-xs";
         if (isSlideClickable()) {
-            return `group flex cursor-pointer items-center gap-1.5 px-2 py-1 ${sizeClass} text-neutral-500 rounded hover:bg-gradient-to-r hover:from-amber-50/60 hover:to-orange-50/40 hover:border-amber-200/40 border border-transparent transition-all duration-200`;
+            return `group flex cursor-pointer items-center gap-1.5 px-2 py-1 ${sizeClass} text-neutral-500 rounded hover:bg-amber-50/60 hover:border-amber-200/40 border border-transparent transition-all duration-200`;
         } else {
             return `group flex items-center gap-1.5 px-2 py-1 ${sizeClass} text-neutral-400 rounded bg-neutral-50/50 border border-transparent`;
         }
@@ -570,7 +571,7 @@ export const CourseStructureDetails = ({
                 {/* Expand/Collapse Controls */}
                 <div className="flex items-center justify-between border-b border-neutral-200 pb-3">
                     <div className="flex items-center gap-2">
-                        <TreeStructure size={18} className="text-primary-600" />
+                        <Steps size={18} className="text-primary-600" />
                         <span className="text-sm font-medium text-neutral-700">
                             {getTerminology(
                                 ContentTerms.Course,
@@ -631,7 +632,7 @@ export const CourseStructureDetails = ({
                                             toggleSubject(subject.id)
                                         }
                                     >
-                                        <CollapsibleTrigger className="group flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-semibold text-neutral-700 transition-all duration-200 hover:bg-gradient-to-r hover:from-primary-50/60 hover:to-blue-50/40 hover:border-primary-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1">
+                                        <CollapsibleTrigger className="group flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-semibold text-neutral-700 transition-all duration-200 hover:bg-primary-50/60 hover:border-primary-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1">
                                             <div className="flex min-w-0 flex-1 items-center gap-2.5">
                                                 {isSubjectOpen ? (
                                                     <CaretDown
@@ -646,7 +647,7 @@ export const CourseStructureDetails = ({
                                                         className="shrink-0 text-neutral-500 group-hover:text-primary-600 transition-colors"
                                                     />
                                                 )}
-                                                <div className="flex items-center justify-center w-6 h-6 rounded-md bg-gradient-to-br from-primary-500 to-primary-600 text-white text-xs font-bold shrink-0">
+                                                <div className="flex items-center justify-center w-6 h-6 rounded-md bg-primary-600 text-white text-xs font-bold shrink-0">
                                                     {isSubjectOpen ? (
                                                         <FolderOpen size={12} />
                                                     ) : (
@@ -686,8 +687,8 @@ export const CourseStructureDetails = ({
                                         <CollapsibleContent
                                             className={`pb-1 pt-2 ${subjectContentIndent}`}
                                         >
-                                            <div className="space-y-1 border-l-2 border-gradient-to-b from-primary-200/60 to-neutral-200/40 pl-3 relative">
-                                                <div className="absolute left-0 top-0 w-0.5 h-full bg-gradient-to-b from-primary-300/80 to-transparent"></div>
+                                            <div className="space-y-1 border-l-2 border-primary-200/60 pl-3 relative">
+                                                <div className="absolute left-0 top-0 w-0.5 h-full bg-primary-300/50"></div>
                                                 {(
                                                     subjectModulesMap[
                                                         subject.id
@@ -709,7 +710,7 @@ export const CourseStructureDetails = ({
                                                                 )
                                                             }
                                                         >
-                                                            <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-blue-50/70 hover:to-indigo-50/50 hover:border-blue-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1">
+                                                            <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-blue-50/70 hover:border-blue-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1">
                                                                 <div className="flex min-w-0 flex-1 items-center gap-2">
                                                                     {isModuleOpen ? (
                                                                         <CaretDown
@@ -726,7 +727,7 @@ export const CourseStructureDetails = ({
                                                                             className="shrink-0 text-neutral-500 group-hover:text-blue-600 transition-colors"
                                                                         />
                                                                     )}
-                                                                    <div className="flex items-center justify-center w-5 h-5 rounded bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+                                                                    <div className="flex items-center justify-center w-5 h-5 rounded bg-blue-600 text-white">
                                                                         <FileText
                                                                             size={
                                                                                 12
@@ -773,7 +774,7 @@ export const CourseStructureDetails = ({
                                                                 className={`py-1 ${moduleContentIndent}`}
                                                             >
                                                                 <div className="space-y-0.5 border-l-2 border-blue-200/40 pl-2.5 relative">
-                                                                    <div className="absolute left-0 top-0 w-0.5 h-full bg-gradient-to-b from-blue-300/60 to-transparent"></div>
+                                                                    <div className="absolute left-0 top-0 w-0.5 h-full bg-blue-300/60"></div>
                                                                     {(
                                                                         mod.chapters ??
                                                                         []
@@ -804,7 +805,7 @@ export const CourseStructureDetails = ({
                                                                                         );
                                                                                     }}
                                                                                 >
-                                                                                    <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2 py-1 text-left text-sm text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-green-50/70 hover:to-emerald-50/50 hover:border-green-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1">
+                                                                                    <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2 py-1 text-left text-sm text-neutral-600 transition-all duration-200 hover:bg-green-50/70 hover:border-green-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1">
                                                                                         <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                                                                             {isChapterOpen ? (
                                                                                                 <CaretDown
@@ -821,7 +822,7 @@ export const CourseStructureDetails = ({
                                                                                                     className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
                                                                                                 />
                                                                                             )}
-                                                                                            <div className="flex items-center justify-center w-4 h-4 rounded bg-gradient-to-br from-green-500 to-green-600 text-white">
+                                                                                            <div className="flex items-center justify-center w-4 h-4 rounded bg-green-600 text-white">
                                                                                                 <PresentationChart
                                                                                                     size={
                                                                                                         10
@@ -863,7 +864,7 @@ export const CourseStructureDetails = ({
                                                                                         <div
                                                                                             className={`space-y-px ml-5 border-l border-green-200/50 py-1 pl-2 relative `}
                                                                                         >
-                                                                                            <div className="absolute left-0 top-0 w-px h-full bg-gradient-to-b from-green-300/50 to-transparent"></div>
+                                                                                            <div className="absolute left-0 top-0 w-px h-full bg-green-300/50"></div>
                                                                                             {(() => {
                                                                                                 const slidesForChapter =
                                                                                                     slidesMap[
@@ -984,7 +985,7 @@ export const CourseStructureDetails = ({
                                                             )
                                                         }
                                                     >
-                                                        <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-blue-50/70 hover:to-indigo-50/50 hover:border-blue-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1">
+                                                        <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-blue-50/70 hover:border-blue-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1">
                                                             <div className="flex min-w-0 flex-1 items-center gap-2">
                                                                 {isModuleOpen ? (
                                                                     <CaretDown
@@ -1001,7 +1002,7 @@ export const CourseStructureDetails = ({
                                                                         className="shrink-0 text-neutral-500 group-hover:text-blue-600 transition-colors"
                                                                     />
                                                                 )}
-                                                                <div className="flex items-center justify-center w-5 h-5 rounded bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+                                                                <div className="flex items-center justify-center w-5 h-5 rounded bg-blue-600 text-white">
                                                                     <FileText
                                                                         size={
                                                                             12
@@ -1035,7 +1036,7 @@ export const CourseStructureDetails = ({
                                                             className={`py-1 ${moduleContentIndent}`}
                                                         >
                                                             <div className="space-y-0.5 border-l-2 border-blue-200/40 pl-2.5 relative">
-                                                                <div className="absolute left-0 top-0 w-0.5 h-full bg-gradient-to-b from-blue-300/60 to-transparent"></div>
+                                                                <div className="absolute left-0 top-0 w-0.5 h-full bg-blue-300/60"></div>
                                                                 {(
                                                                     mod.chapters ??
                                                                     []
@@ -1066,7 +1067,7 @@ export const CourseStructureDetails = ({
                                                                                     );
                                                                                 }}
                                                                             >
-                                                                                <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2 py-1 text-left text-sm text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-green-50/70 hover:to-emerald-50/50 hover:border-green-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1">
+                                                                                <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2 py-1 text-left text-sm text-neutral-600 transition-all duration-200 hover:bg-green-50/70 hover:border-green-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1">
                                                                                     <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                                                                         {isChapterOpen ? (
                                                                                             <CaretDown
@@ -1083,7 +1084,7 @@ export const CourseStructureDetails = ({
                                                                                                 className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
                                                                                             />
                                                                                         )}
-                                                                                        <div className="flex items-center justify-center w-4 h-4 rounded bg-gradient-to-br from-green-500 to-green-600 text-white">
+                                                                                        <div className="flex items-center justify-center w-4 h-4 rounded bg-green-600 text-white">
                                                                                             <PresentationChart
                                                                                                 size={
                                                                                                     10
@@ -1110,7 +1111,7 @@ export const CourseStructureDetails = ({
                                                                                 </CollapsibleTrigger>
                                                                                 <CollapsibleContent>
                                                                                     <div className="space-y-px ml-5 border-l border-green-200/50 py-1 pl-2 relative">
-                                                                                        <div className="absolute left-0 top-0 w-px h-full bg-gradient-to-b from-green-300/50 to-transparent"></div>
+                                                                                        <div className="absolute left-0 top-0 w-px h-full bg-green-300/50"></div>
                                                                                         {(
                                                                                             slidesMap[
                                                                                                 ch
@@ -1268,7 +1269,7 @@ export const CourseStructureDetails = ({
                                                                                     );
                                                                                 }}
                                                                             >
-                                                                                <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2 py-1 text-left text-sm text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-green-50/70 hover:to-emerald-50/50 hover:border-green-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1">
+                                                                                <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2 py-1 text-left text-sm text-neutral-600 transition-all duration-200 hover:bg-green-50/70 hover:border-green-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1">
                                                                                     <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                                                                         {isChapterOpen ? (
                                                                                             <CaretDown
@@ -1285,7 +1286,7 @@ export const CourseStructureDetails = ({
                                                                                                 className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
                                                                                             />
                                                                                         )}
-                                                                                        <div className="flex items-center justify-center w-4 h-4 rounded bg-gradient-to-br from-green-500 to-green-600 text-white">
+                                                                                        <div className="flex items-center justify-center w-4 h-4 rounded bg-green-600 text-white">
                                                                                             <PresentationChart
                                                                                                 size={
                                                                                                     10
@@ -1312,7 +1313,7 @@ export const CourseStructureDetails = ({
                                                                                 </CollapsibleTrigger>
                                                                                 <CollapsibleContent>
                                                                                     <div className="space-y-px ml-5 border-l border-green-200/50 py-1 pl-2 relative">
-                                                                                        <div className="absolute left-0 top-0 w-px h-full bg-gradient-to-b from-green-300/50 to-transparent"></div>
+                                                                                        <div className="absolute left-0 top-0 w-px h-full bg-green-300/50"></div>
                                                                                         {(
                                                                                             slidesMap[
                                                                                                 ch
@@ -1708,9 +1709,9 @@ export const CourseStructureDetails = ({
             </div>
         ),
         [TabType.TEACHERS]: (
-            <div className="rounded-md bg-gradient-to-br from-white to-neutral-50/50 border border-neutral-200 p-5 text-sm text-neutral-600">
+            <div className="rounded-md bg-card border border-neutral-200 p-5 text-sm text-neutral-600">
                 <div className="flex items-center gap-3 mb-3">
-                   <div className="w-8 h-8 rounded-md bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+                   <div className="w-8 h-8 rounded-md bg-blue-600 flex items-center justify-center">
                         <span className="text-white text-xs font-bold">T</span>
                     </div>
                     <span className="font-medium text-neutral-700">
@@ -1725,9 +1726,9 @@ export const CourseStructureDetails = ({
             </div>
         ),
         [TabType.ASSESSMENT]: (
-            <div className="rounded-md bg-gradient-to-br from-white to-neutral-50/50 border border-neutral-200 p-5 text-sm text-neutral-600">
+            <div className="rounded-md bg-card border border-neutral-200 p-5 text-sm text-neutral-600">
                 <div className="flex items-center gap-3 mb-3">
-                   <div className="w-8 h-8 rounded-md bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center">
+                   <div className="w-8 h-8 rounded-md bg-green-600 flex items-center justify-center">
                         <span className="text-white text-xs font-bold">A</span>
                     </div>
                     <span className="font-medium text-neutral-700">
@@ -1746,9 +1747,9 @@ export const CourseStructureDetails = ({
                         packageSessionId={packageSessionId}
                     />
                 ) : (
-                    <div className="rounded-md bg-gradient-to-br from-white to-neutral-50/50 border border-neutral-200 p-5 text-sm text-neutral-600">
+                    <div className="rounded-md bg-card border border-neutral-200 p-5 text-sm text-neutral-600">
                         <div className="flex items-center gap-3 mb-3">
-                            <div className="w-8 h-8 rounded-md bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+                            <div className="w-8 h-8 rounded-md bg-blue-600 flex items-center justify-center">
                                 <span className="text-white text-xs font-bold">D</span>
                             </div>
                             <span className="font-medium text-neutral-700">
@@ -2099,7 +2100,7 @@ export const CourseStructureDetails = ({
             )}
             
             <PullToRefreshWrapper onRefresh={refreshData}>
-                <div className="flex size-full flex-col gap-4 rounded-lg bg-gradient-to-br from-neutral-50/50 to-white pt-0 pb-4 text-neutral-700">
+                <div className="flex size-full flex-col gap-4 rounded-lg bg-card pt-0 pb-4 text-neutral-700">
                 <Tabs
                     value={selectedStructureTab}
                     onValueChange={handleTabChange}
@@ -2113,8 +2114,8 @@ export const CourseStructureDetails = ({
                                     value={tab.value}
                                     className={`inline-flex items-center data-[state=active]:text-primary data-[state=active]:border-primary hover:text-primary -mb-px px-3 whitespace-nowrap 
                                     py-2 text-sm font-medium transition-all duration-200 
-                                    hover:bg-gradient-to-r hover:from-primary-50/60 hover:to-blue-50/40 focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:ring-offset-1
-                                    data-[state=active]:rounded-t-lg data-[state=active]:border-b-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-white data-[state=active]:to-primary-50/30 data-[state=inactive]:text-neutral-500 data-[state=inactive]:hover:rounded-t-lg`}
+                                    hover:bg-primary-50/60 focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:ring-offset-1
+                                    data-[state=active]:rounded-t-lg data-[state=active]:border-b-2 data-[state=active]:bg-primary-50/30 data-[state=inactive]:text-neutral-500 data-[state=inactive]:hover:rounded-t-lg`}
                                 >
                                     {tab.label}
                                 </TabsTrigger>

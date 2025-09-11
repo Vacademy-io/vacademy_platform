@@ -6,6 +6,7 @@ import {
     GET_PUBLIC_URL_PUBLIC,
 } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+import { getWithETag } from "@/lib/http/etagClient";
 import axios from "axios";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 
@@ -108,27 +109,29 @@ const acknowledgeUpload = async (
 export const getPublicUrl = async (
     fileId: string | undefined | null
 ): Promise<string> => {
-    const response = await authenticatedAxiosInstance.get(GET_PUBLIC_URL, {
-        params: { fileId, expiryDays: 1 },
-    });
-    return response?.data;
+    return getWithETag<string>(
+        authenticatedAxiosInstance,
+        GET_PUBLIC_URL,
+        { fileId, expiryDays: 7 }
+    );
 };
 
 export const getPublicUrlWithoutLogin = async (
     fileId: string | undefined | null
 ): Promise<string> => {
     if (!fileId) return "";
-    const response = await axios.get(GET_PUBLIC_URL_PUBLIC, {
-        params: { fileId, expiryDays: 1 },
-    });
-    return response?.data;
+    return getWithETag<string>(
+        undefined,
+        GET_PUBLIC_URL_PUBLIC,
+        { fileId, expiryDays: 7 },
+        { withCredentials: false }
+    );
 };
 
 export const getPublicUrls = async (fileIds: string | undefined | null) => {
-    const response = await authenticatedAxiosInstance({
-        method: "GET",
-        url: GET_DETAILS,
-        params: { fileIds, expiryDays: 1 },
-    });
-    return response?.data;
+    return getWithETag<any>(
+        authenticatedAxiosInstance,
+        GET_DETAILS,
+        { fileIds, expiryDays: 7 }
+    );
 };

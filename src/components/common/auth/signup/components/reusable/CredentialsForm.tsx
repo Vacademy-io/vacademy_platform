@@ -87,7 +87,16 @@ export function CredentialsForm({
   const handleSubmit = async (data: CredentialsFormData) => {
     try {
       setIsSubmitting(true);
-      await onSubmit(data);
+      
+      // When usernameStrategy is "email" and we have OAuth data, use OAuth name as full name
+      const finalData = {
+        ...data,
+        fullName: settings.usernameStrategy === "email" && initialData.fullName 
+          ? initialData.fullName 
+          : data.fullName
+      };
+      
+      await onSubmit(finalData);
     } catch (error) {
       // Handle error silently
     } finally {
@@ -98,8 +107,12 @@ export function CredentialsForm({
   const needsUsername = settings.usernameStrategy === "manual" || settings.usernameStrategy === " ";
   const needsPassword = settings.passwordStrategy === "manual" || settings.passwordStrategy === " ";
 
-  // Show full name field if we have a value or if any credentials are manual
-  const showFullName = !hideFullName || initialData.fullName || needsUsername || needsPassword;
+  // Show full name field if:
+  // 1. hideFullName is false AND
+  // 2. usernameStrategy is not "email" (when usernameStrategy is "email", we hide the field but still use OAuth name)
+  // 3. OR if we have initial data and any credentials are manual
+  const showFullName = (!hideFullName && settings.usernameStrategy !== "email") || 
+                      (initialData.fullName && (needsUsername || needsPassword));
 
   return (
     <motion.div

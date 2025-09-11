@@ -31,6 +31,7 @@ interface UsernameLoginProps {
     onSwitchToEmail: () => void;
     type?: string;
     courseId?: string;
+    allowEmailOtpAuth?: boolean;
 }
 export function UsernameLogin({
     onSwitchToEmail,
@@ -38,6 +39,7 @@ export function UsernameLogin({
     courseId,
     onSwitchToSignup,
     onSwitchToForgotPassword,
+    allowEmailOtpAuth,
 }: UsernameLoginProps & {
     onSwitchToSignup?: () => void;
     onSwitchToForgotPassword?: () => void;
@@ -50,7 +52,7 @@ export function UsernameLogin({
 
     const redirect = useRouterState({
         select: (s) =>
-            (s.location.search as Record<string, any>).redirect ?? "/login/",
+            (s.location.search as Record<string, unknown>).redirect ?? "/login/",
     });
     const { setPrimaryColor } = useTheme();
 
@@ -98,8 +100,7 @@ export function UsernameLogin({
                         // Redirect to InstituteSelection if multiple authorities are found
                         navigate({
                             to: "/institute-selection",
-                            search: { redirect: redirect || "/dashboard/" },
-                            state: { type, courseId },
+                            search: { redirect: redirect || "/dashboard/", type, courseId },
                         });
                     } else {
                         // Get the single institute ID
@@ -164,7 +165,7 @@ export function UsernameLogin({
                             // For course-related pages, redirect to the appropriate study library page
                             if (redirectUrl !== "/dashboard") {
                                 navigate({
-                                    to: redirectUrl as any,
+                                    to: redirectUrl as never,
                                 });
                             } else {
                                 navigate({
@@ -354,7 +355,7 @@ export function UsernameLogin({
                             disabled={isLoading}
                             whileHover={{ scale: 1.01 }}
                             whileTap={{ scale: 0.99 }}
-                            className="w-full bg-gray-900 hover:bg-black text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
+                            className="w-full bg-blue-600 hover:bg-blue-500 bg-primary-500 hover:bg-primary-400 text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
                         >
                             {isLoading ? (
                                 <div className="flex items-center justify-center space-x-2">
@@ -390,27 +391,44 @@ export function UsernameLogin({
                 transition={{ delay: 0.4 }}
                 className="text-center pt-3 space-y-2"
             >
-                <motion.button
-                    type="button"
-                    whileHover={{ scale: 1.02 }}
-                    className="text-sm text-gray-500 hover:text-gray-700 transition-colors duration-200 relative group font-medium"
-                    onClick={onSwitchToEmail}
-                >
-                    Prefer email login?
-                    <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-700 transition-all duration-200 group-hover:w-full"></span>
-                </motion.button>
-                
-                {/* <div className="text-xs text-gray-500">
-                    Don't have an account?{" "}
+                {(allowEmailOtpAuth ?? true) && (
                     <motion.button
                         type="button"
                         whileHover={{ scale: 1.02 }}
-                        onClick={onSwitchToSignup || (() => navigate({ to: "/signup" }))}
-                        className="text-gray-700 hover:text-gray-900 font-medium underline cursor-pointer"
+                        className="text-sm text-gray-600 hover:text-gray-800 transition-colors duration-200 relative group font-medium"
+                        onClick={onSwitchToEmail}
                     >
-                        Sign up here
+                        Use email OTP instead?
+                        <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
                     </motion.button>
-                </div> */}
+                )}
+ 
+                {(() => {
+                    try {
+                        const raw = localStorage.getItem("InstituteId");
+                        const instituteId = raw || "";
+                        if (!instituteId) return null;
+                        const stored = localStorage.getItem(`LEARNER_${instituteId}`);
+                        if (!stored) return null;
+                        const parsed = JSON.parse(stored);
+                        if (parsed?.allowSignup === false) return null;
+                    } catch {
+                        return null;
+                    }
+                    return (
+                        <div className="text-xs text-gray-600">
+                            Don't have an account?{" "}
+                            <motion.button
+                                type="button"
+                                whileHover={{ scale: 1.02 }}
+                                onClick={onSwitchToSignup || (() => navigate({ to: "/signup" }))}
+                                className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
+                            >
+                                Sign up here
+                            </motion.button>
+                        </div>
+                    );
+                })()}
             </motion.div>
         </div>
     );

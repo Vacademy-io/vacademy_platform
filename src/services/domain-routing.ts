@@ -1,6 +1,7 @@
-import axios from "axios";
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { BASE_URL } from "../constants/urls";
 import { getDomainAndSubdomain } from "../utils/platform-flavor";
+import { getLocalhostInstituteConfig, isLocalhostDevelopment } from "../utils/localhost-dev";
 
 export interface DomainRoutingResponse {
   instituteId: string;
@@ -9,6 +10,22 @@ export interface DomainRoutingResponse {
   instituteThemeCode: string;
   role: string;
   redirect: string;
+  // New optional fields for institute policy URLs
+  privacyPolicyUrl?: string | null;
+  termsAndConditionUrl?: string | null;
+  // Optional theme and font settings for pre-login branding
+  theme?: string | null;
+  fontFamily?: string | null;
+  // Optional signup visibility
+  allowSignup?: boolean | null;
+  // Optional tab branding
+  tabText?: string | null;
+  tabIconFileId?: string | null;
+  // Login provider toggles
+  allowGoogleAuth?: boolean | null;
+  allowGithubAuth?: boolean | null;
+  allowEmailOtpAuth?: boolean | null;
+  allowUsernamePasswordAuth?: boolean | null;
 }
 
 export interface DomainRoutingError {
@@ -16,29 +33,41 @@ export interface DomainRoutingError {
   message: string;
 }
 
-// Cache for domain routing responses
-const domainRoutingCache = new Map<
-  string,
-  { data: DomainRoutingResponse; timestamp: number }
->();
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
-
 export const resolveDomainRouting = async (
   domain: string,
   subdomain: string
 ): Promise<DomainRoutingResponse | null> => {
-  const cacheKey = `${domain}:${subdomain}`;
-
-  // Check cache first
-  const cached = domainRoutingCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-    return cached.data;
+  // Handle localhost development
+  if (isLocalhostDevelopment(domain)) {
+    console.log(`[Domain Routing] Localhost development detected for ${domain}:${subdomain}`);
+    const config = getLocalhostInstituteConfig(subdomain);
+    
+    // Return a mock response for localhost development
+    return {
+      instituteId: config.instituteId,
+      instituteName: subdomain ? `${subdomain} Institute` : "Default Institute",
+      instituteLogoFileId: "",
+      instituteThemeCode: "primary",
+      role: "learner",
+      redirect: config.redirectPath,
+      privacyPolicyUrl: null,
+      termsAndConditionUrl: null,
+      theme: null,
+      fontFamily: null,
+      allowSignup: true,
+      tabText: subdomain ? `${subdomain} Learing ` : "Learning Platform",
+      tabIconFileId: null,
+      allowGoogleAuth: true,
+      allowGithubAuth: true,
+      allowEmailOtpAuth: true,
+      allowUsernamePasswordAuth: true,
+    };
   }
 
   try {
     // Resolving domain routing for: ${domain}:${subdomain}
 
-    const response = await axios.get<DomainRoutingResponse>(
+    const response = await authenticatedAxiosInstance.get<DomainRoutingResponse>(
       `${BASE_URL}/admin-core-service/public/domain-routing/v1/resolve`,
       {
         params: { domain, subdomain },
@@ -47,9 +76,6 @@ export const resolveDomainRouting = async (
     );
 
     const data = response.data;
-
-    // Cache the successful response
-    domainRoutingCache.set(cacheKey, { data, timestamp: Date.now() });
 
     // Successfully resolved domain routing
     return data;
@@ -78,20 +104,4 @@ export const getCurrentDomainInfo = async () => {
   return await getDomainAndSubdomain();
 };
 
-// Clear cache (useful for testing or when cache becomes stale)
-export const clearDomainRoutingCache = () => {
-  domainRoutingCache.clear();
-  // Domain routing cache cleared
-};
-
-// Get cached data for debugging
-export const getDomainRoutingCacheInfo = () => {
-  return {
-    size: domainRoutingCache.size,
-    entries: Array.from(domainRoutingCache.entries()).map(([key, value]) => ({
-      key,
-      timestamp: value.timestamp,
-      age: Date.now() - value.timestamp,
-    })),
-  };
-};
+// Client-side cache now handled centrally by axios + in-memory cache

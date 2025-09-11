@@ -49,12 +49,14 @@ export function EmailLogin({
     courseId,
     onSwitchToSignup,
     onEmailVerificationSuccess,
+    allowUsernamePasswordAuth,
 }: {
     onSwitchToUsername: () => void;
     type?: string;
     courseId?: string;
     onSwitchToSignup?: () => void;
     onEmailVerificationSuccess?: (email: string) => void;
+    allowUsernamePasswordAuth?: boolean;
 }) {
     const [isOtpSent, setIsOtpSent] = useState(false);
     const [email, setEmail] = useState("");
@@ -66,7 +68,7 @@ export function EmailLogin({
 
     const redirect = useRouterState({
         select: (s) =>
-            (s.location.search as Record<string, any>).redirect ?? "/login/",
+            (s.location.search as Record<string, unknown>).redirect ?? "/login/",
     });
 
     const emailForm = useForm<EmailFormValues>({
@@ -182,8 +184,7 @@ export function EmailLogin({
                 if (authorityKeys.length > 1) {
                     navigate({
                         to: "/institute-selection",
-                        search: { redirect: redirect || "/dashboard/" },
-                        state: { type, courseId },
+                        search: { redirect: redirect || "/dashboard/", type, courseId },
                     });
                 } else {
                     const instituteId = authorityKeys[0];
@@ -217,7 +218,7 @@ export function EmailLogin({
                                 // For course-related pages, redirect to the appropriate study library page
                                 if (redirectUrl !== "/dashboard") {
                                     navigate({
-                                        to: redirectUrl as any,
+                                        to: redirectUrl as never,
                                     });
                                 } else {
                                     navigate({
@@ -233,14 +234,14 @@ export function EmailLogin({
                             } else {
                                 // Unexpected login status
                             }
-                        } catch (error) {
+                        } catch {
                             toast.error("Failed to fetch details");
                         }
                     } else {
                         // Institute ID or User ID is undefined
                     }
                 }
-            } catch (error) {
+            } catch {
                 // Error processing decoded data
             }
         },
@@ -699,28 +700,70 @@ export function EmailLogin({
                 transition={{ delay: 0.8 }}
                 className="text-center pt-3 space-y-2"
             >
-                <motion.button
-                    type="button"
-                    whileHover={{ scale: 1.02 }}
-                    className="text-sm text-gray-500 hover:text-gray-700 transition-colors duration-200 relative group font-medium"
-                    onClick={onSwitchToUsername}
-                >
-                    Prefer username login?
-                    <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-700 transition-all duration-200 group-hover:w-full"></span>
-                </motion.button>
-                
-                {/* <div className="text-xs text-gray-500">
-                    Don't have an account?{" "}
+                {(allowUsernamePasswordAuth ?? true) && (
                     <motion.button
                         type="button"
                         whileHover={{ scale: 1.02 }}
-                        onClick={onSwitchToSignup || (() => navigate({ to: "/signup" }))}
-                        className="text-gray-700 hover:text-gray-900 font-medium underline cursor-pointer"
+                        className="text-sm text-gray-600 hover:text-gray-800 transition-colors duration-200 relative group font-medium"
+                        onClick={onSwitchToUsername}
                     >
-                        Sign up here
+                        Use username & password instead?
+                        <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
                     </motion.button>
-                </div> */}
-                
+                )}
+
+                <div className="text-xs text-gray-600">
+                    {(() => {
+                        try {
+                            const instituteId = localStorage.getItem("InstituteId") || "";
+                            if (!instituteId) return null;
+                            const stored = localStorage.getItem(`LEARNER_${instituteId}`);
+                            if (!stored) return (
+                                <>
+                                    Don't have an account?{" "}
+                                    <motion.button
+                                        type="button"
+                                        whileHover={{ scale: 1.02 }}
+                                        onClick={onSwitchToSignup || (() => navigate({ to: "/signup" }))}
+                                        className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
+                                    >
+                                        Sign up here
+                                    </motion.button>
+                                </>
+                            );
+                            const parsed = JSON.parse(stored);
+                            if (parsed?.allowSignup === false) return null;
+                        } catch {
+                            return (
+                                <>
+                                    Don't have an account?{" "}
+                                    <motion.button
+                                        type="button"
+                                        whileHover={{ scale: 1.02 }}
+                                        onClick={onSwitchToSignup || (() => navigate({ to: "/signup" }))}
+                                        className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
+                                    >
+                                        Sign up here
+                                    </motion.button>
+                                </>
+                            );
+                        }
+                        return (
+                            <>
+                                Don't have an account?{" "}
+                                <motion.button
+                                    type="button"
+                                    whileHover={{ scale: 1.02 }}
+                                    onClick={onSwitchToSignup || (() => navigate({ to: "/signup" }))}
+                                    className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
+                                >
+                                    Sign up here
+                                </motion.button>
+                            </>
+                        );
+                    })()}
+                </div>
+
 
             </motion.div>
         </div>

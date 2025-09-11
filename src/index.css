@@ -194,6 +194,8 @@
 }
 
 @layer utilities {
+    /* Disable gradients globally when wrapped with .no-gradients */
+    .no-gradients [class*="bg-gradient-to-"] { background-image: none !important; }
     .no-scrollbar::-webkit-scrollbar {
         display: none;
     }

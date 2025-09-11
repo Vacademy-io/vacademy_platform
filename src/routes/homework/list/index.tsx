@@ -10,7 +10,7 @@ function RouteComponent() {
   return (
     <LayoutContainer>
       {/* <Helmet>
-      <title>Assessment</title>
+      <title>{document?.title || "Assessment"}</title>
       <meta name="description" content="Assessment page" />
     </Helmet> */}
       <ScheduleTestMainComponent assessment_types = "HOMEWORK" />

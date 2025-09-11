@@ -240,7 +240,7 @@ function RouteComponent() {
     (
       <div
         key={session.session_id}
-        className="group p-4 border rounded-xl bg-gradient-to-br from-white to-neutral-50/50 hover:from-primary-50/30 hover:to-blue-50/40 border-neutral-200 hover:border-primary-200/60 hover:shadow-sm transition-all duration-200 w-full"
+        className="group p-4 border rounded-xl bg-white hover:bg-primary-50/30 border-neutral-200 hover:border-primary-200/60 hover:shadow-sm transition-all duration-200 w-full"
       >
         <div className="flex justify-between items-start">
           <div className="flex-1">
@@ -249,7 +249,7 @@ function RouteComponent() {
                 {session.title}
               </h3>
               {isLive && (
-                <span className="px-2 py-1 bg-gradient-to-r from-red-500 to-red-600 text-white text-xs font-medium rounded-full animate-pulse">
+                <span className="px-2 py-1 bg-danger-600 text-white text-xs font-medium rounded-full animate-pulse">
                   LIVE
                 </span>
               )}
@@ -371,7 +371,7 @@ function RouteComponent() {
             {liveSessions.length > 0 && (
               <div>
                 <h3 className="text-lg font-semibold text-neutral-800 mb-3 flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-gradient-to-r from-red-500 to-red-600 animate-pulse"></div>
+                  <div className="w-3 h-3 rounded-full bg-danger-600 animate-pulse"></div>
                   Live Sessions
                 </h3>
                 <div className="space-y-3">
@@ -406,7 +406,7 @@ function RouteComponent() {
                           {session.meeting_link && (
                             <Button
                               size="sm"
-                              className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white"
+                              className="bg-danger-600 hover:bg-danger-700 text-white"
                               onClick={() => {
                                 handleJoinSession(session);
                                 setDayModalOpen(false);
@@ -426,7 +426,7 @@ function RouteComponent() {
             {upcomingSessions.length > 0 && (
               <div>
                 <h3 className="text-lg font-semibold text-neutral-800 mb-3 flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-gradient-to-r from-blue-500 to-blue-600"></div>
+                  <div className="w-3 h-3 rounded-full bg-info-600"></div>
                   Upcoming Sessions
                 </h3>
                 <div className="space-y-3">
@@ -435,7 +435,7 @@ function RouteComponent() {
                     .map((session) => (
                       <div
                         key={session.schedule_id}
-                        className="p-4 border rounded-lg bg-gradient-to-r from-blue-50/50 to-blue-100/30 border-blue-200"
+                        className="p-4 border rounded-lg bg-blue-50 border-blue-200"
                       >
                         <div className="flex justify-between items-start">
                           <div className="flex-1">
@@ -546,9 +546,7 @@ function RouteComponent() {
               >
                 <div
                   className={`w-2 h-2 rounded-full ${
-                    hasLive
-                      ? "bg-gradient-to-r from-red-500 to-red-600 animate-pulse"
-                      : "bg-gradient-to-r from-blue-500 to-blue-600"
+                    hasLive ? "bg-danger-600 animate-pulse" : "bg-info-600"
                   }`}
                 ></div>
                 <span className="text-xs font-semibold">{sessionCount}</span>
@@ -565,8 +563,8 @@ function RouteComponent() {
                   key={session.schedule_id}
                   className={`text-xs p-1 rounded truncate transition-all duration-200 ${
                     isLive
-                      ? "bg-gradient-to-r from-red-500/20 to-red-600/20 text-red-700 border border-red-200"
-                      : "bg-gradient-to-r from-blue-500/20 to-blue-600/20 text-blue-700 border border-blue-200"
+                      ? "bg-red-100 text-red-700 border border-red-200"
+                      : "bg-blue-100 text-blue-700 border border-blue-200"
                   }`}
                   title={`${session.title} - ${session.start_time}`}
                 >
@@ -648,7 +646,7 @@ function RouteComponent() {
             <span className="text-neutral-600">Live Sessions</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded bg-gradient-to-r from-blue-500/20 to-blue-600/20 border border-blue-200"></div>
+            <div className="w-3 h-3 rounded bg-blue-100 border border-blue-200"></div>
             <span className="text-neutral-600">Upcoming Sessions</span>
           </div>
           <div className="text-neutral-500 text-xs italic">
@@ -691,7 +689,7 @@ function RouteComponent() {
   return (
     <LayoutContainer>
       <Helmet>
-        <title>Live Classes</title>
+        <title>{document?.title || "Live Classes"}</title>
         <meta name="description" content="Live and upcoming class sessions" />
       </Helmet>
 

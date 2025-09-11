@@ -33,14 +33,15 @@ interface EmailInputFormProps {
   checkEnrollmentOnce?: (email: string) => Promise<any>; // Function to check enrollment once
 }
 
-const createEmailInputSchema = (hideFullName: boolean = false) => {
+const createEmailInputSchema = (hideFullName: boolean = false, usernameStrategy?: string) => {
   const baseSchema: any = {
     email: z.string().email("Please enter a valid email address"),
   };
   
-  // For email OTP signup, always ask for full name (user hasn't provided it yet)
-  // For OAuth, only ask if hideFullName is false
-  if (!hideFullName) {
+  // For email OTP signup, ask for full name only if:
+  // 1. hideFullName is false AND
+  // 2. usernameStrategy is not "email" (when usernameStrategy is "email", we'll use email as full name)
+  if (!hideFullName && usernameStrategy !== "email") {
     baseSchema.fullName = z.string().min(2, "Full name must be at least 2 characters");
   }
   
@@ -62,7 +63,7 @@ export function EmailInputForm({
   checkEnrollmentOnce
 }: EmailInputFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const schema = createEmailInputSchema(hideFullName);
+  const schema = createEmailInputSchema(hideFullName, settings.usernameStrategy);
   
   const form = useForm<EmailInputFormData>({
     resolver: zodResolver(schema),
@@ -82,16 +83,19 @@ export function EmailInputForm({
       // - Regular email OTP flow
       // This ensures we have a verified email before checking enrollment status
       
+      // When usernameStrategy is "email", use email as full name
+      const fullNameToUse = settings.usernameStrategy === "email" ? data.email : (data.fullName || initialFullName || "User");
+      
       await axios.post(LIVE_SESSION_REQUEST_OTP, {
         to: data.email.trim(),
         subject: "Email Verification",
         service: "signup",
-        name: data.fullName || initialFullName || "User",
+        name: fullNameToUse,
         otp: "",
       });
       
       toast.success("OTP sent successfully to your email");
-      onOtpSent(data.email, data.fullName);
+      onOtpSent(data.email, fullNameToUse);
     } catch (error) {
       toast.error("Failed to send OTP. Please try again.");
     } finally {
@@ -134,8 +138,8 @@ export function EmailInputForm({
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(handleEmailSubmit)} className="space-y-4">
-          {/* Full Name - Always show for email OTP, conditional for OAuth */}
-          {!hideFullName && (
+          {/* Full Name - Show only if hideFullName is false AND usernameStrategy is not "email" */}
+          {!hideFullName && settings.usernameStrategy !== "email" && (
             <FormField
               control={form.control}
               name="fullName"

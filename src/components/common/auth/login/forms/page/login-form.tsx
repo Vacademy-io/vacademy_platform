@@ -22,25 +22,16 @@ import { useTheme } from "@/providers/theme/theme-provider";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import ClipLoader from "react-spinners/ClipLoader";
-import {
-  Shield,
-  BookOpen,
-  Users,
-  Award,
-  ArrowRight,
-  Sparkles,
-} from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 import {
-  getAuthSettings,
   getStudentDisplaySettings,
 } from "@/services/student-display-settings";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { AuthPageBranding } from "@/components/common/institute-branding";
 import { identifyUser } from "@/lib/analytics";
-import { useQuery } from "@tanstack/react-query";
-import { handleGetPublicInstituteDetails } from "@/components/common/enroll-by-invite/-services/enroll-invite-services";
+import { useEffect as useEffectTheme } from "react";
 
 export const getFromStorage = async (key: string) => {
   const result = await Preferences.get({ key });
@@ -67,21 +58,57 @@ export function LoginForm({
   const isPublic = urlParams.get("isPublicAssessment");
   const redirect = urlParams.get("redirect");
   const [isEmailLogin, setIsEmailLogin] = useState(isPublic === "true");
+  const [providerFlags, setProviderFlags] = useState<{
+    allowGoogleAuth: boolean;
+    allowGithubAuth: boolean;
+    allowEmailOtpAuth: boolean;
+    allowUsernamePasswordAuth: boolean;
+  }>({ allowGoogleAuth: true, allowGithubAuth: true, allowEmailOtpAuth: true, allowUsernamePasswordAuth: true });
   const { setInstituteId } = useInstituteFeatureStore();
   const domainRouting = useDomainRouting();
-  const { data: instituteData } = useQuery(
-    handleGetPublicInstituteDetails({
-      instituteId: domainRouting.instituteId ?? "",
-    })
-  );
-  const { data: authProviders } = useQuery({
-    queryKey: ["authSettings", domainRouting.instituteId],
-    queryFn: () =>
-      getAuthSettings({
-        details: instituteData?.setting ?? "",
-      }),
-    enabled: !!instituteData?.setting,
-  });
+  
+  // Pre-login theme and font from Preferences if present (external-first branding)
+  useEffectTheme(() => {
+    (async () => {
+      try {
+        const instituteId = (await Preferences.get({ key: "InstituteId" })).value || "";
+        if (!instituteId) return;
+        const stored = await Preferences.get({ key: `LEARNER_${instituteId}` });
+        if (!stored?.value) return;
+        const parsed = JSON.parse(stored.value);
+        if (parsed?.theme) {
+          setPrimaryColor(parsed.theme);
+        }
+        // Update provider flags from preferences
+        setProviderFlags({
+          allowGoogleAuth: parsed?.allowGoogleAuth !== false,
+          allowGithubAuth: parsed?.allowGithubAuth !== false,
+          allowEmailOtpAuth: parsed?.allowEmailOtpAuth !== false,
+          allowUsernamePasswordAuth: parsed?.allowUsernamePasswordAuth !== false,
+        });
+        if (parsed?.allowUsernamePasswordAuth === false && parsed?.allowEmailOtpAuth !== false) {
+          setIsEmailLogin(true);
+        }
+        if (parsed?.fontFamily) {
+          const mapFamily = (f: string) => {
+            const key = String(f).toUpperCase();
+            if (key === "INTER") return 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
+            return f;
+          };
+          const family = mapFamily(parsed.fontFamily);
+          document.documentElement.style.setProperty("--app-font-family", family);
+          document.body.style.fontFamily = family;
+        }
+      } catch {
+        // ignore
+      }
+    })();
+  }, [setPrimaryColor]);
+  // Providers from stored flags
+  const authProviders = {
+    google: providerFlags.allowGoogleAuth,
+    github: providerFlags.allowGithubAuth,
+  };
 
   useEffect(() => {
     const ssoLoginSuccess = handleSSOLogin();
@@ -249,8 +276,8 @@ export function LoginForm({
         animate={{ opacity: 1 }}
         className="min-h-screen bg-background flex flex-col items-center justify-center relative overflow-hidden"
       >
-        {/* Subtle Background Elements */}
-        <div className="absolute inset-0 bg-grid-gray-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] -z-10" />
+        {/* Subtle Background Elements (gradients removed) */}
+        <div className="absolute inset-0 -z-10" />
         <motion.div
           animate={{
             scale: [1, 1.05, 1],
@@ -261,7 +288,7 @@ export function LoginForm({
             repeat: Infinity,
             ease: "easeInOut",
           }}
-          className="absolute top-20 left-20 w-24 h-24 bg-gray-200/20 rounded-full blur-xl"
+          className="absolute top-20 left-20 w-24 h-24 bg-muted/20 rounded-full blur-xl"
         />
         <motion.div
           animate={{
@@ -274,7 +301,7 @@ export function LoginForm({
             ease: "easeInOut",
             delay: 1,
           }}
-          className="absolute bottom-20 right-20 w-32 h-32 bg-gray-300/20 rounded-full blur-xl"
+          className="absolute bottom-20 right-20 w-32 h-32 bg-muted/20 rounded-full blur-xl"
         />
 
         <motion.div
@@ -323,8 +350,8 @@ export function LoginForm({
         type ? "h-[400px] overflow-auto" : "min-h-screen overflow-hidden"
       } bg-background relative `}
     >
-      {/* Subtle Background Pattern */}
-      <div className="absolute inset-0 bg-grid-gray-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] -z-10" />
+      {/* Subtle Background Pattern (gradients removed) */}
+      <div className="absolute inset-0 -z-10" />
 
       {/* Subtle Floating Background Elements */}
       <motion.div
@@ -338,7 +365,7 @@ export function LoginForm({
           repeat: Infinity,
           ease: "easeInOut",
         }}
-        className="absolute top-20 left-20 w-48 h-48 bg-gradient-to-br from-gray-200/10 to-gray-300/10 rounded-full blur-3xl"
+        className="absolute top-20 left-20 w-48 h-48 bg-muted/10 rounded-full blur-3xl"
       />
       <motion.div
         animate={{
@@ -352,135 +379,35 @@ export function LoginForm({
           ease: "easeInOut",
           delay: 3,
         }}
-        className="absolute bottom-20 right-20 w-64 h-64 bg-gradient-to-br from-gray-300/10 to-gray-400/10 rounded-full blur-3xl"
+        className="absolute bottom-20 right-20 w-64 h-64 bg-muted/10 rounded-full blur-3xl"
       />
 
-      <div className="flex">
-        {/* Left Side - Compact Branding & Features */}
-        {!type && (
+      {/* Centered container */}
+      <div className="w-full min-h-[60vh] flex items-center justify-center p-4">
+        <div className="w-full max-w-lg xl:max-w-xl">
+          {/* Prominent Institute Branding above the card */}
+          {domainRouting.instituteId && (
+            <div className="mb-4">
+              <AuthPageBranding
+                branding={{
+                  instituteId: domainRouting.instituteId,
+                  instituteName: domainRouting.instituteName,
+                  instituteLogoFileId: domainRouting.instituteLogoFileId,
+                  instituteThemeCode: domainRouting.instituteThemeCode,
+                }}
+              />
+            </div>
+          )}
+
+          {/* Login Card */}
           <motion.div
-            initial={{ x: -50, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            transition={{ duration: 0.6, ease: "easeOut" }}
-            className="hidden lg:flex lg:w-1/2 xl:w-1/2 flex-col justify-center px-8 xl:px-16"
+            initial={{ y: 20, opacity: 0, scale: 0.98 }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
+            transition={{ delay: 0.3, duration: 0.4 }}
+            className={`bg-white rounded-md ${
+              type ? "" : "shadow-md border border-gray-200 p-5 lg:p-6 xl:p-8"
+            }  `}
           >
-            {/* Compact Main Heading */}
-            <motion.div
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: 0.2 }}
-              className="mb-8"
-            >
-              <h1 className="text-4xl xl:text-5xl font-bold text-gray-900 mb-4 leading-tight">
-                Transform Your
-                <span className="bg-gradient-to-r from-gray-700 to-gray-900 bg-clip-text text-transparent">
-                  {" "}
-                  Learning
-                </span>
-                <br />
-                Journey
-              </h1>
-              <p className="text-lg text-gray-600 leading-relaxed max-w-lg">
-                Access personalized learning experiences, track your progress,
-                and achieve your educational goals.
-              </p>
-            </motion.div>
-
-            {/* Compact Features Grid */}
-            <motion.div
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: 0.4 }}
-              className="grid grid-cols-2 gap-4 mb-8"
-            >
-              {[
-                {
-                  icon: BookOpen,
-                  title: "Interactive Learning",
-                  desc: "Engaging content & assessments",
-                },
-                {
-                  icon: Users,
-                  title: "Collaborative Environment",
-                  desc: "Connect with peers & instructors",
-                },
-                {
-                  icon: Award,
-                  title: "Track Progress",
-                  desc: "Monitor your achievements",
-                },
-                {
-                  icon: Shield,
-                  title: "Secure Platform",
-                  desc: "Enterprise-grade security",
-                },
-              ].map((feature, index) => (
-                <motion.div
-                  key={feature.title}
-                  initial={{ scale: 0.9, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ delay: 0.6 + index * 0.05 }}
-                  whileHover={{ scale: 1.02 }}
-                  className="group p-3 rounded-md bg-white border border-gray-200 hover:bg-gray-50 transition-colors duration-200"
-                >
-                  <feature.icon className="w-6 h-6 text-gray-700 mb-2 group-hover:scale-105 transition-transform duration-200" />
-                  <h3 className="font-semibold text-gray-900 mb-1 text-sm">
-                    {feature.title}
-                  </h3>
-                  <p className="text-xs text-gray-600">{feature.desc}</p>
-                </motion.div>
-              ))}
-            </motion.div>
-
-            {/* Compact Trust Indicators */}
-            <motion.div
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: 0.8 }}
-              className="flex items-center space-x-6 text-sm text-gray-500"
-            >
-              <div className="flex items-center space-x-2">
-                <Shield className="w-4 h-4" />
-                <span>ISO 27001 Certified</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Sparkles className="w-4 h-4" />
-                <span>99.9% Uptime</span>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-
-        {/* Right Side - Compact Login Form */}
-        <motion.div
-          initial={{ x: 50, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
-          transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
-          className={`w-full ${
-            type ? "p-4 bg-white" : "lg:w-1/2 xl:w-1/2  p-4 lg:p-6 xl:p-8 "
-          }  flex items-center justify-center`}
-        >
-          <div className="w-full max-w-lg xl:max-w-xl">
-            {/* Compact Login Card */}
-            <motion.div
-              initial={{ y: 20, opacity: 0, scale: 0.98 }}
-              animate={{ y: 0, opacity: 1, scale: 1 }}
-              transition={{ delay: 0.3, duration: 0.4 }}
-              className={`bg-white rounded-md ${
-                type ? "" : "shadow-md border border-gray-200 p-5 lg:p-6 xl:p-8"
-              }  `}
-            >
-              {/* Institute Branding */}
-              {domainRouting.instituteId && (
-                <AuthPageBranding
-                  branding={{
-                    instituteId: domainRouting.instituteId,
-                    instituteName: domainRouting.instituteName,
-                    instituteLogoFileId: domainRouting.instituteLogoFileId,
-                    instituteThemeCode: domainRouting.instituteThemeCode,
-                  }}
-                />
-              )}
 
               {/* Compact Header */}
               <motion.div
@@ -489,11 +416,11 @@ export function LoginForm({
                 transition={{ delay: 0.5 }}
                 className="text-center mb-6"
               >
-                <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">
+                <h2 className="text-lg sm:text-xl font-semibold text-primary-700 mb-2">
                   Welcome Back
                 </h2>
                 <p className="text-gray-600 text-sm">
-                  Sign in to continue your learning journey
+                  Sign in to continue your journey
                 </p>
               </motion.div>
 
@@ -509,7 +436,7 @@ export function LoginForm({
                   <motion.button
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.99 }}
-                    className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-200 rounded-md bg-white text-gray-700 font-medium hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm transition-all duration-200 group"
+                    className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-primary-200 rounded-md bg-white text-gray-700 font-medium hover:bg-primary-50 hover:border-primary-300 hover:shadow-sm transition-all duration-200 group"
                     onClick={() => handleOAuthLogin("google")}
                     type="button"
                   >
@@ -522,7 +449,7 @@ export function LoginForm({
                   <motion.button
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.99 }}
-                    className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-200 rounded-md bg-white text-gray-700 font-medium hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm transition-all duration-200 group"
+                    className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-primary-200 rounded-md bg-white text-gray-700 font-medium hover:bg-primary-50 hover:border-primary-300 hover:shadow-sm transition-all duration-200 group"
                     onClick={() => handleOAuthLogin("github")}
                     type="button"
                   >
@@ -542,10 +469,10 @@ export function LoginForm({
                   className="relative my-5"
                 >
                   <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-200" />
+                    <div className="w-full border-t border-primary-200" />
                   </div>
                   <div className="relative flex justify-center text-xs">
-                    <span className="bg-white px-3 py-1 text-gray-500 font-medium rounded-full border border-gray-200">
+                    <span className="bg-white px-3 py-1 text-primary-700 font-medium rounded-full border border-primary-200">
                       or continue with
                     </span>
                   </div>
@@ -559,42 +486,118 @@ export function LoginForm({
                 transition={{ delay: 1.1 }}
               >
                 <AnimatePresence mode="wait">
-                  {isEmailLogin ? (
-                    <motion.div
-                      key="email"
-                      initial={{ x: 200, opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      exit={{ x: -200, opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                    >
-                      <EmailLogin
-                        onSwitchToUsername={() => setIsEmailLogin(false)}
-                        type={type}
-                        courseId={courseId}
-                        onSwitchToSignup={onSwitchToSignup}
-                      />
-                    </motion.div>
-                  ) : (
-                    <motion.div
-                      key="username"
-                      initial={{ x: 200, opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      exit={{ x: -200, opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                    >
-                      <UsernameLogin
-                        onSwitchToEmail={() => setIsEmailLogin(true)}
-                        type={type}
-                        courseId={courseId}
-                        onSwitchToSignup={onSwitchToSignup}
-                      />
-                    </motion.div>
-                  )}
+                  {(() => {
+                    const allowEmail = providerFlags.allowEmailOtpAuth;
+                    const allowUserPass = providerFlags.allowUsernamePasswordAuth;
+
+                    // Only Email OTP allowed
+                    if (allowEmail && !allowUserPass) {
+                      return (
+                        <motion.div
+                          key="email-only"
+                          initial={{ x: 200, opacity: 0 }}
+                          animate={{ x: 0, opacity: 1 }}
+                          exit={{ x: -200, opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <EmailLogin
+                            onSwitchToUsername={() => { /* hidden via child check */ }}
+                            type={type}
+                            courseId={courseId}
+                            onSwitchToSignup={onSwitchToSignup}
+                            allowUsernamePasswordAuth={providerFlags.allowUsernamePasswordAuth}
+                          />
+                        </motion.div>
+                      );
+                    }
+
+                    // Only Username/Password allowed
+                    if (!allowEmail && allowUserPass) {
+                      return (
+                        <motion.div
+                          key="username-only"
+                          initial={{ x: 200, opacity: 0 }}
+                          animate={{ x: 0, opacity: 1 }}
+                          exit={{ x: -200, opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <UsernameLogin
+                            onSwitchToEmail={() => { /* no email route enabled */ }}
+                            allowEmailOtpAuth={false}
+                            type={type}
+                            courseId={courseId}
+                            onSwitchToSignup={onSwitchToSignup}
+                          />
+                        </motion.div>
+                      );
+                    }
+
+                    // Both allowed: preserve toggle behavior
+                    if (allowEmail && allowUserPass) {
+                      return isEmailLogin ? (
+                        <motion.div
+                          key="email"
+                          initial={{ x: 200, opacity: 0 }}
+                          animate={{ x: 0, opacity: 1 }}
+                          exit={{ x: -200, opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <EmailLogin
+                            onSwitchToUsername={() => setIsEmailLogin(false)}
+                            type={type}
+                            courseId={courseId}
+                            onSwitchToSignup={onSwitchToSignup}
+                            allowUsernamePasswordAuth={providerFlags.allowUsernamePasswordAuth}
+                          />
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          key="username"
+                          initial={{ x: 200, opacity: 0 }}
+                          animate={{ x: 0, opacity: 1 }}
+                          exit={{ x: -200, opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <UsernameLogin
+                            onSwitchToEmail={() => setIsEmailLogin(true)}
+                            allowEmailOtpAuth={providerFlags.allowEmailOtpAuth}
+                            type={type}
+                            courseId={courseId}
+                            onSwitchToSignup={onSwitchToSignup}
+                          />
+                        </motion.div>
+                      );
+                    }
+
+                    // None allowed: render nothing or a message
+                    return null;
+                  })()}
                 </AnimatePresence>
               </motion.div>
 
+              {/* Explore Courses (for institutes with public catalog) */}
+              {domainRouting?.redirectPath && domainRouting.redirectPath !== "/login" ? (
+                <motion.div
+                  initial={{ y: 10, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 1.2 }}
+                  className="mt-4"
+                >
+                  <motion.button
+                    type="button"
+                    whileHover={{ scale: 1.01 }}
+                    whileTap={{ scale: 0.99 }}
+                    onClick={() => navigate({ to: domainRouting.redirectPath as never })}
+                    className="w-full bg-primary-500 hover:bg-primary-400 text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md"
+                  >
+                    Explore Courses
+                  </motion.button>
+                </motion.div>
+              ) : null}
+
               {/* Compact Security Notice */}
-              <motion.div
+              {/* Security message removed as requested */}
+              {/* <motion.div
                 initial={{ y: 10, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 1.3 }}
@@ -611,41 +614,70 @@ export function LoginForm({
                     </p>
                   </div>
                 </div>
-              </motion.div>
+              </motion.div> */}
             </motion.div>
 
-            {/* Compact Footer Links */}
-            <motion.div
-              initial={{ y: 10, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: 1.5 }}
-              className="mt-6 text-center text-xs text-gray-600"
-            >
-              <p>
-                By signing in, you agree to our{" "}
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  onClick={() =>
-                    navigate({
-                      to: "/terms-and-conditions",
-                    })
+          {/* Footer Links */}
+          <motion.div
+            initial={{ y: 10, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 1.5 }}
+            className="mt-6 text-center text-xs text-gray-600"
+          >
+            <p>
+              By signing in, you agree to our{" "}
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                onClick={async () => {
+                  try {
+                    const storedInstitute = (await Preferences.get({ key: "InstituteId" })).value || "";
+                    if (storedInstitute) {
+                      const stored = await Preferences.get({ key: `LEARNER_${storedInstitute}` });
+                      if (stored?.value) {
+                        const parsed = JSON.parse(stored.value);
+                        if (parsed?.termsAndConditionUrl) {
+                          window.open(parsed.termsAndConditionUrl, "_blank");
+                          return;
+                        }
+                      }
+                    }
+                  } catch {
+                    // Fallback to internal route below on any error
                   }
-                  className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
-                >
-                  Terms of Service
-                </motion.button>{" "}
-                and{" "}
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  onClick={() => navigate({ to: "/privacy-policy" })}
-                  className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
-                >
-                  Privacy Policy
-                </motion.button>
-              </p>
-            </motion.div>
-          </div>
-        </motion.div>
+                  navigate({ to: "/terms-and-conditions" });
+                }}
+                className="text-primary-700 hover:text-primary-800 font-medium underline cursor-pointer"
+              >
+                Terms of Service
+              </motion.button>{" "}
+              and{" "}
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                onClick={async () => {
+                  try {
+                    const storedInstitute = (await Preferences.get({ key: "InstituteId" })).value || "";
+                    if (storedInstitute) {
+                      const stored = await Preferences.get({ key: `LEARNER_${storedInstitute}` });
+                      if (stored?.value) {
+                        const parsed = JSON.parse(stored.value);
+                        if (parsed?.privacyPolicyUrl) {
+                          window.open(parsed.privacyPolicyUrl, "_blank");
+                          return;
+                        }
+                      }
+                    }
+                  } catch {
+                    // Fallback to internal route below on any error
+                  }
+                  navigate({ to: "/privacy-policy" });
+                }}
+                className="text-primary-700 hover:text-primary-800 font-medium underline cursor-pointer"
+              >
+                Privacy Policy
+              </motion.button>
+            </p>
+          </motion.div>
+        </div>
       </div>
     </div>
   );

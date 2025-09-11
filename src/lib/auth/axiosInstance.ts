@@ -3,6 +3,7 @@ import { TokenKey } from "@/constants/auth/tokens";
 import axios from "axios";
 import { isTokenExpired } from "./sessionUtility"; // Utility for JWT expiration checks
 import { REFRESH_TOKEN_URL } from "@/constants/urls";
+import { maybeServeFromCache, maybeStoreInCache } from "@/lib/http/clientCache";
 
 // Helper functions to interact with Capacitor Preferences
 export const getTokenFromStorage = async (
@@ -11,7 +12,7 @@ export const getTokenFromStorage = async (
   try {
     const { value } = await Preferences.get({ key });
     return value;
-  } catch (error) {
+  } catch {
     return null;
   }
 };
@@ -20,6 +21,7 @@ const removeTokensAndInstituteId = async () => {
   await Preferences.remove({ key: TokenKey.accessToken });
   await Preferences.remove({ key: TokenKey.refreshToken });
   await Preferences.remove({ key: "instituteId" });
+  await Preferences.remove({ key: "InstituteId" });
 };
 
 const refreshTokens = async (refreshToken: string): Promise<void> => {
@@ -37,7 +39,10 @@ const refreshTokens = async (refreshToken: string): Promise<void> => {
       key: TokenKey.refreshToken,
       value: newRefreshToken,
     });
-    await Preferences.set({ key: "instituteId", value: instituteId });
+    if (instituteId) {
+      await Preferences.set({ key: "instituteId", value: instituteId });
+      await Preferences.set({ key: "InstituteId", value: instituteId });
+    }
   } 
    catch (error) {
     console.error("[Auth] Failed to refresh tokens:", error);
@@ -56,8 +61,50 @@ const authenticatedAxiosInstance = axios.create({
 // Request interceptor: gets called before every request
 authenticatedAxiosInstance.interceptors.request.use(
   async (request) => {
+    const requestUrl = String(request.url || "");
+    const isPublicDomainRouting = requestUrl.includes("/public/domain-routing/");
+    const isOpenEndpoint = requestUrl.includes("/open/");
+
+    // For public/open endpoints, do not attach auth or perform refresh logic
+    if (isPublicDomainRouting || isOpenEndpoint) {
+      try {
+        let instituteId = await getTokenFromStorage("InstituteId");
+        if (!instituteId) {
+          instituteId = await getTokenFromStorage("instituteId");
+        }
+        if (instituteId) {
+          request.headers["clientId"] = instituteId;
+          request.headers["X-Institute-Id"] = instituteId;
+        }
+      } catch {
+        // no-op
+      }
+      request = maybeServeFromCache(request);
+      return request;
+    }
+
     const accessToken = await getTokenFromStorage(TokenKey.accessToken);
-    const instituteId = await getTokenFromStorage("InstituteId");
+    let instituteId = await getTokenFromStorage("InstituteId");
+    if (!instituteId) {
+      instituteId = await getTokenFromStorage("instituteId");
+    }
+    // Attempt to populate user and package session for Vary-aware caching
+    try {
+      const studentDetailsStr = await Preferences.get({ key: "StudentDetails" });
+      if (studentDetailsStr?.value) {
+        const student = JSON.parse(studentDetailsStr.value);
+        const userId = student?.user_id || student?.userId;
+        const packageSessionId = student?.package_session_id || student?.packageSessionId;
+        if (userId) {
+          request.headers["X-User-Id"] = String(userId);
+        }
+        if (packageSessionId) {
+          request.headers["X-Package-Session-Id"] = String(packageSessionId);
+        }
+      }
+    } catch {
+      // no-op
+    }
 
     // Add instituteId to headers if available
     if (instituteId) {
@@ -70,6 +117,8 @@ authenticatedAxiosInstance.interceptors.request.use(
     
     if (!isExpired) {
       request.headers.Authorization = `Bearer ${accessToken}`;
+      // Serve from client cache for GET when possible
+      request = maybeServeFromCache(request);
       return request;
     } else {
       // If the access token is expired, refresh it
@@ -83,9 +132,10 @@ authenticatedAxiosInstance.interceptors.request.use(
         // Get the new access token after refresh
         const newAccessToken = await getTokenFromStorage(TokenKey.accessToken);
         request.headers["Authorization"] = `Bearer ${newAccessToken}`;
-
+        // Serve from client cache for GET when possible
+        request = maybeServeFromCache(request);
         return request;
-      } catch (error) {
+      } catch {
 
         // If token refresh fails, remove tokens and institute ID
         await removeTokensAndInstituteId();
@@ -102,15 +152,17 @@ authenticatedAxiosInstance.interceptors.request.use(
 
 // Response interceptor to handle global error responses
 authenticatedAxiosInstance.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Store successful GET responses in client cache per headers
+    return maybeStoreInCache(response);
+  },
   async (error) => {
-    // Handle error responses
-    if (error.response) {
-      // Error response handling logic
-    }
+    // Allow public domain routing errors to pass through without auth side-effects
+    const requestUrl = String(error?.config?.url || "");
+    const isPublicDomainRouting = requestUrl.includes("/public/domain-routing/");
 
     // Handle unauthorized errors (401)
-    if (error.response && error.response.status === 401) {
+    if (!isPublicDomainRouting && error.response && error.response.status === 401) {
       // Remove tokens and institute ID
       await removeTokensAndInstituteId();
 
@@ -119,7 +171,7 @@ authenticatedAxiosInstance.interceptors.response.use(
     }
 
     // Handle forbidden errors (403) - might be token issues
-    if (error.response && error.response.status === 403) {
+    if (!isPublicDomainRouting && error.response && error.response.status === 403) {
       // Handle 403 errors silently
     }
 

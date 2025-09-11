@@ -7,13 +7,15 @@ import { SignupStep, CredentialsForm, EmailInputForm, OtpVerificationForm } from
 import { SignupSettings } from "@/config/signup/defaultSignupSettings";
 import { FcGoogle } from "react-icons/fc";
 import { GitHubLogoIcon } from "@radix-ui/react-icons";
-import { ArrowRight, Shield } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { LOGIN_URL_GOOGLE_GITHUB, LIVE_SESSION_REQUEST_OTP } from "@/constants/urls";
 import axios from "axios";
 import { toast } from "sonner";
 import { useUnifiedRegistration } from "../hooks/use-unified-registration";
 import { parseInstituteSettings } from "@/services/signup-api";
 import { checkUserEnrollmentInInstitute, handleEnrolledUser } from "../utils/enrollment-checker";
+import { Preferences } from "@capacitor/preferences";
+import { useTheme } from "@/providers/theme/theme-provider";
 
 interface ModularDynamicSignupContainerProps {
   instituteId?: string;
@@ -34,7 +36,8 @@ export function ModularDynamicSignupContainer({
   onBackToProviders,
   className = ""
 }: ModularDynamicSignupContainerProps) {
-  const { isRegistering, registerUser: registerUserUnified } = useUnifiedRegistration();
+  const { setPrimaryColor } = useTheme();
+  const { registerUser: registerUserUnified } = useUnifiedRegistration();
   const [currentStep, setCurrentStep] = useState<SignupStep>("providers");
   const [emailInput, setEmailInput] = useState("");
   const [isSendingOtp, setIsSendingOtp] = useState(false);
@@ -94,6 +97,34 @@ export function ModularDynamicSignupContainer({
       }
     }
   }, [instituteDetails]);
+
+  // Apply institute theme and font (pre-login) from Preferences
+  useEffect(() => {
+    (async () => {
+      try {
+        const storedInstitute = instituteId || (await Preferences.get({ key: "InstituteId" })).value || "";
+        if (!storedInstitute) return;
+        const stored = await Preferences.get({ key: `LEARNER_${storedInstitute}` });
+        if (!stored?.value) return;
+        const parsed = JSON.parse(stored.value);
+        if (parsed?.theme) {
+          setPrimaryColor(parsed.theme);
+        }
+        if (parsed?.fontFamily) {
+          const mapFamily = (f: string) => {
+            const key = String(f).toUpperCase();
+            if (key === "INTER") return 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
+            return f;
+          };
+          const family = mapFamily(parsed.fontFamily);
+          document.documentElement.style.setProperty("--app-font-family", family);
+          document.body.style.fontFamily = family;
+        }
+      } catch {
+        // Ignore
+      }
+    })();
+  }, [instituteId, setPrimaryColor]);
 
   // If no institute ID, show error
   if (!instituteId) {
@@ -273,8 +304,10 @@ export function ModularDynamicSignupContainer({
       setFullNameForOtp(oauthData.signupData.name); // Use the OAuth full name
     } else {
       // For regular email OTP flows, use the provided full name
+      // When usernameStrategy is "email", use email as full name
+      const fullNameToUse = effectiveSettings.usernameStrategy === "email" ? email : (fullName || "");
       setEmailForOtp(email);
-      setFullNameForOtp(fullName || "");
+      setFullNameForOtp(fullNameToUse);
     }
     
     setCurrentStep("otpVerification");
@@ -458,7 +491,9 @@ export function ModularDynamicSignupContainer({
       setFullNameForOtp(oauthData.signupData.name);
     } else {
       // For non-OAuth flows, use the provided fullName
-      setFullNameForOtp(fullName || "");
+      // When usernameStrategy is "email", use email as full name
+      const fullNameToUse = effectiveSettings.usernameStrategy === "email" ? email : (fullName || "");
+      setFullNameForOtp(fullNameToUse);
     }
 
     if (needsUsername || needsPassword) {
@@ -479,13 +514,16 @@ export function ModularDynamicSignupContainer({
         });
       } else {
         // For email OTP flows (non-OAuth), we need to ask for full name first
-        if (!fullName) {
+        // When usernameStrategy is "email", use email as full name
+        const fullNameToUse = effectiveSettings.usernameStrategy === "email" ? email : fullName;
+        
+        if (!fullNameToUse) {
           setCurrentStep("credentials");
         } else {
           // We have everything needed for registration
           await registerUserUnified({
             email: email,
-            full_name: fullName,
+            full_name: fullNameToUse,
             instituteId: instituteId!,
             settings: effectiveSettings,
           });
@@ -596,7 +634,7 @@ export function ModularDynamicSignupContainer({
 
       {/* Login Link */}
       <SignupStep delay={0.8}>
-        <div className="text-center text-xs text-gray-600">
+        <div className="text-center text-xs text-gray-600 p-4">
           <p>
             Already have an account? {" "}
             <motion.button
@@ -612,19 +650,7 @@ export function ModularDynamicSignupContainer({
 
       {/* Security Notice */}
       <SignupStep delay={0.9}>
-        <div className="mt-1 p-3 bg-gray-50/80 border border-gray-200/60 rounded-lg">
-          <div className="flex items-start space-x-2">
-            <Shield className="w-4 h-4 text-gray-600 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="text-xs font-medium text-gray-800 mb-1">
-                Secure Signup
-              </p>
-              <p className="text-xs text-gray-600">
-                Your data is protected with enterprise-grade encryption.
-              </p>
-            </div>
-          </div>
-        </div>
+        <div />
       </SignupStep>
 
       {/* Terms and Privacy Policy */}
@@ -634,7 +660,24 @@ export function ModularDynamicSignupContainer({
             By signing up, you agree to our{" "}
             <motion.button
               whileHover={{ scale: 1.02 }}
-              onClick={() => window.open("/terms-and-conditions", "_blank")}
+              onClick={async () => {
+                try {
+                  const storedInstitute = instituteId || (await Preferences.get({ key: "InstituteId" })).value || "";
+                  if (storedInstitute) {
+                    const stored = await Preferences.get({ key: `LEARNER_${storedInstitute}` });
+                    if (stored?.value) {
+                      const parsed = JSON.parse(stored.value);
+                      if (parsed?.termsAndConditionUrl) {
+                        window.open(parsed.termsAndConditionUrl, "_blank");
+                        return;
+                      }
+                    }
+                  }
+                } catch {
+                  // ignore and fallback
+                }
+                window.open("/terms-and-conditions", "_blank");
+              }}
               className="text-gray-700 hover:text-gray-900 font-medium underline cursor-pointer"
             >
               Terms of Service
@@ -642,7 +685,24 @@ export function ModularDynamicSignupContainer({
             {" "}and{" "}
             <motion.button
               whileHover={{ scale: 1.02 }}
-              onClick={() => window.open("/privacy-policy", "_blank")}
+              onClick={async () => {
+                try {
+                  const storedInstitute = instituteId || (await Preferences.get({ key: "InstituteId" })).value || "";
+                  if (storedInstitute) {
+                    const stored = await Preferences.get({ key: `LEARNER_${storedInstitute}` });
+                    if (stored?.value) {
+                      const parsed = JSON.parse(stored.value);
+                      if (parsed?.privacyPolicyUrl) {
+                        window.open(parsed.privacyPolicyUrl, "_blank");
+                        return;
+                      }
+                    }
+                  }
+                } catch {
+                  // ignore and fallback
+                }
+                window.open("/privacy-policy", "_blank");
+              }}
               className="text-gray-700 hover:text-gray-900 font-medium underline cursor-pointer"
             >
               Privacy Policy
@@ -715,6 +775,7 @@ export function ModularDynamicSignupContainer({
               onSignupSuccess?.();
             }}
             checkEnrollmentOnce={checkEnrollmentOnce}
+            settings={effectiveSettings}
           />
         )}
         
@@ -762,12 +823,17 @@ export function ModularDynamicSignupContainer({
               isOAuth={selectedProvider === "oauth"}
               oauthProvider={selectedProvider === "oauth" && oauthData?.signupData?.provider ? oauthData.signupData.provider : ""}
               hideFullName={
-                // For OAuth flows: only hide full name if we have it AND no manual credentials are needed
+                // For OAuth flows: hide full name if:
+                // 1. We have OAuth name AND no manual credentials are needed, OR
+                // 2. usernameStrategy is "email" (hide field but still use OAuth name)
                 // For Email OTP: never hide full name (always ask for it after OTP verification)
                 selectedProvider === "oauth" && 
                 oauthData?.signupData?.name && 
-                !(effectiveSettings.usernameStrategy === "manual" || effectiveSettings.usernameStrategy === " ") &&
-                !(effectiveSettings.passwordStrategy === "manual" || effectiveSettings.passwordStrategy === " ")
+                (
+                  (!(effectiveSettings.usernameStrategy === "manual" || effectiveSettings.usernameStrategy === " ") &&
+                   !(effectiveSettings.passwordStrategy === "manual" || effectiveSettings.passwordStrategy === " ")) ||
+                  effectiveSettings.usernameStrategy === "email"
+                )
               }
             />
           </>

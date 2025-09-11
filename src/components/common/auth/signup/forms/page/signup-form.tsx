@@ -76,8 +76,8 @@ export function SignUpForm({
         <div
             className={`${finalType ? "h-[400px] overflow-auto" : "min-h-screen overflow-hidden"}  bg-gray-50 relative `}
         >
-            {/* Subtle Background Pattern */}
-            <div className="absolute inset-0 bg-grid-gray-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] -z-10" />
+            {/* Subtle Background Pattern (gradients removed) */}
+            <div className="absolute inset-0 -z-10" />
 
             {/* Subtle Floating Background Elements */}
             <motion.div
@@ -91,7 +91,7 @@ export function SignUpForm({
                     repeat: Infinity,
                     ease: "easeInOut",
                 }}
-                className="absolute top-20 left-20 w-48 h-48 bg-gradient-to-br from-gray-200/10 to-gray-300/10 rounded-full blur-3xl"
+                className="absolute top-20 left-20 w-48 h-48 bg-muted/10 rounded-full blur-3xl"
             />
             <motion.div
                 animate={{
@@ -104,7 +104,7 @@ export function SignUpForm({
                     repeat: Infinity,
                     ease: "easeInOut",
                 }}
-                className="absolute top-40 right-20 w-32 h-32 bg-gradient-to-br from-gray-200/10 to-gray-300/10 rounded-full blur-3xl"
+                className="absolute top-40 right-20 w-32 h-32 bg-muted/10 rounded-full blur-3xl"
             />
             <motion.div
                 animate={{
@@ -117,7 +117,7 @@ export function SignUpForm({
                     repeat: Infinity,
                     ease: "easeInOut",
                 }}
-                className="absolute bottom-20 left-1/2 w-24 h-24 bg-gradient-to-br from-gray-200/10 to-gray-300/10 rounded-full blur-3xl"
+                className="absolute bottom-20 left-1/2 w-24 h-24 bg-muted/10 rounded-full blur-3xl"
             />
 
             {/* Main Content */}
@@ -138,7 +138,7 @@ export function SignUpForm({
                                 type: "spring",
                                 stiffness: 200,
                             }}
-                            className="w-20 h-20 bg-gradient-to-br from-gray-900 to-gray-700 rounded-2xl mx-auto flex items-center justify-center mb-6 shadow-lg"
+                            className="w-20 h-20 bg-neutral-800 rounded-2xl mx-auto flex items-center justify-center mb-6 shadow-lg"
                         >
                             <Shield className="w-10 h-10 text-white" />
                         </motion.div>

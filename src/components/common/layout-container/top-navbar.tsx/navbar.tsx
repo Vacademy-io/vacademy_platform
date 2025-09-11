@@ -1,4 +1,4 @@
-import { SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { List } from "@phosphor-icons/react";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { FiSidebar } from "react-icons/fi";
@@ -55,7 +55,7 @@ export function Navbar() {
     }, [userRoleDetails, roleNames]);
 
     const { navHeading } = useNavHeadingStore();
-    const { setInstituteDetails, setSidebarOpen } = useStore();
+    const { setInstituteDetails, setSidebarOpen, instituteName, instituteLogoFileUrl, hasCustomSidebar } = useStore();
 
     const handleNavigateToAdmin = () => {
         const accessToken = getTokenFromCookie(TokenKey.accessToken);
@@ -88,15 +88,31 @@ export function Navbar() {
     }
 
     const [showSidebarControls, setShowSidebarControls] = useState(true);
+    const { isMobile, openMobile } = useSidebar();
 
     useEffect(() => {
         // setNotifications(true);
         fetch();
+        // Apply institute details from public query as a reliable source on refresh
+        if (instituteDetails) {
+            const maybeSet = async () => {
+                try {
+                    const url = instituteDetails.institute_logo_file_id
+                        ? await getPublicUrl(instituteDetails.institute_logo_file_id)
+                        : "";
+                    setInstituteDetails(instituteDetails.institute_name, url);
+                } catch (e) {
+                    console.warn("Navbar: failed to derive public logo url", e);
+                }
+            };
+            void maybeSet();
+        }
         // Load sidebar visibility from Student Display Settings (uses cache on dashboard refresh)
         getStudentDisplaySettings(false)
             .then((s) => setShowSidebarControls(s?.sidebar?.visible !== false))
             .catch(() => setShowSidebarControls(true));
-    }, []);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [instituteDetails]);
 
     if (isLoading) return <DashboardLoader />;
 
@@ -105,7 +121,7 @@ export function Navbar() {
         console.warn("Navbar: Error loading user role details, showing fallback UI:", error);
         // Return a simplified navbar without role-dependent features
         return (
-            <div className="sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-14 items-center justify-between bg-gradient-to-r from-white via-primary-50/20 to-blue-50/20 dark:bg-gradient-to-r dark:from-neutral-900 dark:via-neutral-900 dark:to-neutral-900 px-4 md:px-5 py-2 transition-all duration-300 shadow-sm">
+            <div className="sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-14 items-center justify-between bg-white dark:bg-neutral-900 px-4 md:px-5 py-2 transition-all duration-300 shadow-sm">
                 <LogoutSidebar />
                 
                 {/* Left Section */}
@@ -114,7 +130,7 @@ export function Navbar() {
                         <SidebarTrigger>
                             <div
                                 onClick={() => {}}
-                                className="group flex items-center justify-center w-8 h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-gradient-to-br from-white to-primary-50/40 dark:from-neutral-800 dark:to-neutral-700/40 hover:from-primary-50 hover:to-primary-100 hover:border-primary-300 dark:hover:from-neutral-700 dark:hover:to-neutral-600 dark:hover:border-neutral-600 transition-all duration-200"
+                                className="group flex items-center justify-center w-8 h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200"
                             >
                                 <FiSidebar
                                     className="w-4 h-4 text-primary-600 dark:text-primary-400 group-hover:text-primary-700 dark:group-hover:text-primary-300 transition-colors duration-200"
@@ -123,12 +139,31 @@ export function Navbar() {
                         </SidebarTrigger>
                     )}
                     
-                    <div className="flex items-center gap-2">
-                        <div className="h-6 w-px bg-primary-200/50 dark:bg-neutral-700" />
+                    {!((showSidebarControls && (isMobile ? openMobile : true)) || hasCustomSidebar) && (
+                    <div className="flex items-center gap-3">
+                        {/* Institute brand */}
+                        <div className="flex items-center gap-2">
+                            {instituteLogoFileUrl ? (
+                                <img
+                                    src={instituteLogoFileUrl}
+                                    alt={instituteName || "Institute"}
+                                    className="h-8 w-8 rounded-sm object-cover border border-primary-200/60 dark:border-neutral-700"
+                                />
+                            ) : (
+                                <div className="h-8 w-8 rounded-sm bg-primary-200/40 dark:bg-neutral-700/60 flex items-center justify-center text-[12px] font-semibold text-primary-700 dark:text-neutral-200">
+                                    {(instituteName?.[0] || "I").toUpperCase()}
+                                </div>
+                            )}
+                            <span className="text-base font-medium text-primary-900 dark:text-primary-100">
+                                {instituteName || "Institute"}
+                            </span>
+                        </div>
+                        <div className="h-8 w-px bg-primary-200/50 dark:bg-neutral-700" />
                         <h1 className="text-lg font-semibold text-primary-900 dark:text-primary-100">
                             {navHeading || "Dashboard"}
                         </h1>
                     </div>
+                    )}
                 </div>
 
                 {/* Right Section */}
@@ -147,7 +182,7 @@ export function Navbar() {
     }
 
     return (
-        <div className="sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-14 items-center justify-between bg-gradient-to-r from-white via-primary-50/20 to-blue-50/20 dark:bg-gradient-to-r dark:from-neutral-900 dark:via-neutral-900 dark:to-neutral-900 px-4 md:px-5 py-2 transition-all duration-300 shadow-sm">
+        <div className="sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-14 items-center justify-between bg-white dark:bg-neutral-900 px-4 md:px-5 py-2 transition-all duration-300 shadow-sm">
             <LogoutSidebar />
 
             {/* Left Section */}
@@ -156,25 +191,44 @@ export function Navbar() {
                     <SidebarTrigger>
                         <div
                             onClick={() => {}}
-                            className="group flex items-center justify-center w-8 h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-gradient-to-br from-white to-primary-50/40 dark:from-neutral-800 dark:to-neutral-700/40 hover:from-primary-50 hover:to-primary-100 hover:border-primary-300 dark:hover:from-neutral-700 dark:hover:to-neutral-600 dark:hover:border-neutral-600 transition-all duration-200"
+                            className="group flex items-center justify-center w-8 h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200"
                         >
                             <FiSidebar className="w-4 h-4 text-primary-600 dark:text-neutral-300 group-hover:text-primary-700 dark:group-hover:text-neutral-200 transition-colors duration-200" />
                         </div>
                     </SidebarTrigger>
                 )}
 
+                {!((showSidebarControls && (isMobile ? openMobile : true)) || hasCustomSidebar) && (
                 <div className="flex items-center gap-3">
-                    <div className="w-px h-6 bg-gradient-to-b from-transparent via-primary-300/60 to-transparent"></div>
+                    {/* Institute brand */}
                     <div className="flex items-center gap-2">
-                        <div className="w-1 h-6 bg-gradient-to-b from-primary-500 via-primary-600 to-blue-600 rounded-full shadow-sm"></div>
+                        {instituteLogoFileUrl ? (
+                            <img
+                                src={instituteLogoFileUrl}
+                                alt={instituteName || "Institute"}
+                                className="h-8 w-8 rounded-sm object-cover border border-primary-200/60 dark:border-neutral-700"
+                            />
+                        ) : (
+                            <div className="h-8 w-8 rounded-sm bg-primary-200/40 dark:bg-neutral-700/60 flex items-center justify-center text-[12px] font-semibold text-primary-700 dark:text-neutral-200">
+                                {(instituteName?.[0] || "I").toUpperCase()}
+                            </div>
+                        )}
+                        <span className="text-base font-medium text-neutral-900 dark:text-neutral-100">
+                            {instituteName || "Institute"}
+                        </span>
+                    </div>
+                    <div className="w-px h-8 bg-primary-200/60 dark:bg-neutral-700"></div>
+                    <div className="flex items-center gap-2">
+                        <div className="w-1 h-6 bg-primary-600 dark:bg-primary-500 rounded-full shadow-sm"></div>
                         <div className="relative">
                             <h1 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 leading-tight">
                                 {navHeading}
                             </h1>
-                            <div className="absolute -bottom-0.5 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary-300/50 dark:via-neutral-700 to-transparent"></div>
+                            <div className="absolute -bottom-0.5 left-0 right-0 h-px bg-primary-300/50 dark:bg-neutral-700"></div>
                         </div>
                     </div>
                 </div>
+                )}
             </div>
 
             {/* Right Section */}
@@ -202,18 +256,16 @@ export function Navbar() {
                         </TooltipContent>
                     </Tooltip>
                 )}
-                <div className="w-px h-6 bg-gradient-to-b from-transparent via-primary-300/60 dark:via-neutral-700 to-transparent"></div>
+                <div className="w-px h-6 bg-primary-200/60 dark:bg-neutral-700"></div>
 
                 {/* Menu Button (always visible) */}
                 <button
-                    className="group relative flex items-center justify-center w-9 h-9 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-gradient-to-br from-white to-primary-50/40 dark:from-neutral-800 dark:to-neutral-700/40 hover:from-primary-100 hover:to-primary-200 hover:border-primary-400 dark:hover:from-neutral-700 dark:hover:to-neutral-600 dark:hover:border-neutral-600 transition-all duration-200 overflow-hidden"
+                    className="group relative flex items-center justify-center w-9 h-9 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-100 dark:hover:bg-neutral-700 hover:border-primary-400 dark:hover:border-neutral-600 transition-all duration-200"
                     onClick={() => {
                         setSidebarOpen();
                     }}
                 >
-                    <div className="absolute inset-0 bg-gradient-to-br from-primary-400/0 to-primary-600/0 group-hover:from-primary-400/10 group-hover:to-primary-600/20 dark:group-hover:from-neutral-600/20 dark:group-hover:to-neutral-500/20 transition-all duration-300"></div>
-                    <List className="relative w-4 h-4 text-primary-600 dark:text-neutral-300 group-hover:text-primary-700 dark:group-hover:text-neutral-200 transition-colors duration-200" />
-                    <div className="absolute inset-0 rounded-md bg-gradient-to-br from-white/20 dark:from-neutral-700/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                    <List className="w-4 h-4 text-primary-600 dark:text-neutral-300 group-hover:text-primary-700 dark:group-hover:text-neutral-200 transition-colors duration-200" />
                 </button>
             </div>
         </div>

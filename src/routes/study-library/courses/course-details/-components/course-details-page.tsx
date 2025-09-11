@@ -1,35 +1,8 @@
-   import { Steps } from "@phosphor-icons/react";
 import { useRouter } from "@tanstack/react-router";
 import {
-    ChalkboardTeacher,
-    Code,
-    File,
-    FilePdf,
-    PlayCircle,
-    Question,
     CaretLeft,
-    BookOpen,
-    GraduationCap,
-    Presentation,
-    GameController,
-    Exam,
-    Terminal,
-    ClipboardText,
-    FileDoc,
-    Notebook,
-    FileText,
-    PresentationChart,
-    Folder,
 } from "phosphor-react";
 import { toTitleCase } from "@/lib/utils";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -48,8 +21,8 @@ import { useQuery } from "@tanstack/react-query";
 import { handleGetSlideCountDetails } from "../-services/get-slides-count";
 import { CourseDetailsRatingsComponent } from "./course-details-ratings-page";
 import { transformApiDataToCourseData } from "../-utils/helper";
-import { VideoPlayer } from "./video-player";
-import { handleGetAllCourseDetails } from "../-services/get-course-details";
+
+import { handleGetAllCourseDetails, handleGetCourseDetails } from "../-services/get-course-details";
 import axios from "axios";
 import { urlInstituteDetails } from "@/constants/urls";
 import { getInstituteId } from "@/constants/helper";
@@ -65,7 +38,7 @@ import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { getSubjectDetails } from "@/routes/courses/course-details/-utils/helper";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
-import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import {
@@ -75,10 +48,14 @@ import {
 import { toast } from "sonner";
 import confetti from "canvas-confetti";
 import LocalStorageUtils from "@/utils/localstorage";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { MyButton } from "@/components/design-system/button";
-import { extractTextFromHTML } from "@/components/common/helper";
+
+
 import { fetchPaymentOptions } from "@/routes/courses/-services/payment-options-api";
+import { CourseHeader } from "./course-header";
+import { CertificateDialog } from "./certificate-dialog";
+import { CourseEnrollment } from "./course-enrollment";
+import { CourseContentSections } from "./course-content-sections";
+import { CourseSidebar } from "./course-sidebar";
 
 type SlideType = {
     id: string;
@@ -204,28 +181,7 @@ const heading = (
 );
 
 // Add a type for enrolled session - matches BatchForSessionType structure
-interface EnrolledSession {
-    id: string;
-    session: {
-        id: string;
-        session_name: string;
-        status: string;
-        start_date: string;
-    };
-    level: {
-        id: string;
-        level_name: string;
-        duration_in_days: number | null;
-        thumbnail_id: string | null;
-    };
-    start_time: string | null;
-    status: string;
-    package_dto: {
-        id: string;
-        package_name: string;
-        thumbnail_id?: string | null;
-    };
-}
+
 
 export const CourseDetailsPage = () => {
     const { setNavHeading } = useNavHeadingStore();
@@ -304,9 +260,7 @@ export const CourseDetailsPage = () => {
     // Use enrollment status hook - must be called early to avoid initialization errors
     const {
         enrolledSessions,
-        userHasDonated,
         addEnrolledSession,
-        refreshData: refreshEnrollmentData
     } = useEnrollmentStatus(instituteId);
 
 
@@ -430,8 +384,21 @@ export const CourseDetailsPage = () => {
     // Trigger certificate generation after entering this page once essentials are available
     useEffect(() => {
         const tryGenerateCertificate = async () => {
+            let settings;
             try {
-                const settings = await getStudentDisplaySettings(false);
+                settings = await getStudentDisplaySettings(false);
+            } catch (settingsError) {
+                // If we can't fetch settings, assume certificate generation is disabled
+                return;
+            }
+            
+            // Check if certificate generation is enabled
+            if (!settings.certificates?.enabled) {
+                return; // Exit early if certificate generation is disabled
+            }
+            
+            try {
+                
                 const threshold =
                     settings.certificates?.generationThresholdPercent ?? 80;
                 // percent can come from query param (carried over from list) or course data
@@ -597,7 +564,16 @@ export const CourseDetailsPage = () => {
                         LocalStorageUtils.set(celebrationKey, true);
                     }
                 }
-            } catch {
+            } catch (error) {
+                // Since we already checked that certificate generation is enabled above,
+                // we can safely show the error toast
+                
+                // Handle specific error types for better user experience
+                if (error instanceof Error && error.message.includes('404')) {
+                    // Don't show error toast for 404 - this suggests the API endpoint is not configured
+                    return;
+                }
+                
                 toast.error(
                     "Failed to generate certificate. Please try again later."
                 );
@@ -643,10 +619,7 @@ export const CourseDetailsPage = () => {
         mode: "onChange",
     });
 
-    const getInitials = (email: string) => {
-        const name = email.split("@")[0];
-        return name?.slice(0, 2).toUpperCase();
-    };
+
 
     const [levelOptions, setLevelOptions] = useState<
         { _id: string; value: string; label: string }[]
@@ -859,6 +832,23 @@ export const CourseDetailsPage = () => {
         updateLoadingState("slideCount", slideCountQuery.isLoading);
     }, [slideCountQuery.isLoading, updateLoadingState]);
 
+    // Fetch single course details to derive author if needed (ensures call happens)
+    const singleCourseQuery = useQuery({
+        ...handleGetCourseDetails({ packageId: (searchParams.courseId as string) || "" }),
+        enabled: !!searchParams.courseId,
+    });
+
+    // Log when single course details are fetched
+    useEffect(() => {
+        if (singleCourseQuery.data) {
+            console.log('[CourseDetailsPage] singleCourseQuery fetched', {
+                hasData: !!singleCourseQuery.data,
+                courseKeys: singleCourseQuery?.data?.course ? Object.keys(singleCourseQuery.data.course) : [],
+                instructors: (singleCourseQuery.data as unknown as { instructors?: Array<{ full_name?: string; username?: string }> })?.instructors?.map(i => i.full_name || i.username) || [],
+            });
+        }
+    }, [singleCourseQuery.data]);
+
     // Custom slide count calculation to handle special document types
     const processedSlideCounts = useMemo(() => {
         if (!slideCountQuery.data) return [];
@@ -958,6 +948,7 @@ export const CourseDetailsPage = () => {
     const [inviteCode, setInviteCode] = useState<string>("default");
     const [authToken, setAuthToken] = useState<string>("");
     const [paymentType, setPaymentType] = useState<string | null>(null);
+    const [primaryInstructorNameFromApi, setPrimaryInstructorNameFromApi] = useState<string | undefined>(undefined);
     const [moduleStats, setModuleStats] = useState({
         totalModules: 0,
         totalChapters: 0,
@@ -988,6 +979,26 @@ export const CourseDetailsPage = () => {
             });
     }, []);
 
+    useEffect(() => {
+        // Prefer react-query fetched data to set author; avoids duplicate network calls
+        try {
+            const hasInstructorInForm = (form.getValues("courseData").instructors || []).length > 0;
+            if (hasInstructorInForm) return;
+            const q1 = singleCourseQuery?.data as unknown as { instructors?: Array<{ full_name?: string; username?: string }> };
+            const fromInstructors = q1?.instructors?.[0]?.full_name || q1?.instructors?.[0]?.username;
+            if (fromInstructors && typeof fromInstructors === 'string') {
+                setPrimaryInstructorNameFromApi(fromInstructors);
+                return;
+            }
+            const q2 = singleCourseQuery?.data as unknown as { course?: { created_by_name?: string; author_name?: string; owner_name?: string } };
+            const fromCourse = q2?.course?.created_by_name || q2?.course?.author_name || q2?.course?.owner_name || undefined;
+            if (fromCourse && typeof fromCourse === 'string') {
+                setPrimaryInstructorNameFromApi(fromCourse);
+            }
+        } catch (e) { void e; }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [singleCourseQuery.data]);
+
     const hasRightSidebar = true;
 
     // Function to update module statistics for depth 5 courses
@@ -1015,110 +1026,10 @@ export const CourseDetailsPage = () => {
         }
     };
 
-    const getSlideTypeIcon = (type: string) => {
-        switch (type) {
-            case "VIDEO":
-                return (
-                    <PlayCircle
-                        size={16}
-                        className="text-blue-600 group-hover/item:scale-110 transition-transform duration-300"
-                        weight="duotone"
-                    />
-                );
-            case "CODE":
-                return (
-                    <Code
-                        size={16}
-                        className="text-green-600 group-hover/item:scale-110 transition-transform duration-300"
-                        weight="duotone"
-                    />
-                );
-            case "PDF":
-                return (
-                    <FilePdf
-                        size={16}
-                        className="text-red-600 group-hover/item:scale-110 transition-transform duration-300"
-                        weight="duotone"
-                    />
-                );
-            case "DOCUMENT":
-                return (
-                    <FileDoc
-                        size={16}
-                        className="text-purple-600 group-hover/item:scale-110 transition-transform duration-300"
-                        weight="duotone"
-                    />
-                );
-            case "QUESTION":
-                return (
-                    <Question
-                        size={16}
-                        className="text-orange-600 group-hover/item:scale-110 transition-transform duration-300"
-                        weight="duotone"
-                    />
-                );
-            case "ASSIGNMENT":
-                return (
-                    <ClipboardText
-                        size={16}
-                        className="text-indigo-600 group-hover/item:scale-110 transition-transform duration-300"
-                        weight="duotone"
-                    />
-                );
-            case "PRESENTATION":
-                return (
-                    <Presentation
-                        size={16}
-                        className="text-cyan-600 group-hover/item:scale-110 transition-transform duration-300"
-                        weight="duotone"
-                    />
-                );
-            case "JUPYTER_NOTEBOOK":
-            case "JUPYTER":
-                return (
-                    <Notebook
-                        size={16}
-                        className="text-yellow-600 group-hover/item:scale-110 transition-transform duration-300"
-                        weight="duotone"
-                    />
-                );
-            case "SCRATCH_PROJECT":
-            case "SCRATCH":
-                return (
-                    <GameController
-                        size={16}
-                        className="text-pink-600 group-hover/item:scale-110 transition-transform duration-300"
-                        weight="duotone"
-                    />
-                );
-            case "QUIZ":
-                return (
-                    <Exam
-                        size={16}
-                        className="text-teal-600 group-hover/item:scale-110 transition-transform duration-300"
-                        weight="duotone"
-                    />
-                );
-            case "CODE_EDITOR":
-                return (
-                    <Terminal
-                        size={16}
-                        className="text-gray-600 group-hover/item:scale-110 transition-transform duration-300"
-                        weight="duotone"
-                    />
-                );
-            default:
-                return (
-                    <File
-                        size={16}
-                        className="text-gray-500 group-hover/item:scale-110 transition-transform duration-300"
-                        weight="duotone"
-                    />
-                );
-        }
-    };
+    // Removed getSlideTypeIcon function - now in CourseSidebar component
 
     // Debug logging removed
+
 
     // Show loading until essential data is ready; defer packageSessionId-dependent UI below
 
@@ -1168,7 +1079,12 @@ export const CourseDetailsPage = () => {
                     };
                     
                     // Add the enrolled session and wait for it to complete
-                    await addEnrolledSession(newEnrolledSession);
+                    try {
+                        await addEnrolledSession(newEnrolledSession);
+                    } catch (error) {
+                        toast.error("Failed to update enrollment status. Please refresh the page.");
+                        return;
+                    }
                     
                     // Close dialogs
                     setEnrollmentDialogOpen(false);
@@ -1177,7 +1093,8 @@ export const CourseDetailsPage = () => {
                     // Show success message
                     toast.success("Successfully enrolled in the course!");
                     
-                    // Redirect to slides immediately after enrollment
+                    // Add a small delay to ensure enrollment is fully processed
+                    await new Promise(resolve => setTimeout(resolve, 1000));
                     
                     // Try to get course structure data from multiple sources
                     let subjectId = "";
@@ -1258,9 +1175,173 @@ export const CourseDetailsPage = () => {
                 token={authToken}
                 courseTitle={form.getValues("courseData").title}
                 inviteCode={inviteCode}
+                onEnrollmentSuccess={async () => {
+                    // Update enrolled sessions immediately using the hook
+                    const newEnrolledSession = {
+                        id: packageSessionIdForCurrentLevel || "",
+                        session: {
+                            id: selectedSession,
+                            session_name: sessionOptions.find(s => s.value === selectedSession)?.label || "",
+                            status: "ACTIVE",
+                            start_date: new Date().toISOString().split('T')[0],
+                        },
+                        level: {
+                            id: selectedLevel,
+                            level_name: levelOptions.find(l => l.value === selectedLevel)?.label || "",
+                            duration_in_days: null,
+                            thumbnail_id: null,
+                        },
+                        start_time: new Date().toISOString(),
+                        status: "ACTIVE",
+                        package_dto: {
+                            id: searchParams.courseId || "",
+                            package_name: form.getValues("courseData").title,
+                            thumbnail_id: null,
+                        },
+                    };
+                    
+                    // Add the enrolled session and wait for it to complete
+                    try {
+                        await addEnrolledSession(newEnrolledSession);
+                    } catch (error) {
+                        toast.error("Failed to update enrollment status. Please refresh the page.");
+                        return;
+                    }
+                    
+                    // Close dialogs
+                    setEnrollmentDialogOpen(false);
+                    
+                    // Show success message
+                    toast.success("Successfully enrolled in the course!");
+                    
+                    // Add a small delay to ensure enrollment is fully processed
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    
+                    // Try to get course structure data from multiple sources
+                    let subjectId = "";
+                    
+                    // First try to get from the current form data
+                    if (form.getValues("courseData")?.sessions) {
+                        const currentSession = form.getValues("courseData").sessions.find(
+                            (s: any) => s.sessionDetails.id === selectedSession
+                        );
+                        if (currentSession?.levelDetails) {
+                            const currentLevel = currentSession.levelDetails.find(
+                                (l: any) => l.id === selectedLevel
+                            );
+                            if (currentLevel?.subjects && currentLevel.subjects.length > 0) {
+                                subjectId = currentLevel.subjects[0].id;
+                            }
+                        }
+                    }
+                    
+                    // If not found in form data, try to get from the course structure data
+                    if (!subjectId && courseDetailsData?.sessions) {
+                        const sessionData = courseDetailsData.sessions.find(
+                            (s: any) => s.sessionDetails.id === selectedSession
+                        );
+                        if (sessionData?.levelDetails) {
+                            const levelData = sessionData.levelDetails.find(
+                                (l: any) => l.id === selectedLevel
+                            );
+                            if (levelData?.subjectDetails) {
+                                subjectId = levelData.subjectDetails.id;
+                            }
+                        }
+                    }
+                    
+                    // If still not found, try to get from the slide count query data
+                    if (!subjectId && slideCountQuery.data?.sessions) {
+                        const sessionData = slideCountQuery.data.sessions.find(
+                            (s: any) => s.sessionDetails.id === selectedSession
+                        );
+                        if (sessionData?.levelDetails) {
+                            const levelData = sessionData.levelDetails.find(
+                                (l: any) => l.id === selectedLevel
+                            );
+                            if (levelData?.subjectDetails) {
+                                subjectId = levelData.subjectDetails.id;
+                            }
+                        }
+                    }
+                    
+                    // If we still don't have a subject ID, try to get it from the helper function
+                    if (!subjectId) {
+                        try {
+                            const subjectDetails = getSubjectDetails(
+                                form.getValues(),
+                                selectedSession,
+                                selectedLevel
+                            );
+                            if (subjectDetails && subjectDetails.length > 0) {
+                                subjectId = subjectDetails[0].id;
+                            }
+                        } catch (error) {
+                            // Silent fallback
+                        }
+                    }
+                    
+                    // Try to get course structure data from multiple sources
+                    let moduleId = "";
+                    let chapterId = "";
+                    let slideId = "";
+                    
+                    if (subjectId) {
+                        // Method 2: Fetch complete course structure using the same API
+                        if (packageSessionIdForCurrentLevel && subjectId) {
+                            try {
+                                // Import the API function dynamically to avoid circular dependencies
+                                const { fetchModulesWithChapters } = await import('@/services/study-library/getModulesWithChapters');
+                                
+                                const modulesData = await fetchModulesWithChapters(subjectId, packageSessionIdForCurrentLevel);
+                                
+                                if (modulesData && modulesData.length > 0) {
+                                    const firstModule = modulesData[0];
+                                    moduleId = firstModule.module.id || "";
+                                    
+                                    if (firstModule.chapters && firstModule.chapters.length > 0) {
+                                        const firstChapter = firstModule.chapters[0];
+                                        chapterId = firstChapter.id || "";
+                                        
+                                        // For slides, we need to fetch them separately
+                                        if (chapterId) {
+                                            try {
+                                                const { fetchSlidesByChapterId } = await import('@/hooks/study-library/use-slides');
+                                                const slides = await fetchSlidesByChapterId(chapterId);
+                                                
+                                                if (slides && slides.length > 0) {
+                                                    slideId = slides[0].id || "";
+                                                }
+                                            } catch (slideError) {
+                                                // Silent fallback
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (error) {
+                                // Silent fallback
+                            }
+                        }
+                    }
+                    
+                    // Navigate to slides with whatever IDs we found
+                    // Even if some IDs are missing, the slides page should handle it gracefully
+                    const navigationParams = {
+                        courseId: searchParams.courseId,
+                        subjectId: subjectId || "",
+                        moduleId: moduleId || "",
+                        chapterId: chapterId || "",
+                        slideId: slideId || "",
+                    };
+                    
+                    navigateTo(
+                        `/study-library/courses/course-details/subjects/modules/chapters/slides`,
+                        navigationParams
+                    );
+                }}
             />
 
-            <div className="min-h-screen bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 relative overflow-hidden w-full max-w-full">
+            <div className="min-h-screen bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 relative w-full max-w-full">
                 {/* Animated background elements */}
                 <div className="absolute inset-0 overflow-hidden pointer-events-none">
                     <div className="absolute top-1/4 left-1/4 w-32 md:w-64 h-32 md:h-64 bg-gradient-to-br from-primary-100/20 to-transparent rounded-full blur-3xl animate-gentle-pulse"></div>
@@ -1270,310 +1351,21 @@ export const CourseDetailsPage = () => {
                     ></div>
                 </div>
 
-                {/* Enhanced Top Banner (always visible) */}
-                <div className="relative overflow-hidden animate-fade-in-up">
-                    <div className="relative h-[200px] sm:h-[250px] lg:h-[280px]">
-                        {/* Background with overlay */}
-                        {!form.watch("courseData").courseBannerMediaId ? (
-                            <div className="absolute inset-0 z-0 bg-gradient-to-br from-primary-500 via-primary-600 to-primary-700" />
-                        ) : (
-                            <div className="absolute inset-0 z-0">
-                                <img
-                                    src={
-                                        form.watch("courseData")
-                                            .courseBannerMediaId
-                                    }
-                                    alt="Course Banner"
-                                    className="w-full h-full object-cover"
-                                    onError={(e) => {
-                                        e.currentTarget.style.display = "none";
-                                        e.currentTarget.parentElement?.classList.add(
-                                            "bg-gradient-to-br",
-                                            "from-primary-500",
-                                            "via-primary-600",
-                                            "to-primary-700"
-                                        );
-                                    }}
-                                />
-                            </div>
-                        )}
-
-                        {/* Enhanced gradient overlay */}
-                        <div className="absolute inset-0 z-10 bg-gradient-to-br from-black/20 via-black/10 to-transparent dark:from-black/50 dark:via-black/40 dark:to-transparent" />
-
-                        {/* Floating orb effects */}
-                        <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-3xl opacity-70 -translate-y-2 translate-x-6"></div>
-                        <div className="absolute bottom-0 left-0 w-32 h-32 bg-primary-300/20 rounded-full blur-3xl opacity-50 translate-y-6 -translate-x-6"></div>
-
-                        {/* Content Container */}
-                        <div className="relative z-20 h-full">
-                            <div className="max-w-7xl mx-auto px-2 sm:px-3 lg:px-4 h-full flex items-center">
-                                {form.watch("courseData").courseMediaId ? (
-                                    // Layout with video - 3/5 and 2/5 split
-                                    <div className="w-full grid grid-cols-1 lg:grid-cols-5 gap-3 lg:gap-4 items-center">
-                                        {/* Left side - Course Info (3/5) */}
-                                        <div className="lg:col-span-3 text-white animate-fade-in-up">
-                                            {!form.watch("courseData").title ? (
-                                                <div className="space-y-3">
-                                                    <div className="h-5 w-20 animate-pulse rounded bg-white/20" />
-                                                    <div className="h-6 sm:h-8 w-3/4 animate-pulse rounded bg-white/20" />
-                                                    <div className="h-3 w-full animate-pulse rounded bg-white/20" />
-                                                    <div className="h-3 w-2/3 animate-pulse rounded bg-white/20" />
-                                                </div>
-                                            ) : (
-                                                <>
-                                                    {/* Tags */}
-                                                    <div className="mb-1.5 sm:mb-2 flex flex-wrap gap-1.5">
-                                                        {form
-                                                            .getValues(
-                                                                "courseData"
-                                                            )
-                                                            .tags.map(
-                                                                (
-                                                                    tag,
-                                                                    index
-                                                                ) => (
-                                                                    <span
-                                                                        key={
-                                                                            index
-                                                                        }
-                                                                        className="bg-white/20 border border-white/30 text-white px-2.5 py-1 rounded-md text-xs font-medium hover:bg-white/30 transition-all duration-200"
-                                                                    >
-                                                                        {tag}
-                                                                    </span>
-                                                                )
-                                                            )}
-                                                    </div>
-
-                                                    {/* Title */}
-                                                    <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold mb-1.5 sm:mb-2 leading-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">
-                                                        {toTitleCase(
-                                                            form.getValues(
-                                                                "courseData"
-                                                            ).title
-                                                        )}
-                                                    </h1>
-
-                                                    {/* Description */}
-                                                    <div
-                                                        className="text-sm sm:text-base opacity-90 leading-relaxed line-clamp-2 drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]"
-                                                        dangerouslySetInnerHTML={{
-                                                            __html:
-                                                                form.getValues(
-                                                                    "courseData"
-                                                                ).description ||
-                                                                "",
-                                                        }}
-                                                    />
-                                                </>
-                                            )}
-                                        </div>
-
-                                        {/* Right side - Video Player (2/5) */}
-                                        <div
-                                            className="hidden lg:block lg:col-span-2 animate-fade-in-up"
-                                            style={{ animationDelay: "0.2s" }}
-                                        >
-                                            <VideoPlayer
-                                                src={
-                                                    form.watch("courseData")
-                                                        .courseMediaId
-                                                }
-                                            />
-                                            {/* Certificate CTA moved to Course Configuration section */}
-                                        </div>
-                                    </div>
-                                ) : (
-                                    // Layout without video - full width
-                                    <div className="w-full text-center text-white animate-fade-in-up">
-                                        {!form.watch("courseData").title ? (
-                                            <div className="space-y-3 max-w-3xl mx-auto">
-                                                <div className="h-6 w-32 animate-pulse rounded bg-white/20 mx-auto" />
-                                                <div className="h-8 sm:h-10 w-3/4 animate-pulse rounded bg-white/20 mx-auto" />
-                                                <div className="h-4 w-full animate-pulse rounded bg-white/20" />
-                                                <div className="h-4 w-2/3 animate-pulse rounded bg-white/20 mx-auto" />
-                                            </div>
-                                        ) : (
-                                            <div className="max-w-4xl mx-auto">
-                                                {/* Tags */}
-                                                <div className="mb-2 sm:mb-3 flex flex-wrap gap-2 justify-center">
-                                                    {form
-                                                        .getValues("courseData")
-                                                        .tags.map(
-                                                            (tag, index) => (
-                                                                <span
-                                                                    key={index}
-                                                                    className="bg-white/20 border border-white/30 text-white px-3 py-1.5 rounded-md text-sm font-medium hover:bg-white/30 transition-all duration-200"
-                                                                >
-                                                                    {tag}
-                                                                </span>
-                                                            )
-                                                        )}
-                                                </div>
-
-                                                {/* Title */}
-                                                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2 sm:mb-3 leading-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">
-                                                    {toTitleCase(
-                                                        form.getValues(
-                                                            "courseData"
-                                                        ).title
-                                                    )}
-                                                </h1>
-
-                                                {/* Description */}
-                                                <div
-                                                    className="text-base sm:text-lg opacity-90 leading-relaxed line-clamp-3 max-w-3xl mx-auto"
-                                                    dangerouslySetInnerHTML={{
-                                                        __html:
-                                                            form.getValues(
-                                                                "courseData"
-                                                            ).description || "",
-                                                    }}
-                                                />
-
-                                                {/* Certificate CTA moved to Course Configuration section */}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Lightweight confetti placeholder overlay (replace with library later) */}
-                {showConfetti && (
-                    <div className="pointer-events-none fixed inset-0 z-[1000] overflow-hidden">
-                        <div className="absolute inset-0 bg-transparent animate-pulse" />
-                    </div>
-                )}
+                {/* Course Header */}
+                <CourseHeader 
+                    courseData={form.getValues("courseData")} 
+                    showConfetti={showConfetti} 
+                />
 
                 {/* Certificate Modal */}
-                <Dialog
+                <CertificateDialog
                     open={certificateDialogOpen}
                     onOpenChange={setCertificateDialogOpen}
-                >
-                    <DialogContent className="max-w-md p-0 overflow-hidden">
-                        <div
-                            className="bg-gradient-to-r from-primary-600 to-primary-500 text-white px-5 py-4 flex items-center gap-3"
-                            style={{
-                                background:
-                                    "linear-gradient(to right, var(--color-primary-600, #2563eb), var(--color-primary-500, #3b82f6))",
-                                color: "#fff",
-                            }}
-                        >
-                            <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                                <GraduationCap
-                                    size={18}
-                                    className="text-white"
-                                />
-                            </div>
-                            <div>
-                                <div className="text-base font-semibold">
-                                    Course Completed
-                                </div>
-                                <div className="text-xs opacity-90">
-                                    Congratulations! You’ve earned a
-                                    certificate.
-                                </div>
-                            </div>
-                        </div>
-                        <div className="px-5 py-4">
-                            {(() => {
-                                const sessionLabel = (
-                                    sessionOptions || []
-                                ).find(
-                                    (o) => o.value === selectedSession
-                                )?.label;
-                                const levelLabel = (levelOptions || []).find(
-                                    (o) => o.value === selectedLevel
-                                )?.label;
-                                const isSessionVisible =
-                                    !!sessionLabel &&
-                                    sessionLabel.toLowerCase() !== "default";
-                                const isLevelVisible =
-                                    !!levelLabel &&
-                                    levelLabel.toLowerCase() !== "default";
-                                return (
-                                    <div className="space-y-2 text-sm">
-                                        <div>
-                                            <span className="font-medium text-gray-700">
-                                                Course:
-                                            </span>
-                                            <span className="ml-2">
-                                                {toTitleCase(
-                                                    form.getValues("courseData")
-                                                        .title
-                                                )}
-                                            </span>
-                                        </div>
-                                        {isSessionVisible && (
-                                            <div>
-                                                <span className="font-medium text-gray-700">
-                                                    Session:
-                                                </span>
-                                                <span className="ml-2">
-                                                    {toTitleCase(
-                                                        sessionLabel || ""
-                                                    )}
-                                                </span>
-                                            </div>
-                                        )}
-                                        {isLevelVisible && (
-                                            <div>
-                                                <span className="font-medium text-gray-700">
-                                                    Level:
-                                                </span>
-                                                <span className="ml-2">
-                                                    {toTitleCase(
-                                                        levelLabel || ""
-                                                    )}
-                                                </span>
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })()}
-                            <div className="mt-4 -mx-5 px-5 py-3 bg-gray-50 dark:bg-neutral-900/50 border-t border-gray-200 dark:border-neutral-800 flex items-center justify-end gap-2">
-                                <MyButton
-                                    buttonType="secondary"
-                                    scale="medium"
-                                    onClick={() =>
-                                        setCertificateDialogOpen(false)
-                                    }
-                                >
-                                    Close
-                                </MyButton>
-                                <MyButton
-                                    asChild
-                                    buttonType="primary"
-                                    scale="medium"
-                                >
-                                    <a
-                                        href={certificateUrl || undefined}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        onClick={() =>
-                                            setCertificateDialogOpen(false)
-                                        }
-                                    >
-                                        View Certificate
-                                    </a>
-                                </MyButton>
-                            </div>
-                        </div>
-                    </DialogContent>
-                </Dialog>
-                {/* Video Player for non-lg screens (always visible if course has media) */}
-                {form.watch("courseData").courseMediaId && (
-                    <div className="lg:hidden relative z-10 max-w-[350px] px-0 py-3">
-                        <div className="bg-white border border-gray-200 rounded-md shadow-sm p-2 sm:p-3">
-                            <VideoPlayer
-                                src={form.watch("courseData").courseMediaId}
-                            />
-                        </div>
-                    </div>
-                )}
+                    certificateUrl={certificateUrl}
+                    courseTitle={form.getValues("courseData").title}
+                    sessionLabel={sessionOptions?.find(o => o.value === selectedSession)?.label}
+                    levelLabel={levelOptions?.find(o => o.value === selectedLevel)?.label}
+                />
 
                 {/* Main Content Container */}
                 <div className="relative z-10 w-full px-0 py-3 lg:py-4">
@@ -1584,300 +1376,29 @@ export const CourseDetailsPage = () => {
                         <div
                             className={`${hasRightSidebar ? "lg:col-span-2" : ""} space-y-3 lg:space-y-4`}
                         >
-                            {/* Certificate Card (separate from Course Configuration) */}
-                            {certificateUrl && (
-                                <div
-                                    className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-200 p-3 sm:p-4 group animate-fade-in-up"
-                                    style={{ animationDelay: "0.05s" }}
-                                >
-                                    <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
-                                    <div className="relative flex items-start justify-between gap-3">
-                                        <div className="flex items-center gap-2">
-                                            <div className="p-1.5 bg-gradient-to-br from-emerald-100 to-emerald-200 rounded-md shadow-sm">
-                                                <GraduationCap
-                                                    size={18}
-                                                    className="text-emerald-600"
-                                                    weight="duotone"
-                                                />
-                                            </div>
-                                            <div>
-                                                <div className="text-sm font-bold text-gray-900">
-                                                    Certificate available
-                                                </div>
-                                                <div className="text-xs text-gray-600">
-                                                    You can view or download
-                                                    your certificate now.
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <a
-                                            href={certificateUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="inline-flex items-center gap-2 bg-emerald-600 text-white hover:bg-emerald-700 px-3 py-1.5 rounded-md text-xs font-medium shadow"
-                                        >
-                                            View Certificate
-                                        </a>
-                                    </div>
-                                </div>
-                            )}
-                            {/* Enhanced Session and Level Selectors */}
-                            {showCourseConfiguration && (
-                                <div
-                                    className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-200 p-3 sm:p-4 group animate-fade-in-up"
-                                    style={{ animationDelay: "0.1s" }}
-                                >
-                                    {/* Background gradient overlay */}
-                                    <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
+                            {/* Course Enrollment Configuration */}
+                            <CourseEnrollment
+                                showCourseConfiguration={showCourseConfiguration}
+                                selectedTab={selectedTab}
+                                sessionOptions={sessionOptions || []}
+                                levelOptions={levelOptions || []}
+                                selectedSession={selectedSession}
+                                selectedLevel={selectedLevel}
+                                enrolledSessions={enrolledSessions || []}
+                                courseId={searchParams.courseId || ""}
+                                hasRightSidebar={hasRightSidebar}
+                                paymentType={paymentType}
+                                certificateUrl={certificateUrl}
+                                onSessionChange={handleSessionChange}
+                                onLevelChange={handleLevelChange}
+                                onEnrollmentClick={() => {
+                                    console.log('Enrollment button clicked, payment type:', paymentType);
+                                    // Always open enrollment dialog - it will determine the correct payment type from API data
+                                    console.log('Opening enrollment dialog to determine payment type');
+                                    setEnrollmentDialogOpen(true);
+                                }}
+                            />
 
-                                    {/* Floating orb effect */}
-                                    <div className="absolute top-0 right-0 w-12 h-12 bg-primary-100/20 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3"></div>
-
-                                    <div className="relative">
-                                        <div className="flex items-center space-x-2 mb-3">
-                                            <div className="p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-md shadow-sm">
-                                                <GraduationCap
-                                                    size={18}
-                                                    className="text-primary-600"
-                                                    weight="duotone"
-                                                />
-                                            </div>
-                                            <h3 className="text-base font-bold text-gray-900">
-                                                {getTerminology(
-                                                    ContentTerms.Course,
-                                                    SystemTerms.Course
-                                                )}{" "}
-                                                Configuration
-                                            </h3>
-                                        </div>
-
-                                        {sessionOptions &&
-                                        sessionOptions.length > 0 ? (
-                                            <div>
-                                                {/* Preview notice for ALL tab - only show if user is not enrolled */}
-                                                {selectedTab === "ALL" &&
-                                                    (() => {
-                                                        // Check if user is enrolled in this course
-                                                        const safeEnrolledSessions = enrolledSessions || [];
-                                                        const isEnrolledInCourse =
-                                                            safeEnrolledSessions.some(
-                                                                (
-                                                                    enrolledSession
-                                                                ) => {
-                                                                    return (
-                                                                        enrolledSession
-                                                                            .package_dto
-                                                                            .id ===
-                                                                        searchParams.courseId
-                                                                    );
-                                                                }
-                                                            );
-
-                                                        // Only show preview mode message if user is NOT enrolled
-                                                        if (
-                                                            !isEnrolledInCourse
-                                                        ) {
-                                                            return (
-                                                                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                                                                    <div className="flex items-center space-x-2">
-                                                                        <div className="w-2 h-2 bg-blue-500 rounded-sm"></div>
-                                                                        <span className="text-sm font-medium text-blue-800">
-                                                                            {getTerminology(
-                                                                                ContentTerms.Course,
-                                                                                SystemTerms.Course
-                                                                            )}{" "}
-                                                                            Preview
-                                                                            Mode
-                                                                        </span>
-                                                                    </div>
-                                                                    <p className="text-xs text-blue-700 mt-1">
-                                                                        Browse{" "}
-                                                                        {getTerminology(
-                                                                            ContentTerms.Course,
-                                                                            SystemTerms.Course
-                                                                        ).toLocaleLowerCase()}{" "}
-                                                                        structure.
-                                                                        Enroll
-                                                                        to
-                                                                        access{" "}
-                                                                        {getTerminology(
-                                                                            ContentTerms.Slides,
-                                                                            SystemTerms.Slides
-                                                                        ).toLocaleLowerCase()}
-                                                                        s and
-                                                                        materials.
-                                                                    </p>
-                                                                </div>
-                                                            );
-                                                        }
-
-                                                        // If user is enrolled, don't show preview mode message
-                                                        return null;
-                                                    })()}
-
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:gap-4">
-                                                    {/* Session Selector */}
-                                                    {sessionOptions &&
-                                                        sessionOptions.length >
-                                                            0 &&
-                                                        // Hide if only one and label is 'default'
-                                                        (sessionOptions.length ===
-                                                            1 &&
-                                                        sessionOptions[0]
-                                                            .label ===
-                                                            "default" ? null : sessionOptions.length ===
-                                                          1 ? (
-                                                            <div className="p-2.5 bg-gray-50/80 rounded-lg border border-gray-200">
-                                                                <span className="text-sm font-medium text-gray-900">
-                                                                    {
-                                                                        sessionOptions[0]
-                                                                            ?.label
-                                                                    }
-                                                                </span>
-                                                            </div>
-                                                        ) : sessionOptions.length >
-                                                          1 ? (
-                                                            <div className="flex flex-col gap-2">
-                                                                <Select
-                                                                    value={
-                                                                        selectedSession
-                                                                    }
-                                                                    onValueChange={
-                                                                        handleSessionChange
-                                                                    }
-                                                                >
-                                                                    <SelectTrigger>
-                                                                        <SelectValue placeholder="Select Session" />
-                                                                    </SelectTrigger>
-                                                                    <SelectContent>
-                                                                        {sessionOptions.map(
-                                                                            (
-                                                                                option
-                                                                            ) => (
-                                                                                <SelectItem
-                                                                                    key={
-                                                                                        option._id
-                                                                                    }
-                                                                                    value={
-                                                                                        option.value
-                                                                                    }
-                                                                                >
-                                                                                    {
-                                                                                        option.label
-                                                                                    }
-                                                                                </SelectItem>
-                                                                            )
-                                                                        )}
-                                                                    </SelectContent>
-                                                                </Select>
-                                                            </div>
-                                                        ) : null)}
-
-                                                    {/* Level Selector */}
-                                                    {levelOptions &&
-                                                        levelOptions.length >
-                                                            0 &&
-                                                        // Hide if only one and label is 'default'
-                                                        (levelOptions.length ===
-                                                            1 &&
-                                                        levelOptions[0]
-                                                            .label ===
-                                                            "default" ? null : levelOptions.length ===
-                                                          1 ? (
-                                                            <div className="p-2.5 bg-gray-50/80 rounded-lg border border-gray-200">
-                                                                <span className="text-sm font-medium text-gray-900">
-                                                                    {
-                                                                        levelOptions[0]
-                                                                            ?.label
-                                                                    }
-                                                                </span>
-                                                            </div>
-                                                        ) : levelOptions.length >
-                                                          1 ? (
-                                                            <div className="flex flex-col gap-2">
-                                                                <Select
-                                                                    value={
-                                                                        selectedLevel
-                                                                    }
-                                                                    onValueChange={
-                                                                        handleLevelChange
-                                                                    }
-                                                                    disabled={
-                                                                        !selectedSession
-                                                                    }
-                                                                >
-                                                                    <SelectTrigger>
-                                                                        <SelectValue placeholder="Select Level" />
-                                                                    </SelectTrigger>
-                                                                    <SelectContent>
-                                                                        {levelOptions.map(
-                                                                            (
-                                                                                option
-                                                                            ) => (
-                                                                                <SelectItem
-                                                                                    key={
-                                                                                        option._id
-                                                                                    }
-                                                                                    value={
-                                                                                        option.value
-                                                                                    }
-                                                                                >
-                                                                                    {
-                                                                                        option.label
-                                                                                    }
-                                                                                </SelectItem>
-                                                                            )
-                                                                        )}
-                                                                    </SelectContent>
-                                                                </Select>
-                                                            </div>
-                                                        ) : null)}
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                                                <div className="flex items-center space-x-2">
-                                                    <div className="w-2 h-2 bg-yellow-500 rounded-sm"></div>
-                                                    <span className="text-sm font-medium text-yellow-800">
-                                                        {selectedTab === "ALL"
-                                                            ? `No ${getTerminology(
-                                                                  ContentTerms.Session,
-                                                                  SystemTerms.Session
-                                                              ).toLocaleLowerCase()} available for this ${getTerminology(
-                                                                  ContentTerms.Course,
-                                                                  SystemTerms.Course
-                                                              ).toLocaleLowerCase()}`
-                                                            : `You are not enrolled in any ${getTerminology(
-                                                                  ContentTerms.Session,
-                                                                  SystemTerms.Session
-                                                              ).toLocaleLowerCase()} for this ${getTerminology(
-                                                                  ContentTerms.Course,
-                                                                  SystemTerms.Course
-                                                              ).toLocaleLowerCase()}`}
-                                                    </span>
-                                                </div>
-                                                <p className="text-xs text-yellow-700 mt-1">
-                                                    {selectedTab === "ALL"
-                                                        ? `This ${getTerminology(
-                                                              ContentTerms.Course,
-                                                              SystemTerms.Course
-                                                          ).toLocaleLowerCase()} may not have any active ${getTerminology(
-                                                              ContentTerms.Session,
-                                                              SystemTerms.Session
-                                                          ).toLocaleLowerCase()}s configured.`
-                                                        : `Please contact your ${getTerminology(
-                                                              RoleTerms.Teacher,
-                                                              SystemTerms.Teacher
-                                                          ).toLocaleLowerCase()} or ${getTerminology(
-                                                              RoleTerms.Admin,
-                                                              SystemTerms.Admin
-                                                          ).toLocaleLowerCase()} to get enrolled.`}
-                                                </p>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
 
                             {/* Course Structure (always rendered; internal logic will adapt to enrollment/public) */}
                             <div
@@ -1906,586 +1427,81 @@ export const CourseDetailsPage = () => {
                                 />
                             </div>
 
-                            {/* Inline Enroll card when sidebar is hidden */}
-                            {!hasRightSidebar &&
-                                selectedTab === "ALL" &&
-                                (() => {
-                                    if (!selectedSession || !selectedLevel)
-                                        return null;
-                                    const safeEnrolledSessions = enrolledSessions || [];
-                                    const isAlreadyEnrolled =
-                                        safeEnrolledSessions.some(
-                                            (enrolledSession) =>
-                                                enrolledSession.package_dto
-                                                    .id ===
-                                                    searchParams.courseId &&
-                                                enrolledSession.session.id ===
-                                                    selectedSession &&
-                                                enrolledSession.level.id ===
-                                                    selectedLevel
-                                        );
-                                    if (isAlreadyEnrolled) return null;
-                                    return (
-                                        <div className="relative bg-white border border-gray-200 rounded-md shadow-sm p-2 sm:p-3">
-                                            <MyButton
-                                                type="button"
-                                                scale="large"
-                                                buttonType="primary"
-                                                layoutVariant="default"
-                                                className="!min-w-full !w-full text-xs h-8"
-                                                onClick={() => {
-                                                    console.log('Enrollment button clicked, payment type:', paymentType);
-                                                    // Check payment type first - if not donation, use enrollment dialog
-                                                    if (paymentType && paymentType.toLowerCase() !== 'donation') {
-                                                        console.log('Non-donation payment type, opening enrollment dialog');
-                                                        setEnrollmentDialogOpen(true);
-                                                    } else {
-                                                        console.log('Donation payment type, opening donation dialog');
-                                                        setDonationDialogOpen(true);
-                                                    }
-                                                }}
-                                            >
-                                                Enroll
-                                            </MyButton>
-                                        </div>
-                                    );
-                                })()}
+
 
                             {/* Content Sections */}
-                            <div className="space-y-4">
-                                {/* What You'll Learn Section */}
-                                {extractTextFromHTML(
-                                    form.getValues("courseData").whatYoullLearn
-                                ) && (
-                                    <div
-                                        className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
-                                        style={{ animationDelay: "0.3s" }}
-                                    >
-                                        <div className="absolute inset-0 bg-gradient-to-br from-success-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
-                                        <div className="relative">
-                                            <div className="flex items-center space-x-2 mb-3">
-                                                <div className="p-1.5 bg-gradient-to-br from-success-100 to-success-200 rounded-lg shadow-sm">
-                                                    <BookOpen
-                                                        size={18}
-                                                        className="text-success-600"
-                                                        weight="duotone"
-                                                    />
-                                                </div>
-                                                <h2 className="text-base font-bold text-gray-900">
-                                                    What you'll learn
-                                                </h2>
-                                            </div>
-                                            <div
-                                                className="text-sm text-gray-600 leading-relaxed"
-                                                dangerouslySetInnerHTML={{
-                                                    __html:
-                                                        form.getValues(
-                                                            "courseData"
-                                                        ).whatYoullLearn || "",
-                                                }}
-                                            />
-                                        </div>
-                                    </div>
-                                )}
+                            <CourseContentSections
+                                courseData={form.getValues("courseData")}
+                            />
 
-                                {/* About Course Section */}
-                                {extractTextFromHTML(
-                                    form.getValues("courseData").aboutTheCourse
-                                ) && (
-                                    <div
-                                        className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
-                                        style={{ animationDelay: "0.4s" }}
-                                    >
-                                        <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
-                                        <div className="relative">
-                                            <div className="flex items-center space-x-2 mb-3">
-                                                <div className="p-1.5 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg shadow-sm">
-                                                    <File
-                                                        size={18}
-                                                        className="text-blue-600"
-                                                        weight="duotone"
-                                                    />
-                                                </div>
-                                                <h2 className="text-base font-bold text-gray-900">
-                                                    About this{" "}
-                                                    {getTerminology(
-                                                        ContentTerms.Course,
-                                                        SystemTerms.Course
-                                                    ).toLocaleLowerCase()}
-                                                </h2>
-                                            </div>
-                                            <div
-                                                className="text-sm text-gray-600 leading-relaxed"
-                                                dangerouslySetInnerHTML={{
-                                                    __html:
-                                                        form.getValues(
-                                                            "courseData"
-                                                        ).aboutTheCourse || "",
-                                                }}
-                                            />
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Who Should Join Section */}
-                                {extractTextFromHTML(
-                                    form.getValues("courseData").whoShouldLearn
-                                ) && (
-                                    <div
-                                        className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
-                                        style={{ animationDelay: "0.5s" }}
-                                    >
-                                        <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
-                                        <div className="relative">
-                                            <div className="flex items-center space-x-2 mb-3">
-                                                <div className="p-1.5 bg-gradient-to-br from-purple-100 to-purple-200 rounded-lg shadow-sm">
-                                                    <GraduationCap
-                                                        size={18}
-                                                        className="text-purple-600"
-                                                        weight="duotone"
-                                                    />
-                                                </div>
-                                                <h2 className="text-base font-bold text-gray-900">
-                                                    Who should join
-                                                </h2>
-                                            </div>
-                                            <div
-                                                className="text-sm text-gray-600 leading-relaxed"
-                                                dangerouslySetInnerHTML={{
-                                                    __html:
-                                                        form.getValues(
-                                                            "courseData"
-                                                        ).whoShouldLearn || "",
-                                                }}
-                                            />
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Instructors Section */}
-                                {form.getValues("courseData").instructors &&
-                                    form.getValues("courseData").instructors
-                                        .length > 0 && (
-                                        <div
-                                            className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
-                                            style={{ animationDelay: "0.6s" }}
-                                        >
-                                            <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
-                                            <div className="relative">
-                                                <div className="flex items-center space-x-2 mb-3">
-                                                    <div className="p-1.5 bg-gradient-to-br from-orange-100 to-orange-200 rounded-lg shadow-sm">
-                                                        <ChalkboardTeacher
-                                                            size={18}
-                                                            className="text-orange-600"
-                                                            weight="duotone"
-                                                        />
-                                                    </div>
-                                                    <h2 className="text-base font-bold text-gray-900">
-                                                        {getTerminology(
-                                                            RoleTerms.Teacher,
-                                                            SystemTerms.Teacher
-                                                        ).toLocaleLowerCase()}
-                                                        s
-                                                    </h2>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    {form
-                                                        .getValues("courseData")
-                                                        .instructors.map(
-                                                            (
-                                                                instructor,
-                                                                index
-                                                            ) => (
-                                                                <div
-                                                                    key={index}
-                                                                    className="flex items-center gap-3 p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300"
-                                                                >
-                                                                    <Avatar className="w-8 h-8 border-2 border-white shadow-sm">
-                                                                        <AvatarImage
-                                                                            src=""
-                                                                            alt={
-                                                                                instructor.email
-                                                                            }
-                                                                        />
-                                                                        <AvatarFallback className="bg-gradient-to-br from-primary-500 to-primary-600 text-white text-xs font-semibold">
-                                                                            {getInitials(
-                                                                                instructor.email
-                                                                            )}
-                                                                        </AvatarFallback>
-                                                                    </Avatar>
-                                                                    <div>
-                                                                        <h3 className="text-sm font-semibold text-gray-900">
-                                                                            {
-                                                                                instructor.name
-                                                                            }
-                                                                        </h3>
-                                                                        <p className="text-xs text-gray-600">
-                                                                            {
-                                                                                instructor.email
-                                                                            }
-                                                                        </p>
-                                                                    </div>
-                                                                </div>
-                                                            )
-                                                        )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                            </div>
                         </div>
 
                         {/* Right Column - Course Stats Sidebar (1/4) */}
-                        {hasRightSidebar && (
-                            <div className="lg:col-span-1">
-                                <div className="sticky top-4 space-y-4">
-                                    {
-                                        <div
-                                            className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
-                                            style={{ animationDelay: "0.7s" }}
-                                        >
-                                            {/* Background gradient overlay */}
-                                            <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
-
-                                            {/* Floating orb effect */}
-                                            <div className="absolute top-0 right-0 w-12 h-12 bg-primary-100/20 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3"></div>
-
-                                            <div className="relative">
-                                                {/* Header */}
-                                                <div className="flex items-center space-x-2 mb-4">
-                                                    <div className="p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg shadow-sm">
-                                                        <Steps
-                                                            size={18}
-                                                            className="text-primary-600"
-                                                            weight="duotone"
-                                                        />
-                                                    </div>
-                                                    <h2 className="text-base font-bold text-gray-900">
-                                                        {getTerminology(
-                                                            ContentTerms.Course,
-                                                            SystemTerms.Course
-                                                        ).toLocaleLowerCase()}{" "}
-                                                        Overview
-                                                    </h2>
-                                                </div>
-
-                                                {/* Course Stats */}
-                                                <div className="space-y-3">
-                                                    {/* Level Badge */}
-                                                    {levelOptions.length > 0 &&
-                                                        selectedLevel &&
-                                                        levelOptions.find(
-                                                            (option) =>
-                                                                option.value ===
-                                                                selectedLevel
-                                                        )?.label !==
-                                                            "default" && (
-                                                            <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-primary-50 to-primary-100 rounded-lg border border-primary-200">
-                                                                <div className="flex items-center space-x-2">
-                                                                    <Steps
-                                                                        size={
-                                                                            16
-                                                                        }
-                                                                        className="text-primary-600"
-                                                                        weight="duotone"
-                                                                    />
-                                                                    <span className="text-xs font-medium text-primary-700">
-                                                                        {getTerminology(
-                                                                            ContentTerms.Level,
-                                                                            SystemTerms.Level
-                                                                        ).toLocaleLowerCase()}
-                                                                    </span>
-                                                                </div>
-                                                                <span className="text-xs font-bold text-primary-800">
-                                                                    {
-                                                                        levelOptions.find(
-                                                                            (
-                                                                                option
-                                                                            ) =>
-                                                                                option.value ===
-                                                                                selectedLevel
-                                                                        )?.label
-                                                                    }
-                                                                </span>
-                                                            </div>
-                                                        )}
-
-                                                    {/* Slide Counts */}
-                                                    {slideCountQuery.isLoading ? (
-                                                        <div className="space-y-2">
-                                                            {[
-                                                                1, 2, 3, 4, 5,
-                                                            ].map((i) => (
-                                                                <div
-                                                                    key={i}
-                                                                    className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg animate-pulse"
-                                                                >
-                                                                    <div className="h-3 w-16 bg-gray-200 rounded"></div>
-                                                                    <div className="h-3 w-6 bg-gray-200 rounded"></div>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    ) : slideCountQuery.error ? (
-                                                        <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg">
-                                                            <p className="text-xs text-red-600 font-medium">
-                                                                Error loading{" "}
-                                                                {getTerminology(
-                                                                    ContentTerms.Slides,
-                                                                    SystemTerms.Slides
-                                                                ).toLocaleLowerCase()}
-                                                                counts
-                                                            </p>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="space-y-2">
-                                                            {overviewVisible &&
-                                                                processedSlideCounts.map(
-                                                                    (count: {
-                                                                        source_type: string;
-                                                                        slide_count: number;
-                                                                        display_name: string;
-                                                                    }) => (
-                                                                        <div
-                                                                            key={
-                                                                                count.source_type
-                                                                            }
-                                                                            className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item"
-                                                                        >
-                                                                            <div className="flex items-center space-x-2">
-                                                                                {getSlideTypeIcon(
-                                                                                    count.source_type
-                                                                                )}
-                                                                                <span className="text-xs font-medium text-gray-700">
-                                                                                    {
-                                                                                        count.display_name
-                                                                                    }
-                                                                                </span>
-                                                                            </div>
-                                                                            <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                                                                                {
-                                                                                    count.slide_count
-                                                                                }
-                                                                            </span>
-                                                                        </div>
-                                                                    )
-                                                                )}
-
-                                                            {/* Module Statistics */}
-                                                            {overviewVisible &&
-                                                                (() => {
-                                                                    const currentSubjects =
-                                                                        getSubjectDetails(
-                                                                            form.getValues(),
-                                                                            selectedSession,
-                                                                            selectedLevel
-                                                                        );
-
-                                                                    return (
-                                                                        <>
-                                                                            {/* Total Modules */}
-                                                                            {moduleStats.totalModules >
-                                                                                0 && (
-                                                                                <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
-                                                                                    <div className="flex items-center space-x-2">
-                                                                                        <FileText
-                                                                                            size={
-                                                                                                16
-                                                                                            }
-                                                                                            className="text-blue-600 group-hover/item:scale-110 transition-transform duration-300"
-                                                                                            weight="duotone"
-                                                                                        />
-                                                                                        <span className="text-xs font-medium text-gray-700">
-                                                                                            {getTerminology(
-                                                                                                ContentTerms.Modules,
-                                                                                                SystemTerms.Modules
-                                                                                            )}
-                                                                                        </span>
-                                                                                    </div>
-                                                                                    <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                                                                                        {
-                                                                                            moduleStats.totalModules
-                                                                                        }
-                                                                                    </span>
-                                                                                </div>
-                                                                            )}
-
-                                                                            {/* Total Chapters */}
-                                                                            {moduleStats.totalChapters >
-                                                                                0 && (
-                                                                                <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
-                                                                                    <div className="flex items-center space-x-2">
-                                                                                        <PresentationChart
-                                                                                            size={
-                                                                                                16
-                                                                                            }
-                                                                                            className="text-green-600 group-hover/item:scale-110 transition-transform duration-300"
-                                                                                            weight="duotone"
-                                                                                        />
-                                                                                        <span className="text-xs font-medium text-gray-700">
-                                                                                            {getTerminology(
-                                                                                                ContentTerms.Chapters,
-                                                                                                SystemTerms.Chapters
-                                                                                            )}
-                                                                                        </span>
-                                                                                    </div>
-                                                                                    <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                                                                                        {
-                                                                                            moduleStats.totalChapters
-                                                                                        }
-                                                                                    </span>
-                                                                                </div>
-                                                                            )}
-
-                                                                            {/* Total Subjects (for depth 5) */}
-                                                                            {form.getValues(
-                                                                                "courseData.courseStructure"
-                                                                            ) ===
-                                                                                5 &&
-                                                                                currentSubjects.length >
-                                                                                    0 && (
-                                                                                    <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
-                                                                                        <div className="flex items-center space-x-2">
-                                                                                            <Folder
-                                                                                                size={
-                                                                                                    16
-                                                                                                }
-                                                                                                className="text-purple-600 group-hover/item:scale-110 transition-transform duration-300"
-                                                                                                weight="duotone"
-                                                                                            />
-                                                                                            <span className="text-xs font-medium text-gray-700">
-                                                                                                {getTerminology(
-                                                                                                    ContentTerms.Subjects,
-                                                                                                    SystemTerms.Subjects
-                                                                                                )}
-                                                                                            </span>
-                                                                                        </div>
-                                                                                        <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                                                                                            {
-                                                                                                currentSubjects.length
-                                                                                            }
-                                                                                        </span>
-                                                                                    </div>
-                                                                                )}
-                                                                        </>
-                                                                    );
-                                                                })()}
-
-                                                            {/* Instructors Count */}
-                                                            {form.getValues(
-                                                                "courseData"
-                                                            ).instructors
-                                                                .length > 0 && (
-                                                                <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
-                                                                    <div className="flex items-center space-x-2">
-                                                                        <ChalkboardTeacher
-                                                                            size={
-                                                                                16
-                                                                            }
-                                                                            className="text-orange-600 group-hover/item:scale-110 transition-transform duration-300"
-                                                                            weight="duotone"
-                                                                        />
-                                                                        <span className="text-xs font-medium text-gray-700">
-                                                                            Instructors
-                                                                        </span>
-                                                                    </div>
-                                                                    <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                                                                        {
-                                                                            form.getValues(
-                                                                                "courseData"
-                                                                            )
-                                                                                .instructors
-                                                                                .length
-                                                                        }
-                                                                    </span>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                {/* Only show enroll button for ALL tab when user is not enrolled */}
-                                                {selectedTab === "ALL" &&
-                                                    (() => {
-                                                        // Only show enrollment options if session and level are selected
-                                                        if (
-                                                            !selectedSession ||
-                                                            !selectedLevel
-                                                        ) {
-                                                            return null; // Don't show anything if session/level not selected
-                                                        }
-
-                                                        // Check if user is already enrolled in this course
-                                                        const safeEnrolledSessions = enrolledSessions || [];
-                                                        const isAlreadyEnrolled =
-                                                            safeEnrolledSessions.some(
-                                                                (
-                                                                    enrolledSession
-                                                                ) => {
-                                                                    // Check if the enrolled session matches the current course
-                                                                    // The package_dto.id represents the course/package ID
-                                                                    return (
-                                                                        enrolledSession
-                                                                            .package_dto
-                                                                            .id ===
-                                                                            searchParams.courseId &&
-                                                                        enrolledSession
-                                                                            .session
-                                                                            .id ===
-                                                                            selectedSession &&
-                                                                        enrolledSession
-                                                                            .level
-                                                                            .id ===
-                                                                            selectedLevel
-                                                                    );
-                                                                }
-                                                            );
-
-                                                        // Only show enroll button if not already enrolled
-                                                        return !isAlreadyEnrolled ? (
-                                                            <MyButton
-                                                                type="button"
-                                                                scale="large"
-                                                                buttonType="primary"
-                                                                layoutVariant="default"
-                                                                className="mt-2 !min-w-full !w-full text-xs h-8"
-                                                                onClick={() => {
-                                                                    console.log('Enrollment button clicked, payment type:', paymentType);
-                                                                    // Check payment type first - if not donation, use enrollment dialog
-                                                                    if (paymentType && paymentType.toLowerCase() !== 'donation') {
-                                                                        console.log('Non-donation payment type, opening enrollment dialog');
-                                                                        setEnrollmentDialogOpen(true);
-                                                                    } else {
-                                                                        console.log('Donation payment type, opening donation dialog');
-                                                                        setDonationDialogOpen(true);
-                                                                    }
-                                                                }}
-                                                            >
-                                                                Enroll
-                                                            </MyButton>
-                                                        ) : null; // Don't show anything if already enrolled
-                                                    })()}
-                                            </div>
-                                        </div>
-                                    }
-
-                                    {/* Ratings & Reviews */}
-                                    {packageSessionIdForCurrentLevel && (
-                                        <div
-                                            className="animate-fade-in-up"
-                                            style={{ animationDelay: "1.0s" }}
-                                        >
-                                            <CourseDetailsRatingsComponent
-                                                packageSessionId={
-                                                    packageSessionIdForCurrentLevel
-                                                }
-                                                onLoadingChange={
-                                                    handleRatingsLoadingChange
-                                                }
-                                            />
-                                        </div>
-                                    )}
+                        <div className="lg:col-span-1">
+                            <div className="sticky top-24 self-start h-fit">
+                                <div className="max-h-[calc(100vh-6rem)] overflow-auto pt-2">
+                                    <CourseSidebar
+                                        hasRightSidebar={hasRightSidebar}
+                                        levelOptions={levelOptions}
+                                        selectedLevel={selectedLevel}
+                                        slideCountQuery={slideCountQuery}
+                                        overviewVisible={overviewVisible}
+                                        processedSlideCounts={processedSlideCounts}
+                                        moduleStats={moduleStats}
+                                        currentSubjects={getSubjectDetails(
+                                            form.getValues(),
+                                            selectedSession,
+                                            selectedLevel
+                                        )}
+                                        courseStructure={form.getValues("courseData.courseStructure")}
+                                        instructorsCount={form.getValues("courseData").instructors.length}
+                                        primaryInstructorName={
+                                            (form.getValues("courseData").instructors?.[0] as unknown as { name?: string; full_name?: string } | undefined)?.name ||
+                                            (form.getValues("courseData").instructors?.[0] as unknown as { name?: string; full_name?: string } | undefined)?.full_name ||
+                                            (singleCourseQuery.data as unknown as { instructors?: Array<{ full_name?: string; username?: string }> })?.instructors?.[0]?.full_name ||
+                                            (singleCourseQuery.data as unknown as { instructors?: Array<{ full_name?: string; username?: string }> })?.instructors?.[0]?.username ||
+                                            (courseDetailsData as unknown as { course?: { created_by_name?: string; author_name?: string; owner_name?: string } })?.course?.created_by_name ||
+                                            (courseDetailsData as unknown as { course?: { created_by_name?: string; author_name?: string; owner_name?: string } })?.course?.author_name ||
+                                            (courseDetailsData as unknown as { course?: { created_by_name?: string; author_name?: string; owner_name?: string } })?.course?.owner_name ||
+                                            primaryInstructorNameFromApi
+                                        }
+                                        selectedTab={selectedTab}
+                                        selectedSession={selectedSession}
+                                        enrolledSessions={enrolledSessions || []}
+                                        courseId={searchParams.courseId || ""}
+                                        paymentType={paymentType}
+                                        packageSessionIdForCurrentLevel={packageSessionIdForCurrentLevel}
+                                        onEnrollmentClick={() => {
+                                            console.log('Enrollment button clicked, payment type:', paymentType);
+                                            // Always open enrollment dialog - it will determine the correct payment type from API data
+                                            console.log('Opening enrollment dialog to determine payment type');
+                                            setEnrollmentDialogOpen(true);
+                                        }}
+                                        onRatingsLoadingChange={handleRatingsLoadingChange}
+                                    />
+                                    {/* Debug logs for author/time sourcing */}
+                                    {(() => {
+                                        try {
+                                            const instructors = form.getValues("courseData").instructors || [];
+                                            const fromForm = (instructors?.[0] as unknown as { name?: string; full_name?: string } | undefined)?.name || (instructors?.[0] as unknown as { name?: string; full_name?: string } | undefined)?.full_name;
+                                            const fromCourse = (courseDetailsData as unknown as { course?: { created_by_name?: string; author_name?: string; owner_name?: string } })?.course?.created_by_name || (courseDetailsData as unknown as { course?: { created_by_name?: string; author_name?: string; owner_name?: string } })?.course?.author_name || (courseDetailsData as unknown as { course?: { created_by_name?: string; author_name?: string; owner_name?: string } })?.course?.owner_name;
+                                            console.log('[CourseDetailsPage] Debug author sources', {
+                                                fromForm,
+                                                fromCourse,
+                                                fromApiState: primaryInstructorNameFromApi,
+                                                fromSingleCourseInstructors: (singleCourseQuery.data as unknown as { instructors?: Array<{ full_name?: string; username?: string }> })?.instructors?.map(i => i.full_name || i.username) || [],
+                                                slideCountHasData: Array.isArray((slideCountQuery as unknown as { data?: Array<{ slide_count: number; total_read_time_minutes: number | null; source_type: string }> })?.data),
+                                                slideCountLength: ((slideCountQuery as unknown as { data?: Array<{ slide_count: number; total_read_time_minutes: number | null; source_type: string }> })?.data || []).length,
+                                                processedSlideCountsLength: (processedSlideCounts || []).length,
+                                            });
+                                        } catch (e) { void e; }
+                                        return null;
+                                    })()}
                                 </div>
                             </div>
-                        )}
+                        </div>
+
+
                     </div>
 
                     {/* Ratings Component */}

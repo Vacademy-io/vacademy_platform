@@ -29,6 +29,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         String getMeetingLink();
         String getRegistrationFormLinkForPublicSessions();
         Boolean getAllowPlayPause();
+        String getTimezone();
     }
 
     public interface ScheduledSessionProjection {
@@ -59,7 +60,8 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         s.subject AS subject,
         COALESCE(ss.custom_meeting_link, s.default_meet_link) AS meetingLink,
         s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions,
-        s.allow_play_pause AS allowPlayPause
+        s.allow_play_pause AS allowPlayPause,
+        s.timezone AS timezone
     FROM live_session s
     JOIN session_schedules ss ON s.id = ss.session_id
     WHERE s.status = 'LIVE'
@@ -82,7 +84,8 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         s.subject AS subject,
         COALESCE(ss.custom_meeting_link, s.default_meet_link) AS meetingLink,
         s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions,
-        s.allow_play_pause AS allowPlayPause
+        s.allow_play_pause AS allowPlayPause,
+        s.timezone AS timezone
     FROM live_session s
     JOIN session_schedules ss ON s.id = ss.session_id
     WHERE s.status = 'LIVE'
@@ -108,7 +111,8 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         s.subject AS subject,
         COALESCE(ss.custom_meeting_link, s.default_meet_link) AS meetingLink,
         s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions,
-        s.allow_play_pause AS allowPlayPause
+        s.allow_play_pause AS allowPlayPause,
+        s.timezone AS timezone
     FROM live_session s
     JOIN session_schedules ss ON s.id = ss.session_id
     WHERE s.status = 'LIVE'
@@ -134,7 +138,8 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         s.subject AS subject,
         COALESCE(ss.custom_meeting_link, s.default_meet_link) AS meetingLink,
         s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions,
-        s.allow_play_pause AS allowPlayPause
+        s.allow_play_pause AS allowPlayPause,
+        s.timezone AS timezone
     FROM live_session s
     JOIN session_schedules ss ON s.id = ss.session_id
     WHERE s.status = 'DRAFT'
@@ -159,6 +164,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
             s.subject AS subject,
             s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions,
             s.allow_play_pause AS allowPlayPause,
+            s.timezone AS timezone,
             CASE
                 WHEN ss.custom_meeting_link IS NOT NULL AND ss.custom_meeting_link <> '' THEN ss.custom_meeting_link
                 ELSE s.default_meet_link
@@ -191,6 +197,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
             s.subject AS subject,
             s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions,
             s.allow_play_pause AS allowPlayPause,
+            s.timezone AS timezone,
             CASE
                 WHEN ss.custom_meeting_link IS NOT NULL AND ss.custom_meeting_link <> '' THEN ss.custom_meeting_link
                 ELSE s.default_meet_link

@@ -47,6 +47,9 @@ public class CustomFields {
     @Column(name = "is_sortable")
     private Boolean isSortable = false;
 
+    @Column(name = "status")
+    private String status;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 

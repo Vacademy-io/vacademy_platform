@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
 import vacademy.io.admin_core_service.features.common.entity.CustomFields;
 import vacademy.io.admin_core_service.features.common.entity.InstituteCustomField;
 import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
@@ -202,7 +203,7 @@ public class InstituteSettingService {
     }
 
     public void updateCustomFieldSetting(Institute institute, CustomFieldSettingRequest request){
-        String settingJsonString = settingStrategyFactory.rebuildOldSettingAndGetSettingJsonString(institute,request, SettingKeyEnums.NAMING_SETTING.name());
+        String settingJsonString = settingStrategyFactory.rebuildOldSettingAndGetSettingJsonString(institute,request, SettingKeyEnums.CUSTOM_FIELD_SETTING.name());
         institute.setSetting(settingJsonString);
         instituteRepository.save(institute);
     }

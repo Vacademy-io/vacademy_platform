@@ -5,7 +5,9 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDeleteRequestDTO;
+import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
 import vacademy.io.admin_core_service.features.common.enums.CustomFieldTypeEnum;
+import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteCustomFieldSetupDTO;
 import vacademy.io.admin_core_service.features.common.entity.CustomFields;
 import vacademy.io.admin_core_service.features.common.entity.InstituteCustomField;
@@ -26,6 +28,8 @@ public class InstituteCustomFiledService {
 
     @Autowired
     private CustomFieldRepository customFieldRepository;
+
+    private CustomFieldValuesRepository customFieldValuesRepository;
 
     public void addOrUpdateCustomField(List<InstituteCustomFieldDTO> customFieldDTOs) {
         List<InstituteCustomField> instituteCustomFields = new ArrayList<>();
@@ -281,4 +285,57 @@ public class InstituteCustomFiledService {
         return "Custom Field with id " + fieldId + " updated successfully.";
     }
 
+    public Optional<InstituteCustomField> getCustomFieldByInstituteIdAndName(String instituteId, String fieldName) {
+        return instituteCustomFieldRepository.findByInstituteIdAndFieldName(instituteId, fieldName);
+    }
+
+    public Optional<InstituteCustomField> getByInstituteIdAndFieldIdAndTypeAndTypeId(String instituteId, String fieldId, String type, String typeId) {
+        return instituteCustomFieldRepository.findByInstituteIdAndCustomFieldIdAndTypeAndTypeId(instituteId,fieldId,type,typeId);
+    }
+
+    public InstituteCustomField createorupdateinstutefieldmapping(InstituteCustomField instituteCustomField) {
+        return instituteCustomFieldRepository.save(instituteCustomField);
+    }
+
+    public List<InstituteCustomField> createOrUpdateMappings(List<InstituteCustomField> allMappings) {
+        return instituteCustomFieldRepository.saveAll(allMappings);
+    }
+
+    public List<InstituteCustomField> getAllMappingFromIds(List<String> request) {
+        return instituteCustomFieldRepository.findAllById(request);
+    }
+
+    public List<CustomFields> getAllCustomFields(List<String> allFieldIds) {
+        return customFieldRepository.findAllById(allFieldIds);
+    }
+
+    public void createOrSaveAllFields(List<CustomFields> allFields) {
+        customFieldRepository.saveAll(allFields);
+    }
+
+    public List<InstituteCustomField> getCusFieldByInstituteAndTypeAndTypeId(String instituteId, String type, String typeId, List<String> status) {
+        return instituteCustomFieldRepository.findByInstituteIdAndTypeAndTypeIdAndStatusIn(instituteId,type,typeId,status);
+    }
+
+    public CustomFieldDTO getCustomFieldDtoFromId(String customFieldId){
+        Optional<CustomFields> customFields = customFieldRepository.findById(customFieldId);
+        if(customFields.isPresent()){
+            return CustomFieldDTO.builder()
+                    .id(customFieldId)
+                    .fieldName(customFields.get().getFieldName())
+                    .fieldKey(customFields.get().getFieldKey())
+                    .fieldType(customFields.get().getFieldType())
+                    .defaultValue(customFields.get().getDefaultValue())
+                    .build();
+        }
+        throw new VacademyException("Custom Field Not Found");
+    }
+
+    public List<InstituteCustomField> getAllMappingFromFieldsIds(String instituteId, List<CustomFields> allFields, List<String> status) {
+        return instituteCustomFieldRepository.findByInstituteIdAndCustomFieldIdInAndStatusIn(instituteId,allFields.stream().map(CustomFields::getId).toList(), status);
+    }
+
+    public List<CustomFieldValues> updateOrCreateCustomFieldsValues(List<CustomFieldValues> response) {
+        return customFieldValuesRepository.saveAll(response);
+    }
 }

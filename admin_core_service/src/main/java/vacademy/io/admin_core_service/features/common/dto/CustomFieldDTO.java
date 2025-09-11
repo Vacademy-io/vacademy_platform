@@ -1,12 +1,15 @@
 package vacademy.io.admin_core_service.features.common.dto;
 
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
+import vacademy.io.admin_core_service.features.institute.dto.settings.custom_field.CustomFieldSettingRequest;
 
 import java.sql.Timestamp;
 
 @Getter
 @Setter
+@AllArgsConstructor
+@Builder
+@NoArgsConstructor
 public class CustomFieldDTO {
     private String guestId;
     private String id;
@@ -28,6 +31,7 @@ public class CustomFieldDTO {
     private String groupName;
     private Integer groupInternalOrder;
     private Integer individualOrder;
+    private CustomFieldSettingRequest settingRequest;
 
     // Getters and Setters (or use Lombok @Data/@Getter/@Setter)
 }

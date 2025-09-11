@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.learner_payment_option_operation
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDetails;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
@@ -12,6 +13,7 @@ import vacademy.io.admin_core_service.features.packages.repository.PackageSessio
 import vacademy.io.admin_core_service.features.payments.service.PaymentService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
+import vacademy.io.admin_core_service.features.user_subscription.service.ReferralHandler;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
@@ -20,6 +22,7 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogLineItemDTO;
 
 import java.util.*;
 
@@ -34,18 +37,24 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
     @Autowired
     private PackageSessionRepository packageSessionRepository;
 
+    @Autowired
+    private ReferralHandler referralHandler;
+
+    @Autowired
+    private AuthService authService;
+
     @Override
     public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
-                                                         LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
-                                                         String instituteId,
-                                                         EnrollInvite enrollInvite,
-                                                         PaymentOption paymentOption,
-                                                         UserPlan userPlan,
-                                                         Map<String, Object> extraData) {
+            LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
+            String instituteId,
+            EnrollInvite enrollInvite,
+            PaymentOption paymentOption,
+            UserPlan userPlan,
+            Map<String, Object> extraData) {
         String learnerSessionStatus = null;
-        if (paymentOption.isRequireApproval()){
+        if (paymentOption.isRequireApproval()) {
             learnerSessionStatus = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();
-        }else{
+        } else {
             learnerSessionStatus = LearnerStatusEnum.INVITED.name();
         }
         List<InstituteStudentDetails> instituteStudentDetails = buildInstituteStudentDetails(
@@ -53,8 +62,7 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
                 learnerPackageSessionsEnrollDTO.getPackageSessionIds(),
                 enrollInvite.getLearnerAccessDays(),
                 learnerSessionStatus,
-                userPlan
-        );
+                userPlan);
 
         // Create or update user
         UserDTO user = learnerBatchEnrollService.checkAndCreateStudentAndAddToBatch(
@@ -62,12 +70,24 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
                 instituteId,
                 instituteStudentDetails,
                 learnerPackageSessionsEnrollDTO.getCustomFieldValues(),
-                extraData
-        );
+                extraData);
 
         PaymentPlan paymentPlan = userPlan.getPaymentPlan();
         if (Objects.isNull(paymentPlan)) {
             throw new VacademyException("Payment plan is null");
+        }
+
+        // Process referral request if present
+        List<PaymentLogLineItemDTO> referralLineItems = new ArrayList<>();
+        if (learnerPackageSessionsEnrollDTO.getReferRequest() != null) {
+            referralHandler.processReferralRequest(
+                learnerPackageSessionsEnrollDTO.getReferRequest(),
+                learnerPackageSessionsEnrollDTO,
+                userPlan,
+                user,
+                authService.getUsersFromAuthServiceByUserIds(List.of(learnerPackageSessionsEnrollDTO.getReferRequest().getReferrerUserId())).get(0),
+                learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest()
+            );
         }
 
         // Handle payment
@@ -75,17 +95,25 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
         learnerEnrollResponseDTO.setUser(user);
 
         if (learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest() != null) {
-            PaymentInitiationRequestDTO paymentInitiationRequestDTO = learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest();
-            paymentInitiationRequestDTO.setAmount(paymentPlan.getActualPrice());
+            PaymentInitiationRequestDTO paymentInitiationRequestDTO = learnerPackageSessionsEnrollDTO
+                    .getPaymentInitiationRequest();
+
+            // Calculate final amount after referral discounts
+            double finalAmount = paymentPlan.getActualPrice();
+            for (PaymentLogLineItemDTO lineItem : referralLineItems) {
+                finalAmount += lineItem.getAmount();
+            }
+            finalAmount = Math.max(0, finalAmount);
+
+            paymentInitiationRequestDTO.setAmount(finalAmount);
             PaymentResponseDTO paymentResponseDTO = paymentService.handlePayment(
                     user,
                     learnerPackageSessionsEnrollDTO,
                     instituteId,
                     enrollInvite,
-                    userPlan
-            );
+                    userPlan);
             learnerEnrollResponseDTO.setPaymentResponse(paymentResponseDTO);
-        }else{
+        } else {
             throw new VacademyException("PaymentInitiationRequest is null");
         }
 
@@ -93,19 +121,19 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
     }
 
     private List<InstituteStudentDetails> buildInstituteStudentDetails(String instituteId,
-                                                                       List<String> packageSessionIds,
-                                                                       Integer accessDays,String learnerSessionStatus,UserPlan userPlan) {
+            List<String> packageSessionIds,
+            Integer accessDays, String learnerSessionStatus, UserPlan userPlan) {
         List<InstituteStudentDetails> detailsList = new ArrayList<>();
 
         for (String packageSessionId : packageSessionIds) {
-            Optional<PackageSession> invitedPackageSession = packageSessionRepository.findInvitedPackageSessionForPackage(
-                    packageSessionId,
-                    "INVITED",  // levelId (placeholder — ensure correct value)
-                    "INVITED",  // sessionId (placeholder — ensure correct value)
-                    List.of(PackageSessionStatusEnum.INVITED.name()),
-                    List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
-                    List.of(PackageStatusEnum.ACTIVE.name())
-            );
+            Optional<PackageSession> invitedPackageSession = packageSessionRepository
+                    .findInvitedPackageSessionForPackage(
+                            packageSessionId,
+                            "INVITED", // levelId (placeholder — ensure correct value)
+                            "INVITED", // sessionId (placeholder — ensure correct value)
+                            List.of(PackageSessionStatusEnum.INVITED.name()),
+                            List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                            List.of(PackageStatusEnum.ACTIVE.name()));
 
             if (invitedPackageSession.isEmpty()) {
                 throw new VacademyException("Learner cannot be enrolled as there is no invited package session");
@@ -120,8 +148,7 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
                     null,
                     accessDays != null ? accessDays.toString() : null,
                     packageSessionId,
-                    userPlan.getId()
-            );
+                    userPlan.getId());
             detailsList.add(detail);
         }
         return detailsList;

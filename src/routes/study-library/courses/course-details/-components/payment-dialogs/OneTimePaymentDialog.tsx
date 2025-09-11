@@ -27,6 +27,9 @@ import { MyButton } from "@/components/design-system/button";
 import { EnrollmentSuccessDialog } from "./EnrollmentSuccessDialog";
 import { EnrollmentPendingDialog } from "./EnrollmentPendingDialog";
 import { EnrollmentPendingApprovalDialog } from "./EnrollmentPendingApprovalDialog";
+import { PaymentStatusPollingDialog } from "./PaymentStatusPollingDialog";
+import { PaymentSuccessDialog } from "./PaymentSuccessDialog";
+import { PaymentFailedDialog } from "./PaymentFailedDialog";
 
 // TypeScript declarations for Stripe
 declare global {
@@ -68,6 +71,10 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [showPendingDialog, setShowPendingDialog] = useState(false);
   const [showPendingApprovalDialog, setShowPendingApprovalDialog] = useState(false);
+  const [showPaymentStatusDialog, setShowPaymentStatusDialog] = useState(false);
+  const [showPaymentSuccessDialog, setShowPaymentSuccessDialog] = useState(false);
+  const [showPaymentFailedDialog, setShowPaymentFailedDialog] = useState(false);
+  const [approvalRequired, setApprovalRequired] = useState(false);
   
   // Stripe Elements state
   const [stripe, setStripe] = useState<any>(null);
@@ -363,6 +370,16 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
       const userProfileEmail = userData?.email || email;
       
       // Call the enrollment API with payment
+      console.log('OneTimePaymentDialog - Calling enrollment API', {
+        packageSessionId,
+        courseTitle,
+        userEmail: userProfileEmail,
+        receiptEmail: email,
+        amount: selectedPaymentPlan.actual_price,
+        currency: selectedPaymentPlan.currency || enrollmentData.currency,
+        paymentType: 'one-time'
+      });
+
       await handlePaymentForEnrollment({
         userEmail: userProfileEmail,
         receiptEmail: email,
@@ -380,15 +397,16 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
         token,
       });
 
+      console.log('OneTimePaymentDialog - Enrollment API call successful, starting payment status polling', {
+        packageSessionId,
+        courseTitle
+      });
+
       // Close the main dialog
       onOpenChange(false);
       
-      // Check if approval is required
-      if (selectedPaymentOption.require_approval) {
-        setShowPendingDialog(true);
-      } else {
-        setShowSuccessDialog(true);
-      }
+      // For one_time payments, start payment status polling
+      setShowPaymentStatusDialog(true);
       
     } catch (err) {
       console.error('One-time payment error:', err);
@@ -418,6 +436,66 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
     if (onEnrollmentSuccess) {
       await onEnrollmentSuccess();
     }
+  };
+
+  // Payment status dialog handlers
+  const handlePaymentSuccess = (approvalRequired: boolean) => {
+    console.log('OneTimePaymentDialog - Payment success received', {
+      packageSessionId,
+      courseTitle,
+      approvalRequired
+    });
+    setShowPaymentStatusDialog(false);
+    setApprovalRequired(approvalRequired);
+    setShowPaymentSuccessDialog(true);
+  };
+
+  const handlePaymentFailed = () => {
+    console.log('OneTimePaymentDialog - Payment failed received', {
+      packageSessionId,
+      courseTitle
+    });
+    setShowPaymentStatusDialog(false);
+    setShowPaymentFailedDialog(true);
+  };
+
+  const handlePaymentStatusClose = () => {
+    console.log('OneTimePaymentDialog - Payment status dialog closed', {
+      packageSessionId,
+      courseTitle
+    });
+    setShowPaymentStatusDialog(false);
+  };
+
+  const handlePaymentSuccessClose = () => {
+    console.log('OneTimePaymentDialog - Payment success dialog closed', {
+      packageSessionId,
+      courseTitle,
+      approvalRequired
+    });
+    setShowPaymentSuccessDialog(false);
+    if (!approvalRequired && onEnrollmentSuccess) {
+      console.log('OneTimePaymentDialog - Calling onEnrollmentSuccess (no approval required)');
+      onEnrollmentSuccess();
+    }
+  };
+
+  const handlePaymentFailedClose = () => {
+    console.log('OneTimePaymentDialog - Payment failed dialog closed', {
+      packageSessionId,
+      courseTitle
+    });
+    setShowPaymentFailedDialog(false);
+  };
+
+  const handleTryAgain = () => {
+    console.log('OneTimePaymentDialog - Try again clicked', {
+      packageSessionId,
+      courseTitle
+    });
+    setShowPaymentFailedDialog(false);
+    // Reopen the main enrollment dialog
+    onOpenChange(true);
   };
 
   if (loading) {
@@ -770,6 +848,36 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
         onOpenChange={setShowPendingApprovalDialog}
         courseTitle={courseTitle}
         onClose={() => setShowPendingApprovalDialog(false)}
+      />
+
+      {/* Payment Status Polling Dialog */}
+      <PaymentStatusPollingDialog
+        open={showPaymentStatusDialog}
+        onOpenChange={setShowPaymentStatusDialog}
+        packageSessionId={packageSessionId}
+        courseTitle={courseTitle}
+        onPaymentSuccess={handlePaymentSuccess}
+        onPaymentFailed={handlePaymentFailed}
+        onClose={handlePaymentStatusClose}
+      />
+
+      {/* Payment Success Dialog */}
+      <PaymentSuccessDialog
+        open={showPaymentSuccessDialog}
+        onOpenChange={setShowPaymentSuccessDialog}
+        courseTitle={courseTitle}
+        approvalRequired={approvalRequired}
+        onExploreCourse={handleExploreCourse}
+        onClose={handlePaymentSuccessClose}
+      />
+
+      {/* Payment Failed Dialog */}
+      <PaymentFailedDialog
+        open={showPaymentFailedDialog}
+        onOpenChange={setShowPaymentFailedDialog}
+        courseTitle={courseTitle}
+        onTryAgain={handleTryAgain}
+        onClose={handlePaymentFailedClose}
       />
     </>
   );

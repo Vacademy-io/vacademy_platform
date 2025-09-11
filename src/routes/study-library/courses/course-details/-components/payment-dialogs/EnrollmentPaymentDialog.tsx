@@ -11,6 +11,7 @@ import { SubscriptionPaymentDialog } from "./SubscriptionPaymentDialog";
 import { OneTimePaymentDialog } from "./OneTimePaymentDialog";
 import { FreePlanDialog } from "./FreePlanDialog";
 import { FreeEnrollmentConfirmationDialog } from "./FreeEnrollmentConfirmationDialog";
+import { EnhancedEnrollmentDialog } from "./EnhancedEnrollmentDialog";
 
 interface EnrollmentPaymentRouterProps {
   open: boolean;
@@ -135,10 +136,16 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
       
       case 'subscription':
         return (
-          <SubscriptionPaymentDialog
+          <EnhancedEnrollmentDialog
             open={open}
             onOpenChange={onOpenChange}
-            {...commonProps}
+            packageSessionId={packageSessionId}
+            instituteId={instituteId}
+            token={token}
+            courseTitle={courseTitle}
+            inviteCode={inviteCode}
+            paymentType="subscription"
+            onEnrollmentSuccess={onEnrollmentSuccess}
           />
         );
       
@@ -147,10 +154,16 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
       case 'onetime':
       case 'one_time_payment':
         return (
-          <OneTimePaymentDialog
+          <EnhancedEnrollmentDialog
             open={open}
             onOpenChange={onOpenChange}
-            {...commonProps}
+            packageSessionId={packageSessionId}
+            instituteId={instituteId}
+            token={token}
+            courseTitle={courseTitle}
+            inviteCode={inviteCode}
+            paymentType="one_time"
+            onEnrollmentSuccess={onEnrollmentSuccess}
           />
         );
       

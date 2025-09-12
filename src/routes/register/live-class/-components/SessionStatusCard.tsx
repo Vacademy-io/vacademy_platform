@@ -1,5 +1,5 @@
 import { MyButton } from "@/components/design-system/button";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { SessionDetailsResponse } from "@/routes/study-library/live-class/-types/types";
 import { SessionStreamingServiceType } from "@/routes/register/live-class/-types/enum";
@@ -7,6 +7,7 @@ import { useMarkAttendance } from "@/routes/live-class-guest/-hooks/useMarkAtten
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import dayjs from "dayjs";
+import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
 
 interface SessionStatusCardProps {
   sessionDetails: SessionDetailsResponse;
@@ -25,6 +26,39 @@ export default function SessionStatusCard({
   const navigate = useNavigate();
   const { mutateAsync: markAttendance } = useMarkAttendance();
 
+  // Helper function to get timezone-aware session times
+  const getSessionTimes = useCallback(() => {
+    const sessionTimezone =
+      "timezone" in sessionDetails
+        ? (sessionDetails as SessionDetailsResponse & { timezone?: string })
+            .timezone
+        : undefined;
+
+    if (sessionTimezone) {
+      const sessionDate = convertSessionTimeToUserTimezone(
+        sessionDetails.meetingDate,
+        sessionDetails.scheduleStartTime,
+        sessionTimezone
+      );
+
+      const waitingRoomStart = new Date(sessionDate);
+      waitingRoomStart.setMinutes(
+        waitingRoomStart.getMinutes() - (sessionDetails.waitingRoomTime ?? 0)
+      );
+      return { sessionDate, waitingRoomStart };
+    } else {
+      // Fallback to original logic
+      const sessionDate = new Date(
+        `${sessionDetails.meetingDate}T${sessionDetails.scheduleStartTime}`
+      );
+      const waitingRoomStart = new Date(sessionDate);
+      waitingRoomStart.setMinutes(
+        waitingRoomStart.getMinutes() - (sessionDetails.waitingRoomTime ?? 0)
+      );
+      return { sessionDate, waitingRoomStart };
+    }
+  }, [sessionDetails]);
+
   useEffect(() => {
     setCurrentTime(new Date());
 
@@ -38,13 +72,7 @@ export default function SessionStatusCard({
   useEffect(() => {
     if (sessionDetails && registrationResponse) {
       const now = currentTime;
-      const sessionDate = new Date(
-        `${sessionDetails?.meetingDate}T${sessionDetails?.scheduleStartTime}`
-      );
-      const waitingRoomStart = new Date(sessionDate);
-      waitingRoomStart.setMinutes(
-        waitingRoomStart.getMinutes() - (sessionDetails?.waitingRoomTime ?? 0)
-      );
+      const { sessionDate, waitingRoomStart } = getSessionTimes();
 
       const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
       const isInMainSession = now >= sessionDate;
@@ -100,6 +128,7 @@ export default function SessionStatusCard({
     earliestScheduleId,
     navigate,
     markAttendance,
+    getSessionTimes,
   ]);
 
   const formatDateTime = (dateStr: string | undefined) => {
@@ -108,13 +137,7 @@ export default function SessionStatusCard({
   };
 
   const now = currentTime;
-  const sessionDate = new Date(
-    `${sessionDetails.meetingDate}T${sessionDetails.scheduleStartTime}`
-  );
-  const waitingRoomStart = new Date(sessionDate);
-  waitingRoomStart.setMinutes(
-    waitingRoomStart.getMinutes() - (sessionDetails.waitingRoomTime ?? 0)
-  );
+  const { sessionDate, waitingRoomStart } = getSessionTimes();
 
   const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
   const isInMainSession = now >= sessionDate;

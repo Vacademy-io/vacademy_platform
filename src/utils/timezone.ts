@@ -17,27 +17,93 @@ export const convertSessionTimeToUserTimezone = (
   sessionTime: string,
   sessionTimezone: string
 ): Date => {
-  // Create a date object representing the session time
-  const sessionDateTime = new Date(`${sessionDate}T${sessionTime}`);
+  try {
+    // Validate inputs
+    if (!sessionDate || !sessionTime || !sessionTimezone) {
+      throw new Error("Missing required parameters");
+    }
 
-  // Get current time for offset calculation
-  const now = new Date();
+    // Create date string in ISO format for the session timezone
+    const sessionDateTimeString = `${sessionDate}T${sessionTime}`;
 
-  // Get the time in session timezone
-  const timeInSessionTz = new Date(
-    now.toLocaleString("en-US", { timeZone: sessionTimezone })
-  );
+    // Create a date object in the session timezone
+    // We'll use a more reliable approach with explicit timezone handling
+    const sessionDateTime = new Date(sessionDateTimeString);
 
-  // Get the time in user timezone
-  const timeInUserTz = new Date(
-    now.toLocaleString("en-US", { timeZone: getUserTimezone() })
-  );
+    // Validate the created date
+    if (isNaN(sessionDateTime.getTime())) {
+      throw new Error(`Invalid date created from: ${sessionDateTimeString}`);
+    }
 
-  // Calculate offset difference
-  const offsetDifference = timeInUserTz.getTime() - timeInSessionTz.getTime();
+    // Get the user's timezone
+    const userTimezone = getUserTimezone();
 
-  // Apply offset to session time
-  return new Date(sessionDateTime.getTime() + offsetDifference);
+    // If timezones are the same, return as is
+    if (sessionTimezone === userTimezone) {
+      return sessionDateTime;
+    }
+
+    // Create a date formatter for session timezone
+    const sessionTzFormatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: sessionTimezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+
+    // Create a date formatter for user timezone
+    const userTzFormatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: userTimezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+
+    // Get current time for offset calculation
+    const now = new Date();
+
+    // Format current time in both timezones
+    const nowInSessionTz = sessionTzFormatter.format(now);
+    const nowInUserTz = userTzFormatter.format(now);
+
+    // Parse the formatted times back to get offset
+    const sessionTzTime = new Date(
+      nowInSessionTz.replace(
+        /(\d+)-(\d+)-(\d+), (\d+):(\d+):(\d+)/,
+        "$1-$2-$3T$4:$5:$6"
+      )
+    );
+    const userTzTime = new Date(
+      nowInUserTz.replace(
+        /(\d+)-(\d+)-(\d+), (\d+):(\d+):(\d+)/,
+        "$1-$2-$3T$4:$5:$6"
+      )
+    );
+
+    // Calculate offset difference
+    const offsetDifference = userTzTime.getTime() - sessionTzTime.getTime();
+
+    // Apply offset to session time
+    const convertedTime = new Date(
+      sessionDateTime.getTime() + offsetDifference
+    );
+
+    return convertedTime;
+  } catch (error) {
+    console.error("Error in timezone conversion:", error);
+    // Fallback: return the original date without timezone conversion
+    const fallbackDate = new Date(`${sessionDate}T${sessionTime}`);
+    console.warn("Using fallback date:", fallbackDate.toISOString());
+    return fallbackDate;
+  }
 };
 
 /**

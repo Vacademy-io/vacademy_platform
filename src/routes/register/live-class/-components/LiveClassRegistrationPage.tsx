@@ -16,6 +16,7 @@ import { useMarkAttendance } from "@/routes/live-class-guest/-hooks/useMarkAtten
 import { Storage } from "@capacitor/storage";
 import axios from "axios";
 import { LIVE_SESSION_CHECK_EMAIL_REGISTRATION } from "@/constants/urls";
+import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
 
 // Import the separated components
 import EmailVerificationDialog from "./EmailVerificationDialog";
@@ -153,9 +154,59 @@ export default function LiveClassRegistrationPage() {
     guestId: string
   ) => {
     const now = new Date();
-    const sessionDate = new Date(
-      `${sessionDetailResponse.meetingDate}T${sessionDetailResponse.scheduleStartTime}`
-    );
+
+    // Validate required session data
+    if (
+      !sessionDetailResponse.meetingDate ||
+      !sessionDetailResponse.scheduleStartTime
+    ) {
+      console.error("Missing session date or time data");
+      return;
+    }
+
+    // Check if session has timezone information
+    const sessionTimezone =
+      "timezone" in sessionDetailResponse
+        ? (
+            sessionDetailResponse as SessionDetailsResponse & {
+              timezone?: string;
+            }
+          ).timezone
+        : undefined;
+
+    let sessionDate: Date;
+
+    if (sessionTimezone) {
+      try {
+        sessionDate = convertSessionTimeToUserTimezone(
+          sessionDetailResponse.meetingDate,
+          sessionDetailResponse.scheduleStartTime,
+          sessionTimezone
+        );
+
+        // Validate the converted date
+        if (isNaN(sessionDate.getTime())) {
+          throw new Error("Invalid converted date");
+        }
+      } catch (error) {
+        console.error("Error converting timezone:", error);
+        // Fallback to original logic if timezone conversion fails
+        sessionDate = new Date(
+          `${sessionDetailResponse.meetingDate}T${sessionDetailResponse.scheduleStartTime}`
+        );
+      }
+    } else {
+      // Fallback to original logic
+      sessionDate = new Date(
+        `${sessionDetailResponse.meetingDate}T${sessionDetailResponse.scheduleStartTime}`
+      );
+    }
+
+    // Validate the final session date
+    if (isNaN(sessionDate.getTime())) {
+      return;
+    }
+
     const waitingRoomStart = new Date(sessionDate);
     waitingRoomStart.setMinutes(
       waitingRoomStart.getMinutes() -

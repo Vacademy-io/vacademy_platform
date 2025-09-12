@@ -40,6 +40,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
   open,
   onOpenChange,
   onEnrollmentSuccess,
+  onNavigateToSlides,
   packageSessionId,
   instituteId,
   token,
@@ -407,8 +408,8 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
 
   const handleExploreCourse = async () => {
     setShowSuccessDialog(false);
-    if (onEnrollmentSuccess) {
-      await onEnrollmentSuccess();
+    if (onNavigateToSlides) {
+      await onNavigateToSlides();
     }
   };
 
@@ -985,7 +986,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
       onOpenChange={setShowPaymentSuccessDialog}
       courseTitle={enrollmentData?.name || "Course"}
       approvalRequired={approvalRequired}
-      onExploreCourse={handleExploreCourse}
+      onExploreCourse={onNavigateToSlides}
       onClose={handlePaymentSuccessClose}
     />
 

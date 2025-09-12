@@ -318,10 +318,14 @@ export const CourseDetailsPage = () => {
 
     // Combined handler for donation flow - does both enrollment AND navigation
     const handleDonationEnrollmentSuccess = async () => {
+        console.log('CourseDetailsPage - handleDonationEnrollmentSuccess called');
         // First handle enrollment
+        console.log('CourseDetailsPage - Calling handleEnrollmentSuccess');
         await handleEnrollmentSuccess();
         // Then handle navigation (donation flow should auto-navigate)
+        console.log('CourseDetailsPage - Calling handleNavigationToSlides');
         await handleNavigationToSlides();
+        console.log('CourseDetailsPage - handleDonationEnrollmentSuccess completed');
     };
     const [instituteId, setInstituteId] = useState<string | null>(null);
     const [certificateUrl, setCertificateUrl] = useState<string | null>(null);

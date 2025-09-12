@@ -472,7 +472,12 @@ export const useDonationDialog = ({
         }
       } else if (mode === 'enrollment' && onEnrollmentSuccess) {
         // Fallback to enrollment success if no slide details
-        onEnrollmentSuccess();
+        console.log('useDonationDialog - Calling onEnrollmentSuccess for enrollment mode', {
+          mode,
+          hasOnEnrollmentSuccess: !!onEnrollmentSuccess,
+          targetSlideDetails
+        });
+        await onEnrollmentSuccess();
       }
       
     } catch (error) {

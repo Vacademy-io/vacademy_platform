@@ -270,30 +270,18 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
     );
   }
 
-  // Case 2: User is already active/enrolled
+  // Case 2: User is already active/enrolled - close dialog immediately
   if (learner_status === 'ACTIVE') {
-    console.log('EnhancedEnrollmentDialog - Case 2: Already enrolled', {
+    console.log('EnhancedEnrollmentDialog - Case 2: Already enrolled, closing dialog', {
       packageSessionId,
       courseTitle,
       paymentType,
       user_plan_status,
       learner_status
     });
-    return (
-      <div className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in flex items-center justify-center">
-        <div className="bg-white rounded-lg p-6 max-w-sm">
-          <div className="text-center">
-            <p className="text-gray-600 mb-4">You are already enrolled in this course.</p>
-            <button
-              onClick={() => onOpenChange(false)}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+    // Close the dialog immediately without showing any UI
+    onOpenChange(false);
+    return null;
   }
 
   // Case 1: User is not enrolled and has not made any request for enrollment
@@ -317,6 +305,7 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
           courseTitle={courseTitle}
           inviteCode={inviteCode}
           onEnrollmentSuccess={onEnrollmentSuccess}
+          onNavigateToSlides={onNavigateToSlides}
         />
         
         {/* Payment Status Polling Dialog */}
@@ -382,6 +371,7 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
           courseTitle={courseTitle}
           inviteCode={inviteCode}
           onEnrollmentSuccess={onEnrollmentSuccess}
+          onNavigateToSlides={onNavigateToSlides}
         />
         
         {/* Payment Status Polling Dialog */}

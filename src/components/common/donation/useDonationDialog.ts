@@ -470,14 +470,24 @@ export const useDonationDialog = ({
             targetSlideDetails.slideId
           );
         }
-      } else if (mode === 'enrollment' && onEnrollmentSuccess) {
-        // Fallback to enrollment success if no slide details
-        console.log('useDonationDialog - Calling onEnrollmentSuccess for enrollment mode', {
-          mode,
-          hasOnEnrollmentSuccess: !!onEnrollmentSuccess,
-          targetSlideDetails
-        });
-        await onEnrollmentSuccess();
+      } else if (mode === 'enrollment') {
+        // For enrollment mode, prioritize slide access success for auto navigation
+        if (onSlideAccessSuccess) {
+          console.log('useDonationDialog - Calling onSlideAccessSuccess for payment in enrollment mode', {
+            mode,
+            hasOnSlideAccessSuccess: !!onSlideAccessSuccess,
+            targetSlideDetails
+          });
+          onSlideAccessSuccess('', '', '', '', ''); // Empty strings since we don't have slide details
+        } else if (onEnrollmentSuccess) {
+          // Fallback to enrollment success if no slide access success
+          console.log('useDonationDialog - Calling onEnrollmentSuccess for payment in enrollment mode', {
+            mode,
+            hasOnEnrollmentSuccess: !!onEnrollmentSuccess,
+            targetSlideDetails
+          });
+          await onEnrollmentSuccess();
+        }
       }
       
     } catch (error) {
@@ -593,8 +603,14 @@ export const useDonationDialog = ({
         userData: userData || undefined // Pass real user data
       });
       
-      // Success - call enrollment success callback
-      if (onEnrollmentSuccess) {
+      // Success - call appropriate callback based on available callbacks
+      if (onSlideAccessSuccess) {
+        // If slide access success is available, use it for auto navigation
+        console.log('useDonationDialog - Calling onSlideAccessSuccess for skip in enrollment mode');
+        onSlideAccessSuccess('', '', '', '', ''); // Empty strings since we don't have slide details
+      } else if (onEnrollmentSuccess) {
+        // Fallback to enrollment success if no slide access success
+        console.log('useDonationDialog - Calling onEnrollmentSuccess for skip in enrollment mode');
         onEnrollmentSuccess();
       }
       

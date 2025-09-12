@@ -1206,7 +1206,7 @@ export const CourseDetailsPage = () => {
                     try {
                         await addEnrolledSession(newEnrolledSession);
                         console.log('CourseDetailsPage - User enrolled successfully on page load');
-                        toast.success("Welcome back! You're already enrolled in this course.");
+                        // No toast needed for background enrollment check
                     } catch (error) {
                         console.error('CourseDetailsPage - Error enrolling user on page load:', error);
                         toast.error("Failed to update enrollment status. Please refresh the page.");

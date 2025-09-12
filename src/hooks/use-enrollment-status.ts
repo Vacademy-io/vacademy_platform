@@ -76,25 +76,30 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
   }, []); // No dependencies needed
 
   // Add a new enrolled session
-  const addEnrolledSession = useCallback((newSession: EnrolledSession) => {
-    setEnrolledSessions(prev => {
-      // Check if session already exists
-      const exists = prev.some(session => 
-        session.package_dto.id === newSession.package_dto.id &&
-        session.session.id === newSession.session.id &&
-        session.level.id === newSession.level.id
-      );
-      
-      if (exists) {
-        return prev; // Don't add duplicate
-      }
-      
-      const updatedSessions = [...prev, newSession];
-      
-      // Update preferences with the new sessions array
-      updatePreferencesWithNewSession(updatedSessions);
-      
-      return updatedSessions;
+  const addEnrolledSession = useCallback(async (newSession: EnrolledSession) => {
+    return new Promise<void>((resolve) => {
+      setEnrolledSessions(prev => {
+        // Check if session already exists
+        const exists = prev.some(session => 
+          session.package_dto.id === newSession.package_dto.id &&
+          session.session.id === newSession.session.id &&
+          session.level.id === newSession.level.id
+        );
+        
+        if (exists) {
+          resolve(); // Don't add duplicate
+          return prev;
+        }
+        
+        const updatedSessions = [...prev, newSession];
+        
+        // Update preferences with the new sessions array
+        updatePreferencesWithNewSession(updatedSessions).then(() => {
+          resolve();
+        });
+        
+        return updatedSessions;
+      });
     });
   }, [updatePreferencesWithNewSession]); // Add dependency
 

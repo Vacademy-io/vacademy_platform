@@ -134,6 +134,10 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
             mode="enrollment"
             isUserEnrolled={false}
             onEnrollmentSuccess={onEnrollmentSuccess}
+            onSlideAccessSuccess={onNavigateToSlides ? (courseId, subjectId, moduleId, chapterId, slideId) => {
+              // Convert slide access success to navigation
+              onNavigateToSlides();
+            } : undefined}
           />
         );
       

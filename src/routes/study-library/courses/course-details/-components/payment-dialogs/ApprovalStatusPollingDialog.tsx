@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Cross2Icon } from "@radix-ui/react-icons";
-import { Loader2, Clock, CheckCircle } from "lucide-react";
+import { Loader2, Clock, CheckCircle, XCircle } from "lucide-react";
 import { MyButton } from "@/components/design-system/button";
 import { fetchUserPlanStatus } from "@/services/payment-status-api";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
@@ -66,11 +66,6 @@ export const ApprovalStatusPollingDialog: React.FC<ApprovalStatusPollingDialogPr
       case 'ACTIVE':
         return 'ACTIVE';
       default:
-        console.warn('ApprovalStatusPollingDialog - Unknown learner status:', {
-          originalStatus: status,
-          normalizedStatus,
-          packageSessionId
-        });
         return 'UNKNOWN';
     }
   };
@@ -78,46 +73,23 @@ export const ApprovalStatusPollingDialog: React.FC<ApprovalStatusPollingDialogPr
   // Polling function
   const checkApprovalStatus = useCallback(async () => {
     if (!packageSessionId || !accessToken) {
-      console.log('ApprovalStatusPollingDialog - Skipping status check: missing packageSessionId or accessToken', {
-        packageSessionId: !!packageSessionId,
-        accessToken: !!accessToken
-      });
       return;
     }
-
-    console.log('ApprovalStatusPollingDialog - Checking approval status', {
-      packageSessionId,
-      currentStatus: learnerStatus,
-      isPolling
-    });
 
     try {
       const response: ApprovalStatusResponse = await fetchUserPlanStatus(packageSessionId, accessToken);
       const newLearnerStatus = parseLearnerStatus(response.learner_status);
-      
-      console.log('ApprovalStatusPollingDialog - Approval status response', {
-        rawResponse: response,
-        parsedLearnerStatus: newLearnerStatus,
-        previousStatus: learnerStatus
-      });
       
       setLearnerStatus(newLearnerStatus);
       setError(null);
 
       // Stop polling if status is no longer pending approval
       if (newLearnerStatus !== 'PENDING_FOR_APPROVAL') {
-        console.log('ApprovalStatusPollingDialog - Approval status changed, stopping polling', {
-          newLearnerStatus,
-          previousStatus: learnerStatus
-        });
         setIsPolling(false);
         
         if (newLearnerStatus === 'ACTIVE') {
-          console.log('ApprovalStatusPollingDialog - Approval successful, calling onApprovalSuccess');
           onApprovalSuccess?.();
         }
-      } else {
-        console.log('ApprovalStatusPollingDialog - Approval still pending, continuing to poll');
       }
     } catch (err) {
       console.error('ApprovalStatusPollingDialog - Error checking approval status:', err);
@@ -129,12 +101,6 @@ export const ApprovalStatusPollingDialog: React.FC<ApprovalStatusPollingDialogPr
   // Start polling when dialog opens
   useEffect(() => {
     if (open && accessToken) {
-      console.log('ApprovalStatusPollingDialog - Starting approval status polling', {
-        packageSessionId,
-        courseTitle,
-        accessToken: !!accessToken
-      });
-      
       setIsPolling(true);
       setLearnerStatus('PENDING_FOR_APPROVAL');
       setError(null);
@@ -144,10 +110,8 @@ export const ApprovalStatusPollingDialog: React.FC<ApprovalStatusPollingDialogPr
       
       // Set up polling interval (every 10 seconds for approval status)
       const intervalId = setInterval(checkApprovalStatus, 10000);
-      console.log('ApprovalStatusPollingDialog - Polling interval set up', { intervalId });
       
       return () => {
-        console.log('ApprovalStatusPollingDialog - Cleaning up polling interval', { intervalId });
         clearInterval(intervalId);
         setIsPolling(false);
       };
@@ -156,11 +120,6 @@ export const ApprovalStatusPollingDialog: React.FC<ApprovalStatusPollingDialogPr
 
   // Handle dialog close
   const handleClose = () => {
-    console.log('ApprovalStatusPollingDialog - Dialog closing', {
-      packageSessionId,
-      currentStatus: learnerStatus,
-      isPolling
-    });
     setIsPolling(false);
     onOpenChange(false);
     onClose?.();

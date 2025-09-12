@@ -178,11 +178,14 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
   // Case 2: User has paid but pending approval
   if (user_plan_status === 'PAID' && learner_status === 'PENDING_FOR_APPROVAL') {
     return (
-      <EnrollmentPendingApprovalDialog
+      <ApprovalStatusPollingDialog
         open={open}
         onOpenChange={onOpenChange}
+        packageSessionId={packageSessionId}
         courseTitle={courseTitle}
+        onApprovalSuccess={handleApprovalSuccess}
         onClose={() => onOpenChange(false)}
+        backgroundMode={false}
       />
     );
   }

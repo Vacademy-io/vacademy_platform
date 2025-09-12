@@ -22,6 +22,7 @@ interface EnrollmentPaymentRouterProps {
   courseTitle?: string;
   inviteCode?: string;
   onEnrollmentSuccess?: () => void;
+  onNavigateToSlides?: () => void;
 }
 
 export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = ({
@@ -33,6 +34,7 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
   courseTitle = "Course",
   inviteCode = "default",
   onEnrollmentSuccess,
+  onNavigateToSlides,
 }) => {
   const [enrollmentData, setEnrollmentData] = useState<EnrollmentResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -115,6 +117,7 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
       courseTitle,
       inviteCode,
       onEnrollmentSuccess,
+      onNavigateToSlides,
     };
 
     switch (paymentType.toLowerCase()) {
@@ -146,6 +149,7 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
             inviteCode={inviteCode}
             paymentType="subscription"
             onEnrollmentSuccess={onEnrollmentSuccess}
+            onNavigateToSlides={onNavigateToSlides}
           />
         );
       
@@ -164,6 +168,7 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
             inviteCode={inviteCode}
             paymentType="one_time"
             onEnrollmentSuccess={onEnrollmentSuccess}
+            onNavigateToSlides={onNavigateToSlides}
           />
         );
       

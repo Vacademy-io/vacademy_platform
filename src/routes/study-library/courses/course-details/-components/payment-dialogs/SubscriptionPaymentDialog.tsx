@@ -421,6 +421,16 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
     });
     setShowPaymentStatusDialog(false);
     setApprovalRequired(approvalRequired);
+    
+    // If no approval required, immediately enroll user
+    if (!approvalRequired) {
+      console.log('SubscriptionPaymentDialog - No approval required, enrolling user immediately');
+      if (onEnrollmentSuccess) {
+        onEnrollmentSuccess();
+      }
+    }
+    
+    // Always show success dialog (for both approval required and not required cases)
     setShowPaymentSuccessDialog(true);
   };
 
@@ -448,10 +458,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
       approvalRequired
     });
     setShowPaymentSuccessDialog(false);
-    if (!approvalRequired && onEnrollmentSuccess) {
-      console.log('SubscriptionPaymentDialog - Calling onEnrollmentSuccess (no approval required)');
-      onEnrollmentSuccess();
-    }
+    // For approval required case, just close the dialog - enrollment will happen when admin approves
   };
 
   const handlePaymentFailedClose = () => {

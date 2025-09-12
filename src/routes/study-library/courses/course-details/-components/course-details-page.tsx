@@ -200,6 +200,129 @@ export const CourseDetailsPage = () => {
         pathname: string,
         searchParamsObj: Record<string, string | undefined>
     ) => router.navigate({ to: pathname, search: searchParamsObj });
+
+    // Separate handlers for enrollment and navigation
+    const handleEnrollmentSuccess = async () => {
+        // Update enrolled sessions immediately using the hook
+        const newEnrolledSession = {
+            id: packageSessionIdForCurrentLevel || "",
+            session: {
+                id: selectedSession,
+                session_name: sessionOptions.find(s => s.value === selectedSession)?.label || "",
+                status: "ACTIVE",
+                start_date: new Date().toISOString(),
+            },
+            level: {
+                id: selectedLevel,
+                level_name: levelOptions.find(l => l.value === selectedLevel)?.label || "",
+                duration_in_days: null,
+                thumbnail_id: null,
+            },
+            start_time: new Date().toISOString(),
+            status: "ACTIVE",
+            package_dto: {
+                id: searchParams.courseId || "",
+                package_name: form.getValues("courseData").title,
+                thumbnail_id: null,
+            },
+        };
+        
+        // Add the enrolled session and wait for it to complete
+        try {
+            await addEnrolledSession(newEnrolledSession);
+        } catch (error) {
+            toast.error("Failed to update enrollment status. Please refresh the page.");
+            return;
+        }
+        
+        // Close dialogs
+        setEnrollmentDialogOpen(false);
+        setDonationDialogOpen(false);
+        
+        // Show success message
+        toast.success("Successfully enrolled in the course!");
+    };
+
+    const handleNavigationToSlides = async () => {
+        // Add a small delay to ensure enrollment is fully processed
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Try to get course structure data from multiple sources
+        let subjectId = "";
+        let moduleId = "";
+        let chapterId = "";
+        let slideId = "";
+        
+        // Method 1: Try to get from form data
+        const currentSubjects = getSubjectDetails(
+            form.getValues(),
+            selectedSession,
+            selectedLevel
+        );
+        
+        if (currentSubjects.length > 0) {
+            subjectId = currentSubjects[0]?.id || "";
+            
+            // Method 2: Fetch complete course structure using the same API
+            if (packageSessionIdForCurrentLevel && subjectId) {
+                try {
+                    // Import the API function dynamically to avoid circular dependencies
+                    const { fetchModulesWithChapters } = await import('@/services/study-library/getModulesWithChapters');
+                    
+                    const modulesData = await fetchModulesWithChapters(subjectId, packageSessionIdForCurrentLevel);
+                    
+                    if (modulesData && modulesData.length > 0) {
+                        const firstModule = modulesData[0];
+                        moduleId = firstModule.module.id || "";
+                        
+                        if (firstModule.chapters && firstModule.chapters.length > 0) {
+                            const firstChapter = firstModule.chapters[0];
+                            chapterId = firstChapter.id || "";
+                            
+                            // For slides, we need to fetch them separately
+                            if (chapterId) {
+                                try {
+                                    const { fetchSlidesByChapterId } = await import('@/hooks/study-library/use-slides');
+                                    const slides = await fetchSlidesByChapterId(chapterId);
+                                    
+                                    if (slides && slides.length > 0) {
+                                        slideId = slides[0].id || "";
+                                    }
+                                } catch (slideError) {
+                                    // Silent fallback
+                                }
+                            }
+                        }
+                    }
+                } catch (error) {
+                    // Silent fallback
+                }
+            }
+        }
+        
+        // Navigate to slides with whatever IDs we found
+        // Even if some IDs are missing, the slides page should handle it gracefully
+        const navigationParams = {
+            courseId: searchParams.courseId,
+            subjectId: subjectId || "",
+            moduleId: moduleId || "",
+            chapterId: chapterId || "",
+            slideId: slideId || "",
+        };
+        
+        navigateTo(
+            `/study-library/courses/course-details/subjects/modules/chapters/slides`,
+            navigationParams
+        );
+    };
+
+    // Combined handler for donation flow - does both enrollment AND navigation
+    const handleDonationEnrollmentSuccess = async () => {
+        // First handle enrollment
+        await handleEnrollmentSuccess();
+        // Then handle navigation (donation flow should auto-navigate)
+        await handleNavigationToSlides();
+    };
     const [instituteId, setInstituteId] = useState<string | null>(null);
     const [certificateUrl, setCertificateUrl] = useState<string | null>(null);
     const [showConfetti, setShowConfetti] = useState<boolean>(false);
@@ -263,6 +386,10 @@ export const CourseDetailsPage = () => {
         addEnrolledSession,
     } = useEnrollmentStatus(instituteId);
 
+    // Payment status check state
+    const [paymentStatusChecked, setPaymentStatusChecked] = useState<boolean>(false);
+    const [isCheckingPaymentStatus, setIsCheckingPaymentStatus] = useState<boolean>(false);
+
 
 
     useEffect(() => {
@@ -294,10 +421,13 @@ export const CourseDetailsPage = () => {
         fetchInstituteAndUserId();
     }, [updateLoadingState]);
 
+
     const [
         packageSessionIdForCurrentLevel,
         setPackageSessionIdForCurrentLevel,
     ] = useState<string | null>(null);
+
+
 
     useEffect(() => {
         const fetchInstituteDetails = async () => {
@@ -948,6 +1078,185 @@ export const CourseDetailsPage = () => {
     const [inviteCode, setInviteCode] = useState<string>("default");
     const [authToken, setAuthToken] = useState<string>("");
     const [paymentType, setPaymentType] = useState<string | null>(null);
+
+    // Payment status check function
+    const checkPaymentStatusOnLoad = useCallback(async () => {
+        if (!packageSessionIdForCurrentLevel || !authToken || paymentStatusChecked || isCheckingPaymentStatus) {
+            return;
+        }
+
+        console.log('CourseDetailsPage - Checking payment status on page load', {
+            packageSessionId: packageSessionIdForCurrentLevel,
+            hasToken: !!authToken,
+            paymentStatusChecked,
+            isCheckingPaymentStatus
+        });
+
+        setIsCheckingPaymentStatus(true);
+
+        try {
+            // Import the payment status API function
+            const { fetchUserPlanStatus } = await import('@/services/payment-status-api');
+            
+            const response = await fetchUserPlanStatus(packageSessionIdForCurrentLevel, authToken);
+            
+            console.log('CourseDetailsPage - Payment status response on load', {
+                response,
+                packageSessionId: packageSessionIdForCurrentLevel
+            });
+
+            // Parse payment status
+            const parseUserPlanStatus = (status: string): 'PAID' | 'FAILED' | 'PAYMENT_PENDING' | 'UNKNOWN' => {
+                const normalizedStatus = status?.toUpperCase()?.trim();
+                switch (normalizedStatus) {
+                    case 'FAILED':
+                        return 'FAILED';
+                    case 'PAID':
+                    case 'ACTIVE':
+                        return 'PAID';
+                    case 'PAYMENT_PENDING':
+                    case 'PENDING_FOR_PAYMENT':
+                        return 'PAYMENT_PENDING';
+                    default:
+                        console.warn('CourseDetailsPage - Unknown user plan status on load:', {
+                            originalStatus: status,
+                            normalizedStatus,
+                            packageSessionId: packageSessionIdForCurrentLevel
+                        });
+                        return 'UNKNOWN';
+                }
+            };
+
+            // Parse learner status
+            const parseLearnerStatus = (status: string): 'INVITED' | 'PENDING_FOR_APPROVAL' | 'ACTIVE' | 'UNKNOWN' => {
+                const normalizedStatus = status?.toUpperCase()?.trim();
+                switch (normalizedStatus) {
+                    case 'INVITED':
+                        return 'INVITED';
+                    case 'PENDING_FOR_APPROVAL':
+                    case 'PENDING_APPROVAL':
+                        return 'PENDING_FOR_APPROVAL';
+                    case 'ACTIVE':
+                        return 'ACTIVE';
+                    default:
+                        console.warn('CourseDetailsPage - Unknown learner status on load:', {
+                            originalStatus: status,
+                            normalizedStatus,
+                            packageSessionId: packageSessionIdForCurrentLevel
+                        });
+                        return 'UNKNOWN';
+                }
+            };
+
+            const userPlanStatus = parseUserPlanStatus(response.user_plan_status);
+            const learnerStatus = parseLearnerStatus(response.learner_status);
+            const approvalRequired = response.approval_required || false;
+
+            console.log('CourseDetailsPage - Parsed payment status on load', {
+                userPlanStatus,
+                learnerStatus,
+                approvalRequired,
+                packageSessionId: packageSessionIdForCurrentLevel
+            });
+
+            // If payment is successful and learner is active, enroll user immediately
+            if (userPlanStatus === 'PAID' && learnerStatus === 'ACTIVE') {
+                console.log('CourseDetailsPage - Payment successful and learner active, enrolling user immediately', {
+                    packageSessionId: packageSessionIdForCurrentLevel,
+                    courseTitle: form.getValues("courseData").title
+                });
+
+                // Check if user is already enrolled to avoid duplicates
+                const isAlreadyEnrolled = (enrolledSessions || []).some(
+                    (enrolledSession) =>
+                        enrolledSession.package_dto.id === searchParams.courseId &&
+                        enrolledSession.session.id === selectedSession &&
+                        enrolledSession.level.id === selectedLevel
+                );
+
+                if (!isAlreadyEnrolled) {
+                    // Enroll user immediately
+                    const newEnrolledSession = {
+                        id: packageSessionIdForCurrentLevel,
+                        session: {
+                            id: selectedSession,
+                            session_name: sessionOptions.find(s => s.value === selectedSession)?.label || "",
+                            status: "ACTIVE",
+                            start_date: new Date().toISOString(),
+                        },
+                        level: {
+                            id: selectedLevel,
+                            level_name: levelOptions.find(l => l.value === selectedLevel)?.label || "",
+                            duration_in_days: null,
+                            thumbnail_id: null,
+                        },
+                        start_time: new Date().toISOString(),
+                        status: "ACTIVE",
+                        package_dto: {
+                            id: searchParams.courseId || "",
+                            package_name: form.getValues("courseData").title,
+                            thumbnail_id: null,
+                        },
+                    };
+
+                    try {
+                        await addEnrolledSession(newEnrolledSession);
+                        console.log('CourseDetailsPage - User enrolled successfully on page load');
+                        toast.success("Welcome back! You're already enrolled in this course.");
+                    } catch (error) {
+                        console.error('CourseDetailsPage - Error enrolling user on page load:', error);
+                        toast.error("Failed to update enrollment status. Please refresh the page.");
+                    }
+                } else {
+                    console.log('CourseDetailsPage - User already enrolled, skipping enrollment');
+                }
+            }
+
+        } catch (error) {
+            console.error('CourseDetailsPage - Error checking payment status on load:', error);
+            // Don't show error toast for this background check
+        } finally {
+            setIsCheckingPaymentStatus(false);
+            setPaymentStatusChecked(true);
+        }
+    }, [
+        packageSessionIdForCurrentLevel,
+        authToken,
+        paymentStatusChecked,
+        isCheckingPaymentStatus,
+        enrolledSessions,
+        searchParams.courseId,
+        selectedSession,
+        selectedLevel,
+        sessionOptions,
+        levelOptions,
+        form,
+        addEnrolledSession
+    ]);
+
+    // Check payment status when page loads and essential data is available
+    useEffect(() => {
+        if (packageSessionIdForCurrentLevel && authToken && selectedSession && selectedLevel && !paymentStatusChecked && !isCheckingPaymentStatus) {
+            console.log('CourseDetailsPage - Triggering payment status check on page load', {
+                packageSessionId: packageSessionIdForCurrentLevel,
+                hasToken: !!authToken,
+                selectedSession,
+                selectedLevel,
+                paymentStatusChecked,
+                isCheckingPaymentStatus
+            });
+            checkPaymentStatusOnLoad();
+        }
+    }, [
+        packageSessionIdForCurrentLevel,
+        authToken,
+        selectedSession,
+        selectedLevel,
+        paymentStatusChecked,
+        isCheckingPaymentStatus,
+        checkPaymentStatusOnLoad
+    ]);
+
     const [primaryInstructorNameFromApi, setPrimaryInstructorNameFromApi] = useState<string | undefined>(undefined);
     const [moduleStats, setModuleStats] = useState({
         totalModules: 0,
@@ -1053,117 +1362,7 @@ export const CourseDetailsPage = () => {
                 inviteCode={inviteCode}
                 mode="enrollment"
                 isUserEnrolled={false} // User is not enrolled yet in enrollment mode
-                onEnrollmentSuccess={async () => {
-                    // Update enrolled sessions immediately using the hook
-                    const newEnrolledSession = {
-                        id: packageSessionIdForCurrentLevel || "",
-                        session: {
-                            id: selectedSession,
-                            session_name: sessionOptions.find(s => s.value === selectedSession)?.label || "",
-                            status: "ACTIVE",
-                            start_date: new Date().toISOString(),
-                        },
-                        level: {
-                            id: selectedLevel,
-                            level_name: levelOptions.find(l => l.value === selectedLevel)?.label || "",
-                            duration_in_days: null,
-                            thumbnail_id: null,
-                        },
-                        start_time: new Date().toISOString(),
-                        status: "ACTIVE",
-                        package_dto: {
-                            id: searchParams.courseId || "",
-                            package_name: form.getValues("courseData").title,
-                            thumbnail_id: null,
-                        },
-                    };
-                    
-                    // Add the enrolled session and wait for it to complete
-                    try {
-                        await addEnrolledSession(newEnrolledSession);
-                    } catch (error) {
-                        toast.error("Failed to update enrollment status. Please refresh the page.");
-                        return;
-                    }
-                    
-                    // Close dialogs
-                    setEnrollmentDialogOpen(false);
-                    setDonationDialogOpen(false);
-                    
-                    // Show success message
-                    toast.success("Successfully enrolled in the course!");
-                    
-                    // Add a small delay to ensure enrollment is fully processed
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    
-                    // Try to get course structure data from multiple sources
-                    let subjectId = "";
-                    let moduleId = "";
-                    let chapterId = "";
-                    let slideId = "";
-                    
-                    // Method 1: Try to get from form data
-                    const currentSubjects = getSubjectDetails(
-                        form.getValues(),
-                        selectedSession,
-                        selectedLevel
-                    );
-                    
-                    if (currentSubjects.length > 0) {
-                        subjectId = currentSubjects[0]?.id || "";
-                        
-                        // Method 2: Fetch complete course structure using the same API
-                        if (packageSessionIdForCurrentLevel && subjectId) {
-                            try {
-                                // Import the API function dynamically to avoid circular dependencies
-                                const { fetchModulesWithChapters } = await import('@/services/study-library/getModulesWithChapters');
-                                
-                                const modulesData = await fetchModulesWithChapters(subjectId, packageSessionIdForCurrentLevel);
-                                
-                                if (modulesData && modulesData.length > 0) {
-                                    const firstModule = modulesData[0];
-                                    moduleId = firstModule.module.id || "";
-                                    
-                                    if (firstModule.chapters && firstModule.chapters.length > 0) {
-                                        const firstChapter = firstModule.chapters[0];
-                                        chapterId = firstChapter.id || "";
-                                        
-                                        // For slides, we need to fetch them separately
-                                        if (chapterId) {
-                                            try {
-                                                const { fetchSlidesByChapterId } = await import('@/hooks/study-library/use-slides');
-                                                const slides = await fetchSlidesByChapterId(chapterId);
-                                                
-                                                if (slides && slides.length > 0) {
-                                                    slideId = slides[0].id || "";
-                                                }
-                                            } catch (slideError) {
-                                                // Silent fallback
-                                            }
-                                        }
-                                    }
-                                }
-                            } catch (error) {
-                                // Silent fallback
-                            }
-                        }
-                    }
-                    
-                    // Navigate to slides with whatever IDs we found
-                    // Even if some IDs are missing, the slides page should handle it gracefully
-                    const navigationParams = {
-                        courseId: searchParams.courseId,
-                        subjectId: subjectId || "",
-                        moduleId: moduleId || "",
-                        chapterId: chapterId || "",
-                        slideId: slideId || "",
-                    };
-                    
-                    navigateTo(
-                        `/study-library/courses/course-details/subjects/modules/chapters/slides`,
-                        navigationParams
-                    );
-                }}
+                onEnrollmentSuccess={handleDonationEnrollmentSuccess}
             />
 
             {/* Enrollment Payment Dialog for Non-Donation Payment Types */}
@@ -1175,170 +1374,8 @@ export const CourseDetailsPage = () => {
                 token={authToken}
                 courseTitle={form.getValues("courseData").title}
                 inviteCode={inviteCode}
-                onEnrollmentSuccess={async () => {
-                    // Update enrolled sessions immediately using the hook
-                    const newEnrolledSession = {
-                        id: packageSessionIdForCurrentLevel || "",
-                        session: {
-                            id: selectedSession,
-                            session_name: sessionOptions.find(s => s.value === selectedSession)?.label || "",
-                            status: "ACTIVE",
-                            start_date: new Date().toISOString().split('T')[0],
-                        },
-                        level: {
-                            id: selectedLevel,
-                            level_name: levelOptions.find(l => l.value === selectedLevel)?.label || "",
-                            duration_in_days: null,
-                            thumbnail_id: null,
-                        },
-                        start_time: new Date().toISOString(),
-                        status: "ACTIVE",
-                        package_dto: {
-                            id: searchParams.courseId || "",
-                            package_name: form.getValues("courseData").title,
-                            thumbnail_id: null,
-                        },
-                    };
-                    
-                    // Add the enrolled session and wait for it to complete
-                    try {
-                        await addEnrolledSession(newEnrolledSession);
-                    } catch (error) {
-                        toast.error("Failed to update enrollment status. Please refresh the page.");
-                        return;
-                    }
-                    
-                    // Close dialogs
-                    setEnrollmentDialogOpen(false);
-                    
-                    // Show success message
-                    toast.success("Successfully enrolled in the course!");
-                    
-                    // Add a small delay to ensure enrollment is fully processed
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    
-                    // Try to get course structure data from multiple sources
-                    let subjectId = "";
-                    
-                    // First try to get from the current form data
-                    if (form.getValues("courseData")?.sessions) {
-                        const currentSession = form.getValues("courseData").sessions.find(
-                            (s: any) => s.sessionDetails.id === selectedSession
-                        );
-                        if (currentSession?.levelDetails) {
-                            const currentLevel = currentSession.levelDetails.find(
-                                (l: any) => l.id === selectedLevel
-                            );
-                            if (currentLevel?.subjects && currentLevel.subjects.length > 0) {
-                                subjectId = currentLevel.subjects[0].id;
-                            }
-                        }
-                    }
-                    
-                    // If not found in form data, try to get from the course structure data
-                    if (!subjectId && courseDetailsData?.sessions) {
-                        const sessionData = courseDetailsData.sessions.find(
-                            (s: any) => s.sessionDetails.id === selectedSession
-                        );
-                        if (sessionData?.levelDetails) {
-                            const levelData = sessionData.levelDetails.find(
-                                (l: any) => l.id === selectedLevel
-                            );
-                            if (levelData?.subjectDetails) {
-                                subjectId = levelData.subjectDetails.id;
-                            }
-                        }
-                    }
-                    
-                    // If still not found, try to get from the slide count query data
-                    if (!subjectId && slideCountQuery.data?.sessions) {
-                        const sessionData = slideCountQuery.data.sessions.find(
-                            (s: any) => s.sessionDetails.id === selectedSession
-                        );
-                        if (sessionData?.levelDetails) {
-                            const levelData = sessionData.levelDetails.find(
-                                (l: any) => l.id === selectedLevel
-                            );
-                            if (levelData?.subjectDetails) {
-                                subjectId = levelData.subjectDetails.id;
-                            }
-                        }
-                    }
-                    
-                    // If we still don't have a subject ID, try to get it from the helper function
-                    if (!subjectId) {
-                        try {
-                            const subjectDetails = getSubjectDetails(
-                                form.getValues(),
-                                selectedSession,
-                                selectedLevel
-                            );
-                            if (subjectDetails && subjectDetails.length > 0) {
-                                subjectId = subjectDetails[0].id;
-                            }
-                        } catch (error) {
-                            // Silent fallback
-                        }
-                    }
-                    
-                    // Try to get course structure data from multiple sources
-                    let moduleId = "";
-                    let chapterId = "";
-                    let slideId = "";
-                    
-                    if (subjectId) {
-                        // Method 2: Fetch complete course structure using the same API
-                        if (packageSessionIdForCurrentLevel && subjectId) {
-                            try {
-                                // Import the API function dynamically to avoid circular dependencies
-                                const { fetchModulesWithChapters } = await import('@/services/study-library/getModulesWithChapters');
-                                
-                                const modulesData = await fetchModulesWithChapters(subjectId, packageSessionIdForCurrentLevel);
-                                
-                                if (modulesData && modulesData.length > 0) {
-                                    const firstModule = modulesData[0];
-                                    moduleId = firstModule.module.id || "";
-                                    
-                                    if (firstModule.chapters && firstModule.chapters.length > 0) {
-                                        const firstChapter = firstModule.chapters[0];
-                                        chapterId = firstChapter.id || "";
-                                        
-                                        // For slides, we need to fetch them separately
-                                        if (chapterId) {
-                                            try {
-                                                const { fetchSlidesByChapterId } = await import('@/hooks/study-library/use-slides');
-                                                const slides = await fetchSlidesByChapterId(chapterId);
-                                                
-                                                if (slides && slides.length > 0) {
-                                                    slideId = slides[0].id || "";
-                                                }
-                                            } catch (slideError) {
-                                                // Silent fallback
-                                            }
-                                        }
-                                    }
-                                }
-                            } catch (error) {
-                                // Silent fallback
-                            }
-                        }
-                    }
-                    
-                    // Navigate to slides with whatever IDs we found
-                    // Even if some IDs are missing, the slides page should handle it gracefully
-                    const navigationParams = {
-                        courseId: searchParams.courseId,
-                        subjectId: subjectId || "",
-                        moduleId: moduleId || "",
-                        chapterId: chapterId || "",
-                        slideId: slideId || "",
-                    };
-                    
-                    navigateTo(
-                        `/study-library/courses/course-details/subjects/modules/chapters/slides`,
-                        navigationParams
-                    );
-                }}
+                onEnrollmentSuccess={handleEnrollmentSuccess}
+                onNavigateToSlides={handleNavigationToSlides}
             />
 
             <div className="min-h-screen bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 relative w-full max-w-full">

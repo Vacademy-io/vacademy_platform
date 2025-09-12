@@ -7,6 +7,7 @@ import { PaymentStatusPollingDialog } from "./PaymentStatusPollingDialog";
 import { PaymentSuccessDialog } from "./PaymentSuccessDialog";
 import { PaymentFailedDialog } from "./PaymentFailedDialog";
 import { EnrollmentPendingApprovalDialog } from "./EnrollmentPendingApprovalDialog";
+import { ApprovalStatusPollingDialog } from "./ApprovalStatusPollingDialog";
 
 interface EnhancedEnrollmentDialogProps {
   open: boolean;
@@ -18,6 +19,7 @@ interface EnhancedEnrollmentDialogProps {
   inviteCode?: string;
   paymentType: 'one_time' | 'subscription' | 'donation' | 'free';
   onEnrollmentSuccess?: () => void;
+  onNavigateToSlides?: () => void;
 }
 
 export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> = ({
@@ -30,11 +32,13 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
   inviteCode = "default",
   paymentType,
   onEnrollmentSuccess,
+  onNavigateToSlides,
 }) => {
   const [showPaymentStatusDialog, setShowPaymentStatusDialog] = useState(false);
   const [showPaymentSuccessDialog, setShowPaymentSuccessDialog] = useState(false);
   const [showPaymentFailedDialog, setShowPaymentFailedDialog] = useState(false);
   const [showPendingApprovalDialog, setShowPendingApprovalDialog] = useState(false);
+  const [showApprovalStatusDialog, setShowApprovalStatusDialog] = useState(false);
   const [approvalRequired, setApprovalRequired] = useState(false);
 
   // Use payment status hook to check existing enrollment status
@@ -73,7 +77,14 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
     });
     setShowPaymentStatusDialog(false);
     setApprovalRequired(approvalRequired);
+    
+    // Always show success dialog (for both approval required and not required cases)
     setShowPaymentSuccessDialog(true);
+    
+    // If approval required, start background polling
+    if (approvalRequired) {
+      setShowApprovalStatusDialog(true);
+    }
   };
 
   // Handle payment status failure
@@ -141,9 +152,35 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
       courseTitle,
       paymentType
     });
+    if (onNavigateToSlides) {
+      await onNavigateToSlides();
+    }
+  };
+
+  // Handle approval success
+  const handleApprovalSuccess = async () => {
+    console.log('EnhancedEnrollmentDialog - Approval success received', {
+      packageSessionId,
+      courseTitle,
+      paymentType
+    });
+    setShowApprovalStatusDialog(false);
+    setShowPaymentSuccessDialog(false); // Close the success dialog
+    
+    // Enroll user immediately when approved
     if (onEnrollmentSuccess) {
       await onEnrollmentSuccess();
     }
+  };
+
+  // Handle approval status dialog close
+  const handleApprovalStatusClose = () => {
+    console.log('EnhancedEnrollmentDialog - Approval status dialog closed', {
+      packageSessionId,
+      courseTitle,
+      paymentType
+    });
+    setShowApprovalStatusDialog(false);
   };
 
   // Show loading state
@@ -311,6 +348,17 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
           onTryAgain={handleTryAgain}
           onClose={handlePaymentFailedClose}
         />
+
+        {/* Approval Status Polling Dialog (Background Mode) */}
+        <ApprovalStatusPollingDialog
+          open={showApprovalStatusDialog}
+          onOpenChange={setShowApprovalStatusDialog}
+          packageSessionId={packageSessionId}
+          courseTitle={courseTitle}
+          onApprovalSuccess={handleApprovalSuccess}
+          onClose={handleApprovalStatusClose}
+          backgroundMode={true}
+        />
       </>
     );
   }
@@ -364,6 +412,17 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
           courseTitle={courseTitle}
           onTryAgain={handleTryAgain}
           onClose={handlePaymentFailedClose}
+        />
+
+        {/* Approval Status Polling Dialog (Background Mode) */}
+        <ApprovalStatusPollingDialog
+          open={showApprovalStatusDialog}
+          onOpenChange={setShowApprovalStatusDialog}
+          packageSessionId={packageSessionId}
+          courseTitle={courseTitle}
+          onApprovalSuccess={handleApprovalSuccess}
+          onClose={handleApprovalStatusClose}
+          backgroundMode={true}
         />
       </>
     );

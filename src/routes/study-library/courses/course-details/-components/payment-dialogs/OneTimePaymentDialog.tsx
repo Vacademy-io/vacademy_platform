@@ -47,6 +47,7 @@ interface OneTimePaymentDialogProps {
   courseTitle?: string;
   inviteCode?: string;
   onEnrollmentSuccess?: () => void;
+  onNavigateToSlides?: () => void;
 }
 
 export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
@@ -58,6 +59,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
   courseTitle = "Course",
   inviteCode = "default",
   onEnrollmentSuccess,
+  onNavigateToSlides,
 }) => {
   const [enrollmentData, setEnrollmentData] = useState<EnrollmentResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -447,6 +449,16 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
     });
     setShowPaymentStatusDialog(false);
     setApprovalRequired(approvalRequired);
+    
+    // If no approval required, immediately enroll user
+    if (!approvalRequired) {
+      console.log('OneTimePaymentDialog - No approval required, enrolling user immediately');
+      if (onEnrollmentSuccess) {
+        onEnrollmentSuccess();
+      }
+    }
+    
+    // Always show success dialog (for both approval required and not required cases)
     setShowPaymentSuccessDialog(true);
   };
 
@@ -474,10 +486,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
       approvalRequired
     });
     setShowPaymentSuccessDialog(false);
-    if (!approvalRequired && onEnrollmentSuccess) {
-      console.log('OneTimePaymentDialog - Calling onEnrollmentSuccess (no approval required)');
-      onEnrollmentSuccess();
-    }
+    // For approval required case, just close the dialog - enrollment will happen when admin approves
   };
 
   const handlePaymentFailedClose = () => {
@@ -867,7 +876,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
         onOpenChange={setShowPaymentSuccessDialog}
         courseTitle={courseTitle}
         approvalRequired={approvalRequired}
-        onExploreCourse={handleExploreCourse}
+        onExploreCourse={onNavigateToSlides}
         onClose={handlePaymentSuccessClose}
       />
 

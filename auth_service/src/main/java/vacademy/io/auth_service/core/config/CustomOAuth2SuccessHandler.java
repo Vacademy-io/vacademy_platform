@@ -6,7 +6,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
@@ -14,18 +16,15 @@ import org.springframework.stereotype.Component;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
 import vacademy.io.auth_service.feature.auth.manager.AdminOAuth2Manager;
 import vacademy.io.auth_service.feature.auth.manager.LearnerOAuth2Manager;
-import vacademy.io.auth_service.feature.admin_core_service.dto.InstituteSignupPolicy;
-import vacademy.io.auth_service.feature.admin_core_service.service.InstitutePolicyService;
+import vacademy.io.auth_service.feature.auth.service.GitHubEmailService;
 import vacademy.io.common.auth.service.OAuth2VendorToUserDetailService;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.Base64;
-import java.util.Map;
+import java.util.*;
 
 @Component
 public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler {
@@ -38,7 +37,8 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
     private OAuth2VendorToUserDetailService oAuth2VendorToUserDetailService;
 
     @Autowired
-    private InstitutePolicyService institutePolicyService;
+    @Lazy
+    private GitHubEmailService gitHubEmailService;
     private static class DecodedState {
         String fromUrl;
         String instituteId;
@@ -121,11 +121,44 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
                 return;
 
             String email = userInfo.email;
+            List<String> allEmails = new ArrayList<>();
+            
+            // Handle GitHub multiple emails
+            if ("github".equals(provider)) {
+                try {
+                    List<GitHubEmailService.GitHubEmail> githubEmails = gitHubEmailService.fetchAllGitHubEmails(oauthToken);
+                    if (!githubEmails.isEmpty()) {
+                        // Select the best email
+                        email = gitHubEmailService.selectBestEmail(githubEmails);
+                        
+                        // Collect all emails for storage
+                        allEmails = githubEmails.stream()
+                                .map(GitHubEmailService.GitHubEmail::getEmail)
+                                .toList();
+                        
+                        log.info("GitHub user has {} emails, selected: {}", allEmails.size(), email);
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to fetch GitHub emails, using primary email: {}", e.getMessage());
+                }
+            }
+            
+            // Fallback to stored email if no email found
             if (email == null) {
                 email = oAuth2VendorToUserDetailService.getEmailByProviderIdAndSubject(userInfo.providerId,
                         userInfo.sub);
             }
+            
             boolean isEmailVerified = (email != null);
+
+            // Store OAuth2 vendor details with multiple emails for GitHub
+            if ("github".equals(provider) && !allEmails.isEmpty()) {
+                oAuth2VendorToUserDetailService.saveOrUpdateOAuth2VendorToUserDetailWithMultipleEmails(
+                        userInfo.providerId, email, userInfo.sub, allEmails);
+            } else {
+                oAuth2VendorToUserDetailService.saveOrUpdateOAuth2VendorToUserDetail(
+                        userInfo.providerId, email, userInfo.sub);
+            }
 
             // Handle sign-up logic differently
             if (redirectUrl.contains("signup")) {
@@ -151,6 +184,7 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
 
         // For signup, always return user data to frontend
        if (!redirectUrl.contains("learner")) {
+           // Admin signup flow
            String userJson = null;
            if (email != null) {
                userJson = String.format(
@@ -175,8 +209,11 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
                    URLEncoder.encode(encodedState != null ? encodedState : "", StandardCharsets.UTF_8),
                    URLEncoder.encode(String.valueOf(isEmailVerified), StandardCharsets.UTF_8));
            response.sendRedirect(redirectWithParams);
+           
+           // Store OAuth2 vendor details
            oAuth2VendorToUserDetailService.saveOrUpdateOAuth2VendorToUserDetail(userInfo.providerId, email, userInfo.sub);
-       }else {
+       } else {
+           // Learner signup flow
            JwtResponseDto jwtResponseDto = getTokenByClientUrlAndUserEmail(redirectUrl, userInfo.name, email,
                    userInfo.instituteId);
           if (jwtResponseDto != null) {
@@ -184,6 +221,8 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
               redirectWithTokens(response, redirectUrl, jwtResponseDto);
               return;
           }
+          
+          // User not found, return signup data to frontend
            String userJson = null;
            if (email != null) {
                userJson = String.format(
@@ -208,6 +247,8 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
                    URLEncoder.encode(encodedState != null ? encodedState : "", StandardCharsets.UTF_8),
                    URLEncoder.encode(String.valueOf(isEmailVerified), StandardCharsets.UTF_8));
            response.sendRedirect(redirectWithParams);
+           
+           // Store OAuth2 vendor details
            oAuth2VendorToUserDetailService.saveOrUpdateOAuth2VendorToUserDetail(userInfo.providerId, email, userInfo.sub);
        }
     }
@@ -228,7 +269,10 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
             redirectWithTokens(response, redirectUrl, jwtResponseDto);
             return;
         }
-        returnUserDataToFrontend(response, redirectUrl, userInfo, encodedState, isEmailVerified, true);
+        
+        // User not found - redirect to signup with user data
+        log.info("User not found for email: {}, redirecting to signup", email);
+        returnUserDataToFrontend(response, redirectUrl, userInfo, encodedState, isEmailVerified, false);
     }
 
     private void returnUserDataToFrontend(HttpServletResponse response, String redirectUrl, UserInfo userInfo,
@@ -280,6 +324,7 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
             sub = (String) attributes.get("sub"); // Google's unique user ID
             log.info("Google user logged in: {} ({})", name, email);
         } else if ("github".equals(provider)) {
+            // For GitHub, we need to handle multiple emails
             email = (String) attributes.get("email");
             name = (String) attributes.get("name");
             if (name == null) {
@@ -287,7 +332,12 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
             }
             picture = (String) attributes.get("avatar_url");
             sub = String.valueOf(attributes.get("id")); // GitHub's unique user ID
-            log.info("GitHub user logged in: {} ({})", name, email);
+            
+            log.info("GitHub user logged in: {} (primary email: {})", name, email);
+            
+            // Note: For full implementation, you would need to fetch all emails here
+            // This requires the OAuth2AuthenticationToken which we don't have in this method
+            // The actual email fetching will be handled in the processOAuth2User method
         } else {
             log.warn("Unsupported OAuth2 provider: {}", provider);
             sendErrorRedirect(response, redirectUrl, "unsupported_provider");
@@ -334,6 +384,9 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
             } else {
                 return getAdminOAuth2Manager().loginUserByEmail(email);
             }
+        } catch (UsernameNotFoundException e) {
+            log.info("User not found for email: {} - this is expected for new users", email);
+            return null;
         } catch (Exception e) {
             log.error("Failed to generate token for user: {}", email, e);
         }

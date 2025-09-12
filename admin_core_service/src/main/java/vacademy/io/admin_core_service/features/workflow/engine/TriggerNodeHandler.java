@@ -48,7 +48,7 @@ public class TriggerNodeHandler implements NodeHandler {
                         continue;
 
                     if (output.getCompute() != null && !output.getCompute().isBlank()) {
-                        Object value = spelEvaluator.eval(output.getCompute(), context);
+                        Object value = spelEvaluator.evaluate(output.getCompute(), context);
                         changes.put(fieldName, value);
                         log.debug("Field '{}' computed via SpEL to value: {}", fieldName, value);
                     } else if (output.getValue() != null) {
@@ -59,10 +59,7 @@ public class TriggerNodeHandler implements NodeHandler {
             }
 
             // Store routing info in context for the main workflow engine to handle
-            if (config.getRouting() != null && !config.getRouting().isEmpty()) {
-                changes.put("routingInfo", config.getRouting());
-                log.debug("Routing info stored in context for workflow engine to process");
-            }
+
 
         } catch (Exception e) {
             log.error("Error while processing TriggerNodeHandler config", e);

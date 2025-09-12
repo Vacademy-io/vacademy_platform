@@ -4,12 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import vacademy.io.admin_core_service.features.workflow.dto.IteratorConfigDTO;
-import vacademy.io.admin_core_service.features.workflow.dto.ForEachConfigDTO;
-import vacademy.io.admin_core_service.features.workflow.spel.SpelEvaluator;
-import vacademy.io.admin_core_service.features.workflow.engine.action.DataProcessorStrategy;
-import vacademy.io.admin_core_service.features.notification.dto.WhatsappRequest;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
+import vacademy.io.admin_core_service.features.notification.dto.WhatsappRequest;
+import vacademy.io.admin_core_service.features.workflow.dto.ForEachConfigDTO;
+import vacademy.io.admin_core_service.features.workflow.dto.IteratorConfigDTO;
+import vacademy.io.admin_core_service.features.workflow.engine.QueryNodeHandler;
+import vacademy.io.admin_core_service.features.workflow.spel.SpelEvaluator;
 
 import java.util.*;
 
@@ -20,6 +20,10 @@ public class IteratorProcessorStrategy implements DataProcessorStrategy {
 
     private final ObjectMapper objectMapper;
     private final SpelEvaluator spelEvaluator;
+    private final QueryNodeHandler.QueryService queryService;
+
+    // ThreadLocal context stack for managing nested iteration scopes.
+    private final ThreadLocal<Stack<Map<String, Object>>> contextStack = ThreadLocal.withInitial(Stack::new);
 
     @Override
     public boolean canHandle(String operation) {
@@ -30,33 +34,43 @@ public class IteratorProcessorStrategy implements DataProcessorStrategy {
     public Map<String, Object> execute(Map<String, Object> context, Object config, Map<String, Object> itemContext) {
         Map<String, Object> changes = new HashMap<>();
 
+        // Ensure the context stack is clean before starting a new top-level iteration.
+        contextStack.get().clear();
+        contextStack.get().push(new HashMap<>(context));
+
         try {
             IteratorConfigDTO iteratorConfig = objectMapper.convertValue(config, IteratorConfigDTO.class);
 
-            // Evaluate the collection expression
+            // Evaluate the collection expression against the current context.
             String onExpr = iteratorConfig.getOn();
-            Object listObj = spelEvaluator.eval(onExpr, context);
+            Object listObj = evaluateWithStackedContext(onExpr, context);
+
             if (!(listObj instanceof Collection<?> list) || list.isEmpty()) {
-                log.debug("Iterator found nothing for expression: {}", onExpr);
+                log.debug("Iterator expression '{}' evaluated to null or an empty collection.", onExpr);
+                changes.put("iterator_completed", true);
+                changes.put("item_count", 0);
                 return changes;
             }
 
             List<Map<String, Object>> processedItems = new ArrayList<>();
-
-            // Process each item in the collection
+            int index = 0;
             for (Object item : list) {
+                // Create a new context for this specific iteration.
                 Map<String, Object> loopContext = new HashMap<>(context);
                 loopContext.put("item", item);
+                loopContext.put("index", index++);
 
-                // Process the forEach operation for this item
-                Map<String, Object> itemResult = processForEachOperation(iteratorConfig.getForEach(), loopContext,
-                        item);
-                processedItems.add(itemResult);
-
-                log.debug("Processed item in iterator: {} with result: {}", item, itemResult);
+                contextStack.get().push(loopContext);
+                try {
+                    Map<String, Object> itemResult = processForEachOperation(iteratorConfig.getForEach(), loopContext, item);
+                    processedItems.add(itemResult);
+                    log.debug("Processed item in iterator: {} with result: {}", item, itemResult);
+                } finally {
+                    // Pop the context for the current iteration.
+                    contextStack.get().pop();
+                }
             }
 
-            // Store results in changes
             changes.put("processed_items", processedItems);
             changes.put("item_count", list.size());
             changes.put("iterator_completed", true);
@@ -64,282 +78,246 @@ public class IteratorProcessorStrategy implements DataProcessorStrategy {
         } catch (Exception e) {
             log.error("Error executing Iterator processor", e);
             changes.put("iterator_error", e.getMessage());
+            changes.put("iterator_completed", false);
+        } finally {
+            // Clean up the context stack.
+            contextStack.remove();
         }
 
         return changes;
     }
 
-    private Map<String, Object> processForEachOperation(ForEachConfigDTO forEachConfig, Map<String, Object> loopContext,
-            Object item) {
-        Map<String, Object> result = new HashMap<>();
-
+    /**
+     * Processes the forEach operation which defines what to do for each item in the collection.
+     */
+    private Map<String, Object> processForEachOperation(ForEachConfigDTO forEachConfig, Map<String, Object> loopContext, Object item) {
         if (forEachConfig == null) {
-            log.warn("No forEach configuration found in iterator");
-            return result;
+            log.warn("No 'forEach' configuration found in iterator.");
+            return new HashMap<>();
         }
 
         String operation = forEachConfig.getOperation();
         if (operation == null || operation.isBlank()) {
-            log.warn("No operation specified in forEach configuration");
-            return result;
+            log.warn("No operation specified in 'forEach' configuration.");
+            return new HashMap<>();
         }
 
         try {
-            switch (operation.toUpperCase()) {
-                case "QUERY":
-                    result = processQueryOperation(forEachConfig, loopContext, item);
-                    break;
-                case "UPDATE":
-                    result = processUpdateOperation(forEachConfig, loopContext, item);
-                    break;
-                case "SEND_WHATSAPP":
-                    result = processSendWhatsAppOperation(forEachConfig, loopContext, item);
-                    break;
-                case "SWITCH":
-                    result = processSwitchOperation(forEachConfig, loopContext, item);
-                    break;
-                default:
+            return switch (operation.toUpperCase()) {
+                case "ITERATOR" -> processNestedIteratorOperation(forEachConfig, loopContext,1);
+                case "QUERY" -> processQueryOperation(forEachConfig, loopContext, item);
+                case "OBJECT_PARSER" -> parseObject(forEachConfig, loopContext, item);
+                case "SEND_WHATSAPP" -> processSendWhatsAppOperation(forEachConfig, loopContext);
+                case "SWITCH" -> processSwitchOperation(forEachConfig, loopContext, item);
+                default -> {
                     log.warn("Unknown operation type in iterator: {}", operation);
-                    result.put("operation", operation);
-                    result.put("status", "unknown_operation");
-            }
+                    yield Map.of("operation", operation, "status", "unknown_operation");
+                }
+            };
         } catch (Exception e) {
-            log.error("Error processing forEach operation: {}", operation, e);
-            result.put("operation", operation);
-            result.put("status", "error");
-            result.put("error", e.getMessage());
+            log.error("Error processing forEach operation '{}'", operation, e);
+            return Map.of("operation", operation, "status", "error", "error", e.getMessage());
+        }
+    }
+
+    /**
+     * Merges all contexts from the stack and evaluates a SpEL expression.
+     * This allows expressions to access variables from parent loops (e.g., #item, #index).
+     */
+    private Object evaluateWithStackedContext(String expression, Map<String, Object> currentContext) {
+        if (expression == null) return null;
+
+        Map<String, Object> mergedContext = new HashMap<>();
+        // Iterate from the bottom of the stack to the top to layer contexts correctly.
+        for (Map<String, Object> contextLayer : contextStack.get()) {
+            mergedContext.putAll(contextLayer);
+        }
+        mergedContext.putAll(currentContext); // The current context has the highest priority.
+
+        return spelEvaluator.evaluate(expression, mergedContext);
+    }
+
+    /**
+     * Handles nested iterators.
+     */
+    private Map<String, Object> processNestedIteratorOperation(ForEachConfigDTO forEachConfig, Map<String, Object> loopContext,int nestedIndex) {
+        Map<String, Object> result = new HashMap<>();
+        IteratorConfigDTO nestedIteratorConfig = objectMapper.convertValue(forEachConfig, IteratorConfigDTO.class);
+        String nestedOnExpr = nestedIteratorConfig.getOn();
+
+        if (nestedOnExpr == null) {
+            log.warn("Nested iterator is missing the 'on' expression.");
+            return Map.of("status", "error", "error", "missing_on_expression");
         }
 
+        Object nestedListObj = evaluateWithStackedContext(nestedOnExpr, loopContext);
+        if (!(nestedListObj instanceof Collection<?> nestedList) || nestedList.isEmpty()) {
+            log.debug("Nested iterator found nothing for expression: {}", nestedOnExpr);
+            return Map.of("status", "no_items", "item_count", 0);
+        }
+
+        List<Map<String, Object>> nestedProcessedItems = new ArrayList<>();
+        for (Object nestedItem : nestedList) {
+            Map<String, Object> nestedLoopContext = new HashMap<>(loopContext);
+            nestedLoopContext.put("item"+nestedIndex, nestedItem);
+            contextStack.get().push(nestedLoopContext);
+            try {
+                nestedProcessedItems.add(processForEachOperation(nestedIteratorConfig.getForEach(), nestedLoopContext, nestedItem));
+            } finally {
+                contextStack.get().pop();
+            }
+        }
+
+        result.put("status", "success");
+        result.put("nested_processed_items", nestedProcessedItems);
+        result.put("nested_item_count", nestedList.size());
         return result;
     }
 
-    private Map<String, Object> processQueryOperation(ForEachConfigDTO forEachConfig, Map<String, Object> loopContext,
-            Object item) {
-        Map<String, Object> result = new HashMap<>();
-
+    /**
+     * Executes a pre-built query.
+     */
+    private Map<String, Object> processQueryOperation(ForEachConfigDTO forEachConfig, Map<String, Object> loopContext, Object item) {
         String prebuiltKey = forEachConfig.getPrebuiltKey();
-        Map<String, Object> params = forEachConfig.getParams();
-
         if (prebuiltKey == null || prebuiltKey.isBlank()) {
-            log.warn("QUERY operation missing prebuiltKey");
-            result.put("status", "missing_prebuilt_key");
-            return result;
+            log.warn("QUERY operation missing prebuiltKey.");
+            return Map.of("status", "error", "error", "missing_prebuilt_key");
         }
 
-        // Process parameters - evaluate SPEL expressions
         Map<String, Object> processedParams = new HashMap<>();
-        if (params != null) {
-            for (Map.Entry<String, Object> entry : params.entrySet()) {
-                String key = entry.getKey();
-                Object value = entry.getValue();
-
-                Object processedValue;
-                if (value instanceof String && ((String) value).startsWith("#")) {
-                    processedValue = spelEvaluator.eval((String) value, loopContext);
-                } else {
-                    processedValue = value;
-                }
+        if (forEachConfig.getParams() != null) {
+            forEachConfig.getParams().forEach((key, value) -> {
+                Object processedValue = (value instanceof String) ? evaluateWithStackedContext((String) value, loopContext) : value;
                 processedParams.put(key, processedValue);
+            });
+        }
+
+        log.info("Executing QUERY: {} with params: {}", prebuiltKey, processedParams);
+        Map<String, Object> queryResult = queryService.execute(prebuiltKey, processedParams);
+
+        // Safely update the item if it's a Map
+        if (item instanceof Map) {
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> map = (Map<String, Object>) item;
+                map.putAll(queryResult); // Add query results back to the item
+            } catch (ClassCastException e) {
+                log.warn("Item is a Map, but not of type Map<String, Object>. Cannot update item.", e);
             }
         }
 
-        log.info("Executing QUERY operation: {} with params: {} for item: {}", prebuiltKey, processedParams, item);
-
-        // Store the query operation details for the main workflow engine to execute
-        result.put("operation_type", "QUERY");
-        result.put("prebuilt_key", prebuiltKey);
-        result.put("params", processedParams);
-        result.put("status", "queued_for_execution");
-
-        return result;
+        return Map.of("status", "success", "prebuiltKey", prebuiltKey, "queryResult", queryResult);
     }
 
-    private Map<String, Object> processUpdateOperation(ForEachConfigDTO forEachConfig, Map<String, Object> loopContext,
-            Object item) {
-        Map<String, Object> result = new HashMap<>();
-
-        String updateField = forEachConfig.getUpdateField();
-        Object updateValue = forEachConfig.getUpdateValue();
-
-        if (updateField == null || updateField.isBlank()) {
-            log.warn("UPDATE operation missing updateField");
-            result.put("status", "missing_update_field");
-            return result;
+    /**
+     * Parses an object in-place, evaluating SpEL expressions within its string values.
+     */
+    private Map<String, Object> parseObject(ForEachConfigDTO forEachConfig, Map<String, Object> context, Object itemToUpdate) {
+        if (!(itemToUpdate instanceof Map)) {
+            log.error("OBJECT_PARSER expected itemToUpdate to be a Map but got: {}",
+                    itemToUpdate != null ? itemToUpdate.getClass().getName() : "null");
+            return Map.of("status", "error", "error", "Item to parse is not a Map.");
         }
 
-        // Process update value - evaluate SPEL expressions
-        Object processedValue;
-        if (updateValue instanceof String && ((String) updateValue).startsWith("#")) {
-            processedValue = spelEvaluator.eval((String) updateValue, loopContext);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> mapToUpdate = (Map<String, Object>) itemToUpdate;
+
+        log.debug("Starting in-place parsing for item: {}", mapToUpdate);
+        for (Map.Entry<String, Object> entry : mapToUpdate.entrySet()) {
+            if (entry.getValue() instanceof String) {
+                Object evaluatedValue = evaluateWithStackedContext((String) entry.getValue(), context);
+                entry.setValue(evaluatedValue);
+            }
+        }
+        log.info("Finished in-place parsing. Item is now: {}", mapToUpdate);
+        return mapToUpdate;
+    }
+
+    /**
+     * Handles sending WhatsApp messages.
+     */
+    private Map<String, Object> processSendWhatsAppOperation(ForEachConfigDTO forEachConfig, Map<String, Object> loopContext) {
+        String onExpr = forEachConfig.getOn();
+        if (onExpr == null || onExpr.isBlank()) {
+            log.warn("SEND_WHATSAPP operation missing 'on' expression.");
+            return Map.of("status", "missing_on_expression");
+        }
+
+        Object templatesObj = evaluateWithStackedContext(onExpr, loopContext);
+        if (templatesObj == null) {
+            log.warn("No templates found for expression: {}", onExpr);
+            return Map.of("status", "no_templates_found");
+        }
+
+        List<Map<String, Object>> whatsappRequests = processTemplatesAndCreateRequests(templatesObj, loopContext);
+
+        if (!whatsappRequests.isEmpty()) {
+            return Map.of("whatsapp_requests", whatsappRequests, "request_count", whatsappRequests.size(), "status", "requests_created");
         } else {
-            processedValue = updateValue;
+            return Map.of("status", "no_requests_created");
         }
-
-        log.info("Executing UPDATE operation: {} = {} for item: {}", updateField, processedValue, item);
-
-        result.put("operation_type", "UPDATE");
-        result.put("update_field", updateField);
-        result.put("update_value", processedValue);
-        result.put("status", "queued_for_execution");
-
-        return result;
     }
 
-    private Map<String, Object> processSendWhatsAppOperation(ForEachConfigDTO forEachConfig,
-            Map<String, Object> loopContext, Object item) {
-        Map<String, Object> result = new HashMap<>();
-
-        try {
-            // Get the 'on' expression to evaluate templates
-            String onExpr = forEachConfig.getOn();
-            if (onExpr == null || onExpr.isBlank()) {
-                log.warn("SEND_WHATSAPP operation missing 'on' expression");
-                result.put("status", "missing_on_expression");
-                return result;
-            }
-
-            // Evaluate the templates expression
-            Object templatesObj = spelEvaluator.eval(onExpr, loopContext);
-            if (templatesObj == null) {
-                log.warn("No templates found for expression: {}", onExpr);
-                result.put("status", "no_templates_found");
-                return result;
-            }
-
-            // Process templates and create WhatsApp requests
-            List<Map<String, Object>> whatsappRequests = processTemplatesAndCreateRequests(
-                    templatesObj, loopContext, forEachConfig);
-
-            if (!whatsappRequests.isEmpty()) {
-                result.put("whatsapp_requests", whatsappRequests);
-                result.put("request_count", whatsappRequests.size());
-                result.put("status", "requests_created");
-
-                log.info("Created {} WhatsApp requests for item: {}", whatsappRequests.size(), item);
-            } else {
-                result.put("status", "no_requests_created");
-            }
-
-        } catch (Exception e) {
-            log.error("Error processing SEND_WHATSAPP operation", e);
-            result.put("status", "error");
-            result.put("error", e.getMessage());
+    private List<Map<String, Object>> processTemplatesAndCreateRequests(Object templatesObj, Map<String, Object> itemContext) {
+        if (templatesObj instanceof Collection<?> templatesCollection) {
+            return templatesCollection.stream()
+                    .map(template -> createWhatsAppRequest(template, itemContext))
+                    .filter(Objects::nonNull)
+                    .map(this::convertWhatsappRequestToMap)
+                    .toList();
+        } else {
+            WhatsappRequest request = createWhatsAppRequest(templatesObj, itemContext);
+            return request != null ? List.of(convertWhatsappRequestToMap(request)) : Collections.emptyList();
         }
-
-        return result;
     }
 
-    private List<Map<String, Object>> processTemplatesAndCreateRequests(
-            Object templatesObj,
-            Map<String, Object> itemContext,
-            ForEachConfigDTO forEachConfig) {
-
-        List<Map<String, Object>> requests = new ArrayList<>();
-
-        try {
-            if (templatesObj instanceof List) {
-                // Handle list of templates
-                List<?> templates = (List<?>) templatesObj;
-                for (Object template : templates) {
-                    WhatsappRequest request = createWhatsAppRequest(template, itemContext, forEachConfig);
-                    if (request != null) {
-                        requests.add(convertWhatsappRequestToMap(request)); // Convert WhatsappRequest to Map
-                    }
-                }
-            } else if (templatesObj instanceof Map) {
-                // Handle map of templates
-                Map<?, ?> templates = (Map<?, ?>) templatesObj;
-                for (Map.Entry<?, ?> entry : templates.entrySet()) {
-                    WhatsappRequest request = createWhatsAppRequest(entry.getValue(), itemContext, forEachConfig);
-                    if (request != null) {
-                        requests.add(convertWhatsappRequestToMap(request)); // Convert WhatsappRequest to Map
-                    }
-                }
-            } else {
-                // Handle single template
-                WhatsappRequest request = createWhatsAppRequest(templatesObj, itemContext, forEachConfig);
-                if (request != null) {
-                    requests.add(convertWhatsappRequestToMap(request)); // Convert WhatsappRequest to Map
-                }
-            }
-        } catch (Exception e) {
-            log.error("Error processing templates", e);
+    private WhatsappRequest createWhatsAppRequest(Object template, Map<String, Object> itemContext) {
+        if (!(template instanceof Map)) {
+            log.warn("Template data is not a Map, skipping: {}", template);
+            return null;
         }
 
-        return requests;
-    }
-
-    private WhatsappRequest createWhatsAppRequest(Object template, Map<String, Object> itemContext,
-            ForEachConfigDTO forEachConfig) {
         try {
-            // Extract user details from context
+            @SuppressWarnings("unchecked")
+            Map<String, Object> templateMap = (Map<String, Object>) template;
             Object userDetailsObj = itemContext.get("item");
-            if (userDetailsObj == null) {
-                log.warn("No user details found in context");
-                return null;
-            }
 
             Map<String, Object> userDetails = JsonUtil.convertValue(userDetailsObj, Map.class);
             if (userDetails == null) {
-                log.warn("Could not convert user details to map");
+                log.warn("Could not convert user details to map from context item.");
                 return null;
             }
 
-            // Extract mobile number
             String mobileNumber = extractMobileNumber(userDetails);
-            if (mobileNumber == null || mobileNumber.isBlank()) {
+            if (mobileNumber == null) {
                 log.warn("No mobile number found for user: {}", userDetails);
                 return null;
             }
 
-            // Create WhatsApp request using existing WhatsappRequest class
-            WhatsappRequest request = new WhatsappRequest();
-
-            // Handle new template structure with templateName and placeholders
-            if (template instanceof Map) {
-                Map<String, Object> templateMap = (Map<String, Object>) template;
-                String templateName = (String) templateMap.get("templateName");
-                Map<String, Object> placeholders = (Map<String, Object>) templateMap.get("placeholders");
-
-                if (templateName == null) {
-                    log.warn("No templateName found in template: {}", template);
-                    return null;
-                }
-
-                request.setTemplateName(templateName);
-
-                // Create userDetails structure with placeholders
-                Map<String, Map<String, String>> userDetail = new HashMap<>();
-                Map<String, String> userInfo = new HashMap<>();
-
-                // Add placeholders if they exist
-                if (placeholders != null) {
-                    for (Map.Entry<String, Object> entry : placeholders.entrySet()) {
-                        if (entry.getValue() != null) {
-                            userInfo.put(entry.getKey(), String.valueOf(entry.getValue()));
-                        }
-                    }
-                }
-
-                // Add other relevant user information from context
-                for (Map.Entry<String, Object> entry : userDetails.entrySet()) {
-                    if (entry.getValue() != null) {
-                        userInfo.put(entry.getKey(), String.valueOf(entry.getValue()));
-                    }
-                }
-
-                userDetail.put(mobileNumber, userInfo);
-                request.setUserDetails(Collections.singletonList(userDetail));
-
-            } else {
-                // Fallback to old structure for backward compatibility
-                log.warn("Template is not a Map, falling back to old structure: {}", template);
+            String templateName = (String) templateMap.get("templateName");
+            if (templateName == null) {
+                log.warn("No 'templateName' found in template: {}", template);
                 return null;
             }
 
-            // Set default language code if not specified
-            request.setLanguageCode("en");
+            WhatsappRequest request = new WhatsappRequest();
+            request.setTemplateName(templateName);
+            request.setLanguageCode("en"); // Default language
 
+            Map<String, String> userInfo = new HashMap<>();
+
+            // Add placeholders if they exist
+            Object placeholdersObj = templateMap.get("placeholders");
+            if (placeholdersObj instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> placeholders = (Map<String, Object>) placeholdersObj;
+                placeholders.forEach((k, v) -> userInfo.put(k, String.valueOf(v)));
+            }
+
+            // Add all user details to be available for the template
+            userDetails.forEach((k, v) -> userInfo.put(k, String.valueOf(v)));
+
+            request.setUserDetails(Collections.singletonList(Map.of(mobileNumber, userInfo)));
             return request;
 
         } catch (Exception e) {
@@ -348,39 +326,31 @@ public class IteratorProcessorStrategy implements DataProcessorStrategy {
         }
     }
 
-    /**
-     * Convert WhatsappRequest to Map format for storage
-     */
     private Map<String, Object> convertWhatsappRequestToMap(WhatsappRequest request) {
-        Map<String, Object> map = new HashMap<>();
-        map.put("templateName", request.getTemplateName());
-        map.put("userDetails", request.getUserDetails());
-        map.put("languageCode", request.getLanguageCode());
-        map.put("headerParams", request.getHeaderParams());
-        map.put("headerType", request.getHeaderType());
-        return map;
+        return objectMapper.convertValue(request, Map.class);
     }
 
     private String extractMobileNumber(Map<String, Object> item) {
-        // Try different possible field names for mobile number
-        String[] possibleFields = { "mobileNumber", "mobile_number", "mobile", "phone", "phoneNumber", "phone_number" };
-
-        for (String field : possibleFields) {
-            Object value = item.get(field);
-            if (value != null && !String.valueOf(value).isBlank()) {
-                return String.valueOf(value);
-            }
-        }
-
-        return null;
+        return Arrays.stream(new String[]{"mobileNumber", "mobile_number", "mobile", "phone", "phoneNumber", "phone_number"})
+                .map(item::get)
+                .filter(Objects::nonNull)
+                .map(String::valueOf)
+                .filter(s -> !s.isBlank())
+                .findFirst()
+                .orElse(null);
     }
 
+    /**
+     * Processes a switch-case operation.
+     */
     private Map<String, Object> processSwitchOperation(ForEachConfigDTO forEachConfig, Map<String, Object> loopContext,
-            Object item) {
+                                                       Object item) {
         Map<String, Object> result = new HashMap<>();
+
 
         String onExpr = forEachConfig.getOn();
         Map<String, Object> cases = forEachConfig.getCases();
+
 
         if (onExpr == null || onExpr.isBlank()) {
             log.warn("SWITCH operation missing 'on' expression");
@@ -388,9 +358,11 @@ public class IteratorProcessorStrategy implements DataProcessorStrategy {
             return result;
         }
 
+
         // Evaluate the switch expression
-        Object switchValue = spelEvaluator.eval(onExpr, loopContext);
+        Object switchValue = spelEvaluator.evaluate(onExpr, loopContext);
         String key = String.valueOf(switchValue);
+
 
         // Find matching case
         Object selectedCase = cases != null ? cases.get(key) : null;
@@ -399,10 +371,12 @@ public class IteratorProcessorStrategy implements DataProcessorStrategy {
             log.debug("No case found for key: {}, using default", key);
         }
 
+
         if (selectedCase != null) {
             ((Map) item).put(forEachConfig.getEval(), selectedCase);
             result.put(forEachConfig.getEval(), selectedCase);
         }
+
 
         return result;
     }

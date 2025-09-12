@@ -309,6 +309,24 @@ public class TagController {
     }
     
     /**
+     * Upload CSV file with user IDs and add tag by name to all users in the file
+     */
+    @PostMapping("/institutes/{instituteId}/tags/by-name/{tagName}/users/csv-upload")
+    public ResponseEntity<BulkUserTagOperationResultDTO> uploadCsvAndAddTagByName(
+            @PathVariable String instituteId,
+            @PathVariable String tagName,
+            @RequestParam("file") MultipartFile csvFile,
+            @RequestAttribute("user") CustomUserDetails user) {
+        
+        BulkUserTagOperationResultDTO result = csvTagService.processCsvAndAddTagByName(csvFile, tagName, instituteId, user.getUserId());
+        
+        log.info("CSV upload operation completed for tag name '{}' - Success: {}, Skip: {}, Error: {}", 
+                tagName, result.getSuccessCount(), result.getSkipCount(), result.getErrorCount());
+        
+        return ResponseEntity.ok(result);
+    }
+    
+    /**
      * Validate CSV file format
      */
     @PostMapping("/csv/validate")

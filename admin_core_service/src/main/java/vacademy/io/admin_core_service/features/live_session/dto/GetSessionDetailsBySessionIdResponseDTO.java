@@ -51,5 +51,6 @@ public class GetSessionDetailsBySessionIdResponseDTO {
     private Time scheduleLastEntryTime;
     private String customMeetingLink;
     private String customWaitingRoomMediaId;
+    private String timezone;
 }
 

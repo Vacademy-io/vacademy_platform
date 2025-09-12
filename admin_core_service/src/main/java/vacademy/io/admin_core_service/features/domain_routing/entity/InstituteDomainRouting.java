@@ -35,6 +35,42 @@ public class InstituteDomainRouting {
 
     @Column(name = "redirect")
     private String redirect;
+
+    @Column(name = "privacy_policy_url", length = 500)
+    private String privacyPolicyUrl;
+    
+    @Column(name = "after_login_route")
+    private String afterLoginRoute;
+
+    @Column(name = "terms_and_condition_url", length = 500)
+    private String termsAndConditionUrl;
+
+    @Column(name = "theme")
+    private String theme;
+
+    @Column(name = "tab_text")
+    private String tabText;
+
+    @Column(name = "allow_signup")
+    private Boolean allowSignup;
+
+    @Column(name = "tab_icon_file_id")
+    private String tabIconFileId;
+
+    @Column(name = "font_family")
+    private String fontFamily;
+
+    @Column(name = "allow_google_auth")
+    private Boolean allowGoogleAuth;
+
+    @Column(name = "allow_github_auth")
+    private Boolean allowGithubAuth;
+
+    @Column(name = "allow_email_otp_auth")
+    private Boolean allowEmailOtpAuth;
+
+    @Column(name = "allow_username_password_auth")
+    private Boolean allowUsernamePasswordAuth;
 }
 
 

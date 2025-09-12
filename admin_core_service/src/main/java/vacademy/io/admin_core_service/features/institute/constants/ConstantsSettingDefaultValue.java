@@ -1,18 +1,18 @@
 package vacademy.io.admin_core_service.features.institute.constants;
 
 import lombok.Getter;
+import vacademy.io.admin_core_service.features.institute.dto.settings.custom_field.FixedFieldRenameDto;
 import vacademy.io.admin_core_service.features.institute.dto.settings.naming.NameSettingRequest;
 import vacademy.io.admin_core_service.features.institute.enums.CertificateTypeEnum;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class ConstantsSettingDefaultValue {
 
     private static final Map<String, String> nameDefaultValues = new HashMap<>();
     private static final Map<String, String> certificateTypeDefaultValues = new HashMap<>();
+    private static final List<String> defaultCustomFieldsLocations = new ArrayList<>();
+    private static final Map<String, FixedFieldRenameDto> fixedColumnsNameMapping = new HashMap<>();
 
     @Getter
     private static final Map<String, String> defaultPlaceHolders = new HashMap<>();
@@ -45,6 +45,58 @@ public class ConstantsSettingDefaultValue {
         defaultPlaceHolders.put("8", "{{INSTITUTE_NAME}}");
         defaultPlaceHolders.put("9", "{{TODAY_DATE}}");
 
+        defaultCustomFieldsLocations.add("Learner’s List");
+        defaultCustomFieldsLocations.add("Enroll Request List");
+        defaultCustomFieldsLocations.add("Invite List");
+        defaultCustomFieldsLocations.add("Assessment Registration Form");
+        defaultCustomFieldsLocations.add("Live Session Registration Form");
+        defaultCustomFieldsLocations.add("Learner Profile");
+
+        fixedColumnsNameMapping.put("username",new FixedFieldRenameDto(toUpperSnakeCase("username"),"username","username",1,true));
+        fixedColumnsNameMapping.put("email",new FixedFieldRenameDto(toUpperSnakeCase("email"),"email","email",2,true));
+        fixedColumnsNameMapping.put("fullName",new FixedFieldRenameDto(toUpperSnakeCase("fullName"),"fullName","fullName",3,true));
+        fixedColumnsNameMapping.put("addressLine",new FixedFieldRenameDto(toUpperSnakeCase("addressLine"),"addressLine","addressLine",4,true));
+        fixedColumnsNameMapping.put("region",new FixedFieldRenameDto(toUpperSnakeCase("region"),"region","region",5,true));
+        fixedColumnsNameMapping.put("city",new FixedFieldRenameDto(toUpperSnakeCase("city"),"city","city",6,true));
+        fixedColumnsNameMapping.put("pinCode",new FixedFieldRenameDto(toUpperSnakeCase("pinCode"),"pinCode","pinCode",7,true));
+        fixedColumnsNameMapping.put("mobileNumber",new FixedFieldRenameDto(toUpperSnakeCase("mobileNumber"),"mobileNumber","mobileNumber",8,true));
+        fixedColumnsNameMapping.put("dateOfBerth",new FixedFieldRenameDto(toUpperSnakeCase("dateOfBerth"),"dateOfBerth","dateOfBerth",9,true));
+        fixedColumnsNameMapping.put("gender",new FixedFieldRenameDto(toUpperSnakeCase("gender"),"gender","gender",10,true));
+        fixedColumnsNameMapping.put("fatherName",new FixedFieldRenameDto(toUpperSnakeCase("fatherName"),"fatherName","fatherName",11,true));
+        fixedColumnsNameMapping.put("motherName",new FixedFieldRenameDto(toUpperSnakeCase("motherName"),"motherName","motherName",12,true));
+        fixedColumnsNameMapping.put("parentMobileName",new FixedFieldRenameDto(toUpperSnakeCase("parentMobileName"),"parentMobileName","parentMobileName",13,true));
+        fixedColumnsNameMapping.put("parentEmail",new FixedFieldRenameDto(toUpperSnakeCase("parentEmail"),"parentEmail","parentEmail",14,true));
+        fixedColumnsNameMapping.put("linkedInstituteName",new FixedFieldRenameDto(toUpperSnakeCase("linkedInstituteName"),"linkedInstituteName","linkedInstituteName",15,true));
+        fixedColumnsNameMapping.put("parentToMotherMobileNumber",new FixedFieldRenameDto(toUpperSnakeCase("parentToMotherMobileNumber"),"parentToMotherMobileNumber","parentToMotherMobileNumber",16,true));
+        fixedColumnsNameMapping.put("parentsToMotherEmail",new FixedFieldRenameDto(toUpperSnakeCase("parentsToMotherEmail"),"parentsToMotherEmail","parentsToMotherEmail",17,true));
+    }
+
+    public static List<FixedFieldRenameDto> getFixedColumnsRenameDto(){
+        List<FixedFieldRenameDto> fixedFieldRenameDtos = new ArrayList<>();
+
+        fixedColumnsNameMapping.forEach((key,value)->{
+            fixedFieldRenameDtos.add(value);
+        });
+
+        return fixedFieldRenameDtos;
+    }
+
+    public static String toUpperSnakeCase(String input) {
+        if (input == null || input.isEmpty()) {
+            return input;
+        }
+
+        // Special case for "parent"
+        if (input.equals("parent")) {
+            return "PARENT";
+        }
+
+        // Convert camelCase / PascalCase to snake_case
+        String result = input
+                .replaceAll("([a-z])([A-Z])", "$1_$2") // insert _ between lowerUpper
+                .replaceAll("([A-Z])([A-Z][a-z])", "$1_$2"); // insert _ between ABBc
+
+        return result.toUpperCase();
     }
 
     public static NameSettingRequest getDefaultNamingSettingRequest() {
@@ -70,6 +122,10 @@ public class ConstantsSettingDefaultValue {
         return nameDefaultValues.get(key);
     }
 
+    public static List<String> getDefaultCustomFieldLocations() {
+        return defaultCustomFieldsLocations;
+    }
+
     public static String getDefaultHtmlForType(String type){
         return certificateTypeDefaultValues.get(type);
     }
@@ -81,189 +137,250 @@ public class ConstantsSettingDefaultValue {
                 <html lang="en">
                 
                 <head>
-                    <meta charset="UTF-8">
-                    <title>Certificate</title>
+                
                     <style>
+                        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Montserrat:wght@400;600&family=Great+Vibes&display=swap');
+                
+                        body {
+                            font-family: 'Montserrat', sans-serif;
+                            background-color: #f0f4f8;
+                            display: flex;
+                            justify-content: center;
+                            align-items: center;
+                            min-height: 100vh;
+                            margin: 0;
+                            padding: 20px;
+                            box-sizing: border-box;
+                        }
+                
+                        .certificate-container {
+                
+                            width: 297mm;
+                            height: 210mm;
+                            background-color: #ffffff;
+                            border: 12px solid #2d89e4;
+                            box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);
+                            position: relative;
+                            padding: 40px;
+                            box-sizing: border-box;
+                            display: flex;
+                            flex-direction: column;
+                            align-items: center;
+                            text-align: center;
+                        }
+                
+                
+                        .certificate-container::before {
+                            content: '';
+                            position: absolute;
+                            top: 10px;
+                            left: 10px;
+                            right: 10px;
+                            bottom: 10px;
+                            border: 3px solid #a7c7e7;
+                            z-index: 1;
+                        }
+                
+                        .certificate-content {
+                            position: relative;
+                            z-index: 2;
+                            width: 100%;
+                            height: 100%;
+                            display: flex;
+                            flex-direction: column;
+                            align-items: center;
+                            justify-content: space-between;
+                        }
+                
+                        .header {
+                            width: 100%;
+                        }
+                
+                        .institute-logo {
+                            width: 120px;
+                            height: auto;
+                            object-fit: contain;
+                        }
+                
+                        .title {
+                            font-family: 'Playfair Display', serif;
+                            font-size: 48px;
+                            color: #1f3b64;
+                            margin: 20px 0 10px 0;
+                            font-weight: 700;
+                        }
+                
+                        .subtitle {
+                            font-size: 20px;
+                            color: #555;
+                            margin: 0 0 20px 0;
+                        }
+                
+                        .student-name {
+                            font-family: 'Great Vibes', cursive;
+                            font-size: 64px;
+                            color: #005a9c;
+                            margin: 20px 0;
+                            border-bottom: 2px solid #a7c7e7;
+                            padding-bottom: 10px;
+                            display: inline-block;
+                        }
+                
+                        .completion-text {
+                            font-size: 20px;
+                            color: #333;
+                            margin: 20px 0;
+                            line-height: 1.6;
+                        }
+                
+                        .course-name {
+                            font-family: 'Montserrat', sans-serif;
+                            font-size: 32px;
+                            font-weight: 600;
+                            color: #1f3b64;
+                        }
+                
+                        .course-level {
+                            font-size: 18px;
+                            color: #555;
+                            margin-top: 5px;
+                        }
+                
+                        .footer {
+                            width: 100%;
+                            display: flex;
+                            justify-content: space-around;
+                            align-items: flex-end;
+                            margin-top: auto;
+                            padding-bottom: 20px;
+                        }
+                
+                        .signature-block {
+                            width: 40%;
+                            text-align: center;
+                        }
+                
+                        .signature-image {
+                            width: 180px;
+                            height: 60px;
+                            object-fit: contain;
+                        }
+                
+                        .signature-line {
+                            border-top: 2px solid #333;
+                            margin-top: 5px;
+                            padding-top: 5px;
+                        }
+                
+                        .signature-title {
+                            font-size: 16px;
+                            font-weight: 600;
+                            color: #333;
+                        }
+                
+                        .date-placeholder {
+                            font-size: 18px;
+                            font-weight: 600;
+                            color: #333;
+                            padding-bottom: 5px;
+                        }
+                
+                
+                        .seal {
+                            position: absolute;
+                            bottom: 60px;
+                            right: 60px;
+                            width: 120px;
+                            height: 120px;
+                            opacity: 0.8;
+                            z-index: 3;
+                        }
+                
+                        .footer-link {
+                            font-weight: 600;
+                            font-size: 15px;
+                            color: #056cb6;
+                        }
+                
+                
                         @page {
                             size: A4 landscape;
                             margin: 0;
                         }
                 
-                        body {
-                            margin: 0;
-                            font-family: "Times New Roman", serif;
-                            background: #f8f9fa;
-                        }
+                        @media print {
+                            body {
+                                background-color: #fff;
+                                padding: 0;
+                                margin: 0;
+                            }
                 
-                        .certificate {
-                            width: 297mm;
-                            /* A4 width */
-                            height: 210mm;
-                            /* A4 height */
-                            margin: 0 auto;
-                            background: #fff;
-                            border: 10px solid #1e4fa1;
-                            /* blue border */
-                            box-sizing: border-box;
-                            padding: 25mm;
-                            text-align: center;
-                            position: relative;
-                        }
+                            .certificate-container {
+                                box-shadow: none;
+                                margin: 0;
+                                border: 10px solid #2d89e4;
+                            }
                 
-                        .corner {
-                            position: absolute;
-                            width: 260px;
-                            height: 260px;
-                            background: linear-gradient(135deg, #1e4fa1 50%, transparent 50%);
-                            opacity: 0.1;
-                        }
+                            .certificate-container::before {
+                                border-width: 3px;
+                            }
                 
-                        .corner.tl {
-                            top: 0;
-                            left: 0;
-                        }
-                
-                        .corner.tr {
-                            top: 0;
-                            right: 0;
-                            transform: scaleX(-1);
-                        }
-                
-                
-                        .logo {
-                            width: 90px;
-                            height: 90px;
-                            margin-bottom: 8 px;
-                            object-fit: contain;
-                        }
-                
-                        .institute-name {
-                            font-size: 24pt;
-                            font-weight: bold;
-                            margin: 10px;
-                            color: #000;
-                            margin-bottom: 6 px;
-                        }
-                
-                        .title {
-                            font-size: 20pt;
-                            font-weight: bold;
-                            color: #1e4fa1;
-                            margin-bottom: 14px;
-                            letter-spacing: 1px;
-                        }
-                
-                        .subtitle {
-                            font-size: 17pt;
-                            margin: 0 0 20px;
-                            color: #333;
-                        }
-                
-                        .student-name {
-                            font-size: 32pt;
-                            font-weight: bold;
-                            margin-top: 2px;
-                            margin-bottom: 10px;
-                            text-decoration: underline;
-                            letter-spacing: 1px;
-                            text-decoration-color: rgb(69, 67, 67);
-                            /* underline color set to gray */
-                        }
-                
-                        .course-text {
-                            font-size: 17pt;
-                            margin: 20px 12px;
-                            color: #333;
-                            line-height: 1.7;
-                        }
-                
-                        /* Footer row */
-                        .footer-row {
-                            display: flex;
-                            justify-content: space-between;
-                            align-items: flex-end;
-                            margin-top: 85px;
-                        }
-                
-                        .date-block {
-                            font-size: 15pt;
-                            text-align: left;
-                        }
-                
-                        .sign-block {
-                            text-align: center;
-                        }
-                
-                        .signature {
-                            height: 60px;
-                            /* adjust as needed */
-                            object-fit: contain;
-                            margin-bottom: 5px;
-                        }
-                
-                        .sign-line {
-                            border-top: 1px solid #000;
-                            width: 200px;
-                            margin: 5px auto 5px;
-                        }
-                
-                        .sign-role {
-                            font-size: 13pt;
-                            font-weight: bold;
                         }
                     </style>
                 </head>
                 
                 <body>
-                    <div class="certificate">
+                    <div class="certificate-container">
                 
-                        <!-- Decorative corners -->
-                        <div class="corner tl"></div>
-                        <div class="corner tr"></div>
-                
-                        <!-- Logo -->
-                        <img src="{{INSTITUTE_LOGO}}" alt="Institute Logo" class="logo" onerror="this.style.display='none'">
-                
-                        <!-- Institute Name -->
-                        <h1 class="institute-name">{{INSTITUTE_NAME}}</h1>
-                
-                        <!-- Title -->
-                        <h2 class="title">CERTIFICATE OF ACHIEVEMENT</h2>
-                
-                        <!-- Subtitle -->
-                        <p class="subtitle">This certificate is proudly presented to</p>
-                
-                        <!-- Student Name -->
-                        <div class="student-name">{{STUDENT_NAME}}</div>
-                
-                        <!-- Course Info -->
-                        <p class="course-text">
-                            for the successful completion of the <br>
-                            <strong>{{COURSE_NAME}}</strong> ({{LEVEL}}) <br>
-                            on {{DATE_OF_COMPLETION}}.
-                        </p>
-                
-                        <!-- Footer -->
-                        <div class="footer-row">
-                            <!-- Left: Date -->
-                            <div class="date-block">
-                                Date: {{TODAY_DATE}}
+                        <div class="certificate-content">
+                            <div class="header">
+                                <img src="{{INSTITUTE_LOGO}}" alt="Institute Logo" class="institute-logo" id="institute-logo">
                             </div>
                 
-                            <!-- Right: Signature + Designation -->
-                            <div class="sign-block">
-                                <img src="{{SIGNATURE}}" alt=" " class="signature" onerror="this.style.display='none'">
-                                <div class="sign-line"></div>
-                                <div class="sign-role">{{DESIGNATION}}</div>
+                            <div class="main-content">
+                                <h1 class="title">CERTIFICATE OF ACHIEVEMENT</h1>
+                                <p class="subtitle">This certificate is proudly presented to</p>
+                
+                                <h2 class="student-name" id="student-name">{{STUDENT_NAME}}</h2>
+                
+                                <p class="completion-text">for the successful completion of the</p>
+                
+                                <div class="course-details">
+                                    <h3 class="course-name" id="course-name">{{COURSE_NAME}}</h3>
+                                    <p class="course-level" id="course-level">{{LEVEL}}</p>
+                                </div>
+                            </div>
+                
+                            <div class="footer">
+                                <div class="signature-block">
+                                    <p class="date-placeholder" id="completion-date">{{DATE_OF_COMPLETION}}</p>
+                                    <div class="signature-line"></div>
+                                    <p class="signature-title">Date of Completion</p>
+                                </div>
+                                <div class="signature-block">
+                                    <img src="{{SIGNATURE}}" alt="Signature" class="signature-image" id="signature">
+                                    <div class="signature-line"></div>
+                                    <p class="signature-title" id="designation">{{DESIGNATION}}</p>
+                                </div>
+                            </div>
+                
+                            <div class="footer-link">
+                                <p>WWW.CODECIRCLE.ORG</p>
                             </div>
                         </div>
                     </div>
                 </body>
-                
                 </html>
                 """);
 
         return sb.toString();
     }
 
+    public static Collection<String> getUsernamePasswordLocations() {
+        return List.of("Learner Profile","Learner’s List");
+    }
+
+    public static Collection<String> getBatchLocations(){
+        return List.of("Enroll Request List");
+    }
 }

@@ -23,6 +23,18 @@ public class DomainRoutingAdminService {
                 .role(request.getRole().trim())
                 .instituteId(request.getInstituteId().trim())
                 .redirect(request.getRedirect() == null ? null : request.getRedirect().trim())
+                .privacyPolicyUrl(request.getPrivacyPolicyUrl() == null ? null : request.getPrivacyPolicyUrl().trim())
+                .afterLoginRoute(request.getAfterLoginRoute() == null ? null : request.getAfterLoginRoute().trim())
+                .termsAndConditionUrl(request.getTermsAndConditionUrl() == null ? null : request.getTermsAndConditionUrl().trim())
+                .theme(request.getTheme() == null ? null : request.getTheme().trim())
+                .tabText(request.getTabText() == null ? null : request.getTabText().trim())
+                .allowSignup(request.getAllowSignup())
+                .tabIconFileId(request.getTabIconFileId() == null ? null : request.getTabIconFileId().trim())
+                .fontFamily(request.getFontFamily() == null ? null : request.getFontFamily().trim())
+                .allowGoogleAuth(request.getAllowGoogleAuth())
+                .allowGithubAuth(request.getAllowGithubAuth())
+                .allowEmailOtpAuth(request.getAllowEmailOtpAuth())
+                .allowUsernamePasswordAuth(request.getAllowUsernamePasswordAuth())
                 .build();
         return repository.save(entity);
     }
@@ -38,7 +50,19 @@ public class DomainRoutingAdminService {
             existing.setSubdomain(request.getSubdomain().trim());
             existing.setRole(request.getRole().trim());
             existing.setInstituteId(request.getInstituteId().trim());
+            existing.setAfterLoginRoute(request.getAfterLoginRoute() == null ? null : request.getAfterLoginRoute().trim());
             existing.setRedirect(request.getRedirect() == null ? null : request.getRedirect().trim());
+            existing.setPrivacyPolicyUrl(request.getPrivacyPolicyUrl() == null ? null : request.getPrivacyPolicyUrl().trim());
+            existing.setTermsAndConditionUrl(request.getTermsAndConditionUrl() == null ? null : request.getTermsAndConditionUrl().trim());
+            existing.setTheme(request.getTheme() == null ? null : request.getTheme().trim());
+            existing.setTabText(request.getTabText() == null ? null : request.getTabText().trim());
+            existing.setAllowSignup(request.getAllowSignup());
+            existing.setTabIconFileId(request.getTabIconFileId() == null ? null : request.getTabIconFileId().trim());
+            existing.setFontFamily(request.getFontFamily() == null ? null : request.getFontFamily().trim());
+            existing.setAllowGoogleAuth(request.getAllowGoogleAuth());
+            existing.setAllowGithubAuth(request.getAllowGithubAuth());
+            existing.setAllowEmailOtpAuth(request.getAllowEmailOtpAuth());
+            existing.setAllowUsernamePasswordAuth(request.getAllowUsernamePasswordAuth());
             return repository.save(existing);
         });
     }

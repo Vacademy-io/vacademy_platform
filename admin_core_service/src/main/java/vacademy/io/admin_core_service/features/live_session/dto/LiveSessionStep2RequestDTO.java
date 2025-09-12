@@ -19,6 +19,10 @@ public class LiveSessionStep2RequestDTO {
 
     private List<String> packageSessionIds;
     private List<String> deletedPackageSessionIds;
+    
+    // === Individual User Operations ===
+    private List<String> individualUserIds;       //new added fields
+    private List<String> deletedIndividualUserIds;
 
     private String joinLink;
 

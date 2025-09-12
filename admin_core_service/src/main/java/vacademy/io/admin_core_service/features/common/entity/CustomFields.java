@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.common.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO;
 
 import java.util.Date;
@@ -15,6 +16,7 @@ import java.util.Date;
 public class CustomFields {
 
     @Id
+    @UuidGenerator
     @Column(name = "id", nullable = false, unique = true)
     private String id;
 
@@ -44,6 +46,9 @@ public class CustomFields {
 
     @Column(name = "is_sortable")
     private Boolean isSortable = false;
+
+    @Column(name = "status")
+    private String status;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;

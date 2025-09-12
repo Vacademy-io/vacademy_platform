@@ -74,6 +74,7 @@ public class Step1Service {
 
         // New Field
         session.setAllowPlayPause(request.isAllowPlayPause());
+        if(request.getTimeZone()!=null) session.setTimezone(request.getTimeZone());
 
         session.setCreatedByUserId(user.getUserId());
     }
@@ -108,6 +109,8 @@ public class Step1Service {
                     schedule.setThumbnailFileId(dto.getThumbnailFileId());
                     schedule.setDailyAttendance(dto.isDailyAttendance());
 
+                    schedule.setStatus(LiveSessionStatus.LIVE.name());
+
                     LocalTime parsedStartTime = LocalTime.parse(dto.getStartTime());
                     LocalTime computedLastEntryTime = parsedStartTime.plusMinutes(Long.parseLong(dto.getDuration()));
                     schedule.setLastEntryTime(Time.valueOf(computedLastEntryTime));
@@ -138,6 +141,7 @@ public class Step1Service {
             schedule.setCustomWaitingRoomMediaId(null);
             schedule.setThumbnailFileId(request.getThumbnailFileId());
             schedule.setDailyAttendance(false); // default for single schedule
+            schedule.setStatus(LiveSessionStatus.LIVE.name());
 
             scheduleRepository.save(schedule);
         }

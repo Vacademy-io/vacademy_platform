@@ -7,7 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
-import vacademy.io.admin_core_service.features.live_session.controller.AttendanceReport;
 import vacademy.io.admin_core_service.features.live_session.dto.AttendanceReportDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.AttendanceReportProjection;
 import vacademy.io.admin_core_service.features.live_session.dto.ScheduleAttendanceProjection;
@@ -15,7 +14,6 @@ import vacademy.io.admin_core_service.features.live_session.entity.LiveSessionPa
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.UUID;
 
 @Repository
 public interface LiveSessionParticipantRepository extends JpaRepository<LiveSessionParticipants, String> {
@@ -29,31 +27,82 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
     @Transactional
     List<LiveSessionParticipants> findBySessionId(String sessionId);
 
+    boolean existsBySessionIdAndSourceTypeAndSourceId(String sessionId, String sourceType, String sourceId);
+
         @Query(value = """
-        SELECT 
-            s.user_id AS studentId,
-            s.full_name AS fullName,
-            s.email AS email,
-            s.mobile_number AS mobileNumber,
-            s.gender AS gender,
-            s.date_of_birth AS dateOfBirth,
-            m.institute_enrollment_number AS instituteEnrollmentNumber,
-            m.status AS enrollmentStatus,
-            lsl.status AS attendanceStatus,
-            lsl.details AS attendanceDetails,
-            lsl.created_at AS attendanceTimestamp
-        FROM live_session_participants lsp
-        JOIN student_session_institute_group_mapping m
-            ON m.package_session_id = lsp.source_id AND lsp.source_type = 'BATCH' AND m.status = 'ACTIVE'
-        JOIN student s
-            ON s.user_id = m.user_id
-        LEFT JOIN live_session_logs lsl
-            ON lsl.user_source_id = s.user_id
-            AND lsl.user_source_type = 'USER'
-            AND lsl.session_id = :sessionId
-            AND lsl.schedule_id = :scheduleId
-            AND lsl.log_type = 'ATTENDANCE_RECORDED'
-        WHERE lsp.session_id = :sessionId
+        WITH all_participants AS (
+            -- Query for BATCH source type participants
+            SELECT 
+                s.user_id AS studentId,
+                s.full_name AS fullName,
+                s.email AS email,
+                s.mobile_number AS mobileNumber,
+                s.gender AS gender,
+                s.date_of_birth AS dateOfBirth,
+                m.institute_enrollment_number AS instituteEnrollmentNumber,
+                m.status AS enrollmentStatus,
+                lsl.status AS attendanceStatus,
+                lsl.details AS attendanceDetails,
+                lsl.created_at AS attendanceTimestamp,
+                'BATCH' AS source_type,
+                1 AS priority
+            FROM live_session_participants lsp
+            JOIN student_session_institute_group_mapping m
+                ON m.package_session_id = lsp.source_id AND lsp.source_type = 'BATCH' AND m.status = 'ACTIVE'
+            JOIN student s
+                ON s.user_id = m.user_id
+            LEFT JOIN live_session_logs lsl
+                ON lsl.user_source_id = s.user_id
+                AND lsl.user_source_type = 'USER'
+                AND lsl.session_id = :sessionId
+                AND lsl.schedule_id = :scheduleId
+                AND lsl.log_type = 'ATTENDANCE_RECORDED'
+            WHERE lsp.session_id = :sessionId
+            AND lsp.source_type = 'BATCH'
+            
+            UNION ALL
+            
+            -- Query for USER source type participants
+            SELECT 
+                s.user_id AS studentId,
+                s.full_name AS fullName,
+                s.email AS email,
+                s.mobile_number AS mobileNumber,
+                s.gender AS gender,
+                s.date_of_birth AS dateOfBirth,
+                NULL AS instituteEnrollmentNumber,
+                NULL AS enrollmentStatus,
+                lsl.status AS attendanceStatus,
+                lsl.details AS attendanceDetails,
+                lsl.created_at AS attendanceTimestamp,
+                'USER' AS source_type,
+                2 AS priority
+            FROM live_session_participants lsp
+            JOIN student s
+                ON s.user_id = lsp.source_id
+            LEFT JOIN live_session_logs lsl
+                ON lsl.user_source_id = s.user_id
+                AND lsl.user_source_type = 'USER'
+                AND lsl.session_id = :sessionId
+                AND lsl.schedule_id = :scheduleId
+                AND lsl.log_type = 'ATTENDANCE_RECORDED'
+            WHERE lsp.session_id = :sessionId
+            AND lsp.source_type = 'USER'
+        )
+        SELECT DISTINCT ON (studentId)
+            studentId,
+            fullName,
+            email,
+            mobileNumber,
+            gender,
+            dateOfBirth,
+            instituteEnrollmentNumber,
+            enrollmentStatus,
+            attendanceStatus,
+            attendanceDetails,
+            attendanceTimestamp
+        FROM all_participants
+        ORDER BY studentId, priority ASC
     """, nativeQuery = true)
         List<AttendanceReportDTO> getAttendanceReportBySessionIds(
                 @Param("sessionId") String sessionId,
@@ -71,6 +120,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         s.date_of_birth AS dateOfBirth,
         m.institute_enrollment_number AS instituteEnrollmentNumber,
         m.status AS enrollmentStatus,
+        m.enrolled_date AS enrolledDate,
         lsl.status AS attendanceStatus,
         lsl.details AS attendanceDetails,
         lsl.created_at AS attendanceTimestamp,
@@ -79,7 +129,8 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         ls.title AS title,
         ss.meeting_date AS meetingDate,
         ss.start_time AS startTime,
-        ss.last_entry_time AS lastEntryTime
+        ss.last_entry_time AS lastEntryTime,
+        ss.daily_attendance AS dailyAttendance
     FROM live_session_participants lsp
     JOIN student_session_institute_group_mapping m
         ON m.package_session_id = lsp.source_id
@@ -99,6 +150,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         AND lsl.log_type = 'ATTENDANCE_RECORDED'
     WHERE lsp.source_id = :batchSessionId
       AND ss.meeting_date BETWEEN :startDate AND :endDate
+      AND (m.enrolled_date IS NULL OR ss.meeting_date >= m.enrolled_date)
     """, nativeQuery = true)
     List<AttendanceReportProjection> getAttendanceReportWithinDateRange(
             @Param("batchSessionId") String batchSessionId,
@@ -120,6 +172,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
           AND (:name IS NULL OR LOWER(s.full_name) LIKE LOWER(CONCAT('%', :name, '%')))
           AND (:batchIdsSize = 0 OR lsp.source_id IN (:batchIds))
           AND (:liveSessionIdsSize = 0 OR lsp.session_id IN (:liveSessionIds))
+          AND (m.enrolled_date IS NULL OR m.enrolled_date <= :endDate)
         """,
             countQuery = """
         SELECT COUNT(DISTINCT s.user_id)
@@ -134,6 +187,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
           AND (:name IS NULL OR LOWER(s.full_name) LIKE LOWER(CONCAT('%', :name, '%')))
           AND (:batchIdsSize = 0 OR lsp.source_id IN (:batchIds))
           AND (:liveSessionIdsSize = 0 OR lsp.session_id IN (:liveSessionIds))
+          AND (m.enrolled_date IS NULL OR m.enrolled_date <= :endDate)
         """,
             nativeQuery = true
     )
@@ -158,6 +212,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         s.date_of_birth AS dateOfBirth,
         m.institute_enrollment_number AS instituteEnrollmentNumber,
         m.status AS enrollmentStatus,
+        m.enrolled_date AS enrolledDate,
         lsl.status AS attendanceStatus,
         lsl.details AS attendanceDetails,
         lsl.created_at AS attendanceTimestamp,
@@ -166,7 +221,8 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         ls.title AS title,
         ss.meeting_date AS meetingDate,
         ss.start_time AS startTime,
-        ss.last_entry_time AS lastEntryTime
+        ss.last_entry_time AS lastEntryTime,
+        ss.daily_attendance AS dailyAttendance
     FROM live_session_participants lsp
     JOIN student_session_institute_group_mapping m
         ON m.package_session_id = lsp.source_id
@@ -186,6 +242,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         AND lsl.log_type = 'ATTENDANCE_RECORDED'
     WHERE s.user_id IN (:studentIds)
     AND ss.meeting_date BETWEEN :startDate AND :endDate
+    AND (m.enrolled_date IS NULL OR ss.meeting_date >= m.enrolled_date)
     ORDER BY LOWER(s.full_name), ss.meeting_date
 """,nativeQuery = true)
     List<AttendanceReportProjection> getAttendanceReportForStudentIds(
@@ -221,14 +278,31 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         LIMIT 1
     ) lsl ON TRUE
     WHERE
-        lsp.source_type = 'BATCH'
-        AND lsp.source_id = :batchId
+        (
+            (lsp.source_type = 'USER' AND lsp.source_id = :userId)
+            OR 
+            (lsp.source_type = 'BATCH' AND lsp.source_id = :batchId 
+             AND EXISTS (
+                 SELECT 1 FROM student_session_institute_group_mapping 
+                 WHERE user_id = :userId 
+                   AND package_session_id = :batchId 
+                   AND status = 'ACTIVE'
+             ))
+        )
         AND ss.meeting_date BETWEEN :startDate AND :endDate
+        AND ss.meeting_date >= COALESCE((
+            SELECT enrolled_date 
+            FROM student_session_institute_group_mapping 
+            WHERE user_id = :userId 
+              AND (:batchId IS NULL OR package_session_id = :batchId)
+            ORDER BY created_at DESC 
+            LIMIT 1
+        ), :startDate)
     ORDER BY ss.id, ls.id
     """, nativeQuery = true)
-    List<ScheduleAttendanceProjection> findAttendanceForUserInBatch(
-            @Param("batchId") String batchId,
+    List<ScheduleAttendanceProjection> findAttendanceForUser(
             @Param("userId") String userId,
+            @Param("batchId") String batchId,
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate
     );

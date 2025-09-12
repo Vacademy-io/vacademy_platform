@@ -7,6 +7,7 @@ import vacademy.io.admin_core_service.features.slide.dto.QuizSlideQuestionDTO;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Entity
 @Table(name = "quiz_slide_question")
@@ -98,7 +99,7 @@ public class QuizSlideQuestion {
         if (dto.getOptions() != null && !dto.getOptions().isEmpty()) {
             this.quizSlideQuestionOptions = dto.getOptions().stream()
                     .map(o -> new QuizSlideQuestionOption(o, this))
-                    .toList();
+                    .collect(Collectors.toList());
         }
     }
 }

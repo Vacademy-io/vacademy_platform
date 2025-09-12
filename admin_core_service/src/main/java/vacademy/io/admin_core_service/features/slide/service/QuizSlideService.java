@@ -7,22 +7,20 @@ import vacademy.io.admin_core_service.features.common.entity.RichTextData;
 import vacademy.io.admin_core_service.features.common.service.RichTextDataService;
 import vacademy.io.admin_core_service.features.slide.dto.QuizSlideDTO;
 import vacademy.io.admin_core_service.features.slide.dto.QuizSlideQuestionDTO;
+import vacademy.io.admin_core_service.features.slide.dto.QuizSlideQuestionOptionDTO;
 import vacademy.io.admin_core_service.features.slide.dto.SlideDTO;
 import vacademy.io.admin_core_service.features.slide.entity.QuizSlide;
 import vacademy.io.admin_core_service.features.slide.entity.QuizSlideQuestion;
-import vacademy.io.admin_core_service.features.slide.entity.Slide;
+import vacademy.io.admin_core_service.features.slide.entity.QuizSlideQuestionOption;
 import vacademy.io.admin_core_service.features.slide.enums.SlideTypeEnum;
 import vacademy.io.admin_core_service.features.slide.repository.QuizSlideRepository;
-import vacademy.io.common.ai.dto.RichTextDataDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.stream.Collectors; // <-- Import Collectors
+import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 public class QuizSlideService {
@@ -38,7 +36,7 @@ public class QuizSlideService {
 
     @Transactional
     public String addOrUpdateQuizSlide(SlideDTO slideDTO, String chapterId, String packageSessionId, String moduleId,
-                                       String subjectId, CustomUserDetails userDetails) {
+            String subjectId, CustomUserDetails userDetails) {
         if (slideDTO.isNewSlide()) {
             return addQuizSlide(slideDTO, chapterId);
         }
@@ -69,7 +67,7 @@ public class QuizSlideService {
     }
 
     public String updateQuizSlide(SlideDTO slideDTO, String chapterId, String packageSessionId, String moduleId,
-                                  String subjectId) {
+            String subjectId) {
         QuizSlideDTO quizSlideDTO = slideDTO.getQuizSlide();
 
         QuizSlide quizSlide = quizSlideRepository.findById(quizSlideDTO.getId())
@@ -77,12 +75,7 @@ public class QuizSlideService {
 
         updateData(quizSlideDTO, quizSlide);
 
-        try{
-            quizSlideRepository.save(quizSlide);
-        }
-        catch(Exception e){
-            e.printStackTrace();
-        }
+        quizSlideRepository.save(quizSlide);
 
         slideService.updateSlide(
                 slideDTO.getId(),
@@ -100,21 +93,151 @@ public class QuizSlideService {
     }
 
     public void updateData(QuizSlideDTO dto, QuizSlide quizSlide) {
-        // <-- FIX: Use collect(Collectors.toList()) to create a mutable list
-        quizSlide.setQuestions(dto.getQuestions().stream().map(q -> new QuizSlideQuestion(q, quizSlide)).collect(Collectors.toList()));
         quizSlide.setDescriptionRichText(new RichTextData(dto.getDescription()));
         addOrUpdateQuestionsInBulk(quizSlide, dto.getQuestions());
     }
 
     private void addOrUpdateQuestionsInBulk(QuizSlide quizSlide, List<QuizSlideQuestionDTO> quizSlideQuestionDTOs) {
-        // Implementation for bulk question updates
-        if (quizSlideQuestionDTOs != null && !quizSlideQuestionDTOs.isEmpty()) {
-            // <-- FIX: Use collect(Collectors.toList()) to create a mutable list
-            List<QuizSlideQuestion> questions = quizSlideQuestionDTOs.stream()
-                    .map(q -> new QuizSlideQuestion(q, quizSlide))
-                    .collect(Collectors.toList());
-            quizSlide.setQuestions(questions);
+        if (quizSlideQuestionDTOs == null || quizSlideQuestionDTOs.isEmpty()) {
+            quizSlide.setQuestions(new ArrayList<>());
+            return;
         }
+
+        // Get existing questions map for efficient lookup
+        Map<String, QuizSlideQuestion> existingQuestionsMap = quizSlide.getQuestions() != null 
+            ? quizSlide.getQuestions().stream()
+                .collect(Collectors.toMap(QuizSlideQuestion::getId, Function.identity()))
+            : new HashMap<>();
+
+        List<QuizSlideQuestion> updatedQuestions = new ArrayList<>();
+
+        for (QuizSlideQuestionDTO dto : quizSlideQuestionDTOs) {
+            if (dto.getId() != null && existingQuestionsMap.containsKey(dto.getId())) {
+                // Update existing question
+                QuizSlideQuestion existingQuestion = existingQuestionsMap.get(dto.getId());
+                updateExistingQuestion(existingQuestion, dto);
+                updatedQuestions.add(existingQuestion);
+            } else {
+                // Create new question
+                QuizSlideQuestion newQuestion = new QuizSlideQuestion(dto, quizSlide);
+                if (newQuestion.getId() == null) {
+                    newQuestion.setId(UUID.randomUUID().toString());
+                }
+                updatedQuestions.add(newQuestion);
+            }
+        }
+
+        quizSlide.setQuestions(updatedQuestions);
+    }
+
+    private void updateExistingQuestion(QuizSlideQuestion existingQuestion, QuizSlideQuestionDTO dto) {
+        // Update basic properties
+        if (dto.getParentRichText() != null) {
+            if (existingQuestion.getParentRichText() != null) {
+                existingQuestion.getParentRichText().setContent(dto.getParentRichText().getContent());
+                existingQuestion.getParentRichText().setType(dto.getParentRichText().getType());
+            } else {
+                existingQuestion.setParentRichText(new RichTextData(dto.getParentRichText()));
+            }
+        } else {
+            existingQuestion.setParentRichText(null);
+        }
+
+        if (dto.getText() != null) {
+            if (existingQuestion.getText() != null) {
+                existingQuestion.getText().setContent(dto.getText().getContent());
+                existingQuestion.getText().setType(dto.getText().getType());
+            } else {
+                existingQuestion.setText(new RichTextData(dto.getText()));
+            }
+        } else {
+            existingQuestion.setText(null);
+        }
+
+        if (dto.getExplanationText() != null) {
+            if (existingQuestion.getExplanationText() != null) {
+                existingQuestion.getExplanationText().setContent(dto.getExplanationText().getContent());
+                existingQuestion.getExplanationText().setType(dto.getExplanationText().getType());
+            } else {
+                existingQuestion.setExplanationText(new RichTextData(dto.getExplanationText()));
+            }
+        } else {
+            existingQuestion.setExplanationText(null);
+        }
+
+        existingQuestion.setMediaId(dto.getMediaId());
+        existingQuestion.setStatus(dto.getStatus());
+        existingQuestion.setQuestionResponseType(dto.getQuestionResponseType());
+        existingQuestion.setQuestionType(dto.getQuestionType());
+        existingQuestion.setAccessLevel(dto.getAccessLevel());
+        existingQuestion.setAutoEvaluationJson(dto.getAutoEvaluationJson());
+        existingQuestion.setEvaluationType(dto.getEvaluationType());
+        existingQuestion.setQuestionOrder(dto.getQuestionOrder());
+        existingQuestion.setCanSkip(dto.getCanSkip());
+        existingQuestion.setUpdatedAt(LocalDateTime.now());
+
+        // Update options
+        updateQuestionOptions(existingQuestion, dto.getOptions());
+    }
+
+    private void updateQuestionOptions(QuizSlideQuestion question, List<QuizSlideQuestionOptionDTO> optionDTOs) {
+        if (optionDTOs == null || optionDTOs.isEmpty()) {
+            question.setQuizSlideQuestionOptions(new ArrayList<>());
+            return;
+        }
+
+        // Get existing options map for efficient lookup
+        Map<String, QuizSlideQuestionOption> existingOptionsMap = question.getQuizSlideQuestionOptions() != null
+            ? question.getQuizSlideQuestionOptions().stream()
+                .collect(Collectors.toMap(QuizSlideQuestionOption::getId, Function.identity()))
+            : new HashMap<>();
+
+        List<QuizSlideQuestionOption> updatedOptions = new ArrayList<>();
+
+        for (QuizSlideQuestionOptionDTO dto : optionDTOs) {
+            if (dto.getId() != null && existingOptionsMap.containsKey(dto.getId())) {
+                // Update existing option
+                QuizSlideQuestionOption existingOption = existingOptionsMap.get(dto.getId());
+                updateExistingOption(existingOption, dto);
+                updatedOptions.add(existingOption);
+            } else {
+                // Create new option
+                QuizSlideQuestionOption newOption = new QuizSlideQuestionOption(dto, question);
+                if (newOption.getId() == null) {
+                    newOption.setId(UUID.randomUUID().toString());
+                }
+                updatedOptions.add(newOption);
+            }
+        }
+
+        question.setQuizSlideQuestionOptions(updatedOptions);
+    }
+
+    private void updateExistingOption(QuizSlideQuestionOption existingOption, QuizSlideQuestionOptionDTO dto) {
+        if (dto.getText() != null) {
+            if (existingOption.getText() != null) {
+                existingOption.getText().setContent(dto.getText().getContent());
+                existingOption.getText().setType(dto.getText().getType());
+            } else {
+                existingOption.setText(new RichTextData(dto.getText()));
+            }
+        } else {
+            existingOption.setText(null);
+        }
+
+        if (dto.getExplanationText() != null) {
+            if (existingOption.getExplanationText() != null) {
+                existingOption.getExplanationText().setContent(dto.getExplanationText().getContent());
+                existingOption.getExplanationText().setType(dto.getExplanationText().getType());
+            } else {
+                existingOption.setExplanationText(new RichTextData(dto.getExplanationText()));
+            }
+        } else {
+            existingOption.setExplanationText(null);
+        }
+
+        existingOption.setMediaId(dto.getMediaId());
+        existingOption.setUpdatedOn(LocalDateTime.now());
     }
 
     /**
@@ -139,7 +262,6 @@ public class QuizSlideService {
 
         // Copy questions if they exist
         if (originalQuizSlide.getQuestions() != null && !originalQuizSlide.getQuestions().isEmpty()) {
-            // <-- FIX: Use collect(Collectors.toList()) to create a mutable list
             List<QuizSlideQuestion> newQuestions = originalQuizSlide.getQuestions().stream()
                     .map(this::copyQuizSlideQuestion)
                     .collect(Collectors.toList());

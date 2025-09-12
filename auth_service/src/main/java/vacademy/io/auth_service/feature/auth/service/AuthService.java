@@ -2,14 +2,18 @@ package vacademy.io.auth_service.feature.auth.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
-import vacademy.io.auth_service.feature.auth.constants.AuthConstants;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
 import vacademy.io.auth_service.feature.auth.dto.RegisterRequest;
+import vacademy.io.auth_service.feature.institute.InstituteInfoDTO;
+import vacademy.io.auth_service.feature.institute.InstituteInternalService;
 import vacademy.io.auth_service.feature.notification.service.NotificationEmailBody;
 import vacademy.io.auth_service.feature.notification.service.NotificationService;
 import vacademy.io.auth_service.feature.user.repository.PermissionRepository;
@@ -23,7 +27,7 @@ import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.auth.service.RefreshTokenService;
-import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
 
 import java.util.HashSet;
@@ -55,6 +59,8 @@ public class AuthService {
 
     @Autowired
     private UserRoleRepository userRoleRepository;
+    @Autowired
+    private InstituteInternalService instituteInternalService;
 
     @Transactional
     public User createUser(RegisterRequest registerRequest, Set<UserRole> roles) {
@@ -85,9 +91,9 @@ public class AuthService {
         user = userRepository.save(user); // Save again with roles
 
         if (isAlreadyPresent) {
-            sendKeepingCredentialsWelcomeMailToUser(user);
+            sendKeepingCredentialsWelcomeMailToUser(user,registerRequest.getInstitute().getId());
         } else {
-            sendWelcomeMailToUser(user);
+            sendWelcomeMailToUser(user,registerRequest.getInstitute().getId());
         }
 
         return user;
@@ -138,9 +144,9 @@ public class AuthService {
 
         // Send appropriate welcome mail
         if (isAlreadyPresent) {
-            sendKeepingCredentialsWelcomeMailToUser(user);
+            sendKeepingCredentialsWelcomeMailToUser(user, instituteId);
         } else {
-            sendWelcomeMailToUser(user);
+            sendWelcomeMailToUser(user, instituteId);
         }
 
         return user;
@@ -163,18 +169,34 @@ public class AuthService {
                 .build();
     }
 
-    public void sendWelcomeMailToUser(User user) {
+    public void sendWelcomeMailToUser(User user, String instituteId) {
+        InstituteInfoDTO instituteInfoDTO=null;
+
+        String instituteName = "Vacademy"; // Default fallback
+        if (StringUtils.hasText(instituteId)) {
+            instituteInfoDTO=instituteInternalService.getInstituteByInstituteId(instituteId);
+            if(instituteInfoDTO.getInstituteName()!=null)
+                instituteName=instituteInfoDTO.getInstituteName();
+        }
         GenericEmailRequest genericEmailRequest = new GenericEmailRequest();
         genericEmailRequest.setTo(user.getEmail());
-        genericEmailRequest.setBody(NotificationEmailBody.createWelcomeEmailBody("Vacademy", user.getFullName(),
+        genericEmailRequest.setBody(NotificationEmailBody.createWelcomeEmailBody(instituteName, user.getFullName(),
                 user.getUsername(), user.getPassword()));
-        genericEmailRequest.setSubject("Welcome to Vacademy");
-        notificationService.sendGenericHtmlMail(genericEmailRequest);
+        genericEmailRequest.setSubject("Welcome to " + instituteName);
+        notificationService.sendGenericHtmlMail(genericEmailRequest, instituteId);
     }
 
-    public void sendKeepingCredentialsWelcomeMailToUser(User user) {
+    public void sendKeepingCredentialsWelcomeMailToUser(User user, String instituteId) {
         if (user == null || user.getEmail() == null) {
             throw new IllegalArgumentException("User or user email must not be null");
+        }
+        InstituteInfoDTO instituteInfoDTO=null;
+
+        String instituteName = "Vacademy"; // Default fallback
+        if (StringUtils.hasText(instituteId)) {
+            instituteInfoDTO=instituteInternalService.getInstituteByInstituteId(instituteId);
+            if(instituteInfoDTO.getInstituteName()!=null)
+                instituteName=instituteInfoDTO.getInstituteName();
         }
 
         String fullName = user.getFullName() != null ? user.getFullName() : "User";
@@ -183,17 +205,17 @@ public class AuthService {
                                                                                    // passwords in email
 
         String body = NotificationEmailBody.createCredentialsFoundEmailBody(
-                "Vacademy",
+                instituteName,
                 fullName,
                 username,
                 password);
 
         GenericEmailRequest emailRequest = new GenericEmailRequest();
         emailRequest.setTo(user.getEmail());
-        emailRequest.setSubject("Welcome to Vacademy");
+        emailRequest.setSubject("Welcome to " + instituteName);
         emailRequest.setBody(body);
 
-        notificationService.sendGenericHtmlMail(emailRequest);
+        notificationService.sendGenericHtmlMail(emailRequest, instituteId);
     }
 
 }

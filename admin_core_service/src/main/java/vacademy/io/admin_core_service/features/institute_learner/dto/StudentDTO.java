@@ -10,6 +10,8 @@ import lombok.NoArgsConstructor;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 
 @Data
 @Builder
@@ -48,6 +50,10 @@ public class StudentDTO {
     private String parentsToMotherMobileNumber;
     private String parentsToMotherEmail;
     private String userPlanId;
+    private Double attendancePercent;
+
+    // 🔑 Dynamic custom fields (fieldKey -> value)
+    private Map<String, String> customFields = new HashMap<>();
 
     // Constructor that takes a Student entity
     public StudentDTO(Student student) {
@@ -124,6 +130,9 @@ public class StudentDTO {
             }
             if (objects.length > 27){
                 this.userPlanId = (String) objects[27]; // Additional field from mapping table
+            }
+            if (objects.length > 28){
+                this.attendancePercent = (Double) objects[28]; // Additional field for attendance percentage
             }
         }
     }

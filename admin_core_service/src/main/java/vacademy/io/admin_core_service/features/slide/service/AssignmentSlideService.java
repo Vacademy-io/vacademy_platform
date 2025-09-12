@@ -19,6 +19,7 @@ import java.sql.Date;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class AssignmentSlideService {
@@ -115,7 +116,7 @@ public class AssignmentSlideService {
         if (dto.getQuestions() != null && !dto.getQuestions().isEmpty()) {
             assignmentSlide.setAssignmentSlideQuestions(dto.getQuestions().stream()
                     .map(questionDTO -> new AssignmentSlideQuestion(questionDTO, assignmentSlide))
-                    .toList());
+                    .collect(Collectors.toList()));
         }
 
         assignmentSlideRepository.save(assignmentSlide);

@@ -8,10 +8,15 @@ import com.itextpdf.styledxmlparser.jsoup.nodes.Document;
 import com.itextpdf.styledxmlparser.jsoup.nodes.Entities;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 import jakarta.transaction.Transactional;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
+import vacademy.io.admin_core_service.features.common.entity.CustomFields;
+import vacademy.io.admin_core_service.features.common.entity.InstituteCustomField;
+import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
 import vacademy.io.admin_core_service.features.institute.constants.ConstantsSettingDefaultValue;
 import vacademy.io.admin_core_service.features.institute.dto.CertificationGenerationRequest;
 import vacademy.io.admin_core_service.features.institute.dto.settings.InstituteSettingDto;
@@ -19,6 +24,9 @@ import vacademy.io.admin_core_service.features.institute.dto.settings.SettingDto
 import vacademy.io.admin_core_service.features.institute.dto.settings.certificate.CertificateSettingDataDto;
 import vacademy.io.admin_core_service.features.institute.dto.settings.certificate.CertificateSettingDto;
 import vacademy.io.admin_core_service.features.institute.dto.settings.certificate.CertificateSettingRequest;
+import vacademy.io.admin_core_service.features.institute.dto.settings.custom_field.CustomFieldDto;
+import vacademy.io.admin_core_service.features.institute.dto.settings.custom_field.CustomFieldSettingDto;
+import vacademy.io.admin_core_service.features.institute.dto.settings.custom_field.CustomFieldSettingRequest;
 import vacademy.io.admin_core_service.features.institute.dto.settings.naming.NameSettingRequest;
 import vacademy.io.admin_core_service.features.institute.enums.CertificateTypeEnum;
 import vacademy.io.admin_core_service.features.institute.enums.SettingKeyEnums;
@@ -34,8 +42,10 @@ import vacademy.io.common.media.service.FileService;
 
 import java.io.ByteArrayOutputStream;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 
 
+@Slf4j
 @Service
 public class InstituteSettingService {
 
@@ -44,12 +54,14 @@ public class InstituteSettingService {
     private final ObjectMapper objectMapper;
     private final MediaService mediaService;
     private final AuthService authService;
+    private final InstituteCustomFiledService instituteCustomFiledService;
 
-    public InstituteSettingService(InstituteRepository instituteRepository, ObjectMapper objectMapper, FileService fileService, MediaService mediaService, AuthService authService) {
+    public InstituteSettingService(InstituteRepository instituteRepository, ObjectMapper objectMapper, FileService fileService, MediaService mediaService, AuthService authService, InstituteCustomFiledService instituteCustomFiledService) {
         this.instituteRepository = instituteRepository;
         this.objectMapper = objectMapper;
         this.mediaService = mediaService;
         this.authService = authService;
+        this.instituteCustomFiledService = instituteCustomFiledService;
         this.settingStrategyFactory = new SettingStrategyFactory();
     }
 
@@ -94,6 +106,104 @@ public class InstituteSettingService {
 
 
         String settingJsonString = settingStrategyFactory.buildNewSettingAndGetSettingJsonString(institute,request, SettingKeyEnums.CERTIFICATE_SETTING.name());
+        institute.setSetting(settingJsonString);
+        instituteRepository.save(institute);
+    }
+
+    public void createDefaultSettingsForInstitute(Institute institute){
+        try{
+            createDefaultNamingSetting(institute, ConstantsSettingDefaultValue.getDefaultNamingSettingRequest());
+        } catch (Exception e) {
+            log.error("Error Occurred in Creating Default Setting: "+e.getMessage());
+        }
+
+        try{
+            createDefaultCertificateSetting(institute);
+        } catch (Exception e) {
+            log.error("Error Occurred in Creating Default Certificate Setting: "+e.getMessage());
+        }
+
+        try{
+            createDefaultCustomFieldSetting(institute);
+        }catch (Exception e){
+            log.error("Error Occurred in Creating Default Custom Field Setting: "+e.getMessage());
+        }
+    }
+
+    @Transactional
+    public void createDefaultCustomFieldSetting(Institute institute){
+        try{
+            List<InstituteCustomField>defaultCustomFields = instituteCustomFiledService.createDefaultCustomFieldsForInstitute(institute);
+
+            CustomFieldSettingRequest request = new CustomFieldSettingRequest();
+
+            List<CustomFieldDto> customFieldsAndGroups = createFieldsAndGroupsForInstitute(defaultCustomFields);
+
+            request.setFixedCustomFields(customFieldsAndGroups.stream().map(CustomFieldDto::getCustomFieldId).toList());
+            request.setAllCustomFields(customFieldsAndGroups.stream().map(CustomFieldDto::getCustomFieldId).toList());
+            request.setCustomFieldLocations(ConstantsSettingDefaultValue.getDefaultCustomFieldLocations());
+            request.setCustomFieldsAndGroups(customFieldsAndGroups);
+            request.setFixedFieldRenameDtos(ConstantsSettingDefaultValue.getFixedColumnsRenameDto());
+            request.setCustomGroup(new HashMap<>());
+
+            List<String> compulsoryCustomFields = new ArrayList<>();
+            List<String> customFieldsName = new ArrayList<>();
+
+            customFieldsAndGroups.forEach(field->{
+                customFieldsName.add(field.getFieldName());
+                if(isCompulsory(field.getFieldName())){
+                    compulsoryCustomFields.add(field.getCustomFieldId());
+                }
+                if(field.getFieldName().equals("username")){
+                    field.setLocations(ConstantsSettingDefaultValue.getUsernamePasswordLocations().stream().toList());
+                }
+                if(field.getFieldName().equals("password")){
+                    field.setLocations(ConstantsSettingDefaultValue.getUsernamePasswordLocations().stream().toList());
+                }
+                if(field.getFieldName().equals("batch")){
+                    field.setLocations(ConstantsSettingDefaultValue.getBatchLocations().stream().toList());
+                }
+            });
+            request.setCompulsoryCustomFields(compulsoryCustomFields);
+            request.setCustomFieldsName(customFieldsName);
+
+            String settingJsonString = settingStrategyFactory.buildNewSettingAndGetSettingJsonString(institute,request, SettingKeyEnums.CUSTOM_FIELD_SETTING.name());
+            institute.setSetting(settingJsonString);
+            instituteRepository.save(institute);
+        } catch (Exception e) {
+            throw new VacademyException("Failed to create default setting: " +e.getMessage());
+        }
+    }
+
+    private List<CustomFieldDto> createFieldsAndGroupsForInstitute(List<InstituteCustomField> defaultCustomFields) {
+        List<CustomFieldDto> response = new ArrayList<>();
+        AtomicReference<Integer> order = new AtomicReference<>(1);
+        defaultCustomFields.forEach(instituteCustomField -> {
+            Optional<CustomFields> customFields = instituteCustomFiledService.getCustomFieldById(instituteCustomField.getCustomFieldId());
+
+            customFields.ifPresent(fields -> response.add(CustomFieldDto.builder()
+                    .instituteId(instituteCustomField.getInstituteId())
+                    .id(instituteCustomField.getId())
+                    .customFieldId(instituteCustomField.getCustomFieldId())
+                    .fieldType(fields.getFieldType())
+                    .fieldName(fields.getFieldName())
+                    .locations(isCompulsory(fields.getFieldName()) ? ConstantsSettingDefaultValue.getDefaultCustomFieldLocations() : new ArrayList<>())
+                    .individualOrder(order.getAndSet(order.get() + 1))
+                    .status("ACTIVE")
+                    .canBeDeleted(false)
+                    .canBeEdited(false)
+                    .canBeRenamed(false).build()));
+        });
+
+        return response;
+    }
+
+    private boolean isCompulsory(String field) {
+        return !field.equals("username") && !field.equals("password") && !field.equals("batch");
+    }
+
+    public void updateCustomFieldSetting(Institute institute, CustomFieldSettingRequest request){
+        String settingJsonString = settingStrategyFactory.rebuildOldSettingAndGetSettingJsonString(institute,request, SettingKeyEnums.CUSTOM_FIELD_SETTING.name());
         institute.setSetting(settingJsonString);
         instituteRepository.save(institute);
     }

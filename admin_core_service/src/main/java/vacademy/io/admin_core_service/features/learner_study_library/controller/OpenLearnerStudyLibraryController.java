@@ -8,10 +8,10 @@ import vacademy.io.admin_core_service.features.learner_study_library.dto.Learner
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerSlidesDetailDTO;
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerSubjectProjection;
 import vacademy.io.admin_core_service.features.learner_study_library.service.LearnerOpenStudyLibraryService;
-import vacademy.io.admin_core_service.features.slide.dto.SlideDetailProjection;
 import vacademy.io.admin_core_service.features.study_library.dto.ChapterDTOWithDetails;
 import vacademy.io.admin_core_service.features.study_library.service.StudyLibraryService;
-import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.admin_core_service.config.cache.ClientCacheable;
+import vacademy.io.admin_core_service.config.cache.CacheScope;
 
 import java.util.List;
 
@@ -26,28 +26,33 @@ public class OpenLearnerStudyLibraryController {
     private StudyLibraryService studyLibraryService;
 
     @GetMapping("/init-details")
+    @ClientCacheable(maxAgeSeconds = 120, scope = CacheScope.PUBLIC, varyHeaders = {"X-Package-Session-Id"})
     public ResponseEntity<List<LearnerSubjectProjection>> getLearnerStudyLibraryInitDetails(
         @RequestParam String packageSessionId) {
         return ResponseEntity.ok(learnerStudyLibraryService.getSubjectsByPackageSessionId(packageSessionId));
     }
 
     @GetMapping("/modules-with-chapters")
+    @ClientCacheable(maxAgeSeconds = 120, scope = CacheScope.PUBLIC, varyHeaders = {"X-Package-Session-Id"})
     public ResponseEntity<List<LearnerModuleDTOWithDetails>> modulesWithChapters(@RequestParam("subjectId") String subjectId, @RequestParam("packageSessionId") String packageSessionId) {
         return ResponseEntity.ok(learnerStudyLibraryService.getModulesDetailsWithChapters(subjectId, packageSessionId));
     }
 
 
     @GetMapping("/slides")
+    @ClientCacheable(maxAgeSeconds = 120, scope = CacheScope.PUBLIC)
     public ResponseEntity<List<LearnerSlidesDetailDTO>> getLearnerSlidesByChapterId(@RequestParam String chapterId) {
         return ResponseEntity.ok(learnerStudyLibraryService.getLearnerSlides(chapterId));
     }
 
     @GetMapping("/init")
+    @ClientCacheable(maxAgeSeconds = 300, scope = CacheScope.PUBLIC)
     public ResponseEntity<List<CourseDTOWithDetails>> initStudyLibrary(String instituteId) {
         return ResponseEntity.ok(studyLibraryService.getStudyLibraryInitDetails(instituteId));
     }
 
     @GetMapping("/chapters-with-slides")
+    @ClientCacheable(maxAgeSeconds = 120, scope = CacheScope.PUBLIC, varyHeaders = {"X-Package-Session-Id"})
     public ResponseEntity<List<ChapterDTOWithDetails>>getChaptersWithSlides(@RequestParam("moduleId") String subjectId, @RequestParam("packageSessionId") String packageSessionId) {
         return ResponseEntity.ok(studyLibraryService.getChaptersWithSlides(subjectId, packageSessionId, null));
     }

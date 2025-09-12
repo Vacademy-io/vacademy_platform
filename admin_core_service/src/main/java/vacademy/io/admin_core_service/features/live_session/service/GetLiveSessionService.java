@@ -4,8 +4,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.live_session.dto.GroupedSessionsByDateDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionListDTO;
+import vacademy.io.admin_core_service.features.live_session.enums.NotificationStatusEnum;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
+import vacademy.io.admin_core_service.features.live_session.repository.ScheduleNotificationRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
+import vacademy.io.admin_core_service.features.live_session.scheduler.LiveSessionNotificationProcessor;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.*;
@@ -18,6 +21,12 @@ public class GetLiveSessionService {
 
     @Autowired
     private SessionScheduleRepository scheduleRepository;
+
+    @Autowired
+    private LiveSessionNotificationProcessor notificationProcessor;
+
+    @Autowired
+    private ScheduleNotificationRepository scheduleNotificationRepository;
 
     public List<LiveSessionListDTO> getLiveSession(String instituteId, CustomUserDetails user) {
 
@@ -39,7 +48,8 @@ public class GetLiveSessionService {
                 p.getTitle(),
                 p.getSubject(),
                 p.getMeetingLink(),
-                p.getRegistrationFormLinkForPublicSessions()
+                p.getRegistrationFormLinkForPublicSessions(),
+                p.getTimezone()
         )).toList();
     }
 
@@ -62,7 +72,8 @@ public class GetLiveSessionService {
                 p.getTitle(),
                 p.getSubject(),
                 p.getMeetingLink(),
-                p.getRegistrationFormLinkForPublicSessions()
+                p.getRegistrationFormLinkForPublicSessions(),
+                p.getTimezone()
         )).toList();
 
         // Group by date
@@ -97,7 +108,8 @@ public class GetLiveSessionService {
                 p.getTitle(),
                 p.getSubject(),
                 p.getMeetingLink(),
-                p.getRegistrationFormLinkForPublicSessions()
+                p.getRegistrationFormLinkForPublicSessions(),
+                p.getTimezone()
         )).toList();
 
         // Group by date
@@ -173,7 +185,8 @@ public class GetLiveSessionService {
                         p.getTitle(),
                         p.getSubject(),
                         p.getMeetingLink(),
-                        p.getRegistrationFormLinkForPublicSessions()
+                        p.getRegistrationFormLinkForPublicSessions(),
+                        p.getTimezone()
                 );
                 uniqueSessions.put(sessionId, dto);
             }
@@ -202,7 +215,101 @@ public class GetLiveSessionService {
                 p.getTitle(),
                 p.getSubject(),
                 p.getMeetingLink(),
-                p.getRegistrationFormLinkForPublicSessions()
+                p.getRegistrationFormLinkForPublicSessions(),
+                p.getTimezone()
+        )).toList();
+
+        // Group by date
+        return flatList.stream()
+                .collect(Collectors.groupingBy(
+                        LiveSessionListDTO::getMeetingDate,
+                        TreeMap::new, // to keep dates sorted
+                        Collectors.toList()
+                ))
+                .entrySet()
+                .stream()
+                .map(entry -> new GroupedSessionsByDateDTO(entry.getKey(), entry.getValue()))
+                .toList();
+    }
+
+    public List<GroupedSessionsByDateDTO> getLiveAndUpcomingSessionsForUser(String userId, CustomUserDetails user) {
+        List<LiveSessionRepository.LiveSessionListProjection> projections =
+                sessionRepository.findUpcomingSessionsForUser(userId);
+
+        List<LiveSessionListDTO> flatList = projections.stream().map(p -> new LiveSessionListDTO(
+                p.getSessionId(),
+                p.getWaitingRoomTime(),
+                p.getThumbnailFileId(),
+                p.getBackgroundScoreFileId(),
+                p.getSessionStreamingServiceType(),
+                p.getScheduleId(),
+                p.getMeetingDate(),
+                p.getStartTime(),
+                p.getLastEntryTime(),
+                p.getRecurrenceType(),
+                p.getAccessLevel(),
+                p.getTitle(),
+                p.getSubject(),
+                p.getMeetingLink(),
+                p.getRegistrationFormLinkForPublicSessions(),
+                p.getTimezone()
+        )).toList();
+
+        // Group by date
+        return flatList.stream()
+                .collect(Collectors.groupingBy(
+                        LiveSessionListDTO::getMeetingDate,
+                        TreeMap::new, // to keep dates sorted
+                        Collectors.toList()
+                ))
+                .entrySet()
+                .stream()
+                .map(entry -> new GroupedSessionsByDateDTO(entry.getKey(), entry.getValue()))
+                .toList();
+    }
+
+    public List<GroupedSessionsByDateDTO> getLiveAndUpcomingSessionsForUserAndBatch(String batchId, String userId, CustomUserDetails user) {
+        // Get sessions for batch
+        List<LiveSessionRepository.LiveSessionListProjection> batchProjections =
+                sessionRepository.findUpcomingSessionsForBatch(batchId);
+        
+        // Get sessions for user
+        System.out.println("userid is:"+userId);
+        List<LiveSessionRepository.LiveSessionListProjection> userProjections =
+                sessionRepository.findUpcomingSessionsForUser(userId);
+
+        // Combine both lists and remove duplicates based on sessionId and scheduleId
+        Map<String, LiveSessionRepository.LiveSessionListProjection> uniqueSessions = new LinkedHashMap<>();
+        
+        // Add batch sessions
+        for (LiveSessionRepository.LiveSessionListProjection p : batchProjections) {
+            String key = p.getSessionId() + "_" + p.getScheduleId();
+            uniqueSessions.put(key, p);
+        }
+        
+        // Add user sessions (will override batch sessions if same key exists)
+        for (LiveSessionRepository.LiveSessionListProjection p : userProjections) {
+            String key = p.getSessionId() + "_" + p.getScheduleId();
+            uniqueSessions.put(key, p);
+        }
+
+        List<LiveSessionListDTO> flatList = uniqueSessions.values().stream().map(p -> new LiveSessionListDTO(
+                p.getSessionId(),
+                p.getWaitingRoomTime(),
+                p.getThumbnailFileId(),
+                p.getBackgroundScoreFileId(),
+                p.getSessionStreamingServiceType(),
+                p.getScheduleId(),
+                p.getMeetingDate(),
+                p.getStartTime(),
+                p.getLastEntryTime(),
+                p.getRecurrenceType(),
+                p.getAccessLevel(),
+                p.getTitle(),
+                p.getSubject(),
+                p.getMeetingLink(),
+                p.getRegistrationFormLinkForPublicSessions(),
+                p.getTimezone()
         )).toList();
 
         // Group by date
@@ -224,25 +331,60 @@ public class GetLiveSessionService {
         }
 
         if (Objects.equals(type, "session")) {
-            String sessionId=ids.get(0);
+            String sessionId = ids.get(0);
+            
+            // Get session details before deletion for notification
+            String instituteId = sessionRepository.findById(sessionId)
+                    .map(session -> session.getInstituteId())
+                    .orElse(null);
+            
+            // Send delete notification before deletion
+            if (instituteId != null) {
+                notificationProcessor.sendDeleteNotification(sessionId, instituteId);
+            }
+            
             sessionRepository.softDeleteLiveSessionById(sessionId);
             scheduleRepository.softDeleteScheduleBySessionId(sessionId);
+            // Disable all notifications for this session
+            scheduleNotificationRepository.disableNotificationsBySessionId(sessionId,NotificationStatusEnum.DISABLED.name());
         } else if (Objects.equals(type, "schedule")) {
+            List<String> scheduleIdsToNotify = new ArrayList<>();
+            String instituteId = null;
 
             for (String scheduleId : ids) {
-                String sessionId = scheduleRepository.findSessionIdByScheduleId(scheduleId,"DELETED");
-                int activeSchedules = scheduleRepository.countActiveSchedulesBySessionId(sessionId,"DELETED");
+                String sessionId = scheduleRepository.findSessionIdByScheduleId(scheduleId, NotificationStatusEnum.DELETED.name());
+                int activeSchedules = scheduleRepository.countActiveSchedulesBySessionId(sessionId, NotificationStatusEnum.DELETED.name());
+
+                // Get institute ID from the first session for notification
+                if (instituteId == null) {
+                    instituteId = sessionRepository.findById(sessionId)
+                            .map(session -> session.getInstituteId())
+                            .orElse(null);
+                }
 
                 if (activeSchedules == 1) {
+                    // Session will be deleted, so notify for session deletion
+                    if (instituteId != null) {
+                        notificationProcessor.sendDeleteNotification(sessionId, instituteId);
+                    }
                     scheduleRepository.softDeleteScheduleByIdIn(List.of(scheduleId));
                     sessionRepository.softDeleteLiveSessionById(sessionId);
+                    // Disable all notifications for this session
+                    scheduleNotificationRepository.disableNotificationsBySessionId(sessionId,NotificationStatusEnum.DISABLED.name());
                 } else {
-                    scheduleRepository.softDeleteScheduleByIdIn(List.of(scheduleId));
+                    // Only schedule deletion, collect for batch notification
+                    scheduleIdsToNotify.add(scheduleId);
                 }
             }
 
+            // Send notifications for individual schedule deletions
+            if (!scheduleIdsToNotify.isEmpty() && instituteId != null) {
+                notificationProcessor.sendDeleteNotificationForSchedules(scheduleIdsToNotify, instituteId);
+                // Disable notifications for the deleted schedules
+                scheduleNotificationRepository.disableNotificationsByScheduleIds(scheduleIdsToNotify, NotificationStatusEnum.DISABLED.name());
+            }
         }
-        return type+" is deleted";
+        return type + " is deleted";
     }
 
 

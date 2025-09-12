@@ -31,7 +31,7 @@ public class AuthServiceClient {
     /**
      * Get users by role for a specific institute - with caching and retry
      */
-    @Cacheable(value = "usersByRole", key = "#instituteId + '_' + #roleName")
+    // @Cacheable(value = "usersByRole", key = "#instituteId + '_' + #roleName") // Disabled to prevent stale data in shared cache environments
     @Retryable(value = {RestClientException.class}, maxAttempts = 3, backoff = @Backoff(delay = 1000))
     public List<User> getUsersByRole(String instituteId, String roleName) {
         log.debug("Calling auth service to get users by role: {} for institute: {}", roleName, instituteId);

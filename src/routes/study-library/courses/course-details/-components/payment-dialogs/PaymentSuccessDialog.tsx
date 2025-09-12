@@ -21,30 +21,12 @@ export const PaymentSuccessDialog: React.FC<PaymentSuccessDialogProps> = ({
   onExploreCourse,
   onClose,
 }) => {
-  // Log when dialog opens
-  React.useEffect(() => {
-    if (open) {
-      console.log('PaymentSuccessDialog - Dialog opened', {
-        courseTitle,
-        approvalRequired
-      });
-    }
-  }, [open, courseTitle, approvalRequired]);
-
   const handleClose = () => {
-    console.log('PaymentSuccessDialog - Dialog closing', {
-      courseTitle,
-      approvalRequired
-    });
     onOpenChange(false);
     onClose?.();
   };
 
   const handleExploreCourse = () => {
-    console.log('PaymentSuccessDialog - Explore course clicked', {
-      courseTitle,
-      approvalRequired
-    });
     onExploreCourse?.();
     handleClose();
   };

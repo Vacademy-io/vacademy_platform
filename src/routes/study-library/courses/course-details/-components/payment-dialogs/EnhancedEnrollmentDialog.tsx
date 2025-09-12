@@ -8,6 +8,7 @@ import { PaymentSuccessDialog } from "./PaymentSuccessDialog";
 import { PaymentFailedDialog } from "./PaymentFailedDialog";
 import { EnrollmentPendingApprovalDialog } from "./EnrollmentPendingApprovalDialog";
 import { ApprovalStatusPollingDialog } from "./ApprovalStatusPollingDialog";
+import { ApprovalSuccessDialog } from "./ApprovalSuccessDialog";
 
 interface EnhancedEnrollmentDialogProps {
   open: boolean;
@@ -39,6 +40,7 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
   const [showPaymentFailedDialog, setShowPaymentFailedDialog] = useState(false);
   const [showPendingApprovalDialog, setShowPendingApprovalDialog] = useState(false);
   const [showApprovalStatusDialog, setShowApprovalStatusDialog] = useState(false);
+  const [showApprovalSuccessDialog, setShowApprovalSuccessDialog] = useState(false);
   const [approvalRequired, setApprovalRequired] = useState(false);
 
   // Use payment status hook to check existing enrollment status
@@ -109,6 +111,9 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
     setShowApprovalStatusDialog(false);
     setShowPaymentSuccessDialog(false); // Close the success dialog
     
+    // Show approval success dialog
+    setShowApprovalSuccessDialog(true);
+    
     // Enroll user immediately when approved
     if (onEnrollmentSuccess) {
       await onEnrollmentSuccess();
@@ -118,6 +123,11 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
   // Handle approval status dialog close
   const handleApprovalStatusClose = () => {
     setShowApprovalStatusDialog(false);
+  };
+
+  // Handle approval success dialog close
+  const handleApprovalSuccessClose = () => {
+    setShowApprovalSuccessDialog(false);
   };
 
   // Show loading state
@@ -178,15 +188,30 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
   // Case 2: User has paid but pending approval
   if (user_plan_status === 'PAID' && learner_status === 'PENDING_FOR_APPROVAL') {
     return (
-      <ApprovalStatusPollingDialog
-        open={open}
-        onOpenChange={onOpenChange}
-        packageSessionId={packageSessionId}
-        courseTitle={courseTitle}
-        onApprovalSuccess={handleApprovalSuccess}
-        onClose={() => onOpenChange(false)}
-        backgroundMode={false}
-      />
+      <>
+        <EnrollmentPendingApprovalDialog
+          open={open}
+          onOpenChange={onOpenChange}
+          courseTitle={courseTitle}
+          onClose={() => onOpenChange(false)}
+        />
+        <ApprovalStatusPollingDialog
+          open={open}
+          onOpenChange={onOpenChange}
+          packageSessionId={packageSessionId}
+          courseTitle={courseTitle}
+          onApprovalSuccess={handleApprovalSuccess}
+          onClose={() => onOpenChange(false)}
+          backgroundMode={true}
+        />
+        <ApprovalSuccessDialog
+          open={showApprovalSuccessDialog}
+          onOpenChange={setShowApprovalSuccessDialog}
+          courseTitle={courseTitle}
+          onExploreCourse={handleExploreCourse}
+          onClose={handleApprovalSuccessClose}
+        />
+      </>
     );
   }
 

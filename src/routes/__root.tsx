@@ -44,13 +44,11 @@ const PUBLIC_ROUTES = [
   "/live-class-guest",
   "/learner-invitation-response",
   "/institute-selection",
-  "/notifications-test",
   "/delete-user",
   "/change-password",
   "/logout",
   "/courses", // Course catalog should be public
   "/courses/course-details", // Course details should be public for browsing
-  "/payment-dialog-test", // Payment dialog UI test suite
 ];
 
 const isAuthenticated = async () => {

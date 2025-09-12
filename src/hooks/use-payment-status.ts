@@ -30,25 +30,11 @@ export const usePaymentStatus = (packageSessionId: string | null): PaymentStatus
   // Get access token on mount
   useEffect(() => {
     const getToken = async () => {
-      console.log('usePaymentStatus - Getting access token', {
-        packageSessionId,
-        timestamp: new Date().toISOString()
-      });
-      
       try {
         const token = await getTokenFromStorage(TokenKey.accessToken);
-        console.log('usePaymentStatus - Access token retrieved', {
-          packageSessionId,
-          hasToken: !!token,
-          timestamp: new Date().toISOString()
-        });
         setAccessToken(token);
       } catch (error) {
-        console.error('usePaymentStatus - Error getting access token:', {
-          packageSessionId,
-          error: error instanceof Error ? error.message : 'Unknown error',
-          timestamp: new Date().toISOString()
-        });
+        console.error('usePaymentStatus - Error getting access token:', error);
         setAccessToken(null);
       } finally {
         setIsTokenLoading(false);
@@ -71,11 +57,6 @@ export const usePaymentStatus = (packageSessionId: string | null): PaymentStatus
       case 'PENDING_FOR_PAYMENT':
         return 'PAYMENT_PENDING';
       default:
-        console.warn('usePaymentStatus - Unknown user plan status:', {
-          originalStatus: status,
-          normalizedStatus,
-          packageSessionId
-        });
         return 'UNKNOWN';
     }
   };
@@ -91,11 +72,6 @@ export const usePaymentStatus = (packageSessionId: string | null): PaymentStatus
       case 'ACTIVE':
         return 'ACTIVE';
       default:
-        console.warn('usePaymentStatus - Unknown learner status:', {
-          originalStatus: status,
-          normalizedStatus,
-          packageSessionId
-        });
         return 'UNKNOWN';
     }
   };
@@ -115,10 +91,6 @@ export const usePaymentStatus = (packageSessionId: string | null): PaymentStatus
     retry: (failureCount, error) => {
       // Don't retry for 510 status code (no enrollment request)
       if (error?.message?.includes('510')) {
-        console.log('usePaymentStatus - Not retrying 510 error (no enrollment request)', {
-          packageSessionId,
-          error: error.message
-        });
         return false;
       }
       return failureCount < 2;
@@ -132,17 +104,6 @@ export const usePaymentStatus = (packageSessionId: string | null): PaymentStatus
     raw_response: rawData,
   } : null;
 
-  // Log status changes
-  useEffect(() => {
-    if (parsedData) {
-      console.log('usePaymentStatus - Status parsed', {
-        packageSessionId,
-        rawData,
-        parsedData,
-        timestamp: new Date().toISOString()
-      });
-    }
-  }, [parsedData, packageSessionId]);
 
   return {
     user_plan_status: parsedData?.user_plan_status || 'UNKNOWN',
@@ -173,10 +134,6 @@ export const usePaymentStatusDialog = (packageSessionId: string | null) => {
     if (paymentStatus.error) {
       const errorMessage = paymentStatus.error.message || '';
       if (errorMessage.includes('510') || errorMessage.includes('Student has not submitted the request to enroll')) {
-        console.log('usePaymentStatusDialog - 510 error detected, treating as no enrollment request', {
-          packageSessionId,
-          error: errorMessage
-        });
         return 'enrollment';
       }
       return 'error';
@@ -186,54 +143,30 @@ export const usePaymentStatusDialog = (packageSessionId: string | null) => {
     
     // User is already active/enrolled
     if (learner_status === 'ACTIVE') {
-      console.log('usePaymentStatusDialog - Dialog type: already_enrolled', {
-        user_plan_status,
-        learner_status
-      });
       return 'already_enrolled';
     }
     
     // User has pending approval
     if (learner_status === 'PENDING_FOR_APPROVAL') {
-      console.log('usePaymentStatusDialog - Dialog type: pending_approval', {
-        user_plan_status,
-        learner_status
-      });
       return 'pending_approval';
     }
     
     // User plan is paid but not active - show payment completion dialog
     if (user_plan_status === 'PAID' && learner_status === 'INVITED') {
-      console.log('usePaymentStatusDialog - Dialog type: payment_required (PAID + INVITED)', {
-        user_plan_status,
-        learner_status
-      });
       return 'payment_required';
     }
     
     // User plan is payment pending - show payment pending dialog
     if (user_plan_status === 'PAYMENT_PENDING') {
-      console.log('usePaymentStatusDialog - Dialog type: payment_required (PAYMENT_PENDING)', {
-        user_plan_status,
-        learner_status
-      });
       return 'payment_required';
     }
     
     // User plan failed or unknown - show enrollment dialog
     if (user_plan_status === 'FAILED' || user_plan_status === 'UNKNOWN') {
-      console.log('usePaymentStatusDialog - Dialog type: enrollment (FAILED/UNKNOWN)', {
-        user_plan_status,
-        learner_status
-      });
       return 'enrollment';
     }
     
     // Default to enrollment for other cases
-    console.log('usePaymentStatusDialog - Dialog type: enrollment (default)', {
-      user_plan_status,
-      learner_status
-    });
     return 'enrollment';
   };
 

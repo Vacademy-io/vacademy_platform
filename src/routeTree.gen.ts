@@ -16,8 +16,6 @@ import { Route as SignupIndexRouteImport } from './routes/signup/index'
 import { Route as RegisterIndexRouteImport } from './routes/register/index'
 import { Route as ReferralIndexRouteImport } from './routes/referral/index'
 import { Route as PrivacyPolicyIndexRouteImport } from './routes/privacy-policy/index'
-import { Route as PaymentDialogTestIndexRouteImport } from './routes/payment-dialog-test/index'
-import { Route as NotificationsTestIndexRouteImport } from './routes/notifications-test/index'
 import { Route as LogoutIndexRouteImport } from './routes/logout/index'
 import { Route as LoginIndexRouteImport } from './routes/login/index'
 import { Route as LiveClassGuestIndexRouteImport } from './routes/live-class-guest/index'
@@ -89,16 +87,6 @@ const ReferralIndexRoute = ReferralIndexRouteImport.update({
 const PrivacyPolicyIndexRoute = PrivacyPolicyIndexRouteImport.update({
   id: '/privacy-policy/',
   path: '/privacy-policy/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PaymentDialogTestIndexRoute = PaymentDialogTestIndexRouteImport.update({
-  id: '/payment-dialog-test/',
-  path: '/payment-dialog-test/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const NotificationsTestIndexRoute = NotificationsTestIndexRouteImport.update({
-  id: '/notifications-test/',
-  path: '/notifications-test/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LogoutIndexRoute = LogoutIndexRouteImport.update({
@@ -323,8 +311,6 @@ export interface FileRoutesByFullPath {
   '/live-class-guest': typeof LiveClassGuestIndexRoute
   '/login': typeof LoginIndexRoute
   '/logout': typeof LogoutIndexRoute
-  '/notifications-test': typeof NotificationsTestIndexRoute
-  '/payment-dialog-test': typeof PaymentDialogTestIndexRoute
   '/privacy-policy': typeof PrivacyPolicyIndexRoute
   '/referral': typeof ReferralIndexRoute
   '/register': typeof RegisterIndexRoute
@@ -371,8 +357,6 @@ export interface FileRoutesByTo {
   '/live-class-guest': typeof LiveClassGuestIndexRoute
   '/login': typeof LoginIndexRoute
   '/logout': typeof LogoutIndexRoute
-  '/notifications-test': typeof NotificationsTestIndexRoute
-  '/payment-dialog-test': typeof PaymentDialogTestIndexRoute
   '/privacy-policy': typeof PrivacyPolicyIndexRoute
   '/referral': typeof ReferralIndexRoute
   '/register': typeof RegisterIndexRoute
@@ -420,8 +404,6 @@ export interface FileRoutesById {
   '/live-class-guest/': typeof LiveClassGuestIndexRoute
   '/login/': typeof LoginIndexRoute
   '/logout/': typeof LogoutIndexRoute
-  '/notifications-test/': typeof NotificationsTestIndexRoute
-  '/payment-dialog-test/': typeof PaymentDialogTestIndexRoute
   '/privacy-policy/': typeof PrivacyPolicyIndexRoute
   '/referral/': typeof ReferralIndexRoute
   '/register/': typeof RegisterIndexRoute
@@ -470,8 +452,6 @@ export interface FileRouteTypes {
     | '/live-class-guest'
     | '/login'
     | '/logout'
-    | '/notifications-test'
-    | '/payment-dialog-test'
     | '/privacy-policy'
     | '/referral'
     | '/register'
@@ -518,8 +498,6 @@ export interface FileRouteTypes {
     | '/live-class-guest'
     | '/login'
     | '/logout'
-    | '/notifications-test'
-    | '/payment-dialog-test'
     | '/privacy-policy'
     | '/referral'
     | '/register'
@@ -566,8 +544,6 @@ export interface FileRouteTypes {
     | '/live-class-guest/'
     | '/login/'
     | '/logout/'
-    | '/notifications-test/'
-    | '/payment-dialog-test/'
     | '/privacy-policy/'
     | '/referral/'
     | '/register/'
@@ -615,8 +591,6 @@ export interface RootRouteChildren {
   LiveClassGuestIndexRoute: typeof LiveClassGuestIndexRoute
   LoginIndexRoute: typeof LoginIndexRoute
   LogoutIndexRoute: typeof LogoutIndexRoute
-  NotificationsTestIndexRoute: typeof NotificationsTestIndexRoute
-  PaymentDialogTestIndexRoute: typeof PaymentDialogTestIndexRoute
   PrivacyPolicyIndexRoute: typeof PrivacyPolicyIndexRoute
   ReferralIndexRoute: typeof ReferralIndexRoute
   RegisterIndexRoute: typeof RegisterIndexRoute
@@ -703,20 +677,6 @@ declare module '@tanstack/react-router' {
       path: '/privacy-policy'
       fullPath: '/privacy-policy'
       preLoaderRoute: typeof PrivacyPolicyIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/payment-dialog-test/': {
-      id: '/payment-dialog-test/'
-      path: '/payment-dialog-test'
-      fullPath: '/payment-dialog-test'
-      preLoaderRoute: typeof PaymentDialogTestIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/notifications-test/': {
-      id: '/notifications-test/'
-      path: '/notifications-test'
-      fullPath: '/notifications-test'
-      preLoaderRoute: typeof NotificationsTestIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/logout/': {
@@ -991,8 +951,6 @@ const rootRouteChildren: RootRouteChildren = {
   LiveClassGuestIndexRoute: LiveClassGuestIndexRoute,
   LoginIndexRoute: LoginIndexRoute,
   LogoutIndexRoute: LogoutIndexRoute,
-  NotificationsTestIndexRoute: NotificationsTestIndexRoute,
-  PaymentDialogTestIndexRoute: PaymentDialogTestIndexRoute,
   PrivacyPolicyIndexRoute: PrivacyPolicyIndexRoute,
   ReferralIndexRoute: ReferralIndexRoute,
   RegisterIndexRoute: RegisterIndexRoute,

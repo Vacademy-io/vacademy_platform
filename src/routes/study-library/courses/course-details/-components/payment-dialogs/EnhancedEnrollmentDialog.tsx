@@ -51,30 +51,9 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
     refetch,
   } = usePaymentStatusDialog(packageSessionId);
 
-  // Debug logging
-  useEffect(() => {
-    if (open) {
-      console.log('EnhancedEnrollmentDialog - Status check:', {
-        packageSessionId,
-        dialogType,
-        user_plan_status,
-        learner_status,
-        is_loading,
-        error: error?.message,
-        paymentType,
-        timestamp: new Date().toISOString()
-      });
-    }
-  }, [open, packageSessionId, dialogType, user_plan_status, learner_status, is_loading, error, paymentType]);
 
   // Handle payment status success
   const handlePaymentSuccess = (approvalRequired: boolean) => {
-    console.log('EnhancedEnrollmentDialog - Payment success received', {
-      packageSessionId,
-      courseTitle,
-      approvalRequired,
-      paymentType
-    });
     setShowPaymentStatusDialog(false);
     setApprovalRequired(approvalRequired);
     
@@ -89,57 +68,30 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
 
   // Handle payment status failure
   const handlePaymentFailed = () => {
-    console.log('EnhancedEnrollmentDialog - Payment failed received', {
-      packageSessionId,
-      courseTitle,
-      paymentType
-    });
     setShowPaymentStatusDialog(false);
     setShowPaymentFailedDialog(true);
   };
 
   // Handle payment status dialog close
   const handlePaymentStatusClose = () => {
-    console.log('EnhancedEnrollmentDialog - Payment status dialog closed', {
-      packageSessionId,
-      courseTitle,
-      paymentType
-    });
     setShowPaymentStatusDialog(false);
   };
 
   // Handle payment success dialog close
   const handlePaymentSuccessClose = () => {
-    console.log('EnhancedEnrollmentDialog - Payment success dialog closed', {
-      packageSessionId,
-      courseTitle,
-      approvalRequired,
-      paymentType
-    });
     setShowPaymentSuccessDialog(false);
     if (!approvalRequired && onEnrollmentSuccess) {
-      console.log('EnhancedEnrollmentDialog - Calling onEnrollmentSuccess (no approval required)');
       onEnrollmentSuccess();
     }
   };
 
   // Handle payment failed dialog close
   const handlePaymentFailedClose = () => {
-    console.log('EnhancedEnrollmentDialog - Payment failed dialog closed', {
-      packageSessionId,
-      courseTitle,
-      paymentType
-    });
     setShowPaymentFailedDialog(false);
   };
 
   // Handle try again
   const handleTryAgain = () => {
-    console.log('EnhancedEnrollmentDialog - Try again clicked', {
-      packageSessionId,
-      courseTitle,
-      paymentType
-    });
     setShowPaymentFailedDialog(false);
     // Reopen the main enrollment dialog
     onOpenChange(true);
@@ -147,11 +99,6 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
 
   // Handle explore course
   const handleExploreCourse = async () => {
-    console.log('EnhancedEnrollmentDialog - Explore course clicked', {
-      packageSessionId,
-      courseTitle,
-      paymentType
-    });
     if (onNavigateToSlides) {
       await onNavigateToSlides();
     }
@@ -159,11 +106,6 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
 
   // Handle approval success
   const handleApprovalSuccess = async () => {
-    console.log('EnhancedEnrollmentDialog - Approval success received', {
-      packageSessionId,
-      courseTitle,
-      paymentType
-    });
     setShowApprovalStatusDialog(false);
     setShowPaymentSuccessDialog(false); // Close the success dialog
     
@@ -175,11 +117,6 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
 
   // Handle approval status dialog close
   const handleApprovalStatusClose = () => {
-    console.log('EnhancedEnrollmentDialog - Approval status dialog closed', {
-      packageSessionId,
-      courseTitle,
-      paymentType
-    });
     setShowApprovalStatusDialog(false);
   };
 
@@ -203,12 +140,6 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
     const isNoEnrollmentError = errorMessage.includes('510') || errorMessage.includes('Student has not submitted the request to enroll');
     
     if (isNoEnrollmentError) {
-      console.log('EnhancedEnrollmentDialog - 510 error detected, proceeding with enrollment flow', {
-        packageSessionId,
-        courseTitle,
-        paymentType,
-        error: errorMessage
-      });
       // Don't show error dialog, continue to enrollment flow below
     } else {
       return (
@@ -231,13 +162,6 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
 
   // Case 2: User is not enrolled but has already made request for enrollment
   if (user_plan_status === 'PAYMENT_PENDING') {
-    console.log('EnhancedEnrollmentDialog - Case 2: Payment pending, showing polling dialog', {
-      packageSessionId,
-      courseTitle,
-      paymentType,
-      user_plan_status,
-      learner_status
-    });
     return (
       <PaymentStatusPollingDialog
         open={open}
@@ -253,13 +177,6 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
 
   // Case 2: User has paid but pending approval
   if (user_plan_status === 'PAID' && learner_status === 'PENDING_FOR_APPROVAL') {
-    console.log('EnhancedEnrollmentDialog - Case 2: Payment successful, pending approval', {
-      packageSessionId,
-      courseTitle,
-      paymentType,
-      user_plan_status,
-      learner_status
-    });
     return (
       <EnrollmentPendingApprovalDialog
         open={open}
@@ -272,13 +189,6 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
 
   // Case 2: User is already active/enrolled - close dialog immediately
   if (learner_status === 'ACTIVE') {
-    console.log('EnhancedEnrollmentDialog - Case 2: Already enrolled, closing dialog', {
-      packageSessionId,
-      courseTitle,
-      paymentType,
-      user_plan_status,
-      learner_status
-    });
     // Close the dialog immediately without showing any UI
     onOpenChange(false);
     return null;
@@ -287,13 +197,6 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
   // Case 1: User is not enrolled and has not made any request for enrollment
   // Show the appropriate payment dialog based on payment type
   if (paymentType === 'one_time' || paymentType === 'one_time_payment') {
-    console.log('EnhancedEnrollmentDialog - Case 1: New enrollment, showing OneTimePaymentDialog', {
-      packageSessionId,
-      courseTitle,
-      paymentType,
-      user_plan_status,
-      learner_status
-    });
     return (
       <>
         <OneTimePaymentDialog
@@ -353,13 +256,6 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
   }
 
   if (paymentType === 'subscription') {
-    console.log('EnhancedEnrollmentDialog - Case 1: New enrollment, showing SubscriptionPaymentDialog', {
-      packageSessionId,
-      courseTitle,
-      paymentType,
-      user_plan_status,
-      learner_status
-    });
     return (
       <>
         <SubscriptionPaymentDialog

@@ -58,11 +58,7 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
       
       // Determine payment type from the first payment option
       if (data.package_session_to_payment_options && data.package_session_to_payment_options.length > 0) {
-        console.log('EnrollmentPaymentDialog - All payment options:', data.package_session_to_payment_options);
         const firstPaymentOption = data.package_session_to_payment_options[0].payment_option;
-        console.log('EnrollmentPaymentDialog - First payment option:', firstPaymentOption);
-        console.log('EnrollmentPaymentDialog - Payment type:', firstPaymentOption.type);
-        console.log('EnrollmentPaymentDialog - Payment type (lowercase):', firstPaymentOption.type.toLowerCase());
         setPaymentType(firstPaymentOption.type);
       }
     } catch (err) {
@@ -106,9 +102,6 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
   // Function to render the appropriate dialog based on payment type
   const renderPaymentDialog = () => {
     if (!paymentType) return null;
-
-    console.log('EnrollmentPaymentDialog - Rendering dialog for payment type:', paymentType);
-    console.log('EnrollmentPaymentDialog - Payment type (lowercase):', paymentType.toLowerCase());
 
     const commonProps = {
       packageSessionId,
@@ -188,7 +181,6 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
       
       default:
         // Fallback to subscription dialog for unknown types
-        console.log('EnrollmentPaymentDialog - Unknown payment type:', paymentType, 'falling back to subscription dialog');
         return (
           <SubscriptionPaymentDialog
             open={open}

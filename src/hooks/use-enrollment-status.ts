@@ -141,6 +141,30 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
     fetchEnrolledSessions();
   }, []); // Only run once on mount
 
+  // Also fetch enrolled sessions when the page becomes visible again
+  // This handles the case when user navigates away and comes back
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        // Page became visible, refresh enrolled sessions
+        fetchEnrolledSessions();
+      }
+    };
+
+    const handleFocus = () => {
+      // Window gained focus, refresh enrolled sessions
+      fetchEnrolledSessions();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [fetchEnrolledSessions]);
+
   // Check donation status when instituteId changes
   useEffect(() => {
     if (instituteId) {

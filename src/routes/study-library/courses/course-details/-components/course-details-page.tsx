@@ -318,14 +318,10 @@ export const CourseDetailsPage = () => {
 
     // Combined handler for donation flow - does both enrollment AND navigation
     const handleDonationEnrollmentSuccess = async () => {
-        console.log('CourseDetailsPage - handleDonationEnrollmentSuccess called');
         // First handle enrollment
-        console.log('CourseDetailsPage - Calling handleEnrollmentSuccess');
         await handleEnrollmentSuccess();
         // Then handle navigation (donation flow should auto-navigate)
-        console.log('CourseDetailsPage - Calling handleNavigationToSlides');
         await handleNavigationToSlides();
-        console.log('CourseDetailsPage - handleDonationEnrollmentSuccess completed');
     };
     const [instituteId, setInstituteId] = useState<string | null>(null);
     const [certificateUrl, setCertificateUrl] = useState<string | null>(null);
@@ -388,11 +384,19 @@ export const CourseDetailsPage = () => {
     const {
         enrolledSessions,
         addEnrolledSession,
+        refreshData: refreshEnrollmentData,
     } = useEnrollmentStatus(instituteId);
 
     // Payment status check state
     const [paymentStatusChecked, setPaymentStatusChecked] = useState<boolean>(false);
     const [isCheckingPaymentStatus, setIsCheckingPaymentStatus] = useState<boolean>(false);
+
+    // Refresh enrollment data when page loads to ensure latest state
+    useEffect(() => {
+        if (instituteId) {
+            refreshEnrollmentData();
+        }
+    }, [instituteId, refreshEnrollmentData]);
 
 
 
@@ -473,19 +477,15 @@ export const CourseDetailsPage = () => {
         const fetchPaymentType = async () => {
             if (instituteId) {
                 try {
-                    console.log('Fetching payment options for institute:', instituteId);
                     const paymentOption = await fetchPaymentOptions(instituteId);
                     if (paymentOption && paymentOption.type) {
-                        console.log('Payment type fetched:', paymentOption.type);
                         setPaymentType(paymentOption.type);
                     } else {
-                        console.log('No payment option returned, defaulting to SUBSCRIPTION type for direct navigation');
                         setPaymentType("SUBSCRIPTION");
                     }
                 } catch (error) {
                     console.error("Error fetching payment options:", error);
                     // Default to non-donation type for direct navigation if fetch fails
-                    console.log('API failed, defaulting to SUBSCRIPTION type for direct navigation');
                     setPaymentType("SUBSCRIPTION");
                 }
             }
@@ -972,16 +972,6 @@ export const CourseDetailsPage = () => {
         enabled: !!searchParams.courseId,
     });
 
-    // Log when single course details are fetched
-    useEffect(() => {
-        if (singleCourseQuery.data) {
-            console.log('[CourseDetailsPage] singleCourseQuery fetched', {
-                hasData: !!singleCourseQuery.data,
-                courseKeys: singleCourseQuery?.data?.course ? Object.keys(singleCourseQuery.data.course) : [],
-                instructors: (singleCourseQuery.data as unknown as { instructors?: Array<{ full_name?: string; username?: string }> })?.instructors?.map(i => i.full_name || i.username) || [],
-            });
-        }
-    }, [singleCourseQuery.data]);
 
     // Custom slide count calculation to handle special document types
     const processedSlideCounts = useMemo(() => {
@@ -1089,12 +1079,6 @@ export const CourseDetailsPage = () => {
             return;
         }
 
-        console.log('CourseDetailsPage - Checking payment status on page load', {
-            packageSessionId: packageSessionIdForCurrentLevel,
-            hasToken: !!authToken,
-            paymentStatusChecked,
-            isCheckingPaymentStatus
-        });
 
         setIsCheckingPaymentStatus(true);
 
@@ -1103,11 +1087,6 @@ export const CourseDetailsPage = () => {
             const { fetchUserPlanStatus } = await import('@/services/payment-status-api');
             
             const response = await fetchUserPlanStatus(packageSessionIdForCurrentLevel, authToken);
-            
-            console.log('CourseDetailsPage - Payment status response on load', {
-                response,
-                packageSessionId: packageSessionIdForCurrentLevel
-            });
 
             // Parse payment status
             const parseUserPlanStatus = (status: string): 'PAID' | 'FAILED' | 'PAYMENT_PENDING' | 'UNKNOWN' => {
@@ -1156,19 +1135,9 @@ export const CourseDetailsPage = () => {
             const learnerStatus = parseLearnerStatus(response.learner_status);
             const approvalRequired = response.approval_required || false;
 
-            console.log('CourseDetailsPage - Parsed payment status on load', {
-                userPlanStatus,
-                learnerStatus,
-                approvalRequired,
-                packageSessionId: packageSessionIdForCurrentLevel
-            });
 
             // If payment is successful and learner is active, enroll user immediately
             if (userPlanStatus === 'PAID' && learnerStatus === 'ACTIVE') {
-                console.log('CourseDetailsPage - Payment successful and learner active, enrolling user immediately', {
-                    packageSessionId: packageSessionIdForCurrentLevel,
-                    courseTitle: form.getValues("courseData").title
-                });
 
                 // Check if user is already enrolled to avoid duplicates
                 const isAlreadyEnrolled = (enrolledSessions || []).some(
@@ -1205,14 +1174,11 @@ export const CourseDetailsPage = () => {
 
                     try {
                         await addEnrolledSession(newEnrolledSession);
-                        console.log('CourseDetailsPage - User enrolled successfully on page load');
                         // No toast needed for background enrollment check
                     } catch (error) {
                         console.error('CourseDetailsPage - Error enrolling user on page load:', error);
                         toast.error("Failed to update enrollment status. Please refresh the page.");
                     }
-                } else {
-                    console.log('CourseDetailsPage - User already enrolled, skipping enrollment');
                 }
             }
 
@@ -1241,14 +1207,6 @@ export const CourseDetailsPage = () => {
     // Check payment status when page loads and essential data is available
     useEffect(() => {
         if (packageSessionIdForCurrentLevel && authToken && selectedSession && selectedLevel && !paymentStatusChecked && !isCheckingPaymentStatus) {
-            console.log('CourseDetailsPage - Triggering payment status check on page load', {
-                packageSessionId: packageSessionIdForCurrentLevel,
-                hasToken: !!authToken,
-                selectedSession,
-                selectedLevel,
-                paymentStatusChecked,
-                isCheckingPaymentStatus
-            });
             checkPaymentStatusOnLoad();
         }
     }, [
@@ -1433,9 +1391,7 @@ export const CourseDetailsPage = () => {
                                 onSessionChange={handleSessionChange}
                                 onLevelChange={handleLevelChange}
                                 onEnrollmentClick={() => {
-                                    console.log('Enrollment button clicked, payment type:', paymentType);
                                     // Always open enrollment dialog - it will determine the correct payment type from API data
-                                    console.log('Opening enrollment dialog to determine payment type');
                                     setEnrollmentDialogOpen(true);
                                 }}
                             />
@@ -1513,31 +1469,11 @@ export const CourseDetailsPage = () => {
                                         paymentType={paymentType}
                                         packageSessionIdForCurrentLevel={packageSessionIdForCurrentLevel}
                                         onEnrollmentClick={() => {
-                                            console.log('Enrollment button clicked, payment type:', paymentType);
                                             // Always open enrollment dialog - it will determine the correct payment type from API data
-                                            console.log('Opening enrollment dialog to determine payment type');
                                             setEnrollmentDialogOpen(true);
                                         }}
                                         onRatingsLoadingChange={handleRatingsLoadingChange}
                                     />
-                                    {/* Debug logs for author/time sourcing */}
-                                    {(() => {
-                                        try {
-                                            const instructors = form.getValues("courseData").instructors || [];
-                                            const fromForm = (instructors?.[0] as unknown as { name?: string; full_name?: string } | undefined)?.name || (instructors?.[0] as unknown as { name?: string; full_name?: string } | undefined)?.full_name;
-                                            const fromCourse = (courseDetailsData as unknown as { course?: { created_by_name?: string; author_name?: string; owner_name?: string } })?.course?.created_by_name || (courseDetailsData as unknown as { course?: { created_by_name?: string; author_name?: string; owner_name?: string } })?.course?.author_name || (courseDetailsData as unknown as { course?: { created_by_name?: string; author_name?: string; owner_name?: string } })?.course?.owner_name;
-                                            console.log('[CourseDetailsPage] Debug author sources', {
-                                                fromForm,
-                                                fromCourse,
-                                                fromApiState: primaryInstructorNameFromApi,
-                                                fromSingleCourseInstructors: (singleCourseQuery.data as unknown as { instructors?: Array<{ full_name?: string; username?: string }> })?.instructors?.map(i => i.full_name || i.username) || [],
-                                                slideCountHasData: Array.isArray((slideCountQuery as unknown as { data?: Array<{ slide_count: number; total_read_time_minutes: number | null; source_type: string }> })?.data),
-                                                slideCountLength: ((slideCountQuery as unknown as { data?: Array<{ slide_count: number; total_read_time_minutes: number | null; source_type: string }> })?.data || []).length,
-                                                processedSlideCountsLength: (processedSlideCounts || []).length,
-                                            });
-                                        } catch (e) { void e; }
-                                        return null;
-                                    })()}
                                 </div>
                             </div>
                         </div>

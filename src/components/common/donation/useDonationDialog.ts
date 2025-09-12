@@ -473,19 +473,9 @@ export const useDonationDialog = ({
       } else if (mode === 'enrollment') {
         // For enrollment mode, prioritize slide access success for auto navigation
         if (onSlideAccessSuccess) {
-          console.log('useDonationDialog - Calling onSlideAccessSuccess for payment in enrollment mode', {
-            mode,
-            hasOnSlideAccessSuccess: !!onSlideAccessSuccess,
-            targetSlideDetails
-          });
           onSlideAccessSuccess('', '', '', '', ''); // Empty strings since we don't have slide details
         } else if (onEnrollmentSuccess) {
           // Fallback to enrollment success if no slide access success
-          console.log('useDonationDialog - Calling onEnrollmentSuccess for payment in enrollment mode', {
-            mode,
-            hasOnEnrollmentSuccess: !!onEnrollmentSuccess,
-            targetSlideDetails
-          });
           await onEnrollmentSuccess();
         }
       }
@@ -606,11 +596,9 @@ export const useDonationDialog = ({
       // Success - call appropriate callback based on available callbacks
       if (onSlideAccessSuccess) {
         // If slide access success is available, use it for auto navigation
-        console.log('useDonationDialog - Calling onSlideAccessSuccess for skip in enrollment mode');
         onSlideAccessSuccess('', '', '', '', ''); // Empty strings since we don't have slide details
       } else if (onEnrollmentSuccess) {
         // Fallback to enrollment success if no slide access success
-        console.log('useDonationDialog - Calling onEnrollmentSuccess for skip in enrollment mode');
         onEnrollmentSuccess();
       }
       

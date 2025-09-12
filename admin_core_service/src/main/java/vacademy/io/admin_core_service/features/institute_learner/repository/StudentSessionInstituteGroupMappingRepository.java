@@ -1,3 +1,14 @@
+package vacademy.io.admin_core_service.features.institute_learner.repository;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
+
+import java.util.List;
+import java.util.Optional;
+
 @Repository
 public interface StudentSessionInstituteGroupMappingRepository
     extends JpaRepository<StudentSessionInstituteGroupMapping, String> {

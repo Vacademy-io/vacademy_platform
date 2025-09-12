@@ -51,6 +51,9 @@ public class ReferralOption {
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
+    @Column(name = "setting_json", columnDefinition = "TEXT")
+    private String settingJson;
+
     @CreationTimestamp
     @Temporal(TemporalType.TIMESTAMP)
     @Column(name = "created_at", updatable = false)
@@ -72,6 +75,7 @@ public class ReferralOption {
         this.referrerVestingDays = referralOptionDTO.getReferrerVestingDays();
         this.description = referralOptionDTO.getDescription();
         this.tag = referralOptionDTO.getTag();
+        this.settingJson = referralOptionDTO.getSettingJson();
     }
 
     public ReferralOptionDTO toReferralOptionDTO(){
@@ -88,6 +92,7 @@ public class ReferralOption {
                 .createdAt(createdAt)
                 .description(description)
                 .updatedAt(updatedAt)
+                .settingJson(settingJson)
                 .build();
     }
 }

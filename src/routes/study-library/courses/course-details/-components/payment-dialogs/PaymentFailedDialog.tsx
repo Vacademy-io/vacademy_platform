@@ -76,7 +76,7 @@ export const PaymentFailedDialog: React.FC<PaymentFailedDialogProps> = ({
             </h3>
             
             <p className="text-gray-600 mb-6">
-              Your payment for <strong>{courseTitle}</strong> could not be processed. 
+              Your payment could not be processed. 
               Please try again.
             </p>
             
@@ -92,20 +92,12 @@ export const PaymentFailedDialog: React.FC<PaymentFailedDialogProps> = ({
               </ul>
             </div>
             
-            <div className="flex gap-3">
-              <MyButton
-                buttonType="secondary"
-                scale="medium"
-                onClick={handleClose}
-                className="flex-1"
-              >
-                Close
-              </MyButton>
+            <div className="flex justify-center">
               <MyButton
                 buttonType="primary"
                 scale="medium"
                 onClick={handleTryAgain}
-                className="flex-1"
+                className="w-full max-w-xs"
               >
                 Try Again
               </MyButton>

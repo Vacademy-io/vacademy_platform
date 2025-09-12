@@ -50,6 +50,7 @@ const PUBLIC_ROUTES = [
   "/logout",
   "/courses", // Course catalog should be public
   "/courses/course-details", // Course details should be public for browsing
+  "/payment-dialog-test", // Payment dialog UI test suite
 ];
 
 const isAuthenticated = async () => {

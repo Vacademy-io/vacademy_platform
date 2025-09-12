@@ -65,6 +65,7 @@ export const usePaymentStatus = (packageSessionId: string | null): PaymentStatus
       case 'FAILED':
         return 'FAILED';
       case 'PAID':
+      case 'ACTIVE':
         return 'PAID';
       case 'PAYMENT_PENDING':
       case 'PENDING_FOR_PAYMENT':

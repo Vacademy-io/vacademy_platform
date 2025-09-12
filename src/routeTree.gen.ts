@@ -16,6 +16,7 @@ import { Route as SignupIndexRouteImport } from './routes/signup/index'
 import { Route as RegisterIndexRouteImport } from './routes/register/index'
 import { Route as ReferralIndexRouteImport } from './routes/referral/index'
 import { Route as PrivacyPolicyIndexRouteImport } from './routes/privacy-policy/index'
+import { Route as PaymentDialogTestIndexRouteImport } from './routes/payment-dialog-test/index'
 import { Route as NotificationsTestIndexRouteImport } from './routes/notifications-test/index'
 import { Route as LogoutIndexRouteImport } from './routes/logout/index'
 import { Route as LoginIndexRouteImport } from './routes/login/index'
@@ -88,6 +89,11 @@ const ReferralIndexRoute = ReferralIndexRouteImport.update({
 const PrivacyPolicyIndexRoute = PrivacyPolicyIndexRouteImport.update({
   id: '/privacy-policy/',
   path: '/privacy-policy/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PaymentDialogTestIndexRoute = PaymentDialogTestIndexRouteImport.update({
+  id: '/payment-dialog-test/',
+  path: '/payment-dialog-test/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const NotificationsTestIndexRoute = NotificationsTestIndexRouteImport.update({
@@ -318,6 +324,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginIndexRoute
   '/logout': typeof LogoutIndexRoute
   '/notifications-test': typeof NotificationsTestIndexRoute
+  '/payment-dialog-test': typeof PaymentDialogTestIndexRoute
   '/privacy-policy': typeof PrivacyPolicyIndexRoute
   '/referral': typeof ReferralIndexRoute
   '/register': typeof RegisterIndexRoute
@@ -365,6 +372,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginIndexRoute
   '/logout': typeof LogoutIndexRoute
   '/notifications-test': typeof NotificationsTestIndexRoute
+  '/payment-dialog-test': typeof PaymentDialogTestIndexRoute
   '/privacy-policy': typeof PrivacyPolicyIndexRoute
   '/referral': typeof ReferralIndexRoute
   '/register': typeof RegisterIndexRoute
@@ -413,6 +421,7 @@ export interface FileRoutesById {
   '/login/': typeof LoginIndexRoute
   '/logout/': typeof LogoutIndexRoute
   '/notifications-test/': typeof NotificationsTestIndexRoute
+  '/payment-dialog-test/': typeof PaymentDialogTestIndexRoute
   '/privacy-policy/': typeof PrivacyPolicyIndexRoute
   '/referral/': typeof ReferralIndexRoute
   '/register/': typeof RegisterIndexRoute
@@ -462,6 +471,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/logout'
     | '/notifications-test'
+    | '/payment-dialog-test'
     | '/privacy-policy'
     | '/referral'
     | '/register'
@@ -509,6 +519,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/logout'
     | '/notifications-test'
+    | '/payment-dialog-test'
     | '/privacy-policy'
     | '/referral'
     | '/register'
@@ -556,6 +567,7 @@ export interface FileRouteTypes {
     | '/login/'
     | '/logout/'
     | '/notifications-test/'
+    | '/payment-dialog-test/'
     | '/privacy-policy/'
     | '/referral/'
     | '/register/'
@@ -604,6 +616,7 @@ export interface RootRouteChildren {
   LoginIndexRoute: typeof LoginIndexRoute
   LogoutIndexRoute: typeof LogoutIndexRoute
   NotificationsTestIndexRoute: typeof NotificationsTestIndexRoute
+  PaymentDialogTestIndexRoute: typeof PaymentDialogTestIndexRoute
   PrivacyPolicyIndexRoute: typeof PrivacyPolicyIndexRoute
   ReferralIndexRoute: typeof ReferralIndexRoute
   RegisterIndexRoute: typeof RegisterIndexRoute
@@ -690,6 +703,13 @@ declare module '@tanstack/react-router' {
       path: '/privacy-policy'
       fullPath: '/privacy-policy'
       preLoaderRoute: typeof PrivacyPolicyIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/payment-dialog-test/': {
+      id: '/payment-dialog-test/'
+      path: '/payment-dialog-test'
+      fullPath: '/payment-dialog-test'
+      preLoaderRoute: typeof PaymentDialogTestIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/notifications-test/': {
@@ -972,6 +992,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginIndexRoute: LoginIndexRoute,
   LogoutIndexRoute: LogoutIndexRoute,
   NotificationsTestIndexRoute: NotificationsTestIndexRoute,
+  PaymentDialogTestIndexRoute: PaymentDialogTestIndexRoute,
   PrivacyPolicyIndexRoute: PrivacyPolicyIndexRoute,
   ReferralIndexRoute: ReferralIndexRoute,
   RegisterIndexRoute: RegisterIndexRoute,

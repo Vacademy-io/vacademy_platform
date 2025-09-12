@@ -136,7 +136,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
      * Calculate remaining days prioritizing custom field value, with date-based
      * fallback
      */
-    private long calculateRemainingDays(String ssigmId, Date endDate) {
+     private long calculateRemainingDays(String ssigmId, Date endDate) {
         try {
             // First, try to get remaining days from custom field values
             Optional<CustomFieldValues> customFieldValue = customFieldValuesRepository
@@ -167,8 +167,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return 0; // Fallback if startDate missing
             } else {
                 long diffMillis = endDate.getTime() - startDate.getTime();
-                long remainingDays = diffMillis / (1000 * 60 * 60 * 24); // convert ms → days
-                return Math.max(remainingDays, 0); // Ensure non-negative
+                long remainingDays = (diffMillis / (1000 * 60 * 60 * 24)) + 1; // include today
+                return Math.max(remainingDays, 0);
             }
 
         } catch (Exception e) {

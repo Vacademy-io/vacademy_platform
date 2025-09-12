@@ -5,17 +5,16 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
-import vacademy.io.common.institute.entity.Institute;
 
 import java.util.List;
 import java.util.Optional;
 
 @Repository
 public interface StudentSessionInstituteGroupMappingRepository
-        extends JpaRepository<StudentSessionInstituteGroupMapping, String> {
+    extends JpaRepository<StudentSessionInstituteGroupMapping, String> {
 
     @Query(value = """
-    SELECT 
+    SELECT
         ssigm.id AS mapping_id,
         ssigm.user_id AS user_id,
         ssigm.expiry_date AS expiry_date,
@@ -30,37 +29,54 @@ public interface StudentSessionInstituteGroupMappingRepository
       AND ssigm.status IN (:statuses)
 """, nativeQuery = true)
     List<Object[]> findMappingsWithStudentContacts(
-            @Param("psIds") List<String> packageSessionIds,
-            @Param("statuses") List<String> statuses
+        @Param("psIds") List<String> packageSessionIds,
+        @Param("statuses") List<String> statuses
     );
 
     @Query(value = """
             SELECT * FROM student_session_institute_group_mapping
             WHERE user_id = :userId
             AND package_session_id = :sessionId ORDER BY created_at DESC LIMIT 1
-            """,nativeQuery = true)
-    Optional<StudentSessionInstituteGroupMapping> findByUserIdAndPackageSessionId(@Param("userId") String userId,
-                                                                                  @Param("sessionId") String packageSessionId);
+            """, nativeQuery = true)
+    Optional<StudentSessionInstituteGroupMapping> findByUserIdAndPackageSessionId(
+        @Param("userId") String userId,
+        @Param("sessionId") String packageSessionId);
+
     @Query(value = """
             SELECT * FROM student_session_institute_group_mapping
             WHERE user_id = :userId
             AND package_session_id = :sessionId
             AND institute_id = :instituteId ORDER BY created_at DESC LIMIT 1
-            """,nativeQuery = true)
-    Optional<StudentSessionInstituteGroupMapping> findByUserIdAndPackageSessionIdAndInstituteId(@Param("userId") String userId,
-                                                                                                @Param("sessionId") String packageSessionId,
-                                                                                                @Param("instituteId")String instituteId);
+            """, nativeQuery = true)
+    Optional<StudentSessionInstituteGroupMapping> findByUserIdAndPackageSessionIdAndInstituteId(
+        @Param("userId") String userId,
+        @Param("sessionId") String packageSessionId,
+        @Param("instituteId") String instituteId);
 
     @Query(value = """
             SELECT * FROM student_session_institute_group_mapping
             WHERE user_id = :userId
             AND package_session_id IN (:packageSessionIds)
             AND institute_id = :instituteId
-            AND (:statusList IS NULL OR  status IN (:statusList))
+            AND (:statusList IS NULL OR status IN (:statusList))
             AND automated_completion_certificate_file_id IS NOT NULL
-            """,nativeQuery = true)
-    List<StudentSessionInstituteGroupMapping> findAllByLearnerIdAndPackageSessionIdInAndInstituteIdAndStatusInAndCertificate(@Param("userId") String learnerId,
-                                                                                                               @Param("packageSessionIds") List<String> allPackageSessionIds,
-                                                                                                               @Param("instituteId") String instituteId,
-                                                                                                               @Param("statusList") List<String> status);
+            """, nativeQuery = true)
+    List<StudentSessionInstituteGroupMapping> findAllByLearnerIdAndPackageSessionIdInAndInstituteIdAndStatusInAndCertificate(
+        @Param("userId") String learnerId,
+        @Param("packageSessionIds") List<String> allPackageSessionIds,
+        @Param("instituteId") String instituteId,
+        @Param("statusList") List<String> status);
+
+    @Query("""
+        SELECT CASE WHEN COUNT(s) > 0 THEN TRUE ELSE FALSE END
+        FROM StudentSessionInstituteGroupMapping s
+        WHERE s.userId = :userId
+          AND s.status IN :statusList
+          AND s.packageSession.id IN :packageSessionIds
+    """)
+    boolean existsByUserIdAndStatusInAndPackageSessionIdIn(
+        @Param("userId") String userId,
+        @Param("statusList") List<String> statusList,
+        @Param("packageSessionIds") List<String> packageSessionIds
+    );
 }

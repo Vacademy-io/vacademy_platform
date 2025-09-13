@@ -231,7 +231,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
     /**
      * Creates a session schedule for a live session. This method is designed to be
      * called from Iterator workflow nodes.
-     * 
+     *
      * @param params Map containing:
      *               - sessionId: String - The session ID (ssigmId from context)
      *               - recurrenceType: String - Recurrence type for the schedule
@@ -351,7 +351,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
     /**
      * Creates a session participant for a live session. This method is designed to
      * be called from Iterator workflow nodes.
-     * 
+     *
      * @param params Map containing:
      *               - sourceId: String - The user ID (userId from context)
      *               - sourceType: String - Source type (usually "USER")
@@ -431,7 +431,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
      * designed to be
      * called from workflow nodes and handles all the parameters shown in the
      * debugger screenshot.
-     * 
+     *
      * @param params Map containing live session parameters from the workflow
      *               context
      * @return Map with operation result and created session details

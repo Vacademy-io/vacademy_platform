@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.enroll_invite.service;
 
+import org.slf4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -525,5 +526,41 @@ public class EnrollInviteService {
         }
 
         return sb.toString();
+    }
+
+    /**
+     * Retrieves enroll invites by user ID and institute ID following the path:
+     * SSIGM -> UserPlan -> EnrollInvite -> PackageSession -> PaymentOption
+     * All entities must have ACTIVE status.
+     */
+    public List<EnrollInviteDTO> getEnrollInvitesByUserIdAndInstituteId(String userId, String instituteId) {
+
+        // Define active statuses for all entities
+        List<String> activeStatuses = List.of(StatusEnum.ACTIVE.name());
+
+        // Get enroll invites using the complex join query
+        List<EnrollInvite> enrollInvites = repository.findEnrollInvitesByUserIdAndInstituteIdWithActiveStatuses(
+            userId,
+            instituteId,
+            activeStatuses, // SSIGM statuses
+            activeStatuses, // UserPlan statuses
+            activeStatuses, // EnrollInvite statuses
+            activeStatuses, // PackageSessionMapping statuses
+            activeStatuses  // PaymentOption statuses
+        );
+
+
+        // Convert to DTOs and populate additional data
+        return enrollInvites.stream()
+            .map(this::convertToEnrollInviteDTO)
+            .collect(Collectors.toList());
+    }
+
+    /**
+     * Converts EnrollInvite entity to DTO with all related data
+     */
+    private EnrollInviteDTO convertToEnrollInviteDTO(EnrollInvite enrollInvite) {
+        EnrollInviteDTO dto = enrollInvite.toEnrollInviteDTO();
+        return dto;
     }
 }

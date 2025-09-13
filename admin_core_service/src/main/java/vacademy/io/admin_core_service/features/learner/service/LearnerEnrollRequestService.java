@@ -8,9 +8,7 @@ import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInviteService;
-import vacademy.io.admin_core_service.features.institute.service.InstituteService;
 import vacademy.io.admin_core_service.features.learner.constants.TemplateConstants;
-import vacademy.io.admin_core_service.features.learner.utility.TemplateReader;
 import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.PaymentOptionOperationFactory;
 import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.PaymentOptionOperationStrategy;
 import vacademy.io.admin_core_service.features.notification_service.service.SendUniqueLinkService;
@@ -26,7 +24,6 @@ import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollRequestDTO;
-import vacademy.io.common.institute.entity.Institute;
 
 import java.util.Map;
 import java.util.Optional;
@@ -56,12 +53,17 @@ public class LearnerEnrollRequestService {
     @Autowired
     private SendUniqueLinkService service;
 
+    @Autowired
+    private LearnerCouponService learnerCouponService;
+
     @Transactional
     public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
         LearnerPackageSessionsEnrollDTO enrollDTO = learnerEnrollRequestDTO.getLearnerPackageSessionEnroll();
         if (!StringUtils.hasText(learnerEnrollRequestDTO.getUser().getId())) {
             UserDTO user = authService.createUserFromAuthService(learnerEnrollRequestDTO.getUser(), learnerEnrollRequestDTO.getInstituteId());
             learnerEnrollRequestDTO.setUser(user);
+            // Generate coupon code for new learner enrollment
+            learnerCouponService.generateCouponCodeForLearner(user.getId());
         }
         EnrollInvite enrollInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
         PaymentOption paymentOption = getValidatedPaymentOption(enrollDTO.getPaymentOptionId());
@@ -172,4 +174,5 @@ public class LearnerEnrollRequestService {
             Map.of() // optional extra data
         );
     }
+
 }

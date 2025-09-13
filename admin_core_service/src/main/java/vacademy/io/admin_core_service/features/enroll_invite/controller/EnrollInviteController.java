@@ -77,4 +77,15 @@ public class EnrollInviteController {
     public ResponseEntity<String>updateEnrollInvite(@RequestBody EnrollInviteDTO enrollInviteDTO) {
         return ResponseEntity.ok(enrollInviteService.updateEnrollInvite(enrollInviteDTO));
     }
+
+    @GetMapping("/by-user-and-institute")
+    public ResponseEntity<List<EnrollInviteDTO>> getEnrollInvitesByUserIdAndInstituteId(
+        @RequestParam("instituteId") String instituteId,
+        @RequestAttribute("user") CustomUserDetails user) {
+
+        List<EnrollInviteDTO> enrollInvites = enrollInviteService
+            .getEnrollInvitesByUserIdAndInstituteId(user.getUserId(), instituteId);
+
+        return ResponseEntity.ok(enrollInvites);
+    }
 }

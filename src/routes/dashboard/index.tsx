@@ -826,13 +826,6 @@ export function DashboardComponent() {
                           </p>
                         </div>
                       </div>
-                      <MyButton
-                        buttonType="secondary"
-                        scale="small"
-                        onClick={() => navigate({ to: "/notifications-test" })}
-                      >
-                        Test Notifications
-                      </MyButton>
                     </div>
                   </CardContent>
                 </Card>

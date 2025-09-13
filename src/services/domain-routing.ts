@@ -55,7 +55,7 @@ export const resolveDomainRouting = async (
       theme: null,
       fontFamily: null,
       allowSignup: true,
-      tabText: subdomain ? `${subdomain} Learing ` : "Learning Platform",
+      tabText: subdomain ? `${subdomain} Learning ` : "Learning Platform",
       tabIconFileId: null,
       allowGoogleAuth: true,
       allowGithubAuth: true,

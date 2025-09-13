@@ -26,6 +26,7 @@ export interface PaymentDialogProps {
   onContinue?: () => void;
   onSkip?: () => void;
   onEnrollmentSuccess?: () => void;
+  onNavigateToSlides?: () => void;
   packageSessionId: string;
   instituteId: string;
   token: string;

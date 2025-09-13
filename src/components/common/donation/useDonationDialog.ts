@@ -470,9 +470,14 @@ export const useDonationDialog = ({
             targetSlideDetails.slideId
           );
         }
-      } else if (mode === 'enrollment' && onEnrollmentSuccess) {
-        // Fallback to enrollment success if no slide details
-        onEnrollmentSuccess();
+      } else if (mode === 'enrollment') {
+        // For enrollment mode, prioritize slide access success for auto navigation
+        if (onSlideAccessSuccess) {
+          onSlideAccessSuccess('', '', '', '', ''); // Empty strings since we don't have slide details
+        } else if (onEnrollmentSuccess) {
+          // Fallback to enrollment success if no slide access success
+          await onEnrollmentSuccess();
+        }
       }
       
     } catch (error) {
@@ -588,8 +593,12 @@ export const useDonationDialog = ({
         userData: userData || undefined // Pass real user data
       });
       
-      // Success - call enrollment success callback
-      if (onEnrollmentSuccess) {
+      // Success - call appropriate callback based on available callbacks
+      if (onSlideAccessSuccess) {
+        // If slide access success is available, use it for auto navigation
+        onSlideAccessSuccess('', '', '', '', ''); // Empty strings since we don't have slide details
+      } else if (onEnrollmentSuccess) {
+        // Fallback to enrollment success if no slide access success
         onEnrollmentSuccess();
       }
       

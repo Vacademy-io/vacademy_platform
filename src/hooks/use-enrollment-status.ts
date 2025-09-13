@@ -76,25 +76,30 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
   }, []); // No dependencies needed
 
   // Add a new enrolled session
-  const addEnrolledSession = useCallback((newSession: EnrolledSession) => {
-    setEnrolledSessions(prev => {
-      // Check if session already exists
-      const exists = prev.some(session => 
-        session.package_dto.id === newSession.package_dto.id &&
-        session.session.id === newSession.session.id &&
-        session.level.id === newSession.level.id
-      );
-      
-      if (exists) {
-        return prev; // Don't add duplicate
-      }
-      
-      const updatedSessions = [...prev, newSession];
-      
-      // Update preferences with the new sessions array
-      updatePreferencesWithNewSession(updatedSessions);
-      
-      return updatedSessions;
+  const addEnrolledSession = useCallback(async (newSession: EnrolledSession) => {
+    return new Promise<void>((resolve) => {
+      setEnrolledSessions(prev => {
+        // Check if session already exists
+        const exists = prev.some(session => 
+          session.package_dto.id === newSession.package_dto.id &&
+          session.session.id === newSession.session.id &&
+          session.level.id === newSession.level.id
+        );
+        
+        if (exists) {
+          resolve(); // Don't add duplicate
+          return prev;
+        }
+        
+        const updatedSessions = [...prev, newSession];
+        
+        // Update preferences with the new sessions array
+        updatePreferencesWithNewSession(updatedSessions).then(() => {
+          resolve();
+        });
+        
+        return updatedSessions;
+      });
     });
   }, [updatePreferencesWithNewSession]); // Add dependency
 
@@ -135,6 +140,30 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
   useEffect(() => {
     fetchEnrolledSessions();
   }, []); // Only run once on mount
+
+  // Also fetch enrolled sessions when the page becomes visible again
+  // This handles the case when user navigates away and comes back
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        // Page became visible, refresh enrolled sessions
+        fetchEnrolledSessions();
+      }
+    };
+
+    const handleFocus = () => {
+      // Window gained focus, refresh enrolled sessions
+      fetchEnrolledSessions();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [fetchEnrolledSessions]);
 
   // Check donation status when instituteId changes
   useEffect(() => {

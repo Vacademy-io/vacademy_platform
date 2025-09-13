@@ -25,6 +25,9 @@ import {
 import { EnrollmentSuccessDialog } from "./EnrollmentSuccessDialog";
 import { EnrollmentPendingDialog } from "./EnrollmentPendingDialog";
 import { EnrollmentPendingApprovalDialog } from "./EnrollmentPendingApprovalDialog";
+import { PaymentStatusPollingDialog } from "./PaymentStatusPollingDialog";
+import { PaymentSuccessDialog } from "./PaymentSuccessDialog";
+import { PaymentFailedDialog } from "./PaymentFailedDialog";
 
 // TypeScript declarations for Stripe
 declare global {
@@ -37,6 +40,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
   open,
   onOpenChange,
   onEnrollmentSuccess,
+  onNavigateToSlides,
   packageSessionId,
   instituteId,
   token,
@@ -64,6 +68,10 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [showPendingDialog, setShowPendingDialog] = useState(false);
   const [showPendingApprovalDialog, setShowPendingApprovalDialog] = useState(false);
+  const [showPaymentStatusDialog, setShowPaymentStatusDialog] = useState(false);
+  const [showPaymentSuccessDialog, setShowPaymentSuccessDialog] = useState(false);
+  const [showPaymentFailedDialog, setShowPaymentFailedDialog] = useState(false);
+  const [approvalRequired, setApprovalRequired] = useState(false);
   const [processingPayment, setProcessingPayment] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<PaymentPlan | null>(null);
   
@@ -336,6 +344,17 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
       const userProfileEmail = userData?.email || email;
       
       // Call the enrollment API with payment
+      console.log('SubscriptionPaymentDialog - Calling enrollment API', {
+        packageSessionId,
+        courseTitle: enrollmentData?.name || "Course",
+        userEmail: userProfileEmail,
+        receiptEmail: sanitizedEmail,
+        amount: selectedPlan.actual_price,
+        currency: getCurrency(),
+        paymentType: 'subscription',
+        planName: selectedPlan.name
+      });
+
       await handlePaymentForEnrollment({
         userEmail: userProfileEmail,
         receiptEmail: sanitizedEmail,
@@ -353,15 +372,16 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
         token,
       });
 
+      console.log('SubscriptionPaymentDialog - Enrollment API call successful, starting payment status polling', {
+        packageSessionId,
+        courseTitle: enrollmentData?.name || "Course"
+      });
+
       // Close the main dialog
       onOpenChange(false);
       
-      // Check if approval is required
-      if (selectedPaymentOption.require_approval) {
-        setShowPendingDialog(true);
-      } else {
-        setShowSuccessDialog(true);
-      }
+      // For subscription payments, start payment status polling
+      setShowPaymentStatusDialog(true);
       
     } catch (error) {
       console.error('Subscription payment error:', error);
@@ -388,9 +408,76 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
 
   const handleExploreCourse = async () => {
     setShowSuccessDialog(false);
-    if (onEnrollmentSuccess) {
-      await onEnrollmentSuccess();
+    if (onNavigateToSlides) {
+      await onNavigateToSlides();
     }
+  };
+
+  // Payment status dialog handlers
+  const handlePaymentSuccess = (approvalRequired: boolean) => {
+    console.log('SubscriptionPaymentDialog - Payment success received', {
+      packageSessionId,
+      courseTitle: enrollmentData?.name || "Course",
+      approvalRequired
+    });
+    setShowPaymentStatusDialog(false);
+    setApprovalRequired(approvalRequired);
+    
+    // If no approval required, immediately enroll user
+    if (!approvalRequired) {
+      console.log('SubscriptionPaymentDialog - No approval required, enrolling user immediately');
+      if (onEnrollmentSuccess) {
+        onEnrollmentSuccess();
+      }
+    }
+    
+    // Always show success dialog (for both approval required and not required cases)
+    setShowPaymentSuccessDialog(true);
+  };
+
+  const handlePaymentFailed = () => {
+    console.log('SubscriptionPaymentDialog - Payment failed received', {
+      packageSessionId,
+      courseTitle: enrollmentData?.name || "Course"
+    });
+    setShowPaymentStatusDialog(false);
+    setShowPaymentFailedDialog(true);
+  };
+
+  const handlePaymentStatusClose = () => {
+    console.log('SubscriptionPaymentDialog - Payment status dialog closed', {
+      packageSessionId,
+      courseTitle: enrollmentData?.name || "Course"
+    });
+    setShowPaymentStatusDialog(false);
+  };
+
+  const handlePaymentSuccessClose = () => {
+    console.log('SubscriptionPaymentDialog - Payment success dialog closed', {
+      packageSessionId,
+      courseTitle: enrollmentData?.name || "Course",
+      approvalRequired
+    });
+    setShowPaymentSuccessDialog(false);
+    // For approval required case, just close the dialog - enrollment will happen when admin approves
+  };
+
+  const handlePaymentFailedClose = () => {
+    console.log('SubscriptionPaymentDialog - Payment failed dialog closed', {
+      packageSessionId,
+      courseTitle: enrollmentData?.name || "Course"
+    });
+    setShowPaymentFailedDialog(false);
+  };
+
+  const handleTryAgain = () => {
+    console.log('SubscriptionPaymentDialog - Try again clicked', {
+      packageSessionId,
+      courseTitle: enrollmentData?.name || "Course"
+    });
+    setShowPaymentFailedDialog(false);
+    // Reopen the main enrollment dialog
+    onOpenChange(true);
   };
 
   const handleEdit = () => {
@@ -880,6 +967,36 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
       onOpenChange={setShowPendingApprovalDialog}
       courseTitle={enrollmentData?.name || "Course"}
       onClose={() => setShowPendingApprovalDialog(false)}
+    />
+
+    {/* Payment Status Polling Dialog */}
+    <PaymentStatusPollingDialog
+      open={showPaymentStatusDialog}
+      onOpenChange={setShowPaymentStatusDialog}
+      packageSessionId={packageSessionId}
+      courseTitle={enrollmentData?.name || "Course"}
+      onPaymentSuccess={handlePaymentSuccess}
+      onPaymentFailed={handlePaymentFailed}
+      onClose={handlePaymentStatusClose}
+    />
+
+    {/* Payment Success Dialog */}
+    <PaymentSuccessDialog
+      open={showPaymentSuccessDialog}
+      onOpenChange={setShowPaymentSuccessDialog}
+      courseTitle={enrollmentData?.name || "Course"}
+      approvalRequired={approvalRequired}
+      onExploreCourse={onNavigateToSlides}
+      onClose={handlePaymentSuccessClose}
+    />
+
+    {/* Payment Failed Dialog */}
+    <PaymentFailedDialog
+      open={showPaymentFailedDialog}
+      onOpenChange={setShowPaymentFailedDialog}
+      courseTitle={enrollmentData?.name || "Course"}
+      onTryAgain={handleTryAgain}
+      onClose={handlePaymentFailedClose}
     />
   </>
   );

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationContext;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
@@ -39,6 +40,10 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
 
     @Autowired
     private InstitutePolicyService institutePolicyService;
+
+    @Value("${teacher.portal.client.url}:https://dash.vacademy.io")
+    private String adminPortalClientUrl;
+
     private static class DecodedState {
         String fromUrl;
         String instituteId;
@@ -52,7 +57,7 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
         String encodedState = request.getParameter("state");
 
         // Base fallback values
-        String fallbackUrl = "https://dash.vacademy.io";
+        String fallbackUrl = adminPortalClientUrl;
         DecodedState state = decodeState(encodedState, fallbackUrl);
 
         String redirectUrl = state.fromUrl != null ? state.fromUrl : fallbackUrl;

@@ -1,10 +1,13 @@
 package vacademy.io.auth_service.feature.user.service;
-
 import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
 
 public class InviteUserEmailBody {
 
-    public static final String ADMIN_LOGIN_URL = "https://dash.vacademy.io/login";
+    @Value("${teacher.portal.client.url}:https://dash.vacademy.io")
+    private static String adminPortalClientUrl;
+
+    public static final String ADMIN_LOGIN_URL = adminPortalClientUrl + "/login";
 
     public static String createInviteUserEmail(String name, String username, String password, List<String> roles) {
         String rolesFormatted = String.join(", ", roles);

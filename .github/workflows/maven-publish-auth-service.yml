@@ -58,6 +58,7 @@ jobs:
           JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.JAVA_TOKEN }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          TEACHER_PORTAL_CLIENT_URL: ${{ secrets.TEACHER_PORTAL_CLIENT_URL }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
 
         run: |
@@ -84,6 +85,7 @@ jobs:
             CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
             AUTH_SERVICE_DB_URL=${{ secrets.AUTH_SERVICE_DB_URL }} \
             GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }} \
+            TEACHER_PORTAL_CLIENT_URL=${{ secrets.TEACHER_PORTAL_CLIENT_URL }} \
             GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }} \
             OAUTH_GITHUB_CLIENT_ID=${{ secrets.OAUTH_GITHUB_CLIENT_ID }} \
             OAUTH_GITHUB_CLIENT_SECRET=${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}

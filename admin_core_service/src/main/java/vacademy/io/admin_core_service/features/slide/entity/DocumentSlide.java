@@ -61,6 +61,7 @@ public class DocumentSlide {
             this.data = documentSlideDTO.getData();
         } else {
             this.publishedData = documentSlideDTO.getData();
+            this.data = documentSlideDTO.getData();
             this.publishedDocumentTotalPages = documentSlideDTO.getTotalPages();
         }
     }

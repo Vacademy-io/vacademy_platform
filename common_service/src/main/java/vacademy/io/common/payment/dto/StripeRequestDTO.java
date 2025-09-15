@@ -10,4 +10,5 @@ public class StripeRequestDTO {
     private String paymentMethodId;
     private String cardLast4;
     private String customerId;
+    private String returnUrl;
 }

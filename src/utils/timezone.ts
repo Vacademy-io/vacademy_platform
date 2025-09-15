@@ -1,4 +1,5 @@
 import { SessionDetails } from "@/routes/study-library/live-class/-types/types";
+import { format } from "date-fns";
 
 export const getUserTimezone = (): string => {
   try {
@@ -23,8 +24,12 @@ export const convertSessionTimeToUserTimezone = (
       throw new Error("Missing required parameters");
     }
 
-    // Create date string in ISO format for the session timezone
-    const sessionDateTimeString = `${sessionDate}T${sessionTime}`;
+    let timeOnly = sessionTime;
+    if (sessionTime.includes("T")) {
+      timeOnly = sessionTime.split("T")[1];
+    }
+
+    const sessionDateTimeString = `${sessionDate}T${timeOnly}`;
 
     // Create a date object in the session timezone
     // We'll use a more reliable approach with explicit timezone handling
@@ -190,16 +195,14 @@ export const formatSessionTimeInUserTimezone = (
   sessionTimezone: string
 ): string => {
   if (!sessionTimezone) {
-    const datetime = new Date(`${sessionDate}T${sessionTime}`);
-    return datetime.toLocaleString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
+    // Handle case where sessionTime might already be a full datetime string
+    let timeOnly = sessionTime;
+    if (sessionTime.includes("T")) {
+      // Extract time part from full datetime string
+      timeOnly = sessionTime.split("T")[1];
+    }
+    const datetime = new Date(`${sessionDate}T${timeOnly}`);
+    return format(datetime, "h:mm aa");
   }
 
   const convertedTime = convertSessionTimeToUserTimezone(
@@ -207,15 +210,7 @@ export const formatSessionTimeInUserTimezone = (
     sessionTime,
     sessionTimezone
   );
-  return convertedTime.toLocaleString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
+  return format(convertedTime, "h:mm aa");
 };
 
 /**

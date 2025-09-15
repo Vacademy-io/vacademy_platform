@@ -24,12 +24,14 @@ const verifyEmailSchema = z.object({
 interface EmailVerificationDialogProps {
   open: boolean;
   sessionId: string;
+  instituteId: string;
   onEmailVerified: (email: string) => void;
 }
 
 export default function EmailVerificationDialog({
   open,
   sessionId,
+  instituteId,
   onEmailVerified,
 }: EmailVerificationDialogProps) {
   const [isOtpSent, setIsOTPSent] = useState<boolean>(false);
@@ -48,15 +50,15 @@ export default function EmailVerificationDialog({
 
   const sendEmailOtp = async (email: string) => {
     try {
-      await axios.post(
-        LIVE_SESSION_REQUEST_OTP,
-        { to: email, subject: "Your OTP for Live Session Registration" },
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
-      );
+      await axios({
+        method: "POST",
+        url: LIVE_SESSION_REQUEST_OTP,
+        data: { to: email, subject: "Your OTP for Live Session Registration" },
+        params: {
+          instituteId,
+        },
+      });
+
       setIsOTPSent(true);
       startTimer();
       toast.success("OTP sent successfully");

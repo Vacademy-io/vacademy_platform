@@ -5,6 +5,7 @@ import { getTerminology } from "@/components/common/layout-container/sidebar/uti
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { SessionDetailsResponse } from "@/routes/study-library/live-class/-types/types";
+import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
 
 interface SessionInfoProps {
   sessionTitle?: string;
@@ -28,6 +29,31 @@ export default function SessionInfo({
     return dayjs(dateStr).format("hh:mm A");
   };
 
+  // Convert session time to user timezone for countdown
+  const getConvertedStartTime = () => {
+    if (!startTime || !sessionDetails?.meetingDate) return startTime;
+
+    const sessionTimezone =
+      "timezone" in sessionDetails
+        ? (sessionDetails as SessionDetailsResponse & { timezone?: string })
+            .timezone
+        : undefined;
+
+    if (sessionTimezone) {
+      const convertedTime = convertSessionTimeToUserTimezone(
+        sessionDetails.meetingDate,
+        startTime,
+        sessionTimezone
+      );
+
+      return convertedTime.toISOString();
+    }
+
+    return startTime;
+  };
+
+  const convertedStartTime = getConvertedStartTime();
+
   return (
     <div className="flex flex-col gap-6 h-full w-[40%] max-sm:w-full items-center">
       {coverFileUrl ? (
@@ -40,7 +66,11 @@ export default function SessionInfo({
         <div>Logo</div>
       )}
       <div className="text-h2">{sessionTitle}</div>
-      <div>{startTime && <CountdownTimer startTime={`${startTime}`} />}</div>
+      <div>
+        {convertedStartTime && (
+          <CountdownTimer startTime={convertedStartTime} />
+        )}
+      </div>
       <div>
         {sessionDetails?.descriptionHtml &&
         sessionDetails.descriptionHtml.trim() !== "" ? (

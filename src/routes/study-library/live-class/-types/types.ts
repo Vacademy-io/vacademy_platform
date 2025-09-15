@@ -50,6 +50,7 @@ export interface SessionDetails {
   subject: string;
   meeting_link: string;
   session_streaming_service_type: string;
+  timezone: string;
 }
 
 export interface DaySession {

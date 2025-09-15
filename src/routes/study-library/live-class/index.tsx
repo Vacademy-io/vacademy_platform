@@ -39,7 +39,11 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { calculateDuration } from "@/lib/live-class/utils";
-
+import {
+  formatSessionTimeInUserTimezone,
+  convertSessionTimeToUserTimezone,
+  getTimezoneDisplayInfo,
+} from "@/utils/timezone";
 export const Route = createFileRoute("/study-library/live-class/")({
   component: RouteComponent,
 });
@@ -79,6 +83,8 @@ function RouteComponent() {
 
   const { data: sessions, isLoading, error } = useLiveSessions(batchId);
 
+  console.log(sessions);
+
   useEffect(() => {
     setNavHeading(
       <div className="flex items-center gap-2">
@@ -87,7 +93,11 @@ function RouteComponent() {
     );
   }, [setNavHeading]);
 
-  const formatDateTime = (date: string, time: string) => {
+  const formatDateTime = (date: string, time: string, timezone?: string) => {
+    if (timezone) {
+      return formatSessionTimeInUserTimezone(date, time, timezone);
+    }
+    // Fallback to original logic for sessions without timezone
     const datetime = new Date(`${date}T${time}`);
     return datetime.toLocaleString("en-US", {
       weekday: "short",
@@ -125,13 +135,28 @@ function RouteComponent() {
       console.log("Embed session clicked:", session);
     }
     const now = new Date();
-    const sessionDate = new Date(
-      `${session.meeting_date}T${session.start_time}`
-    );
-    const waitingRoomStart = new Date(sessionDate);
-    waitingRoomStart.setMinutes(
-      waitingRoomStart.getMinutes() - session.waiting_room_time
-    );
+
+    let sessionDate, waitingRoomStart;
+
+    if (session.timezone) {
+      // Use timezone-aware calculation
+      sessionDate = convertSessionTimeToUserTimezone(
+        session.meeting_date,
+        session.start_time,
+        session.timezone
+      );
+      waitingRoomStart = new Date(sessionDate);
+      waitingRoomStart.setMinutes(
+        waitingRoomStart.getMinutes() - session.waiting_room_time
+      );
+    } else {
+      // Fallback to original logic
+      sessionDate = new Date(`${session.meeting_date}T${session.start_time}`);
+      waitingRoomStart = new Date(sessionDate);
+      waitingRoomStart.setMinutes(
+        waitingRoomStart.getMinutes() - session.waiting_room_time
+      );
+    }
 
     // Check if we're in waiting room period or main session
     const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
@@ -277,7 +302,16 @@ function RouteComponent() {
             <Clock size={16} className="text-neutral-500" />
             <span className="text-neutral-600">
               <span className="font-medium">Starts:</span>{" "}
-              {formatDateTime(session.meeting_date, session.start_time)}
+              {formatDateTime(
+                session.meeting_date,
+                session.start_time,
+                session.timezone
+              )}
+              {session.timezone && (
+                <span className="text-xs text-neutral-500 ml-1">
+                  ({getTimezoneDisplayInfo(session.timezone).sessionTz})
+                </span>
+              )}
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -393,6 +427,16 @@ function RouteComponent() {
                                 <span>
                                   {formatTime(session.start_time)} -{" "}
                                   {formatTime(session.last_entry_time)}
+                                  {session.timezone && (
+                                    <span className="text-xs text-neutral-500 ml-1">
+                                      (
+                                      {
+                                        getTimezoneDisplayInfo(session.timezone)
+                                          .sessionTz
+                                      }
+                                      )
+                                    </span>
+                                  )}
                                 </span>
                               </div>
                               <div className="flex items-center gap-1">
@@ -448,6 +492,16 @@ function RouteComponent() {
                                 <span>
                                   {formatTime(session.start_time)} -{" "}
                                   {formatTime(session.last_entry_time)}
+                                  {session.timezone && (
+                                    <span className="text-xs text-neutral-500 ml-1">
+                                      (
+                                      {
+                                        getTimezoneDisplayInfo(session.timezone)
+                                          .sessionTz
+                                      }
+                                      )
+                                    </span>
+                                  )}
                                 </span>
                               </div>
                               <div className="flex items-center gap-1">
@@ -566,7 +620,13 @@ function RouteComponent() {
                       ? "bg-red-100 text-red-700 border border-red-200"
                       : "bg-blue-100 text-blue-700 border border-blue-200"
                   }`}
-                  title={`${session.title} - ${session.start_time}`}
+                  title={`${session.title} - ${session.start_time}${
+                    session.timezone
+                      ? ` (${
+                          getTimezoneDisplayInfo(session.timezone).sessionTz
+                        })`
+                      : ""
+                  }`}
                 >
                   {session.start_time.slice(0, 5)} {session.title}
                 </div>

@@ -1,5 +1,5 @@
 import { MyButton } from "@/components/design-system/button";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { SessionDetailsResponse } from "@/routes/study-library/live-class/-types/types";
 import { SessionStreamingServiceType } from "@/routes/register/live-class/-types/enum";
@@ -7,6 +7,11 @@ import { useMarkAttendance } from "@/routes/live-class-guest/-hooks/useMarkAtten
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import dayjs from "dayjs";
+import {
+  convertSessionTimeToUserTimezone,
+  formatSessionTimeInUserTimezone,
+} from "@/utils/timezone";
+import { format } from "date-fns";
 
 interface SessionStatusCardProps {
   sessionDetails: SessionDetailsResponse;
@@ -25,6 +30,39 @@ export default function SessionStatusCard({
   const navigate = useNavigate();
   const { mutateAsync: markAttendance } = useMarkAttendance();
 
+  // Helper function to get timezone-aware session times
+  const getSessionTimes = useCallback(() => {
+    const sessionTimezone =
+      "timezone" in sessionDetails
+        ? (sessionDetails as SessionDetailsResponse & { timezone?: string })
+            .timezone
+        : undefined;
+
+    if (sessionTimezone) {
+      const sessionDate = convertSessionTimeToUserTimezone(
+        sessionDetails.meetingDate,
+        sessionDetails.scheduleStartTime,
+        sessionTimezone
+      );
+
+      const waitingRoomStart = new Date(sessionDate);
+      waitingRoomStart.setMinutes(
+        waitingRoomStart.getMinutes() - (sessionDetails.waitingRoomTime ?? 0)
+      );
+      return { sessionDate, waitingRoomStart };
+    } else {
+      // Fallback to original logic
+      const sessionDate = new Date(
+        `${sessionDetails.meetingDate}T${sessionDetails.scheduleStartTime}`
+      );
+      const waitingRoomStart = new Date(sessionDate);
+      waitingRoomStart.setMinutes(
+        waitingRoomStart.getMinutes() - (sessionDetails.waitingRoomTime ?? 0)
+      );
+      return { sessionDate, waitingRoomStart };
+    }
+  }, [sessionDetails]);
+
   useEffect(() => {
     setCurrentTime(new Date());
 
@@ -38,13 +76,7 @@ export default function SessionStatusCard({
   useEffect(() => {
     if (sessionDetails && registrationResponse) {
       const now = currentTime;
-      const sessionDate = new Date(
-        `${sessionDetails?.meetingDate}T${sessionDetails?.scheduleStartTime}`
-      );
-      const waitingRoomStart = new Date(sessionDate);
-      waitingRoomStart.setMinutes(
-        waitingRoomStart.getMinutes() - (sessionDetails?.waitingRoomTime ?? 0)
-      );
+      const { sessionDate, waitingRoomStart } = getSessionTimes();
 
       const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
       const isInMainSession = now >= sessionDate;
@@ -100,6 +132,7 @@ export default function SessionStatusCard({
     earliestScheduleId,
     navigate,
     markAttendance,
+    getSessionTimes,
   ]);
 
   const formatDateTime = (dateStr: string | undefined) => {
@@ -107,14 +140,160 @@ export default function SessionStatusCard({
     return dayjs(dateStr).format("hh:mm A");
   };
 
+  // Helper function to get session timezone
+  const getSessionTimezone = useCallback(() => {
+    return "timezone" in sessionDetails
+      ? (sessionDetails as SessionDetailsResponse & { timezone?: string })
+          .timezone
+      : undefined;
+  }, [sessionDetails]);
+
+  // Helper function to format start time using existing timezone utility
+  const formatStartTime = useCallback(() => {
+    const sessionTimezone = getSessionTimezone();
+    if (sessionTimezone) {
+      return formatSessionTimeInUserTimezone(
+        sessionDetails.meetingDate,
+        sessionDetails.scheduleStartTime,
+        sessionTimezone
+      );
+    } else {
+      return formatDateTime(
+        `${sessionDetails.meetingDate}T${sessionDetails.scheduleStartTime}`
+      );
+    }
+  }, [
+    getSessionTimezone,
+    sessionDetails.meetingDate,
+    sessionDetails.scheduleStartTime,
+  ]);
+
+  // Helper function to format waiting room time
+  const formatWaitingRoomTime = useCallback(() => {
+    const sessionTimezone = getSessionTimezone();
+
+    if (sessionTimezone) {
+      // Convert session start time to user timezone first
+      const sessionStartInUserTz = convertSessionTimeToUserTimezone(
+        sessionDetails.meetingDate,
+        sessionDetails.scheduleStartTime,
+        sessionTimezone
+      );
+
+      // Subtract waiting room time
+      const waitingRoomStartTime = new Date(
+        sessionStartInUserTz.getTime() -
+          sessionDetails.waitingRoomTime! * 60 * 1000
+      );
+
+      return format(waitingRoomStartTime, "h:mm aa");
+    } else {
+      // Fallback to original logic
+      return formatDateTime(
+        new Date(
+          new Date(
+            `${sessionDetails.meetingDate}T${sessionDetails.scheduleStartTime}`
+          ).getTime() -
+            sessionDetails.waitingRoomTime! * 60 * 1000
+        ).toISOString()
+      );
+    }
+  }, [
+    getSessionTimezone,
+    sessionDetails.meetingDate,
+    sessionDetails.scheduleStartTime,
+    sessionDetails.waitingRoomTime,
+  ]);
+
+  // Helper functions for session actions
+  const handleJoinLiveSession = async () => {
+    if (
+      sessionDetails.sessionStreamingServiceType ===
+      SessionStreamingServiceType.EMBED
+    ) {
+      await markAttendance({
+        sessionId: sessionDetails.sessionId,
+        scheduleId: earliestScheduleId || "",
+        userSourceType: "EXTERNAL_USER",
+        userSourceId: registrationResponse || "",
+        details: "Guest joined live class",
+      });
+      navigate({
+        to: "/live-class-guest/embed",
+        search: {
+          sessionId: earliestScheduleId || "",
+        },
+      });
+    } else {
+      window.open(
+        sessionDetails.defaultMeetLink,
+        "_blank",
+        "noopener,noreferrer"
+      );
+    }
+  };
+
+  const handleEnterWaitingRoom = () => {
+    navigate({
+      to: "/live-class-guest/waiting-room",
+      search: {
+        sessionId: earliestScheduleId || "",
+        guestId: registrationResponse || "",
+      },
+    });
+  };
+
+  // Helper function to render session status
+  const renderSessionStatus = () => {
+    if (isInMainSession) {
+      return (
+        <div className="mt-4">
+          <div className="text-green-600 text-sm mb-2">
+            {getTerminology(ContentTerms.Session, SystemTerms.Session)} is Live!
+          </div>
+          <MyButton
+            buttonType="primary"
+            className="w-full"
+            onClick={handleJoinLiveSession}
+          >
+            Join Live{" "}
+            {getTerminology(ContentTerms.Session, SystemTerms.Session)}
+          </MyButton>
+        </div>
+      );
+    } else if (isInWaitingRoom) {
+      return (
+        <div className="mt-4">
+          <div className="text-orange-600 text-sm mb-2">
+            Waiting Room is Open
+          </div>
+          <MyButton
+            buttonType="primary"
+            className="w-full"
+            onClick={handleEnterWaitingRoom}
+          >
+            Enter Waiting Room
+          </MyButton>
+        </div>
+      );
+    } else {
+      return (
+        <div className="mt-4">
+          <div className="text-gray-500 text-sm mb-2">
+            {getTerminology(ContentTerms.Session, SystemTerms.Session)} hasn't
+            started yet
+          </div>
+          <MyButton buttonType="secondary" className="w-full" disabled>
+            {getTerminology(ContentTerms.Session, SystemTerms.Session)} will
+            start soon
+          </MyButton>
+        </div>
+      );
+    }
+  };
+
   const now = currentTime;
-  const sessionDate = new Date(
-    `${sessionDetails.meetingDate}T${sessionDetails.scheduleStartTime}`
-  );
-  const waitingRoomStart = new Date(sessionDate);
-  waitingRoomStart.setMinutes(
-    waitingRoomStart.getMinutes() - (sessionDetails.waitingRoomTime ?? 0)
-  );
+  const { sessionDate, waitingRoomStart } = getSessionTimes();
 
   const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
   const isInMainSession = now >= sessionDate;
@@ -140,110 +319,17 @@ export default function SessionStatusCard({
         <div className="flex flex-col gap-2 text-sm">
           <div className="flex justify-between">
             <span className="text-gray-600">Start Time:</span>
-            <span className="font-medium">
-              {formatDateTime(
-                `${sessionDetails.meetingDate}T${sessionDetails.scheduleStartTime}`
-              )}
-            </span>
+            <span className="font-medium">{formatStartTime()}</span>
           </div>
           {sessionDetails.waitingRoomTime && (
             <div className="flex justify-between">
               <span className="text-gray-600">Waiting Room Opens:</span>
-              <span className="font-medium">
-                {formatDateTime(
-                  new Date(
-                    new Date(
-                      `${sessionDetails.meetingDate}T${sessionDetails.scheduleStartTime}`
-                    ).getTime() -
-                      sessionDetails.waitingRoomTime * 60 * 1000
-                  ).toISOString()
-                )}
-              </span>
+              <span className="font-medium">{formatWaitingRoomTime()}</span>
             </div>
           )}
         </div>
 
-        {(() => {
-          if (isInMainSession) {
-            return (
-              <div className="mt-4">
-                <div className="text-green-600 text-sm mb-2">
-                  {getTerminology(ContentTerms.Session, SystemTerms.Session)} is
-                  Live!
-                </div>
-                <MyButton
-                  buttonType="primary"
-                  className="w-full"
-                  onClick={async () => {
-                    if (
-                      sessionDetails.sessionStreamingServiceType ===
-                      SessionStreamingServiceType.EMBED
-                    ) {
-                      await markAttendance({
-                        sessionId: sessionDetails.sessionId,
-                        scheduleId: earliestScheduleId || "",
-                        userSourceType: "EXTERNAL_USER",
-                        userSourceId: registrationResponse || "",
-                        details: "Guest joined live class",
-                      });
-                      navigate({
-                        to: "/live-class-guest/embed",
-                        search: {
-                          sessionId: earliestScheduleId || "",
-                        },
-                      });
-                    } else {
-                      window.open(
-                        sessionDetails.defaultMeetLink,
-                        "_blank",
-                        "noopener,noreferrer"
-                      );
-                    }
-                  }}
-                >
-                  Join Live{" "}
-                  {getTerminology(ContentTerms.Session, SystemTerms.Session)}
-                </MyButton>
-              </div>
-            );
-          } else if (isInWaitingRoom) {
-            return (
-              <div className="mt-4">
-                <div className="text-orange-600 text-sm mb-2">
-                  Waiting Room is Open
-                </div>
-                <MyButton
-                  buttonType="primary"
-                  className="w-full"
-                  onClick={() => {
-                    navigate({
-                      to: "/live-class-guest/waiting-room",
-                      search: {
-                        sessionId: earliestScheduleId || "",
-                        guestId: registrationResponse || "",
-                      },
-                    });
-                  }}
-                >
-                  Enter Waiting Room
-                </MyButton>
-              </div>
-            );
-          } else {
-            return (
-              <div className="mt-4">
-                <div className="text-gray-500 text-sm mb-2">
-                  {getTerminology(ContentTerms.Session, SystemTerms.Session)}{" "}
-                  hasn't started yet
-                </div>
-                <MyButton buttonType="secondary" className="w-full" disabled>
-                  {getTerminology(ContentTerms.Session, SystemTerms.Session)}{" "}
-                  will start soon
-                </MyButton>
-              </div>
-            );
-          }
-        })()}
+        {renderSessionStatus()}
       </div>
     </div>
   );

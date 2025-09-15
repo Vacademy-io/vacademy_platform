@@ -34,11 +34,6 @@ public class PaymentNotificatonService {
     @Autowired
     private MediaService mediaService;
 
-    // This method can now be deprecated or removed if you only use Payment Intents
-    public boolean sendPaymentNotification(/*...*/) {
-        // ... existing logic
-        return true;
-    }
 
     public boolean sendPaymentConfirmationNotification(
         String instituteId,
@@ -117,6 +112,8 @@ public class PaymentNotificatonService {
     /**
      * UPDATED: Builds email body using PaymentIntent data.
      */
+    // In: vacademy.io.admin_core_service.features.notification_service.service.PaymentNotificatonService
+
     private String buildPaymentConfirmationEmailBody(
         Institute institute, UserDTO userDTO, PaymentInitiationRequestDTO requestDTO, PaymentResponseDTO responseDTO) {
 
@@ -126,30 +123,33 @@ public class PaymentNotificatonService {
         String transactionId = safeCastToString(responseData.get("transactionId"));
         String instituteLogoUrl = mediaService.getFileUrlById(institute.getLogoFileId());
 
-        // Use the 'created' timestamp from the PaymentIntent for an accurate date
-        long createdTimestamp = (long) responseData.getOrDefault("created", Instant.now().getEpochSecond());
+        // This is the receipt URL you fetch from the Charge object
+        String receiptUrl = safeCastToString(responseData.get("receiptUrl"));
+
+        Number createdValue = (Number) responseData.getOrDefault("created", Instant.now().getEpochSecond());
+        long createdTimestamp = createdValue.longValue();
         String paymentDate = Instant.ofEpochSecond(createdTimestamp)
-            .atZone(ZoneId.systemDefault()) // Or a specific ZoneId like ZoneId.of("UTC")
+            .atZone(ZoneId.systemDefault())
             .toLocalDate()
             .format(DateTimeFormatter.ofPattern("dd MMM yyyy"));
 
-        // The amount from PaymentIntent is in cents, so we convert it for display.
         long amountInCents = ((Number) responseData.get("amount")).longValue();
         String displayAmount = BigDecimal.valueOf(amountInCents).divide(new BigDecimal(100)).toString();
 
+        // FIX: Pass the receiptUrl to the email body generator
         return StripeInvoiceEmailBody.getPaymentConfirmationEmailBody(
             safe(institute.getInstituteName()),
             safe(instituteLogoUrl),
             safe(userDTO.getFullName()),
             displayAmount,
             safe(requestDTO.getCurrency()),
-            transactionId, // This is now the PaymentIntent ID
+            transactionId,
             paymentDate,
+            receiptUrl,
             safe(institute.getAddress()),
             institute.getInstituteThemeCode()
         );
     }
-
     /**
      * UPDATED: Builds donation email body using PaymentIntent data.
      */
@@ -161,7 +161,7 @@ public class PaymentNotificatonService {
 
         String transactionId = safeCastToString(responseData.get("transactionId"));
         String instituteLogoUrl = mediaService.getFileUrlById(institute.getLogoFileId());
-
+        String receiptUrl = safeCastToString(responseData.get("receiptUrl"));
         long createdTimestamp = (long) responseData.getOrDefault("created", Instant.now().getEpochSecond());
         String paymentDate = Instant.ofEpochSecond(createdTimestamp)
             .atZone(ZoneId.systemDefault())
@@ -180,6 +180,7 @@ public class PaymentNotificatonService {
             transactionId,
             paymentDate,
             safe(institute.getAddress()),
+            receiptUrl,
             institute.getInstituteThemeCode()
         );
     }

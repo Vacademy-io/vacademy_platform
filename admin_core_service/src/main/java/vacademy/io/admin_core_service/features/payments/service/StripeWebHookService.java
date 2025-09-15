@@ -3,9 +3,8 @@ package vacademy.io.admin_core_service.features.payments.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stripe.exception.SignatureVerificationException;
-import com.stripe.model.Event;
-import com.stripe.model.PaymentIntent;
-import com.stripe.model.StripeObject;
+import com.stripe.exception.StripeException;
+import com.stripe.model.*;
 import com.stripe.net.Webhook;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,6 +17,7 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.payment.enums.PaymentGateway;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
@@ -147,21 +147,21 @@ public class StripeWebHookService {
         }
     }
 
-    /**
-     * NEW METHOD: Extracts a PaymentIntent object directly from the webhook event payload.
-     * This avoids making an extra API call and is more efficient.
-     */
     private PaymentIntent extractPaymentIntentFromEvent(Event event) {
         if (!event.getType().startsWith("payment_intent.")) {
             return null; // Not a payment intent event
         }
 
-        Optional<StripeObject> stripeObjectOpt = event.getDataObjectDeserializer().getObject();
-        if (stripeObjectOpt.isPresent() && stripeObjectOpt.get() instanceof PaymentIntent) {
-            return (PaymentIntent) stripeObjectOpt.get();
-        } else {
-            log.error("Could not deserialize PaymentIntent from event data for event type: {}", event.getType());
-            throw new VacademyException("Webhook data object is not a valid PaymentIntent.");
+        EventDataObjectDeserializer dataObjectDeserializer = event.getDataObjectDeserializer();
+
+        // This is a more robust way to handle deserialization.
+        // It gets the raw JSON of the event's data object and explicitly parses it.
+        try {
+            String rawJson = dataObjectDeserializer.getRawJson();
+            return PaymentIntent.GSON.fromJson(rawJson, PaymentIntent.class);
+        } catch (Exception e) {
+            log.error("Could not deserialize PaymentIntent from raw JSON for event type: {}: {}", event.getType(), e.getMessage());
+            throw new VacademyException("Webhook data object could not be parsed as a PaymentIntent.");
         }
     }
 }

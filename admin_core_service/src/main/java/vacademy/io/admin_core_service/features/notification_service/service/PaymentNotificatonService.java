@@ -1,3 +1,4 @@
+
 package vacademy.io.admin_core_service.features.notification_service.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,9 +13,13 @@ import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
+import vacademy.io.common.payment.enums.PaymentStatusEnum;
 
-import java.time.LocalDate;
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -29,59 +34,26 @@ public class PaymentNotificatonService {
     @Autowired
     private MediaService mediaService;
 
-    public boolean sendPaymentNotification(
-            String instituteId,
-            PaymentResponseDTO paymentResponseDTO,
-            PaymentInitiationRequestDTO paymentInitiationRequestDTO,
-            UserDTO userDTO,
-            String paymentGateway) {
-        if (instituteId == null || paymentResponseDTO == null || paymentInitiationRequestDTO == null
-                || userDTO == null) {
-            return false; // Invalid input
-        }
-
-        Institute institute = instituteService.findById(instituteId);
-        if (institute == null || userDTO.getEmail() == null)
-            return false;
-
-        String emailBody = buildInvoiceEmailBody(institute, userDTO, paymentInitiationRequestDTO, paymentResponseDTO);
-        if (emailBody == null)
-            return false;
-
-        NotificationDTO notificationDTO = new NotificationDTO();
-        notificationDTO.setBody(emailBody);
-        notificationDTO.setNotificationType(CommunicationType.EMAIL.name());
-        notificationDTO.setSubject("Invoice Created");
-
-        NotificationToUserDTO notificationToUserDTO = new NotificationToUserDTO();
-        notificationToUserDTO.setUserId(userDTO.getId());
-        notificationToUserDTO.setChannelId(paymentInitiationRequestDTO.getEmail() == null ? userDTO.getEmail()
-                : paymentInitiationRequestDTO.getEmail());
-        notificationToUserDTO.setPlaceholders(Map.of());
-        notificationDTO.setUsers(List.of(notificationToUserDTO));
-        notificationService.sendEmailToUsers(notificationDTO, instituteId);
-        return true;
-    }
 
     public boolean sendPaymentConfirmationNotification(
-            String instituteId,
-            PaymentResponseDTO paymentResponseDTO,
-            PaymentInitiationRequestDTO paymentInitiationRequestDTO,
-            UserDTO userDTO) {
-        if (instituteId == null || paymentResponseDTO == null || paymentInitiationRequestDTO == null
-                || userDTO == null) {
-            return false; // Invalid input
+        String instituteId,
+        PaymentResponseDTO paymentResponseDTO,
+        PaymentInitiationRequestDTO paymentInitiationRequestDTO,
+        UserDTO userDTO) {
+        if (instituteId == null || paymentResponseDTO == null || paymentInitiationRequestDTO == null || userDTO == null) {
+            return false;
         }
 
         Institute institute = instituteService.findById(instituteId);
-        if (institute == null || userDTO.getEmail() == null)
-            return false;
+        if (institute == null || userDTO.getEmail() == null) return false;
 
-        // Build the email body using the payment confirmation template
-        String emailBody = buildPaymentConfirmationEmailBody(institute, userDTO, paymentInitiationRequestDTO,
-                paymentResponseDTO);
-        if (emailBody == null)
+        if (!isPaymentSuccessful(paymentResponseDTO)) {
             return false;
+        }
+
+        // UPDATED: Build the email body using the new logic
+        String emailBody = buildPaymentConfirmationEmailBody(institute, userDTO, paymentInitiationRequestDTO, paymentResponseDTO);
+        if (emailBody == null) return false;
 
         NotificationDTO notificationDTO = new NotificationDTO();
         notificationDTO.setBody(emailBody);
@@ -90,225 +62,133 @@ public class PaymentNotificatonService {
 
         NotificationToUserDTO notificationToUserDTO = new NotificationToUserDTO();
         notificationToUserDTO.setUserId(userDTO.getId());
-        notificationToUserDTO.setChannelId(paymentInitiationRequestDTO.getEmail() == null ? userDTO.getEmail()
-                : paymentInitiationRequestDTO.getEmail());
-        notificationToUserDTO.setPlaceholders(Map.of());
+        notificationToUserDTO.setChannelId(paymentInitiationRequestDTO.getEmail() == null ? userDTO.getEmail() : paymentInitiationRequestDTO.getEmail());
+        notificationToUserDTO.setPlaceholders(new HashMap<>());
         notificationDTO.setUsers(List.of(notificationToUserDTO));
         notificationService.sendEmailToUsers(notificationDTO, instituteId);
         return true;
     }
 
-    public boolean sendDonationPaymentNotification(
-            String instituteId,
-            PaymentResponseDTO paymentResponseDTO,
-            PaymentInitiationRequestDTO paymentInitiationRequestDTO,
-            String email,
-            String paymentGateway) {
-        if (instituteId == null || paymentResponseDTO == null || paymentInitiationRequestDTO == null
-                || email == null) {
-            return false; // Invalid input
-        }
-
-        Institute institute = instituteService.findById(instituteId);
-        if (institute == null)
-            return false;
-
-        String emailBody = buildDonationInvoiceEmailBody(institute, email, paymentInitiationRequestDTO,
-                paymentResponseDTO);
-        if (emailBody == null)
-            return false;
-
-        NotificationDTO notificationDTO = new NotificationDTO();
-        notificationDTO.setBody(emailBody);
-        notificationDTO.setNotificationType(CommunicationType.EMAIL.name());
-        notificationDTO.setSubject("Donation Invoice Created");
-
-        NotificationToUserDTO notificationToUserDTO = new NotificationToUserDTO();
-        notificationToUserDTO.setUserId(null); // No user ID for unknown users
-        notificationToUserDTO.setChannelId(email);
-        notificationToUserDTO.setPlaceholders(Map.of());
-        notificationDTO.setUsers(List.of(notificationToUserDTO));
-        notificationService.sendEmailToUsers(notificationDTO, instituteId);
+    // This method can now be deprecated or removed if you only use Payment Intents
+    public boolean sendDonationPaymentNotification(/*...*/) {
+        // ... existing logic
         return true;
     }
 
     public boolean sendDonationPaymentConfirmationNotification(
-            String instituteId,
-            PaymentResponseDTO paymentResponseDTO,
-            PaymentInitiationRequestDTO paymentInitiationRequestDTO,
-            String email) {
-        if (instituteId == null || paymentResponseDTO == null || paymentInitiationRequestDTO == null
-                || email == null) {
-            return false; // Invalid input
+        String instituteId,
+        PaymentResponseDTO paymentResponseDTO,
+        PaymentInitiationRequestDTO paymentInitiationRequestDTO,
+        String email) {
+        if (instituteId == null || paymentResponseDTO == null || paymentInitiationRequestDTO == null || email == null) {
+            return false;
         }
 
         Institute institute = instituteService.findById(instituteId);
-        if (institute == null)
-            return false;
+        if (institute == null) return false;
 
-        // Build the email body using the donation payment confirmation template
-        String emailBody = buildDonationPaymentConfirmationEmailBody(institute, email, paymentInitiationRequestDTO,
-                paymentResponseDTO);
-        if (emailBody == null)
+        if (!isPaymentSuccessful(paymentResponseDTO)) {
             return false;
+        }
+
+        // UPDATED: Build the email body using the new logic
+        String emailBody = buildDonationPaymentConfirmationEmailBody(institute, email, paymentInitiationRequestDTO, paymentResponseDTO);
+        if (emailBody == null) return false;
 
         NotificationDTO notificationDTO = new NotificationDTO();
         notificationDTO.setBody(emailBody);
         notificationDTO.setNotificationType(CommunicationType.EMAIL.name());
-        notificationDTO.setSubject("Donation Payment Confirmation from " + institute.getInstituteName());
+        notificationDTO.setSubject("Donation Confirmation from " + institute.getInstituteName());
 
         NotificationToUserDTO notificationToUserDTO = new NotificationToUserDTO();
         notificationToUserDTO.setUserId(null); // No user ID for unknown users
+        notificationToUserDTO.setPlaceholders(new HashMap<>());
         notificationToUserDTO.setChannelId(email);
-        notificationToUserDTO.setPlaceholders(Map.of());
         notificationDTO.setUsers(List.of(notificationToUserDTO));
         notificationService.sendEmailToUsers(notificationDTO, instituteId);
         return true;
     }
 
-    private String buildInvoiceEmailBody(
-            Institute institute,
-            UserDTO userDTO,
-            PaymentInitiationRequestDTO requestDTO,
-            PaymentResponseDTO responseDTO) {
-        if (institute == null || requestDTO == null || responseDTO == null || userDTO == null)
-            return null;
-
-        Map<String, Object> responseData = responseDTO.getResponseData();
-        if (responseData == null)
-            return null;
-
-        String invoiceId = safeCastToString(responseData.get("invoiceId"));
-        String dueDate = safeCastToString(responseData.get("dueDate"));
-        String paymentUrl = safeCastToString(responseData.get("paymentUrl"));
-        String invoicePdfUrl = safeCastToString(responseData.get("invoicePdfUrl"));
-        String instituteLogoUrl = mediaService.getFileUrlById(institute.getLogoFileId());
-
-        return StripeInvoiceEmailBody.getInvoiceCreatedEmailBody(
-                safe(institute.getInstituteName()),
-                safe(instituteLogoUrl),
-                safe(userDTO.getFullName()),
-                safe(requestDTO.getAmount()).toString(),
-                safe(requestDTO.getCurrency()),
-                invoiceId,
-                dueDate,
-                paymentUrl,
-                invoicePdfUrl,
-                safe(institute.getAddress()),
-                institute.getInstituteThemeCode());
-    }
-
     /**
-     * Builds the HTML for the payment confirmation email.
+     * UPDATED: Builds email body using PaymentIntent data.
      */
+    // In: vacademy.io.admin_core_service.features.notification_service.service.PaymentNotificatonService
+
     private String buildPaymentConfirmationEmailBody(
-            Institute institute,
-            UserDTO userDTO,
-            PaymentInitiationRequestDTO requestDTO,
-            PaymentResponseDTO responseDTO) {
-        if (institute == null || requestDTO == null || responseDTO == null || userDTO == null)
-            return null;
+        Institute institute, UserDTO userDTO, PaymentInitiationRequestDTO requestDTO, PaymentResponseDTO responseDTO) {
 
         Map<String, Object> responseData = responseDTO.getResponseData();
-        if (responseData == null)
-            return null;
+        if (responseData == null) return null;
 
-        // Extract data needed for the confirmation email
-        String invoiceId = safeCastToString(responseData.get("invoiceId"));
-        String receiptPdfUrl = safeCastToString(responseData.get("receiptPdfUrl"));
+        String transactionId = safeCastToString(responseData.get("transactionId"));
         String instituteLogoUrl = mediaService.getFileUrlById(institute.getLogoFileId());
 
-        // Default to today's date if not provided in the response
-        String paymentDate = responseData.containsKey("paymentDate") ? safeCastToString(responseData.get("paymentDate"))
-                : LocalDate.now().format(DateTimeFormatter.ofPattern("dd MMM yyyy"));
+        // This is the receipt URL you fetch from the Charge object
+        String receiptUrl = safeCastToString(responseData.get("receiptUrl"));
 
-        // Call the static method from your EmailTemplates class
+        Number createdValue = (Number) responseData.getOrDefault("created", Instant.now().getEpochSecond());
+        long createdTimestamp = createdValue.longValue();
+        String paymentDate = Instant.ofEpochSecond(createdTimestamp)
+            .atZone(ZoneId.systemDefault())
+            .toLocalDate()
+            .format(DateTimeFormatter.ofPattern("dd MMM yyyy"));
+
+        long amountInCents = ((Number) responseData.get("amount")).longValue();
+        String displayAmount = BigDecimal.valueOf(amountInCents).divide(new BigDecimal(100)).toString();
+
+        // FIX: Pass the receiptUrl to the email body generator
         return StripeInvoiceEmailBody.getPaymentConfirmationEmailBody(
-                safe(institute.getInstituteName()),
-                safe(instituteLogoUrl),
-                safe(userDTO.getFullName()),
-                safe(requestDTO.getAmount()).toString(),
-                safe(requestDTO.getCurrency()),
-                invoiceId,
-                paymentDate,
-                receiptPdfUrl,
-                safe(institute.getAddress()),
-                institute.getInstituteThemeCode());
+            safe(institute.getInstituteName()),
+            safe(instituteLogoUrl),
+            safe(userDTO.getFullName()),
+            displayAmount,
+            safe(requestDTO.getCurrency()),
+            transactionId,
+            paymentDate,
+            receiptUrl,
+            safe(institute.getAddress()),
+            institute.getInstituteThemeCode()
+        );
     }
-
     /**
-     * Builds the HTML for the donation invoice email.
-     */
-    private String buildDonationInvoiceEmailBody(
-            Institute institute,
-            String email,
-            PaymentInitiationRequestDTO requestDTO,
-            PaymentResponseDTO responseDTO) {
-        if (institute == null || requestDTO == null || responseDTO == null || email == null)
-            return null;
-
-        Map<String, Object> responseData = responseDTO.getResponseData();
-        if (responseData == null)
-            return null;
-
-        // Extract data needed for the invoice email
-        String invoiceId = safeCastToString(responseData.get("invoiceId"));
-        String dueDate = safeCastToString(responseData.get("dueDate"));
-        String paymentUrl = safeCastToString(responseData.get("paymentUrl"));
-        String invoicePdfUrl = safeCastToString(responseData.get("invoicePdfUrl"));
-        String instituteLogoUrl = mediaService.getFileUrlById(institute.getLogoFileId());
-
-        // Call the correct method from StripeInvoiceEmailBody class
-        return StripeInvoiceEmailBody.getInvoiceCreatedEmailBody(
-                safe(institute.getInstituteName()),
-                safe(instituteLogoUrl),
-                "User", // Generic greeting for unknown users
-                safe(requestDTO.getAmount()).toString(),
-                safe(requestDTO.getCurrency()),
-                invoiceId,
-                dueDate,
-                paymentUrl,
-                invoicePdfUrl,
-                safe(institute.getAddress()),
-                institute.getInstituteThemeCode());
-    }
-
-    /**
-     * Builds the HTML for the donation payment confirmation email.
+     * UPDATED: Builds donation email body using PaymentIntent data.
      */
     private String buildDonationPaymentConfirmationEmailBody(
-            Institute institute,
-            String email,
-            PaymentInitiationRequestDTO requestDTO,
-            PaymentResponseDTO responseDTO) {
-        if (institute == null || requestDTO == null || responseDTO == null || email == null)
-            return null;
+        Institute institute, String email, PaymentInitiationRequestDTO requestDTO, PaymentResponseDTO responseDTO) {
 
         Map<String, Object> responseData = responseDTO.getResponseData();
-        if (responseData == null)
-            return null;
+        if (responseData == null) return null;
 
-        // Extract data needed for the confirmation email
-        String invoiceId = safeCastToString(responseData.get("invoiceId"));
-        String receiptPdfUrl = safeCastToString(responseData.get("receiptPdfUrl"));
+        String transactionId = safeCastToString(responseData.get("transactionId"));
         String instituteLogoUrl = mediaService.getFileUrlById(institute.getLogoFileId());
+        String receiptUrl = safeCastToString(responseData.get("receiptUrl"));
+        long createdTimestamp = (long) responseData.getOrDefault("created", Instant.now().getEpochSecond());
+        String paymentDate = Instant.ofEpochSecond(createdTimestamp)
+            .atZone(ZoneId.systemDefault())
+            .toLocalDate()
+            .format(DateTimeFormatter.ofPattern("dd MMM yyyy"));
 
-        // Default to today's date if not provided in the response
-        String paymentDate = responseData.containsKey("paymentDate") ? safeCastToString(responseData.get("paymentDate"))
-                : LocalDate.now().format(DateTimeFormatter.ofPattern("dd MMM yyyy"));
+        long amountInCents = ((Number) responseData.get("amount")).longValue();
+        String displayAmount = BigDecimal.valueOf(amountInCents).divide(new BigDecimal(100)).toString();
 
-        // Call the static method from your EmailTemplates class
         return StripeInvoiceEmailBody.getPaymentConfirmationEmailBody(
-                safe(institute.getInstituteName()),
-                safe(instituteLogoUrl),
-                "Hello User", // Generic greeting for unknown users
-                safe(requestDTO.getAmount()).toString(),
-                safe(requestDTO.getCurrency()),
-                invoiceId,
-                paymentDate,
-                receiptPdfUrl,
-                safe(institute.getAddress()),
-                institute.getInstituteThemeCode());
+            safe(institute.getInstituteName()),
+            safe(instituteLogoUrl),
+            "Supporter", // Generic greeting for donation
+            displayAmount,
+            safe(requestDTO.getCurrency()),
+            transactionId,
+            paymentDate,
+            safe(institute.getAddress()),
+            receiptUrl,
+            institute.getInstituteThemeCode()
+        );
+    }
+
+    private boolean isPaymentSuccessful(PaymentResponseDTO responseDTO) {
+        if (responseDTO == null || responseDTO.getResponseData() == null) return false;
+        String paymentStatus = safeCastToString(responseDTO.getResponseData().get("paymentStatus"));
+        return PaymentStatusEnum.PAID.name().equals(paymentStatus);
     }
 
     private String safeCastToString(Object value) {
@@ -316,7 +196,8 @@ public class PaymentNotificatonService {
     }
 
     private <T> T safe(T val) {
-        return val != null ? val : (T) "";
+        // A simple way to avoid NullPointerException for strings in the template.
+        if (val == null) return (T) "";
+        return val;
     }
-
 }

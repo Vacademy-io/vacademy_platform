@@ -88,12 +88,11 @@ public class PaymentService {
                 user,
                 request);
 
-        paymentNotificatonService.sendPaymentNotification(
+        paymentNotificatonService.sendPaymentConfirmationNotification(
                 instituteId,
                 response,
                 request,
-                user,
-                enrollInvite.getVendor());
+                user);
 
         paymentLogService.updatePaymentLog(
                 paymentLogId,
@@ -144,12 +143,11 @@ public class PaymentService {
                 request);
 
         // Send payment notification to unknown user (donation)
-        paymentNotificatonService.sendDonationPaymentNotification(
+        paymentNotificatonService.sendDonationPaymentConfirmationNotification(
                 instituteId,
                 response,
                 request,
-                request.getEmail(),
-                request.getVendor());
+                request.getEmail());
 
         paymentLogService.updatePaymentLog(
                 paymentLogId,
@@ -208,12 +206,11 @@ public class PaymentService {
                 request);
 
         // Send payment notification
-        paymentNotificatonService.sendPaymentNotification(
+        paymentNotificatonService.sendPaymentConfirmationNotification(
                 instituteId,
                 response,
                 request,
-                getUserById(userId),
-                request.getVendor());
+                getUserById(userId));
 
         // Update payment log with response
         paymentLogService.updatePaymentLog(

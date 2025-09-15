@@ -28,7 +28,7 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   TabType,
-  tabs,
+  catalogTabs,
 } from "@/components/common/study-library/level-material/subject-material/-constants/constant";
 import { getIcon } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/chapter-sidebar-slides";
 import { getSubjectDetails } from "../-utils/helper";
@@ -488,9 +488,7 @@ export const CourseStructureDetails = ({
                              }}
                          />
                        )}
-                      <span className="w-7 shrink-0 text-center font-mono text-xs font-semibold text-neutral-500 bg-neutral-100 rounded px-1 py-0.5">
-                        S{idx + 1}
-                      </span>
+                    
                       <span
                         className="truncate font-medium group-hover:text-primary-700 transition-colors"
                         title={toTitleCase(subject.subject_name)}
@@ -542,9 +540,7 @@ export const CourseStructureDetails = ({
                                       }}
                                     />
                                   )}
-                                  <span className="w-6 shrink-0 text-center font-mono text-xs font-medium text-neutral-500 bg-neutral-100 rounded px-1">
-                                    M{modIdx + 1}
-                                  </span>
+                                 
                                   <span
                                     className="truncate group-hover:text-blue-700 transition-colors"
                                     title={toTitleCase(mod.module.module_name)}
@@ -595,9 +591,7 @@ export const CourseStructureDetails = ({
                                                 }}
                                               />
                                             )}
-                                            <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
-                                              C{chIdx + 1}
-                                            </span>
+                                          
                                             <span
                                               className="truncate group-hover:text-indigo-700 transition-colors"
                                               title={toTitleCase(ch.chapter_name)}
@@ -619,9 +613,7 @@ export const CourseStructureDetails = ({
                                                 <div className="flex items-center justify-center w-4 h-4 rounded bg-gradient-to-br from-purple-500 to-purple-600 text-white">
                                                   {getIcon(slide, "4")}
                                                 </div>
-                                                <span className="w-5 shrink-0 text-center font-mono text-xs font-medium text-neutral-500 bg-neutral-100 rounded px-1">
-                                                  S{slideIdx + 1}
-                                                </span>
+                                           
                                                 <span
                                                   className="truncate group-hover/item:text-purple-700 transition-colors"
                                                   title={toTitleCase(slide.title)}
@@ -690,9 +682,8 @@ export const CourseStructureDetails = ({
                                       className="w-5 h-5 rounded-sm object-cover border border-neutral-200"
                                     />
                                   )}
-                                  <span className="w-6 shrink-0 text-center font-mono text-xs font-medium text-neutral-500 bg-neutral-100 rounded px-1">
-                                    M{modIdx + 1}
-                                  </span>
+                                  
+                                  
                                   <span
                                     className="truncate group-hover:text-blue-700 transition-colors"
                                     title={mod.module.module_name}
@@ -744,9 +735,7 @@ export const CourseStructureDetails = ({
                                                 className="w-4 h-4 rounded-sm object-cover border border-neutral-200"
                                               />
                                             )}
-                                            <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
-                                              C{chIdx + 1}
-                                            </span>
+                                          \
                                             <span
                                               className="truncate group-hover:text-green-700 transition-colors text-xs"
                                               title={toTitleCase(
@@ -772,9 +761,7 @@ export const CourseStructureDetails = ({
                                                     key={slide.id}
                                                     className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-amber-50/60 hover:border-amber-200/40 border border-transparent transition-all duration-200"
                                                   >
-                                                    <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
-                                                      S{sIdx + 1}
-                                                    </span>
+                                                  
                                                     <div className="shrink-0 group-hover:scale-110 transition-transform">
                                                       {getIcon(slide, "3")}
                                                     </div>
@@ -853,9 +840,8 @@ export const CourseStructureDetails = ({
                                           <div className="flex items-center justify-center w-4 h-4 rounded bg-green-600 text-white">
                                             <PresentationChart size={10} />
                                           </div>
-                                          <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
-                                            C{chIdx + 1}
-                                          </span>
+                                          
+                                    
                                           <span
                                             className="truncate group-hover:text-green-700 transition-colors text-xs"
                                             title={toTitleCase(ch.chapter_name)}
@@ -879,9 +865,7 @@ export const CourseStructureDetails = ({
                                                   key={slide.id}
                                                   className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-amber-50/60 hover:border-amber-200/40 border border-transparent transition-all duration-200"
                                                 >
-                                                  <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
-                                                    S{sIdx + 1}
-                                                  </span>
+                                               
                                                   <div className="shrink-0 group-hover:scale-110 transition-transform">
                                                     {getIcon(slide, "3")}
                                                   </div>
@@ -958,9 +942,7 @@ export const CourseStructureDetails = ({
                                                   key={slide.id}
                                                   className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-amber-50/60 hover:border-amber-200/40 border border-transparent transition-all duration-200"
                                                 >
-                                                  <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
-                                                    S{sIdx + 1}
-                                                  </span>
+                                               
                                                   <div className="shrink-0 group-hover:scale-110 transition-transform">
                                                     {getIcon(slide, "3")}
                                                   </div>
@@ -991,75 +973,22 @@ export const CourseStructureDetails = ({
             })}
         </div>
       </div>
-    ),
-    [TabType.CONTENT_STRUCTURE]: (
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <TreeStructure size={18} className="text-primary-600" />
-          <span className="text-sm font-medium text-neutral-700">
-            Content Structure
-          </span>
-        </div>
-        <div className="text-sm text-neutral-600">
-          Content structure view will be implemented here.
-        </div>
-      </div>
-    ),
-    [TabType.TEACHERS]: (
-      <div className="rounded-lg bg-card border border-neutral-200 p-6 text-sm text-neutral-600">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center">
-            <span className="text-white text-xs font-bold">T</span>
-          </div>
-          <span className="font-medium text-neutral-700">
-            {getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}s
-          </span>
-        </div>
-        <p className="text-neutral-500">
-          {getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}s content
-          coming soon.
-        </p>
-      </div>
-    ),
-    [TabType.ASSESSMENT]: (
-      <div className="rounded-lg bg-card border border-neutral-200 p-6 text-sm text-neutral-600">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center">
-            <span className="text-white text-xs font-bold">A</span>
-          </div>
-          <span className="font-medium text-neutral-700">Assessments</span>
-        </div>
-        <p className="text-neutral-500">Assessment content coming soon.</p>
-      </div>
-    ),
+    )
   };
 
   return (
     <PullToRefreshWrapper onRefresh={refreshData}>
-      <div className="flex size-full flex-col gap-4 rounded-lg bg-gradient-to-br from-neutral-50/50 to-white py-4 text-neutral-700">
+      <div className="flex size-full flex-col gap-0 rounded-lg bg-gradient-to-br from-neutral-50/50 to-white py-4 text-neutral-700">
         <Tabs
           value={selectedTab}
           onValueChange={handleTabChange}
           className="w-full overflow-scroll"
         >
-          <TabsList className="h-auto border-b border-neutral-200/80 bg-transparent p-0">
-            {tabs.map((tab) => (
-              <TabsTrigger
-                key={tab.value}
-                value={tab.value}
-                className={`data-[state=active]:text-primary data-[state=active]:border-primary hover:text-primary -mb-px px-3 
-                                py-2 text-sm font-medium transition-all duration-200 
-                                hover:bg-gradient-to-r hover:from-primary-50/60 hover:to-blue-50/40 focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:ring-offset-1
-                                data-[state=active]:rounded-t-lg data-[state=active]:border-b-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-white data-[state=active]:to-primary-50/30 data-[state=inactive]:text-neutral-500 data-[state=inactive]:hover:rounded-t-lg`}
-              >
-                {tab.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+        
           <TabsContent
             key={selectedTab}
             value={selectedTab}
-            className="mt-4 rounded-lg bg-white border border-neutral-200/60 p-4"
+            className="mt-0 rounded-lg bg-white border border-neutral-200/60 p-4"
           >
             {(selectedTab as TabType) === TabType.CONTENT_STRUCTURE
               ? tabContent[TabType.OUTLINE]

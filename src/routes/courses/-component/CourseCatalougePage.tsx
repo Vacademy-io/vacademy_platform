@@ -325,24 +325,6 @@ const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }
             <InstructorCTASection />
             <SupportersSection />
             <Footer />
-
-            {/* Auto-login modal - separate from the manual login button */}
-            <AuthModal
-                ref={autoLoginModalRef}
-                type="coursesPage"
-                courseId={undefined}
-                trigger={<div style={{ display: "none" }} />}
-                onLoginSuccess={() => {
-                    if (autoLoginModalRef.current) {
-                        autoLoginModalRef.current.setIsOpen(false);
-                    }
-                }}
-                onSignupSuccess={() => {
-                    if (autoLoginModalRef.current) {
-                        autoLoginModalRef.current.setIsOpen(false);
-                    }
-                }}
-            />
         </div>
     );
 };

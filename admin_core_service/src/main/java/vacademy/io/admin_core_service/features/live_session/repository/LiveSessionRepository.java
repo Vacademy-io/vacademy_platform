@@ -65,9 +65,9 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
     FROM live_session s
     JOIN session_schedules ss ON s.id = ss.session_id
     WHERE s.status = 'LIVE'
-      AND ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') AS date)
+      AND ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)
       AND s.institute_id = :instituteId
-    """, nativeQuery = true)
+""", nativeQuery = true)
     List<LiveSessionRepository.LiveSessionListProjection> findCurrentlyLiveSessions(@Param("instituteId") String instituteId);
 
 
@@ -90,12 +90,13 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
     JOIN session_schedules ss ON s.id = ss.session_id
     WHERE s.status = 'LIVE'
     AND (
-            ss.meeting_date > CAST((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') AS date)
-                    OR (ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') AS date) AND CAST((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') AS time) < ss.start_time)
+            ss.meeting_date > CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)
+                    OR (ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date) 
+                        AND CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS time) < ss.start_time)
           )
     AND s.institute_id = :instituteId
     ORDER BY ss.meeting_date ASC, ss.start_time ASC
-    """, nativeQuery = true)
+""", nativeQuery = true)
     List<LiveSessionRepository.LiveSessionListProjection> findUpcomingSessions(@Param("instituteId") String instituteId);
 
     @Query(value = """
@@ -117,8 +118,9 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
     JOIN session_schedules ss ON s.id = ss.session_id
     WHERE s.status = 'LIVE'
       AND (
-            ss.meeting_date < CAST((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') AS date)
-            OR (ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') AS date) AND CAST((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') AS time) > ss.last_entry_time)
+            ss.meeting_date < CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)
+            OR (ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date) 
+                AND CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS time) > ss.last_entry_time)
           )
       AND s.institute_id = :instituteId
     ORDER BY ss.meeting_date ASC, ss.start_time ASC
@@ -174,7 +176,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         JOIN live_session_participants lsp ON lsp.session_id = s.id
         WHERE lsp.source_type = 'BATCH'
           AND lsp.source_id = :batchId
-          AND ss.meeting_date >= CURRENT_DATE
+          AND ss.meeting_date >= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)
           AND s.status IN ('DRAFT', 'LIVE')
         ORDER BY ss.meeting_date, ss.start_time
     """, nativeQuery = true)
@@ -207,7 +209,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         JOIN live_session_participants lsp ON lsp.session_id = s.id
         WHERE lsp.source_type = 'USER'
           AND lsp.source_id = :userId
-          AND ss.meeting_date >= CURRENT_DATE
+          AND ss.meeting_date >= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)
           AND s.status IN ('DRAFT', 'LIVE')
         ORDER BY ss.meeting_date, ss.start_time
     """, nativeQuery = true)

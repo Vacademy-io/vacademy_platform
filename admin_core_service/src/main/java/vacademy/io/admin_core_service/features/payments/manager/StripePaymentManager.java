@@ -169,6 +169,26 @@ public class StripePaymentManager implements PaymentServiceStrategy {
         responseData.put("amount", paymentIntent.getAmount()); // Amount is in cents
         responseData.put("currency", paymentIntent.getCurrency());
         responseData.put("created", paymentIntent.getCreated()); // NEW: Capture the transaction timestamp
+        // Assuming 'paymentIntent' is your parsed PaymentIntent object
+        String receiptUrl = null;
+
+
+        String chargeId = paymentIntent.getLatestCharge(); // Get the Charge ID as a String
+
+        if (chargeId != null) {
+            try {
+                // Retrieve the full and complete Charge object from Stripe's API
+                Charge charge = Charge.retrieve(chargeId);
+
+                // Now, this will correctly get the receipt URL
+                receiptUrl = charge.getReceiptUrl();
+
+            } catch (StripeException e) {
+                e.printStackTrace();
+            }
+        }
+        responseData.put("receiptUrl", receiptUrl); // NEW: Capture the transaction timestamp
+
         PaymentStatusEnum paymentStatus;
         switch (paymentIntent.getStatus()) {
             case "succeeded":

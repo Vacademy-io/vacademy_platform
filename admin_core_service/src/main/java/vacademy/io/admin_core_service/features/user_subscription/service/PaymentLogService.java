@@ -21,11 +21,13 @@ import vacademy.io.common.payment.enums.PaymentStatusEnum;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Service
+@Transactional
 public class PaymentLogService {
 
-    private static final Logger logger = LoggerFactory.getLogger(PaymentLogService.class);
+    private static final Logger log = LoggerFactory.getLogger(PaymentLogService.class);
 
     @Autowired
     private PaymentLogRepository paymentLogRepository;
@@ -41,7 +43,7 @@ public class PaymentLogService {
 
     public String createPaymentLog(String userId, double paymentAmount, String vendor, String vendorId, String currency,
             UserPlan userPlan) {
-        logger.info("Creating payment log for userId={}, amount={}, vendor={}, currency={}", userId, paymentAmount,
+        log.info("Creating payment log for userId={}, amount={}, vendor={}, currency={}", userId, paymentAmount,
                 vendor, currency);
 
         PaymentLog paymentLog = new PaymentLog();
@@ -57,21 +59,21 @@ public class PaymentLogService {
 
         PaymentLog savedLog = savePaymentLog(paymentLog);
 
-        logger.info("Payment log created with ID={}", savedLog.getId());
+        log.info("Payment log created with ID={}", savedLog.getId());
 
         return savedLog.getId();
     }
 
     private PaymentLog savePaymentLog(PaymentLog paymentLog) {
-        logger.debug("Saving payment log: {}", paymentLog);
+        log.debug("Saving payment log: {}", paymentLog);
         return paymentLogRepository.save(paymentLog);
     }
 
     public void updatePaymentLog(String paymentLogId, String status, String paymentStatus, String paymentSpecificData) {
-        logger.info("Updating payment log: id={}, status={}, paymentStatus={}", paymentLogId, status, paymentStatus);
+        log.info("Updating payment log: id={}, status={}, paymentStatus={}", paymentLogId, status, paymentStatus);
 
         PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId).orElseThrow(() -> {
-            logger.error("Payment log not found with ID: {}", paymentLogId);
+            log.error("Payment log not found with ID: {}", paymentLogId);
             return new RuntimeException("Payment log not found with ID: " + paymentLogId);
         });
 
@@ -81,31 +83,57 @@ public class PaymentLogService {
 
         paymentLogRepository.save(paymentLog);
 
-        logger.debug("Payment log updated successfully for ID={}", paymentLogId);
+        log.debug("Payment log updated successfully for ID={}", paymentLogId);
     }
 
     @Transactional
     public void updatePaymentLog(String paymentLogId, String paymentStatus, String instituteId) {
-        logger.info("Transactional update of payment log ID={}, setting paymentStatus={}", paymentLogId, paymentStatus);
+        log.info("Attempting to update payment log ID={}, setting paymentStatus={}", paymentLogId, paymentStatus);
 
-        PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId).orElseThrow(() -> {
-            logger.error("Payment log not found for transactional update: ID={}", paymentLogId);
-            return new RuntimeException("Payment log not found with ID: " + paymentLogId);
-        });
+        PaymentLog paymentLog = null;
+        int maxRetries = 3; // We will try a total of 3 times
 
+        // --- NEW: Retry Loop ---
+        for (int i = 0; i < maxRetries; i++) {
+            Optional<PaymentLog> logOpt = paymentLogRepository.findById(paymentLogId);
+            if (logOpt.isPresent()) {
+                paymentLog = logOpt.get();
+                log.info("Found payment log {} on attempt {}/{}", paymentLogId, i + 1, maxRetries);
+                break; // Found it, so we can exit the loop
+            }
+
+            // If not found, wait before trying again
+            if (i < maxRetries - 1) {
+                try {
+                    log.warn("Payment log {} not found. Retrying in 1 second...", paymentLogId);
+                    Thread.sleep(1000); // Wait for 1 second
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("Thread interrupted during payment log retry", e);
+                }
+            }
+        }
+
+        // After the loop, if the log is still not found, then we throw the error.
+        if (paymentLog == null) {
+            log.error("Payment log not found after {} retries: ID={}", maxRetries, paymentLogId);
+            throw new RuntimeException("Payment log not found with ID: " + paymentLogId);
+        }
         paymentLog.setPaymentStatus(paymentStatus);
+
+
         paymentLogRepository.save(paymentLog);
 
-        logger.info("Payment log saved with new paymentStatus. ID={}", paymentLogId);
+        log.info("Payment log saved with new paymentStatus. ID={}", paymentLogId);
 
         if (PaymentStatusEnum.PAID.name().equals(paymentStatus)) {
             // Check if this is a donation (null user plan ID)
             if (paymentLog.getUserPlan() == null) {
-                logger.info("Payment marked as PAID for donation, sending donation confirmation notification");
+                log.info("Payment marked as PAID for donation, sending donation confirmation notification");
                 // Handle donation payment confirmation
                 handleDonationPaymentConfirmation(paymentLog, instituteId);
             } else {
-                logger.info("Payment marked as PAID, triggering applyOperationsOnFirstPayment for userPlan ID={}",
+                log.info("Payment marked as PAID, triggering applyOperationsOnFirstPayment for userPlan ID={}",
                         paymentLog.getUserPlan().getId());
                 userPlanService.applyOperationsOnFirstPayment(paymentLog.getUserPlan());
 
@@ -113,7 +141,7 @@ public class PaymentLogService {
                 Map<String, Object> paymentData = JsonUtil.fromJson(paymentLog.getPaymentSpecificData(), Map.class);
 
                 if (paymentData == null) {
-                    logger.error("Payment specific data is null for payment log ID: {}", paymentLog.getId());
+                    log.error("Payment specific data is null for payment log ID: {}", paymentLog.getId());
                     return;
                 }
 
@@ -128,7 +156,7 @@ public class PaymentLogService {
                 );
 
                 if (paymentResponseDTO == null || paymentInitiationRequestDTO == null) {
-                    logger.error("Could not parse response or original request for payment log ID: {}", paymentLog.getId());
+                    log.error("Could not parse response or original request for payment log ID: {}", paymentLog.getId());
                     return;
                 }
 
@@ -148,7 +176,7 @@ public class PaymentLogService {
             Map<String, Object> paymentData = JsonUtil.fromJson(paymentLog.getPaymentSpecificData(), Map.class);
 
             if (paymentData == null) {
-                logger.error("Payment specific data is null for payment log ID: {}", paymentLog.getId());
+                log.error("Payment specific data is null for payment log ID: {}", paymentLog.getId());
                 return;
             }
 
@@ -162,7 +190,7 @@ public class PaymentLogService {
                     PaymentResponseDTO.class);
 
             if (originalRequest == null || paymentResponseDTO == null) {
-                logger.error("Could not parse original request or response for payment log ID: {}", paymentLog.getId());
+                log.error("Could not parse original request or response for payment log ID: {}", paymentLog.getId());
                 return;
             }
 
@@ -170,7 +198,7 @@ public class PaymentLogService {
             String email = originalRequest.getEmail();
             if (email == null) {
                 email = "donation@institute.com";
-                logger.warn("No email found in original request for donation payment log ID: {}, using default email",
+                log.warn("No email found in original request for donation payment log ID: {}, using default email",
                         paymentLog.getId());
             }
 
@@ -180,7 +208,7 @@ public class PaymentLogService {
                     originalRequest,
                     email);
         } catch (Exception e) {
-            logger.error("Error sending donation payment confirmation notification for payment log ID: {}",
+            log.error("Error sending donation payment confirmation notification for payment log ID: {}",
                     paymentLog.getId(), e);
         }
     }

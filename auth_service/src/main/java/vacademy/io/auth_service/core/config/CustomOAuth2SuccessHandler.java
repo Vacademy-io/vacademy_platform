@@ -354,3 +354,5 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
         return applicationContext.getBean(AdminOAuth2Manager.class);
     }
 }
+
+

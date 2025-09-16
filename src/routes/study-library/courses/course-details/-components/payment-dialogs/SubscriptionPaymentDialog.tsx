@@ -370,6 +370,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
         paymentType: 'subscription',
         paymentMethod,
         token,
+        returnUrl: window.location.origin + "/courses", // Default return URL
       });
 
       console.log('SubscriptionPaymentDialog - Enrollment API call successful, starting payment status polling', {

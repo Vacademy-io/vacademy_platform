@@ -75,13 +75,11 @@ export const getInstituteIdWithLocalStorageCheck = async (subdomain: string) => 
         const finalResult = apiResult || storedInstituteId || INSTITUTE_ID || null;
         return finalResult;
     } catch (error) {
-        console.error("Error in getInstituteIdWithLocalStorageCheck:", error);
         // Fallback to localStorage if API fails
         try {
             const localStorageInstituteId = await Preferences.get({ key: "InstituteId" });
             return localStorageInstituteId?.value || INSTITUTE_ID || null;
         } catch (localStorageError) {
-            console.error("Error accessing localStorage:", localStorageError);
             return INSTITUTE_ID || null;
         }
     }

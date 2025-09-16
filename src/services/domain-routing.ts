@@ -1,7 +1,6 @@
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { BASE_URL } from "../constants/urls";
 import { getDomainAndSubdomain } from "../utils/platform-flavor";
-import { getLocalhostInstituteConfig, isLocalhostDevelopment } from "../utils/localhost-dev";
 
 export interface DomainRoutingResponse {
   instituteId: string;
@@ -37,32 +36,6 @@ export const resolveDomainRouting = async (
   domain: string,
   subdomain: string
 ): Promise<DomainRoutingResponse | null> => {
-  // Handle localhost development
-  if (isLocalhostDevelopment(domain)) {
-    console.log(`[Domain Routing] Localhost development detected for ${domain}:${subdomain}`);
-    const config = getLocalhostInstituteConfig(subdomain);
-    
-    // Return a mock response for localhost development
-    return {
-      instituteId: config.instituteId,
-      instituteName: subdomain ? `${subdomain} Institute` : "Default Institute",
-      instituteLogoFileId: "",
-      instituteThemeCode: "primary",
-      role: "learner",
-      redirect: config.redirectPath,
-      privacyPolicyUrl: null,
-      termsAndConditionUrl: null,
-      theme: null,
-      fontFamily: null,
-      allowSignup: true,
-      tabText: subdomain ? `${subdomain} Learning ` : "Learning Platform",
-      tabIconFileId: null,
-      allowGoogleAuth: true,
-      allowGithubAuth: true,
-      allowEmailOtpAuth: true,
-      allowUsernamePasswordAuth: true,
-    };
-  }
 
   try {
     // Resolving domain routing for: ${domain}:${subdomain}

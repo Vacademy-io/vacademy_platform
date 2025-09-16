@@ -23,3 +23,7 @@ export const tabs = [
   { label: "Assessment", value: "ASSESSMENT" },
   { label: "Course Discussion", value: "COURSE_DISCUSSION" },
 ];
+
+export const catalogTabs = [
+  { label: "Outline", value: "OUTLINE" }
+];

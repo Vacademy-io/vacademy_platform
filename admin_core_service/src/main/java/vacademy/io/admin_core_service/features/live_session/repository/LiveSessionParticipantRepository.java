@@ -100,7 +100,8 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
             enrollmentStatus,
             attendanceStatus,
             attendanceDetails,
-            attendanceTimestamp
+            attendanceTimestamp,
+            source_type AS sourceType
         FROM all_participants
         ORDER BY studentId, priority ASC
     """, nativeQuery = true)

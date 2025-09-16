@@ -20,10 +20,12 @@ import vacademy.io.admin_core_service.features.live_session.repository.ScheduleN
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
 import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
+import vacademy.io.admin_core_service.features.institute.service.InstituteService;
 
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.*;
 
 @Service
@@ -37,6 +39,7 @@ public class LiveSessionNotificationProcessor {
     private final SessionScheduleRepository sessionScheduleRepository;
     private final NotificationService notificationService;
     private final ObjectMapper objectMapper; // kept for future template rendering
+    private final InstituteService instituteService;
     @Autowired
     private SessionScheduleRepository scheduleRepository;
 
@@ -180,6 +183,12 @@ public class LiveSessionNotificationProcessor {
             placeholders.put("NAME", fullName);
             placeholders.put("SESSION_TITLE", session.getTitle() != null ? session.getTitle() : "Live Class");
 
+            // Add timezone with UTC offset
+            placeholders.put("TIMEZONE", getTimezoneWithOffset(session.getTimezone()));
+
+            // Add theme color
+            placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
+
             // Add schedule details if available
             if (schedule != null) {
                 String meetingLink = schedule.getCustomMeetingLink() != null ?
@@ -242,6 +251,12 @@ public class LiveSessionNotificationProcessor {
             Map<String, String> placeholders = new HashMap<>();
             placeholders.put("NAME", fullName);
             placeholders.put("SESSION_TITLE", session.getTitle() != null ? session.getTitle() : "Live Class");
+
+            // Add timezone with UTC offset
+            placeholders.put("TIMEZONE", getTimezoneWithOffset(session.getTimezone()));
+
+            // Add theme color
+            placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
 
             // Add schedule details if available
             if (schedule != null) {
@@ -389,6 +404,12 @@ public class LiveSessionNotificationProcessor {
             Map<String, String> placeholders = new HashMap<>();
             placeholders.put("NAME", fullName);
             placeholders.put("SESSION_TITLE", session.getTitle() != null ? session.getTitle() : "Live Class");
+
+            // Add timezone with UTC offset
+            placeholders.put("TIMEZONE", getTimezoneWithOffset(session.getTimezone()));
+
+            // Add theme color
+            placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
 
             // Add schedule details if available
             if (schedule != null) {
@@ -549,6 +570,12 @@ public class LiveSessionNotificationProcessor {
             placeholders.put("NAME", fullName);
             placeholders.put("SESSION_TITLE", session.getTitle() != null ? session.getTitle() : "Live Class");
 
+            // Add timezone with UTC offset
+            placeholders.put("TIMEZONE", getTimezoneWithOffset(session.getTimezone()));
+
+            // Add theme color
+            placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
+
             // Add schedule details if available
             if (schedule != null) {
                 String meetingLink = schedule.getCustomMeetingLink() != null ?
@@ -582,6 +609,70 @@ public class LiveSessionNotificationProcessor {
         }
         dto.setUsers(users);
         return dto;
+    }
+
+    /**
+     * Formats timezone with UTC offset for display in emails
+     * @param timezone Full timezone name (e.g., "Asia/Kolkata", "Europe/London")
+     * @return Timezone with offset (e.g., "Asia/Kolkata (+5:30)", "Europe/London (+0:00)")
+     */
+    private String getTimezoneWithOffset(String timezone) {
+        if (timezone == null || timezone.trim().isEmpty()) {
+            return "UTC (+0:00)";
+        }
+
+        try {
+            ZoneId zoneId = ZoneId.of(timezone);
+            ZoneOffset offset = zoneId.getRules().getOffset(LocalDateTime.now());
+            
+            // Format the UTC offset
+            String offsetString = formatUtcOffset(offset);
+            
+            // Return full timezone name with offset
+            return timezone + " (" + offsetString + " Hr)";
+        } catch (Exception e) {
+            // If timezone parsing fails, return the original string
+            System.out.println("Failed to parse timezone: " + timezone + ", error: " + e.getMessage());
+            return timezone;
+        }
+    }
+
+    /**
+     * Formats UTC offset in a readable format
+     * @param offset ZoneOffset to format
+     * @return Formatted offset string (e.g., "+5:30", "-8:00", "+0:00")
+     */
+    private String formatUtcOffset(ZoneOffset offset) {
+        int totalSeconds = offset.getTotalSeconds();
+        int hours = totalSeconds / 3600;
+        int minutes = Math.abs((totalSeconds % 3600) / 60);
+        
+        if (hours == 0 && minutes == 0) {
+            return "+0:00";
+        } else {
+            return String.format("%+d:%02d", hours, minutes);
+        }
+    }
+
+    /**
+     * Gets the theme color for the institute, with fallback to default color
+     * @param instituteId Institute ID to fetch theme color for
+     * @return Theme color code or default color if not found
+     */
+    private String getThemeColor(String instituteId) {
+        try {
+            if (instituteId != null && !instituteId.trim().isEmpty()) {
+                var institute = instituteService.findById(instituteId);
+                String themeCode = institute.getInstituteThemeCode();
+                if (themeCode != null && !themeCode.trim().isEmpty()) {
+                    return themeCode;
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("Failed to fetch theme color for institute " + instituteId + ": " + e.getMessage());
+        }
+        // Default fallback color
+        return "#ff6f3c";
     }
 }
 

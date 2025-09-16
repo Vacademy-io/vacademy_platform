@@ -15,7 +15,7 @@ public class LiveClassEmailBody {
                     <td align="center">
                       <table role="presentation" style="width:600px; background:#ffffff; border-radius:10px; overflow:hidden; box-shadow:0 4px 10px rgba(0,0,0,0.1);">
                         <tr>
-                          <td style="background:#ff6f3c; padding:20px; text-align:center; color:#fff;">
+                          <td style="background:{{THEME_COLOR}}; padding:20px; text-align:center; color:#fff;">
                             <h1 style="margin:0; font-size:24px;">📢 Live Class Invitation</h1>
                           </td>
                         </tr>
@@ -31,6 +31,7 @@ public class LiveClassEmailBody {
                                             <td style="padding:10px; background:#fff3ec; border:1px solid #ffe0d1; border-radius:6px;">
                                               <p style="margin:0; font-size:15px;"><strong>📅 Date:</strong> {{DATE}}</p>
                                               <p style="margin:5px 0 0 0; font-size:15px;"><strong>⏰ Time:</strong> {{TIME}}</p>
+                                              <p style="margin:5px 0 0 0; font-size:15px;"><strong>🌍 Timezone:</strong> {{TIMEZONE}}</p>
                                             </td>
                                           </tr>
                                         </table>
@@ -41,7 +42,7 @@ public class LiveClassEmailBody {
 
                             <div style="text-align:center; margin:30px 0;">
                               <a href="{{LINK}}" target="_blank" 
-                                 style="display:inline-block; padding:12px 24px; background:#ff6f3c; color:#fff; 
+                                 style="display:inline-block; padding:12px 24px; background:{{THEME_COLOR}}; color:#fff; 
                                         font-size:16px; font-weight:bold; text-decoration:none; border-radius:6px;">
                                 Join the Live Class
                               </a>
@@ -82,7 +83,7 @@ public class LiveClassEmailBody {
                     <td align="center">
                       <table role="presentation" style="width:600px; background:#ffffff; border-radius:10px; overflow:hidden; box-shadow:0 4px 10px rgba(0,0,0,0.1);">
                         <tr>
-                          <td style="background:#dc3545; padding:20px; text-align:center; color:#fff;">
+                          <td style="background:{{THEME_COLOR}}; padding:20px; text-align:center; color:#fff;">
                             <h1 style="margin:0; font-size:24px;">❌ Live Class Cancelled</h1>
                           </td>
                         </tr>
@@ -99,6 +100,7 @@ public class LiveClassEmailBody {
                                 <td style="padding:15px; background:#f8d7da; border:1px solid #f5c6cb; border-radius:6px;">
                                   <p style="margin:0; font-size:15px; color:#721c24;"><strong>📅 Originally Scheduled:</strong> {{DATE}}</p>
                                   <p style="margin:5px 0 0 0; font-size:15px; color:#721c24;"><strong>⏰ Time:</strong> {{TIME}}</p>
+                                  <p style="margin:5px 0 0 0; font-size:15px; color:#721c24;"><strong>🌍 Timezone:</strong> {{TIMEZONE}}</p>
                                 </td>
                               </tr>
                             </table>

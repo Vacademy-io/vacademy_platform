@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.live_session.dto;
 import java.sql.Timestamp;
 
 public interface GuestAttendanceDTO {
+    String getGuestId();
     String getGuestEmail();
     Timestamp getRegisteredAt();
     String getAttendanceStatus();
@@ -11,5 +12,6 @@ public interface GuestAttendanceDTO {
     String getCustomFieldValue();
     String getGuestName();
     String getMobileNumber();
+    String getSourceType();
 }
 

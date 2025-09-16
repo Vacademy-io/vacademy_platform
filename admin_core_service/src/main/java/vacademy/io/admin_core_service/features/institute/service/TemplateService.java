@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.institute.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -9,6 +11,7 @@ import vacademy.io.admin_core_service.features.institute.entity.Template;
 import vacademy.io.admin_core_service.features.institute.repository.TemplateRepository;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -17,6 +20,7 @@ import java.util.stream.Collectors;
 public class TemplateService {
 
     private final TemplateRepository templateRepository;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * Create a new template
@@ -30,6 +34,30 @@ public class TemplateService {
             throw new IllegalArgumentException("Template with name '" + request.getName() + "' already exists for this institute");
         }
 
+        // Handle dynamic parameters based on contentType
+        String dynamicParametersJson = null;
+        if (request.getDynamicParameters() != null) {
+            try {
+                dynamicParametersJson = objectMapper.writeValueAsString(request.getDynamicParameters());
+                log.info("Converted dynamic parameters to JSON for type {}: {}", request.getType(), dynamicParametersJson);
+            } catch (JsonProcessingException e) {
+                log.error("Error converting dynamic parameters to JSON: {}", e.getMessage());
+                throw new IllegalArgumentException("Invalid dynamic parameters format");
+            }
+        }
+
+        // Handle settings JSON as Map
+        String settingJsonString = null;
+        if (request.getSettingJson() != null) {
+            try {
+                settingJsonString = objectMapper.writeValueAsString(request.getSettingJson());
+                log.info("Converted settings to JSON for type {}: {}", request.getType(), settingJsonString);
+            } catch (JsonProcessingException e) {
+                log.error("Error converting settings to JSON: {}", e.getMessage());
+                throw new IllegalArgumentException("Invalid settings format");
+            }
+        }
+
         Template template = Template.builder()
                 .type(request.getType())
                 .vendorId(request.getVendorId())
@@ -38,7 +66,8 @@ public class TemplateService {
                 .subject(request.getSubject())
                 .content(request.getContent())
                 .contentType(request.getContentType())
-                .settingJson(request.getSettingJson())
+                .settingJson(settingJsonString)
+                .dynamicParameters(dynamicParametersJson)
                 .canDelete(request.getCanDelete() != null ? request.getCanDelete() : true)
                 .createdBy(request.getCreatedBy())
                 .updatedBy(request.getUpdatedBy())
@@ -86,9 +115,32 @@ public class TemplateService {
         if (request.getContentType() != null) {
             existingTemplate.setContentType(request.getContentType());
         }
+        // Handle settings JSON update
         if (request.getSettingJson() != null) {
-            existingTemplate.setSettingJson(request.getSettingJson());
+            try {
+                String settingJsonString = objectMapper.writeValueAsString(request.getSettingJson());
+                existingTemplate.setSettingJson(settingJsonString);
+                log.info("Updated settings to JSON for type {}: {}", 
+                        request.getType() != null ? request.getType() : existingTemplate.getType(), settingJsonString);
+            } catch (JsonProcessingException e) {
+                log.error("Error converting settings to JSON: {}", e.getMessage());
+                throw new IllegalArgumentException("Invalid settings format");
+            }
         }
+        
+        // Handle dynamic parameters update
+        if (request.getDynamicParameters() != null) {
+            try {
+                String dynamicParametersJson = objectMapper.writeValueAsString(request.getDynamicParameters());
+                existingTemplate.setDynamicParameters(dynamicParametersJson);
+                log.info("Updated dynamic parameters to JSON for type {}: {}", 
+                        request.getType() != null ? request.getType() : existingTemplate.getType(), dynamicParametersJson);
+            } catch (JsonProcessingException e) {
+                log.error("Error converting dynamic parameters to JSON: {}", e.getMessage());
+                throw new IllegalArgumentException("Invalid dynamic parameters format");
+            }
+        }
+        
         if (request.getCanDelete() != null) {
             existingTemplate.setCanDelete(request.getCanDelete());
         }
@@ -232,6 +284,30 @@ public class TemplateService {
      * Convert Template entity to TemplateResponse DTO
      */
     private TemplateResponse convertToResponse(Template template) {
+        // Parse dynamic parameters from JSON if present
+        Map<String, Object> dynamicParameters = null;
+        if (template.getDynamicParameters() != null && !template.getDynamicParameters().trim().isEmpty()) {
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> parsedParams = objectMapper.readValue(template.getDynamicParameters(), Map.class);
+                dynamicParameters = parsedParams;
+            } catch (JsonProcessingException e) {
+                log.warn("Error parsing dynamic parameters JSON for template {}: {}", template.getId(), e.getMessage());
+            }
+        }
+
+        // Parse settings JSON if present
+        Map<String, Object> settingJson = null;
+        if (template.getSettingJson() != null && !template.getSettingJson().trim().isEmpty()) {
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> parsedSettings = objectMapper.readValue(template.getSettingJson(), Map.class);
+                settingJson = parsedSettings;
+            } catch (JsonProcessingException e) {
+                log.warn("Error parsing settings JSON for template {}: {}", template.getId(), e.getMessage());
+            }
+        }
+
         return TemplateResponse.builder()
                 .id(template.getId())
                 .type(template.getType())
@@ -241,7 +317,8 @@ public class TemplateService {
                 .subject(template.getSubject())
                 .content(template.getContent())
                 .contentType(template.getContentType())
-                .settingJson(template.getSettingJson())
+                .settingJson(settingJson)
+                .dynamicParameters(dynamicParameters)
                 .canDelete(template.getCanDelete())
                 .createdAt(template.getCreatedAt())
                 .updatedAt(template.getUpdatedAt())

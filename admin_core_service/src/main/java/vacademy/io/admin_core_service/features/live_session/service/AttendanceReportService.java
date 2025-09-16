@@ -239,7 +239,7 @@ public class AttendanceReportService {
 
         public static AttendanceReportDTO convertGuestToAttendanceReport(GuestAttendanceDTO guestDto) {
             return AttendanceReportDTOImpl.builder()
-                    .studentId(null)
+                    .studentId(guestDto.getGuestId())
                     .fullName(guestDto.getGuestName())
                     .email(guestDto.getGuestEmail())
                     .mobileNumber(guestDto.getMobileNumber())
@@ -250,6 +250,7 @@ public class AttendanceReportService {
                     .attendanceStatus(guestDto.getAttendanceStatus())
                     .attendanceDetails(guestDto.getAttendanceDetails())
                     .attendanceTimestamp(guestDto.getAttendanceTimestamp())
+                    .sourceType(guestDto.getSourceType())
                     .build();
         }
     }

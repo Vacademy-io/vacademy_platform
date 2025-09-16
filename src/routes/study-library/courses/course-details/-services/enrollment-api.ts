@@ -1,10 +1,10 @@
 import axios from "axios";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { getUserId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
-import { 
-  ENROLLMENT_PAYMENT_GATEWAY_DETAILS, 
-  ENROLLMENT_INVITE_DETAILS, 
-  ENROLLMENT_PAYMENT_INITIATION 
+import {
+  ENROLLMENT_PAYMENT_GATEWAY_DETAILS,
+  ENROLLMENT_INVITE_DETAILS,
+  ENROLLMENT_PAYMENT_INITIATION,
 } from "@/constants/urls";
 
 // TypeScript declarations for Stripe
@@ -17,23 +17,28 @@ declare global {
 // Helper function to validate and sanitize email
 export const validateAndSanitizeEmail = (email: string): string => {
   const sanitizedEmail = email.trim().toLowerCase();
-  
+
   // Comprehensive email regex that excludes special characters like ^, &, etc.
   const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-  
+
   if (!emailRegex.test(sanitizedEmail)) {
-    throw new Error('Invalid email format. Please enter a valid email address without special characters.');
+    throw new Error(
+      "Invalid email format. Please enter a valid email address without special characters."
+    );
   }
-  
+
   return sanitizedEmail;
 };
 
 // Helper function to safely format dates with null/undefined checks
-export const formatDateSafely = (dateString: string | null | undefined, fallback: string = 'Not specified'): string => {
+export const formatDateSafely = (
+  dateString: string | null | undefined,
+  fallback: string = "Not specified"
+): string => {
   if (!dateString) {
     return fallback;
   }
-  
+
   try {
     const date = new Date(dateString);
     // Check if the date is valid (not NaN and not Unix epoch for null dates)
@@ -47,9 +52,12 @@ export const formatDateSafely = (dateString: string | null | undefined, fallback
 };
 
 // Helper function to format access period with safe date handling
-export const formatAccessPeriod = (startDate: string | null | undefined, endDate: string | null | undefined): string => {
-  const start = formatDateSafely(startDate, 'Not specified');
-  const end = formatDateSafely(endDate, 'No end date');
+export const formatAccessPeriod = (
+  startDate: string | null | undefined,
+  endDate: string | null | undefined
+): string => {
+  const start = formatDateSafely(startDate, "Not specified");
+  const end = formatDateSafely(endDate, "No end date");
   return `${start} - ${end}`;
 };
 
@@ -167,28 +175,25 @@ export interface PaymentGatewayDetails {
  */
 export const fetchPaymentGatewayDetails = async (
   instituteId: string,
-  vendor: string = 'STRIPE',
+  vendor: string = "STRIPE",
   token: string
 ): Promise<PaymentGatewayDetails> => {
   try {
-    const response = await axios.get(
-      ENROLLMENT_PAYMENT_GATEWAY_DETAILS,
-      {
-        params: {
-          instituteId,
-          vendor
-        },
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'accept': 'application/json, text/plain, */*',
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-    
+    const response = await axios.get(ENROLLMENT_PAYMENT_GATEWAY_DETAILS, {
+      params: {
+        instituteId,
+        vendor,
+      },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        accept: "application/json, text/plain, */*",
+        "Content-Type": "application/json",
+      },
+    });
+
     return response.data;
   } catch (error) {
-    throw new Error('Failed to fetch payment gateway details');
+    throw new Error("Failed to fetch payment gateway details");
   }
 };
 
@@ -211,9 +216,9 @@ export const fetchEnrollmentDetails = async (
       `${ENROLLMENT_INVITE_DETAILS}/${inviteCode}/${instituteId}/${packageSessionId}`,
       {
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        }
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
       }
     );
     return response.data;
@@ -227,7 +232,9 @@ export const fetchEnrollmentDetails = async (
  * @param enrollmentData - The enrollment response data
  * @returns Array of payment options
  */
-export const getPaymentOptions = (enrollmentData: EnrollmentResponse): PaymentOption[] => {
+export const getPaymentOptions = (
+  enrollmentData: EnrollmentResponse
+): PaymentOption[] => {
   return enrollmentData.package_session_to_payment_options.map(
     (item) => item.payment_option
   );
@@ -238,8 +245,10 @@ export const getPaymentOptions = (enrollmentData: EnrollmentResponse): PaymentOp
  * @param paymentOption - The payment option
  * @returns Array of payment plans
  */
-export const getPaymentPlans = (paymentOption: PaymentOption): PaymentPlan[] => {
-  return paymentOption.payment_plans.filter(plan => plan.status === "ACTIVE");
+export const getPaymentPlans = (
+  paymentOption: PaymentOption
+): PaymentPlan[] => {
+  return paymentOption.payment_plans.filter((plan) => plan.status === "ACTIVE");
 };
 
 /**
@@ -248,128 +257,14 @@ export const getPaymentPlans = (paymentOption: PaymentOption): PaymentPlan[] => 
  * @param currency - The currency code
  * @returns Formatted currency string
  */
-export const formatCurrency = (amount: number, currency: string = "USD"): string => {
-  // Currency symbols mapping for better display
-  const currencySymbols: { [key: string]: string } = {
-    USD: "$",      // US Dollar
-    CAD: "C$",     // Canadian Dollar
-    AUD: "A$",     // Australian Dollar
-    GBP: "£",      // British Pound
-    EUR: "€",      // Euro
-    INR: "₹",      // Indian Rupee
-    JPY: "¥",      // Japanese Yen
-    CNY: "¥",      // Chinese Yuan
-    KRW: "₩",      // Korean Won
-    BRL: "R$",     // Brazilian Real
-    MXN: "$",      // Mexican Peso
-    RUB: "₽",      // Russian Ruble
-    ZAR: "R",      // South African Rand
-    SEK: "kr",     // Swedish Krona
-    NOK: "kr",     // Norwegian Krone
-    DKK: "kr",     // Danish Krone
-    CHF: "CHF",    // Swiss Franc
-    PLN: "zł",     // Polish Złoty
-    CZK: "Kč",     // Czech Koruna
-    HUF: "Ft",     // Hungarian Forint
-    RON: "lei",    // Romanian Leu
-    BGN: "лв",     // Bulgarian Lev
-    HRK: "kn",     // Croatian Kuna
-    TRY: "₺",      // Turkish Lira
-    ILS: "₪",      // Israeli Shekel
-    AED: "د.إ",    // UAE Dirham
-    SAR: "ر.س",    // Saudi Riyal
-    QAR: "ر.ق",    // Qatari Riyal
-    KWD: "د.ك",    // Kuwaiti Dinar
-    BHD: "د.ب",    // Bahraini Dinar
-    OMR: "ر.ع.",   // Omani Rial
-    JOD: "د.أ",    // Jordanian Dinar
-    LBP: "ل.ل",    // Lebanese Pound
-    EGP: "ج.م",    // Egyptian Pound
-    MAD: "د.م.",   // Moroccan Dirham
-    TND: "د.ت",    // Tunisian Dinar
-    DZD: "د.ج",    // Algerian Dinar
-    LYD: "ل.د",    // Libyan Dinar
-    SDG: "ج.س.",   // Sudanese Pound
-    IQD: "ع.د",    // Iraqi Dinar
-    SYP: "ل.س",    // Syrian Pound
-    YER: "ر.ي",    // Yemeni Rial
-    AFN: "؋",      // Afghan Afghani
-    PKR: "₨",      // Pakistani Rupee
-    BDT: "৳",      // Bangladeshi Taka
-    LKR: "රු",     // Sri Lankan Rupee
-    NPR: "रू",     // Nepalese Rupee
-    MMK: "K",      // Myanmar Kyat
-    THB: "฿",      // Thai Baht
-    VND: "₫",      // Vietnamese Dong
-    IDR: "Rp",     // Indonesian Rupiah
-    MYR: "RM",     // Malaysian Ringgit
-    SGD: "S$",     // Singapore Dollar
-    PHP: "₱",      // Philippine Peso
-    NZD: "NZ$",    // New Zealand Dollar
-    HKD: "HK$",    // Hong Kong Dollar
-    TWD: "NT$",    // Taiwan Dollar
-    CLP: "$",      // Chilean Peso
-    COP: "$",      // Colombian Peso
-    PEN: "S/",     // Peruvian Sol
-    ARS: "$",      // Argentine Peso
-    UYU: "$",      // Uruguayan Peso
-    PYG: "₲",      // Paraguayan Guaraní
-    BOB: "Bs",     // Bolivian Boliviano
-    VES: "Bs",     // Venezuelan Bolívar
-    GTQ: "Q",      // Guatemalan Quetzal
-    HNL: "L",      // Honduran Lempira
-    NIO: "C$",     // Nicaraguan Córdoba
-    CRC: "₡",      // Costa Rican Colón
-    PAB: "B/.",    // Panamanian Balboa
-    DOP: "RD$",    // Dominican Peso
-    HTG: "G",      // Haitian Gourde
-    JMD: "J$",     // Jamaican Dollar
-    TTD: "TT$",    // Trinidad and Tobago Dollar
-    BBD: "Bds$",   // Barbadian Dollar
-    XCD: "EC$",    // East Caribbean Dollar
-    BZD: "BZ$",    // Belize Dollar
-    GYD: "G$",     // Guyanese Dollar
-    SRD: "SRD",    // Surinamese Dollar
-    GHS: "GH₵",    // Ghanaian Cedi
-    NGN: "₦",      // Nigerian Naira
-    KES: "KSh",    // Kenyan Shilling
-    UGX: "USh",    // Ugandan Shilling
-    TZS: "TSh",    // Tanzanian Shilling
-    MWK: "MK",     // Malawian Kwacha
-    ZMW: "ZK",     // Zambian Kwacha
-    BWP: "P",      // Botswana Pula
-    NAD: "N$",     // Namibian Dollar
-    SZL: "E",      // Swazi Lilangeni
-    LSL: "L",      // Lesotho Loti
-    MUR: "₨",      // Mauritian Rupee
-    SCR: "₨",      // Seychellois Rupee
-    KMF: "CF",     // Comorian Franc
-    DJF: "Fdj",    // Djiboutian Franc
-    ETB: "Br",     // Ethiopian Birr
-    ERN: "Nfk",    // Eritrean Nakfa
-    SOS: "S",      // Somali Shilling
-    KHR: "៛",      // Cambodian Riel
-    LAK: "₭",      // Lao Kip
-    MNT: "₮",      // Mongolian Tögrög
-    KZT: "₸",      // Kazakhstani Tenge
-    UZS: "so'm",   // Uzbekistani Som
-    TJS: "ЅМ",     // Tajikistani Somoni
-    TMT: "T",      // Turkmenistani Manat
-    AZN: "₼",      // Azerbaijani Manat
-    GEL: "₾",      // Georgian Lari
-    AMD: "֏",      // Armenian Dram
-    ALL: "L",      // Albanian Lek
-    MKD: "ден",    // Macedonian Denar
-    RSD: "дин",    // Serbian Dinar
-    BAM: "KM",     // Bosnia and Herzegovina Convertible Mark
-    MDL: "L",      // Moldovan Leu
-    UAH: "₴",      // Ukrainian Hryvnia
-    BYN: "Br",     // Belarusian Ruble
-    KGS: "с",      // Kyrgyzstani Som
-  };
-
+export const formatCurrency = (
+  amount: number,
+  currency: string = "USD"
+): string => {
   // Handle common currency codes and their locales
-  const currencyConfig: { [key: string]: { locale: string; currency: string } } = {
+  const currencyConfig: {
+    [key: string]: { locale: string; currency: string };
+  } = {
     USD: { locale: "en-US", currency: "USD" },
     EUR: { locale: "de-DE", currency: "EUR" },
     GBP: { locale: "en-GB", currency: "GBP" },
@@ -518,121 +413,121 @@ export const formatCurrency = (amount: number, currency: string = "USD"): string
  */
 export const getCurrencySymbol = (currency: string = "USD"): string => {
   const currencySymbols: { [key: string]: string } = {
-    USD: "$",      // US Dollar
-    CAD: "C$",     // Canadian Dollar
-    AUD: "A$",     // Australian Dollar
-    GBP: "£",      // British Pound
-    EUR: "€",      // Euro
-    INR: "₹",      // Indian Rupee
-    JPY: "¥",      // Japanese Yen
-    CNY: "¥",      // Chinese Yuan
-    KRW: "₩",      // Korean Won
-    BRL: "R$",     // Brazilian Real
-    MXN: "$",      // Mexican Peso
-    RUB: "₽",      // Russian Ruble
-    ZAR: "R",      // South African Rand
-    SEK: "kr",     // Swedish Krona
-    NOK: "kr",     // Norwegian Krone
-    DKK: "kr",     // Danish Krone
-    CHF: "CHF",    // Swiss Franc
-    PLN: "zł",     // Polish Złoty
-    CZK: "Kč",     // Czech Koruna
-    HUF: "Ft",     // Hungarian Forint
-    RON: "lei",    // Romanian Leu
-    BGN: "лв",     // Bulgarian Lev
-    HRK: "kn",     // Croatian Kuna
-    TRY: "₺",      // Turkish Lira
-    ILS: "₪",      // Israeli Shekel
-    AED: "د.إ",    // UAE Dirham
-    SAR: "ر.س",    // Saudi Riyal
-    QAR: "ر.ق",    // Qatari Riyal
-    KWD: "د.ك",    // Kuwaiti Dinar
-    BHD: "د.ب",    // Bahraini Dinar
-    OMR: "ر.ع.",   // Omani Rial
-    JOD: "د.أ",    // Jordanian Dinar
-    LBP: "ل.ل",    // Lebanese Pound
-    EGP: "ج.م",    // Egyptian Pound
-    MAD: "د.م.",   // Moroccan Dirham
-    TND: "د.ت",    // Tunisian Dinar
-    DZD: "د.ج",    // Algerian Dinar
-    LYD: "ل.د",    // Libyan Dinar
-    SDG: "ج.س.",   // Sudanese Pound
-    IQD: "ع.د",    // Iraqi Dinar
-    SYP: "ل.س",    // Syrian Pound
-    YER: "ر.ي",    // Yemeni Rial
-    AFN: "؋",      // Afghan Afghani
-    PKR: "₨",      // Pakistani Rupee
-    BDT: "৳",      // Bangladeshi Taka
-    LKR: "රු",     // Sri Lankan Rupee
-    NPR: "रू",     // Nepalese Rupee
-    MMK: "K",      // Myanmar Kyat
-    THB: "฿",      // Thai Baht
-    VND: "₫",      // Vietnamese Dong
-    IDR: "Rp",     // Indonesian Rupiah
-    MYR: "RM",     // Malaysian Ringgit
-    SGD: "S$",     // Singapore Dollar
-    PHP: "₱",      // Philippine Peso
-    NZD: "NZ$",    // New Zealand Dollar
-    HKD: "HK$",    // Hong Kong Dollar
-    TWD: "NT$",    // Taiwan Dollar
-    CLP: "$",      // Chilean Peso
-    COP: "$",      // Colombian Peso
-    PEN: "S/",     // Peruvian Sol
-    ARS: "$",      // Argentine Peso
-    UYU: "$",      // Uruguayan Peso
-    PYG: "₲",      // Paraguayan Guaraní
-    BOB: "Bs",     // Bolivian Boliviano
-    VES: "Bs",     // Venezuelan Bolívar
-    GTQ: "Q",      // Guatemalan Quetzal
-    HNL: "L",      // Honduran Lempira
-    NIO: "C$",     // Nicaraguan Córdoba
-    CRC: "₡",      // Costa Rican Colón
-    PAB: "B/.",    // Panamanian Balboa
-    DOP: "RD$",    // Dominican Peso
-    HTG: "G",      // Haitian Gourde
-    JMD: "J$",     // Jamaican Dollar
-    TTD: "TT$",    // Trinidad and Tobago Dollar
-    BBD: "Bds$",   // Barbadian Dollar
-    XCD: "EC$",    // East Caribbean Dollar
-    BZD: "BZ$",    // Belize Dollar
-    GYD: "G$",     // Guyanese Dollar
-    SRD: "SRD",    // Surinamese Dollar
-    GHS: "GH₵",    // Ghanaian Cedi
-    NGN: "₦",      // Nigerian Naira
-    KES: "KSh",    // Kenyan Shilling
-    UGX: "USh",    // Ugandan Shilling
-    TZS: "TSh",    // Tanzanian Shilling
-    MWK: "MK",     // Malawian Kwacha
-    ZMW: "ZK",     // Zambian Kwacha
-    BWP: "P",      // Botswana Pula
-    NAD: "N$",     // Namibian Dollar
-    SZL: "E",      // Swazi Lilangeni
-    LSL: "L",      // Lesotho Loti
-    MUR: "₨",      // Mauritian Rupee
-    SCR: "₨",      // Seychellois Rupee
-    KMF: "CF",     // Comorian Franc
-    DJF: "Fdj",    // Djiboutian Franc
-    ETB: "Br",     // Ethiopian Birr
-    ERN: "Nfk",    // Eritrean Nakfa
-    SOS: "S",      // Somali Shilling
-    KHR: "៛",      // Cambodian Riel
-    LAK: "₭",      // Lao Kip
-    MNT: "₮",      // Mongolian Tögrög
-    KZT: "₸",      // Kazakhstani Tenge
-    UZS: "so'm",   // Uzbekistani Som
-    TJS: "ЅМ",     // Tajikistani Somoni
-    TMT: "T",      // Turkmenistani Manat
-    AZN: "₼",      // Azerbaijani Manat
-    GEL: "₾",      // Georgian Lari
-    AMD: "֏",      // Armenian Dram
-    ALL: "L",      // Albanian Lek
-    MKD: "ден",    // Macedonian Denar
-    RSD: "дин",    // Serbian Dinar
-    BAM: "KM",     // Bosnia and Herzegovina Convertible Mark
-    MDL: "L",      // Moldovan Leu
-    UAH: "₴",      // Ukrainian Hryvnia
-    BYN: "Br",     // Belarusian Ruble
-    KGS: "с",      // Kyrgyzstani Som
+    USD: "$", // US Dollar
+    CAD: "C$", // Canadian Dollar
+    AUD: "A$", // Australian Dollar
+    GBP: "£", // British Pound
+    EUR: "€", // Euro
+    INR: "₹", // Indian Rupee
+    JPY: "¥", // Japanese Yen
+    CNY: "¥", // Chinese Yuan
+    KRW: "₩", // Korean Won
+    BRL: "R$", // Brazilian Real
+    MXN: "$", // Mexican Peso
+    RUB: "₽", // Russian Ruble
+    ZAR: "R", // South African Rand
+    SEK: "kr", // Swedish Krona
+    NOK: "kr", // Norwegian Krone
+    DKK: "kr", // Danish Krone
+    CHF: "CHF", // Swiss Franc
+    PLN: "zł", // Polish Złoty
+    CZK: "Kč", // Czech Koruna
+    HUF: "Ft", // Hungarian Forint
+    RON: "lei", // Romanian Leu
+    BGN: "лв", // Bulgarian Lev
+    HRK: "kn", // Croatian Kuna
+    TRY: "₺", // Turkish Lira
+    ILS: "₪", // Israeli Shekel
+    AED: "د.إ", // UAE Dirham
+    SAR: "ر.س", // Saudi Riyal
+    QAR: "ر.ق", // Qatari Riyal
+    KWD: "د.ك", // Kuwaiti Dinar
+    BHD: "د.ب", // Bahraini Dinar
+    OMR: "ر.ع.", // Omani Rial
+    JOD: "د.أ", // Jordanian Dinar
+    LBP: "ل.ل", // Lebanese Pound
+    EGP: "ج.م", // Egyptian Pound
+    MAD: "د.م.", // Moroccan Dirham
+    TND: "د.ت", // Tunisian Dinar
+    DZD: "د.ج", // Algerian Dinar
+    LYD: "ل.د", // Libyan Dinar
+    SDG: "ج.س.", // Sudanese Pound
+    IQD: "ع.د", // Iraqi Dinar
+    SYP: "ل.س", // Syrian Pound
+    YER: "ر.ي", // Yemeni Rial
+    AFN: "؋", // Afghan Afghani
+    PKR: "₨", // Pakistani Rupee
+    BDT: "৳", // Bangladeshi Taka
+    LKR: "රු", // Sri Lankan Rupee
+    NPR: "रू", // Nepalese Rupee
+    MMK: "K", // Myanmar Kyat
+    THB: "฿", // Thai Baht
+    VND: "₫", // Vietnamese Dong
+    IDR: "Rp", // Indonesian Rupiah
+    MYR: "RM", // Malaysian Ringgit
+    SGD: "S$", // Singapore Dollar
+    PHP: "₱", // Philippine Peso
+    NZD: "NZ$", // New Zealand Dollar
+    HKD: "HK$", // Hong Kong Dollar
+    TWD: "NT$", // Taiwan Dollar
+    CLP: "$", // Chilean Peso
+    COP: "$", // Colombian Peso
+    PEN: "S/", // Peruvian Sol
+    ARS: "$", // Argentine Peso
+    UYU: "$", // Uruguayan Peso
+    PYG: "₲", // Paraguayan Guaraní
+    BOB: "Bs", // Bolivian Boliviano
+    VES: "Bs", // Venezuelan Bolívar
+    GTQ: "Q", // Guatemalan Quetzal
+    HNL: "L", // Honduran Lempira
+    NIO: "C$", // Nicaraguan Córdoba
+    CRC: "₡", // Costa Rican Colón
+    PAB: "B/.", // Panamanian Balboa
+    DOP: "RD$", // Dominican Peso
+    HTG: "G", // Haitian Gourde
+    JMD: "J$", // Jamaican Dollar
+    TTD: "TT$", // Trinidad and Tobago Dollar
+    BBD: "Bds$", // Barbadian Dollar
+    XCD: "EC$", // East Caribbean Dollar
+    BZD: "BZ$", // Belize Dollar
+    GYD: "G$", // Guyanese Dollar
+    SRD: "SRD", // Surinamese Dollar
+    GHS: "GH₵", // Ghanaian Cedi
+    NGN: "₦", // Nigerian Naira
+    KES: "KSh", // Kenyan Shilling
+    UGX: "USh", // Ugandan Shilling
+    TZS: "TSh", // Tanzanian Shilling
+    MWK: "MK", // Malawian Kwacha
+    ZMW: "ZK", // Zambian Kwacha
+    BWP: "P", // Botswana Pula
+    NAD: "N$", // Namibian Dollar
+    SZL: "E", // Swazi Lilangeni
+    LSL: "L", // Lesotho Loti
+    MUR: "₨", // Mauritian Rupee
+    SCR: "₨", // Seychellois Rupee
+    KMF: "CF", // Comorian Franc
+    DJF: "Fdj", // Djiboutian Franc
+    ETB: "Br", // Ethiopian Birr
+    ERN: "Nfk", // Eritrean Nakfa
+    SOS: "S", // Somali Shilling
+    KHR: "៛", // Cambodian Riel
+    LAK: "₭", // Lao Kip
+    MNT: "₮", // Mongolian Tögrög
+    KZT: "₸", // Kazakhstani Tenge
+    UZS: "so'm", // Uzbekistani Som
+    TJS: "ЅМ", // Tajikistani Somoni
+    TMT: "T", // Turkmenistani Manat
+    AZN: "₼", // Azerbaijani Manat
+    GEL: "₾", // Georgian Lari
+    AMD: "֏", // Armenian Dram
+    ALL: "L", // Albanian Lek
+    MKD: "ден", // Macedonian Denar
+    RSD: "дин", // Serbian Dinar
+    BAM: "KM", // Bosnia and Herzegovina Convertible Mark
+    MDL: "L", // Moldovan Leu
+    UAH: "₴", // Ukrainian Hryvnia
+    BYN: "Br", // Belarusian Ruble
+    KGS: "с", // Kyrgyzstani Som
   };
 
   return currencySymbols[currency.toUpperCase()] || currency.toUpperCase();
@@ -657,12 +552,12 @@ export const createStripePaymentMethod = async (
     // Load Stripe.js dynamically
     const stripe = await loadStripe(publishableKey);
     if (!stripe) {
-      throw new Error('Failed to load Stripe');
+      throw new Error("Failed to load Stripe");
     }
 
     // Create payment method
     const { paymentMethod, error } = await stripe.createPaymentMethod({
-      type: 'card',
+      type: "card",
       card: {
         number: cardDetails.number,
         exp_month: cardDetails.exp_month,
@@ -693,11 +588,11 @@ export const createStripePaymentMethodWithElements = async (
 ): Promise<any> => {
   try {
     if (!stripe || !cardElement) {
-      throw new Error('Stripe instance or card element not provided');
+      throw new Error("Stripe instance or card element not provided");
     }
 
     const { paymentMethod, error } = await stripe.createPaymentMethod({
-      type: 'card',
+      type: "card",
       card: cardElement,
     });
 
@@ -719,9 +614,9 @@ export const createStripePaymentMethodWithElements = async (
 export const createStripeElements = async (publishableKey: string) => {
   try {
     const stripe = await loadStripe(publishableKey);
-    
+
     if (!stripe) {
-      throw new Error('Failed to load Stripe');
+      throw new Error("Failed to load Stripe");
     }
 
     const elements = stripe.elements();
@@ -742,21 +637,21 @@ const loadStripe = async (publishableKey: string) => {
     }
 
     // Load Stripe.js script
-    const script = document.createElement('script');
-    script.src = 'https://js.stripe.com/v3/';
+    const script = document.createElement("script");
+    script.src = "https://js.stripe.com/v3/";
     script.async = true;
-    
+
     return new Promise((resolve, reject) => {
       script.onload = () => {
         if (window.Stripe) {
           const stripe = window.Stripe(publishableKey);
           resolve(stripe);
         } else {
-          reject(new Error('Stripe failed to load'));
+          reject(new Error("Stripe failed to load"));
         }
       };
       script.onerror = () => {
-        reject(new Error('Failed to load Stripe script'));
+        reject(new Error("Failed to load Stripe script"));
       };
       document.head.appendChild(script);
     });
@@ -787,6 +682,7 @@ export const initiatePaymentForEnrollment = async (
         card_last4: string;
         customer_id: string;
         publishable_key?: string;
+        return_url: string;
       };
       razorpay_request?: {
         customer_id: string;
@@ -808,147 +704,182 @@ export const initiatePaymentForEnrollment = async (
       paymentData
     );
     return response.data;
-      } catch (error: any) {
-      if (error.response) {
-        // Handle duplicate enrollment error (user already requested enrollment)
-        if (error.response.status === 400 || error.response.status === 409) {
-          const errorMessage = error.response.data?.message || error.response.data?.error || '';
-          
-          if (errorMessage.includes('duplicate key value violates unique constraint') || 
-              errorMessage.includes('uq_destination_pkg_inst_status_pkg_user') ||
-              errorMessage.includes('PENDING_FOR_APPROVAL')) {
-            throw new Error('ENROLLMENT_PENDING_APPROVAL');
-          }
+  } catch (error: any) {
+    if (error.response) {
+      // Handle duplicate enrollment error (user already requested enrollment)
+      if (error.response.status === 400 || error.response.status === 409) {
+        const errorMessage =
+          error.response.data?.message || error.response.data?.error || "";
+
+        if (
+          errorMessage.includes(
+            "duplicate key value violates unique constraint"
+          ) ||
+          errorMessage.includes("uq_destination_pkg_inst_status_pkg_user") ||
+          errorMessage.includes("PENDING_FOR_APPROVAL")
+        ) {
+          throw new Error("ENROLLMENT_PENDING_APPROVAL");
         }
-        
-        // Handle 510 Payment Gateway Configuration error
-        if (error.response.status === 510) {
-          // Try to extract the actual error message from the nested response
-          let actualErrorMessage = 'Payment gateway configuration error. Please check your payment settings.';
-          
-          try {
-            if (error.response.data?.ex) {
-              // The error message is nested in the 'ex' field and might be JSON
-              const exData = error.response.data.ex;
-              
-              // Try to parse it as JSON if it's a string
-              if (typeof exData === 'string') {
-                try {
-                  const parsedEx = JSON.parse(exData);
-                  if (parsedEx.ex) {
-                    actualErrorMessage = parsedEx.ex;
-                  }
-                } catch (parseError) {
-                  // If it's not JSON, use the string directly
-                  actualErrorMessage = exData;
-                }
-              }
-            } else if (error.response.data?.responseCode) {
-              // Try to extract from responseCode field
-              const responseCode = error.response.data.responseCode;
-              if (typeof responseCode === 'string' && responseCode.includes('"')) {
-                try {
-                  const parsedResponse = JSON.parse(responseCode);
-                  if (parsedResponse.ex) {
-                    actualErrorMessage = parsedResponse.ex;
-                  }
-                } catch (parseError) {
-                  actualErrorMessage = responseCode;
-                }
-              }
-            }
-          } catch (extractError) {
-            // Silent error handling
-          }
-          
-          // Check if this is actually a duplicate enrollment error
-          if (actualErrorMessage.includes('duplicate key value violates unique constraint') || 
-              actualErrorMessage.includes('uq_destination_pkg_inst_status_pkg_user') ||
-              actualErrorMessage.includes('PENDING_FOR_APPROVAL')) {
-            throw new Error('ENROLLMENT_PENDING_APPROVAL');
-          }
-          
-          throw new Error(`Payment Gateway Error: ${actualErrorMessage}`);
-        } else if (error.response.status === 511) {
-          // Try to extract the actual error message from the nested response
-          let actualErrorMessage = 'Network authentication required. Please check your credentials.';
-          
-          try {
-            if (error.response.data?.ex) {
-              // The error message is nested in the 'ex' field and might be JSON
-              const exData = error.response.data.ex;
-              
-              // Try to parse it as JSON if it's a string
-              if (typeof exData === 'string') {
-                try {
-                  const parsedEx = JSON.parse(exData);
-                  if (parsedEx.ex) {
-                    actualErrorMessage = parsedEx.ex;
-                  }
-                } catch (parseError) {
-                  // If it's not JSON, use the string directly
-                  actualErrorMessage = exData;
-                }
-              }
-            } else if (error.response.data?.responseCode) {
-              // Try to extract from responseCode field
-              const responseCode = error.response.data.responseCode;
-              if (typeof responseCode === 'string' && responseCode.includes('"')) {
-                try {
-                  const parsedResponse = JSON.parse(responseCode);
-                  if (parsedResponse.ex) {
-                    actualErrorMessage = parsedResponse.ex;
-                  }
-                } catch (parseError) {
-                  actualErrorMessage = responseCode;
-                }
-              }
-            }
-          } catch (extractError) {
-            // Silent error handling
-          }
-          
-          // Check if this is actually a duplicate enrollment error
-          if (actualErrorMessage.includes('duplicate key value violates unique constraint') || 
-              actualErrorMessage.includes('uq_destination_pkg_inst_status_pkg_user') ||
-              actualErrorMessage.includes('PENDING_FOR_APPROVAL')) {
-            throw new Error('ENROLLMENT_PENDING_APPROVAL');
-          }
-          
-          throw new Error(`Authentication Error: ${actualErrorMessage}`);
-        } else if (error.response.status === 403) {
-          throw new Error('Access forbidden. Please check your permissions or try logging in again.');
-        } else if (error.response.status === 401) {
-          throw new Error('Unauthorized. Please check your authentication token.');
-        } else {
-          // Try to extract error message from response data
-          let errorMessage = error.response.statusText || 'Unknown error';
-          
-          if (error.response.data) {
-            if (error.response.data.message) {
-              errorMessage = error.response.data.message;
-            } else if (error.response.data.ex) {
-              errorMessage = error.response.data.ex;
-            } else if (typeof error.response.data === 'string') {
-              errorMessage = error.response.data;
-            }
-          }
-          
-          // Check if this is actually a duplicate enrollment error
-          if (errorMessage.includes('duplicate key value violates unique constraint') || 
-              errorMessage.includes('uq_destination_pkg_inst_status_pkg_user') ||
-              errorMessage.includes('PENDING_FOR_APPROVAL')) {
-            throw new Error('ENROLLMENT_PENDING_APPROVAL');
-          }
-          
-          throw new Error(`Payment failed: ${errorMessage}`);
-        }
-      } else if (error.request) {
-        throw new Error('Network error. Please check your connection and try again.');
-      } else {
-        throw new Error(`Payment failed: ${error.message}`);
       }
+
+      // Handle 510 Payment Gateway Configuration error
+      if (error.response.status === 510) {
+        // Try to extract the actual error message from the nested response
+        let actualErrorMessage =
+          "Payment gateway configuration error. Please check your payment settings.";
+
+        try {
+          if (error.response.data?.ex) {
+            // The error message is nested in the 'ex' field and might be JSON
+            const exData = error.response.data.ex;
+
+            // Try to parse it as JSON if it's a string
+            if (typeof exData === "string") {
+              try {
+                const parsedEx = JSON.parse(exData);
+                if (parsedEx.ex) {
+                  actualErrorMessage = parsedEx.ex;
+                }
+              } catch (parseError) {
+                // If it's not JSON, use the string directly
+                actualErrorMessage = exData;
+              }
+            }
+          } else if (error.response.data?.responseCode) {
+            // Try to extract from responseCode field
+            const responseCode = error.response.data.responseCode;
+            if (
+              typeof responseCode === "string" &&
+              responseCode.includes('"')
+            ) {
+              try {
+                const parsedResponse = JSON.parse(responseCode);
+                if (parsedResponse.ex) {
+                  actualErrorMessage = parsedResponse.ex;
+                }
+              } catch (parseError) {
+                actualErrorMessage = responseCode;
+              }
+            }
+          }
+        } catch (extractError) {
+          // Silent error handling
+        }
+
+        // Check if this is actually a duplicate enrollment error
+        if (
+          actualErrorMessage.includes(
+            "duplicate key value violates unique constraint"
+          ) ||
+          actualErrorMessage.includes(
+            "uq_destination_pkg_inst_status_pkg_user"
+          ) ||
+          actualErrorMessage.includes("PENDING_FOR_APPROVAL")
+        ) {
+          throw new Error("ENROLLMENT_PENDING_APPROVAL");
+        }
+
+        throw new Error(`Payment Gateway Error: ${actualErrorMessage}`);
+      } else if (error.response.status === 511) {
+        // Try to extract the actual error message from the nested response
+        let actualErrorMessage =
+          "Network authentication required. Please check your credentials.";
+
+        try {
+          if (error.response.data?.ex) {
+            // The error message is nested in the 'ex' field and might be JSON
+            const exData = error.response.data.ex;
+
+            // Try to parse it as JSON if it's a string
+            if (typeof exData === "string") {
+              try {
+                const parsedEx = JSON.parse(exData);
+                if (parsedEx.ex) {
+                  actualErrorMessage = parsedEx.ex;
+                }
+              } catch (parseError) {
+                // If it's not JSON, use the string directly
+                actualErrorMessage = exData;
+              }
+            }
+          } else if (error.response.data?.responseCode) {
+            // Try to extract from responseCode field
+            const responseCode = error.response.data.responseCode;
+            if (
+              typeof responseCode === "string" &&
+              responseCode.includes('"')
+            ) {
+              try {
+                const parsedResponse = JSON.parse(responseCode);
+                if (parsedResponse.ex) {
+                  actualErrorMessage = parsedResponse.ex;
+                }
+              } catch (parseError) {
+                actualErrorMessage = responseCode;
+              }
+            }
+          }
+        } catch (extractError) {
+          // Silent error handling
+        }
+
+        // Check if this is actually a duplicate enrollment error
+        if (
+          actualErrorMessage.includes(
+            "duplicate key value violates unique constraint"
+          ) ||
+          actualErrorMessage.includes(
+            "uq_destination_pkg_inst_status_pkg_user"
+          ) ||
+          actualErrorMessage.includes("PENDING_FOR_APPROVAL")
+        ) {
+          throw new Error("ENROLLMENT_PENDING_APPROVAL");
+        }
+
+        throw new Error(`Authentication Error: ${actualErrorMessage}`);
+      } else if (error.response.status === 403) {
+        throw new Error(
+          "Access forbidden. Please check your permissions or try logging in again."
+        );
+      } else if (error.response.status === 401) {
+        throw new Error(
+          "Unauthorized. Please check your authentication token."
+        );
+      } else {
+        // Try to extract error message from response data
+        let errorMessage = error.response.statusText || "Unknown error";
+
+        if (error.response.data) {
+          if (error.response.data.message) {
+            errorMessage = error.response.data.message;
+          } else if (error.response.data.ex) {
+            errorMessage = error.response.data.ex;
+          } else if (typeof error.response.data === "string") {
+            errorMessage = error.response.data;
+          }
+        }
+
+        // Check if this is actually a duplicate enrollment error
+        if (
+          errorMessage.includes(
+            "duplicate key value violates unique constraint"
+          ) ||
+          errorMessage.includes("uq_destination_pkg_inst_status_pkg_user") ||
+          errorMessage.includes("PENDING_FOR_APPROVAL")
+        ) {
+          throw new Error("ENROLLMENT_PENDING_APPROVAL");
+        }
+
+        throw new Error(`Payment failed: ${errorMessage}`);
+      }
+    } else if (error.request) {
+      throw new Error(
+        "Network error. Please check your connection and try again."
+      );
+    } else {
+      throw new Error(`Payment failed: ${error.message}`);
     }
+  }
 };
 
 /**
@@ -968,7 +899,7 @@ export const handlePaymentForEnrollment = async (params: {
   amount: number;
   currency: string;
   description: string;
-  paymentType: 'donation' | 'subscription' | 'one-time' | 'free';
+  paymentType: "donation" | "subscription" | "one-time" | "free";
   cardDetails?: {
     number: string;
     exp_month: number;
@@ -1008,7 +939,7 @@ export const handlePaymentForEnrollment = async (params: {
     cardDetails,
     paymentMethod,
     token,
-    userData
+    userData,
   } = params;
 
   // Validate and sanitize emails
@@ -1019,53 +950,67 @@ export const handlePaymentForEnrollment = async (params: {
     // Get the current user ID
     const currentUserId = await getUserId();
     if (!currentUserId) {
-      throw new Error('User authentication required. Please log in again.');
+      throw new Error("User authentication required. Please log in again.");
     }
 
     // Validate enrollment data
     if (!enrollmentData || !enrollmentData.id) {
-      throw new Error('Enrollment data is missing or invalid. Please try again.');
+      throw new Error(
+        "Enrollment data is missing or invalid. Please try again."
+      );
     }
 
-    if (!instituteId || !packageSessionId || !selectedPaymentPlan?.id || !selectedPaymentOption?.id) {
-      throw new Error('Required enrollment parameters are missing. Please try again.');
+    if (
+      !instituteId ||
+      !packageSessionId ||
+      !selectedPaymentPlan?.id ||
+      !selectedPaymentOption?.id
+    ) {
+      throw new Error(
+        "Required enrollment parameters are missing. Please try again."
+      );
     }
 
     // Validate payment gateway data
     if (!paymentGatewayData) {
-      throw new Error('Payment gateway configuration is missing. Please try again.');
+      throw new Error(
+        "Payment gateway configuration is missing. Please try again."
+      );
     }
 
     // Handle case where API returns simplified response with just publishableKey
-    const vendor = paymentGatewayData.vendor || 'STRIPE';
-    
+    const vendor = paymentGatewayData.vendor || "STRIPE";
+
     // Note: Payment gateway configuration is handled by the backend
     // We only need to send the stripe_request with payment method details
 
     // Extract publishable key from payment gateway config
     let publishableKey: string | undefined;
-    
+
     // Check if publishableKey is directly available in the response
     if (paymentGatewayData.publishableKey) {
       publishableKey = paymentGatewayData.publishableKey;
     } else if (paymentGatewayData.config_json) {
       try {
         const config = JSON.parse(paymentGatewayData.config_json);
-        
+
         // Try different possible field names for publishable key
-        publishableKey = config.publishableKey || 
-                        config.publishable_key || 
-                        config.stripe_publishable_key ||
-                        config.stripePublishableKey ||
-                        config.key ||
-                        config.public_key;
+        publishableKey =
+          config.publishableKey ||
+          config.publishable_key ||
+          config.stripe_publishable_key ||
+          config.stripePublishableKey ||
+          config.key ||
+          config.public_key;
       } catch (error) {
         // Silent error handling
       }
     }
 
     if (!publishableKey) {
-      throw new Error('Publishable key not found in payment gateway config. Please check the payment gateway configuration.');
+      throw new Error(
+        "Publishable key not found in payment gateway config. Please check the payment gateway configuration."
+      );
     }
 
     // Create real Stripe payment method from card details
@@ -1081,27 +1026,38 @@ export const handlePaymentForEnrollment = async (params: {
     } else if (cardDetails && publishableKey) {
       // Create real Stripe payment method from manual card input
       try {
-        const stripePaymentMethod = await createStripePaymentMethod(cardDetails, publishableKey);
+        const stripePaymentMethod = await createStripePaymentMethod(
+          cardDetails,
+          publishableKey
+        );
         paymentMethodId = stripePaymentMethod.id;
-        cardLast4 = stripePaymentMethod.card?.last4 || cardDetails.number.slice(-4);
+        cardLast4 =
+          stripePaymentMethod.card?.last4 || cardDetails.number.slice(-4);
         customerId = stripePaymentMethod.customer || "temp_customer_id";
       } catch (stripeError) {
-        throw new Error(`Payment method creation failed: ${stripeError instanceof Error ? stripeError.message : 'Unknown error'}`);
+        throw new Error(
+          `Payment method creation failed: ${
+            stripeError instanceof Error ? stripeError.message : "Unknown error"
+          }`
+        );
       }
-    } else if (paymentType === 'free') {
+    } else if (paymentType === "free") {
       // For free enrollment, we don't need payment method details
       paymentMethodId = "free_enrollment";
       cardLast4 = "0000";
       customerId = "free_customer";
     } else {
-      throw new Error('Either payment method or card details must be provided');
+      throw new Error("Either payment method or card details must be provided");
     }
 
     // Prepare payment data according to the exact backend API specification
     const paymentPayload = {
       user: {
         id: currentUserId,
-        username: userData?.username || sanitizedUserEmail.split('@')[0] || `user_${Date.now()}`,
+        username:
+          userData?.username ||
+          sanitizedUserEmail.split("@")[0] ||
+          `user_${Date.now()}`,
         email: sanitizedUserEmail,
         full_name: userData?.full_name || "Donation User",
         mobile_number: userData?.mobile_number || "",
@@ -1113,53 +1069,71 @@ export const handlePaymentForEnrollment = async (params: {
         pin_code: userData?.pin_code || "",
         profile_pic_file_id: userData?.profile_pic_file_id || "",
         roles: ["STUDENT"],
-        root_user: false
+        root_user: false,
       },
       institute_id: instituteId,
       subject_id: "",
-      vendor_id: paymentType === 'free' ? "FREE" : "STRIPE",
+      vendor_id: paymentType === "free" ? "FREE" : "STRIPE",
       learner_package_session_enroll: {
         package_session_ids: [packageSessionId],
         plan_id: selectedPaymentPlan.id,
         payment_option_id: selectedPaymentOption.id,
         enroll_invite_id: enrollmentData.id,
-        payment_initiation_request: paymentType === 'free' ? null : {
-          amount: amount,
-          currency: currency,
-          description: description,
-          charge_automatically: true,
-          institute_id: instituteId,
-          email: sanitizedReceiptEmail,
-          stripe_request: {
-            payment_method_id: paymentMethodId,
-            card_last4: cardLast4,
-            customer_id: customerId
-          },
-          razorpay_request: {
-            customer_id: "",
-            contact: "",
-            email: sanitizedReceiptEmail
-          },
-          pay_pal_request: {},
-          include_pending_items: true
-        },
-        custom_field_values: []
-      }
+        payment_initiation_request:
+          paymentType === "free"
+            ? null
+            : {
+                amount: amount,
+                currency: currency,
+                description: description,
+                charge_automatically: true,
+                institute_id: instituteId,
+                email: sanitizedReceiptEmail,
+                stripe_request: {
+                  payment_method_id: paymentMethodId,
+                  card_last4: cardLast4,
+                  customer_id: customerId,
+                  return_url: window.location.href,
+                },
+                razorpay_request: {
+                  customer_id: "",
+                  contact: "",
+                  email: sanitizedReceiptEmail,
+                },
+                pay_pal_request: {},
+                include_pending_items: true,
+              },
+        custom_field_values: [],
+      },
     };
 
     const result = await initiatePaymentForEnrollment(paymentPayload, token);
 
     return result;
   } catch (error) {
-    
     // Provide more specific error messages based on the error type
     if (error instanceof Error) {
-      if (error.message.includes('learner_package_session_enroll') || error.message.includes('enroll_invite_id')) {
-        throw new Error('Enrollment configuration error. Please refresh the page and try again.');
-      } else if (error.message.includes('401') || error.message.includes('Unauthorized')) {
-        throw new Error('Authentication error. Please log in again and try again.');
-      } else if (error.message.includes('403') || error.message.includes('forbidden')) {
-        throw new Error('Access denied. Please check your permissions and try again.');
+      if (
+        error.message.includes("learner_package_session_enroll") ||
+        error.message.includes("enroll_invite_id")
+      ) {
+        throw new Error(
+          "Enrollment configuration error. Please refresh the page and try again."
+        );
+      } else if (
+        error.message.includes("401") ||
+        error.message.includes("Unauthorized")
+      ) {
+        throw new Error(
+          "Authentication error. Please log in again and try again."
+        );
+      } else if (
+        error.message.includes("403") ||
+        error.message.includes("forbidden")
+      ) {
+        throw new Error(
+          "Access denied. Please check your permissions and try again."
+        );
       } else {
         throw error;
       }
@@ -1167,4 +1141,4 @@ export const handlePaymentForEnrollment = async (params: {
       throw error;
     }
   }
-}; 
+};

@@ -1,0 +1,108 @@
+import { Card } from "@/components/ui/card";
+import { PaymentPlan } from "../-utils/helper";
+import { cn } from "@/lib/utils";
+import { SelectedPayment } from "./types";
+
+export const OneTimePlanSection = ({
+  payment_options,
+  currency,
+  discount_json,
+  selectedPayment,
+  onSelect,
+}: {
+  payment_options: PaymentPlan[];
+  currency: string;
+  discount_json: { type: string; amount: number } | null;
+  selectedPayment: SelectedPayment | null;
+  onSelect: (payment: SelectedPayment) => void;
+}) => {
+  const calculateDiscountedPrice = (price: number) => {
+    if (!discount_json) return price;
+
+    if (discount_json.type === "percentage") {
+      return price - (price * discount_json.amount) / 100;
+    } else if (discount_json.type === "fixed") {
+      return price - discount_json.amount;
+    }
+    return price;
+  };
+
+  const renderDiscount = () => {
+    if (!discount_json) return null;
+
+    if (discount_json.type === "percentage") {
+      return `${discount_json.amount}% off`;
+    } else if (discount_json.type === "fixed") {
+      return `${currency}${discount_json.amount} off`;
+    }
+  };
+
+  return (
+    <div className="flex w-full flex-wrap gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {payment_options.map((payment, idx) => {
+          const discountedPrice = calculateDiscountedPrice(
+            payment.actual_price
+          );
+          const hasDiscount =
+            discount_json && discountedPrice !== payment.actual_price;
+
+          return (
+            <Card
+              key={idx}
+              className={cn(
+                "w-full border border-gray-200 p-4 transition-colors hover:border-gray-300 cursor-pointer",
+                selectedPayment?.id === payment.id
+                  ? "ring-2 ring-blue-500 bg-blue-50"
+                  : "hover:bg-gray-50"
+              )}
+              onClick={() => {
+                const paymentPlan: PaymentPlan & { type: string } = {
+                  ...payment,
+                  actual_price: discountedPrice,
+                  type: "ONE_TIME",
+                };
+                onSelect(paymentPlan);
+              }}
+            >
+              <div className="flex flex-col gap-3">
+                <h4 className="text-base font-bold text-gray-900">
+                  {payment.name}
+                </h4>
+
+                {/* Price display */}
+                <div className="flex flex-col gap-1">
+                  {hasDiscount ? (
+                    <>
+                      {/* Crossed out original price */}
+                      <div className="text-sm text-gray-500 line-through">
+                        {currency}
+                        {payment.actual_price.toFixed(2)}
+                      </div>
+                      {/* Discounted price with discount info */}
+                      <div className="text-xl font-bold text-primary-500">
+                        {currency}
+                        {discountedPrice.toFixed(2)}
+                        {discount_json && (
+                          <span className="text-sm text-green-600 font-semibold ml-2">
+                            {renderDiscount()}
+                          </span>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    /* Regular price when no discount */
+                    <div className="text-xl font-bold text-primary-500">
+                      {currency}
+                      {payment.actual_price.toFixed(2)}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+};

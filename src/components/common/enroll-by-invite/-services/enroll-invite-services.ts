@@ -128,6 +128,7 @@ export const handleEnrollLearnerForPayment = async ({
           payment_method_id: paymentMethodId,
           card_last4: null,
           customer_id: null,
+          return_url: window.location.href,
         },
         razorpay_request: {},
         pay_pal_request: {},

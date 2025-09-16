@@ -6,7 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
+import java.util.Map;
 
 @Data
 @Builder
@@ -31,7 +31,11 @@ public class TemplateRequest {
 
     private String contentType; // HTML, TEXT, JSON, etc.
 
-    private String settingJson;
+    // Generic settings JSON as Map (can be used for any template type)
+    private Map<String, Object> settingJson;
+
+    // Generic dynamic parameters for content replacement based on contentType
+    private Map<String, Object> dynamicParameters;
 
     @Builder.Default
     private Boolean canDelete = true;

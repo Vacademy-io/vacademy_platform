@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @Data
 @Builder
@@ -21,7 +22,10 @@ public class TemplateResponse {
     private String subject;
     private String content;
     private String contentType;
-    private String settingJson;
+    // Generic settings JSON as Map (can be used for any template type)
+    private Map<String, Object> settingJson;
+    // Generic dynamic parameters for content replacement based on contentType
+    private Map<String, Object> dynamicParameters;
     private Boolean canDelete;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

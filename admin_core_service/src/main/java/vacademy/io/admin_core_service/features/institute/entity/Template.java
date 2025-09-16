@@ -46,6 +46,9 @@ public class Template {
     @Column(name = "setting_json", columnDefinition = "TEXT")
     private String settingJson;
 
+    @Column(name = "dynamic_parameters", columnDefinition = "TEXT")
+    private String dynamicParameters;
+
     @Column(name = "can_delete", nullable = false)
     @Builder.Default
     private Boolean canDelete = true;

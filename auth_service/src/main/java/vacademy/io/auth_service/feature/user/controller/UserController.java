@@ -31,7 +31,7 @@ public class UserController {
     @PostMapping("/internal/create-user")
     @Transactional
     public ResponseEntity<UserDTO> createUser(@RequestBody UserDTO userDTO,
-            @RequestParam("instituteId") String instituteId) {
+                                              @RequestParam("instituteId") String instituteId) {
         try {
             User user = authService.createUser(userDTO, instituteId,true);
             return ResponseEntity.ok(new UserDTO(user));
@@ -43,13 +43,9 @@ public class UserController {
     @PostMapping("/internal/create-user-or-get-existing")
     @Transactional
     public ResponseEntity<UserDTO> createUserOrGetExisting(@RequestBody UserDTO userDTO,
-            @RequestParam(name = "instituteId", required = false) String instituteId,
-            @RequestParam(name = "sendCredentials", defaultValue = "true") boolean sendCredentials,
-            @RequestParam(name = "sendCred", defaultValue = "true") boolean sendCred) {
+                                                           @RequestParam(name = "instituteId", required = false) String instituteId) {
         try {
-            // Use sendCred parameter, fallback to sendCredentials for backward compatibility
-            boolean shouldSendCredentials = sendCred;
-            User user = authService.createUser(userDTO, instituteId, shouldSendCredentials);
+            User user = authService.createUser(userDTO, instituteId,true);
             return ResponseEntity.ok(new UserDTO(user));
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());
@@ -82,7 +78,7 @@ public class UserController {
     // API to remove role from user
     @DeleteMapping("/v1/user-role")
     public ResponseEntity<String> removeRoleFromUser(@RequestBody UserRoleRequestDTO userRoleRequestDTO,
-            @RequestAttribute("user") CustomUserDetails user) {
+                                                     @RequestAttribute("user") CustomUserDetails user) {
 
         // Extract userId from CustomUserDetails if needed for further business logic
         String extractedUserId = user.getUserId();
@@ -93,14 +89,14 @@ public class UserController {
 
     @PostMapping("/users-by-institute-id-and-roles")
     public ResponseEntity<List<UserWithRolesDTO>> getUsersByInstituteId(@RequestParam("instituteId") String instituteId,
-            @RequestBody List<String> roles, @RequestAttribute("user") CustomUserDetails user) {
+                                                                        @RequestBody List<String> roles, @RequestAttribute("user") CustomUserDetails user) {
         List<UserWithRolesDTO> users = userService.getUserDetailsByInstituteId(instituteId, roles, user);
         return ResponseEntity.ok(users);
     }
 
     @GetMapping("/user-credentials/{userId}")
     public ResponseEntity<UserCredentials> getUserCredentials(@PathVariable String userId,
-            @RequestAttribute("user") CustomUserDetails customUserDetails) {
+                                                              @RequestAttribute("user") CustomUserDetails customUserDetails) {
         return ResponseEntity.ok(userService.getUserCredentials(userId, customUserDetails));
     }
 
@@ -111,20 +107,20 @@ public class UserController {
 
     @PostMapping("/users-credential")
     public ResponseEntity<List<UserCredentials>> getUsersCredentials(@RequestBody List<String> userIds,
-            @RequestAttribute("user") CustomUserDetails customUserDetails) {
+                                                                     @RequestAttribute("user") CustomUserDetails customUserDetails) {
         return ResponseEntity.ok(userService.getUsersCredentials(userIds));
     }
 
     @PostMapping("/internal/update/details")
     public ResponseEntity<String> updateUserDetails(@RequestBody UserTopLevelDto request,
-            @RequestParam("userId") String userId,
-            @RequestParam("instituteId") String instituteId) {
+                                                    @RequestParam("userId") String userId,
+                                                    @RequestParam("instituteId") String instituteId) {
         return ResponseEntity.ok(userService.updateUserDetails(null, request, userId, instituteId));
     }
 
     @GetMapping("/internal/get/details")
     public ResponseEntity<UserTopLevelDto> getUserDetails(@RequestParam("userId") String userId,
-            @RequestParam("instituteId") String instituteId) {
+                                                          @RequestParam("instituteId") String instituteId) {
         return ResponseEntity.ok(userService.getUserTopLevelDetails(null, userId, instituteId));
     }
 

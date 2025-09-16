@@ -221,7 +221,7 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
             String encodedState, boolean isEmailVerified) throws IOException {
         String email = userInfo.email;
         if (email == null || userInfo.providerId.equalsIgnoreCase("github")) {
-            email = oAuth2VendorToUserDetailService.getEmailByProviderIdAndSubject(userInfo.providerId, userInfo.sub,userInfo.providerId);
+            email = oAuth2VendorToUserDetailService.getEmailByProviderIdAndSubject(userInfo.providerId, userInfo.sub,userInfo.email);
         }
 
         // First try to login the user by email

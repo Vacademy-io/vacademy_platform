@@ -53,6 +53,7 @@ import LocalStorageUtils from "@/utils/localstorage";
 import { fetchPaymentOptions } from "@/routes/courses/-services/payment-options-api";
 import { CourseHeader } from "./course-header";
 import { CertificateDialog } from "./certificate-dialog";
+import { CertificateCompletionBanner } from "./certificate-completion-banner.tsx";
 import { CourseEnrollment } from "./course-enrollment";
 import { CourseContentSections } from "./course-content-sections";
 import { CourseSidebar } from "./course-sidebar";
@@ -328,6 +329,8 @@ export const CourseDetailsPage = () => {
     const [showConfetti, setShowConfetti] = useState<boolean>(false);
     const [certificateDialogOpen, setCertificateDialogOpen] =
         useState<boolean>(false);
+    const [completionPercentage, setCompletionPercentage] = useState<number>(0);
+    const [certificateThreshold, setCertificateThreshold] = useState<number>(80);
 
     // Log certificate-related state changes
 
@@ -515,6 +518,34 @@ export const CourseDetailsPage = () => {
         return found;
     }, [studyLibraryData, searchParams.courseId]);
 
+    // Update completion percentage when course details data changes
+    useEffect(() => {
+        if (courseDetailsData?.course?.percentage_completed) {
+            setCompletionPercentage(courseDetailsData.course.percentage_completed);
+        }
+    }, [courseDetailsData]);
+
+    // Update completion percentage from query parameters
+    useEffect(() => {
+        const pctFromQuery = ((): number | undefined => {
+            const raw =
+                (searchParams as { [k: string]: unknown })
+                    .percentageCompleted ??
+                (searchParams as { [k: string]: unknown })
+                    .percentage_completed;
+            if (typeof raw === "number") return raw;
+            if (typeof raw === "string") {
+                const n = Number(raw);
+                return Number.isFinite(n) ? n : undefined;
+            }
+            return undefined;
+        })();
+
+        if (typeof pctFromQuery === "number") {
+            setCompletionPercentage(pctFromQuery);
+        }
+    }, [searchParams]);
+
     // Trigger certificate generation after entering this page once essentials are available
     useEffect(() => {
         const tryGenerateCertificate = async () => {
@@ -535,6 +566,7 @@ export const CourseDetailsPage = () => {
                 
                 const threshold =
                     settings.certificates?.generationThresholdPercent ?? 80;
+                setCertificateThreshold(threshold);
                 // percent can come from query param (carried over from list) or course data
                 const pctFromQuery = ((): number | undefined => {
                     const raw =
@@ -568,6 +600,11 @@ export const CourseDetailsPage = () => {
                           : typeof pctFromLocal === "number"
                             ? pctFromLocal
                             : undefined;
+
+                // Set completion percentage for banner display
+                if (typeof percentageCompleted === "number") {
+                    setCompletionPercentage(percentageCompleted);
+                }
                 const userDetailsRaw = await Preferences.get({
                     key: "StudentDetails",
                 });
@@ -1133,7 +1170,7 @@ export const CourseDetailsPage = () => {
 
             const userPlanStatus = parseUserPlanStatus(response.user_plan_status);
             const learnerStatus = parseLearnerStatus(response.learner_status);
-            const approvalRequired = response.approval_required || false;
+            // const approvalRequired = response.approval_required || false;
 
 
             // If payment is successful and learner is active, enroll user immediately
@@ -1357,14 +1394,14 @@ export const CourseDetailsPage = () => {
                 />
 
                 {/* Certificate Modal */}
-                <CertificateDialog
+                {/* <CertificateDialog
                     open={certificateDialogOpen}
                     onOpenChange={setCertificateDialogOpen}
                     certificateUrl={certificateUrl}
                     courseTitle={form.getValues("courseData").title}
                     sessionLabel={sessionOptions?.find(o => o.value === selectedSession)?.label}
                     levelLabel={levelOptions?.find(o => o.value === selectedLevel)?.label}
-                />
+                /> */}
 
                 {/* Main Content Container */}
                 <div className="relative z-10 w-full px-0 py-3 lg:py-4">
@@ -1375,6 +1412,18 @@ export const CourseDetailsPage = () => {
                         <div
                             className={`${hasRightSidebar ? "lg:col-span-2" : ""} space-y-3 lg:space-y-4`}
                         >
+
+                            {/* Certificate Completion Banner - Show above course structure if threshold is met */}
+                            <CertificateCompletionBanner
+                                certificateUrl={certificateUrl}
+                                courseTitle={form.getValues("courseData").title}
+                                sessionLabel={sessionOptions?.find(o => o.value === selectedSession)?.label}
+                                levelLabel={levelOptions?.find(o => o.value === selectedLevel)?.label}
+                                percentageCompleted={completionPercentage}
+                                threshold={certificateThreshold}
+                            />
+
+                            
                             {/* Course Enrollment Configuration */}
                             <CourseEnrollment
                                 showCourseConfiguration={showCourseConfiguration}
@@ -1396,6 +1445,8 @@ export const CourseDetailsPage = () => {
                                 }}
                             />
 
+
+                            
 
                             {/* Course Structure (always rendered; internal logic will adapt to enrollment/public) */}
                             <div

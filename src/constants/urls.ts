@@ -140,3 +140,4 @@ export const GENERATE_CERTIFICATE = `${BASE_URL}/admin-core-service/institute/v1
 
 // Payment options API endpoint
 export const GET_PAYMENT_OPTIONS = `${BASE_URL}/admin-core-service/open/v1/payment-option/default-payment-option`;
+export const VERIFY_COUPON_URL = `${BASE_URL}/admin-core-service/open/v1/user-subscription/verify`;

@@ -240,7 +240,7 @@ export const CourseDetailsPage = () => {
         setDonationDialogOpen(false);
         
         // Show success message
-        toast.success("Successfully enrolled in the course!");
+        //toast.success("Successfully enrolled in the course!");
     };
 
     const handleNavigationToSlides = async () => {

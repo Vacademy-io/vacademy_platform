@@ -154,7 +154,7 @@ public class PaymentNotificatonService {
      * UPDATED: Builds donation email body using PaymentIntent data.
      */
     private String buildDonationPaymentConfirmationEmailBody(
-        Institute institute, String email, PaymentInitiationRequestDTO requestDTO, PaymentResponseDTO responseDTO) {
+            Institute institute, String email, PaymentInitiationRequestDTO requestDTO, PaymentResponseDTO responseDTO) {
 
         Map<String, Object> responseData = responseDTO.getResponseData();
         if (responseData == null) return null;
@@ -162,26 +162,31 @@ public class PaymentNotificatonService {
         String transactionId = safeCastToString(responseData.get("transactionId"));
         String instituteLogoUrl = mediaService.getFileUrlById(institute.getLogoFileId());
         String receiptUrl = safeCastToString(responseData.get("receiptUrl"));
-        long createdTimestamp = (long) responseData.getOrDefault("created", Instant.now().getEpochSecond());
-        String paymentDate = Instant.ofEpochSecond(createdTimestamp)
-            .atZone(ZoneId.systemDefault())
-            .toLocalDate()
-            .format(DateTimeFormatter.ofPattern("dd MMM yyyy"));
 
+        // FIX: Safely cast the 'created' timestamp to long
+        Number createdValue = (Number) responseData.getOrDefault("created", Instant.now().getEpochSecond());
+        long createdTimestamp = createdValue.longValue();
+
+        String paymentDate = Instant.ofEpochSecond(createdTimestamp)
+                .atZone(ZoneId.systemDefault())
+                .toLocalDate()
+                .format(DateTimeFormatter.ofPattern("dd MMM yyyy"));
+
+        // This line already uses the correct pattern
         long amountInCents = ((Number) responseData.get("amount")).longValue();
         String displayAmount = BigDecimal.valueOf(amountInCents).divide(new BigDecimal(100)).toString();
 
         return StripeInvoiceEmailBody.getPaymentConfirmationEmailBody(
-            safe(institute.getInstituteName()),
-            safe(instituteLogoUrl),
-            "Supporter", // Generic greeting for donation
-            displayAmount,
-            safe(requestDTO.getCurrency()),
-            transactionId,
-            paymentDate,
-            safe(institute.getAddress()),
-            receiptUrl,
-            institute.getInstituteThemeCode()
+                safe(institute.getInstituteName()),
+                safe(instituteLogoUrl),
+                "Supporter", // Generic greeting for donation
+                displayAmount,
+                safe(requestDTO.getCurrency()),
+                transactionId,
+                paymentDate,
+                receiptUrl, // Corrected parameter order
+                safe(institute.getAddress()),
+                institute.getInstituteThemeCode()
         );
     }
 

@@ -62,10 +62,7 @@ public class OAuth2VendorToUserDetailService {
             return email;
         } else {
             log.warn("No record found for providerId={} and subject={}", providerId, subject);
-            if (StringUtils.hasText(email)){
-                saveOrUpdateOAuth2VendorToUserDetail(providerId,email,subject);
-                return email;
-            }
+            saveOrUpdateOAuth2VendorToUserDetail(providerId,email,subject);
             return null;
         }
     }

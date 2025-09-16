@@ -4,9 +4,11 @@ import { loadStripe } from "@stripe/stripe-js";
 import { PaymentForm } from "./PaymentForm";
 import { GET_STRIPE_KEY_URL } from "@/constants/urls";
 import { cachedGet } from "@/lib/http/clientCache";
+import { getCurrencySymbol } from "@/utils/currency";
 
 interface DonationPaymentStepProps {
   amount: number;
+  currency: string;
   email: string;
   instituteId: string;
   onSuccess: () => void;
@@ -16,6 +18,7 @@ interface DonationPaymentStepProps {
 
 export const DonationPaymentStep = ({
   amount,
+  currency,
   email,
   instituteId,
   onSuccess,
@@ -100,7 +103,7 @@ export const DonationPaymentStep = ({
         </div>
         <div className="flex items-center justify-between text-sm mb-1">
           <span className="text-gray-600">Amount:</span>
-          <span className="font-semibold text-gray-900">${amount}</span>
+          <span className="font-semibold text-gray-900">{getCurrencySymbol(currency)}{amount}</span>
         </div>
         <div className="flex items-center justify-between text-sm mb-1">
           <span className="text-gray-600">Email:</span>
@@ -123,6 +126,7 @@ export const DonationPaymentStep = ({
         <Elements stripe={stripePromise}>
           <PaymentForm
             amount={amount}
+            currency={currency}
             email={email}
             instituteId={instituteId}
             onSuccess={onSuccess}

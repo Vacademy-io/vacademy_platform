@@ -50,6 +50,7 @@ export const processDonationPayment = async (
     customerId: string;
     description?: string;
     returnUrl?: string;
+    currency?: string;
   }
 ): Promise<DonationPaymentResponse> => {
   try {
@@ -61,7 +62,7 @@ export const processDonationPayment = async (
 
     const payload: DonationPaymentRequest = {
       amount: paymentData.amount,
-      currency: "USD", // Default currency, can be made configurable
+      currency: paymentData.currency || "USD", // Use provided currency or default to USD
       description: paymentData.description || "Course donation",
       charge_automatically: true,
       order_id: `donation_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,

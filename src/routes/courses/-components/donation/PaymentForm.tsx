@@ -7,6 +7,7 @@ import { processDonationPayment, createDonationRequest } from "../../-services/d
 
 interface PaymentFormProps {
   amount: number;
+  currency: string;
   email: string;
   instituteId: string;
   onSuccess: () => void;
@@ -15,6 +16,7 @@ interface PaymentFormProps {
 
 export const PaymentForm = ({
   amount,
+  currency,
   email,
   instituteId,
   onSuccess,
@@ -64,7 +66,8 @@ export const PaymentForm = ({
         paymentMethod.id,
         paymentMethod.card?.last4 || "",
         "", // customerId - you might need to create/retrieve this
-        window.location.origin + "/courses" // returnUrl
+        window.location.origin + "/courses", // returnUrl
+        currency // Pass the currency
       );
 
       // Process donation payment
@@ -77,8 +80,12 @@ export const PaymentForm = ({
       } else if (result.success || result.status === "succeeded") {
         // Fallback for other success indicators
         onSuccess();
+      } else if (result.status === "FAILED" && result.message) {
+        // Payment failed with specific error message from API
+        onError(result.message);
       } else {
-        throw new Error(result.message || "Payment processing failed");
+        // Generic error fallback
+        onError(result.message || "Payment processing failed");
       }
     } catch (error) {
       onError(error instanceof Error ? error.message : "Payment failed. Please try again.");

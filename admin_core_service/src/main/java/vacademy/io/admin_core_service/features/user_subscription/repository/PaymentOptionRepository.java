@@ -36,7 +36,7 @@ public interface PaymentOptionRepository extends JpaRepository<PaymentOption, St
           (:notRequireApproval = true AND po.require_approval = false) OR
           (:requireApproval = false AND :notRequireApproval = false)
       )
-    GROUP BY po.id, po.name, po.status, po.source, po.source_id, po.tag, po.type, po.require_approval, po.created_at, po.updated_at
+    GROUP BY po.id, po.name, po.status, po.source, po.source_id, po.tag, po.type, po.require_approval, po.unit, po.created_at, po.updated_at
     ORDER BY po.created_at DESC, MAX(pp.created_at) DESC NULLS LAST
 """, nativeQuery = true)
     List<PaymentOption> findPaymentOptionsWithPaymentPlansNative(

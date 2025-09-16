@@ -1,14 +1,11 @@
 package vacademy.io.admin_core_service.features.user_subscription.entity;
 
-import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
 import org.hibernate.annotations.Where;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOptionDTO;
 
-import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List; // To handle the collection of PaymentPlan
@@ -50,6 +47,9 @@ public class PaymentOption {
     @Column(name = "require_approval")
     private boolean requireApproval = true;
 
+    @Column(name = "unit")
+    private String unit;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 
@@ -72,6 +72,7 @@ public class PaymentOption {
         this.tag = paymentOptionDTO.getTag();
         this.type = paymentOptionDTO.getType();
         this.requireApproval = paymentOptionDTO.isRequireApproval();
+        this.unit = paymentOptionDTO.getUnit();
         this.paymentOptionMetadataJson = paymentOptionDTO.getPaymentOptionMetadataJson();
         if (paymentOptionDTO.getPaymentPlans() != null && !paymentOptionDTO.getPaymentPlans().isEmpty()) {
             this.paymentPlans = paymentOptionDTO.getPaymentPlans()
@@ -93,6 +94,7 @@ public class PaymentOption {
                 .type(this.type)
                 .paymentOptionMetadataJson(this.paymentOptionMetadataJson)
                 .requireApproval(this.requireApproval)
+                .unit(this.unit)
                 .paymentPlans(this.paymentPlans != null
                         ? this.paymentPlans.stream()
                         .map(PaymentPlan::mapToPaymentPlanDTO)

@@ -19,6 +19,7 @@ public class PaymentOptionDTO {
     private String tag;
     private String type;
     private boolean requireApproval;
+    private String unit;
     private List<PaymentPlanDTO> paymentPlans;
     private String paymentOptionMetadataJson;
 }

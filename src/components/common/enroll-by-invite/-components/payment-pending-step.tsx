@@ -119,19 +119,21 @@ const PaymentPendingStep = ({
 
     return (
         <div className="space-y-6">
-            {/* Payment Pending Header */}
+            {/* Processing Payment Header */}
             <div className="text-center">
                 <div className="flex justify-center mb-4">
-                    <div className="p-3 bg-amber-100 rounded-full">
-                        <Clock className="w-12 h-12 text-amber-600" />
+                    <div className="p-3 bg-blue-100 rounded-full">
+                        <div className="relative">
+                            <Clock className="w-12 h-12 text-blue-600 animate-pulse" />
+                            <div className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
+                                <div className="w-2 h-2 bg-white rounded-full animate-ping"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                    Payment Pending
+                    Processing Payment
                 </h2>
-                <p className="text-gray-600 text-lg">
-                    Complete your payment to proceed
-                </p>
             </div>
 
             {/* Order Details Card */}
@@ -167,47 +169,77 @@ const PaymentPendingStep = ({
                 </CardContent>
             </Card>
 
-            {/* Action Buttons */}
-            <div className="flex flex-col gap-4 sm:items-center">
-                <MyButton
-                    type="button"
-                    buttonType="primary"
-                    scale="large"
-                    layoutVariant="default"
-                    onClick={() =>
-                        handleCompletePayment(
-                            paymentCompletionResponse?.payment_response
-                                ?.response_data?.paymentUrl
-                        )
-                    }
-                    className="w-full sm:w-auto bg-primary-500 text-white font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
-                >
-                    Complete Payment
-                    <ArrowRight className="w-5 h-5 ml-2" />
-                </MyButton>
-                <MyButton
-                    type="button"
-                    buttonType="secondary"
-                    scale="large"
-                    layoutVariant="default"
-                    onClick={() =>
-                        handleViewInvoice(
-                            paymentCompletionResponse?.payment_response
-                                ?.response_data?.invoicePdfUrl
-                        )
-                    }
-                    className="w-full sm:w-auto bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
-                >
-                    View Invoice
-                    <ExternalLink className="w-5 h-5 ml-2" />
-                </MyButton>
+            {/* Processing Status */}
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6 shadow-sm">
+                <div className="flex items-start space-x-3">
+                    <div className="flex-shrink-0">
+                        <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        </div>
+                    </div>
+                    <div className="flex-1 text-left">
+                        <h4 className="text-sm font-semibold text-gray-900 mb-1">
+                            Payment in Progress
+                        </h4>
+                        <p className="text-sm text-gray-700 leading-relaxed">
+                            Your payment is being processed securely. This usually takes just a few moments. 
+                            We'll automatically update your enrollment status once the payment is confirmed.
+                        </p>
+                    </div>
+                </div>
             </div>
 
-            {/* Redirect Notice */}
+
+            {/* Action Buttons - Only show if payment URL is available */}
+            {paymentCompletionResponse?.payment_response?.response_data?.paymentUrl && (
+                <div className="flex flex-col gap-4 sm:items-center">
+                    <MyButton
+                        type="button"
+                        buttonType="primary"
+                        scale="large"
+                        layoutVariant="default"
+                        onClick={() =>
+                            handleCompletePayment(
+                                paymentCompletionResponse?.payment_response
+                                    ?.response_data?.paymentUrl
+                            )
+                        }
+                        className="w-full sm:w-auto bg-primary-500 text-white font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
+                    >
+                        Complete Payment
+                        <ArrowRight className="w-5 h-5 ml-2" />
+                    </MyButton>
+                    <MyButton
+                        type="button"
+                        buttonType="secondary"
+                        scale="large"
+                        layoutVariant="default"
+                        onClick={() =>
+                            handleViewInvoice(
+                                paymentCompletionResponse?.payment_response
+                                    ?.response_data?.invoicePdfUrl
+                            )
+                        }
+                        className="w-full sm:w-auto bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
+                    >
+                        View Invoice
+                        <ExternalLink className="w-5 h-5 ml-2" />
+                    </MyButton>
+                </div>
+            )}
+
+            {/* Security Notice */}
             <div className="text-center space-y-2">
-                <p className="text-gray-600 text-sm">
-                    You will be redirected to Stripe's secure payment page
-                </p>
+                <div className="p-4 bg-gray-50 rounded-lg">
+                    <div className="flex items-center justify-center space-x-2 text-xs text-gray-500">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                        <span>Your payment is secured with bank-level encryption</span>
+                    </div>
+                </div>
                 <p className="text-gray-500 text-xs">Powered by Stripe</p>
             </div>
         </div>

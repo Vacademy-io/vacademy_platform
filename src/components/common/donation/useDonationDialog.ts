@@ -423,17 +423,18 @@ export const useDonationDialog = ({
         const userPlanId = await getUserPlanId(instituteId);
         if (!userPlanId) {
           // Fallback to enrollment API if no user plan ID exists
-          await handlePayment({
-            userEmail: userProfileEmail,
-            receiptEmail: sanitizedEmail,
-            amount: getAmount() as number,
-            currency: getCurrency(),
-            description: `Donation for ${selectedPaymentPlan.name}`,
-            paymentType: 'donation',
-            paymentMethod,
-            token,
-            userData: userData || undefined
-          });
+        await handlePayment({
+          userEmail: userProfileEmail,
+          receiptEmail: sanitizedEmail,
+          amount: getAmount() as number,
+          currency: getCurrency(),
+          description: `Donation for ${selectedPaymentPlan.name}`,
+          paymentType: 'donation',
+          paymentMethod,
+          token,
+          returnUrl: window.location.origin + "/courses", // Default return URL
+          userData: userData || undefined
+        });
         } else {
           await processDonationPayment(instituteId, userPlanId, {
             amount: getAmount() as number,
@@ -442,6 +443,7 @@ export const useDonationDialog = ({
             cardLast4: paymentMethod.card?.last4 || "0000",
             customerId: paymentMethod.customer || "temp_customer_id",
             description: `Donation for ${selectedPaymentPlan.name}`,
+            returnUrl: window.location.origin + "/courses", // Default return URL
           });
         }
       } else {
@@ -455,6 +457,7 @@ export const useDonationDialog = ({
           paymentType: 'donation',
           paymentMethod,
           token,
+          returnUrl: window.location.origin + "/courses", // Default return URL
           userData: userData || undefined // Pass real user data for payment too
         });
       }

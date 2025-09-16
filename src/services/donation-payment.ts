@@ -18,6 +18,7 @@ export interface DonationPaymentRequest {
     payment_method_id: string;
     card_last4: string;
     customer_id: string;
+    return_url?: string;
   };
   razorpay_request: {
     customer_id: string;
@@ -48,6 +49,8 @@ export const processDonationPayment = async (
     cardLast4: string;
     customerId: string;
     description?: string;
+    returnUrl?: string;
+    currency?: string;
   }
 ): Promise<DonationPaymentResponse> => {
   try {
@@ -59,7 +62,7 @@ export const processDonationPayment = async (
 
     const payload: DonationPaymentRequest = {
       amount: paymentData.amount,
-      currency: "USD", // Default currency, can be made configurable
+      currency: paymentData.currency || "USD", // Use provided currency or default to USD
       description: paymentData.description || "Course donation",
       charge_automatically: true,
       order_id: `donation_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -71,6 +74,7 @@ export const processDonationPayment = async (
         payment_method_id: paymentData.paymentMethodId,
         card_last4: paymentData.cardLast4,
         customer_id: paymentData.customerId,
+        return_url: paymentData.returnUrl || "",
       },
       razorpay_request: {
         customer_id: "",

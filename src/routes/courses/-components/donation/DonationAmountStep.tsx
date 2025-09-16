@@ -1,5 +1,6 @@
 import { Loader2 } from "lucide-react";
 import { PaymentOption } from "../../-services/payment-options-api";
+import { getCurrencySymbol, getCurrencyWithPriority } from "@/utils/currency";
 
 interface DonationAmountStepProps {
   paymentOptions: PaymentOption | null;
@@ -66,6 +67,14 @@ export const DonationAmountStep = ({
 
   const suggestedAmounts = getSuggestedAmounts();
   const minAmount = getMinAmount();
+  
+  // Get currency from payment options
+  const currency = getCurrencyWithPriority(
+    paymentOptions?.payment_plans?.[0], // Use first payment plan if available
+    paymentOptions?.payment_option_metadata_json || "",
+    "USD"
+  );
+  const currencySymbol = getCurrencySymbol(currency);
 
   if (loading) {
     return (
@@ -80,17 +89,17 @@ export const DonationAmountStep = ({
     <>
       <div className="grid grid-cols-2 gap-3 justify-center mb-2">
         {suggestedAmounts.map((amount) => (
-          <div
-            key={amount}
-            className={`h-11 min-w-[90px] flex items-center justify-center rounded border cursor-pointer select-none text-sm font-medium transition-colors duration-200 ${
-              selectedAmount === amount ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-800 border-gray-300 hover:bg-blue-50'
-            }`}
-            onClick={() => onAmountSelect(amount)}
-            role="button"
-            tabIndex={0}
-          >
-            ${amount}
-          </div>
+            <div
+              key={amount}
+              className={`h-11 min-w-[90px] flex items-center justify-center rounded border cursor-pointer select-none text-sm font-medium transition-colors duration-200 ${
+                selectedAmount === amount ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-800 border-gray-300 hover:bg-blue-50'
+              }`}
+              onClick={() => onAmountSelect(amount)}
+              role="button"
+              tabIndex={0}
+            >
+              {currencySymbol}{amount}
+            </div>
         ))}
         {selectedAmount !== 'other' && (
           <div
@@ -109,7 +118,7 @@ export const DonationAmountStep = ({
             min={minAmount}
             step="0.01"
             max="10000"
-            placeholder={`$ (min $${minAmount})`}
+            placeholder={`${currencySymbol} (min ${currencySymbol}${minAmount})`}
             className="border rounded p-2 text-xs w-full mt-1 mb-1 col-span-2 h-12"
             value={customAmount}
             onChange={(e) => onCustomAmountChange(e.target.value)}

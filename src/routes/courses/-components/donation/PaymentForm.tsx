@@ -7,6 +7,7 @@ import { processDonationPayment, createDonationRequest } from "../../-services/d
 
 interface PaymentFormProps {
   amount: number;
+  currency: string;
   email: string;
   instituteId: string;
   onSuccess: () => void;
@@ -15,6 +16,7 @@ interface PaymentFormProps {
 
 export const PaymentForm = ({
   amount,
+  currency,
   email,
   instituteId,
   onSuccess,
@@ -63,21 +65,27 @@ export const PaymentForm = ({
         email,
         paymentMethod.id,
         paymentMethod.card?.last4 || "",
-        "" // customerId - you might need to create/retrieve this
+        "", // customerId - you might need to create/retrieve this
+        window.location.origin + "/courses", // returnUrl
+        currency // Pass the currency
       );
 
       // Process donation payment
       const result = await processDonationPayment(instituteId, donationData);
       
       // Check for successful payment based on actual API response format
-      if (result.status === null && result.response_data) {
-        // Payment was successful - API returns status: null for successful payments
+      if (result.status === null && result.response_data && result.response_data.paymentStatus === "PAID") {
+        // Payment was successful - API returns status: null and paymentStatus: "PAID" for successful payments
         onSuccess();
       } else if (result.success || result.status === "succeeded") {
         // Fallback for other success indicators
         onSuccess();
+      } else if (result.status === "FAILED" && result.message) {
+        // Payment failed with specific error message from API
+        onError(result.message);
       } else {
-        throw new Error(result.message || "Payment processing failed");
+        // Generic error fallback
+        onError(result.message || "Payment processing failed");
       }
     } catch (error) {
       onError(error instanceof Error ? error.message : "Payment failed. Please try again.");

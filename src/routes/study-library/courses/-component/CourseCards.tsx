@@ -311,17 +311,17 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
                 {selectedTab === "PROGRESS" && (
                     <div className="mb-3 sm:mb-4 -mt-1 flex items-center gap-2">
-                        {percentageCompleted && (
+                        {percentageCompleted > 0 ? (
                             <ProgressBar
                                 value={cappedPercentageCompleted}
                             />
-                        )}
-                        {percentageCompleted && (
-                            <span className="text-sm">
-                                {cappedPercentageCompleted.toFixed(2)}
-                                %
-                            </span>
-                        )}
+                        ) : (
+<ProgressBar
+                                value={cappedPercentageCompleted}
+                            />                        )}
+                        <span className="text-sm">
+                            {cappedPercentageCompleted.toFixed(1)}%
+                        </span>
                     </div>
                 )}
 

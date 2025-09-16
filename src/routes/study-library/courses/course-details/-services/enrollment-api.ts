@@ -682,7 +682,7 @@ export const initiatePaymentForEnrollment = async (
         card_last4: string;
         customer_id: string;
         publishable_key?: string;
-        return_url: string;
+        return_url?: string;
       };
       razorpay_request?: {
         customer_id: string;
@@ -908,6 +908,7 @@ export const handlePaymentForEnrollment = async (params: {
   };
   paymentMethod?: unknown;
   token: string;
+  returnUrl?: string;
   userData?: {
     email: string;
     username: string;
@@ -1093,7 +1094,7 @@ export const handlePaymentForEnrollment = async (params: {
                   payment_method_id: paymentMethodId,
                   card_last4: cardLast4,
                   customer_id: customerId,
-                  return_url: window.location.href,
+                  return_url: params.returnUrl || "",
                 },
                 razorpay_request: {
                   customer_id: "",

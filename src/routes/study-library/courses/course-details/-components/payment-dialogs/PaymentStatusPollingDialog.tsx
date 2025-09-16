@@ -268,14 +268,14 @@ export const PaymentStatusPollingDialog: React.FC<PaymentStatusPollingDialogProp
     if (status === 'PAYMENT_PENDING') {
       return (
         <div className="text-center py-8">
-          {/* Animated Icon */}
+          {/* Animated Processing Icon */}
           <div className="flex justify-center mb-6">
             <div className="relative">
               <div className="w-20 h-20 bg-gradient-to-br from-blue-100 to-blue-200 rounded-full flex items-center justify-center shadow-lg">
-                <Clock className="w-10 h-10 text-blue-600" />
+                <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
               </div>
               <div className="absolute -top-1 -right-1 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
-                <Loader2 className="w-3 h-3 text-white animate-spin" />
+                <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
               </div>
             </div>
           </div>
@@ -283,37 +283,40 @@ export const PaymentStatusPollingDialog: React.FC<PaymentStatusPollingDialogProp
           {/* Main Content */}
           <div className="space-y-4">
             <h3 className="text-2xl font-bold text-gray-900">
-              Payment Pending
+              Processing Payment
             </h3>
           </div>
 
-          {/* Action Card */}
+          {/* Processing Card */}
           <div className="mt-8 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6 shadow-sm">
             <div className="flex items-start space-x-3">
               <div className="flex-shrink-0">
                 <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
                   <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
               </div>
               <div className="flex-1 text-left">
                 <h4 className="text-sm font-semibold text-gray-900 mb-1">
-                  Check Your Email
+                  Payment in Progress
                 </h4>
                 <p className="text-sm text-gray-700 leading-relaxed">
-                  Please check your email and complete the payment to continue with your enrollment. 
-                  We'll automatically update your status once payment is confirmed.
+                  Your payment is being processed securely. This usually takes just a few moments. 
+                  We'll automatically update your enrollment status once the payment is confirmed.
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Progress Indicator */}
-          <div className="mt-6">
-            <div className="flex items-center justify-center space-x-2 text-sm text-gray-500">
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-              <span>Processing payment...</span>
+
+          {/* Security Notice */}
+          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+            <div className="flex items-center justify-center space-x-2 text-xs text-gray-500">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+              <span>Your payment is secured with bank-level encryption</span>
             </div>
           </div>
         </div>

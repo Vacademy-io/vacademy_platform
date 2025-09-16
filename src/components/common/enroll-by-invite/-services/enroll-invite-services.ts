@@ -79,6 +79,7 @@ interface EnrollLearnerForPaymentProps {
   payment_option_id: string;
   package_session_id: string;
   allowLearnersToCreateCourses: boolean;
+  returnUrl?: string;
 }
 
 export const handleEnrollLearnerForPayment = async ({
@@ -90,6 +91,7 @@ export const handleEnrollLearnerForPayment = async ({
   payment_option_id,
   package_session_id,
   allowLearnersToCreateCourses,
+  returnUrl,
 }: EnrollLearnerForPaymentProps) => {
   const keysToExclude = ["email", "full_name", "phone_number"];
   const convertedData = {
@@ -128,7 +130,7 @@ export const handleEnrollLearnerForPayment = async ({
           payment_method_id: paymentMethodId,
           card_last4: null,
           customer_id: null,
-          return_url: window.location.href,
+          return_url: returnUrl || "",
         },
         razorpay_request: {},
         pay_pal_request: {},

@@ -3,8 +3,8 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Cross2Icon } from "@radix-ui/react-icons";
 import { MyButton } from "@/components/design-system/button";
 import { Loader2 } from "lucide-react";
-import { toast } from "sonner";
 import { fetchPaymentOptions, PaymentOption } from "../-services/payment-options-api";
+import { getCurrencyWithPriority } from "@/utils/currency";
 import {
   DonationHeader,
   DonationAmountStep,
@@ -32,6 +32,9 @@ export const CoursesDonationDialog: React.FC<CoursesDonationDialogProps> = ({
   const [isInitializing, setIsInitializing] = useState(false);
   const [paymentOptions, setPaymentOptions] = useState<PaymentOption | null>(null);
   const [loading, setLoading] = useState(false);
+  const [paymentStatus, setPaymentStatus] = useState<'success' | 'failure' | null>(null);
+  const [paymentError, setPaymentError] = useState<string>('');
+  const [currency, setCurrency] = useState<string>('USD');
 
   const getCurrentAmount = (): number => {
     if (selectedAmount === 'other') {
@@ -90,12 +93,15 @@ export const CoursesDonationDialog: React.FC<CoursesDonationDialogProps> = ({
   };
 
   const handlePaymentSuccess = () => {
+    setPaymentStatus('success');
+    setPaymentError('');
     setStep('success');
-    toast.success('Donation request created! Check your email to complete payment.');
   };
 
   const handlePaymentError = (error: string) => {
-    toast.error(error);
+    setPaymentStatus('failure');
+    setPaymentError(error);
+    setStep('success'); // Show the result dialog (which will show failure UI)
   };
 
   const handleClose = () => {
@@ -110,6 +116,17 @@ export const CoursesDonationDialog: React.FC<CoursesDonationDialogProps> = ({
       // Fetch payment options
       fetchPaymentOptions(instituteId).then((options) => {
         setPaymentOptions(options);
+        
+        // Extract currency from payment options
+        if (options) {
+          const extractedCurrency = getCurrencyWithPriority(
+            options.payment_plans?.[0], // Use first payment plan if available
+            options.payment_option_metadata_json || "",
+            "USD"
+          );
+          setCurrency(extractedCurrency);
+        }
+        
         setLoading(false);
       }).catch((error) => {
         setLoading(false);
@@ -121,6 +138,8 @@ export const CoursesDonationDialog: React.FC<CoursesDonationDialogProps> = ({
         setCustomAmount('');
         setEmail('');
         setValidationError('');
+        setPaymentStatus(null);
+        setPaymentError('');
         setIsInitializing(false);
       }, 100);
     }
@@ -149,7 +168,11 @@ export const CoursesDonationDialog: React.FC<CoursesDonationDialogProps> = ({
           ) : step === 'success' ? (
             <DonationSuccessStep
               amount={getCurrentAmount()}
+              currency={currency}
+              status={paymentStatus}
+              error={paymentError}
               onClose={handleClose}
+              onRetry={() => setStep('payment')}
             />
           ) : (
             <>
@@ -180,6 +203,7 @@ export const CoursesDonationDialog: React.FC<CoursesDonationDialogProps> = ({
               {step === 'payment' && (
                 <DonationPaymentStep
                   amount={getCurrentAmount()}
+                  currency={currency}
                   email={email}
                   instituteId={instituteId}
                   onSuccess={handlePaymentSuccess}

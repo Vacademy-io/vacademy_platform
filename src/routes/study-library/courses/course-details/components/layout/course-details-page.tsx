@@ -1048,7 +1048,7 @@ export const CourseDetailsPage = () => {
                     setDonationDialogOpen(false);
                     
                     // Show success message
-                    toast.success("Successfully enrolled in the course!");
+                    //toast.success("Successfully enrolled in the course!");
                     
                     // Redirect to slides immediately after enrollment
                     
@@ -1163,7 +1163,7 @@ export const CourseDetailsPage = () => {
                     setEnrollmentDialogOpen(false);
                     
                     // Show success message
-                    toast.success("Successfully enrolled in the course!");
+                    //toast.success("Successfully enrolled in the course!");
                     
                     // Redirect to slides immediately after enrollment
                     

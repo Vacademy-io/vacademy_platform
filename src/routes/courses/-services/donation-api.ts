@@ -61,11 +61,13 @@ export const processDonationPayment = async (
       }
     );
 
+    const result = await response.json();
+    
     if (!response.ok) {
-      throw new Error(`Payment failed: ${response.statusText}`);
+      // Return the error response instead of throwing
+      return result;
     }
 
-    const result = await response.json();
     return result;
   } catch (error) {
     throw error;
@@ -78,12 +80,13 @@ export const createDonationRequest = (
   paymentMethodId: string,
   cardLast4: string,
   customerId: string = "",
-  returnUrl?: string
+  returnUrl?: string,
+  currency: string = "USD"
 ): Omit<DonationRequest, 'institute_id'> => {
   const request = {
-    amount: amount, // Send amount in dollars
-    currency: "USD",
-    description: `Donation of $${amount}`,
+    amount: amount, // Send amount in the specified currency
+    currency: currency,
+    description: `Donation of ${currency} ${amount}`,
     charge_automatically: true,
     order_id: `donation_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     email: email,

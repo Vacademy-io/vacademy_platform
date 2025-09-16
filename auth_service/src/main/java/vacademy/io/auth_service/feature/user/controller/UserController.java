@@ -1,4 +1,4 @@
-﻿package vacademy.io.auth_service.feature.user.controller;
+package vacademy.io.auth_service.feature.user.controller;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -125,4 +125,3 @@ public class UserController {
     }
 
 }
-

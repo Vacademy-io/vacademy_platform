@@ -63,15 +63,16 @@ export const PaymentForm = ({
         email,
         paymentMethod.id,
         paymentMethod.card?.last4 || "",
-        "" // customerId - you might need to create/retrieve this
+        "", // customerId - you might need to create/retrieve this
+        window.location.origin + "/courses" // returnUrl
       );
 
       // Process donation payment
       const result = await processDonationPayment(instituteId, donationData);
       
       // Check for successful payment based on actual API response format
-      if (result.status === null && result.response_data) {
-        // Payment was successful - API returns status: null for successful payments
+      if (result.status === null && result.response_data && result.response_data.paymentStatus === "PAID") {
+        // Payment was successful - API returns status: null and paymentStatus: "PAID" for successful payments
         onSuccess();
       } else if (result.success || result.status === "succeeded") {
         // Fallback for other success indicators

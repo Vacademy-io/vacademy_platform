@@ -397,6 +397,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
         paymentType: 'one-time',
         paymentMethod,
         token,
+        returnUrl: window.location.origin + "/courses", // Default return URL
       });
 
       console.log('OneTimePaymentDialog - Enrollment API call successful, starting payment status polling', {

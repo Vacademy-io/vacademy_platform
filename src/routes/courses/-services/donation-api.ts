@@ -12,6 +12,7 @@ interface DonationRequest {
     payment_method_id: string;
     card_last4: string;
     customer_id: string;
+    return_url?: string;
   };
   razorpay_request: {
     customer_id: string;
@@ -23,9 +24,20 @@ interface DonationRequest {
 }
 
 interface DonationResponse {
+  response_data?: {
+    amount: number;
+    created: number;
+    clientSecret: string;
+    currency: string;
+    receiptUrl: string;
+    transactionId: string;
+    paymentStatus: string;
+    status: string;
+  };
+  order_id?: string;
+  status?: string | null;
+  message?: string | null;
   success?: boolean;
-  status?: string;
-  message?: string;
   [key: string]: any;
 }
 
@@ -65,7 +77,8 @@ export const createDonationRequest = (
   email: string,
   paymentMethodId: string,
   cardLast4: string,
-  customerId: string = ""
+  customerId: string = "",
+  returnUrl?: string
 ): Omit<DonationRequest, 'institute_id'> => {
   const request = {
     amount: amount, // Send amount in dollars
@@ -80,6 +93,7 @@ export const createDonationRequest = (
       payment_method_id: paymentMethodId,
       card_last4: cardLast4,
       customer_id: customerId,
+      return_url: returnUrl || "",
     },
     razorpay_request: {
       customer_id: "",

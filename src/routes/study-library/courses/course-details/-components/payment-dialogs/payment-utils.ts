@@ -160,6 +160,7 @@ export const usePaymentDialog = (props: {
     paymentType: 'donation' | 'subscription' | 'one-time' | 'free';
     paymentMethod: any; // Stripe payment method object
     token: string;
+    returnUrl?: string;
     userData?: {
       email: string;
       username: string;
@@ -196,6 +197,7 @@ export const usePaymentDialog = (props: {
       paymentType,
       paymentMethod,
       token: params.token,
+      returnUrl: params.returnUrl || window.location.origin + "/courses",
       userData: params.userData,
     });
   };

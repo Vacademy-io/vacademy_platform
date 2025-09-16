@@ -18,6 +18,7 @@ export interface DonationPaymentRequest {
     payment_method_id: string;
     card_last4: string;
     customer_id: string;
+    return_url?: string;
   };
   razorpay_request: {
     customer_id: string;
@@ -48,6 +49,7 @@ export const processDonationPayment = async (
     cardLast4: string;
     customerId: string;
     description?: string;
+    returnUrl?: string;
   }
 ): Promise<DonationPaymentResponse> => {
   try {
@@ -71,6 +73,7 @@ export const processDonationPayment = async (
         payment_method_id: paymentData.paymentMethodId,
         card_last4: paymentData.cardLast4,
         customer_id: paymentData.customerId,
+        return_url: paymentData.returnUrl || "",
       },
       razorpay_request: {
         customer_id: "",

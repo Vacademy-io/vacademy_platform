@@ -41,13 +41,13 @@ export const CertificateCompletionBanner = ({
                                 <h3 className="text-base font-semibold text-black dark:text-white">
                                     🎉 Course Completed!
                                 </h3>
-                                <div className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                {/* <div className={`px-2 py-1 text-xs font-medium rounded-full ${
                                     percentageCompleted === 100 
                                         ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white dark:text-white' 
                                         : 'bg-green-100 dark:bg-green-800/50 text-green-700 dark:text-green-300'
                                 }`}>
                                     {percentageCompleted}% Complete
-                                </div>
+                                </div> */}
                             </div>
                             
                             <p className="text-black dark:text-gray-300 text-sm">

@@ -255,7 +255,7 @@ export const CourseEnrollment = ({
             </div>
 
             {/* Certificate Section */}
-            {certificateUrl && (
+            {/* {certificateUrl && (
                 <div
                     className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-200 p-3 sm:p-4 group animate-fade-in-up"
                     style={{ animationDelay: "0.05s" }}
@@ -290,7 +290,7 @@ export const CourseEnrollment = ({
                         </a>
                     </div>
                 </div>
-            )}
+            )} */}
 
             {/* Inline Enroll card when sidebar is hidden */}
             {!hasRightSidebar &&

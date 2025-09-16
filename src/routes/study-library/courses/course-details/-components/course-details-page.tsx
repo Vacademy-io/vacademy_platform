@@ -1394,14 +1394,14 @@ export const CourseDetailsPage = () => {
                 />
 
                 {/* Certificate Modal */}
-                <CertificateDialog
+                {/* <CertificateDialog
                     open={certificateDialogOpen}
                     onOpenChange={setCertificateDialogOpen}
                     certificateUrl={certificateUrl}
                     courseTitle={form.getValues("courseData").title}
                     sessionLabel={sessionOptions?.find(o => o.value === selectedSession)?.label}
                     levelLabel={levelOptions?.find(o => o.value === selectedLevel)?.label}
-                />
+                /> */}
 
                 {/* Main Content Container */}
                 <div className="relative z-10 w-full px-0 py-3 lg:py-4">
@@ -1412,6 +1412,18 @@ export const CourseDetailsPage = () => {
                         <div
                             className={`${hasRightSidebar ? "lg:col-span-2" : ""} space-y-3 lg:space-y-4`}
                         >
+
+                            {/* Certificate Completion Banner - Show above course structure if threshold is met */}
+                            <CertificateCompletionBanner
+                                certificateUrl={certificateUrl}
+                                courseTitle={form.getValues("courseData").title}
+                                sessionLabel={sessionOptions?.find(o => o.value === selectedSession)?.label}
+                                levelLabel={levelOptions?.find(o => o.value === selectedLevel)?.label}
+                                percentageCompleted={completionPercentage}
+                                threshold={certificateThreshold}
+                            />
+
+                            
                             {/* Course Enrollment Configuration */}
                             <CourseEnrollment
                                 showCourseConfiguration={showCourseConfiguration}
@@ -1434,15 +1446,7 @@ export const CourseDetailsPage = () => {
                             />
 
 
-                            {/* Certificate Completion Banner - Show above course structure if threshold is met */}
-                            <CertificateCompletionBanner
-                                certificateUrl={certificateUrl}
-                                courseTitle={form.getValues("courseData").title}
-                                sessionLabel={sessionOptions?.find(o => o.value === selectedSession)?.label}
-                                levelLabel={levelOptions?.find(o => o.value === selectedLevel)?.label}
-                                percentageCompleted={completionPercentage}
-                                threshold={certificateThreshold}
-                            />
+                            
 
                             {/* Course Structure (always rendered; internal logic will adapt to enrollment/public) */}
                             <div

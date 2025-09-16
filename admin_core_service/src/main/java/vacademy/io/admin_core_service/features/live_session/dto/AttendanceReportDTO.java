@@ -15,4 +15,5 @@ public interface AttendanceReportDTO {
     String getAttendanceStatus();
     String getAttendanceDetails();
     Timestamp getAttendanceTimestamp();
+    String getSourceType();
 }

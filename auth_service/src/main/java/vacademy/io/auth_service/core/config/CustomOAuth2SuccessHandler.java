@@ -121,9 +121,9 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
                 return;
 
             String email = userInfo.email;
-            if (email == null) {
+            if (email == null || userInfo.providerId.equalsIgnoreCase("github")) {
                 email = oAuth2VendorToUserDetailService.getEmailByProviderIdAndSubject(userInfo.providerId,
-                        userInfo.sub);
+                        userInfo.sub,userInfo.email);
             }
             boolean isEmailVerified = (email != null);
 
@@ -145,8 +145,8 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
     private void handleSignupFlow(UserInfo userInfo, String redirectUrl, HttpServletResponse response,
             String encodedState, boolean isEmailVerified) throws IOException {
         String email = userInfo.email;
-        if (email == null) {
-            email = oAuth2VendorToUserDetailService.getEmailByProviderIdAndSubject(userInfo.providerId, userInfo.sub);
+        if (email == null || userInfo.providerId.equalsIgnoreCase("github")) {
+            email = oAuth2VendorToUserDetailService.getEmailByProviderIdAndSubject(userInfo.providerId, userInfo.sub,userInfo.email);
         }
 
         // For signup, always return user data to frontend
@@ -215,8 +215,8 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
     private void handleLoginFlow(UserInfo userInfo, String redirectUrl, HttpServletResponse response,
             String encodedState, boolean isEmailVerified) throws IOException {
         String email = userInfo.email;
-        if (email == null) {
-            email = oAuth2VendorToUserDetailService.getEmailByProviderIdAndSubject(userInfo.providerId, userInfo.sub);
+        if (email == null || userInfo.providerId.equalsIgnoreCase("github")) {
+            email = oAuth2VendorToUserDetailService.getEmailByProviderIdAndSubject(userInfo.providerId, userInfo.sub,userInfo.providerId);
         }
 
         // First try to login the user by email
@@ -234,8 +234,8 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
     private void returnUserDataToFrontend(HttpServletResponse response, String redirectUrl, UserInfo userInfo,
             String encodedState, boolean isEmailVerified, boolean hasError) throws IOException {
         String email = userInfo.email;
-        if (email == null) {
-            email = oAuth2VendorToUserDetailService.getEmailByProviderIdAndSubject(userInfo.providerId, userInfo.sub);
+        if (email == null || userInfo.providerId.equalsIgnoreCase("github")) {
+            email = oAuth2VendorToUserDetailService.getEmailByProviderIdAndSubject(userInfo.providerId, userInfo.sub,userInfo.email);
         }
 
         String userJson = null;

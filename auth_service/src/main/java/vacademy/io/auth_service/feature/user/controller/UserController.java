@@ -1,4 +1,4 @@
-package vacademy.io.auth_service.feature.user.controller;
+﻿package vacademy.io.auth_service.feature.user.controller;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,9 +43,13 @@ public class UserController {
     @PostMapping("/internal/create-user-or-get-existing")
     @Transactional
     public ResponseEntity<UserDTO> createUserOrGetExisting(@RequestBody UserDTO userDTO,
-            @RequestParam(name = "instituteId", required = false) String instituteId) {
+            @RequestParam(name = "instituteId", required = false) String instituteId,
+            @RequestParam(name = "sendCredentials", defaultValue = "true") boolean sendCredentials,
+            @RequestParam(name = "sendCred", defaultValue = "true") boolean sendCred) {
         try {
-            User user = authService.createUser(userDTO, instituteId,true);
+            // Use sendCred parameter, fallback to sendCredentials for backward compatibility
+            boolean shouldSendCredentials = sendCred;
+            User user = authService.createUser(userDTO, instituteId, shouldSendCredentials);
             return ResponseEntity.ok(new UserDTO(user));
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());

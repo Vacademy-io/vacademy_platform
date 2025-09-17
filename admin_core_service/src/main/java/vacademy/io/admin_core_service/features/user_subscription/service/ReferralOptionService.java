@@ -92,7 +92,7 @@ public class ReferralOptionService {
                 return buildFailureResponse("No package session IDs provided");
             }
 
-            if (hasActiveSession(coupon.getSourceId(), request.getPackageSessionIds())) {
+            if (hasActiveSession(coupon.getSourceId(), request.getPackageSessionId())) {
                 return buildSuccessResponse(coupon, "Coupon code verified successfully");
             }
 
@@ -129,7 +129,7 @@ public class ReferralOptionService {
     }
 
     private boolean hasValidPackageSessions(CouponVerificationRequestDTO request) {
-        List<String> packageSessionIds = request.getPackageSessionIds();
+        List<String> packageSessionIds = request.getPackageSessionId();
         return packageSessionIds != null && !packageSessionIds.isEmpty();
     }
 

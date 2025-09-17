@@ -13,5 +13,5 @@ import java.util.List;
 @AllArgsConstructor
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class CouponVerificationRequestDTO {
-    private List<String> packageSessionIds;
+    private List<String> packageSessionId;
 }

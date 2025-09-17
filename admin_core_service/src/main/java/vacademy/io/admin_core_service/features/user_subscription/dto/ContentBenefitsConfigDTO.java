@@ -2,23 +2,31 @@ package vacademy.io.admin_core_service.features.user_subscription.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.*;
+
 import java.util.List;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@JsonIgnoreProperties(ignoreUnknown = true) // ✅ This makes it ignore unknown fields
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class ContentBenefitsConfigDTO {
+
     private List<ReferralBenefitTierDTO> referralBenefits;
 
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
-    @JsonIgnoreProperties(ignoreUnknown = true) // ✅ Add here too if nested DTOs might have extra fields
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class ReferralBenefitTierDTO {
+        private String tierName; // <-- added
         private ReferralRangeDTO referralRange;
+
+        // recursive list of tiers
+        private List<ReferralBenefitTierDTO> referralBenefits;
+
+        // leaf-level benefits
         private List<BenefitDTO> benefits;
     }
 

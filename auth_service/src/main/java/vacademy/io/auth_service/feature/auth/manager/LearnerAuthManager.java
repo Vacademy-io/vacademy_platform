@@ -296,15 +296,6 @@ public class LearnerAuthManager {
                         AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL)
                 .orElseThrow(() -> new VacademyException("User not found!!!"));
 
-        Authentication authentication = authRequestDTO.getInstituteId() == null
-                ? authenticationManager
-                        .authenticate(new UsernamePasswordAuthenticationToken(user.getUsername(), user.getPassword()))
-                : authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(
-                        authRequestDTO.getInstituteId() + "@" + user.getUsername(), user.getPassword()));
-
-        if (!authentication.isAuthenticated())
-            throw new UsernameNotFoundException("Authentication failed!");
-
         refreshTokenService.deleteAllRefreshToken(user);
 
         List<String> permissions = userPermissionRepository.findByUserId(user.getId()).stream()

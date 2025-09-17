@@ -80,6 +80,7 @@ public class ReferralOptionService {
 
             ReferralOptionSettingDTO settingDTO = parseReferralOptionSettings(referralOption.get());
             if (settingDTO == null) {
+                settingDTO = new ReferralOptionSettingDTO();
                 settingDTO.setAllowAnyPackageSessionLearnerReferral(true);
             }
 

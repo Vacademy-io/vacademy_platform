@@ -92,10 +92,10 @@ public class MultiChannelDeliveryService {
 
         // Fill placeholders
         Map<String, String> placeholders = new HashMap<>();
-        placeholders.put("referrer_name", referrerUser.getFullName());
-        placeholders.put("referee_name", refereeUser.getFullName());
-        placeholders.put("user_name", targetUser.getUsername());
-        placeholders.put("content_links", contentLinks);
+        placeholders.put("referrer_name".toUpperCase(), referrerUser.getFullName());
+        placeholders.put("referee_name".toUpperCase(), refereeUser.getFullName());
+        placeholders.put("user_name".toUpperCase(), targetUser.getUsername());
+        placeholders.put("content_links".toUpperCase(), contentLinks);
 
         NotificationDTO notificationDTO = new NotificationDTO();
         notificationDTO.setBody(finalBody);

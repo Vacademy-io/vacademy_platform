@@ -122,7 +122,7 @@ public class ReferralOptionService {
             if (referralOption.getSettingJson() != null && !referralOption.getSettingJson().isEmpty()) {
                 return objectMapper.readValue(referralOption.getSettingJson(), ReferralOptionSettingDTO.class);
             }
-            return new ReferralOptionSettingDTO();
+            return null;
         } catch (Exception e) {
             return null;
         }

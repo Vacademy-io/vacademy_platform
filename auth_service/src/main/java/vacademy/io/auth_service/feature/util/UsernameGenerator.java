@@ -14,7 +14,11 @@ public class UsernameGenerator {
      */
     public static String generateUsername(String fullName) {
         if (fullName == null || fullName.trim().isEmpty()) {
-            return UUID.randomUUID().toString().replaceAll("-", "").substring(0, 8);
+            return UUID.randomUUID()
+                    .toString()
+                    .replaceAll("-", "")
+                    .substring(0, 8)
+                    .toLowerCase();
         }
 
         String prefix = fullName.trim().replaceAll("\\s+", "");
@@ -22,7 +26,8 @@ public class UsernameGenerator {
                 ? prefix.substring(0, 4)
                 : String.format("%-4s", prefix).replace(' ', 'x');  // pad with 'x' if less than 4
 
-        return prefix + getRandomAlphaNumeric(4);
+        // ✅ ensure both prefix and random part are lowercase
+        return (prefix + getRandomAlphaNumeric(4)).toLowerCase();
     }
 
     /**

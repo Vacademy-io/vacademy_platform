@@ -62,6 +62,7 @@ public class ReferralOptionService {
         return referralOptionRepository.findById(id);
     }
 
+    ///  to do:: here we need to vefiy wtheter that coupon code belongs to same isutute for that package session
     public CouponVerificationResponseDTO verifyCouponCode(
         String couponCode,
         String referralOptionId,
@@ -79,7 +80,7 @@ public class ReferralOptionService {
 
             ReferralOptionSettingDTO settingDTO = parseReferralOptionSettings(referralOption.get());
             if (settingDTO == null) {
-                return buildFailureResponse("Invalid referral option settings");
+                settingDTO.setAllowAnyPackageSessionLearnerReferral(true);
             }
 
             if (settingDTO.isAllowAnyPackageSessionLearnerReferral()) {

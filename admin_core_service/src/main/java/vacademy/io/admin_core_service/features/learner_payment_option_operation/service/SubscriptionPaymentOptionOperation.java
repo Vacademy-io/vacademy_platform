@@ -82,7 +82,7 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
         if (Objects.isNull(paymentPlan)) {
             throw new VacademyException("Payment plan is null");
         }
-
+        learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setAmount(paymentPlan.getActualPrice());
         // Process referral request if present
         List<PaymentLogLineItemDTO> referralLineItems = new ArrayList<>();
         if (learnerPackageSessionsEnrollDTO.getReferRequest() != null) {
@@ -104,14 +104,6 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
             PaymentInitiationRequestDTO paymentInitiationRequestDTO = learnerPackageSessionsEnrollDTO
                     .getPaymentInitiationRequest();
 
-            // Calculate final amount after referral discounts
-            double finalAmount = paymentPlan.getActualPrice();
-            for (PaymentLogLineItemDTO lineItem : referralLineItems) {
-                finalAmount += lineItem.getAmount();
-            }
-            finalAmount = Math.max(0, finalAmount);
-
-            paymentInitiationRequestDTO.setAmount(finalAmount);
             PaymentResponseDTO paymentResponseDTO = paymentService.handlePayment(
                     user,
                     learnerPackageSessionsEnrollDTO,

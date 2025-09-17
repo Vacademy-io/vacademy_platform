@@ -73,21 +73,23 @@ public class StripePaymentManager implements PaymentServiceStrategy {
 
             // Step 2: Attach the new payment method to the customer for future use.
             attachPaymentMethodIfNeeded(stripeRequestDTO.getCustomerId(), stripeRequestDTO.getPaymentMethodId());
-
+            if (!StringUtils.hasText(stripeRequestDTO.getReturnUrl())){
+                stripeRequestDTO.setReturnUrl("https://vacademy.io");
+            }
             // Step 3: Create and Confirm the PaymentIntent in one go
             PaymentIntentCreateParams params = PaymentIntentCreateParams.builder()
-                .setAmount(amountInCents)
-                .setCurrency(request.getCurrency().toLowerCase())
-                .setCustomer(stripeRequestDTO.getCustomerId())
-                .setPaymentMethod(stripeRequestDTO.getPaymentMethodId())
-                .setConfirmationMethod(PaymentIntentCreateParams.ConfirmationMethod.MANUAL)
-                .setConfirm(true)
-                .setReturnUrl(stripeRequestDTO.getReturnUrl())
-                .setDescription(request.getDescription() != null ? request.getDescription() : "No description")
-                .putMetadata("orderId", request.getOrderId())
-                .putMetadata("instituteId", request.getInstituteId())
-                .setReceiptEmail((StringUtils.hasText(request.getEmail()) ? request.getEmail() : user.getEmail()))
-                .build();
+                    .setAmount(amountInCents)
+                    .setCurrency(request.getCurrency().toLowerCase())
+                    .setCustomer(stripeRequestDTO.getCustomerId())
+                    .setPaymentMethod(stripeRequestDTO.getPaymentMethodId())
+                    .setConfirmationMethod(PaymentIntentCreateParams.ConfirmationMethod.MANUAL)
+                    .setConfirm(true)
+                    .setReturnUrl(stripeRequestDTO.getReturnUrl())
+                    .setDescription(request.getDescription() != null ? request.getDescription() : "No description")
+                    .putMetadata("orderId", request.getOrderId())
+                    .putMetadata("instituteId", request.getInstituteId())
+                    .setReceiptEmail((StringUtils.hasText(request.getEmail()) ? request.getEmail() : user.getEmail()))
+                    .build();
 
             logger.info("Creating and confirming PaymentIntent for customer: {}", stripeRequestDTO.getCustomerId());
             PaymentIntent paymentIntent = PaymentIntent.create(params);
@@ -117,7 +119,7 @@ public class StripePaymentManager implements PaymentServiceStrategy {
             logger.debug("Stripe customer creation parameters for unknown user: {}", stripeParams);
             Customer stripeCustomer = Customer.create(stripeParams);
             logger.info("Stripe customer created successfully for unknown user. Customer ID: {}",
-                stripeCustomer.getId());
+                    stripeCustomer.getId());
 
             return buildCustomerResponse(stripeCustomer);
 
@@ -214,9 +216,9 @@ public class StripePaymentManager implements PaymentServiceStrategy {
 
     private long convertAmountToCents(double amount) {
         return BigDecimal.valueOf(amount)
-            .multiply(BigDecimal.valueOf(100))
-            .setScale(0, RoundingMode.HALF_UP)
-            .longValue();
+                .multiply(BigDecimal.valueOf(100))
+                .setScale(0, RoundingMode.HALF_UP)
+                .longValue();
     }
 
     private void attachPaymentMethodIfNeeded(String customerId, String paymentMethodId) throws StripeException {
@@ -226,13 +228,13 @@ public class StripePaymentManager implements PaymentServiceStrategy {
         logger.info("Verifying if payment method {} is attached to customer {}", paymentMethodId, customerId);
 
         PaymentMethodListParams listParams = PaymentMethodListParams.builder()
-            .setCustomer(customerId)
-            .setType(PaymentMethodListParams.Type.CARD)
-            .build();
+                .setCustomer(customerId)
+                .setType(PaymentMethodListParams.Type.CARD)
+                .build();
 
         boolean isAttached = PaymentMethod.list(listParams).getData()
-            .stream()
-            .anyMatch(pm -> pm.getId().equals(paymentMethodId));
+                .stream()
+                .anyMatch(pm -> pm.getId().equals(paymentMethodId));
 
         if (!isAttached) {
             logger.info("Attaching payment method {} to customer {}", paymentMethodId, customerId);
@@ -356,14 +358,14 @@ public class StripePaymentManager implements PaymentServiceStrategy {
         invoiceItemParams.put("amount", amountInCents);
         invoiceItemParams.put("currency", request.getCurrency().toLowerCase());
         invoiceItemParams.put("description",
-            request.getDescription() != null ? request.getDescription() : "No description");
+                request.getDescription() != null ? request.getDescription() : "No description");
         invoiceItemParams.put("metadata",
-            Map.of("orderId", request.getOrderId(), "instituteId", request.getInstituteId()));
+                Map.of("orderId", request.getOrderId(), "instituteId", request.getInstituteId()));
         InvoiceItem.create(invoiceItemParams);
     }
 
     private Invoice createAndAutoChargeInvoice(StripeRequestDTO stripeRequestDTO, PaymentInitiationRequestDTO request)
-        throws StripeException {
+            throws StripeException {
         Map<String, Object> invoiceParams = new HashMap<>();
         invoiceParams.put("customer", stripeRequestDTO.getCustomerId());
         invoiceParams.put("collection_method", "charge_automatically");
@@ -393,12 +395,12 @@ public class StripePaymentManager implements PaymentServiceStrategy {
         response.put("description", invoice.getDescription());
         response.put("paymentUrl", invoice.getHostedInvoiceUrl());
         PaymentStatusEnum paymentStatus = invoice.getPaid()
-            ? PaymentStatusEnum.PAID
-            : PaymentStatusEnum.PAYMENT_PENDING;
+                ? PaymentStatusEnum.PAID
+                : PaymentStatusEnum.PAYMENT_PENDING;
         response.put("paymentStatus", paymentStatus.name());
         response.put("paidAt", invoice.getStatusTransitions() != null
-            ? invoice.getStatusTransitions().getPaidAt()
-            : null);
+                ? invoice.getStatusTransitions().getPaidAt()
+                : null);
 
         if (invoice.getCustomer() != null) {
             try {
@@ -411,7 +413,7 @@ public class StripePaymentManager implements PaymentServiceStrategy {
         PaymentResponseDTO dto = new PaymentResponseDTO();
         dto.setResponseData(response);
         dto.setOrderId(
-            invoice.getMetadata().get("orderId") != null ? invoice.getMetadata().get("orderId").toString() : null);
+                invoice.getMetadata().get("orderId") != null ? invoice.getMetadata().get("orderId").toString() : null);
         return dto;
     }
 }

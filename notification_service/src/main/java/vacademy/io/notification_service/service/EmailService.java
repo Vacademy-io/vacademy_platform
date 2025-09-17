@@ -127,8 +127,15 @@ public class EmailService {
             AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId);
             JavaMailSender mailSenderToUse = config.getKey();
             String fromToUse = config.getValue();
-            InstituteInfoDTO instituteInfoDTO=internalService.getInstituteByInstituteId(instituteId);
-            String instituteTheme=instituteInfoDTO.getInstituteThemeCode()!=null?instituteInfoDTO.getInstituteThemeCode():"#ED7424";
+            InstituteInfoDTO instituteInfoDTO=null;
+
+            if(instituteId!=null && StringUtils.hasText(instituteId))
+               instituteInfoDTO=internalService.getInstituteByInstituteId(instituteId);
+
+            //default vacademy theme
+            String instituteTheme="#ED7424";
+            if(instituteInfoDTO!=null && instituteInfoDTO.getInstituteThemeCode()!=null)
+                  instituteTheme=instituteInfoDTO.getInstituteThemeCode();
 
             final String emailSubject = StringUtils.hasText(subject)
                     ? subject

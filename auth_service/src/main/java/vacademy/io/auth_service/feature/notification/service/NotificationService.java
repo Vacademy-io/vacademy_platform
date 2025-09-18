@@ -28,13 +28,15 @@ public class NotificationService {
     @Value("${notification.server.baseurl}")
     private String notificationServerBaseUrl;
 
-    public String sendOtp(EmailOTPRequest emailOTPRequest) {
+    public String sendOtp(EmailOTPRequest emailOTPRequest,String instituteId) {
         // Removed the redundant 'clientName' parameter, we can use the injected clientName field here
+        instituteId=instituteId!=null?instituteId:"";
+        String url=NotificationConstant.SEND_EMAIL_OTP+"?instituteId="+instituteId;
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                 clientName, // Directly use the injected 'clientName'
                 HttpMethod.POST.name(),
                 notificationServerBaseUrl,
-                NotificationConstant.SEND_EMAIL_OTP,
+                url,
                 emailOTPRequest
         );
         return response.getBody();

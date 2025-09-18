@@ -134,15 +134,20 @@ public class EmailService {
 
             //default vacademy theme
             String instituteTheme="#ED7424";
-            if(instituteInfoDTO!=null && instituteInfoDTO.getInstituteThemeCode()!=null)
-                  instituteTheme=instituteInfoDTO.getInstituteThemeCode();
+            String instituteName="Vacademy";
+            String instituteUrl="https://dash.vacademy.io/";
+            if(instituteInfoDTO!=null) {
+                instituteTheme = instituteInfoDTO.getInstituteThemeCode()!=null?instituteInfoDTO.getInstituteThemeCode():instituteTheme;
+                instituteName=instituteInfoDTO.getInstituteName()!=null?instituteInfoDTO.getInstituteName():instituteName;
+                instituteUrl=instituteInfoDTO.getWebsiteUrl()!=null?instituteInfoDTO.getWebsiteUrl():instituteUrl;
+            }
 
             final String emailSubject = StringUtils.hasText(subject)
                     ? subject
-                    : "This is a very important email";
+                    : "Your One-Time Password (OTP) for "+instituteName+" Access";
 
             // Build the HTML body for the OTP email
-            final String emailBody = createEmailBody(service, name, otp,instituteTheme);
+            final String emailBody = createEmailBody(service, name, otp, instituteTheme, instituteName, instituteUrl,fromToUse);
 
             emailDispatcher.sendEmail(() -> {
                 try {
@@ -183,85 +188,102 @@ public class EmailService {
 
     // Method to create the email body
     // Method to create the email body with placeholders {{service}}, {{name}}, {{otp}}
-    private String createEmailBody(String service, String name, String otp,String theme) {
+    private String createEmailBody(String service, String name, String otp, String theme, String instituteName, String instituteWebsite,String instituteEmail) {
         String template = """
-                <!DOCTYPE html>
-                            <html>
-                            <head>
-                                <title>Confirm Email</title>
-                                <style>
-                                    body {
-                                        font-family: Arial, sans-serif;
-                                        margin: 0;
-                                        padding: 0;
-                                        background-color: #FFF7E1; /* Light yellow background */
-                                    }
-                                    .container {
-                                        max-width: 600px;
-                                        margin: 40px auto;
-                                        padding: 20px;
-                                        background-color: #FFFFFF; /* White background for email content */
-                                        border: 1px solid {{theme}}; /* Warm orange border */
-                                        border-radius: 10px;
-                                        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-                                    }
-                                    .header {
-                                        background-color: {{theme}}; /* Warm orange header */
-                                        color: #FFF;
-                                        padding: 15px;
-                                        text-align: center;
-                                        border-radius: 10px 10px 0 0;
-                                    }
-                                    .content {
-                                        padding: 20px;
-                                        font-size: 16px;
-                                        color: #333;
-                                    }
-                                    .footer {
-                                        background-color: {{theme}}; /* Warm orange footer */
-                                        color: #FFF;
-                                        padding: 10px;
-                                        text-align: center;
-                                        border-radius: 0 0 10px 10px;
-                                    }
-                                    .otp {
-                                        font-size: 22px;
-                                        font-weight: bold;
-                                        color: {{theme}}; /* Warm orange for OTP */
-                                        text-align: center;
-                                        padding: 10px;
-                                        background-color: #FFFAE1; /* Light yellow background for OTP */
-                                        border: 2px solid {{theme}}; /* Border matching the header/footer color */
-                                        border-radius: 5px;
-                                    }
-                                </style>
-                            </head>
-                            <body>
-                                <div class="container">
-                                    <div class="header">
-                                        <h2>Confirm Your Email Address</h2>
-                                    </div>
-                                    <div class="content">
-                                        <p>Dear {{name}},</p>
-                                        <p>We are excited to confirm your email address. Your OTP is:</p>
-                                        <div class="otp">{{otp}}</div>
-                                        <p>Please enter this OTP on our app to complete the verification process.</p>
-                                    </div>
-                                    <div class="footer">
-                                        <p>Best regards, <br> {{service}}</p>
-                                    </div>
-                                </div>
-                            </body>
-                            </html>
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Confirm Email</title>
+                <style>
+                    body {
+                        font-family: Arial, sans-serif;
+                        margin: 0;
+                        padding: 0;
+                        background-color: #FFF7E1;
+                    }
+                    .container {
+                        max-width: 600px;
+                        margin: 40px auto;
+                        padding: 20px;
+                        background-color: #FFFFFF;
+                        border: 1px solid {{theme}};
+                        border-radius: 10px;
+                        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+                    }
+                    .header {
+                        background-color: {{theme}};
+                        color: #FFF;
+                        padding: 15px;
+                        text-align: center;
+                        border-radius: 10px 10px 0 0;
+                    }
+                    .content {
+                        padding: 20px;
+                        font-size: 16px;
+                        color: #333;
+                        line-height: 1.6;
+                    }
+                    .footer {
+                        background-color: {{theme}};
+                        color: #FFF;
+                        padding: 10px;
+                        text-align: center;
+                        border-radius: 0 0 10px 10px;
+                        font-size: 14px;
+                    }
+                    .otp {
+                        font-size: 22px;
+                        font-weight: bold;
+                        color: {{theme}};
+                        text-align: center;
+                        padding: 10px;
+                        background-color: #FFFAE1;
+                        border: 2px solid {{theme}};
+                        border-radius: 5px;
+                        margin: 15px 0;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h2>Your One-Time Password (OTP)</h2>
+                    </div>
+                    <div class="content">                        
+                        <p>Dear {{name}},</p>
+                        <p>Your One-Time Password (OTP) to access <b>{{instituteName}}</b> is:</p>
+                        
+                        <div class="otp">{{otp}}</div>
+                        
+                        <p>This OTP is valid for <b>10 minutes</b> and can be used only once.</p>
+                        <p>Please do not share this code with anyone for security reasons.</p>
+                        
+                        <p>If you did not request this code, please ignore this message or 
+                        contact our support team immediately.</p>
+                        
+                        <p>Thank you,</p>
+                        <p><b>{{instituteName}} Team</b></p>
+                        <p>Email: {{instituteEmail}}</p>
+                        <p>Web: <a href="{{instituteWebsite}}" target="_blank">{{instituteWebsite}}</a></p>
+                    </div>
+                    <div class="footer">
+                        <p>Best regards, <br> {{service}}</p>
+                    </div>
+                </div>
+            </body>
+            </html>
             """;
 
-        // Replace placeholders
         return template
                 .replace("{{service}}", service)
                 .replace("{{name}}", name)
                 .replace("{{otp}}", otp)
-                .replace("{{theme}}",theme);
+                .replace("{{theme}}", theme)
+                .replace("{{instituteEmail}}",instituteEmail)
+                .replace("{{instituteName}}", instituteName)
+                .replace("{{instituteWebsite}}", instituteWebsite);
     }
+
 
     public void sendHtmlEmail(String to, String subject, String service, String body, String instituteId) {
         try {

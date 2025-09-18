@@ -8,6 +8,8 @@ import vacademy.io.admin_core_service.features.packages.dto.PackageDetailDTO;
 import vacademy.io.admin_core_service.features.packages.dto.LearnerPackageFilterDTO;
 import vacademy.io.admin_core_service.features.packages.service.OpenPackageService;
 import vacademy.io.common.auth.config.PageConstants;
+import vacademy.io.admin_core_service.config.cache.ClientCacheable;
+import vacademy.io.admin_core_service.config.cache.CacheScope;
 
 @RestController
 @RequestMapping("/admin-core-service/open/packages/v1")
@@ -28,6 +30,7 @@ public class OpenPackageController {
     }
 
     @GetMapping("/package-detail")
+    @ClientCacheable(maxAgeSeconds = 300, scope = CacheScope.PUBLIC)
     public ResponseEntity<PackageDetailDTO> getPackageDetailById(@RequestParam("packageId") String packageId) {
         PackageDetailDTO result = openPackageService.getPackageDetailById(packageId);
         return ResponseEntity.ok(result);

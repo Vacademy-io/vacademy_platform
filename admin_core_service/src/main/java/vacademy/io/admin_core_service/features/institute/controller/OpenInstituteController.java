@@ -9,6 +9,8 @@ import vacademy.io.admin_core_service.features.institute.manager.InstituteInitMa
 import vacademy.io.admin_core_service.features.institute.service.InstituteService;
 import vacademy.io.admin_core_service.features.institute.service.UserInstituteService;
 import vacademy.io.common.institute.dto.InstituteInfoDTO;
+import vacademy.io.admin_core_service.config.cache.ClientCacheable;
+import vacademy.io.admin_core_service.config.cache.CacheScope;
 
 import java.util.List;
 
@@ -27,6 +29,7 @@ public class OpenInstituteController {
 
 
     @GetMapping("/details/{instituteId}")
+    @ClientCacheable(maxAgeSeconds = 600, scope = CacheScope.PUBLIC)
     public ResponseEntity<InstituteInfoDTO> getInstituteDetails(@PathVariable String instituteId) {
 
         InstituteInfoDTO instituteInfoDTO = instituteInitManager.getPublicInstituteDetails(instituteId);
@@ -34,6 +37,7 @@ public class OpenInstituteController {
     }
 
     @GetMapping("/get/subdomain-or-id")
+    @ClientCacheable(maxAgeSeconds = 600, scope = CacheScope.PUBLIC)
     public ResponseEntity<String> getSubdomainForInstitute(@RequestParam(value = "instituteId", required = false) String instituteId,
                                                            @RequestParam(value = "subdomain", required = false) String subdomain) {
 

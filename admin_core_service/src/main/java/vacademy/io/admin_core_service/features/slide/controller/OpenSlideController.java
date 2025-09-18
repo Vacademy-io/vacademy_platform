@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.admin_core_service.features.slide.dto.SlideTypeReadTimeProjection;
 import vacademy.io.admin_core_service.features.slide.service.SlideService;
+import vacademy.io.admin_core_service.config.cache.ClientCacheable;
+import vacademy.io.admin_core_service.config.cache.CacheScope;
 
 import java.util.List;
 
@@ -19,6 +21,7 @@ public class OpenSlideController {
     private SlideService slideService;
 
     @GetMapping("/slide-counts-by-source-type")
+    @ClientCacheable(maxAgeSeconds = 300, scope = CacheScope.PUBLIC)
     public ResponseEntity<List<SlideTypeReadTimeProjection>> getSlideCountsBySourceType(
         @RequestParam String packageSessionId
     ) {
@@ -27,6 +30,7 @@ public class OpenSlideController {
     }
 
     @GetMapping("/learner-slide-counts-by-source-type")
+    @ClientCacheable(maxAgeSeconds = 300, scope = CacheScope.PUBLIC)
     public ResponseEntity<List<SlideTypeReadTimeProjection>> getLearnerSlideCountsBySourceType(
         @RequestParam String packageSessionId
     ) {

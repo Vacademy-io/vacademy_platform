@@ -16,6 +16,7 @@ import vacademy.io.admin_core_service.features.institute_learner.entity.StudentS
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
+import vacademy.io.admin_core_service.features.learner.service.LearnerCouponService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
@@ -40,11 +41,15 @@ public class StudentRegistrationManager {
     @Value("${spring.application.name}")
     private String applicationName;
 
+    @Autowired
+    private LearnerCouponService learnerCouponService;
+
 
     public InstituteStudentDTO addStudentToInstitute(CustomUserDetails user, InstituteStudentDTO instituteStudentDTO, BulkUploadInitRequest bulkUploadInitRequest) {
         instituteStudentDTO = this.updateAsPerConfig(instituteStudentDTO, bulkUploadInitRequest);
         Student student = checkAndCreateStudent(instituteStudentDTO);
         linkStudentToInstitute(student, instituteStudentDTO.getInstituteStudentDetails());
+        learnerCouponService.generateCouponCodeForLearner(student.getUserId());
         return instituteStudentDTO;
     }
 

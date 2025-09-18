@@ -58,6 +58,7 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
         String getScheduleThumbnailFileId(); // NEW — from session_schedules
         Boolean getDailyAttendance();        // NEW — from session_schedules
         Boolean getAllowPlayPause();
+        String getTimezone();
 
     }
 
@@ -134,7 +135,8 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
             ss.custom_waiting_room_media_id AS customWaitingRoomMediaId,
             ss.thumbnail_file_id AS scheduleThumbnailFileId,  -- NEW
             ss.daily_attendance AS dailyAttendance,           -- NEW
-            s.allow_play_pause As allowPlayPause
+            s.allow_play_pause As allowPlayPause,
+            s.timezone AS timezone
         FROM session_schedules ss
         JOIN live_session s ON ss.session_id = s.id
         WHERE ss.id = :scheduleId

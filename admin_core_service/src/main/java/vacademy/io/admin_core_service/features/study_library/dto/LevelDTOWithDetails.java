@@ -19,6 +19,7 @@ public class LevelDTOWithDetails {
     private Integer durationInDays;
     private List<SubjectDTO> subjects;
     private List<UserDTO> instructors;
+    private Double readTimeInMinutes;
 
     public LevelDTOWithDetails(Level level, List<SubjectDTO> subjects,List<UserDTO> instructors) {
         this.id = level.getId();

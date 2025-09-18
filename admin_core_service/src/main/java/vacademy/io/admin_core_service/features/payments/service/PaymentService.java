@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.payments.service;
 
+import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
@@ -28,6 +29,7 @@ import java.util.Map;
 import java.util.Optional;
 
 @Service
+@Transactional
 public class PaymentService {
 
     @Autowired
@@ -88,13 +90,6 @@ public class PaymentService {
                 user,
                 request);
 
-        paymentNotificatonService.sendPaymentNotification(
-                instituteId,
-                response,
-                request,
-                user,
-                enrollInvite.getVendor());
-
         paymentLogService.updatePaymentLog(
                 paymentLogId,
                 PaymentLogStatusEnum.ACTIVE.name(),
@@ -143,13 +138,6 @@ public class PaymentService {
                 null, // No user for unknown donations
                 request);
 
-        // Send payment notification to unknown user (donation)
-        paymentNotificatonService.sendDonationPaymentNotification(
-                instituteId,
-                response,
-                request,
-                request.getEmail(),
-                request.getVendor());
 
         paymentLogService.updatePaymentLog(
                 paymentLogId,
@@ -208,12 +196,11 @@ public class PaymentService {
                 request);
 
         // Send payment notification
-        paymentNotificatonService.sendPaymentNotification(
+        paymentNotificatonService.sendPaymentConfirmationNotification(
                 instituteId,
                 response,
                 request,
-                getUserById(userId),
-                request.getVendor());
+                getUserById(userId));
 
         // Update payment log with response
         paymentLogService.updatePaymentLog(

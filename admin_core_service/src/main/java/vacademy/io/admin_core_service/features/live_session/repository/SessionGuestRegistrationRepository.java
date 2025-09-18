@@ -20,6 +20,7 @@ public interface SessionGuestRegistrationRepository extends JpaRepository<Sessio
 
     @Query(value = """
             SELECT
+                sgr.id AS guestId,
                 sgr.email AS guestEmail,
                 sgr.registered_at AS registeredAt,
                 lsl.status AS attendanceStatus,
@@ -43,7 +44,8 @@ public interface SessionGuestRegistrationRepository extends JpaRepository<Sessio
                          OR cf.field_name ILIKE '%mobile%' OR cf.field_name ILIKE '%phone%')
                     ORDER BY cf.form_order ASC
                     LIMIT 1
-                ) AS mobileNumber
+                ) AS mobileNumber,
+                'EXTERNAL_USER' AS sourceType
             FROM session_guest_registrations sgr
             LEFT JOIN live_session_logs lsl
                 ON lsl.session_id = sgr.session_id

@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.chapter.entity.ChapterPackageSess
 import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterRepository;
+import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.course.dto.CourseDTO;
 import vacademy.io.admin_core_service.features.course.dto.CourseDTOWithDetails;
 import vacademy.io.admin_core_service.features.faculty.entity.FacultySubjectPackageSessionMapping;
@@ -138,6 +139,8 @@ public class StudyLibraryService {
 
         for (Level level : levels) {
             LevelDTOWithDetails levelDTOWithDetails = buildLevelDTOWithDetails(level, packageId, sessionId);
+            Double totalReadTimeInMinutes = slideRepository.calculateTotalReadTimeInMinutes(packageId, sessionId, level.getId(), List.of(SlideStatus.PUBLISHED.name(),SlideStatus.UNSYNC.name()), List.of(StatusEnum.ACTIVE.name()), List.of(StatusEnum.ACTIVE.name()));
+            levelDTOWithDetails.setReadTimeInMinutes(totalReadTimeInMinutes);
             levelWithDetails.add(levelDTOWithDetails);
         }
 

@@ -23,4 +23,5 @@ public class ReferralOptionDTO {
     private String description;
     private Date createdAt;
     private Date updatedAt;
+    private String settingJson;
 }

@@ -14,7 +14,6 @@ import vacademy.io.common.auth.config.SharedConfigurationReference;
 public class NotificationServiceApplication {
     public static void main(String[] args) {
         SpringApplication.run(NotificationServiceApplication.class, args);
-
     }
 
 }

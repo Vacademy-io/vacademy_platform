@@ -31,7 +31,7 @@ public class LearnerUserInfoController {
     private LearnerUserPlanService learnerUserPlanService;
 
     @GetMapping("/details")
-    @ClientCacheable(maxAgeSeconds = 60, scope = CacheScope.PRIVATE, varyHeaders = {"X-Institute-Id", "X-User-Id"})
+    @ClientCacheable(maxAgeSeconds = 300, scope = CacheScope.PRIVATE, varyHeaders = {"X-Institute-Id", "X-User-Id"})
     public ResponseEntity<List<StudentDTO>> getLearnerInfo(@RequestAttribute("user") CustomUserDetails user, @RequestParam("instituteId") String instituteId) {
 
         return learnerProfileManager.getLearnerInfo(user, instituteId);

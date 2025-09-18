@@ -34,7 +34,7 @@ public class OAuth2VendorToUserDetailService {
 
         oAuth2VendorToUserDetail.setProviderId(vendorId);
         oAuth2VendorToUserDetail.setSubject(vendorToUserId);
-        if (Objects.nonNull(emailId)) {
+        if (StringUtils.hasText(emailId) && !StringUtils.hasText(oAuth2VendorToUserDetail.getEmailId())) {
             oAuth2VendorToUserDetail.setEmailId(emailId);
         }
 
@@ -42,18 +42,27 @@ public class OAuth2VendorToUserDetailService {
         log.info("Saved OAuth2VendorToUserDetail with ID={}", oAuth2VendorToUserDetail.getId());
     }
 
-    public String getEmailByProviderIdAndSubject(String providerId, String subject) {
+    public String getEmailByProviderIdAndSubject(String providerId, String subject,String email) {
         log.info("Fetching email by providerId={} and subject={}", providerId, subject);
 
         Optional<OAuth2VendorToUserDetail> optionalOAuth2VendorToUserDetail =
                 oauth2VendorToUserDetailRepository.findByProviderIdAndSubject(providerId, subject);
 
         if (optionalOAuth2VendorToUserDetail.isPresent()) {
-            String email = optionalOAuth2VendorToUserDetail.get().getEmailId();
+            String existingEmail = optionalOAuth2VendorToUserDetail.get().getEmailId();
+            if (StringUtils.hasText(existingEmail)){
+                return existingEmail;
+            }else if (StringUtils.hasText(email)){
+                OAuth2VendorToUserDetail oAuth2VendorToUserDetail = optionalOAuth2VendorToUserDetail.get();
+                oAuth2VendorToUserDetail.setEmailId(email);
+                oauth2VendorToUserDetailRepository.save(oAuth2VendorToUserDetail);
+                return email;
+            }
             log.info("Found email: {}", email);
             return email;
         } else {
             log.warn("No record found for providerId={} and subject={}", providerId, subject);
+            saveOrUpdateOAuth2VendorToUserDetail(providerId,email,subject);
             return null;
         }
     }
@@ -67,6 +76,8 @@ public class OAuth2VendorToUserDetailService {
                 OAuth2VendorToUserDetail oAuth2VendorToUserDetail = optionalOAuth2VendorToUserDetail.get();
                 oAuth2VendorToUserDetail.setEmailId(emailId);
                 oauth2VendorToUserDetailRepository.save(oAuth2VendorToUserDetail);
+            }else{
+                saveOrUpdateOAuth2VendorToUserDetail(vendorId,emailId,subjectId);
             }
         }
     }

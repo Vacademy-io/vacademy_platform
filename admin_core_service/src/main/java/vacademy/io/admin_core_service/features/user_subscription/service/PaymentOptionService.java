@@ -1,6 +1,5 @@
 package vacademy.io.admin_core_service.features.user_subscription.service;
 
-import org.checkerframework.checker.units.qual.A;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
@@ -88,6 +87,7 @@ public class PaymentOptionService {
         paymentOption.setType(paymentOptionDTO.getType());
         paymentOption.setPaymentOptionMetadataJson(paymentOptionDTO.getPaymentOptionMetadataJson());
         paymentOption.setRequireApproval(paymentOptionDTO.isRequireApproval());
+        paymentOption.setUnit(paymentOptionDTO.getUnit());
         List<PaymentPlan>paymentPlans = paymentPlanService.editPaymentPlans(paymentOption.getPaymentPlans(),paymentOptionDTO.getPaymentPlans(),paymentOption);
         paymentOption.setPaymentPlans(paymentPlans);
         paymentOptionRepository.save(paymentOption);

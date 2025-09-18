@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationContext;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
@@ -39,6 +40,10 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
 
     @Autowired
     private InstitutePolicyService institutePolicyService;
+
+    @Value("${teacher.portal.client.url}:https://dash.vacademy.io")
+    private String adminPortalClientUrl;
+
     private static class DecodedState {
         String fromUrl;
         String instituteId;
@@ -52,7 +57,7 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
         String encodedState = request.getParameter("state");
 
         // Base fallback values
-        String fallbackUrl = "https://dash.vacademy.io";
+        String fallbackUrl = adminPortalClientUrl;
         DecodedState state = decodeState(encodedState, fallbackUrl);
 
         String redirectUrl = state.fromUrl != null ? state.fromUrl : fallbackUrl;
@@ -121,9 +126,9 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
                 return;
 
             String email = userInfo.email;
-            if (email == null) {
+            if (email == null || userInfo.providerId.equalsIgnoreCase("github")) {
                 email = oAuth2VendorToUserDetailService.getEmailByProviderIdAndSubject(userInfo.providerId,
-                        userInfo.sub);
+                        userInfo.sub,userInfo.email);
             }
             boolean isEmailVerified = (email != null);
 
@@ -145,8 +150,8 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
     private void handleSignupFlow(UserInfo userInfo, String redirectUrl, HttpServletResponse response,
             String encodedState, boolean isEmailVerified) throws IOException {
         String email = userInfo.email;
-        if (email == null) {
-            email = oAuth2VendorToUserDetailService.getEmailByProviderIdAndSubject(userInfo.providerId, userInfo.sub);
+        if (email == null || userInfo.providerId.equalsIgnoreCase("github")) {
+            email = oAuth2VendorToUserDetailService.getEmailByProviderIdAndSubject(userInfo.providerId, userInfo.sub,userInfo.email);
         }
 
         // For signup, always return user data to frontend
@@ -215,8 +220,8 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
     private void handleLoginFlow(UserInfo userInfo, String redirectUrl, HttpServletResponse response,
             String encodedState, boolean isEmailVerified) throws IOException {
         String email = userInfo.email;
-        if (email == null) {
-            email = oAuth2VendorToUserDetailService.getEmailByProviderIdAndSubject(userInfo.providerId, userInfo.sub);
+        if (email == null || userInfo.providerId.equalsIgnoreCase("github")) {
+            email = oAuth2VendorToUserDetailService.getEmailByProviderIdAndSubject(userInfo.providerId, userInfo.sub,userInfo.email);
         }
 
         // First try to login the user by email
@@ -234,8 +239,8 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
     private void returnUserDataToFrontend(HttpServletResponse response, String redirectUrl, UserInfo userInfo,
             String encodedState, boolean isEmailVerified, boolean hasError) throws IOException {
         String email = userInfo.email;
-        if (email == null) {
-            email = oAuth2VendorToUserDetailService.getEmailByProviderIdAndSubject(userInfo.providerId, userInfo.sub);
+        if (email == null || userInfo.providerId.equalsIgnoreCase("github")) {
+            email = oAuth2VendorToUserDetailService.getEmailByProviderIdAndSubject(userInfo.providerId, userInfo.sub,userInfo.email);
         }
 
         String userJson = null;
@@ -349,3 +354,5 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
         return applicationContext.getBean(AdminOAuth2Manager.class);
     }
 }
+
+

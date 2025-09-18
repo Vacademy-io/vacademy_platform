@@ -121,7 +121,7 @@ public class LearnerPackageService {
                     List.of(StatusEnum.ACTIVE.name()),
                     List.of(QuestionStatusEnum.ACTIVE.name()),
                     List.of(QuestionStatusEnum.ACTIVE.name()),
-                    List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                    List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                     List.of(ChapterStatus.ACTIVE.name()),
                     pageable
             );
@@ -139,7 +139,7 @@ public class LearnerPackageService {
                     List.of(StatusEnum.ACTIVE.name()),
                     List.of(QuestionStatusEnum.ACTIVE.name()),
                     List.of(QuestionStatusEnum.ACTIVE.name()),
-                    List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                    List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                     List.of(ChapterStatus.ACTIVE.name()),
                     pageable
             );
@@ -165,7 +165,7 @@ public class LearnerPackageService {
                     List.of(StatusEnum.ACTIVE.name()),
                     List.of(QuestionStatusEnum.ACTIVE.name()),
                     List.of(QuestionStatusEnum.ACTIVE.name()),
-                    List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                    List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                     List.of(ChapterStatus.ACTIVE.name()),
                     pageable
             );
@@ -183,7 +183,7 @@ public class LearnerPackageService {
                     List.of(StatusEnum.ACTIVE.name()),
                     List.of(QuestionStatusEnum.ACTIVE.name()),
                     List.of(QuestionStatusEnum.ACTIVE.name()),
-                    List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                    List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                     List.of(ChapterStatus.ACTIVE.name()),
                     pageable
             );

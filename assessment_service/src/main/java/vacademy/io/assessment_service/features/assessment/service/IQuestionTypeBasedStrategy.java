@@ -4,6 +4,9 @@ package vacademy.io.assessment_service.features.assessment.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import lombok.Getter;
 import lombok.Setter;
+import vacademy.io.assessment_service.features.assessment.dto.AssessmentQuestionPreviewDto;
+import vacademy.io.assessment_service.features.assessment.entity.Assessment;
+import vacademy.io.assessment_service.features.question_core.entity.Question;
 
 public abstract class IQuestionTypeBasedStrategy {
     @Getter
@@ -21,4 +24,6 @@ public abstract class IQuestionTypeBasedStrategy {
     public abstract Object validateAndGetCorrectAnswerData(String correctAnswerJson) throws JsonProcessingException;
 
     public abstract Object validateAndGetResponseData(String responseJson) throws JsonProcessingException;
+
+    public abstract Object validateAndGetSurveyData(Assessment assessment, AssessmentQuestionPreviewDto assessmentQuestionPreviewDto);
 }

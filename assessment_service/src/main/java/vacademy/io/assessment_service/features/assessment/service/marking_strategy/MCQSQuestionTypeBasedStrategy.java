@@ -1,20 +1,29 @@
 package vacademy.io.assessment_service.features.assessment.service.marking_strategy;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import vacademy.io.assessment_service.features.assessment.dto.AssessmentQuestionPreviewDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqs.MCQSCorrectAnswerDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqs.MCQSMarkingDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqs.MCQSResponseDto;
+import vacademy.io.assessment_service.features.assessment.dto.survey_dto.MCQSurveyDto;
+import vacademy.io.assessment_service.features.assessment.dto.survey_dto.NumberSurveyDto;
+import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.enums.QuestionResponseEnum;
 import vacademy.io.assessment_service.features.assessment.service.IQuestionTypeBasedStrategy;
+import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
+import vacademy.io.assessment_service.features.learner_assessment.service.QuestionWiseMarksService;
 
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 @Component
 public class MCQSQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
 
+    @Autowired
+    QuestionWiseMarksService questionWiseMarksService;
 
     @Override
     public double calculateMarks(String markingJsonStr, String correctAnswerJsonStr, String responseJson) {
@@ -91,4 +100,58 @@ public class MCQSQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
         ObjectMapper objectMapper = new ObjectMapper();
         return objectMapper.readValue(responseJson, MCQSResponseDto.class);
     }
+
+    @Override
+    public Object validateAndGetSurveyData(Assessment assessment, AssessmentQuestionPreviewDto assessmentQuestionPreviewDto) {
+        setType(assessmentQuestionPreviewDto.getQuestion().getType());
+        List<QuestionWiseMarks> allRespondentData = questionWiseMarksService.getAllQuestionWiseAttemptsForAssessmentIdAndQuestionIdAndSectionId(assessmentQuestionPreviewDto.getQuestionId(), assessment.getId(), assessmentQuestionPreviewDto.getSectionId());
+
+        return MCQSurveyDto.builder()
+                .type(getType())
+                .totalRespondent(allRespondentData.size())
+                .order(assessmentQuestionPreviewDto.getQuestionOrder())
+                .mcqSurveyInfoList(createMCQSSurveyInfo(allRespondentData)).build();
+    }
+
+    private List<MCQSurveyDto.MCQSurveyInfo> createMCQSSurveyInfo(List<QuestionWiseMarks> allRespondentData) {
+        List<MCQSurveyDto.MCQSurveyInfo> response = new ArrayList<>();
+        Map<String, Integer> answerCountMapping = new HashMap<>();
+
+        allRespondentData.forEach(questionWiseResponse -> {
+            String answer = extractValidAnswerForMCQS(questionWiseResponse.getResponseJson());
+            answerCountMapping.merge(Objects.requireNonNullElse(answer, "NO_ANSWER"), 1, Integer::sum);
+        });
+
+        // Convert map into MCQSurveyInfo list
+        answerCountMapping.forEach((answer, count) -> {
+            double percentage = (count * 100.0) / allRespondentData.size(); // force double division
+            MCQSurveyDto.MCQSurveyInfo info = MCQSurveyDto.MCQSurveyInfo.builder()
+                    .option(String.valueOf(answer))   // ensure option is String if needed
+                    .percentage(percentage)
+                    .respondentCount(count)
+                    .build();
+            response.add(info);
+        });
+
+        return response;
+    }
+
+    private String extractValidAnswerForMCQS(String responseJson) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode root = mapper.readTree(responseJson);
+
+            // Navigate to responseData → optionIds[0]
+            JsonNode optionIdsNode = root.path("responseData").path("optionIds");
+
+            if (optionIdsNode.isArray() && !optionIdsNode.isEmpty()) {
+                return optionIdsNode.get(0).asText(); // since MCQS has only one option
+            }
+        } catch (Exception e) {
+            // Log error and skip invalid response
+            e.printStackTrace();
+        }
+        return null; // in case of invalid/empty response
+    }
+
 }

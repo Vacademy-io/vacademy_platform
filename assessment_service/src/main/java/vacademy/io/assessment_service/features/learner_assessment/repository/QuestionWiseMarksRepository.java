@@ -1,5 +1,7 @@
 package vacademy.io.assessment_service.features.learner_assessment.repository;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -69,4 +71,108 @@ public interface QuestionWiseMarksRepository extends JpaRepository<QuestionWiseM
                                                                               @Param("sectionId") String sectionId);
 
     List<QuestionWiseMarks> findByStudentAttemptIdAndAssessmentId(String attemptId, String assessmentId);
+
+
+    @Query(value = """
+            SELECT qwm.* from question_wise_marks as qwm
+            WHERE qwm.question_id = :questionId
+            AND qwm.assessmentId = :assessmentId
+            AND qwm.section_id = :sectionId
+            ORDER BY qwm.created_at DESC
+            """, nativeQuery = true)
+    List<QuestionWiseMarks> findByAssessmentIdAndQuestionIdAndSectionId(@Param("questionId") String questionId,
+                                                                        @Param("assessmentId") String assessmentId,
+                                                                        @Param("sectionId") String sectionId);
+
+    @Query(value = """
+            SELECT COUNT (DISTINCT qwm.attempt_id) from question_wise_marks as qwm
+            AND qwm.assessmentId = :assessmentId
+            ORDER BY qwm.created_at DESC
+            """, nativeQuery = true)
+    Long countUniqueRespondentForAssessment(@Param("assessmentId") String assessmentId);
+
+    @Query(value = """
+    SELECT qwm.*
+    FROM question_wise_marks qwm
+    JOIN student_attempt sa
+      ON qwm.attempt_id = sa.id
+    JOIN assessment_user_registration qur
+      ON sa.registration_id = qur.id
+    WHERE sa.id IN (
+        SELECT DISTINCT ON (sa2.registration_id) sa2.id
+        FROM student_attempt sa2
+        ORDER BY sa2.registration_id, sa2.start_time DESC
+    )
+    AND (:name IS NULL OR (qur.participant_name ILIKE %:name% OR qur.user_email ILIKE %:name%))
+    AND (:instituteId IS NULL OR qur.institute_id = :instituteId)
+    AND (:questionIds IS NULL OR qwm.question_id IN (:questionIds))
+    AND (:assessmentIds IS NULL OR qwm.assessment_id IN (:assessmentIds))
+    AND (:sectionIds IS NULL OR qwm.section_id IN (:sectionIds))
+    AND (:status IS NULL OR qur.status IN (:status))
+    """,
+            countQuery = """
+    SELECT COUNT(*)
+    FROM question_wise_marks qwm
+    JOIN student_attempt sa
+      ON qwm.attempt_id = sa.id
+    JOIN assessment_user_registration qur
+      ON sa.registration_id = qur.id
+    WHERE sa.id IN (
+        SELECT DISTINCT ON (sa2.registration_id) sa2.id
+        FROM student_attempt sa2
+        ORDER BY sa2.registration_id, sa2.start_time DESC
+    )
+    AND (:name IS NULL OR (qur.participant_name ILIKE %:name% OR qur.user_email ILIKE %:name%))
+    AND (:instituteId IS NULL OR qur.institute_id = :instituteId)
+    AND (:questionIds IS NULL OR qwm.question_id IN (:questionIds))
+    AND (:assessmentIds IS NULL OR qwm.assessment_id IN (:assessmentIds))
+    AND (:sectionIds IS NULL OR qwm.section_id IN (:sectionIds))
+    AND (:status IS NULL OR qur.status IN (:status))
+    """,
+            nativeQuery = true)
+    Page<QuestionWiseMarks> findSurveyResponseWithFilterAndSearch(
+            @Param("name") String name,
+            @Param("instituteId") String instituteId,
+            @Param("questionIds") List<String> questionIds,
+            @Param("assessmentIds") List<String> assessmentIds,
+            @Param("sectionIds") List<String> sectionIds,
+            @Param("status") List<String> status,
+            Pageable pageable);
+
+
+    @Query(value = """
+    SELECT qwm.*
+    FROM question_wise_marks qwm
+    JOIN student_attempt sa
+      ON qwm.attempt_id = sa.id
+    JOIN assessment_user_registration qur
+      ON sa.registration_id = qur.id
+    AND (:name IS NULL OR (qur.participant_name ILIKE %:name% OR qur.user_email ILIKE %:name%))
+    AND (:instituteId IS NULL OR qur.institute_id = :instituteId)
+    AND (:attemptIds IS NULL OR qwm.attempt_id IN (:attemptIds))
+    AND (:assessmentIds IS NULL OR qwm.assessment_id IN (:assessmentIds))
+    AND (:status IS NULL OR qur.status IN (:status))
+    """,
+            countQuery = """
+    SELECT COUNT(*)
+    FROM question_wise_marks qwm
+    JOIN student_attempt sa
+      ON qwm.attempt_id = sa.id
+    JOIN assessment_user_registration qur
+      ON sa.registration_id = qur.id
+    AND (:name IS NULL OR (qur.participant_name ILIKE %:name% OR qur.user_email ILIKE %:name%))
+    AND (:instituteId IS NULL OR qur.institute_id = :instituteId)
+    AND (:attemptIds IS NULL OR qwm.attempt_id IN (:attemptIds))
+    AND (:assessmentIds IS NULL OR qwm.assessment_id IN (:assessmentIds))
+    AND (:status IS NULL OR qur.status IN (:status))
+    """,
+            nativeQuery = true)
+    Page<QuestionWiseMarks> findResponseForRespondentWithFilterAndSearch(
+            @Param("name") String name,
+            @Param("instituteId") String instituteId,
+            @Param("attemptIds") List<String> attemptIds,
+            @Param("assessmentIds") List<String> assessmentIds,
+            @Param("status") List<String> status,
+            Pageable pageable);
+
 }

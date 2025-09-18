@@ -3,21 +3,29 @@ package vacademy.io.assessment_service.features.assessment.service.marking_strat
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.util.Pair;
 import org.springframework.stereotype.Component;
+import vacademy.io.assessment_service.features.assessment.dto.AssessmentQuestionPreviewDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.long_answer.LongAanswerCorrectAnswerDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.long_answer.LongAnswerMarkingDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.long_answer.LongAnswerResponseDto;
+import vacademy.io.assessment_service.features.assessment.dto.survey_dto.OneWordLongSurveyDto;
+import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.enums.QuestionResponseEnum;
 import vacademy.io.assessment_service.features.assessment.service.IQuestionTypeBasedStrategy;
+import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
+import vacademy.io.assessment_service.features.learner_assessment.service.QuestionWiseMarksService;
 
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.*;
 
 @Slf4j
 @Component
 public class LongAnswerQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
+
+    @Autowired
+    private QuestionWiseMarksService questionWiseMarksService;
+
     public static Pair<Double, String> calculateMarksViaMatching(String correctAnswer, String studentAnswer, double totalMarks, double negativeMarks) {
         // Convert answers to sets of words (ignore case & split by spaces)
         Set<String> correctWords = new HashSet<>(Arrays.asList(correctAnswer.toLowerCase().split("\\s+")));
@@ -113,5 +121,30 @@ public class LongAnswerQuestionTypeBasedStrategy extends IQuestionTypeBasedStrat
     public Object validateAndGetResponseData(String responseJson) throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
         return objectMapper.readValue(responseJson, LongAnswerResponseDto.class);
+    }
+
+    @Override
+    public Object validateAndGetSurveyData(Assessment assessment, AssessmentQuestionPreviewDto assessmentQuestionPreviewDto) {
+        setType(assessmentQuestionPreviewDto.getQuestion().getType());
+        List<QuestionWiseMarks> allRespondentData = questionWiseMarksService.getAllQuestionWiseAttemptsForAssessmentIdAndQuestionIdAndSectionId(assessmentQuestionPreviewDto.getQuestionId(), assessment.getId(), assessmentQuestionPreviewDto.getSectionId());
+
+        return OneWordLongSurveyDto.builder()
+                .type(getType())
+                .totalRespondent(allRespondentData.size())
+                .order(assessmentQuestionPreviewDto.getQuestionOrder())
+                .latestResponse(createLatestResponseForLongAnswer(allRespondentData)).build();
+    }
+
+    private List<OneWordLongSurveyDto.OneWordLongSurveyInfo> createLatestResponseForLongAnswer(List<QuestionWiseMarks> allRespondentData) {
+        List<OneWordLongSurveyDto.OneWordLongSurveyInfo> response = new ArrayList<>();
+        allRespondentData.forEach(questionWiseResponse->{
+            response.add(OneWordLongSurveyDto.OneWordLongSurveyInfo.builder()
+                    .answer(questionWiseResponse.getResponseJson())
+                    .email(questionWiseResponse.getStudentAttempt().getRegistration().getUserEmail())
+                    .name(questionWiseResponse.getStudentAttempt().getRegistration().getParticipantName()).build());
+        });
+
+        return response;
+
     }
 }

@@ -133,10 +133,13 @@ public class EmailService {
                instituteInfoDTO=internalService.getInstituteByInstituteId(instituteId);
 
             //default vacademy theme
+            service=service==null?"notification-service":service;
+            name=name==null?"User":name;
             String instituteTheme="#ED7424";
             String instituteName="Vacademy";
-            String instituteUrl="https://dash.vacademy.io/";
+            String instituteUrl="https://dash.vacademy.io";
             if(instituteInfoDTO!=null) {
+
                 instituteTheme = instituteInfoDTO.getInstituteThemeCode()!=null?instituteInfoDTO.getInstituteThemeCode():instituteTheme;
                 instituteName=instituteInfoDTO.getInstituteName()!=null?instituteInfoDTO.getInstituteName():instituteName;
                 instituteUrl=instituteInfoDTO.getWebsiteUrl()!=null?instituteInfoDTO.getWebsiteUrl():instituteUrl;
@@ -210,13 +213,6 @@ public class EmailService {
                         border-radius: 10px;
                         box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
                     }
-                    .header {
-                        background-color: {{theme}};
-                        color: #FFF;
-                        padding: 15px;
-                        text-align: center;
-                        border-radius: 10px 10px 0 0;
-                    }
                     .content {
                         padding: 20px;
                         font-size: 16px;
@@ -246,9 +242,6 @@ public class EmailService {
             </head>
             <body>
                 <div class="container">
-                    <div class="header">
-                        <h2>Your One-Time Password (OTP)</h2>
-                    </div>
                     <div class="content">                        
                         <p>Dear {{name}},</p>
                         <p>Your One-Time Password (OTP) to access <b>{{instituteName}}</b> is:</p>

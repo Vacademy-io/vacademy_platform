@@ -1,14 +1,14 @@
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
-  name: home-review-stage-letsencrypt-prod-cert-issuer
+  name: vacademy-cluster-letsencrypt-prod-cert-issuer
   namespace: cert-manager
 spec:
   acme:
     server: "https://acme-v02.api.letsencrypt.org/directory"
-    email: home-review-dev@mvtechnologies.co.za
+    email: shreyash@vidyayatan.com
     privateKeySecretRef:
-      name: home-review-stage-letsencrypt-prod-cert-issuer
+      name: vacademy-cluster-letsencrypt-prod-cert-issuer
     solvers:
       - http01:
           ingress:

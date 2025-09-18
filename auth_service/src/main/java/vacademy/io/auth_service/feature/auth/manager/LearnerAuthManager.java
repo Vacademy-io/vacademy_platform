@@ -277,7 +277,7 @@ public class LearnerAuthManager {
         if (user.isEmpty())
             throw new UsernameNotFoundException("User not found!");
 
-        notificationService.sendOtp(makeOtp(authRequestDTO.getEmail()));
+        notificationService.sendOtp(makeOtp(authRequestDTO.getEmail()),authRequestDTO.getInstituteId());
         return "OTP sent to " + authRequestDTO.getEmail();
     }
 

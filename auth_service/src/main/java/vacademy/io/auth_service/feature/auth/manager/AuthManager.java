@@ -200,7 +200,7 @@ public class AuthManager {
             throw new UsernameNotFoundException("invalid user request..!!");
         } else {
             // todo: generate OTP for
-            notificationService.sendOtp(makeOtp(authRequestDTO.getEmail()));
+            notificationService.sendOtp(makeOtp(authRequestDTO.getEmail()),authRequestDTO.getInstituteId());
             return "OTP sent to " + authRequestDTO.getEmail();
         }
 

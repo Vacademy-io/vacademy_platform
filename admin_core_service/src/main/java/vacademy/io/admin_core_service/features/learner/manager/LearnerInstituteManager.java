@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.institute_learner.repository.Stud
 import vacademy.io.admin_core_service.features.learner.dto.StudentInstituteInfoDTO;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.slide.service.SlideService;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectRepository;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.PackageSessionDTO;
@@ -39,6 +40,9 @@ public class LearnerInstituteManager {
     @Autowired
     PackageSessionRepository packageSessionRepository;
 
+    @Autowired
+    private SlideService slideService;
+
     @Transactional
     public StudentInstituteInfoDTO getInstituteDetails(String instituteId, String userId) {
         Optional<Institute> institute = instituteRepository.findById(instituteId);
@@ -63,7 +67,7 @@ public class LearnerInstituteManager {
         instituteInfoDTO.setInstituteThemeCode(institute.get().getInstituteThemeCode());
         instituteInfoDTO.setSubModules(instituteModuleService.getSubmoduleIdsForInstitute(institute.get().getId()));
         instituteInfoDTO.setBatchesForSessions(packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((obj) -> {
-            return new PackageSessionDTO(obj);
+            return new PackageSessionDTO(obj,getReadTimeOfPackageSession(obj.getId()));
         }).toList());
         List<StudentSessionInstituteGroupMapping> studentSessions = studentSessionRepository.findAllByInstituteIdAndUserId(instituteId, userId);
         Set<PackageSession> packageSessions = new HashSet<>();
@@ -95,5 +99,9 @@ public class LearnerInstituteManager {
             instituteInfoDTOList.add(instituteInfoDTO);
         }
         return instituteInfoDTOList;
+    }
+
+    private Double getReadTimeOfPackageSession(String packageSessionId){
+        return slideService.calculateTotalReadTimeInMinutes(packageSessionId);
     }
 }

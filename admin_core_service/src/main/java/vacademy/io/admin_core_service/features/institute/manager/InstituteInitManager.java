@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.institute.utils.InstituteSettingU
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.slide.service.SlideService;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectRepository;
 import vacademy.io.common.auth.enums.Gender;
 import vacademy.io.common.exceptions.VacademyException;
@@ -43,6 +44,9 @@ public class InstituteInitManager {
 
     @Autowired
     private PackageGroupMappingRepository packageGroupMappingRepository;
+
+    @Autowired
+    private SlideService slideService;
 
     @Transactional
     public InstituteInfoDTO getInstituteDetails(String instituteId) {
@@ -85,8 +89,8 @@ public class InstituteInitManager {
         instituteInfoDTO.setSubModules(instituteModuleService.getSubmoduleIdsForInstitute(institute.get().getId()));
         instituteInfoDTO.setSessions(packageRepository.findDistinctSessionsByInstituteIdAndStatusIn(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((SessionDTO::new)).toList());
         instituteInfoDTO.setBatchesForSessions(packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((obj) -> {
-            return new PackageSessionDTO(obj);
-        }).toList());
+            return new PackageSessionDTO(obj,getReadTimeOfPackageSession(obj.getId()));
+        }).toList());;
         instituteInfoDTO.setLevels(packageRepository.findDistinctLevelsByInstituteIdAndStatusIn(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((LevelDTO::new)).toList());
         instituteInfoDTO.setGenders((Stream.of(Gender.values()).map(Enum::name)).toList());
         instituteInfoDTO.setStudentStatuses(List.of("ACTIVE", "INACTIVE"));
@@ -143,10 +147,14 @@ public class InstituteInitManager {
         instituteInfoDTO.setCoverImageFileId(institute.get().getCoverImageFileId());
         instituteInfoDTO.setCoverTextJson(institute.get().getCoverTextJson());
         instituteInfoDTO.setBatchesForSessions(packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((obj) -> {
-            return new PackageSessionDTO(obj);
+            return new PackageSessionDTO(obj,getReadTimeOfPackageSession(obj.getId()));
         }).toList());
         instituteInfoDTO.setSetting(institute.get().getSetting());
         return instituteInfoDTO;
+    }
+
+    private Double getReadTimeOfPackageSession(String packageSessionId){
+        return slideService.calculateTotalReadTimeInMinutes(packageSessionId);
     }
 
     public ResponseEntity<String> getInstituteIdOrSubDomain(String instituteId, String subdomain) {

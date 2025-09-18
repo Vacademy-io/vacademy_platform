@@ -11,6 +11,7 @@ import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
 import vacademy.io.admin_core_service.features.chapter.entity.ChapterToSlides;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterRepository;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterToSlidesRepository;
+import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.learner_tracking.service.LearnerTrackingAsyncService;
 import vacademy.io.admin_core_service.features.common.constants.ValidStatusListConstants;
 import vacademy.io.admin_core_service.features.slide.dto.*;
@@ -802,5 +803,9 @@ public class SlideService {
                 ValidStatusListConstants.ACTIVE_CHAPTERS,
                 ValidStatusListConstants.VALID_SLIDE_STATUSES_FOR_LEARNER,
                 ValidStatusListConstants.VALID_QUESTION_STATUSES);
+    }
+
+    public Double calculateTotalReadTimeInMinutes(String packageSessionId) {
+        return slideRepository.calculateTotalReadTimeInMinutes(packageSessionId, List.of(SlideStatus.PUBLISHED.name(),SlideStatus.UNSYNC.name()), List.of(StatusEnum.ACTIVE.name()), List.of(StatusEnum.ACTIVE.name()));
     }
 }

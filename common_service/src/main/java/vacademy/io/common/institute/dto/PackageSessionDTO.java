@@ -25,9 +25,10 @@ public class PackageSessionDTO {
     private String status;
     private PackageDTO packageDTO;
     private GroupDTO group;
+    private Double readTimeInMinutes;
 
     // Constructor from PackageSession entity
-    public PackageSessionDTO(PackageSession packageSession) {
+    public PackageSessionDTO(PackageSession packageSession,Double readTimeInMinutes) {
         this.id = packageSession.getId();
         this.startTime = packageSession.getStartTime();
         this.status = packageSession.getStatus();
@@ -47,5 +48,6 @@ public class PackageSessionDTO {
         if (packageSession.getSession() != null) {
             this.session = new SessionDTO(packageSession.getSession());
         }
+        this.readTimeInMinutes = readTimeInMinutes;
     }
 }

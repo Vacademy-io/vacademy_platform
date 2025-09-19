@@ -34,7 +34,7 @@ import {
     tabs,
 } from "@/components/common/study-library/level-material/subject-material/-constants/constant";
 import { getIcon } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/chapter-sidebar-slides";
-import { CourseDetailsFormValues } from "./course-details-schema";
+import { CourseDetailsFormValues } from "../forms/course-details-schema";
 import { getSubjectDetails } from "@/routes/courses/course-details/-utils/helper";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { useRouter } from "@tanstack/react-router";
@@ -601,356 +601,353 @@ export const CourseStructureDetails = ({
                         </Button>
                     </div>
                 </div>
-                <div className="w-full space-y-1.5">
+                {/* Course Overview Stats */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                     {(() => {
                         const subjects = studyLibraryData || [];
-                        const summary = subjects.map((subject) => {
-                            const modules = subjectModulesMap[subject.id] || [];
-                            const chapters = modules.flatMap((m) => m.chapters || []);
-                            const slidesCounts = chapters.map((ch) => (slidesMap[ch.id] || []).length);
-                            const totalSlides = slidesCounts.reduce((a, b) => a + b, 0);
-                            return { subjectId: subject.id, modules: modules.length, chapters: chapters.length, totalSlides };
-                        });
-
-                        return null;
+                        const totalModules = Object.values(subjectModulesMap).reduce((acc, modules) => acc + modules.length, 0);
+                        const totalChapters = Object.values(subjectModulesMap).reduce((acc, modules) => 
+                            acc + modules.reduce((modAcc, mod) => modAcc + mod.chapters.length, 0), 0);
+                        const totalSlides = Object.values(slidesMap).reduce((acc, slides) => acc + slides.length, 0);
+                        
+                        return (
+                            <>
+                                <div className="bg-gradient-to-br from-primary-50 to-primary-100 rounded-lg p-3 border border-primary-200">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-8 h-8 rounded-md bg-primary-500 flex items-center justify-center">
+                                            <Folder size={16} className="text-white" />
+                                        </div>
+                                        <div>
+                                            <div className="text-lg font-bold text-primary-700">{subjects.length}</div>
+                                            <div className="text-xs text-primary-600">Subjects</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-3 border border-blue-200">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-8 h-8 rounded-md bg-blue-500 flex items-center justify-center">
+                                            <FileText size={16} className="text-white" />
+                                        </div>
+                                        <div>
+                                            <div className="text-lg font-bold text-blue-700">{totalModules}</div>
+                                            <div className="text-xs text-blue-600">Modules</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-3 border border-green-200">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-8 h-8 rounded-md bg-green-500 flex items-center justify-center">
+                                            <PresentationChart size={16} className="text-white" />
+                                        </div>
+                                        <div>
+                                            <div className="text-lg font-bold text-green-700">{totalChapters}</div>
+                                            <div className="text-xs text-green-600">Chapters</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg p-3 border border-amber-200">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-8 h-8 rounded-md bg-amber-500 flex items-center justify-center">
+                                            <TreeStructure size={16} className="text-white" />
+                                        </div>
+                                        <div>
+                                            <div className="text-lg font-bold text-amber-700">{totalSlides}</div>
+                                            <div className="text-xs text-amber-600">Slides</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </>
+                        );
                     })()}
-                    {courseStructure === 5 &&
-                        studyLibraryData?.map(
-                            (subject: SubjectType, idx: number) => {
-                                const isSubjectOpen = openSubjects.has(
-                                    subject.id
-                                );
-                                const baseIndent =
-                                    "pl-[calc(18px+0.5rem+18px+0.5rem)]";
-                                const subjectContentIndent = `${baseIndent} pl-[1.5rem]`;
+                </div>
+                
+                {/* Course Structure Tree */}
+                <div className="w-full space-y-1.5">
+                    {courseStructure === 5 && (
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                            {studyLibraryData?.map(
+                                (subject: SubjectType, idx: number) => {
+                                    const isSubjectOpen = openSubjects.has(
+                                        subject.id
+                                    );
 
-                                return (
-                                    <Collapsible
-                                        key={subject.id}
-                                        open={isSubjectOpen}
-                                        onOpenChange={() =>
-                                            toggleSubject(subject.id)
-                                        }
-                                    >
-                                        <CollapsibleTrigger className="group flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-semibold text-neutral-700 transition-all duration-200 hover:bg-gradient-to-r hover:from-primary-50/60 hover:to-blue-50/40 hover:border-primary-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1">
-                                            <div className="flex min-w-0 flex-1 items-center gap-2.5">
-                                                {isSubjectOpen ? (
-                                                    <CaretDown
-                                                        size={18}
-                                                        weight="bold"
-                                                        className="shrink-0 text-neutral-500 group-hover:text-primary-600 transition-colors"
-                                                    />
-                                                ) : (
-                                                    <CaretRight
-                                                        size={18}
-                                                        weight="bold"
-                                                        className="shrink-0 text-neutral-500 group-hover:text-primary-600 transition-colors"
-                                                    />
-                                                )}
-                                                <div className="flex items-center justify-center w-6 h-6 rounded-md bg-gradient-to-br from-primary-500 to-primary-600 text-white text-xs font-bold shrink-0">
-                                                    {isSubjectOpen ? (
-                                                        <FolderOpen size={12} />
-                                                    ) : (
-                                                        <Folder size={12} />
-                                                    )}
-                                                </div>
-                                                {thumbUrlById[`subject:${subject.id}`] && (
-                                                    <img
-                                                        src={thumbUrlById[`subject:${subject.id}`]}
-                                                        alt={toTitleCase(subject.subject_name)}
-                                                        className="w-6 h-6 rounded-sm object-cover border border-neutral-200"
-                                                        crossOrigin="anonymous"
-                                                        referrerPolicy="no-referrer"
-                                                        loading="eager"
-                                                        onError={(e) => {
-                                                            e.currentTarget.classList.add('border-red-400');
-                                                        }}
-                                                    />
-                                                )}
-                                                {showContentPrefixes && (
-                                                    <span className="w-7 shrink-0 text-center font-mono text-xs font-semibold text-neutral-500 bg-neutral-100 rounded px-1 py-0.5">
-                                                        S{idx + 1}
-                                                    </span>
-                                                )}
-                                                <span
-                                                    className="truncate font-medium group-hover:text-primary-700 transition-colors"
-                                                    title={toTitleCase(
-                                                        subject.subject_name
-                                                    )}
-                                                >
-                                                    {toTitleCase(
-                                                        subject.subject_name
-                                                    )}
-                                                </span>
-                                            </div>
-                                        </CollapsibleTrigger>
-                                        <CollapsibleContent
-                                            className={`pb-1 pt-2 ${subjectContentIndent}`}
-                                        >
-                                            <div className="space-y-1 border-l-2 border-gradient-to-b from-primary-200/60 to-neutral-200/40 pl-3 relative">
-                                                <div className="absolute left-0 top-0 w-0.5 h-full bg-gradient-to-b from-primary-300/80 to-transparent"></div>
-                                                {(
-                                                    subjectModulesMap[
-                                                        subject.id
-                                                    ] ?? []
-                                                ).map((mod, modIdx) => {
-                                                    const isModuleOpen =
-                                                        openModules.has(
-                                                            mod.module.id
-                                                        );
-                                                    const moduleContentIndent = `pl-[calc(16px+0.5rem+16px+0.5rem+1.5rem)]`;
-                                                    return (
-                                                        <Collapsible
-                                                            key={mod.module.id}
-                                                            open={isModuleOpen}
-                                                            onOpenChange={() =>
-                                                                toggleModule(
-                                                                    mod.module
-                                                                        .id
-                                                                )
-                                                            }
-                                                        >
-                                                            <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-blue-50/70 hover:to-indigo-50/50 hover:border-blue-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1">
-                                                                <div className="flex min-w-0 flex-1 items-center gap-2">
-                                                                    {isModuleOpen ? (
-                                                                        <CaretDown
-                                                                            size={
-                                                                                16
-                                                                            }
-                                                                            className="shrink-0 text-neutral-500 group-hover:text-blue-600 transition-colors"
-                                                                        />
-                                                                    ) : (
-                                                                        <CaretRight
-                                                                            size={
-                                                                                16
-                                                                            }
-                                                                            className="shrink-0 text-neutral-500 group-hover:text-blue-600 transition-colors"
-                                                                        />
+                                    return (
+                                        <div key={subject.id} className="bg-white rounded-lg border border-neutral-200 shadow-sm">
+                                            <Collapsible
+                                                open={isSubjectOpen}
+                                                onOpenChange={() =>
+                                                    toggleSubject(subject.id)
+                                                }
+                                            >
+                                                <CollapsibleTrigger className="group flex w-full items-center rounded-t-lg px-4 py-3 text-left text-sm font-semibold text-neutral-700 transition-all duration-200 hover:bg-gradient-to-r hover:from-primary-50/60 hover:to-blue-50/40 border-b border-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1">
+                                                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                                                        {isSubjectOpen ? (
+                                                            <CaretDown
+                                                                size={18}
+                                                                weight="bold"
+                                                                className="shrink-0 text-neutral-500 group-hover:text-primary-600 transition-colors"
+                                                            />
+                                                        ) : (
+                                                            <CaretRight
+                                                                size={18}
+                                                                weight="bold"
+                                                                className="shrink-0 text-neutral-500 group-hover:text-primary-600 transition-colors"
+                                                            />
+                                                        )}
+                                                        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-primary-600 text-white text-sm font-bold shrink-0">
+                                                            {isSubjectOpen ? (
+                                                                <FolderOpen size={16} />
+                                                            ) : (
+                                                                <Folder size={16} />
+                                                            )}
+                                                        </div>
+                                                        {thumbUrlById[`subject:${subject.id}`] && (
+                                                            <img
+                                                                src={thumbUrlById[`subject:${subject.id}`]}
+                                                                alt={toTitleCase(subject.subject_name)}
+                                                                className="w-8 h-8 rounded-lg object-cover border border-neutral-200"
+                                                                crossOrigin="anonymous"
+                                                                referrerPolicy="no-referrer"
+                                                                loading="eager"
+                                                                onError={(e) => {
+                                                                    e.currentTarget.classList.add('border-red-400');
+                                                                }}
+                                                            />
+                                                        )}
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center gap-2">
+                                                                {showContentPrefixes && (
+                                                                    <span className="w-8 shrink-0 text-center font-mono text-xs font-semibold text-neutral-500 bg-neutral-100 rounded px-1 py-0.5">
+                                                                        S{idx + 1}
+                                                                    </span>
+                                                                )}
+                                                                <span
+                                                                    className="truncate font-medium group-hover:text-primary-700 transition-colors text-base"
+                                                                    title={toTitleCase(
+                                                                        subject.subject_name
                                                                     )}
-                                                                    <div className="flex items-center justify-center w-5 h-5 rounded bg-gradient-to-br from-blue-500 to-blue-600 text-white">
-                                                                        <FileText
-                                                                            size={
-                                                                                12
-                                                                            }
-                                                                        />
+                                                                >
+                                                                    {toTitleCase(
+                                                                        subject.subject_name
+                                                                    )}
+                                                                </span>
+                                                            </div>
+                                                            {(() => {
+                                                                const modules = subjectModulesMap[subject.id] || [];
+                                                                const chapters = modules.flatMap((m) => m.chapters || []);
+                                                                const slidesCounts = chapters.map((ch) => (slidesMap[ch.id] || []).length);
+                                                                const totalSlides = slidesCounts.reduce((a, b) => a + b, 0);
+                                                                return (
+                                                                    <div className="text-xs text-neutral-500 mt-1">
+                                                                        {modules.length} modules • {chapters.length} chapters • {totalSlides} slides
                                                                     </div>
-                                                                    {thumbUrlById[`module:${mod.module.id}`] && (
-                                                                        <img
-                                                                            src={thumbUrlById[`module:${mod.module.id}`]}
-                                                                            alt={mod.module.module_name}
-                                                                            className="w-5 h-5 rounded-sm object-cover border border-neutral-200"
-                                                                            crossOrigin="anonymous"
-                                                                            referrerPolicy="no-referrer"
-                                                                            loading="eager"
-                                                                                                                                    onError={(e) => {
-                                                            e.currentTarget.classList.add('border-red-400');
-                                                        }}
-                                                                        />
-                                                                    )}
-                                                                    {showContentPrefixes && (
-                                                                        <span className="w-6 shrink-0 text-center font-mono text-xs font-medium text-neutral-500 bg-neutral-100 rounded px-1">
-                                                                            M
-                                                                            {modIdx + 1}
-                                                                        </span>
-                                                                    )}
-                                                                    <span
-                                                                        className="truncate group-hover:text-blue-700 transition-colors"
-                                                                        title={
-                                                                            mod
-                                                                                .module
-                                                                                .module_name
+                                                                );
+                                                            })()}
+                                                        </div>
+                                                    </div>
+                                                </CollapsibleTrigger>
+                                                <CollapsibleContent className="p-4">
+                                                    <div className="space-y-3">
+                                                        {(
+                                                            subjectModulesMap[
+                                                                subject.id
+                                                            ] ?? []
+                                                        ).map((mod, modIdx) => {
+                                                            const isModuleOpen =
+                                                                openModules.has(
+                                                                    mod.module.id
+                                                                );
+                                                            return (
+                                                                <div key={mod.module.id} className="bg-neutral-50 rounded-lg border border-neutral-200">
+                                                                    <Collapsible
+                                                                        open={isModuleOpen}
+                                                                        onOpenChange={() =>
+                                                                            toggleModule(
+                                                                                mod.module
+                                                                                    .id
+                                                                            )
                                                                         }
                                                                     >
-                                                                        {
-                                                                            mod
-                                                                                .module
-                                                                                .module_name
-                                                                        }
-                                                                    </span>
-                                                                </div>
-                                                            </CollapsibleTrigger>
-
-                                                            <CollapsibleContent
-                                                                className={`py-1 ${moduleContentIndent}`}
-                                                            >
-                                                                <div className="space-y-0.5 border-l-2 border-blue-200/40 pl-2.5 relative">
-                                                                    <div className="absolute left-0 top-0 w-0.5 h-full bg-gradient-to-b from-blue-300/60 to-transparent"></div>
-                                                                    {(
-                                                                        mod.chapters ??
-                                                                        []
-                                                                    ).map(
-                                                                        (
-                                                                            ch,
-                                                                            chIdx
-                                                                        ) => {
-                                                                            const isChapterOpen =
-                                                                                openChapters.has(
-                                                                                    ch.id
-                                                                                );
-
-                                                                            return (
-                                                                                <Collapsible
-                                                                                    key={
-                                                                                        ch.id
-                                                                                    }
-                                                                                    open={
-                                                                                        isChapterOpen
-                                                                                    }
-                                                                                    onOpenChange={() => {
-                                                                                        toggleChapter(
-                                                                                            ch.id
-                                                                                        );
-                                                                                        getSlidesWithChapterId(
-                                                                                            ch.id
-                                                                                        );
-                                                                                    }}
-                                                                                >
-                                                                                    <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2 py-1 text-left text-sm text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-green-50/70 hover:to-emerald-50/50 hover:border-green-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1">
-                                                                                        <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                                                                                            {isChapterOpen ? (
-                                                                                                <CaretDown
-                                                                                                    size={
-                                                                                                        14
-                                                                                                    }
-                                                                                                    className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
-                                                                                                />
-                                                                                            ) : (
-                                                                                                <CaretRight
-                                                                                                    size={
-                                                                                                        14
-                                                                                                    }
-                                                                                                    className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
-                                                                                                />
-                                                                                            )}
-                                                                                            <div className="flex items-center justify-center w-4 h-4 rounded bg-gradient-to-br from-green-500 to-green-600 text-white">
-                                                                                                <PresentationChart
-                                                                                                    size={
-                                                                                                        10
-                                                                                                    }
-                                                                                                />
-                                                                                            </div>
-                                                                                            {thumbUrlById[`chapter:${ch.id}`] && (
-                                                                                                <img
-                                                                                                    src={thumbUrlById[`chapter:${ch.id}`]}
-                                                                                                    alt={toTitleCase(ch.chapter_name)}
-                                                                                                    className="w-4 h-4 rounded-sm object-cover border border-neutral-200"
-                                                                                                    crossOrigin="anonymous"
-                                                                                                    referrerPolicy="no-referrer"
-                                                                                                    loading="eager"
-                                                                                                                                                            onError={(e) => {
-                                                            e.currentTarget.classList.add('border-red-400');
-                                                        }}
-                                                                                                />
-                                                                                            )}
-                                                                                            {showContentPrefixes && (
-                                                                                                <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
-                                                                                                    C
-                                                                                                    {chIdx + 1}
-                                                                                                </span>
-                                                                                            )}
-                                                                                            <span
-                                                                                                className="truncate group-hover:text-green-700 transition-colors text-xs"
-                                                                                                title={toTitleCase(
-                                                                                                    ch.chapter_name
-                                                                                                )}
-                                                                                            >
-                                                                                                {toTitleCase(
-                                                                                                    ch.chapter_name
-                                                                                                )}
+                                                                        <CollapsibleTrigger className="group flex w-full items-center rounded-t-lg px-3 py-2.5 text-left text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-blue-50/70 hover:to-indigo-50/50 border-b border-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1">
+                                                                            <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                                                                                {isModuleOpen ? (
+                                                                                    <CaretDown
+                                                                                        size={16}
+                                                                                        className="shrink-0 text-neutral-500 group-hover:text-blue-600 transition-colors"
+                                                                                    />
+                                                                                ) : (
+                                                                                    <CaretRight
+                                                                                        size={16}
+                                                                                        className="shrink-0 text-neutral-500 group-hover:text-blue-600 transition-colors"
+                                                                                    />
+                                                                                )}
+                                                                                <div className="flex items-center justify-center w-6 h-6 rounded-md bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+                                                                                    <FileText size={14} />
+                                                                                </div>
+                                                                                {thumbUrlById[`module:${mod.module.id}`] && (
+                                                                                    <img
+                                                                                        src={thumbUrlById[`module:${mod.module.id}`]}
+                                                                                        alt={mod.module.module_name}
+                                                                                        className="w-6 h-6 rounded-sm object-cover border border-neutral-200"
+                                                                                        crossOrigin="anonymous"
+                                                                                        referrerPolicy="no-referrer"
+                                                                                        loading="eager"
+                                                                                        onError={(e) => {
+                                                                                            e.currentTarget.classList.add('border-red-400');
+                                                                                        }}
+                                                                                    />
+                                                                                )}
+                                                                                <div className="flex-1 min-w-0">
+                                                                                    <div className="flex items-center gap-2">
+                                                                                        {showContentPrefixes && (
+                                                                                            <span className="w-6 shrink-0 text-center font-mono text-xs font-medium text-neutral-500 bg-white rounded px-1 py-0.5">
+                                                                                                M{modIdx + 1}
                                                                                             </span>
-                                                                                        </div>
-                                                                                    </CollapsibleTrigger>
-                                                                                    <CollapsibleContent>
-                                                                                        <div
-                                                                                            className={`space-y-px ml-5 border-l border-green-200/50 py-1 pl-2 relative `}
+                                                                                        )}
+                                                                                        <span
+                                                                                            className="truncate group-hover:text-blue-700 transition-colors font-medium"
+                                                                                            title={mod.module.module_name}
                                                                                         >
-                                                                                            <div className="absolute left-0 top-0 w-px h-full bg-gradient-to-b from-green-300/50 to-transparent"></div>
-                                                                                            {(() => {
-                                                                                                const slidesForChapter =
-                                                                                                    slidesMap[
-                                                                                                        ch
-                                                                                                            .id
-                                                                                                    ] ??
-                                                                                                    [];
-                                                                                                return slidesForChapter.length ===
-                                                                                                    0 ? (
-                                                                                                    <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
-                                                                                                        No
-                                                                                                        slides
-                                                                                                        in
-                                                                                                        this
-                                                                                                        chapter.
-                                                                                                    </div>
-                                                                                                ) : (
-                                                                                                    slidesForChapter.map(
-                                                                                                        (
-                                                                                                            slide,
-                                                                                                            sIdx
-                                                                                                        ) => (
-                                                                                                            <div
-                                                                                                                key={
-                                                                                                                    slide.id
-                                                                                                                }
-                                                                                                                className={getSlideStyling()}
-                                                                                                                onClick={isSlideClickable() ? () => {
-                                                                                                                    handleSlideNavigation(
-                                                                                                                        subject.id,
-                                                                                                                        mod
-                                                                                                                            .module
-                                                                                                                            .id,
-                                                                                                                        ch.id,
-                                                                                                                        slide.id
-                                                                                                                    );
-                                                                                                                } : undefined}
-                                                                                                            >
+                                                                                            {mod.module.module_name}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    <div className="text-xs text-neutral-500 mt-0.5">
+                                                                                        {mod.chapters.length} chapters
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        </CollapsibleTrigger>
+
+                                                                        <CollapsibleContent className="p-3">
+                                                                            <div className="space-y-2">
+                                                                                {(mod.chapters ?? []).map((ch, chIdx) => {
+                                                                                    const isChapterOpen = openChapters.has(ch.id);
+                                                                                    const chapterSlides = slidesMap[ch.id] || [];
+                                                                                    
+                                                                                    return (
+                                                                                        <div key={ch.id} className="bg-white rounded-md border border-neutral-200">
+                                                                                            <Collapsible
+                                                                                                open={isChapterOpen}
+                                                                                                onOpenChange={() => {
+                                                                                                    toggleChapter(ch.id);
+                                                                                                    getSlidesWithChapterId(ch.id);
+                                                                                                }}
+                                                                                            >
+                                                                                                <CollapsibleTrigger className="group flex w-full items-center rounded-t-md px-3 py-2 text-left text-sm text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-green-50/70 hover:to-emerald-50/50 border-b border-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1">
+                                                                                                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                                                                                                        {isChapterOpen ? (
+                                                                                                            <CaretDown
+                                                                                                                size={14}
+                                                                                                                className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
+                                                                                                            />
+                                                                                                        ) : (
+                                                                                                            <CaretRight
+                                                                                                                size={14}
+                                                                                                                className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
+                                                                                                            />
+                                                                                                        )}
+                                                                                                        <div className="flex items-center justify-center w-5 h-5 rounded bg-gradient-to-br from-green-500 to-green-600 text-white">
+                                                                                                            <PresentationChart size={12} />
+                                                                                                        </div>
+                                                                                                        {thumbUrlById[`chapter:${ch.id}`] && (
+                                                                                                            <img
+                                                                                                                src={thumbUrlById[`chapter:${ch.id}`]}
+                                                                                                                alt={toTitleCase(ch.chapter_name)}
+                                                                                                                className="w-5 h-5 rounded-sm object-cover border border-neutral-200"
+                                                                                                                crossOrigin="anonymous"
+                                                                                                                referrerPolicy="no-referrer"
+                                                                                                                loading="eager"
+                                                                                                                onError={(e) => {
+                                                                                                                    e.currentTarget.classList.add('border-red-400');
+                                                                                                                }}
+                                                                                                            />
+                                                                                                        )}
+                                                                                                        <div className="flex-1 min-w-0">
+                                                                                                            <div className="flex items-center gap-2">
                                                                                                                 {showContentPrefixes && (
-                                                                                                                    <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
-                                                                                                                        S
-                                                                                                                        {sIdx + 1}
+                                                                                                                    <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
+                                                                                                                        C{chIdx + 1}
                                                                                                                     </span>
                                                                                                                 )}
-                                                                                                                <div className="shrink-0 group-hover:scale-110 transition-transform">
-                                                                                                                    {getIcon(
-                                                                                                                        slide,
-                                                                                                                        "3"
-                                                                                                                    )}
-                                                                                                                </div>
                                                                                                                 <span
-                                                                                                                    className="truncate group-hover:text-amber-700 transition-colors"
-                                                                                                                    title={slide.title}
+                                                                                                                    className="truncate group-hover:text-green-700 transition-colors text-sm font-medium"
+                                                                                                                    title={toTitleCase(ch.chapter_name)}
                                                                                                                 >
-                                                                                                                    {slide.title}
+                                                                                                                    {toTitleCase(ch.chapter_name)}
                                                                                                                 </span>
-                                                                                                                {(() => {
-                                                                                                                    const meta = getSlideMetaText(slide);
-                                                                                                                    return meta ? (
-                                                                                                                        <span className="ml-2 shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600 border border-neutral-200">
-                                                                                                                            {meta}
-                                                                                                                        </span>
-                                                                                                                    ) : null;
-                                                                                                                })()}
                                                                                                             </div>
-                                                                                                        )
-                                                                                                    )
-                                                                                                );
-                                                                                            })()}
+                                                                                                            <div className="text-xs text-neutral-500 mt-0.5">
+                                                                                                                {chapterSlides.length} slides
+                                                                                                            </div>
+                                                                                                        </div>
+                                                                                                    </div>
+                                                                                                </CollapsibleTrigger>
+                                                                                                <CollapsibleContent className="p-2">
+                                                                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                                                                                                        {chapterSlides.length === 0 ? (
+                                                                                                            <div className="col-span-full text-xs px-3 py-2 text-neutral-400 italic bg-neutral-50/50 rounded text-center">
+                                                                                                                No slides in this chapter.
+                                                                                                            </div>
+                                                                                                        ) : (
+                                                                                                            chapterSlides.map((slide, sIdx) => (
+                                                                                                                <div
+                                                                                                                    key={slide.id}
+                                                                                                                    className={getSlideStyling()}
+                                                                                                                    onClick={isSlideClickable() ? () => {
+                                                                                                                        handleSlideNavigation(
+                                                                                                                            subject.id,
+                                                                                                                            mod.module.id,
+                                                                                                                            ch.id,
+                                                                                                                            slide.id
+                                                                                                                        );
+                                                                                                                    } : undefined}
+                                                                                                                >
+                                                                                                                    {showContentPrefixes && (
+                                                                                                                        <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
+                                                                                                                            S{sIdx + 1}
+                                                                                                                        </span>
+                                                                                                                    )}
+                                                                                                                    <div className="shrink-0 group-hover:scale-110 transition-transform">
+                                                                                                                        {getIcon(slide, "3")}
+                                                                                                                    </div>
+                                                                                                                    <span
+                                                                                                                        className="truncate group-hover:text-amber-700 transition-colors"
+                                                                                                                        title={slide.title}
+                                                                                                                    >
+                                                                                                                        {slide.title}
+                                                                                                                    </span>
+                                                                                                                    {(() => {
+                                                                                                                        const meta = getSlideMetaText(slide);
+                                                                                                                        return meta ? (
+                                                                                                                            <span className="ml-2 shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600 border border-neutral-200">
+                                                                                                                                {meta}
+                                                                                                                            </span>
+                                                                                                                        ) : null;
+                                                                                                                    })()}
+                                                                                                                </div>
+                                                                                                            ))
+                                                                                                        )}
+                                                                                                    </div>
+                                                                                                </CollapsibleContent>
+                                                                                            </Collapsible>
                                                                                         </div>
-                                                                                    </CollapsibleContent>
-                                                                                </Collapsible>
-                                                                            );
-                                                                        }
-                                                                    )}
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                        </CollapsibleContent>
+                                                                    </Collapsible>
                                                                 </div>
-                                                            </CollapsibleContent>
-                                                        </Collapsible>
-                                                    );
-                                                })}
-                                            </div>
-                                        </CollapsibleContent>
-                                    </Collapsible>
-                                );
-                            }
-                        )}
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </CollapsibleContent>
+                                            </Collapsible>
+                                        </div>
+                                    );
+                                }
+                            )}
+                        </div>
+                    )}
                     {courseStructure === 4 &&
                         studyLibraryData?.map((subject: SubjectType) => {
                             const isSubjectOpen = openSubjects.has(subject.id);
@@ -2076,7 +2073,7 @@ export const CourseStructureDetails = ({
                     packageSessionId={packageSessionId}
                     instituteId={instituteId || ""}
                     token={authToken}
-                    courseTitle={courseData.title}
+                    courseTitle={courseData.courseData?.title || "Course"}
                     inviteCode="default"
                     mode="slide-access"
                     isUserEnrolled={isEnrolledInCourse} // Pass enrollment status

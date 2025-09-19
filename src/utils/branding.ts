@@ -49,41 +49,67 @@ export const applyTabBranding = async (
         document.documentElement.style.setProperty("--app-font-family", resolved);
         document.body.style.fontFamily = resolved;
       }
-    } catch {}
+    } catch {
+      // Ignore font family errors
+    }
 
     // Update favicon via DOM
     if (iconUrl) {
       try {
-        // Helper to upsert a link
-        const upsertIcon = (rel: string, sizes?: string, type?: string) => {
-          let sel = `link[rel="${rel}"]` + (sizes ? `[sizes="${sizes}"]` : '');
-          let el = document.querySelector<HTMLLinkElement>(sel);
-          if (!el) {
-            el = document.createElement('link');
-            el.rel = rel as any;
-            if (sizes) el.sizes = sizes as any;
-            if (type) el.type = type;
-            document.head.appendChild(el);
-          }
-          el.href = iconUrl;
-          console.log('[Branding] Set', rel, sizes || '', '->', iconUrl);
-        };
-
-        // Update existing icon links of any rel*="icon"
-        const links = document.querySelectorAll<HTMLLinkElement>('link[rel*="icon"]');
-        links.forEach((lnk) => {
-          console.log('[Branding] Updating favicon link:', lnk.outerHTML, '->', iconUrl);
-          lnk.href = iconUrl;
+        // Add cache busting to ensure fresh icon loads
+        const cacheBustedUrl = `${iconUrl}?v=${Date.now()}`;
+        
+        // Remove all existing favicon links to prevent conflicts
+        const existingLinks = document.querySelectorAll<HTMLLinkElement>('link[rel*="icon"]');
+        existingLinks.forEach((link) => {
+          console.log('[Branding] Removing existing favicon link:', link.outerHTML);
+          link.remove();
         });
 
-        // Ensure common variants exist for better browser support
-        upsertIcon('icon', '16x16', 'image/png');
-        upsertIcon('icon', '32x32', 'image/png');
-        upsertIcon('icon');
-        upsertIcon('shortcut icon');
-        upsertIcon('apple-touch-icon', '180x180', 'image/png');
+        // Helper to create a new link
+        const createIcon = (rel: string, sizes?: string, type?: string) => {
+          const el = document.createElement('link');
+          el.rel = rel;
+          if (sizes) el.setAttribute('sizes', sizes);
+          if (type) el.type = type;
+          el.href = cacheBustedUrl;
+          document.head.appendChild(el);
+          console.log('[Branding] Created', rel, sizes || '', '->', cacheBustedUrl);
+          return el;
+        };
+
+        // Create fresh favicon links for better browser support
+        createIcon('icon', '16x16', 'image/png');
+        createIcon('icon', '32x32', 'image/png');
+        createIcon('icon');
+        createIcon('shortcut icon');
+        createIcon('apple-touch-icon', '180x180', 'image/png');
+        
+        // Force favicon update by temporarily changing the href
+        setTimeout(() => {
+          const links = document.querySelectorAll<HTMLLinkElement>('link[rel*="icon"]');
+          links.forEach((link) => {
+            const originalHref = link.href;
+            link.href = '';
+            setTimeout(() => {
+              link.href = originalHref;
+            }, 1);
+          });
+        }, 100);
+        
       } catch (e) {
         console.warn('[Branding] Failed to update favicon links', e);
+      }
+    } else {
+      // If no iconUrl, remove all favicon links to prevent showing default favicon.ico
+      try {
+        const existingLinks = document.querySelectorAll<HTMLLinkElement>('link[rel*="icon"]');
+        existingLinks.forEach((link) => {
+          console.log('[Branding] Removing favicon link (no icon):', link.outerHTML);
+          link.remove();
+        });
+      } catch (e) {
+        console.warn('[Branding] Failed to remove favicon links', e);
       }
     }
 

@@ -2,7 +2,7 @@ import { MyButton } from "@/components/design-system/button";
 import { MyInput } from "@/components/design-system/input";
 import { FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Separator } from "@/components/ui/separator";
-import { VacademyLogoWeb } from "@/svgs";
+import { InstituteBrandingComponent, type InstituteBranding } from "@/components/common/institute-branding";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
@@ -43,6 +43,7 @@ import { toast } from "sonner";
 import AssessmentRegistrationCompleted from "./AssessmentRegistrationCompleted";
 import { useNavigate } from "@tanstack/react-router";
 import PhoneInputField from "@/components/design-system/phone-input-field";
+import { useInstituteDetails } from "../live-class/-hooks/useInstituteDetails";
 
 const case1 = (serverTime: number, startDate: string) => {
     const registrationStartDate: number = new Date(
@@ -72,6 +73,14 @@ const AssessmentRegistrationForm = () => {
     const [isAlreadyLoggedIn, setIsAlreadyLoggedIn] = useState(false);
     const [userAlreadyRegistered, setUserAlreadyRegistered] = useState(false);
     const { code } = Route.useSearch();
+    const { data: instituteDetails } = useInstituteDetails();
+    
+    const branding: InstituteBranding = {
+        instituteId: instituteDetails?.id || null,
+        instituteName: instituteDetails?.institute_name || null,
+        instituteLogoFileId: instituteDetails?.institute_logo_file_id || null,
+        instituteThemeCode: null
+    };
     const { data, isLoading } = useSuspenseQuery(
         getOpenTestRegistrationDetails(code)
     );
@@ -457,7 +466,7 @@ const AssessmentRegistrationForm = () => {
             {case1Status && (
                 <div className="flex justify-center items-center w-full mt-4">
                     <div className="flex flex-col w-full sm:w-3/4 items-center justify-center gap-6">
-                        <VacademyLogoWeb />
+                        <InstituteBrandingComponent branding={branding} size="large" showName={false} />
                         <h1 className="-mt-12 text-md sm:text-xl whitespace-normal sm:whitespace-nowrap p-4 sm:p-0 text-center">
                             {data?.assessment_public_dto?.assessment_name}
                         </h1>
@@ -543,7 +552,7 @@ const AssessmentRegistrationForm = () => {
                 <div className="flex w-full items-center justify-center bg-background gap-8 flex-col sm:flex-row">
                     <div className="flex justify-center items-center w-full mt-4">
                         <div className="flex flex-col w-full sm:w-3/4 items-center justify-center gap-6">
-                            <VacademyLogoWeb />
+                            <InstituteBrandingComponent branding={branding} size="large" showName={false} />
                             <h1 className="-mt-12 text-md sm:text-xl whitespace-normal sm:whitespace-nowrap p-4 sm:p-0 text-center">
                                 {data?.assessment_public_dto?.assessment_name}
                             </h1>

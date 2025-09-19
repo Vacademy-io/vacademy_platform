@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Cross2Icon } from "@radix-ui/react-icons";
 import { MyButton } from "@/components/design-system/button";
@@ -7,6 +7,9 @@ import { DonationAmountSelector } from "./DonationAmountSelector";
 import { DonationEmailForm } from "./DonationEmailForm";
 import { DonationPaymentForm } from "./DonationPaymentForm";
 import { useDonationDialog } from "./useDonationDialog";
+import { InstituteBrandingComponent, type InstituteBranding } from "@/components/common/institute-branding";
+import { fetchAndStoreInstituteDetails, type InstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
+import { getUserId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 
 export interface DonationDialogProps {
   open: boolean;
@@ -43,6 +46,9 @@ export const DonationDialog: React.FC<DonationDialogProps> = ({
   onSlideAccessSuccess,
   targetSlideDetails,
 }) => {
+  // Institute branding state
+  const [instituteBranding, setInstituteBranding] = useState<InstituteBranding | null>(null);
+  const [brandingLoading, setBrandingLoading] = useState(false);
   // Use the custom hook for all donation dialog logic
   const {
     // Payment dialog data
@@ -96,7 +102,53 @@ export const DonationDialog: React.FC<DonationDialogProps> = ({
     targetSlideDetails,
   });
 
+  // Fetch institute details when dialog opens
+  useEffect(() => {
+    const fetchInstituteBranding = async () => {
+      if (open && instituteId && !instituteBranding) {
+        setBrandingLoading(true);
+        try {
+          const userId = await getUserId();
+          const targetInstituteId = enrollmentData?.institute_id || instituteId;
+          
+          const details: InstituteDetails | null = await fetchAndStoreInstituteDetails(
+            targetInstituteId, 
+            userId || 'guest'
+          );
+          
+          if (details) {
+            setInstituteBranding({
+              instituteId: details.id,
+              instituteName: details.institute_name,
+              instituteLogoFileId: details.institute_logo_file_id,
+              instituteThemeCode: details.institute_theme_code,
+            });
+          } else {
+            // Set fallback branding
+            setInstituteBranding({
+              instituteId: targetInstituteId,
+              instituteName: null,
+              instituteLogoFileId: null,
+              instituteThemeCode: null,
+            });
+          }
+        } catch (error) {
+          console.error('Failed to fetch institute details:', error);
+          // Set fallback branding
+          setInstituteBranding({
+            instituteId: instituteId,
+            instituteName: null,
+            instituteLogoFileId: null,
+            instituteThemeCode: null,
+          });
+        } finally {
+          setBrandingLoading(false);
+        }
+      }
+    };
 
+    fetchInstituteBranding();
+  }, [open, instituteId, enrollmentData, instituteBranding]);
 
   // Show loading state
   if (loading) {
@@ -156,6 +208,18 @@ export const DonationDialog: React.FC<DonationDialogProps> = ({
           >
             <Cross2Icon className="h-4 w-4" />
           </button>
+          
+          {/* Institute Branding */}
+          {instituteBranding && (
+            <div className="mb-2">
+              <InstituteBrandingComponent
+                branding={instituteBranding}
+                size="small"
+                showName={true}
+                className="justify-center"
+              />
+            </div>
+          )}
           
           <h2 className="text-lg font-semibold text-gray-900 flex items-center justify-center gap-2">
             <Heart className="w-5 h-5 text-red-500" />

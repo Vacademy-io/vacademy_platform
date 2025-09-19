@@ -1,6 +1,19 @@
 {
   "themes": [
     {
+      "code": "neutral",
+      "label": "Neutral Theme",
+      "type": "default",
+      "colors": {
+        "primary-500": "#6B7280",
+        "primary-400": "#9CA3AF",
+        "primary-300": "#D1D5DB",
+        "primary-200": "#E5E7EB",
+        "primary-100": "#F3F4F6",
+        "primary-50": "#F9FAFB"
+      }
+    },
+    {
       "code": "primary",
       "label": "Primary Colors",
       "type": "default",

@@ -237,7 +237,7 @@ export function ModalSpecificLoginForm({
                 className="text-center text-xs text-gray-600"
             >
                 <p>
-                    By signing in, you agree to our{" "}
+                    I agree to{" "}
                     <motion.button
                         whileHover={{ scale: 1.02 }}
                         onClick={() =>
@@ -247,7 +247,7 @@ export function ModalSpecificLoginForm({
                         }
                         className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
                     >
-                        Terms of Service
+                        terms and conditions
                     </motion.button>{" "}
                     and{" "}
                     <motion.button

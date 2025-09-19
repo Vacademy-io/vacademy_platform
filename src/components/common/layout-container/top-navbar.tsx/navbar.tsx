@@ -147,16 +147,13 @@ export function Navbar() {
                                 <img
                                     src={instituteLogoFileUrl}
                                     alt={instituteName || "Institute"}
-                                    className="h-8 w-8 rounded-sm object-cover border border-primary-200/60 dark:border-neutral-700"
+                                    className="h-10 w-auto max-w-[120px] object-contain border border-primary-200/60 dark:border-neutral-700 rounded-sm"
                                 />
                             ) : (
                                 <div className="h-8 w-8 rounded-sm bg-primary-200/40 dark:bg-neutral-700/60 flex items-center justify-center text-[12px] font-semibold text-primary-700 dark:text-neutral-200">
                                     {(instituteName?.[0] || "I").toUpperCase()}
                                 </div>
                             )}
-                            <span className="text-base font-medium text-primary-900 dark:text-primary-100">
-                                {instituteName || "Institute"}
-                            </span>
                         </div>
                         <div className="h-8 w-px bg-primary-200/50 dark:bg-neutral-700" />
                         <h1 className="text-lg font-semibold text-primary-900 dark:text-primary-100">
@@ -206,16 +203,13 @@ export function Navbar() {
                             <img
                                 src={instituteLogoFileUrl}
                                 alt={instituteName || "Institute"}
-                                className="h-8 w-8 rounded-sm object-cover border border-primary-200/60 dark:border-neutral-700"
+                                className="h-10 w-auto max-w-[120px] object-contain dark:border-neutral-700 rounded-sm"
                             />
                         ) : (
                             <div className="h-8 w-8 rounded-sm bg-primary-200/40 dark:bg-neutral-700/60 flex items-center justify-center text-[12px] font-semibold text-primary-700 dark:text-neutral-200">
                                 {(instituteName?.[0] || "I").toUpperCase()}
                             </div>
                         )}
-                        <span className="text-base font-medium text-neutral-900 dark:text-neutral-100">
-                            {instituteName || "Institute"}
-                        </span>
                     </div>
                     <div className="w-px h-8 bg-primary-200/60 dark:bg-neutral-700"></div>
                     <div className="flex items-center gap-2">

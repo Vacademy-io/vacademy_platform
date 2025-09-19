@@ -1,8 +1,9 @@
 import axios from "axios";
 import { getTokenFromStorage } from "@/lib/auth/axiosInstance";
 import { TokenKey } from "@/constants/auth/tokens";
+import { BASE_URL } from "@/constants/urls";
 
-const DONATION_PAYMENT_URL = "https://backend-stage.vacademy.io/admin-core-service/payments/user-plan/user-plan-payment";
+const DONATION_PAYMENT_URL = `${BASE_URL}/admin-core-service/payments/user-plan/user-plan-payment`;
 
 export interface DonationPaymentRequest {
   amount: number;
@@ -96,8 +97,8 @@ export const processDonationPayment = async (
           "accept-language": "en-US,en;q=0.9",
           "content-type": "application/json",
           Authorization: `Bearer ${token}`,
-          origin: "https://backend-stage.vacademy.io",
-          referer: "https://backend-stage.vacademy.io/admin-core-service/swagger-ui/index.html",
+          origin: BASE_URL,
+          referer: `${BASE_URL}/admin-core-service/swagger-ui/index.html`,
           "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
         },
       }
@@ -133,13 +134,13 @@ export const getUserPlanId = async (instituteId: string): Promise<string | null>
 
     
     const response = await axios.get(
-      `https://backend-stage.vacademy.io/admin-core-service/learner/info/v1/details?instituteId=${instituteId}`,
+      `${BASE_URL}/admin-core-service/learner/info/v1/details?instituteId=${instituteId}`,
       {
         headers: {
           accept: "*/*",
           "accept-language": "en-US,en;q=0.9",
           "priority": "u=1, i",
-          referer: "https://backend-stage.vacademy.io/admin-core-service/swagger-ui/index.html",
+          referer: `${BASE_URL}/admin-core-service/swagger-ui/index.html`,
           "sec-ch-ua": '"Not;A=Brand";v="99", "Google Chrome";v="139", "Chromium";v="139"',
           "sec-ch-ua-mobile": "?0",
           "sec-ch-ua-platform": '"Windows"',

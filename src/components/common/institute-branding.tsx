@@ -47,9 +47,9 @@ export const InstituteBrandingComponent: React.FC<InstituteBrandingProps> = ({
   }, [branding.instituteLogoFileId]);
 
   const sizeClasses = {
-    small: "w-8 h-8",
-    medium: "w-12 h-12",
-    large: "w-16 h-16",
+    small: "w-16 h-16",
+    medium: "w-20 h-20",
+    large: "w-24 h-24",
   };
 
   const textSizes = {
@@ -78,13 +78,17 @@ export const InstituteBrandingComponent: React.FC<InstituteBrandingProps> = ({
       >
         {isLoading ? (
           <div className={`${sizeClasses[size]} bg-gray-200 rounded-lg animate-pulse`} />
-        ) : (
+        ) : logoUrl ? (
           <img
-            src={logoUrl || "/vacademy-logo.svg"}
+            src={logoUrl}
             alt={`${getInstituteDisplayName(branding.instituteName)} logo`}
             className={`${sizeClasses[size]} object-contain rounded-lg`}
             onError={() => setLogoUrl(null)}
           />
+        ) : (
+          <div className={`${sizeClasses[size]} bg-gray-100 rounded-lg flex items-center justify-center`}>
+            <div className="w-1/2 h-1/2 bg-gray-200 rounded animate-pulse" />
+          </div>
         )}
       </motion.div>
 

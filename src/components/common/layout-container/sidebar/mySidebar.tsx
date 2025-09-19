@@ -136,9 +136,9 @@ export const MySidebar = ({
 
   return (
     <Sidebar side="left" collapsible="icon">
-      <SidebarContent className="sidebar-content flex flex-col bg-white dark:bg-neutral-900 border-r border-gray-200 dark:border-neutral-800 py-3 transition-all duration-200 ease-in-out">
+      <SidebarContent className="sidebar-content flex flex-col bg-white dark:bg-neutral-900 border-r border-gray-200 dark:border-neutral-800 py-2 transition-all duration-200 ease-in-out">
         <SidebarHeader
-          className={`flex items-center px-3 pb-3 mb-3 border-b border-gray-100 dark:border-neutral-800 transition-all duration-200 ${
+          className={`flex items-center px-3 pb-2 mb-2 border-b border-gray-100 dark:border-neutral-800 transition-all duration-200 ${
             isExpanded
               ? "flex-row gap-2 justify-start"
               : "flex-col gap-1 justify-center"
@@ -147,8 +147,8 @@ export const MySidebar = ({
           <div className="relative">
             {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (
               <img
-                className={`object-cover shadow-sm border border-gray-200 transition-all duration-200 ${
-                  isExpanded ? "w-8 h-8 rounded-md" : "w-7 h-7 rounded-md"
+                className={`object-contain shadow-sm border border-gray-200 transition-all duration-200 ${
+                  isExpanded ? "w-16 h-10 rounded-md" : "w-12 h-8 rounded-md"
                 }`}
                 src={instituteLogoFileUrl}
                 alt="Logo"
@@ -156,12 +156,12 @@ export const MySidebar = ({
             ) : (
               <div
                 className={`bg-primary-50 border border-primary-200 rounded-md flex items-center justify-center transition-all duration-200 ${
-                  isExpanded ? "w-8 h-8" : "w-7 h-7"
+                  isExpanded ? "w-16 h-10" : "w-12 h-8"
                 }`}
               >
                 <div
                   className={`bg-primary-500 rounded-sm ${
-                    isExpanded ? "w-4 h-4" : "w-3 h-3"
+                    isExpanded ? "w-8 h-4" : "w-6 h-3"
                   }`}
                 ></div>
               </div>
@@ -176,9 +176,6 @@ export const MySidebar = ({
               <div className="text-sm font-semibold text-gray-900 dark:text-neutral-100 truncate">
                 {instituteName}
               </div>
-              <p className="text-xs text-gray-500 dark:text-neutral-400 truncate">
-                Dashboard
-              </p>
             </div>
           )}
         </SidebarHeader>

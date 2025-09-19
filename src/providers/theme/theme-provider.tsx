@@ -14,19 +14,19 @@ type ThemeContextType = {
 };
 
 const ThemeContext = createContext<ThemeContextType>({
-  primaryColor: "primary",
+  primaryColor: "neutral",
   setPrimaryColor: () => {},
-  getPrimaryColorCode: () => "#ED7424",
+  getPrimaryColorCode: () => "#6B7280",
 });
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [primaryColor, setPrimaryColor] = useState("primary");
+  const [primaryColor, setPrimaryColor] = useState("neutral");
 
   const getPrimaryColorCode = () => {
     return (
       themeData.themes.find((theme) => theme.code === primaryColor)?.colors[
         "primary-500"
-      ] || "#ED7424"
+      ] || "#6B7280"
     );
   };
 

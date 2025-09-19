@@ -65,7 +65,7 @@ const CourseListHeader = ({
         <div className="flex items-center relative h-6 sm:h-8 lg:h-10 w-16 sm:w-20 lg:w-24">
           {logoLoading && (
             <div
-              className="absolute inset-0 bg-gray-200 rounded-md border border-gray-200 flex items-center justify-center text-gray-400 text-xs"
+              className="absolute inset-0 bg-gray-200 flex items-center justify-center text-gray-400 text-xs"
               aria-label="Loading logo"
             >
               Loading...
@@ -75,7 +75,7 @@ const CourseListHeader = ({
             <img
               src={imgUrl}
               alt={`logo`}
-              className={`h-full w-full object-contain rounded-md border border-gray-200 ${
+              className={`h-full w-full object-contain rounded-md ${
                 logoLoading ? "opacity-0" : "opacity-100"
               }`}
             />

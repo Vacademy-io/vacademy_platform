@@ -657,7 +657,7 @@ export function ModularDynamicSignupContainer({
       <SignupStep delay={0.95}>
         <div className="text-center text-xs text-gray-500">
           <p>
-            By signing up, you agree to our{" "}
+            I agree to{" "}
             <motion.button
               whileHover={{ scale: 1.02 }}
               onClick={async () => {
@@ -680,7 +680,7 @@ export function ModularDynamicSignupContainer({
               }}
               className="text-gray-700 hover:text-gray-900 font-medium underline cursor-pointer"
             >
-              Terms of Service
+              terms and conditions
             </motion.button>
             {" "}and{" "}
             <motion.button

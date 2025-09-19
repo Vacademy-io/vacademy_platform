@@ -24,9 +24,10 @@ import { useModulesWithChaptersStore } from "@/stores/study-library/use-modules-
 import FeedbackPage from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/FeedbackPage";
 import { MyButton } from "@/components/design-system/button";
 import { FiEdit } from "react-icons/fi";
-import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
-import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
+import { Preferences } from "@capacitor/preferences";
+import { BatchForSessionType } from "@/stores/study-library/institute-schema";
+import { getPublicUrl } from "@/services/upload_file";
 
 interface ChapterSearchParams {
     courseId: string;
@@ -52,7 +53,7 @@ export const Route = createFileRoute(
 });
 
 function Slides() {
-    const { courseId, subjectId, moduleId, chapterId, slideId } =
+    const { courseId, subjectId, moduleId, chapterId, slideId, sessionId } =
         Route.useSearch();
 
     const { open } = useSidebar();
@@ -102,7 +103,7 @@ function Slides() {
 
             setActiveItem(slidesWithFeedback[0]);
         }
-    }, [slides, slideId]);
+    }, [slides, slideId, setActiveItem, setItems]);
 
     const handleSubjectRoute = () => {
         navigate({
@@ -121,6 +122,9 @@ function Slides() {
     const [moduleName, setModuleName] = useState("");
     const [chapterName, setChapterName] = useState("");
     const [subjectName, setSubjectName] = useState("");
+    const [courseName, setCourseName] = useState("");
+    const [levelName, setLevelName] = useState("");
+    const [instituteLogoUrl, setInstituteLogoUrl] = useState<string>("");
     const truncatedChapterName = truncateString(chapterName || "", 12);
 
     useEffect(() => {
@@ -129,7 +133,77 @@ function Slides() {
             getChapterName(chapterId, modulesWithChaptersData) || ""
         );
         setSubjectName(getSubjectName(subjectId, studyLibraryData) || "");
-    }, [modulesWithChaptersData, studyLibraryData]);
+    }, [chapterId, moduleId, subjectId, modulesWithChaptersData, studyLibraryData]);
+
+    // Get course and level names, and institute logo
+    useEffect(() => {
+        const getCourseAndLevelInfo = async () => {
+            try {
+                // Get institute details first for logo
+                const instituteData = await Preferences.get({ key: "InstituteDetails" });
+                if (instituteData.value) {
+                    const institute = JSON.parse(instituteData.value);
+                    
+                    // Get institute logo
+                    if (institute.institute_logo_file_id) {
+                        try {
+                            const logoUrl = await getPublicUrl(institute.institute_logo_file_id);
+                            if (logoUrl) {
+                                setInstituteLogoUrl(logoUrl);
+                            }
+                        } catch {
+                            // Silently handle logo loading error
+                        }
+                    }
+                    
+                    // Try to find course info in institute batches_for_sessions
+                    if (institute.batches_for_sessions && Array.isArray(institute.batches_for_sessions)) {
+                        
+                        // Try multiple matching strategies
+                        let matchingBatch = institute.batches_for_sessions.find((batch: BatchForSessionType) => 
+                            batch.id === sessionId
+                        );
+                        
+                        if (!matchingBatch) {
+                            matchingBatch = institute.batches_for_sessions.find((batch: BatchForSessionType) => 
+                                batch.package_dto?.id === courseId
+                            );
+                        }
+                        
+                        // If still no match, use the first available batch
+                        if (!matchingBatch && institute.batches_for_sessions.length > 0) {
+                            matchingBatch = institute.batches_for_sessions[0];
+                        }
+                        
+                        if (matchingBatch) {
+                            const courseNameFromBatch = matchingBatch.package_dto?.package_name || "";
+                            const levelNameFromBatch = matchingBatch.level?.level_name || "";
+                            setCourseName(courseNameFromBatch);
+                            setLevelName(levelNameFromBatch);
+                        }
+                    }
+                }
+                
+                // Also try sessionList as fallback
+                const sessionListData = await Preferences.get({ key: "sessionList" });
+                if (sessionListData.value && !courseName && !levelName) {
+                    const sessionData = JSON.parse(sessionListData.value);
+                    const sessions = Array.isArray(sessionData) ? sessionData : [sessionData];
+                    
+                    if (sessions.length > 0) {
+                        const firstSession = sessions[0];
+                        setCourseName(firstSession.package_dto?.package_name || "");
+                        setLevelName(firstSession.level?.level_name || "");
+                    }
+                }
+                
+            } catch {
+                // Silently handle errors
+            }
+        };
+        
+        getCourseAndLevelInfo();
+    }, [sessionId, courseId, courseName, levelName]);
 
     const [showLearningPath, setShowLearningPath] = useState(true);
     const [feedbackVisible, setFeedbackVisible] = useState(true);
@@ -148,10 +222,10 @@ function Slides() {
 
     const SidebarComponent = (
         <div className="relative w-full max-w-full h-full">
-            <div className="relative h-full bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20">
+            <div className="relative h-full bg-white">
                 {/* Header */}
                 <div
-                    className="absolute top-0 left-0 right-0 z-20 bg-white border-b border-gray-200 shadow-sm"
+                    className="absolute top-0 left-0 right-0 z-20 bg-white border-b border-gray-100"
                     id="slides-side-header"
                 >
                     <div
@@ -213,7 +287,7 @@ function Slides() {
                                         )}
                                     </button>
                                     <ChevronRightIcon className="w-2 h-2 sm:w-3 sm:h-3 text-gray-400" />
-                                    <span className="text-xs font-bold text-primary-600 bg-primary-50 px-1 sm:px-2 py-0.5 rounded-md">
+                                    <span className="text-xs font-bold text-primary-600 bg-primary-50 px-1 sm:px-2 py-0.5 rounded-lg">
                                         {open
                                             ? window.innerWidth < 640
                                                 ? toTitleCase(chapterName)
@@ -228,29 +302,38 @@ function Slides() {
 
                 {/* Section Title */}
                 <div
-                    className={`absolute ${showLearningPath ? "top-[70px] sm:top-[85px]" : "top-[10px] sm:top-[12px]"} left-0 right-0 z-20 flex items-center space-x-1 sm:space-x-2 p-2 sm:p-3 md:p-4 border-b border-gray-200/60 bg-gradient-to-r from-gray-50/80 to-white/80`}
+                    className={`absolute ${showLearningPath ? "top-[70px] sm:top-[85px]" : "top-[10px] sm:top-[12px]"} left-0 right-0 z-20 flex items-center space-x-1 sm:space-x-2 p-2 sm:p-3 md:p-4 border-b border-gray-100 bg-gray-50`}
                 >
-                    <div className="p-1 sm:p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-md shadow-sm">
-                        <GraduationCap
-                            size={14}
-                            className="sm:w-4 sm:h-4 text-primary-600"
-                            weight="duotone"
-                        />
+                    <div className="p-1 sm:p-1.5 bg-primary-100 rounded-lg flex items-center justify-center min-w-[28px] min-h-[28px] sm:min-w-[32px] sm:min-h-[32px]">
+                        {instituteLogoUrl ? (
+                            <img
+                                src={instituteLogoUrl}
+                                alt="Institute Logo"
+                                className="max-w-full max-h-full object-contain"
+                                style={{ width: 'auto', height: 'auto', maxWidth: '24px', maxHeight: '24px' }}
+                            />
+                        ) : (
+                            <GraduationCap
+                                size={14}
+                                className="sm:w-4 sm:h-4 text-primary-600"
+                                weight="duotone"
+                            />
+                        )}
                     </div>
                     <div className="flex-1 min-w-0">
                         <h3 className="text-xs sm:text-sm font-bold text-gray-900 truncate">
-                            {getTerminology(
-                                ContentTerms.Chapters,
-                                SystemTerms.Chapters
-                            ).toLocaleLowerCase()}{" "}
-                            {getTerminology(
-                                ContentTerms.Slides,
-                                SystemTerms.Slides
-                            ).toLocaleLowerCase()}
+                            {courseName ? toTitleCase(courseName) : "Loading Course..."}
                         </h3>
-                        <p className="text-xs text-gray-600">
-                            Interactive learning materials
-                        </p>
+                        {levelName && levelName.toLowerCase() !== "default" && (
+                            <p className="text-xs text-gray-600">
+                                {toTitleCase(levelName)}
+                            </p>
+                        )}
+                        {!levelName && (
+                            <p className="text-xs text-gray-600">
+                                Loading Level...
+                            </p>
+                        )}
                     </div>
                 </div>
 
@@ -267,7 +350,7 @@ function Slides() {
 
                 {/* Feedback + Progress */}
                 {slides && slides.length > 0 && (
-                    <div className="absolute bottom-0 left-0 right-0 z-20 bg-white border-t border-gray-200 shadow-sm">
+                    <div className="absolute bottom-0 left-0 right-0 z-20 bg-white border-t border-gray-100">
                         <div
                             className={`${open ? "px-3 sm:px-4" : "px-2 sm:px-3"} pt-3`}
                         >
@@ -319,22 +402,18 @@ function Slides() {
                             )}
 
                             {/* Progress */}
-                            <div className="relative p-3 border border-gray-200/60 rounded-md shadow-sm animate-fade-in-up">
+                            <div className="relative p-3 border border-gray-200 rounded-lg bg-gray-50">
                                 <div className="relative flex items-center justify-between">
                                     <div className="flex items-center space-x-2">
                                         <div className="w-2 h-2 bg-primary-500 rounded-full animate-pulse" />
                                         <span className="text-xs font-semibold text-gray-700">
-                                            {getTerminology(
-                                                ContentTerms.Chapters,
-                                                SystemTerms.Chapters
-                                            ).toLocaleLowerCase()}
                                             Progress
                                         </span>
                                     </div>
                                     <div className="flex items-center space-x-2">
                                         <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                                             <div
-                                                className="h-full bg-gradient-to-r from-primary-400 to-primary-600 rounded-full"
+                                                className="h-full bg-primary-500 rounded-full"
                                                 style={{
                                                     width: `${calculateOverallCompletion(slides)}%`,
                                                 }}
@@ -355,76 +434,85 @@ function Slides() {
     );
 
     const { setNavHeading } = useNavHeadingStore();
-    const heading = (
-        <div className="flex items-center gap-2 sm:gap-3 w-full min-w-0">
-            <button
-                onClick={() => window.history.back()}
-                className="p-1 sm:p-1.5 rounded-lg hover:bg-gray-100 flex-shrink-0"
-            >
-                <CaretLeft className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
-            </button>
-            <div className="flex items-center space-x-1 sm:space-x-2 min-w-0 flex-1">
-                <div className="p-0.5 sm:p-1 bg-gradient-to-br from-primary-100 to-primary-200 rounded-md shadow-sm flex-shrink-0">
-                    <BookOpen
-                        size={12}
-                        className="sm:w-3.5 sm:h-3.5 text-primary-600"
-                        weight="duotone"
-                    />
-                </div>
-                <div className="min-w-0 flex-1">
-                    {/* Mobile: Stack vertically, Desktop: Single line */}
-                    <div className="block sm:hidden">
-                        <h1 className="text-xs font-bold text-gray-900 truncate mb-0.5">
-                            {truncateString(
-                                toTitleCase(chapterName || "Study Materials"),
-                                25
-                            )}
-                        </h1>
-                        <p className="text-xs text-gray-600 truncate">
-                            {subjectName && moduleName
-                                ? `${truncateString(
-                                      toTitleCase(subjectName),
-                                      15
-                                  )} • ${truncateString(toTitleCase(moduleName), 15)}`
-                                : "Learning Path"}
-                        </p>
+
+    useEffect(() => {
+        const heading = (
+            <div className="flex items-center gap-2 sm:gap-3 w-full min-w-0">
+                <button
+                    onClick={() => window.history.back()}
+                    className="p-1 sm:p-1.5 rounded-lg hover:bg-gray-100 flex-shrink-0"
+                >
+                    <CaretLeft className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
+                </button>
+                <div className="flex items-center space-x-1 sm:space-x-2 min-w-0 flex-1">
+                    <div className="p-0.5 sm:p-1 bg-primary-50 rounded-lg flex-shrink-0 flex items-center justify-center min-w-[32px] min-h-[32px] sm:min-w-[40px] sm:min-h-[40px]">
+                        {instituteLogoUrl ? (
+                            <img
+                                src={instituteLogoUrl}
+                                alt="Institute Logo"
+                                className="max-w-full max-h-full object-contain"
+                                style={{ width: 'auto', height: 'auto', maxWidth: '28px', maxHeight: '28px' }}
+                            />
+                        ) : (
+                            <BookOpen
+                                size={16}
+                                className="sm:w-5 sm:h-5 text-primary-600"
+                                weight="fill"
+                            />
+                        )}
                     </div>
-                    <div className="hidden sm:block">
-                        <h1 className="text-sm font-bold text-gray-900 truncate">
-                            {subjectName && moduleName && chapterName
-                                ? `${truncateString(
-                                      toTitleCase(subjectName),
-                                      window.innerWidth < 768
-                                          ? 8
-                                          : window.innerWidth < 1024
-                                            ? 12
-                                            : 18
-                                  )} • ${truncateString(
-                                      toTitleCase(moduleName),
-                                      window.innerWidth < 768
-                                          ? 8
-                                          : window.innerWidth < 1024
-                                            ? 12
-                                            : 18
-                                  )} • ${truncateString(
-                                      toTitleCase(chapterName),
-                                      window.innerWidth < 768
-                                          ? 10
-                                          : window.innerWidth < 1024
-                                            ? 15
-                                            : 25
-                                  )}`
-                                : "Study Materials"}
-                        </h1>
+                    <div className="min-w-0 flex-1">
+                        {/* Mobile: Stack vertically, Desktop: Single line */}
+                        <div className="block sm:hidden">
+                            <h1 className="text-xs font-bold text-gray-900 truncate mb-0.5">
+                                {truncateString(
+                                    toTitleCase(chapterName || "Study Materials"),
+                                    25
+                                )}
+                            </h1>
+                            <p className="text-xs text-gray-600 truncate">
+                                {subjectName && moduleName
+                                    ? `${truncateString(
+                                          toTitleCase(subjectName),
+                                          15
+                                      )} • ${truncateString(toTitleCase(moduleName), 15)}`
+                                    : "Learning Path"}
+                            </p>
+                        </div>
+                        <div className="hidden sm:block">
+                            <h1 className="text-sm font-bold text-gray-900 truncate">
+                                {subjectName && moduleName && chapterName
+                                    ? `${truncateString(
+                                          toTitleCase(subjectName),
+                                          window.innerWidth < 768
+                                              ? 8
+                                              : window.innerWidth < 1024
+                                                ? 12
+                                                : 18
+                                      )} • ${truncateString(
+                                          toTitleCase(moduleName),
+                                          window.innerWidth < 768
+                                              ? 8
+                                              : window.innerWidth < 1024
+                                                ? 12
+                                                : 18
+                                      )} • ${truncateString(
+                                          toTitleCase(chapterName),
+                                          window.innerWidth < 768
+                                              ? 10
+                                              : window.innerWidth < 1024
+                                                ? 15
+                                                : 25
+                                      )}`
+                                    : "Study Materials"}
+                            </h1>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-    );
-
-    useEffect(() => {
+        );
         setNavHeading(heading);
-    }, [subjectName, moduleName, chapterName]);
+    }, [setNavHeading, subjectName, moduleName, chapterName, instituteLogoUrl]);
 
     // Enforce display settings in slides side view
     useEffect(() => {
@@ -446,8 +534,6 @@ function Slides() {
                 document.querySelectorAll<HTMLButtonElement>(
                     "button:has(> span:text('Feedback'))"
                 );
-            // Fallback: hide the first MyButton in footer if selector unsupported
-            const footer = document.getElementById("slides-side-footer");
             if (!feedbackVisible) {
                 // hide feedback section by skipping setting activeItem to feedback and hiding button
                 if (feedbackButtons && feedbackButtons.length) {

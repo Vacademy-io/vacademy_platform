@@ -1,7 +1,7 @@
 import { Steps } from "@phosphor-icons/react";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
-import { formatTotalCourseDuration, SlideCountEntry } from "@/utils/courseTime";
+import { formatTotalCourseDuration, SlideCountEntry, getBackendCourseDuration } from "@/utils/courseTime";
 import { ReactNode } from "react";
 
 type LevelOption = {
@@ -15,6 +15,8 @@ export type CourseStatsSidebarProps = {
   levelOptions: LevelOption[];
   selectedLevel: string;
   slideCounts?: SlideCountEntry[];
+  // NEW: Backend timing data (takes priority over slideCounts)
+  backendReadTimeMinutes?: number;
   authorName?: string;
   ratingsSlot?: ReactNode;
   ctaSlot?: ReactNode;
@@ -25,6 +27,7 @@ export const CourseStatsSidebar = ({
   levelOptions,
   selectedLevel,
   slideCounts,
+  backendReadTimeMinutes,
   authorName,
   ratingsSlot,
   ctaSlot,
@@ -34,15 +37,20 @@ export const CourseStatsSidebar = ({
     return text.charAt(0).toUpperCase() + text.slice(1);
   };
 
-  const totalDuration = formatTotalCourseDuration(slideCounts || []);
+  // NEW: Use backend time if available, fallback to slide count calculation
+  const totalDuration = (() => {
+    // Priority 1: Backend read_time_in_minutes
+    if (typeof backendReadTimeMinutes === "number" && !Number.isNaN(backendReadTimeMinutes)) {
+      return getBackendCourseDuration(backendReadTimeMinutes);
+    }
+    
+    // Priority 2: Fallback to slide count calculation
+    return formatTotalCourseDuration(slideCounts || []);
+  })();
 
   return (
     <div className="sticky top-4 space-y-4">
-      {ctaSlot && (
-        <div>
-          {ctaSlot}
-        </div>
-      )}
+      
       <div className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group">
         <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
         <div className="absolute top-0 right-0 w-12 h-12 bg-primary-100/20 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3"></div>
@@ -87,6 +95,11 @@ export const CourseStatsSidebar = ({
               <span className="text-xs font-medium text-gray-700">Course Time</span>
               <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">{totalDuration}</span>
             </div>
+            {ctaSlot && (
+        <div>
+          {ctaSlot}
+        </div>
+      )}
           </div>
         </div>
       </div>

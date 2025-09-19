@@ -36,6 +36,13 @@ interface CourseWithSessionsType {
         tags: string;
         course_depth: number;
         course_html_description: string;
+        instructors?: Array<{
+            id: string;
+            username?: string;
+            email: string;
+            full_name?: string;
+            name?: string;
+        }>;
     };
     sessions: Array<{
         level_with_details: Array<{
@@ -158,7 +165,11 @@ export const transformApiDataToCourseData = async (
             courseBannerMediaId,
             courseMediaId: courseMediaPreview,
             courseHtmlDescription: apiData.course.course_html_description,
-            instructors: [], // This should be populated from your API if available
+            instructors: apiData.course.instructors?.map((instructor) => ({
+                id: instructor.id,
+                email: instructor.email,
+                name: instructor.full_name || instructor.name || instructor.username || 'Unknown Instructor',
+            })) || [],
             sessions: apiData.sessions.map((session) => ({
                 levelDetails: session.level_with_details.map((level) => {
                     // For course structure 4, add a default subject if no subjects exist

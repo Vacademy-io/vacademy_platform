@@ -1,11 +1,12 @@
-import { FileText, PresentationChart, Folder, ChalkboardTeacher } from "phosphor-react";
+import { FileText, PresentationChart, Folder, ChalkboardTeacher, TrendUp } from "phosphor-react";
 import { Steps } from "@phosphor-icons/react";
 import { useEffect } from "react";
 import { MyButton } from "@/components/design-system/button";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { CourseDetailsRatingsComponent } from "./course-details-ratings-page";
-import { formatTotalCourseDuration, SlideCountEntry } from "@/utils/courseTime";
+import { formatTotalCourseDuration, SlideCountEntry, getBackendCourseDuration } from "@/utils/courseTime";
+import { ProgressBar } from "@/components/ui/custom-progress-bar";
 
 interface LevelOption {
     _id: string;
@@ -72,8 +73,11 @@ interface CourseSidebarProps {
     enrolledSessions: EnrolledSession[];
     courseId: string;
     primaryInstructorName?: string;
+    // NEW: Backend timing data (takes priority over slide counts)
+    backendReadTimeMinutes?: number;
     paymentType?: string | null;
     packageSessionIdForCurrentLevel?: string | null;
+    percentageCompleted?: number;
     onEnrollmentClick: () => void;
     onRatingsLoadingChange: (loading: boolean) => void;
 }
@@ -96,12 +100,12 @@ export const CourseSidebar = ({
     enrolledSessions,
     courseId,
     primaryInstructorName,
+    backendReadTimeMinutes,
     packageSessionIdForCurrentLevel,
+    percentageCompleted,
     onEnrollmentClick,
     onRatingsLoadingChange,
 }: CourseSidebarProps) => {
-    if (!hasRightSidebar) return null;
-
     const capitalizeFirst = (text: string): string => {
         if (!text) return text;
         return text.charAt(0).toUpperCase() + text.slice(1);
@@ -115,13 +119,20 @@ export const CourseSidebar = ({
             enrolledSession.level.id === selectedLevel
     );
 
-    // Compute total duration from either provided raw data or processed counts as fallback
+    // NEW: Compute total duration with backend priority
     const totalDuration = (() => {
+        // Priority 1: Backend read_time_in_minutes
+        if (typeof backendReadTimeMinutes === "number" && !Number.isNaN(backendReadTimeMinutes)) {
+            return getBackendCourseDuration(backendReadTimeMinutes);
+        }
+        
+        // Priority 2: Slide count data from API
         const raw = (slideCountQuery as unknown as { data?: SlideCountEntry[] })?.data;
         if (raw && Array.isArray(raw)) {
             return formatTotalCourseDuration(raw);
         }
-        // fallback: map processedSlideCounts into SlideCountEntry with null minutes
+        
+        // Priority 3: Fallback to processed slide counts
         const mapped: SlideCountEntry[] = (processedSlideCounts || []).map((c) => ({
             slide_count: c.slide_count,
             total_read_time_minutes: null,
@@ -145,6 +156,8 @@ export const CourseSidebar = ({
         // We intentionally depend on these to log when inputs change
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [primaryInstructorName, instructorsCount, slideCountQuery?.isLoading, slideCountQuery?.error, (slideCountQuery as unknown as { data?: SlideCountEntry[] })?.data, processedSlideCounts, totalDuration]);
+
+    if (!hasRightSidebar) return null;
 
     return (
         <div className="lg:col-span-1">
@@ -361,6 +374,60 @@ export const CourseSidebar = ({
                             )}
                     </div>
                 </div>
+
+                {/* Course Progress Section - Only show for PROGRESS tab */}
+                {selectedTab === "PROGRESS" && typeof percentageCompleted === "number" && (
+                    <div
+                        className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
+                        style={{ animationDelay: "0.9s" }}
+                    >
+                        {/* Background gradient overlay */}
+                        <div className="absolute inset-0 bg-gradient-to-br from-green-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
+
+                        {/* Floating orb effect */}
+                        <div className="absolute top-0 right-0 w-12 h-12 bg-green-100/20 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3"></div>
+
+                        <div className="relative">
+                            {/* Header */}
+                            <div className="flex items-center space-x-2 mb-4">
+                                <div className="p-1.5 bg-gradient-to-br from-green-100 to-green-200 rounded-lg shadow-sm">
+                                    <TrendUp
+                                        size={18}
+                                        className="text-green-600"
+                                        weight="duotone"
+                                    />
+                                </div>
+                                <h2 className="text-base font-bold text-gray-900">
+                                    Course Progress
+                                </h2>
+                            </div>
+
+                            {/* Progress Content */}
+                            <div className="space-y-3">
+                                {/* Progress Bar */}
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-medium text-gray-700">Completion</span>
+                                        <span className="text-xs font-bold text-green-600">
+                                            {Math.min(percentageCompleted, 100).toFixed(1)}%
+                                        </span>
+                                    </div>
+                                    <ProgressBar 
+                                        value={Math.min(percentageCompleted, 100)} 
+                                        className="h-3"
+                                    />
+                                </div>
+
+                                {/* Certificate Message */}
+                                <div className="p-2.5 bg-gradient-to-r from-amber-50 to-yellow-50 rounded-lg border border-amber-200">
+                                    <p className="text-xs text-amber-700 font-medium text-center">
+                                        Certificate will be generated after course completion
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Ratings & Reviews */}
                 {packageSessionIdForCurrentLevel && (

@@ -368,6 +368,8 @@ const EnrollByInvite = () => {
               currency: defaultPaymentPlan.currency,
               description: defaultPaymentPlan.description,
               duration: duration,
+              // Include referral option for free plans
+              referral_option: defaultPaymentPlan.referral_option,
               // features: [],
             };
             setEnrollmentData((prev) => ({

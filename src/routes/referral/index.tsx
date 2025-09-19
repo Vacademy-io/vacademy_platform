@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
-  TableCell,
   TableHead,
   TableHeader,
   TableRow,
@@ -18,6 +17,9 @@ import { Mail } from "lucide-react";
 import { Copy, Plus, X } from "phosphor-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useGetCoupons } from "./-services/get-coupon";
+import { isNullOrEmptyOrUndefined } from "@/lib/utils";
+import { useGetEnrollInvites } from "./-services/get-enroll-invites";
 
 export const Route = createFileRoute("/referral/")({
   component: () => {
@@ -32,20 +34,13 @@ export const Route = createFileRoute("/referral/")({
 function ReferralComponent() {
   const [emailInput, setEmailInput] = useState("");
   const [emailList, setEmailList] = useState(["user@gmail.com"]);
+  const { data: coupons, isLoading, isError } = useGetCoupons();
+  const { data: invites } = useGetEnrollInvites();
+  console.log("Invites data:", invites);
   const { setNavHeading } = useNavHeadingStore();
   useEffect(() => {
     setNavHeading("My Referrals");
   }, []);
-
-  const referralLink = "shreyashjain/referral/bhdshad";
-  const referralCode = "AD123456";
-
-  const referrals = [
-    { date: "01/06/2025", memberName: "Aarav Sharma", referralNumber: 1 },
-    { date: "01/06/2025", memberName: "Aarav Sharma", referralNumber: 2 },
-    { date: "01/06/2025", memberName: "Aarav Sharma", referralNumber: 3 },
-    { date: "01/06/2025", memberName: "Aarav Sharma", referralNumber: 4 },
-  ];
 
   const copyToClipboard = (text: string, type: string) => {
     navigator.clipboard.writeText(text);
@@ -74,6 +69,13 @@ function ReferralComponent() {
       }`
     );
   };
+
+  if (isLoading) return <div>Loading...</div>;
+  if (isError) return <div>Error loading coupons</div>;
+  if (isNullOrEmptyOrUndefined(coupons))
+    return <div>No coupon code available</div>;
+  const referralLink = "shreyashjain/referral/bhdshad";
+  const referralCode = coupons[0].code;
 
   return (
     <div className="min-h-screen ">
@@ -256,7 +258,7 @@ function ReferralComponent() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {referrals.map((referral, index) => (
+                  {/* {referrals.map((referral, index) => (
                     <TableRow key={index}>
                       <TableCell className="font-medium">
                         {referral.date}
@@ -270,7 +272,7 @@ function ReferralComponent() {
                         </Badge>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  ))} */}
                 </TableBody>
               </Table>
             </div>

@@ -9,12 +9,13 @@ import { useState } from "react";
 // Common base interface
 interface Benefit {
   benefitType: string;
-  benefitValue: any;
+  benefitValue: Record<string, unknown>;
+  description?: string;
 }
 
 // Flat discount interface
 export interface FlatBenefit extends Benefit {
-  benefitType: "FLAT";
+  benefitType: "FLAT_DISCOUNT";
   benefitValue: {
     amount: number;
   };
@@ -34,9 +35,38 @@ export interface PercentageDiscountBenefit extends Benefit {
 export interface FreeMembershipDaysBenefit extends Benefit {
   benefitType: "FREE_MEMBERSHIP_DAYS";
   benefitValue: {
-    free_days: number;
+    days: number;
   };
 }
+
+// Content benefit interface
+export interface ContentBenefit extends Benefit {
+  benefitType: "CONTENT";
+  benefitValue: {
+    deliveryMediums: string[];
+    templateId?: string;
+    subject?: string;
+    body?: string;
+    fileIds?: string[];
+    contentUrl?: string;
+  };
+}
+
+// Points benefit interface
+export interface PointsBenefit extends Benefit {
+  benefitType: "POINTS";
+  benefitValue: {
+    points: number;
+  };
+}
+
+// Union type for all benefits
+export type ReferralBenefit =
+  | FlatBenefit
+  | PercentageDiscountBenefit
+  | FreeMembershipDaysBenefit
+  | ContentBenefit
+  | PointsBenefit;
 
 export // Referral Code Component
 const ReferralCodeComponent = ({

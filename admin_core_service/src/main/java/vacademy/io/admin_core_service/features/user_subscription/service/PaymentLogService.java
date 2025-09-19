@@ -106,7 +106,7 @@ public class PaymentLogService {
             if (i < maxRetries - 1) {
                 try {
                     log.warn("Payment log {} not found. Retrying in 1 second...", paymentLogId);
-                    Thread.sleep(1000); // Wait for 1 second
+                    Thread.sleep(2000); // Wait for 1 second
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     throw new RuntimeException("Thread interrupted during payment log retry", e);

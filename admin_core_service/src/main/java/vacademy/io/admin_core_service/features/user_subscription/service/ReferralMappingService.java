@@ -19,7 +19,7 @@ public class ReferralMappingService {
     private final ReferralMappingRepository referralMappingRepository;
 
 
-    private ReferralBenefitLogService referralBenefitLogService;
+    private final ReferralBenefitLogService referralBenefitLogService;
 
     public ReferralMapping createMapping(String referrerUserId,
                                          String refereeUserId,

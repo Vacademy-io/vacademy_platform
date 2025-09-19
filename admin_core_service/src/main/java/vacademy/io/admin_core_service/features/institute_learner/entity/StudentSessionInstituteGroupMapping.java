@@ -62,5 +62,7 @@ public class StudentSessionInstituteGroupMapping {
     @JoinColumn(name = "destination_package_session_id", referencedColumnName = "id")
     private PackageSession destinationPackageSession;
 
+    @Column(name = "user_plan_id")
     private String userPlanId;
+
 }

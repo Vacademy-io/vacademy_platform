@@ -37,5 +37,9 @@ public class TemplateUpdateRequest {
 
     private Boolean canDelete;
 
+    private String status; // ACTIVE, INACTIVE, DRAFT, etc.
+
+    private String templateCategory; // NOTIFICATION, MARKETING, SYSTEM, etc.
+
     private String updatedBy;
 }

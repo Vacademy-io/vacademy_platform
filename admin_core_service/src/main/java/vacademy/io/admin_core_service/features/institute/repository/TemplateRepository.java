@@ -71,4 +71,28 @@ public interface TemplateRepository extends JpaRepository<Template, String> {
     // Check if template name exists for institute excluding specific template ID
     @Query("SELECT COUNT(t) > 0 FROM Template t WHERE t.instituteId = :instituteId AND t.name = :name AND t.id != :excludeId")
     boolean existsByInstituteIdAndNameAndIdNot(@Param("instituteId") String instituteId, @Param("name") String name, @Param("excludeId") String excludeId);
+
+    // Find templates by institute ID and status
+    List<Template> findByInstituteIdAndStatus(String instituteId, String status);
+
+    // Find templates by institute ID and template category
+    List<Template> findByInstituteIdAndTemplateCategory(String instituteId, String templateCategory);
+
+    // Find templates by institute ID, status, and template category
+    List<Template> findByInstituteIdAndStatusAndTemplateCategory(String instituteId, String status, String templateCategory);
+
+    // Find templates by status
+    List<Template> findByStatus(String status);
+
+    // Find templates by template category
+    List<Template> findByTemplateCategory(String templateCategory);
+
+    // Count templates by institute ID and status
+    long countByInstituteIdAndStatus(String instituteId, String status);
+
+    // Count templates by institute ID and template category
+    long countByInstituteIdAndTemplateCategory(String instituteId, String templateCategory);
+
+    // Count templates by institute ID, status, and template category
+    long countByInstituteIdAndStatusAndTemplateCategory(String instituteId, String status, String templateCategory);
 }

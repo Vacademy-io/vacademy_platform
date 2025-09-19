@@ -1,15 +1,17 @@
 package vacademy.io.admin_core_service.features.user_subscription.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
 
-import java.sql.Timestamp; // Changed from java.sql.Timestamp
+import java.sql.Timestamp;
 import java.util.Date;
-import java.util.List;
 
 // You might need a custom AttributeConverter for List<String> to JSONB for robust handling
 // For simplicity in the entity definition, I'll represent it as a String if stored as JSONB string,

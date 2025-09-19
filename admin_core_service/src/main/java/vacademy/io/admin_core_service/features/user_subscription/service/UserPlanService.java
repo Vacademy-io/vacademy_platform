@@ -1,28 +1,24 @@
 package vacademy.io.admin_core_service.features.user_subscription.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.service.PackageSessionEnrollInviteToPaymentOptionService;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerBatchEnrollService;
-import vacademy.io.admin_core_service.features.user_subscription.entity.AppliedCouponDiscount;
-import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
-import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
-import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
-import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
-import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
-import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
-import vacademy.io.admin_core_service.features.user_subscription.dto.UserPlanDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.UserPlanDTO;
+import vacademy.io.admin_core_service.features.user_subscription.entity.*;
+import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
+import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
+import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 
 import java.util.List;
 import java.util.stream.Collectors;
-import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 
 @Service
 public class UserPlanService {
@@ -36,6 +32,7 @@ public class UserPlanService {
     private PackageSessionEnrollInviteToPaymentOptionService packageSessionEnrollInviteToPaymentOptionService;
 
     @Autowired
+    @Lazy
     public LearnerBatchEnrollService learnerBatchEnrollService;
 
     @Autowired

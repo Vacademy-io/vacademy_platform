@@ -8,7 +8,7 @@ import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOpti
 
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.List; // To handle the collection of PaymentPlan
+import java.util.List;
 import java.util.Objects;
 
 @AllArgsConstructor

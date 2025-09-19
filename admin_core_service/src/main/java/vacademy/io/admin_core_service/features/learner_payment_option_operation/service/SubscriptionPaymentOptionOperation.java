@@ -3,22 +3,17 @@ package vacademy.io.admin_core_service.features.learner_payment_option_operation
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
-import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDetails;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerBatchEnrollService;
-import vacademy.io.admin_core_service.features.notification_service.service.PaymentNotificatonService;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.payments.service.PaymentService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
-import vacademy.io.admin_core_service.features.user_subscription.entity.UserInstitutePaymentGatewayMapping;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
-import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum;
-import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
-import vacademy.io.admin_core_service.features.user_subscription.service.ReferralHandler;
+import vacademy.io.admin_core_service.features.user_subscription.handler.ReferralBenefitOrchestrator;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
@@ -44,19 +39,19 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
     private PackageSessionRepository packageSessionRepository;
 
     @Autowired
-    private ReferralHandler referralHandler;
+    private ReferralBenefitOrchestrator referralBenefitOrchestrator;
 
     @Autowired
     private AuthService authService;
 
     @Override
     public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
-            LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
-            String instituteId,
-            EnrollInvite enrollInvite,
-            PaymentOption paymentOption,
-            UserPlan userPlan,
-            Map<String, Object> extraData) {
+                                                         LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
+                                                         String instituteId,
+                                                         EnrollInvite enrollInvite,
+                                                         PaymentOption paymentOption,
+                                                         UserPlan userPlan,
+                                                         Map<String, Object> extraData) {
         String learnerSessionStatus = null;
         if (paymentOption.isRequireApproval()) {
             learnerSessionStatus = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();
@@ -84,15 +79,13 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
         }
         learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setAmount(paymentPlan.getActualPrice());
         // Process referral request if present
-        List<PaymentLogLineItemDTO> referralLineItems = new ArrayList<>();
         if (learnerPackageSessionsEnrollDTO.getReferRequest() != null) {
-            referralHandler.processReferralRequest(
-                learnerPackageSessionsEnrollDTO.getReferRequest(),
-                learnerPackageSessionsEnrollDTO,
-                userPlan,
-                user,
-                authService.getUsersFromAuthServiceByUserIds(List.of(learnerPackageSessionsEnrollDTO.getReferRequest().getReferrerUserId())).get(0),
-                learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest()
+            referralBenefitOrchestrator.processAllBenefits(
+                    learnerPackageSessionsEnrollDTO,
+                    paymentOption,
+                    userPlan,
+                    user,
+                    instituteId
             );
         }
 
@@ -119,8 +112,8 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
     }
 
     private List<InstituteStudentDetails> buildInstituteStudentDetails(String instituteId,
-            List<String> packageSessionIds,
-            Integer accessDays, String learnerSessionStatus, UserPlan userPlan) {
+                                                                       List<String> packageSessionIds,
+                                                                       Integer accessDays, String learnerSessionStatus, UserPlan userPlan) {
         List<InstituteStudentDetails> detailsList = new ArrayList<>();
 
         for (String packageSessionId : packageSessionIds) {

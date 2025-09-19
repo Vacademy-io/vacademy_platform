@@ -4,8 +4,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.entity.AppliedCouponDiscount;
-import vacademy.io.admin_core_service.features.user_subscription.enums.CouponCodeSource;
-import vacademy.io.admin_core_service.features.user_subscription.enums.CouponCodeTag;
 import vacademy.io.admin_core_service.features.user_subscription.repository.AppliedCouponDiscountRepository;
 
 import java.util.List;

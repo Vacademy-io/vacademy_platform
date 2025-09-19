@@ -7,11 +7,10 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogDTO;
-import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 
 import java.time.LocalDateTime;
-import java.util.Date; // Using java.util.Date as in your original PaymentLog
-import java.util.List;
+import java.util.Date;
+
 
 @AllArgsConstructor
 @NoArgsConstructor

@@ -9,7 +9,8 @@ import vacademy.io.admin_core_service.features.notification.dto.NotificationToUs
 import vacademy.io.admin_core_service.features.notification_service.enums.CommunicationType;
 import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
 import vacademy.io.admin_core_service.features.notification_service.utils.ReferralsEmailBody;
-import vacademy.io.admin_core_service.features.user_subscription.dto.ContentBenefitsConfigDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.BenefitConfigDTO;
+import vacademy.io.admin_core_service.features.user_subscription.entity.ReferralMapping;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.media.dto.FileDetailsDTO;
 
@@ -26,40 +27,41 @@ public class MultiChannelDeliveryService {
     @Autowired
     private NotificationService notificationService;
 
-
     /**
      * Delivers a content benefit to the appropriate user(s) through the specified channels.
      */
-    public void deliverContent(ContentBenefitsConfigDTO.BenefitDTO benefit,
+    public void deliverContent(BenefitConfigDTO.ContentBenefitValue benefitValue, // <-- Corrected DTO
                                UserDTO referrerUser,
                                UserDTO refereeUser,
                                String instituteId,
                                List<FileDetailsDTO> fileDetails,
-                               boolean isForReferee) {
-        if (benefit == null) {
+                               boolean isForReferee,
+                               ReferralMapping referralMapping) {
+        if (benefitValue == null || benefitValue.getDeliveryMediums() == null) {
+            log.warn("Cannot deliver content, benefit details or delivery mediums are null.");
             return;
         }
 
         UserDTO targetUser = isForReferee ? refereeUser : referrerUser;
 
-        for (ContentBenefitsConfigDTO.DeliveryMedium channel : benefit.getDeliveryMediums()) {
-            switch (channel.name()) {
-                case "EMAIL":
+        for (BenefitConfigDTO.ContentBenefitValue.DeliveryMedium channel : benefitValue.getDeliveryMediums()) { // <-- Corrected DTO
+            switch (channel) {
+                case EMAIL:
                     sendEmailNotification(
-                        targetUser,
-                        referrerUser,
-                        refereeUser,
-                        instituteId,
-                        benefit.getSubject(),
-                        benefit.getBody(),
-                        isForReferee,
-                        fileDetails);
+                            targetUser,
+                            referrerUser,
+                            refereeUser,
+                            instituteId,
+                            benefitValue, // <-- Pass the whole value object
+                            isForReferee,
+                            fileDetails,
+                            referralMapping);
                     break;
-                case "WHATSAPP":
+                case WHATSAPP:
                     sendWhatsAppNotification(targetUser);
                     break;
                 default:
-                    log.warn("Unsupported delivery medium: {}", channel.name());
+                    log.warn("Unsupported delivery medium: {}", channel);
             }
         }
     }
@@ -71,38 +73,38 @@ public class MultiChannelDeliveryService {
                                        UserDTO referrerUser,
                                        UserDTO refereeUser,
                                        String instituteId,
-                                       String subject,
-                                       String body,
+                                       BenefitConfigDTO.ContentBenefitValue benefitValue, // <-- Corrected DTO
                                        boolean isForReferee,
-                                       List<FileDetailsDTO> fileDetails) {
+                                       List<FileDetailsDTO> fileDetails,
+                                       ReferralMapping referralMapping) {
 
         log.info("Preparing email for user {} via NotificationService.", targetUser.getEmail());
 
-        // Build content links
-        String contentLinks = fileDetails.stream()
-            .map(file -> "<li><a href=\"" + file.getUrl() + "\" target=\"_blank\">" + file.getFileName() + "</a></li>")
-            .collect(Collectors.joining());
+        String contentLinks = "<ul>" + fileDetails.stream()
+                .map(file -> "<li><a href=\"" + file.getUrl() + "\" target=\"_blank\">" + file.getFileName() + "</a></li>")
+                .collect(Collectors.joining()) + "</ul>";
 
-        // Select default template if body is null
         String defaultBody = isForReferee
-            ? ReferralsEmailBody.REFEREE_EMAIL_BODY
-            : ReferralsEmailBody.REFERRER_EMAIL_BODY;
+                ? ReferralsEmailBody.REFEREE_EMAIL_BODY
+                : ReferralsEmailBody.REFERRER_EMAIL_BODY;
 
-        String finalBody = (body != null && !body.isBlank()) ? body : defaultBody;
+        String finalBody = (benefitValue.getBody() != null && !benefitValue.getBody().isBlank())
+                ? benefitValue.getBody()
+                : defaultBody;
 
-        // Fill placeholders
         Map<String, String> placeholders = new HashMap<>();
-        placeholders.put("referrer_name".toUpperCase(), referrerUser.getFullName());
-        placeholders.put("referee_name".toUpperCase(), refereeUser.getFullName());
-        placeholders.put("user_name".toUpperCase(), targetUser.getUsername());
-        placeholders.put("content_links".toUpperCase(), contentLinks);
+        placeholders.put("REFERRER_NAME", referrerUser.getFullName());
+        placeholders.put("REFEREE_NAME", refereeUser.getFullName());
+        placeholders.put("USER_NAME", targetUser.getFullName());
+        placeholders.put("CONTENT_LINKS", contentLinks);
 
         NotificationDTO notificationDTO = new NotificationDTO();
         notificationDTO.setBody(finalBody);
-        notificationDTO.setSubject(subject != null ? subject : "Referral Reward");
+        notificationDTO.setSubject(benefitValue.getSubject() != null ? benefitValue.getSubject() : "You've Received a Referral Reward!");
         notificationDTO.setNotificationType(CommunicationType.EMAIL.name());
         notificationDTO.setSource("REFERRAL_BENEFIT");
-        notificationDTO.setSourceId("REFERRAL_BENEFIT");
+        notificationDTO.setSourceId(referralMapping.getId());
+
         NotificationToUserDTO notificationToUser = new NotificationToUserDTO();
         notificationToUser.setChannelId(targetUser.getEmail());
         notificationToUser.setPlaceholders(placeholders);
@@ -118,9 +120,9 @@ public class MultiChannelDeliveryService {
     }
 
     /**
-     * Placeholder for WhatsApp integration.
+     * Placeholder for future WhatsApp integration.
      */
     private void sendWhatsAppNotification(UserDTO targetUser) {
-
+        log.info("WhatsApp notification requested for user {}. Integration is pending.", targetUser.getId());
     }
 }

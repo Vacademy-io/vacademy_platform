@@ -1,88 +1,68 @@
 package vacademy.io.admin_core_service.features.user_subscription.handler;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-import vacademy.io.admin_core_service.features.common.util.JsonUtil;
-import vacademy.io.admin_core_service.features.user_subscription.dto.PercentageDiscountBenefitDTO;
-import vacademy.io.admin_core_service.features.user_subscription.dto.ReferralBenefitDTO;
-import vacademy.io.admin_core_service.features.user_subscription.entity.ReferralBenefitLogs;
+import vacademy.io.admin_core_service.features.user_subscription.dto.BenefitConfigDTO;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.entity.ReferralMapping;
 import vacademy.io.admin_core_service.features.user_subscription.entity.ReferralOption;
-import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
+import vacademy.io.admin_core_service.features.user_subscription.enums.ReferralBenefitLogsBeneficiary;
 import vacademy.io.admin_core_service.features.user_subscription.enums.ReferralBenefitType;
+import vacademy.io.admin_core_service.features.user_subscription.service.ReferralBenefitLogService;
 import vacademy.io.common.auth.dto.UserDTO;
-import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogLineItemDTO;
-import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
-
-import java.util.ArrayList;
-import java.util.List;
+import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 
 @Component
 public class PercentageDiscountHandler implements ReferralBenefitHandler {
 
     @Autowired
-    private ObjectMapper objectMapper;
+    private ReferralBenefitLogService referralBenefitLogService;
 
     @Override
-    public List<ReferralBenefitLogs> processBenefit(String benefitJson,
-            ReferralMapping referralMapping,
-            ReferralOption referralOption,
-            UserPlan userPlan,
-            UserDTO userDTO,String beneficiary,String status) {
-        List<ReferralBenefitLogs> benefitLogs = new ArrayList<>();
+    public void processBenefit(LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
+                               ReferralOption referralOption,
+                               PaymentOption paymentOption,
+                               ReferralMapping referralMapping,
+                               UserDTO refereeUser,
+                               UserDTO referrer,
+                               String instituteId,
+                               BenefitConfigDTO.BenefitDTO benefitDTO,
+                               String beneficiary,
+                               String status) {
 
-        try {
-            ReferralBenefitDTO referralBenefitDTO = JsonUtil.fromJson(benefitJson, ReferralBenefitDTO.class);
-            Object benefitValue = referralBenefitDTO.getBenefitValue();
+        BenefitConfigDTO.PercentageDiscountValue percentageDiscountValue = (BenefitConfigDTO.PercentageDiscountValue) benefitDTO.getValue();
+        double discountedAmount = getDiscountedAmount(learnerPackageSessionsEnrollDTO, percentageDiscountValue);
 
-            ReferralBenefitLogs refereeBenefitLog = ReferralBenefitLogs.builder()
-                    .userPlan(userPlan)
-                    .referralMapping(referralMapping)
-                    .userId(userDTO.getId())
-                    .benefitType(ReferralBenefitType.PERCENTAGE_DISCOUNT.name())
-                    .beneficiary(beneficiary)
-                    .benefitValue(JsonUtil.toJson(benefitValue))
-                    .status(status)
-                    .build();
+        // Apply the discount to the payment request
+        learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setAmount(
+                learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().getAmount() - discountedAmount
+        );
 
-            benefitLogs.add(refereeBenefitLog);
+        // Correctly determine the user ID for the log
+        String targetUserId = beneficiary.equalsIgnoreCase(ReferralBenefitLogsBeneficiary.REFEREE.name())
+                ? refereeUser.getId()
+                : referrer.getId();
 
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to process percentage discount benefit", e);
-        }
-
-        return benefitLogs;
+        // Create the benefit log
+        referralBenefitLogService.createLog(
+                referralMapping.getUserPlan(),
+                referralMapping,
+                targetUserId,
+                ReferralBenefitType.PERCENTAGE_DISCOUNT.name(),
+                beneficiary,
+                String.valueOf(discountedAmount),
+                status
+        );
     }
 
-    @Override
-    public PaymentLogLineItemDTO calculateDiscount(String benefitJson,
-                                                   PaymentInitiationRequestDTO paymentInitiationRequestDTO) {
-        try {
-            ReferralBenefitDTO referralBenefitDTO = JsonUtil.fromJson(benefitJson, ReferralBenefitDTO.class);
-            Object benefitValue = referralBenefitDTO.getBenefitValue();
-            PercentageDiscountBenefitDTO percentageDiscountBenefitDTO = JsonUtil.convertValue(benefitValue, PercentageDiscountBenefitDTO.class);
+    private double getDiscountedAmount(LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO, BenefitConfigDTO.PercentageDiscountValue percentageDiscountValue) {
+        double amount = learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().getAmount();
+        double discount = amount * percentageDiscountValue.getPercentage() / 100.0;
 
-            double discountAmount = (paymentInitiationRequestDTO.getAmount() * percentageDiscountBenefitDTO.getPercentage()) / 100.0;
-            if (percentageDiscountBenefitDTO.isApplyMaximumDiscountAmount()){
-                discountAmount = Math.min(discountAmount, percentageDiscountBenefitDTO.getMaxDiscountAmount());
-            }
-            paymentInitiationRequestDTO.setAmount(paymentInitiationRequestDTO.getAmount() - discountAmount);
-            PaymentLogLineItemDTO lineItem = new PaymentLogLineItemDTO();
-            lineItem.setDescription("Referral Discount (" + discountAmount + "%)");
-            lineItem.setAmount(-discountAmount);
-            lineItem.setCurrency(paymentInitiationRequestDTO.getCurrency());
-            lineItem.setType("PERCENTAGE_DISCOUNT");
-
-            return lineItem;
-
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to calculate percentage discount", e);
+        // Assuming your DTO has a max discount field
+        if (percentageDiscountValue.getMaxDiscount() != null && discount > percentageDiscountValue.getMaxDiscount()) {
+            return percentageDiscountValue.getMaxDiscount();
         }
-    }
-
-    @Override
-    public boolean supports(String benefitType) {
-        return ReferralBenefitType.PERCENTAGE_DISCOUNT.name().equals(benefitType);
+        return discount;
     }
 }

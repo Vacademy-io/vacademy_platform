@@ -437,6 +437,8 @@ export const CourseDetailsPage = () => {
         packageSessionIdForCurrentLevel,
         setPackageSessionIdForCurrentLevel,
     ] = useState<string | null>(null);
+    // NEW: Backend course timing data
+    const [backendReadTimeMinutes, setBackendReadTimeMinutes] = useState<number | null>(null);
 
 
 
@@ -456,6 +458,20 @@ export const CourseDetailsPage = () => {
                     searchParams.courseId || ""
                 );
                 setPackageSessionIdForCurrentLevel(packageSessionId);
+                
+                // NEW: Extract backend read_time_in_minutes from matching batch
+                const matchingBatch = response.data.batches_for_sessions?.find((batch: unknown) => {
+                    const typedBatch = batch as { level?: { id?: string }; session?: { id?: string }; package_dto?: { id?: string }; read_time_in_minutes?: number };
+                    return typedBatch.level?.id === selectedLevel &&
+                           typedBatch.session?.id === selectedSession &&
+                           typedBatch.package_dto?.id === (searchParams.courseId || "");
+                });
+                const typedMatchingBatch = matchingBatch as { read_time_in_minutes?: number } | undefined;
+                if (typedMatchingBatch?.read_time_in_minutes) {
+                    setBackendReadTimeMinutes(typedMatchingBatch.read_time_in_minutes);
+                } else {
+                    setBackendReadTimeMinutes(null); // Reset if no backend data
+                }
             } catch {
                 // Error handling
             } finally {
@@ -1513,12 +1529,14 @@ export const CourseDetailsPage = () => {
                                             (courseDetailsData as unknown as { course?: { created_by_name?: string; author_name?: string; owner_name?: string } })?.course?.owner_name ||
                                             primaryInstructorNameFromApi
                                         }
+                                        backendReadTimeMinutes={backendReadTimeMinutes || undefined}
                                         selectedTab={selectedTab}
                                         selectedSession={selectedSession}
                                         enrolledSessions={enrolledSessions || []}
                                         courseId={searchParams.courseId || ""}
                                         paymentType={paymentType}
                                         packageSessionIdForCurrentLevel={packageSessionIdForCurrentLevel}
+                                        percentageCompleted={completionPercentage}
                                         onEnrollmentClick={() => {
                                             // Always open enrollment dialog - it will determine the correct payment type from API data
                                             setEnrollmentDialogOpen(true);

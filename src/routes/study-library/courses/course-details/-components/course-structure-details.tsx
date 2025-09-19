@@ -9,7 +9,6 @@ import {
     Folder,
     FileText,
     PresentationChart,
-    TreeStructure,
     FolderOpen,
 } from "phosphor-react";
 import { Steps } from "@phosphor-icons/react";
@@ -50,6 +49,10 @@ import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import type { StudentCourseDetailsTabId } from "@/types/student-display-settings";
 import { PackageSessionMessages } from "@/components/announcements";
+import { 
+    calculateOverallCompletion, 
+    getStatusDetails 
+} from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/chapter-sidebar-slides";
 
 export interface Chapter {
     id: string;
@@ -154,6 +157,70 @@ export const CourseStructureDetails = ({
             if (end) return `Due ${end}`;
         }
         return "";
+    };
+
+    // Helper: calculate chapter progress from slides
+    const calculateChapterProgress = (chapterId: string): number => {
+        const slides = slidesMap[chapterId] || [];
+        return calculateOverallCompletion(slides);
+    };
+
+    // Helper: get chapter progress status
+    const getChapterProgressStatus = (chapterId: string) => {
+        const progress = calculateChapterProgress(chapterId);
+        if (progress === 0) return { status: 'not-started', color: 'text-neutral-400', bgColor: 'bg-neutral-100' };
+        if (progress >= 80) return { status: 'completed', color: 'text-green-600', bgColor: 'bg-green-100' };
+        return { status: 'in-progress', color: 'text-primary-600', bgColor: 'bg-primary-100' };
+    };
+
+    // Helper: calculate module progress from chapters
+    const calculateModuleProgress = (moduleChapters: Chapter[]): number => {
+        if (!moduleChapters || moduleChapters.length === 0) return 0;
+        
+        const totalProgress = moduleChapters.reduce((sum, chapter) => {
+            return sum + calculateChapterProgress(chapter.id);
+        }, 0);
+        
+        return Math.round(totalProgress / moduleChapters.length);
+    };
+
+    // Helper: get module progress status
+    const getModuleProgressStatus = (moduleChapters: Chapter[]) => {
+        const progress = calculateModuleProgress(moduleChapters);
+        if (progress === 0) return { status: 'not-started', color: 'text-neutral-400', bgColor: 'bg-neutral-100' };
+        if (progress >= 80) return { status: 'completed', color: 'text-green-600', bgColor: 'bg-green-100' };
+        return { status: 'in-progress', color: 'text-primary-600', bgColor: 'bg-primary-100' };
+    };
+
+    // Helper: render progress bar
+    const renderProgressBar = (percentage: number, size: 'sm' | 'md' = 'sm') => {
+        const height = size === 'sm' ? 'h-1' : 'h-2';
+        const radius = size === 'sm' ? 'rounded-full' : 'rounded';
+        
+        return (
+            <div className={`w-full ${height} bg-neutral-200 ${radius} overflow-hidden`}>
+                <div 
+                    className={`${height} bg-primary-600 ${radius} transition-all duration-300 ease-in-out`}
+                    style={{ width: `${Math.min(100, Math.max(0, percentage))}%` }}
+                />
+            </div>
+        );
+    };
+
+    // Helper: render completion badge
+    const renderCompletionBadge = (percentage: number) => {
+        if (percentage === 0) return null;
+        
+        const isCompleted = percentage >= 80;
+        const bgColor = isCompleted ? 'bg-green-100' : 'bg-primary-100';
+        const textColor = isCompleted ? 'text-green-700' : 'text-primary-700';
+        const icon = isCompleted ? '✓' : `${Math.round(percentage)}%`;
+        
+        return (
+            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${bgColor} ${textColor}`}>
+                {icon}
+            </span>
+        );
     };
     type LocalTab = { label: string; value: string };
     const [filteredTabs, setFilteredTabs] = useState<LocalTab[]>([]);
@@ -293,9 +360,9 @@ export const CourseStructureDetails = ({
                 // Get auth token
                 const token = await getTokenFromStorage(TokenKey.accessToken);
                 setAuthToken(token || "");
-                    } catch (error) {
-            // Silent error handling
-        }
+                } catch {
+                    // Silent error handling
+                }
         };
 
         fetchInstituteAndAuth();
@@ -401,7 +468,7 @@ export const CourseStructureDetails = ({
         }
     };
 
-    const getSlidesWithChapterId = async (chapterId: string) => {
+    const getSlidesWithChapterId = useCallback(async (chapterId: string) => {
         // Avoid duplicate fetch
         if (slidesMap[chapterId]) {
             return;
@@ -410,10 +477,10 @@ export const CourseStructureDetails = ({
         try {
             const slides = await fetchSlidesByChapterId(chapterId);
             setSlidesMap((prev) => ({ ...prev, [chapterId]: slides }));
-        } catch (err) {
+        } catch {
             // Silent error handling
         }
-    };
+    }, [slidesMap]);
 
     const useModulesMutation = () => {
         return useMutation({
@@ -493,9 +560,9 @@ export const CourseStructureDetails = ({
             if (updateModuleStats) {
                 updateModuleStats(modulesMap);
             }
-        } catch (error) {
-            // Silent error handling
-        }
+                } catch {
+                    // Silent error handling
+                }
     };
 
     const [openSubjects, setOpenSubjects] = useState<Set<string>>(new Set());
@@ -603,14 +670,15 @@ export const CourseStructureDetails = ({
                 </div>
                 <div className="w-full space-y-1.5">
                     {(() => {
-                        const subjects = studyLibraryData || [];
-                        const summary = subjects.map((subject) => {
-                            const modules = subjectModulesMap[subject.id] || [];
-                            const chapters = modules.flatMap((m) => m.chapters || []);
-                            const slidesCounts = chapters.map((ch) => (slidesMap[ch.id] || []).length);
-                            const totalSlides = slidesCounts.reduce((a, b) => a + b, 0);
-                            return { subjectId: subject.id, modules: modules.length, chapters: chapters.length, totalSlides };
-                        });
+                        // Calculate summary for debugging if needed
+                        // const subjects = studyLibraryData || [];
+                        // const summary = subjects.map((subject) => {
+                        //     const modules = subjectModulesMap[subject.id] || [];
+                        //     const chapters = modules.flatMap((m) => m.chapters || []);
+                        //     const slidesCounts = chapters.map((ch) => (slidesMap[ch.id] || []).length);
+                        //     const totalSlides = slidesCounts.reduce((a, b) => a + b, 0);
+                        //     return { subjectId: subject.id, modules: modules.length, chapters: chapters.length, totalSlides };
+                        // });
 
                         return null;
                     })()}
@@ -767,6 +835,21 @@ export const CourseStructureDetails = ({
                                                                                 .module_name
                                                                         }
                                                                     </span>
+                                                                    {/* Module Progress Indicator */}
+                                                                    <div className="flex items-center gap-2 ml-auto shrink-0">
+                                                                        {(() => {
+                                                                            const progress = calculateModuleProgress(mod.chapters || []);
+                                                                            // const progressStatus = getModuleProgressStatus(mod.chapters || []);
+                                                                            return (
+                                                                                <>
+                                                                                    <div className="w-16 hidden sm:block">
+                                                                                        {renderProgressBar(progress, 'sm')}
+                                                                                    </div>
+                                                                                    {renderCompletionBadge(progress)}
+                                                                                </>
+                                                                            );
+                                                                        })()}
+                                                                    </div>
                                                                 </div>
                                                             </CollapsibleTrigger>
 
@@ -858,6 +941,28 @@ export const CourseStructureDetails = ({
                                                                                                     ch.chapter_name
                                                                                                 )}
                                                                                             </span>
+                                                                                            {/* Chapter Progress Indicator */}
+                                                                                            <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                                                                                                {(() => {
+                                                                                                    const progress = calculateChapterProgress(ch.id);
+                                                                                                    // const progressStatus = getChapterProgressStatus(ch.id);
+                                                                                                    const slidesForChapter = slidesMap[ch.id] || [];
+                                                                                                    const completedSlides = slidesForChapter.filter(slide => (slide.percentage_completed || 0) >= 80).length;
+                                                                                                    const totalSlides = slidesForChapter.length;
+                                                                                                    
+                                                                                                    return (
+                                                                                                        <>
+                                                                                                            <div className="w-12 hidden sm:block">
+                                                                                                                {renderProgressBar(progress, 'sm')}
+                                                                                                            </div>
+                                                                                                            <span className="text-xs text-neutral-500 hidden sm:inline">
+                                                                                                                {completedSlides}/{totalSlides}
+                                                                                                            </span>
+                                                                                                            {renderCompletionBadge(progress)}
+                                                                                                        </>
+                                                                                                    );
+                                                                                                })()}
+                                                                                            </div>
                                                                                         </div>
                                                                                     </CollapsibleTrigger>
                                                                                     <CollapsibleContent>
@@ -921,14 +1026,28 @@ export const CourseStructureDetails = ({
                                                                                                                 >
                                                                                                                     {slide.title}
                                                                                                                 </span>
-                                                                                                                {(() => {
-                                                                                                                    const meta = getSlideMetaText(slide);
-                                                                                                                    return meta ? (
-                                                                                                                        <span className="ml-2 shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600 border border-neutral-200">
-                                                                                                                            {meta}
-                                                                                                                        </span>
-                                                                                                                    ) : null;
-                                                                                                                })()}
+                                                                                                                {/* Slide Progress and Meta */}
+                                                                                                                <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                                                                                                                    {(() => {
+                                                                                                                        const progress = slide.percentage_completed || 0;
+                                                                                                                        // const statusDetails = getStatusDetails(progress);
+                                                                                                                        const meta = getSlideMetaText(slide);
+                                                                                                                        
+                                                                                                                        return (
+                                                                                                                            <>
+                                                                                                                                {meta && (
+                                                                                                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600 border border-neutral-200 hidden sm:inline">
+                                                                                                                                        {meta}
+                                                                                                                                    </span>
+                                                                                                                                )}
+                                                                                                                                <div className="w-8 hidden sm:block">
+                                                                                                                                    {renderProgressBar(progress, 'sm')}
+                                                                                                                                </div>
+                                                                                                                                <div className={`w-2 h-2 rounded-full ${progress >= 80 ? 'bg-green-500' : progress > 0 ? 'bg-primary-500' : 'bg-neutral-300'}`} />
+                                                                                                                            </>
+                                                                                                                        );
+                                                                                                                    })()}
+                                                                                                                </div>
                                                                                                             </div>
                                                                                                         )
                                                                                                     )
@@ -1029,6 +1148,20 @@ export const CourseStructureDetails = ({
                                                                             .module_name
                                                                     )}
                                                                 </span>
+                                                                {/* Module Progress Indicator */}
+                                                                <div className="flex items-center gap-2 ml-auto shrink-0">
+                                                                    {(() => {
+                                                                        const progress = calculateModuleProgress(mod.chapters || []);
+                                                                        return (
+                                                                            <>
+                                                                                <div className="w-16 hidden sm:block">
+                                                                                    {renderProgressBar(progress, 'sm')}
+                                                                                </div>
+                                                                                {renderCompletionBadge(progress)}
+                                                                            </>
+                                                                        );
+                                                                    })()}
+                                                                </div>
                                                             </div>
                                                         </CollapsibleTrigger>
 
@@ -1107,6 +1240,27 @@ export const CourseStructureDetails = ({
                                                                                                 ch.chapter_name
                                                                                             )}
                                                                                         </span>
+                                                                                        {/* Chapter Progress Indicator */}
+                                                                                        <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                                                                                            {(() => {
+                                                                                                const progress = calculateChapterProgress(ch.id);
+                                                                                                const slidesForChapter = slidesMap[ch.id] || [];
+                                                                                                const completedSlides = slidesForChapter.filter(slide => (slide.percentage_completed || 0) >= 80).length;
+                                                                                                const totalSlides = slidesForChapter.length;
+                                                                                                
+                                                                                                return (
+                                                                                                    <>
+                                                                                                        <div className="w-12 hidden sm:block">
+                                                                                                            {renderProgressBar(progress, 'sm')}
+                                                                                                        </div>
+                                                                                                        <span className="text-xs text-neutral-500 hidden sm:inline">
+                                                                                                            {completedSlides}/{totalSlides}
+                                                                                                        </span>
+                                                                                                        {renderCompletionBadge(progress)}
+                                                                                                    </>
+                                                                                                );
+                                                                                            })()}
+                                                                                        </div>
                                                                                     </div>
                                                                                 </CollapsibleTrigger>
                                                                                 <CollapsibleContent>
@@ -1174,14 +1328,27 @@ export const CourseStructureDetails = ({
                                                                                                         >
                                                                                                             {slide.title}
                                                                                                         </span>
-                                                                                                        {(() => {
-                                                                                                            const meta = getSlideMetaText(slide);
-                                                                                                            return meta ? (
-                                                                                                                <span className="ml-2 shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600 border border-neutral-200">
-                                                                                                                    {meta}
-                                                                                                                </span>
-                                                                                                            ) : null;
-                                                                                                        })()}
+                                                                                                        {/* Slide Progress and Meta */}
+                                                                                                        <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                                                                                                            {(() => {
+                                                                                                                const progress = slide.percentage_completed || 0;
+                                                                                                                const meta = getSlideMetaText(slide);
+                                                                                                                
+                                                                                                                return (
+                                                                                                                    <>
+                                                                                                                        {meta && (
+                                                                                                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600 border border-neutral-200 hidden sm:inline">
+                                                                                                                                {meta}
+                                                                                                                            </span>
+                                                                                                                        )}
+                                                                                                                        <div className="w-8 hidden sm:block">
+                                                                                                                            {renderProgressBar(progress, 'sm')}
+                                                                                                                        </div>
+                                                                                                                        <div className={`w-2 h-2 rounded-full ${progress >= 80 ? 'bg-green-500' : progress > 0 ? 'bg-primary-500' : 'bg-neutral-300'}`} />
+                                                                                                                    </>
+                                                                                                                );
+                                                                                                            })()}
+                                                                                                        </div>
                                                                                                     </div>
                                                                                                 )
                                                                                             )
@@ -1309,6 +1476,27 @@ export const CourseStructureDetails = ({
                                                                                                 ch.chapter_name
                                                                                             )}
                                                                                         </span>
+                                                                                        {/* Chapter Progress Indicator */}
+                                                                                        <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                                                                                            {(() => {
+                                                                                                const progress = calculateChapterProgress(ch.id);
+                                                                                                const slidesForChapter = slidesMap[ch.id] || [];
+                                                                                                const completedSlides = slidesForChapter.filter(slide => (slide.percentage_completed || 0) >= 80).length;
+                                                                                                const totalSlides = slidesForChapter.length;
+                                                                                                
+                                                                                                return (
+                                                                                                    <>
+                                                                                                        <div className="w-12 hidden sm:block">
+                                                                                                            {renderProgressBar(progress, 'sm')}
+                                                                                                        </div>
+                                                                                                        <span className="text-xs text-neutral-500 hidden sm:inline">
+                                                                                                            {completedSlides}/{totalSlides}
+                                                                                                        </span>
+                                                                                                        {renderCompletionBadge(progress)}
+                                                                                                    </>
+                                                                                                );
+                                                                                            })()}
+                                                                                        </div>
                                                                                     </div>
                                                                                 </CollapsibleTrigger>
                                                                                 <CollapsibleContent>
@@ -1376,14 +1564,27 @@ export const CourseStructureDetails = ({
                                                                                                         >
                                                                                                             {slide.title}
                                                                                                         </span>
-                                                                                                        {(() => {
-                                                                                                            const meta = getSlideMetaText(slide);
-                                                                                                            return meta ? (
-                                                                                                                <span className="ml-2 shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600 border border-neutral-200">
-                                                                                                                    {meta}
-                                                                                                                </span>
-                                                                                                            ) : null;
-                                                                                                        })()}
+                                                                                                        {/* Slide Progress and Meta */}
+                                                                                                        <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                                                                                                            {(() => {
+                                                                                                                const progress = slide.percentage_completed || 0;
+                                                                                                                const meta = getSlideMetaText(slide);
+                                                                                                                
+                                                                                                                return (
+                                                                                                                    <>
+                                                                                                                        {meta && (
+                                                                                                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600 border border-neutral-200 hidden sm:inline">
+                                                                                                                                {meta}
+                                                                                                                            </span>
+                                                                                                                        )}
+                                                                                                                        <div className="w-8 hidden sm:block">
+                                                                                                                            {renderProgressBar(progress, 'sm')}
+                                                                                                                        </div>
+                                                                                                                        <div className={`w-2 h-2 rounded-full ${progress >= 80 ? 'bg-green-500' : progress > 0 ? 'bg-primary-500' : 'bg-neutral-300'}`} />
+                                                                                                                    </>
+                                                                                                                );
+                                                                                                            })()}
+                                                                                                        </div>
                                                                                                     </div>
                                                                                                 )
                                                                                             )
@@ -1532,14 +1733,27 @@ export const CourseStructureDetails = ({
                                                                                                     >
                                                                                                         {slide.title}
                                                                                                     </span>
-                                                                                                    {(() => {
-                                                                                                        const meta = getSlideMetaText(slide);
-                                                                                                        return meta ? (
-                                                                                                            <span className="ml-2 shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600 border border-neutral-200">
-                                                                                                                {meta}
-                                                                                                            </span>
-                                                                                                        ) : null;
-                                                                                                    })()}
+                                                                                                    {/* Slide Progress and Meta */}
+                                                                                                    <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                                                                                                        {(() => {
+                                                                                                            const progress = slide.percentage_completed || 0;
+                                                                                                            const meta = getSlideMetaText(slide);
+                                                                                                            
+                                                                                                            return (
+                                                                                                                <>
+                                                                                                                    {meta && (
+                                                                                                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600 border border-neutral-200 hidden sm:inline">
+                                                                                                                            {meta}
+                                                                                                                        </span>
+                                                                                                                    )}
+                                                                                                                    <div className="w-8 hidden sm:block">
+                                                                                                                        {renderProgressBar(progress, 'sm')}
+                                                                                                                    </div>
+                                                                                                                    <div className={`w-2 h-2 rounded-full ${progress >= 80 ? 'bg-green-500' : progress > 0 ? 'bg-primary-500' : 'bg-neutral-300'}`} />
+                                                                                                                </>
+                                                                                                            );
+                                                                                                        })()}
+                                                                                                    </div>
                                                                                                 </div>
                                                                                             )
                                                                                         )
@@ -1912,7 +2126,7 @@ export const CourseStructureDetails = ({
                         try {
                             const url = await getPublicUrlWithoutLogin(fileId);
                             setThumbUrlById((prev) => ({ ...prev, [key]: url }));
-                        } catch (err) {
+                        } catch {
                             // Silent error handling
                         }
                     }
@@ -1928,7 +2142,7 @@ export const CourseStructureDetails = ({
                         try {
                             const url = await getPublicUrlWithoutLogin(fileId);
                             setThumbUrlById((prev) => ({ ...prev, [key]: url }));
-                        } catch (err) {
+                        } catch {
                             // Silent error handling
                         }
                     }

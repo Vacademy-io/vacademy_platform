@@ -625,7 +625,7 @@ export function LoginForm({
             className="mt-6 text-center text-xs text-gray-600"
           >
             <p>
-              By signing in, you agree to our{" "}
+              I agree to{" "}
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 onClick={async () => {
@@ -648,7 +648,7 @@ export function LoginForm({
                 }}
                 className="text-primary-700 hover:text-primary-800 font-medium underline cursor-pointer"
               >
-                Terms of Service
+                terms and conditions
               </motion.button>{" "}
               and{" "}
               <motion.button

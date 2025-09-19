@@ -3,7 +3,7 @@ import { useCatalogStore } from '../-store/catalogStore';
 import { getPublicUrl } from '@/services/upload_file';
 
 const Header: React.FC = () => {
-  const defaultLogoUrl = '/images/logo-placeholder.png'; 
+  const defaultLogoUrl = ''; 
   const defaultInstituteName = 'Institute Portal'; 
   
   const { apiFetchedInstituteDetails } = useCatalogStore();
@@ -46,27 +46,29 @@ const Header: React.FC = () => {
 
   return (
     <nav className="min-h-[80px] bg-white py-5 px-6 md:px-10 flex flex-col md:flex-row justify-between items-center shadow-sm">
-      <div className="flex items-center relative h-10 w-24 mr-3 mb-4 md:mb-0">
-        {logoLoading && (
-          <div 
-            className="absolute inset-0 bg-gray-200 rounded-md border border-gray-200 flex items-center justify-center text-gray-400 text-xs"
-            aria-label="Loading logo"
-          >
-            Loading...
-          </div>
-        )}
-        <img 
-          src="./images/logo.png" 
-          alt={`${displayName} Logo`} 
-          className={`h-full w-full object-contain rounded-md border border-gray-200 ${logoLoading ? 'opacity-0' : 'opacity-100'}`}
-          onError={() => {
-            if (logoUrlToDisplay !== defaultLogoUrl) {
+      {(logoUrlToDisplay || logoLoading) && (
+        <div className="flex items-center relative h-10 w-24 mr-3 mb-4 md:mb-0">
+          {logoLoading && (
+            <div 
+              className="absolute inset-0 bg-gray-200 rounded-md flex items-center justify-center text-gray-400 text-xs"
+              aria-label="Loading logo"
+            >
+              Loading...
+            </div>
+          )}
+          {logoUrlToDisplay && (
+            <img 
+              src={logoUrlToDisplay} 
+              alt={`${displayName} Logo`} 
+              className={`h-full w-full object-contain ${logoLoading ? 'opacity-0' : 'opacity-100'}`}
+              onError={() => {
                 setLogoUrlToDisplay(defaultLogoUrl);
-            }
-            setLogoLoading(false);
-          }}
-        /> 
-      </div>
+                setLogoLoading(false);
+              }}
+            /> 
+          )}
+        </div>
+      )}
       
       <div className='flex flex-col md:flex-row items-center gap-6'>
         <ul className='flex flex-wrap justify-center md:justify-start items-center gap-4 text-gray-800 mb-4 md:mb-0'>

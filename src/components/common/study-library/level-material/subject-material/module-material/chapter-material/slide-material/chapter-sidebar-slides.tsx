@@ -1,4 +1,4 @@
-import { truncateString } from "@/lib/reusable/truncateString";
+// import { truncateString } from "@/lib/reusable/truncateString"; // Not needed since we show full titles now
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import {
     PlayCircle,
@@ -28,19 +28,16 @@ import { useDoubtSidebarStore } from "@/stores/study-library/doubt-sidebar-store
 import { useEffect, useState } from "react";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 
-// Helper function to get responsive truncation length
-const getResponsiveTruncationLength = () => {
-    if (typeof window !== 'undefined') {
-        // On mobile devices (width < 640px), show more text as we have vertical space
-        // On tablet (640px - 1024px), moderate truncation
-        // On desktop (> 1024px), shorter truncation due to horizontal constraints
-        const width = window.innerWidth;
-        if (width < 640) return 24; // Mobile - more text
-        if (width < 1024) return 20; // Tablet - moderate
-        return 16; // Desktop - shorter
-    }
-    return 16; // Fallback
-};
+// Helper function to get responsive truncation length - kept for tooltip usage
+// const getResponsiveTruncationLength = () => {
+//     if (typeof window !== 'undefined') {
+//         const width = window.innerWidth;
+//         if (width < 640) return 30; // Mobile - more text
+//         if (width < 1024) return 25; // Tablet - moderate
+//         return 20; // Desktop - less truncation
+//     }
+//     return 20; // Fallback
+// };
 
 // Helper function to calculate overall completion percentage
 export const calculateOverallCompletion = (slides: Slide[]): number => {
@@ -231,24 +228,148 @@ const SlideItem = ({
         );
     };
 
+    // Helper function to format duration from milliseconds to readable format
+    const formatDuration = (millis: number): string => {
+        const minutes = Math.floor(millis / 60000);
+        const seconds = Math.floor((millis % 60000) / 1000);
+        if (minutes >= 60) {
+            const hours = Math.floor(minutes / 60);
+            const remainingMinutes = minutes % 60;
+            return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+        }
+        return seconds > 0 && minutes < 5 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+    };
+
+    // Helper function to get content details (duration for videos, pages for documents, questions for quizzes)
+    const getContentDetails = (slide: Slide): string => {
+        // Video duration
+        if (slide.source_type === "VIDEO" && slide.video_slide?.video_length_in_millis) {
+            return formatDuration(slide.video_slide.video_length_in_millis);
+        }
+        if (slide.source_type === "VIDEO" && slide.video_slide?.published_video_length_in_millis) {
+            return formatDuration(slide.video_slide.published_video_length_in_millis);
+        }
+        
+        // Document pages
+        if (slide.source_type === "DOCUMENT" && slide.document_slide?.total_pages) {
+            const pages = slide.document_slide.total_pages;
+            return `${pages} page${pages !== 1 ? 's' : ''}`;
+        }
+        if (slide.source_type === "DOCUMENT" && slide.document_slide?.published_document_total_pages) {
+            const pages = slide.document_slide.published_document_total_pages;
+            return `${pages} page${pages !== 1 ? 's' : ''}`;
+        }
+        
+        // Question count for question slides
+        if (slide.source_type === "QUESTION" && slide.question_slide?.options) {
+            const optionCount = slide.question_slide.options.length;
+            if (optionCount > 0) {
+                return `${optionCount} option${optionCount !== 1 ? 's' : ''}`;
+            } else {
+                return "1 question";
+            }
+        }
+        
+        // For single question slides without options (like text input)
+        if (slide.source_type === "QUESTION") {
+            return "1 question";
+        }
+        
+        // Assignment questions - check if there are questions in assignment data
+        if (slide.source_type === "ASSIGNMENT") {
+            // For assignments, we'll show "Assignment" as the type handles the complexity
+            // but we can try to extract question count if available in the slide data
+            const assignmentSlide = slide as Slide & { assignment_slide?: { questions?: unknown[] } };
+            if (assignmentSlide.assignment_slide?.questions && Array.isArray(assignmentSlide.assignment_slide.questions)) {
+                const questionCount = assignmentSlide.assignment_slide.questions.length;
+                if (questionCount > 0) {
+                    return `${questionCount} question${questionCount !== 1 ? 's' : ''}`;
+                }
+            }
+            return "Assignment";
+        }
+        
+        // Quiz slides - check for quiz questions
+        if (slide.source_type === "QUIZ") {
+            const quizSlide = slide as Slide & { quiz_slide?: { questions?: unknown[] } };
+            if (quizSlide.quiz_slide?.questions && Array.isArray(quizSlide.quiz_slide.questions)) {
+                const questionCount = quizSlide.quiz_slide.questions.length;
+                if (questionCount > 0) {
+                    return `${questionCount} question${questionCount !== 1 ? 's' : ''}`;
+                }
+            }
+            return "Quiz";
+        }
+        
+        return "";
+    };
+
     const getSlideTypeDisplay = (slide: Slide): string => {
-        if (
-            slide.source_type === "DOCUMENT" &&
-            slide.document_slide?.type &&
-            slide.document_slide.type !== "DOC"
-        ) {
-            return slide.document_slide.type.toLowerCase().replace("_", " ");
+        let baseType = "";
+        let embeddedInfo = "";
+
+        // Handle different source types with better English
+        switch (slide.source_type) {
+            case "VIDEO":
+                baseType = "Video";
+                if (slide.video_slide?.embedded_type) {
+                    switch (slide.video_slide.embedded_type) {
+                        case "CODE":
+                            embeddedInfo = " with Coding Exercise";
+                            break;
+                        case "SCRATCH":
+                            embeddedInfo = " with Scratch Problem";
+                            break;
+                        case "JUPYTER":
+                            embeddedInfo = " with Jupyter Notebook";
+                            break;
+                        default:
+                            if (slide.video_slide.embedded_type) {
+                                const embeddedType = String(slide.video_slide.embedded_type);
+                                embeddedInfo = ` with ${embeddedType.charAt(0).toUpperCase() + embeddedType.slice(1).toLowerCase()}`;
+                            }
+                    }
+                }
+                break;
+            case "DOCUMENT":
+                if (slide.document_slide?.type) {
+                    switch (slide.document_slide.type.toUpperCase()) {
+                        case "PDF":
+                            baseType = "PDF Document";
+                            break;
+                        case "DOC":
+                        case "DOCX":
+                            baseType = "Word Document";
+                            break;
+                        case "PPT":
+                        case "PPTX":
+                            baseType = "Presentation";
+                            break;
+                        default:
+                            baseType = "Document";
+                    }
+                } else {
+                    baseType = "Document";
+                }
+                break;
+            case "QUESTION":
+                baseType = "Question";
+                break;
+            case "QUIZ":
+                baseType = "Quiz";
+                break;
+            case "ASSIGNMENT":
+                baseType = "Assignment";
+                break;
+            default:
+                if (slide.source_type && typeof slide.source_type === 'string') {
+                    baseType = slide.source_type.charAt(0).toUpperCase() + slide.source_type.slice(1).toLowerCase().replace("_", " ");
+                } else {
+                    baseType = "Content";
+                }
         }
 
-        if (slide.source_type === "VIDEO" && slide.video_slide?.embedded_type) {
-            return `${slide.source_type
-                .toLowerCase()
-                .replace("_", " ")} - ${slide.video_slide.embedded_type
-                .toLowerCase()
-                .replace("_", " ")}`;
-        }
-
-        return slide.source_type.toLowerCase().replace("_", " ");
+        return baseType + embeddedInfo;
     };
 
     const handleDoubtClick = (e: React.MouseEvent) => {
@@ -282,7 +403,7 @@ const SlideItem = ({
                     >
                         <div
                             className={`
-                flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 
+                flex w-full items-center gap-2 rounded-lg border px-2 py-1.5 
                 backdrop-blur-sm transition-all duration-200 ease-in-out
                 ${
                     isActive
@@ -311,29 +432,34 @@ const SlideItem = ({
                                     {getIcon(slide, "3.5")}
                                 </div>
 
-                                {/* Content area */}
-                                <div className="min-w-0 flex-1 space-y-0.5">
-                                    {/* Title and badge */}
+                                {/* Content area - more compact layout */}
+                                <div className="min-w-0 flex-1 space-y-1">
+                                    {/* Title - show full title without truncation */}
                                     <div className="flex items-start gap-1.5">
-                                        <h4 className="flex-1 text-xs font-semibold leading-tight truncate">
-                                            {truncateString(
-                                                getSlideTitle(),
-                                                getResponsiveTruncationLength()
-                                            )}
+                                        <h4 className="flex-1 text-xs font-semibold leading-tight">
+                                            {getSlideTitle()}
                                         </h4>
                                         {getStatusBadge()}
                                     </div>
 
-                                    {/* Source type and progress in single line */}
+                                    {/* Type and content details */}
                                     <div className="flex items-center justify-between gap-2">
-                                        <p className="text-xs capitalize leading-tight text-gray-400 truncate">
-                                            {getSlideTypeDisplay(slide)}
-                                        </p>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-xs leading-tight text-gray-500 truncate">
+                                                {getSlideTypeDisplay(slide)}
+                                            </p>
+                                            {/* Content details (duration/pages) */}
+                                            {getContentDetails(slide) && (
+                                                <p className="text-xs leading-tight text-gray-400 font-medium">
+                                                    {getContentDetails(slide)}
+                                                </p>
+                                            )}
+                                        </div>
 
-                                        {/* Progress section */}
+                                        {/* Progress section - more compact */}
                                         {slide.percentage_completed != null && (
-                                            <div className="flex items-center gap-1.5">
-                                                <div className="flex-1 relative w-8 h-1 bg-gray-200 rounded-full overflow-hidden">
+                                            <div className="flex items-center gap-1">
+                                                <div className="relative w-6 h-1 bg-gray-200 rounded-full overflow-hidden">
                                                     <div
                                                         className={`absolute left-0 top-0 h-full rounded-full transition-all duration-300 ${
                                                             isCompleted
@@ -355,7 +481,7 @@ const SlideItem = ({
                                                 </div>
 
                                                 <span
-                                                    className={`text-xs font-bold min-w-[25px] text-right transition-colors duration-200 ${
+                                                    className={`text-xs font-bold min-w-[20px] text-right transition-colors duration-200 ${
                                                         isCompleted
                                                             ? "text-success-600"
                                                             : isActive
@@ -441,11 +567,14 @@ const SlideItem = ({
                             <p className="font-medium text-xs">
                                 {getSlideTitle()}
                             </p>
-                            <p className="text-xs capitalize text-gray-500">
-                                {slide.source_type
-                                    .toLowerCase()
-                                    .replace("_", " ")}
+                            <p className="text-xs text-gray-500">
+                                {getSlideTypeDisplay(slide)}
                             </p>
+                            {getContentDetails(slide) && (
+                                <p className="text-xs text-gray-400 font-medium">
+                                    {getContentDetails(slide)}
+                                </p>
+                            )}
                             <p className="text-xs text-gray-400 leading-relaxed">
                                 {statusDetails.description}
                             </p>
@@ -510,7 +639,7 @@ export const ChapterSidebarSlides = () => {
         <div className="relative w-full max-w-full overflow-hidden animate-fade-in-up">
             {/* Background gradient */}
             <div className="absolute inset-0 bg-gradient-to-b from-transparent to-gray-50/30 pointer-events-none rounded-xl"></div>
-            <div className="relative flex w-full flex-col gap-1.5 text-gray-600">
+            <div className="relative flex w-full flex-col gap-1 text-gray-600">
                 {slides?.map((slide: Slide, index: number) => (
                     <SlideItem
                         key={slide.id}

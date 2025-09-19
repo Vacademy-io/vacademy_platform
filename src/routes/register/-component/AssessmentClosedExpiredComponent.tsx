@@ -2,8 +2,9 @@ import { Separator } from "@/components/ui/separator";
 import {
   CloseRegistrationMobile,
   CloseRegistrationWeb,
-  VacademyLogoWeb,
 } from "@/svgs";
+import { InstituteBrandingComponent, type InstituteBranding } from "@/components/common/institute-branding";
+import { useInstituteDetails } from "../live-class/-hooks/useInstituteDetails";
 
 const AssessmentClosedExpiredComponent = ({
   isExpired,
@@ -14,9 +15,18 @@ const AssessmentClosedExpiredComponent = ({
   assessmentName: string;
   isPrivate?: boolean;
 }) => {
+  const { data: instituteDetails } = useInstituteDetails();
+  
+  const branding: InstituteBranding = {
+    instituteId: instituteDetails?.id || null,
+    instituteName: instituteDetails?.institute_name || null,
+    instituteLogoFileId: instituteDetails?.institute_logo_file_id || null,
+    instituteThemeCode: null
+  };
+
   return (
     <div className="flex flex-col w-screen h-screen items-center justify-center gap-2 p-10 bg-background">
-      <VacademyLogoWeb />
+      <InstituteBrandingComponent branding={branding} size="large" showName={false} />
       <h1 className="text-sm sm:text-lg text-center">{assessmentName}</h1>
       <Separator className="mt-2" />
       <div className="block sm:hidden">

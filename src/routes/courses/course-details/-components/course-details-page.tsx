@@ -54,6 +54,7 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { extractTextFromHTML } from "@/components/common/helper";
 import { SlideCountEntry } from "@/utils/courseTime";
 import { CourseStatsSidebar } from "@/routes/study-library/courses/course-details/-components/course-stats-sidebar";
+import { useCatalogStore } from "@/routes/courses/-store/catalogStore";
 import { formatTotalCourseDuration } from "@/utils/courseTime";
 
 type SlideType = {
@@ -170,7 +171,9 @@ export const CourseDetailsPage = () => {
     const router = useRouter();
     const searchParams = router.state.location.search;
     const subdomain = getSubdomain(window.location.hostname);
-
+    
+    // Get catalog store for fallback instructor data
+    const { courseData } = useCatalogStore();
 
     // Loading state management
     const [isLoading, setIsLoading] = useState(true);
@@ -240,6 +243,8 @@ export const CourseDetailsPage = () => {
         packageSessionIdForCurrentLevel,
         setPackageSessionIdForCurrentLevel,
     ] = useState<string | null>(null);
+    // NEW: Backend course timing data
+    const [backendReadTimeMinutes, setBackendReadTimeMinutes] = useState<number | null>(null);
 
     const findIdByPackageId = useCallback((data: BatchForSessionType[]) => {
         const result = data?.find(
@@ -277,6 +282,20 @@ export const CourseDetailsPage = () => {
                         searchParams?.courseId || ""
                     )
                 );
+                
+                // NEW: Extract backend read_time_in_minutes from matching batch
+                const matchingBatch = response?.data?.batches_for_sessions?.find((batch: unknown) => {
+                    const typedBatch = batch as { level?: { id?: string }; session?: { id?: string }; package_dto?: { id?: string }; read_time_in_minutes?: number };
+                    return typedBatch.level?.id === selectedLevel &&
+                           typedBatch.session?.id === selectedSession &&
+                           typedBatch.package_dto?.id === (searchParams?.courseId || "");
+                });
+                const typedMatchingBatch = matchingBatch as { read_time_in_minutes?: number } | undefined;
+                if (typedMatchingBatch?.read_time_in_minutes) {
+                    setBackendReadTimeMinutes(typedMatchingBatch.read_time_in_minutes);
+                } else {
+                    setBackendReadTimeMinutes(null); // Reset if no backend data
+                }
             } catch (error) {
                 console.log(error);
             } finally {
@@ -336,6 +355,24 @@ export const CourseDetailsPage = () => {
         },
         mode: "onChange",
     });
+
+    // Function to get author name with fallback logic
+    const getAuthorName = useCallback(() => {
+        // First try to get from form data (API response)
+        const formInstructors = form.getValues("courseData")?.instructors;
+        if (formInstructors && formInstructors.length > 0 && formInstructors[0]?.name) {
+            return formInstructors[0].name;
+        }
+
+        // Fallback to catalog data
+        const catalogCourse = courseData.find(course => course.id === searchParams.courseId);
+        if (catalogCourse?.instructors && catalogCourse.instructors.length > 0) {
+            const instructor = catalogCourse.instructors[0];
+            return instructor.full_name || instructor.username || 'Unknown Instructor';
+        }
+
+        return undefined; // Change null to undefined to match the expected type
+    }, [form, courseData, searchParams.courseId]);
 
     const getInitials = (email: string) => {
         const name = email.split("@")[0];
@@ -573,23 +610,6 @@ export const CourseDetailsPage = () => {
                                         <h1 className="mb-3 sm:mb-4 text-2xl sm:text-3xl md:text-4xl font-bold leading-tight">
                                             {form.getValues("courseData").title}
                                         </h1>
-                                        <div className="hidden lg:block">
-                                            <AuthModal
-                                                type="courseDetailsPage"
-                                                courseId={searchParams.courseId}
-                                                trigger={
-                                                    <MyButton
-                                                        type="button"
-                                                        scale="large"
-                                                        buttonType="primary"
-                                                        layoutVariant="default"
-                                                        className="mt-2"
-                                                    >
-                                                        Enroll
-                                                    </MyButton>
-                                                }
-                                            />
-                                        </div>
                                         <p
                                             className="text-base sm:text-lg opacity-90 leading-relaxed"
                                             dangerouslySetInnerHTML={{
@@ -818,21 +838,6 @@ export const CourseDetailsPage = () => {
                                                 </div>
                                             )}
                                         </div>
-                                        <AuthModal
-                                            type="courseDetailsPage"
-                                            courseId={searchParams.courseId}
-                                            trigger={
-                                                <MyButton
-                                                    type="button"
-                                                    scale="large"
-                                                    buttonType="primary"
-                                                    layoutVariant="default"
-                                                    className="mt-3 sm:mt-4 !min-w-full !w-full"
-                                                >
-                                                    Enroll
-                                                </MyButton>
-                                            }
-                                        />
                                         <div className="mt-4">
                                             <CourseDetailsRatingsComponent
                                                 packageSessionId={packageSessionIdForCurrentLevel}
@@ -970,7 +975,8 @@ export const CourseDetailsPage = () => {
                                 levelOptions={levelOptions}
                                 selectedLevel={selectedLevel}
                                 slideCounts={slideCountQuery.data as SlideCountEntry[]}
-                                authorName={form.getValues("courseData").instructors?.[0]?.name}
+                                backendReadTimeMinutes={backendReadTimeMinutes || undefined}
+                                authorName={getAuthorName()}
                                 ctaSlot={
                                     <AuthModal
                                         type="courseDetailsPage"

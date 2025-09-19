@@ -712,7 +712,7 @@ export function EmailLogin({
                     </motion.button>
                 )}
 
-                <div className="text-xs text-gray-600">
+                <div className="text-sm text-gray-600">
                     {(() => {
                         try {
                             const instituteId = localStorage.getItem("InstituteId") || "";

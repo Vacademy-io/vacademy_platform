@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { BASE_URL } from '@/constants/urls';
 
 // Types for the payment status API response
 export interface UserPlanStatusResponse {
@@ -7,7 +8,7 @@ export interface UserPlanStatusResponse {
 }
 
 // API configuration
-const API_BASE_URL = 'https://backend-stage.vacademy.io/admin-core-service/learner/info/v1';
+const API_BASE_URL = `${BASE_URL}/admin-core-service/learner/info/v1`;
 
 /**
  * Fetches user plan status for a specific package session

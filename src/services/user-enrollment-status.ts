@@ -1,9 +1,10 @@
 import axios from "axios";
 import { getTokenFromStorage } from "@/lib/auth/axiosInstance";
 import { TokenKey } from "@/constants/auth/tokens";
+import { BASE_URL } from "@/constants/urls";
 
-const LEARNER_INFO_URL = "https://backend-stage.vacademy.io/admin-core-service/learner/info/v1/details";
-const USER_PLAN_URL = "https://backend-stage.vacademy.io/admin-core-service/v1/user-plan";
+const LEARNER_INFO_URL = `${BASE_URL}/admin-core-service/learner/info/v1/details`;
+const USER_PLAN_URL = `${BASE_URL}/admin-core-service/v1/user-plan`;
 
 export interface LearnerInfo {
   id: string;

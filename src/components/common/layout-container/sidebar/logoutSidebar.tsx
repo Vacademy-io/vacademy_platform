@@ -1,7 +1,6 @@
 import {
   Sheet,
   SheetContent,
-  SheetDescription,
   SheetHeader,
 } from "@/components/ui/sheet";
 import { SidebarMenu } from "@/components/ui/sidebar";
@@ -18,13 +17,17 @@ import { useEffect, useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { useTheme as useModeTheme } from "@/providers/theme-provider";
 import { useStudentPermissions } from "@/hooks/use-student-permissions";
+import { Preferences } from "@capacitor/preferences";
+import { Student } from "@/types/user/user-detail";
+import { getPublicUrl } from "@/services/upload_file";
+import { User } from "lucide-react";
 
 export const LogoutSidebar = ({
   sidebarComponent,
 }: {
   sidebarComponent?: React.ReactNode;
 }) => {
-  const { instituteName, instituteLogoFileUrl, sideBarOpen, setSidebarOpen } =
+  const { instituteLogoFileUrl, sideBarOpen, setSidebarOpen } =
     useStore();
   const { theme, setTheme } = useModeTheme();
   const { permissions } = useStudentPermissions();
@@ -35,6 +38,8 @@ export const LogoutSidebar = ({
   const [filteredHamburgerItems, setFilteredHamburgerItems] = useState(
     HamBurgerSidebarItemsData
   );
+  const [studentData, setStudentData] = useState<Student | null>(null);
+  const [profileImageUrl, setProfileImageUrl] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (isNullOrEmptyOrUndefined(permissions)) return;
@@ -48,6 +53,55 @@ export const LogoutSidebar = ({
     ).then((data) => {
       setFilteredHamburgerItems(data);
     });
+  }, [permissions]);
+
+  // Fetch student data for profile display
+  useEffect(() => {
+    const fetchStudentData = async () => {
+      try {
+        const { value } = await Preferences.get({ key: "StudentDetails" });
+
+        if (!value) {
+          return;
+        }
+
+        try {
+          // Parse the JSON data
+          const parsedData = JSON.parse(value);
+
+          // Handle both array and object formats
+          let studentDetails: Student;
+          if (Array.isArray(parsedData)) {
+            if (parsedData.length === 0) {
+              return;
+            }
+            studentDetails = parsedData[0];
+          } else if (typeof parsedData === "object" && parsedData !== null) {
+            studentDetails = parsedData;
+          } else {
+            console.error("Unexpected data format:", parsedData);
+            return;
+          }
+          
+          setStudentData(studentDetails);
+          
+          if (studentDetails.face_file_id) {
+            try {
+              const imageUrl = await getPublicUrl(studentDetails.face_file_id);
+              setProfileImageUrl(imageUrl);
+            } catch (error) {
+              console.error("Error fetching profile image:", error);
+            }
+          }
+        } catch (parseError) {
+          console.error("Error parsing JSON from Preferences:", parseError);
+        }
+      } catch (error) {
+        console.error("Error fetching student data from Preferences:", error);
+      }
+    };
+
+    fetchStudentData();
   }, []);
 
   return (
@@ -57,33 +111,57 @@ export const LogoutSidebar = ({
         className="sidebar-content flex flex-col bg-white border-l border-neutral-200 dark:bg-neutral-900 dark:border-neutral-800 p-0 w-80 transition-all duration-300 ease-in-out z-[9999] shadow-xl"
       >
         <SheetHeader className="px-5 py-5 border-b border-neutral-100 dark:border-neutral-800 bg-gradient-to-r from-white to-neutral-50 dark:from-neutral-900 dark:to-neutral-900">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center">
             <div className="relative group">
               {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (
                 <div className="relative">
                   <img
-                    className="w-10 h-10 rounded-lg object-cover border border-neutral-200 transition-all duration-300 group-hover:scale-105 group-hover:shadow-md"
+                    className="w-24 h-24 rounded-xl object-contain p-2 bg-white dark:bg-neutral-800 border-2 border-neutral-200 dark:border-neutral-700 transition-all duration-300 group-hover:scale-105 group-hover:shadow-lg"
                     src={instituteLogoFileUrl}
                     alt="Institute Logo"
                   />
-                  <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                 </div>
               ) : (
-                <div className="w-10 h-10 bg-gradient-to-br from-primary-50 to-primary-100 border border-primary-200 rounded-lg flex items-center justify-center transition-all duration-300 group-hover:scale-105 group-hover:shadow-md">
-                  <div className="w-5 h-5 bg-gradient-to-br from-primary-500 to-primary-600 rounded shadow-sm"></div>
+                <div className="w-16 h-16 bg-gradient-to-br from-primary-50 to-primary-100 dark:from-primary-800 dark:to-primary-900 border-2 border-primary-200 dark:border-primary-700 rounded-xl flex items-center justify-center transition-all duration-300 group-hover:scale-105 group-hover:shadow-lg">
+                  <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-600 rounded-lg shadow-sm"></div>
                 </div>
               )}
             </div>
-            <div className="flex-1 min-w-0">
-              <SheetDescription className="text-base font-bold text-neutral-900 dark:text-neutral-100 truncate leading-tight">
-                {instituteName}
-              </SheetDescription>
-              <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mt-0.5">
-                Navigation Menu
-              </p>
-            </div>
           </div>
         </SheetHeader>
+
+        {/* User Profile Section */}
+        {studentData && (
+          <div className="px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 bg-gradient-to-r from-neutral-50/50 to-white/50 dark:from-neutral-900/50 dark:to-neutral-900/50">
+            <div className="flex items-center gap-3">
+              <div className="relative group">
+                {profileImageUrl ? (
+                  <div className="relative">
+                    <img
+                      className="w-12 h-12 rounded-full object-cover border-2 border-primary-200 dark:border-primary-800 transition-all duration-300 group-hover:scale-105 group-hover:shadow-lg"
+                      src={profileImageUrl}
+                      alt="Profile Photo"
+                    />
+                    <div className="absolute inset-0 rounded-full bg-gradient-to-br from-transparent via-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  </div>
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-100 to-primary-200 dark:from-primary-800 dark:to-primary-900 border-2 border-primary-300 dark:border-primary-700 flex items-center justify-center transition-all duration-300 group-hover:scale-105 group-hover:shadow-lg">
+                    <User size={20} className="text-primary-600 dark:text-primary-300" />
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate leading-tight">
+                  {studentData.full_name || "Student"}
+                </h3>
+                <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 truncate">
+                  @{studentData.email || studentData.username}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {!hideModeChangeButton && (
           <div className="flex items-center justify-between px-5 py-3 border-b border-neutral-100 dark:border-neutral-800">

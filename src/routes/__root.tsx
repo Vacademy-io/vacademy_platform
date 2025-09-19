@@ -4,7 +4,7 @@ import {
   Outlet,
   redirect,
 } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import {
   AppUpdate,
   AppUpdateAvailability,
@@ -13,8 +13,6 @@ import {
 import { Capacitor } from "@capacitor/core";
 import { toast } from "sonner";
 import { useUpdate } from "@/stores/useUpdate";
-import Favicon from "react-favicon";
-import useStore from "@/components/common/layout-container/sidebar/useSidebar";
 import { Preferences } from "@capacitor/preferences";
 import { useTheme } from "@/providers/theme/theme-provider";
 import { HOLISTIC_INSTITUTE_ID } from "@/constants/urls";
@@ -87,11 +85,8 @@ const isPublicRoute = (pathname: string): boolean => {
 
 const RootComponent = () => {
   const { setUpdateAvailable } = useUpdate();
-  const { instituteLogoFileUrl } = useStore();
-  const vacademyUrl = "/vacademy-logo.svg";
   const { setPrimaryColor } = useTheme();
   const { setInstituteId } = useInstituteFeatureStore();
-  const [faviconUrl, setFaviconUrl] = useState<string | null>(null);
 
   const setPrimaryColorFromStorage = async () => {
     const details = await Preferences.get({ key: "InstituteDetails" });
@@ -106,19 +101,10 @@ const RootComponent = () => {
     }
   };
 
-  const getFallbackLogoUrl = (logoUrl: string | null | undefined): string => {
-    return logoUrl && logoUrl.trim() !== "" ? logoUrl : vacademyUrl;
-  };
 
   useEffect(() => {
     // Apply tab branding from Preferences (tabText and tabIconFileId) with fallback title
-    (async () => {
-      const result = await applyTabBranding(document.title);
-      if (result?.iconUrl) {
-        // Bust cache to ensure latest icon displays
-        setFaviconUrl(`${result.iconUrl}?v=${Date.now()}`);
-      }
-    })();
+    applyTabBranding(document.title);
     const checkForUpdate = async () => {
       if (Capacitor.getPlatform() === "web") return;
 
@@ -147,7 +133,6 @@ const RootComponent = () => {
   return (
     <>
       <Outlet />
-      <Favicon url={getFallbackLogoUrl(faviconUrl || instituteLogoFileUrl)} />
     </>
   );
 };

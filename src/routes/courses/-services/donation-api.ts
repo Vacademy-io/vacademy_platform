@@ -1,3 +1,5 @@
+import { BASE_URL } from '@/constants/urls';
+
 interface DonationRequest {
   amount: number;
   currency: string;
@@ -47,7 +49,7 @@ export const processDonationPayment = async (
 ): Promise<DonationResponse> => {
   try {
     const response = await fetch(
-      `https://backend-stage.vacademy.io/admin-core-service/open/payments/pay?instituteId=${instituteId}`,
+      `${BASE_URL}/admin-core-service/open/payments/pay?instituteId=${instituteId}`,
       {
         method: "POST",
         headers: {

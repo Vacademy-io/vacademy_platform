@@ -34,7 +34,7 @@ public class LearnerStudyLibraryController {
     }
 
     @GetMapping("/modules-with-chapters")
-    @ClientCacheable(maxAgeSeconds = 60, scope = CacheScope.PRIVATE, varyHeaders = {"X-User-Id", "X-Package-Session-Id"})
+    @ClientCacheable(maxAgeSeconds = 300, scope = CacheScope.PRIVATE, varyHeaders = {"X-User-Id", "X-Package-Session-Id"})
     public ResponseEntity<List<LearnerModuleDTOWithDetails>> modulesWithChapters(@RequestParam("subjectId") String subjectId, @RequestParam("packageSessionId") String packageSessionId, @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(learnerStudyLibraryService.getModulesDetailsWithChapters(subjectId, packageSessionId, user));
     }
@@ -46,7 +46,7 @@ public class LearnerStudyLibraryController {
     }
 
     @GetMapping("/slides")
-    @ClientCacheable(maxAgeSeconds = 60, scope = CacheScope.PRIVATE, varyHeaders = {"X-User-Id"})
+    @ClientCacheable(maxAgeSeconds = 300, scope = CacheScope.PRIVATE, varyHeaders = {"X-User-Id"})
     public ResponseEntity<List<LearnerSlidesDetailDTO>> getLearnerSlidesByChapterId(@RequestParam String chapterId, @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(learnerStudyLibraryService.getLearnerSlides(chapterId, user));
     }

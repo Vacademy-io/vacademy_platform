@@ -7,21 +7,17 @@ import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDetails;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerBatchEnrollService;
-import vacademy.io.admin_core_service.features.notification_service.service.PaymentNotificatonService;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
-import vacademy.io.admin_core_service.features.payments.service.PaymentService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
-import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
-import vacademy.io.admin_core_service.features.user_subscription.service.ReferralHandler;
+import vacademy.io.admin_core_service.features.user_subscription.handler.ReferralBenefitOrchestrator;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.session.PackageSession;
-import vacademy.io.common.payment.dto.PaymentResponseDTO;
 
 import java.util.*;
 
@@ -34,19 +30,19 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
     private PackageSessionRepository packageSessionRepository;
 
     @Autowired
-    private ReferralHandler referralHandler;
+    private ReferralBenefitOrchestrator referralBenefitOrchestrator;
 
     @Autowired
     private AuthService authService;
 
     @Override
     public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
-            LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
-            String instituteId,
-            EnrollInvite enrollInvite,
-            PaymentOption paymentOption,
-            UserPlan userPlan,
-            Map<String, Object> extraData) {
+                                                         LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
+                                                         String instituteId,
+                                                         EnrollInvite enrollInvite,
+                                                         PaymentOption paymentOption,
+                                                         UserPlan userPlan,
+                                                         Map<String, Object> extraData) {
         List<InstituteStudentDetails> instituteStudentDetails = new ArrayList<>();
         if (paymentOption.isRequireApproval()) {
             String status = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();
@@ -94,13 +90,12 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
         // Process referral request if present - for free payments, benefits are
         // activated immediately
         if (learnerPackageSessionsEnrollDTO.getReferRequest() != null) {
-            referralHandler.processReferralRequest(
-                learnerPackageSessionsEnrollDTO.getReferRequest(),
-                learnerPackageSessionsEnrollDTO,
-                userPlan,
-                user,
-                authService.getUsersFromAuthServiceByUserIds(List.of(learnerPackageSessionsEnrollDTO.getReferRequest().getReferrerUserId())).get(0),
-                learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest()
+            referralBenefitOrchestrator.processAllBenefits(
+                    learnerPackageSessionsEnrollDTO,
+                    paymentOption,
+                    userPlan,
+                    user,
+                    instituteId
             );
         }
 

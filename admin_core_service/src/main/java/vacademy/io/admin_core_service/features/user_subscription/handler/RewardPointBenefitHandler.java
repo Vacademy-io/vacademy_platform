@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.user_subscription.handler;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.user_subscription.dto.BenefitConfigDTO;
@@ -11,12 +12,16 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.ReferralB
 import vacademy.io.admin_core_service.features.user_subscription.service.ReferralBenefitLogService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
+import vacademy.io.common.exceptions.VacademyException;
 
 @Component
-public class FlatDiscountHandler implements ReferralBenefitHandler {
+public class RewardPointBenefitHandler implements ReferralBenefitHandler {
 
     @Autowired
     private ReferralBenefitLogService referralBenefitLogService;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Override
     public void processBenefit(LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
@@ -29,36 +34,28 @@ public class FlatDiscountHandler implements ReferralBenefitHandler {
                                BenefitConfigDTO.BenefitDTO benefitDTO,
                                String beneficiary,
                                String status) {
+        try {
 
-        // Safely cast the benefit value
-        BenefitConfigDTO.FlatDiscountValue flatDiscountValue = (BenefitConfigDTO.FlatDiscountValue) benefitDTO.getValue();
-        double discountAmount = getDiscountedAmount(learnerPackageSessionsEnrollDTO, flatDiscountValue);
+            BenefitConfigDTO.PointBenefitValue pointValue = objectMapper.convertValue(benefitDTO.getValue(), BenefitConfigDTO.PointBenefitValue.class);
 
-        // Apply the flat discount to the payment request amount
-        learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setAmount(
-                learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().getAmount() - discountAmount
-        );
+            boolean isForReferee = beneficiary.equalsIgnoreCase(ReferralBenefitLogsBeneficiary.REFEREE.name());
+            UserDTO targetUser = isForReferee ? refereeUser : referrer;
 
-        // Determine the correct user ID for logging purposes
-        String targetUserId = beneficiary.equalsIgnoreCase(ReferralBenefitLogsBeneficiary.REFEREE.name())
-                ? refereeUser.getId()
-                : referrer.getId();
+            referralBenefitLogService.createLog(
+                    referralMapping.getUserPlan(),
+                    referralMapping,
+                    targetUser.getId(),
+                    ReferralBenefitType.POINTS.name(),
+                    beneficiary,
+                    objectMapper.writeValueAsString(pointValue), // Log the specific points value
+                    status
+            );
 
-        // Create a log entry for this benefit transaction
-        referralBenefitLogService.createLog(
-                referralMapping.getUserPlan(),
-                referralMapping,
-                targetUserId,
-                ReferralBenefitType.FLAT_DISCOUNT.name(),
-                beneficiary,
-                String.valueOf(discountAmount), // Log the actual discount amount applied
-                status
-        );
-    }
+            if (benefitDTO.getPointTriggers() != null && !benefitDTO.getPointTriggers().isEmpty()) {
+            }
 
-    private double getDiscountedAmount(LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO, BenefitConfigDTO.FlatDiscountValue flatDiscountValue) {
-        // Ensure the discount does not exceed the total amount
-        double amount = learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().getAmount();
-        return Math.min(amount, flatDiscountValue.getAmount());
+        } catch (Exception e) {
+            throw new VacademyException("Failed to process reward point benefit"+e.getMessage());
+        }
     }
 }

@@ -13,7 +13,7 @@ import vacademy.io.admin_core_service.features.packages.repository.PackageSessio
 import vacademy.io.admin_core_service.features.payments.service.PaymentService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
-import vacademy.io.admin_core_service.features.user_subscription.service.ReferralHandler;
+import vacademy.io.admin_core_service.features.user_subscription.handler.ReferralBenefitOrchestrator;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
@@ -38,19 +38,19 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
     private PackageSessionRepository packageSessionRepository;
 
     @Autowired
-    private ReferralHandler referralHandler;
+    private ReferralBenefitOrchestrator referralBenefitOrchestrator;
 
     @Autowired
     private AuthService authService;
 
     @Override
     public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
-            LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
-            String instituteId,
-            EnrollInvite enrollInvite,
-            PaymentOption paymentOption,
-            UserPlan userPlan,
-            Map<String, Object> extraData) {
+                                                         LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
+                                                         String instituteId,
+                                                         EnrollInvite enrollInvite,
+                                                         PaymentOption paymentOption,
+                                                         UserPlan userPlan,
+                                                         Map<String, Object> extraData) {
         String learnerSessionStatus = null;
         if (paymentOption.isRequireApproval()) {
             learnerSessionStatus = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();
@@ -83,13 +83,12 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
         // Process referral request if present
         List<PaymentLogLineItemDTO> referralLineItems = new ArrayList<>();
         if (learnerPackageSessionsEnrollDTO.getReferRequest() != null) {
-            referralHandler.processReferralRequest(
-                learnerPackageSessionsEnrollDTO.getReferRequest(),
-                learnerPackageSessionsEnrollDTO,
-                userPlan,
-                user,
-                authService.getUsersFromAuthServiceByUserIds(List.of(learnerPackageSessionsEnrollDTO.getReferRequest().getReferrerUserId())).get(0),
-                learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest()
+            referralBenefitOrchestrator.processAllBenefits(
+                    learnerPackageSessionsEnrollDTO,
+                    paymentOption,
+                    userPlan,
+                    user,
+                    instituteId
             );
         }
 
@@ -115,8 +114,8 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
     }
 
     private List<InstituteStudentDetails> buildInstituteStudentDetails(String instituteId,
-            List<String> packageSessionIds,
-            Integer accessDays, String learnerSessionStatus, UserPlan userPlan) {
+                                                                       List<String> packageSessionIds,
+                                                                       Integer accessDays, String learnerSessionStatus, UserPlan userPlan) {
         List<InstituteStudentDetails> detailsList = new ArrayList<>();
 
         for (String packageSessionId : packageSessionIds) {

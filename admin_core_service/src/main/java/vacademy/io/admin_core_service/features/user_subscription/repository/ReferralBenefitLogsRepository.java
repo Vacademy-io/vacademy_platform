@@ -13,4 +13,13 @@ public interface ReferralBenefitLogsRepository extends JpaRepository<ReferralBen
 
     @Query("SELECT rbl FROM ReferralBenefitLogs rbl WHERE rbl.userPlan.id = :userPlanId")
     List<ReferralBenefitLogs> findByUserPlanId(@Param("userPlanId") String userPlanId);
+
+    @Query("""
+    SELECT rbl 
+    FROM ReferralBenefitLogs rbl
+    WHERE rbl.referralMapping.id = :referralMappingId
+      AND rbl.status IN :status
+""")
+    List<ReferralBenefitLogs> findByReferralMappingIdAndStatusIn(@Param("referralMappingId") String referralMappingId,
+                                                                 @Param("status") List<String> status);
 }

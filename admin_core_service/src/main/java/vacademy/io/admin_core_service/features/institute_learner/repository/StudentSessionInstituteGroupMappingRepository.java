@@ -11,7 +11,7 @@ import java.util.Optional;
 
 @Repository
 public interface StudentSessionInstituteGroupMappingRepository
-    extends JpaRepository<StudentSessionInstituteGroupMapping, String> {
+        extends JpaRepository<StudentSessionInstituteGroupMapping, String> {
 
     @Query(value = """
     SELECT
@@ -30,8 +30,8 @@ public interface StudentSessionInstituteGroupMappingRepository
       AND ssigm.status IN (:statuses)
     """, nativeQuery = true)
     List<Object[]> findMappingsWithStudentContacts(
-        @Param("psIds") List<String> packageSessionIds,
-        @Param("statuses") List<String> statuses
+            @Param("psIds") List<String> packageSessionIds,
+            @Param("statuses") List<String> statuses
     );
 
     @Query(value = """
@@ -51,9 +51,9 @@ public interface StudentSessionInstituteGroupMappingRepository
       AND ssigm.status IN (:statuses)
     """, nativeQuery = true)
     List<Object[]> findMappingsWithStudentContactsByInstitute(
-        @Param("psIds") List<String> packageSessionIds,
-        @Param("instituteId") String instituteId,
-        @Param("statuses") List<String> statuses
+            @Param("psIds") List<String> packageSessionIds,
+            @Param("instituteId") String instituteId,
+            @Param("statuses") List<String> statuses
     );
 
     @Query(value = """
@@ -62,8 +62,8 @@ public interface StudentSessionInstituteGroupMappingRepository
             AND package_session_id = :sessionId ORDER BY created_at DESC LIMIT 1
             """, nativeQuery = true)
     Optional<StudentSessionInstituteGroupMapping> findByUserIdAndPackageSessionId(
-        @Param("userId") String userId,
-        @Param("sessionId") String packageSessionId);
+            @Param("userId") String userId,
+            @Param("sessionId") String packageSessionId);
 
     @Query(value = """
             SELECT * FROM student_session_institute_group_mapping
@@ -72,9 +72,9 @@ public interface StudentSessionInstituteGroupMappingRepository
             AND institute_id = :instituteId ORDER BY created_at DESC LIMIT 1
             """, nativeQuery = true)
     Optional<StudentSessionInstituteGroupMapping> findByUserIdAndPackageSessionIdAndInstituteId(
-        @Param("userId") String userId,
-        @Param("sessionId") String packageSessionId,
-        @Param("instituteId") String instituteId);
+            @Param("userId") String userId,
+            @Param("sessionId") String packageSessionId,
+            @Param("instituteId") String instituteId);
 
     @Query(value = """
             SELECT * FROM student_session_institute_group_mapping
@@ -85,10 +85,10 @@ public interface StudentSessionInstituteGroupMappingRepository
             AND automated_completion_certificate_file_id IS NOT NULL
             """, nativeQuery = true)
     List<StudentSessionInstituteGroupMapping> findAllByLearnerIdAndPackageSessionIdInAndInstituteIdAndStatusInAndCertificate(
-        @Param("userId") String learnerId,
-        @Param("packageSessionIds") List<String> allPackageSessionIds,
-        @Param("instituteId") String instituteId,
-        @Param("statusList") List<String> status
+            @Param("userId") String learnerId,
+            @Param("packageSessionIds") List<String> allPackageSessionIds,
+            @Param("instituteId") String instituteId,
+            @Param("statusList") List<String> status
     );
 
     @Query("""
@@ -99,9 +99,9 @@ public interface StudentSessionInstituteGroupMappingRepository
           AND s.packageSession.id IN :packageSessionIds
     """)
     boolean existsByUserIdAndStatusInAndPackageSessionIdIn(
-        @Param("userId") String userId,
-        @Param("statusList") List<String> statusList,
-        @Param("packageSessionIds") List<String> packageSessionIds
+            @Param("userId") String userId,
+            @Param("statusList") List<String> statusList,
+            @Param("packageSessionIds") List<String> packageSessionIds
     );
 
     @Query(value = """
@@ -116,22 +116,35 @@ public interface StudentSessionInstituteGroupMappingRepository
     List<Object[]> findStudentContactsByUserIds(@Param("userIds") List<String> userIds);
 
     @Query("SELECT s FROM StudentSessionInstituteGroupMapping s " +
-        "WHERE s.destinationPackageSession.id = :destinationPackageSessionId " +
-        "AND s.status IN :statusList " +
-        "AND s.userId = :userId " +
-        "ORDER BY s.createdAt DESC")
+            "WHERE s.destinationPackageSession.id = :destinationPackageSessionId " +
+            "AND s.status IN :statusList " +
+            "AND s.userId = :userId " +
+            "ORDER BY s.createdAt DESC")
     Optional<StudentSessionInstituteGroupMapping> findLatestByDestinationPackageSessionIdAndStatusInAndUserId(
-        @Param("destinationPackageSessionId") String destinationPackageSessionId,
-        @Param("statusList") List<String> statusList,
-        @Param("userId") String userId);
+            @Param("destinationPackageSessionId") String destinationPackageSessionId,
+            @Param("statusList") List<String> statusList,
+            @Param("userId") String userId);
 
     @Query("SELECT s FROM StudentSessionInstituteGroupMapping s " +
-        "WHERE s.userId = :userId " +
-        "AND s.status IN :statusList " +
-        "AND s.packageSession.id = :packageSessionId " +
-        "ORDER BY s.createdAt DESC")
+            "WHERE s.userId = :userId " +
+            "AND s.status IN :statusList " +
+            "AND s.packageSession.id = :packageSessionId " +
+            "ORDER BY s.createdAt DESC")
     Optional<StudentSessionInstituteGroupMapping> findByUserIdAndStatusInAndPackageSessionId(
-        @Param("userId") String userId,
-        @Param("statusList") List<String> statusList,
-        @Param("packageSessionId") String packageSessionId);
+            @Param("userId") String userId,
+            @Param("statusList") List<String> statusList,
+            @Param("packageSessionId") String packageSessionId);
+
+    @Query("""
+    SELECT s
+    FROM StudentSessionInstituteGroupMapping s
+    WHERE s.userId = :userId
+      AND s.packageSession.id IN :packageSessionIds
+      AND s.status IN :statusList
+""")
+    List<StudentSessionInstituteGroupMapping> findAllByUserIdAndPackageSessionIdsAndStatus(
+            @Param("userId") String userId,
+            @Param("packageSessionIds") List<String> packageSessionIds,
+            @Param("statusList") List<String> statusList
+    );
 }

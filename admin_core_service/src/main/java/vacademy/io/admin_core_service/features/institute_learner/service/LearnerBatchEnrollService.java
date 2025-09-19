@@ -17,6 +17,9 @@ import vacademy.io.admin_core_service.features.institute_learner.repository.Inst
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.institute_learner.dto.BulkLearnerApprovalRequestDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.GuestRegistrationRequestDTO;
+import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
+import vacademy.io.admin_core_service.features.user_subscription.service.ReferralMappingService;
+import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.common.dto.CustomFieldValueDTO;
 
@@ -39,6 +42,12 @@ public class LearnerBatchEnrollService {
 
     @Autowired
     private StudentSessionRepository studentSessionRepository;
+
+    @Autowired
+    private UserPlanService userPlanService;
+
+    @Autowired
+    private ReferralMappingService referralMappingService;
 
     public UserDTO checkAndCreateStudentAndAddToBatch(UserDTO userDTO, String instituteId, List<InstituteStudentDetails> instituteStudentDetails, List<CustomFieldValueDTO>customFieldValues, Map<String, Object> extraData) {
         UserDTO createdUser = studentRegistrationManager.createUserFromAuthService(userDTO, instituteId);
@@ -79,6 +88,12 @@ public class LearnerBatchEnrollService {
                         CustomFieldTypeEnum.ENROLL_INVITE.name(),
                         enrollInviteId
                 );
+
+                if (mappings.size() > 0){
+                    String userPlanId = mappings.get(0).getUserPlanId();
+                    UserPlan userPlan = userPlanService.findById(userPlanId);
+                    referralMappingService.processReferralBenefitsIfApplicable(userPlan);
+                }
             }
         }
     }

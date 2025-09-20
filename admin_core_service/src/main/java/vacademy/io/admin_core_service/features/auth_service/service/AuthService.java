@@ -93,7 +93,7 @@ public class AuthService {
         try {
             userDTO.setRootUser(true);
             ObjectMapper objectMapper = new ObjectMapper();
-            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(), authServerBaseUrl, StudentConstants.addUserRoute + "?instituteId=" + instituteId, userDTO);
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(), authServerBaseUrl, StudentConstants.addUserRoute + "?instituteId=" + instituteId , userDTO);
             return objectMapper.readValue(response.getBody(), UserDTO.class);
 
         } catch (Exception e) {

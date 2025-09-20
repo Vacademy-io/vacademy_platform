@@ -95,7 +95,7 @@ public class LearnerSessionOperationService {
     private Student checkAndCreateStudent(InstituteStudentDTO instituteStudentDTO) {
         instituteStudentDTO.getUserDetails().setRoles(studentRegistrationManager.getStudentRoles());
         instituteStudentDTO.getUserDetails().setUsername(instituteStudentDTO.getUserDetails().getUsername().toLowerCase());
-        UserDTO createdUser = studentRegistrationManager.createUserFromAuthService(instituteStudentDTO.getUserDetails(), instituteStudentDTO.getInstituteStudentDetails().getInstituteId());
+        UserDTO createdUser = studentRegistrationManager.createUserFromAuthService(instituteStudentDTO.getUserDetails(), instituteStudentDTO.getInstituteStudentDetails().getInstituteId(), true);
         return studentRegistrationManager.createStudentFromRequest(createdUser, instituteStudentDTO.getStudentExtraDetails());
     }
 

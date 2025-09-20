@@ -82,10 +82,10 @@ public class ReferralBenefitOrchestrator {
         }
 
         try {
-            List<BenefitConfigDTO.BenefitTierDTO> allTiers = objectMapper.readValue(benefitJson, new TypeReference<>() {});
+            BenefitConfigDTO config = objectMapper.readValue(benefitJson, new TypeReference<>() {});
             long activeReferralCount = referralMappingRepository.countActiveReferralsByReferrerUserId(referrer.getId());
 
-            List<BenefitConfigDTO.BenefitTierDTO> matchingTiers = findTiersForReferralCount(allTiers, activeReferralCount);
+            List<BenefitConfigDTO.BenefitTierDTO> matchingTiers = findTiersForReferralCount(config.getTiers(), activeReferralCount);
 
             for (BenefitConfigDTO.BenefitTierDTO tier : matchingTiers) {
                 if (tier.getBenefits() == null) continue;

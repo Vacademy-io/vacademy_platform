@@ -305,7 +305,7 @@ export default function LiveClassRegistrationPage() {
 
   return (
     <>
-      <div className="w-screen h-screen max-sm:h-fit bg-primary-50 max-sm:p-0 p-20 flex flex-row max-sm:flex-col max-sm:gap-8 justify-around items-center">
+      <div className="w-screen min-h-screen bg-primary-50 p-4 sm:p-8 lg:p-20 flex flex-col lg:flex-row gap-6 lg:gap-8 justify-center lg:justify-around items-center">
         <SessionInfo
           sessionTitle={data?.sessionTitle}
           startTime={data?.startTime}
@@ -315,8 +315,8 @@ export default function LiveClassRegistrationPage() {
           sessionDetails={sessionDetails}
         />
 
-        <div className="w-[35%] max-sm:w-full max-sm:mb-4 flex items-center justify-center">
-          <div className="bg-white rounded-lg shadow-md">
+        <div className="w-full max-w-md lg:w-[35%] flex items-center justify-center">
+          <div className="bg-white rounded-lg shadow-md w-full">
             <div className="flex flex-col gap-4">
               {isUserAlreadyRegistered && sessionDetails ? (
                 <SessionStatusCard

@@ -57,10 +57,10 @@ export default function RegistrationForm({
     <FormProvider {...form}>
       <form
         onSubmit={handleSubmit(onSubmit, onError)}
-        className="flex flex-col gap-4 justify-between m-6 min-w-[350px]"
+        className="flex flex-col gap-4 justify-between p-4 sm:p-6 w-full max-w-md mx-auto"
       >
-        <div className="font-bold">Registration Form</div>
-        <div className="flex flex-col gap-4 overflow-auto h-[60vh]">
+        <div className="font-bold text-lg sm:text-xl">Registration Form</div>
+        <div className="flex flex-col gap-4 overflow-auto max-h-[60vh] sm:max-h-[50vh]">
           {customFields?.map((responseField) => (
             <div key={responseField.id} className="flex flex-col gap-4">
               {responseField.fieldType.toLocaleLowerCase() === "dropdown" ? (
@@ -101,8 +101,8 @@ export default function RegistrationForm({
                               : `+${val}`;
                             field.onChange(formattedValue);
                           }}
-                          inputClass="!w-full h-10 !rounded-md !border-input"
-                          buttonClass="!rounded-l-md !border-input"
+                          inputClass="!w-full h-10 sm:h-12 !rounded-md !border-input !text-sm sm:!text-base"
+                          buttonClass="!rounded-l-md !border-input !h-10 sm:!h-12"
                           disabled={false}
                           value={field.value}
                           countryCodeEditable={false}
@@ -172,7 +172,7 @@ export default function RegistrationForm({
           ))}
         </div>
 
-        <MyButton buttonType="primary" type="submit" className="mt-4">
+        <MyButton buttonType="primary" type="submit" className="mt-4 w-full">
           Join Now
         </MyButton>
       </form>

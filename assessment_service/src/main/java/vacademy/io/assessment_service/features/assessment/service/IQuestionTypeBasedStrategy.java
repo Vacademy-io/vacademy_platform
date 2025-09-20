@@ -6,7 +6,10 @@ import lombok.Getter;
 import lombok.Setter;
 import vacademy.io.assessment_service.features.assessment.dto.AssessmentQuestionPreviewDto;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
+import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
 import vacademy.io.assessment_service.features.question_core.entity.Question;
+
+import java.util.List;
 
 public abstract class IQuestionTypeBasedStrategy {
     @Getter
@@ -25,5 +28,5 @@ public abstract class IQuestionTypeBasedStrategy {
 
     public abstract Object validateAndGetResponseData(String responseJson) throws JsonProcessingException;
 
-    public abstract Object validateAndGetSurveyData(Assessment assessment, AssessmentQuestionPreviewDto assessmentQuestionPreviewDto);
+    public abstract Object validateAndGetSurveyData(Assessment assessment, AssessmentQuestionPreviewDto assessmentQuestionPreviewDto, List<QuestionWiseMarks> allRespondentData);
 }

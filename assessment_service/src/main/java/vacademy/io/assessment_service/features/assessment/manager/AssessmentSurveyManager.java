@@ -167,4 +167,9 @@ public class AssessmentSurveyManager {
 
         return response;
     }
+
+    public ResponseEntity<List<String>> createSetupForSurvey(CustomUserDetails userDetails, String instituteId, String assessmentId) {
+        List<String> allAttemptsIds = questionWiseMarksRepository.findDistinctAttemptIdsForAssessment(assessmentId);
+        return ResponseEntity.ok(allAttemptsIds);
+    }
 }

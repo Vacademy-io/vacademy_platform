@@ -7,7 +7,9 @@ import vacademy.io.assessment_service.features.assessment.dto.survey_dto.*;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentUserRegistrationRepository;
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
+import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
 import vacademy.io.assessment_service.features.learner_assessment.repository.QuestionWiseMarksRepository;
+import vacademy.io.assessment_service.features.learner_assessment.service.QuestionWiseMarksService;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -18,7 +20,7 @@ import java.util.Map;
 public class AssessmentSurveyService {
 
     @Autowired
-    QuestionWiseMarksRepository questionWiseMarksRepository;
+    QuestionWiseMarksService questionWiseMarksService;
 
 
     @Autowired
@@ -33,7 +35,7 @@ public class AssessmentSurveyService {
     }
 
     public Long getParticipantsResponded(String assessmentId) {
-        return questionWiseMarksRepository.countUniqueRespondentForAssessment(assessmentId);
+        return questionWiseMarksService.countUniqueRespondentForAssessment(assessmentId);
     }
 
     public List<SurveyDto> getSurveyListFromQuestionMapping(Assessment assessment, Map<String, List<AssessmentQuestionPreviewDto>> questionMapping) {
@@ -41,9 +43,10 @@ public class AssessmentSurveyService {
         // Iterate through each section → each question
         questionMapping.values().forEach(questionList -> {
             for (AssessmentQuestionPreviewDto questionPreview : questionList) {
+                List<QuestionWiseMarks> allRespondentData = questionWiseMarksService.getAllQuestionWiseAttemptsForAssessmentIdAndQuestionIdAndSectionId(questionPreview.getQuestionId(), assessment.getId(), questionPreview.getSectionId());
                 Object surveyDetail = QuestionBasedStrategyFactory.getSurveyDetailBasedOnType(
                         assessment,
-                        questionPreview
+                        questionPreview,allRespondentData
                 );
 
                 SurveyDto.SurveyDtoBuilder surveyBuilder = SurveyDto.builder()

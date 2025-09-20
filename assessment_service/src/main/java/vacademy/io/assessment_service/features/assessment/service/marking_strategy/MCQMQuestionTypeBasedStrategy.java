@@ -23,9 +23,6 @@ import java.util.*;
 @Component
 public class MCQMQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
 
-    @Autowired
-    QuestionWiseMarksService questionWiseMarksService;
-
     @Override
     public double calculateMarks(String markingJsonStr, String correctAnswerJsonStr, String responseJson) {
         try {
@@ -116,9 +113,8 @@ public class MCQMQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
     }
 
     @Override
-    public Object validateAndGetSurveyData(Assessment assessment, AssessmentQuestionPreviewDto assessmentQuestionPreviewDto) {
+    public Object validateAndGetSurveyData(Assessment assessment, AssessmentQuestionPreviewDto assessmentQuestionPreviewDto,List<QuestionWiseMarks> allRespondentData) {
         setType(assessmentQuestionPreviewDto.getQuestion().getType());
-        List<QuestionWiseMarks> allRespondentData = questionWiseMarksService.getAllQuestionWiseAttemptsForAssessmentIdAndQuestionIdAndSectionId(assessmentQuestionPreviewDto.getQuestionId(), assessment.getId(), assessmentQuestionPreviewDto.getSectionId());
 
         return MCQSurveyDto.builder()
                 .type(getType())

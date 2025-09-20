@@ -37,6 +37,24 @@ public class InternalFileController {
         return ResponseEntity.ok().headers(headers).body(url);
     }
 
+    @GetMapping("/public-url")
+    public ResponseEntity<String> getPublicFileUrlById(@RequestParam("fileId") String fileId,
+                                                       @RequestParam("expiryDays") Integer expiryDays,
+                                                       @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) throws FileDownloadException {
+        String url = fileService.getPublicBucketUrl(fileId, expiryDays);
+
+        String etag = "W/\"" + fileId + ":" + expiryDays + "\"";
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Cache-Control", "public, max-age=3600, stale-while-revalidate=60");
+        headers.setETag(etag);
+
+        if (etag.equals(ifNoneMatch)) {
+            return new ResponseEntity<>(null, headers, HttpStatus.NOT_MODIFIED);
+        }
+
+        return ResponseEntity.ok().headers(headers).body(url);
+    }
+
     @GetMapping("/get-details/id")
     public ResponseEntity<FileDetailsDTO> getFileDetailsById(@RequestParam String fileId, @RequestParam Integer expiryDays) throws FileDownloadException {
         FileDetailsDTO fileDetailsDTO = fileService.getFileDetailsWithExpiryAndId(fileId, expiryDays);

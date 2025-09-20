@@ -23,9 +23,6 @@ import java.util.*;
 @Component
 public class LongAnswerQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
 
-    @Autowired
-    private QuestionWiseMarksService questionWiseMarksService;
-
     public static Pair<Double, String> calculateMarksViaMatching(String correctAnswer, String studentAnswer, double totalMarks, double negativeMarks) {
         // Convert answers to sets of words (ignore case & split by spaces)
         Set<String> correctWords = new HashSet<>(Arrays.asList(correctAnswer.toLowerCase().split("\\s+")));
@@ -124,9 +121,8 @@ public class LongAnswerQuestionTypeBasedStrategy extends IQuestionTypeBasedStrat
     }
 
     @Override
-    public Object validateAndGetSurveyData(Assessment assessment, AssessmentQuestionPreviewDto assessmentQuestionPreviewDto) {
+    public Object validateAndGetSurveyData(Assessment assessment, AssessmentQuestionPreviewDto assessmentQuestionPreviewDto, List<QuestionWiseMarks> allRespondentData) {
         setType(assessmentQuestionPreviewDto.getQuestion().getType());
-        List<QuestionWiseMarks> allRespondentData = questionWiseMarksService.getAllQuestionWiseAttemptsForAssessmentIdAndQuestionIdAndSectionId(assessmentQuestionPreviewDto.getQuestionId(), assessment.getId(), assessmentQuestionPreviewDto.getSectionId());
 
         return OneWordLongSurveyDto.builder()
                 .type(getType())

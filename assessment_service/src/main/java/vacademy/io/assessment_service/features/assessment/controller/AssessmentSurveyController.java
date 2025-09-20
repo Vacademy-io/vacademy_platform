@@ -11,9 +11,12 @@ import vacademy.io.assessment_service.features.assessment.dto.survey_dto.respons
 import vacademy.io.assessment_service.features.assessment.manager.AssessmentSurveyManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
+import java.util.List;
+
 import static vacademy.io.common.auth.config.PageConstants.DEFAULT_PAGE_NUMBER;
 import static vacademy.io.common.auth.config.PageConstants.DEFAULT_PAGE_SIZE;
 
+@RestController
 @RequestMapping("/assessment-service/assessment/survey")
 public class AssessmentSurveyController {
 
@@ -44,6 +47,13 @@ public class AssessmentSurveyController {
                                                                        @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
                                                                        @RequestParam(value = "pageSize", defaultValue = DEFAULT_PAGE_SIZE, required = false) int pageSize){
         return surveyManager.getRespondentResponseForEachQuestion(userDetails,filter,instituteId, pageNo,pageSize);
+    }
+
+    @GetMapping("/setup")
+    public ResponseEntity<List<String>> setupForSurvey(@RequestAttribute("user")CustomUserDetails userDetails,
+                                                      @RequestParam("instituteId") String instituteId,
+                                                       @RequestParam("assessmentId") String assessmentId){
+        return surveyManager.createSetupForSurvey(userDetails,instituteId,assessmentId);
     }
 
 

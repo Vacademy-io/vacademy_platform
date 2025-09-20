@@ -12,6 +12,7 @@ import vacademy.io.assessment_service.features.assessment.dto.QuestionWiseBasicD
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.enums.QuestionResponseEnum;
 import vacademy.io.assessment_service.features.assessment.service.marking_strategy.*;
+import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
 import vacademy.io.assessment_service.features.question_core.enums.QuestionTypes;
 
 import java.util.*;
@@ -120,9 +121,9 @@ public class QuestionBasedStrategyFactory {
         return root.get("type").asText();
     }
 
-    public static Object getSurveyDetailBasedOnType(Assessment assessment, AssessmentQuestionPreviewDto assessmentQuestionPreviewDto){
+    public static Object getSurveyDetailBasedOnType(Assessment assessment, AssessmentQuestionPreviewDto assessmentQuestionPreviewDto, List<QuestionWiseMarks> allRespondentData){
         String type = assessmentQuestionPreviewDto.getQuestionType();
         IQuestionTypeBasedStrategy strategy = getStrategy(type);
-        return strategy.validateAndGetSurveyData(assessment,assessmentQuestionPreviewDto);
+        return strategy.validateAndGetSurveyData(assessment,assessmentQuestionPreviewDto,allRespondentData);
     }
 }

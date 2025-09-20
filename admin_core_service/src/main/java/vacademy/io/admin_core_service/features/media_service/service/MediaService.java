@@ -52,6 +52,21 @@ public class MediaService {
         return response.getBody();
     }
 
+    public String getFilePublicUrlById(String fileId) {
+        if (fileId == null || fileId.isEmpty()) {
+            return null;
+        }
+        // Removed the redundant 'clientName' parameter, we can use the injected clientName field here
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                clientName, // Directly use the injected 'clientName'
+                HttpMethod.GET.name(),
+                mediaServerBaseUrl,
+                MediaServiceConstants.GET_FILE_PUBLIC_URL_BY_ID_ROUTE+"?fileId="+fileId+"&expiryDays=1",
+                null
+        );
+        return response.getBody();
+    }
+
     public String uploadFile(MultipartFile multipartFile) throws IOException {
         if (multipartFile == null) {
             return null;

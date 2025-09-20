@@ -408,4 +408,24 @@ public class FileServiceImpl implements FileService {
         return new PreSignedUrlResponse(metadata.getId(), url.toString());
     }
 
+    @Override
+    public String getPublicBucketUrl(String fileId, Integer expiryDays) throws FileDownloadException {
+        Date expiryDate = addTime(expiryDays);
+
+        Optional<FileMetadata> fileMetadata = fileMetadataRepository.findById(fileId);
+        if (fileMetadata.isEmpty()) {
+            throw new FileDownloadException("File Not Found");
+        }
+
+        // Generate presigned URL for public bucket
+        GeneratePresignedUrlRequest generatePresignedUrlRequest =
+                new GeneratePresignedUrlRequest(publicBucket, fileMetadata.get().getKey())
+                        .withMethod(HttpMethod.GET)
+                        .withExpiration(expiryDate);
+
+        URL url = s3Client.generatePresignedUrl(generatePresignedUrlRequest);
+
+        return url.toString();
+    }
+
 }

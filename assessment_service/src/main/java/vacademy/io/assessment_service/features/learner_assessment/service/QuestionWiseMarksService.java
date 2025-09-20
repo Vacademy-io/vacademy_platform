@@ -182,4 +182,8 @@ public class QuestionWiseMarksService {
     public List<QuestionWiseMarks> getAllQuestionWiseAttemptsForAssessmentIdAndQuestionIdAndSectionId(String assessmentId, String questionId, String sectionId){
         return questionWiseMarksRepository.findByAssessmentIdAndQuestionIdAndSectionId(questionId,assessmentId,sectionId);
     }
+
+    public Long countUniqueRespondentForAssessment(String assessmentId) {
+        return questionWiseMarksRepository.countUniqueRespondentForAssessment(assessmentId);
+    }
 }

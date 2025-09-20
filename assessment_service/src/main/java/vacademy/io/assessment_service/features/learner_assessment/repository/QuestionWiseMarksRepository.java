@@ -76,7 +76,7 @@ public interface QuestionWiseMarksRepository extends JpaRepository<QuestionWiseM
     @Query(value = """
             SELECT qwm.* from question_wise_marks as qwm
             WHERE qwm.question_id = :questionId
-            AND qwm.assessmentId = :assessmentId
+            AND qwm.assessment_id = :assessmentId
             AND qwm.section_id = :sectionId
             ORDER BY qwm.created_at DESC
             """, nativeQuery = true)
@@ -85,9 +85,11 @@ public interface QuestionWiseMarksRepository extends JpaRepository<QuestionWiseM
                                                                         @Param("sectionId") String sectionId);
 
     @Query(value = """
-            SELECT COUNT (DISTINCT qwm.attempt_id) from question_wise_marks as qwm
-            AND qwm.assessmentId = :assessmentId
-            ORDER BY qwm.created_at DESC
+            select COUNT(distinct aur.user_id) from question_wise_marks qwm
+            join assessment a on qwm.assessment_id = a.id
+            join student_attempt sa on sa.id = qwm.attempt_id
+            join assessment_user_registration aur on sa.registration_id = aur.id
+            and qwm.assessment_id = :assessmentId
             """, nativeQuery = true)
     Long countUniqueRespondentForAssessment(@Param("assessmentId") String assessmentId);
 
@@ -175,4 +177,15 @@ public interface QuestionWiseMarksRepository extends JpaRepository<QuestionWiseM
             @Param("status") List<String> status,
             Pageable pageable);
 
+
+    @Query(value = """
+            SELECT DISTINCT ON (aur.user_id) sa.id
+            FROM question_wise_marks qwm
+            JOIN assessment a ON qwm.assessment_id = a.id
+            JOIN student_attempt sa ON sa.id = qwm.attempt_id
+            JOIN assessment_user_registration aur ON sa.registration_id = aur.id
+            WHERE qwm.assessment_id = :assessmentId
+            ORDER BY aur.user_id, sa.start_time DESC;
+            """,nativeQuery = true)
+    List<String> findDistinctAttemptIdsForAssessment(@Param("assessmentId") String assessmentId);
 }

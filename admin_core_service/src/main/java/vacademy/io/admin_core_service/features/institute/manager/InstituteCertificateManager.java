@@ -46,7 +46,7 @@ public class InstituteCertificateManager {
     }
 
     private String getPdfUrlFromFileId(String automatedCompletionCertificateFileId) {
-        return mediaService.getFileUrlById(automatedCompletionCertificateFileId);
+        return mediaService.getFilePublicUrlById(automatedCompletionCertificateFileId);
     }
 
     private ResponseEntity<String> handleCaseWhereCertificateNotPresent(String learnerId, String packageSessionId, String instituteId, Optional<StudentSessionInstituteGroupMapping> instituteStudentMapping, CertificationGenerationRequest request) {

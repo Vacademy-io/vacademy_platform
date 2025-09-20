@@ -51,7 +51,7 @@ public class FlatDiscountHandler implements ReferralBenefitHandler {
                 targetUserId,
                 ReferralBenefitType.FLAT_DISCOUNT.name(),
                 beneficiary,
-                String.valueOf(discountAmount), // Log the actual discount amount applied
+                String.valueOf(flatDiscountValue), // Log the actual discount amount applied
                 status
         );
     }

@@ -20,4 +20,14 @@ public interface ReferralMappingRepository extends JpaRepository<ReferralMapping
 """)
     Optional<ReferralMapping> findByUserPlanIdAndStatusIn(@Param("userPlanId") String userPlanId,
                                                           @Param("status") List<String> status);
+
+    List<ReferralMapping> findByRefereeUserIdAndStatusInOrderByCreatedAtDesc(
+            String refereeUserId,
+            List<String> statusList
+    );
+
+    List<ReferralMapping> findByReferrerUserIdAndStatusInOrderByCreatedAtDesc(
+            String refereeUserId,
+            List<String> statusList
+    );
 }

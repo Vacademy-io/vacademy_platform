@@ -12,6 +12,7 @@
         <module>common_service</module>
         <module>media_service</module>
         <module>auth_service</module>
+        <module>assessment_service</module>
         <module>admin_core_service</module>
         <module>community_service</module>
         <module>notification_service</module>

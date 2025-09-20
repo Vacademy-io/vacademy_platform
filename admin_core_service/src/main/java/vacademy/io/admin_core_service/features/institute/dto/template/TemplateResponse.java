@@ -27,6 +27,8 @@ public class TemplateResponse {
     // Generic dynamic parameters for content replacement based on contentType
     private Map<String, Object> dynamicParameters;
     private Boolean canDelete;
+    private String status; // ACTIVE, INACTIVE, DRAFT, etc.
+    private String templateCategory; // NOTIFICATION, MARKETING, SYSTEM, etc.
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private String createdBy;

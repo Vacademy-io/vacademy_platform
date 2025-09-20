@@ -40,6 +40,10 @@ public class TemplateRequest {
     @Builder.Default
     private Boolean canDelete = true;
 
+    private String status; // ACTIVE, INACTIVE, DRAFT, etc.
+
+    private String templateCategory; // NOTIFICATION, MARKETING, SYSTEM, etc.
+
     private String createdBy;
 
     private String updatedBy;

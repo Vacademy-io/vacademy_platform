@@ -73,7 +73,7 @@ public class MemberShipBenefit extends AbstractReferralProcessableBenefit {
                     referralMapping.getUserPlan(),
                     referralMapping,
                     targetUser.getId(),
-                    ReferralBenefitType.MEMBERSHIP_EXTENSION.name(),
+                    ReferralBenefitType.FREE_MEMBERSHIP_DAYS.name(),
                     beneficiary,
                     objectMapper.writeValueAsString(membershipValue), // Log the specific benefit value
                     status

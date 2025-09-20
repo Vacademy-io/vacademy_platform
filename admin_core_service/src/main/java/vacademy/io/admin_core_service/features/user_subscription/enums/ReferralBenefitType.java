@@ -4,6 +4,6 @@ public enum ReferralBenefitType {
     PERCENTAGE_DISCOUNT,
     FLAT_DISCOUNT,
     CONTENT,
-    MEMBERSHIP_EXTENSION,
+    FREE_MEMBERSHIP_DAYS,
     POINTS
 }

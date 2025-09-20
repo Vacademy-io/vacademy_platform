@@ -56,14 +56,14 @@ public class BenefitConfigDTO {
                 @JsonSubTypes.Type(value = ContentBenefitValue.class, name = "CONTENT"),
                 @JsonSubTypes.Type(value = FlatDiscountValue.class, name = "FLAT_DISCOUNT"),
                 @JsonSubTypes.Type(value = PercentageDiscountValue.class, name = "PERCENTAGE_DISCOUNT"),
-                @JsonSubTypes.Type(value = MembershipExtensionValue.class, name = "MEMBERSHIP_EXTENSION")
+                @JsonSubTypes.Type(value = MembershipExtensionValue.class, name = "FREE_MEMBERSHIP_DAYS")
         })
         private Object value;
         private List<PointTriggerDTO> pointTriggers;
     }
 
     public enum BenefitType {
-        POINTS, CONTENT, FLAT_DISCOUNT, PERCENTAGE_DISCOUNT, MEMBERSHIP_EXTENSION
+        POINTS, CONTENT, FLAT_DISCOUNT, PERCENTAGE_DISCOUNT, FREE_MEMBERSHIP_DAYS
     }
 
     @Data

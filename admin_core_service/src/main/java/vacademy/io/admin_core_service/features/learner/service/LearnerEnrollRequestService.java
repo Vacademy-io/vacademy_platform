@@ -71,7 +71,8 @@ public class LearnerEnrollRequestService {
         sendNotificationBasedOnPaymentOption(
                 learnerEnrollRequestDTO.getInstituteId(),
                 learnerEnrollRequestDTO.getUser(),
-                paymentOption
+                paymentOption,
+                enrollInvite
         );
         UserPlan userPlan = createUserPlan(
             learnerEnrollRequestDTO.getUser().getId(),
@@ -98,15 +99,15 @@ public class LearnerEnrollRequestService {
             log.error("ERROR: " +e.getMessage());
         }
     }
-    private void sendNotificationBasedOnPaymentOption(String instituteId, UserDTO user, PaymentOption paymentOption) {
+    private void sendNotificationBasedOnPaymentOption(String instituteId, UserDTO user, PaymentOption paymentOption, EnrollInvite enrollInvite) {
         String type = paymentOption.getType();
         if (PaymentOptionType.SUBSCRIPTION.name().equals(type)|| PaymentOptionType.ONE_TIME.name().equals(type)) {
             //Paid User
-            service.sendUniqueLinkByEmail(instituteId, user, TemplateConstants.PAID_USER_EMAIL_TEMPLATE);
+            service.sendUniqueLinkByEmailByEnrollInvite(instituteId, user, TemplateConstants.PAID_USER_EMAIL_TEMPLATE,enrollInvite);
             service.sendUniqueLinkByWhatsApp(instituteId, user,TemplateConstants.PAID_USER_WHATSAPP_TEMPLATE);
         } else {
             //Free User
-            service.sendUniqueLinkByEmail(instituteId, user,TemplateConstants.FREE_USER_EMAIL_TEMPLATE);
+            service.sendUniqueLinkByEmailByEnrollInvite(instituteId, user,TemplateConstants.FREE_USER_EMAIL_TEMPLATE,enrollInvite);
             service.sendUniqueLinkByWhatsApp(instituteId, user,TemplateConstants.FREE_USER_WHATSAPP_TEMPLATE);
         }
     }

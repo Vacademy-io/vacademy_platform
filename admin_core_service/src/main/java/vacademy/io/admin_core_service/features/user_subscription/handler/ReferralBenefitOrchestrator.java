@@ -85,7 +85,7 @@ public class ReferralBenefitOrchestrator {
             BenefitConfigDTO config = objectMapper.readValue(benefitJson, new TypeReference<>() {});
             long activeReferralCount = referralMappingRepository.countActiveReferralsByReferrerUserId(referrer.getId());
 
-            List<BenefitConfigDTO.BenefitTierDTO> matchingTiers = findTiersForReferralCount(config.getTiers(), activeReferralCount);
+            List<BenefitConfigDTO.BenefitTierDTO> matchingTiers = findTiersForReferralCount(config.getTiers(), activeReferralCount,status);
 
             for (BenefitConfigDTO.BenefitTierDTO tier : matchingTiers) {
                 if (tier.getBenefits() == null) continue;
@@ -109,15 +109,37 @@ public class ReferralBenefitOrchestrator {
         }
     }
 
-    private List<BenefitConfigDTO.BenefitTierDTO> findTiersForReferralCount(List<BenefitConfigDTO.BenefitTierDTO> tiers, long count) {
-        if (tiers == null) return new ArrayList<>();
+    private List<BenefitConfigDTO.BenefitTierDTO> findTiersForReferralCount(
+            List<BenefitConfigDTO.BenefitTierDTO> tiers,
+            long count,
+            String status
+    ) {
+        long effectiveCount = count;
+        if (ReferralStatusEnum.PENDING.name().equalsIgnoreCase(status)) {
+            effectiveCount++;
+        }
+
+        if (tiers == null || tiers.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        final long finalCount = effectiveCount;
+
         return tiers.stream()
                 .filter(tier -> {
                     BenefitConfigDTO.ReferralRangeDTO range = tier.getReferralRange();
-                    return range != null && count+1 >= range.getMin() && count+1 <= range.getMax();
+                    if (range == null) return false;
+
+                    Integer min = range.getMin();
+                    Integer max = range.getMax();
+
+                    return (min == null || finalCount >= min) &&
+                            (max == null || finalCount <= max);
                 })
                 .collect(Collectors.toList());
     }
+
+
 
     private ReferralMapping createReferralMapping(String referrerId, String refereeId, String referralCode, UserPlan userPlan, String status, ReferralOption referralOption) {
         ReferralMapping mapping = ReferralMapping.builder()

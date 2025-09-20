@@ -44,4 +44,6 @@ public interface FileService {
     FileDetailsDTO acknowledgeClientUploadAndGetPublicUrl(AcknowledgeRequest acknowledgeRequest);
 
     PreSignedUrlResponse getPublicPreSignedUrl(String fileName, String fileType, String source, String sourceId);
+
+    String getPublicBucketUrl(String fileId, Integer expiryDays) throws FileDownloadException;
 }

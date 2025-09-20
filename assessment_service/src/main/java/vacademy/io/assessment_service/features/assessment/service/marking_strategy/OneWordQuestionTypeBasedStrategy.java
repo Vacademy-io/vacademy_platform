@@ -3,16 +3,26 @@ package vacademy.io.assessment_service.features.assessment.service.marking_strat
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import vacademy.io.assessment_service.features.assessment.dto.AssessmentQuestionPreviewDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.one_word.OneWordCorrectAnswerDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.one_word.OneWordMarkingDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.one_word.OneWordResponseDto;
+import vacademy.io.assessment_service.features.assessment.dto.survey_dto.OneWordLongSurveyDto;
+import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.enums.QuestionResponseEnum;
 import vacademy.io.assessment_service.features.assessment.service.IQuestionTypeBasedStrategy;
+import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
+import vacademy.io.assessment_service.features.learner_assessment.service.QuestionWiseMarksService;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @Slf4j
 @Component
 public class OneWordQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy {
+
     @Override
     public double calculateMarks(String markingJsonStr, String correctAnswerJsonStr, String responseJson) {
         try {
@@ -85,6 +95,29 @@ public class OneWordQuestionTypeBasedStrategy extends IQuestionTypeBasedStrategy
     public Object validateAndGetResponseData(String responseJson) throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
         return objectMapper.readValue(responseJson, OneWordResponseDto.class);
+    }
+
+    @Override
+    public Object validateAndGetSurveyData(Assessment assessment, AssessmentQuestionPreviewDto assessmentQuestionPreviewDto,List<QuestionWiseMarks> allRespondentData) {
+        setType(assessmentQuestionPreviewDto.getQuestion().getType());
+
+        return OneWordLongSurveyDto.builder()
+                .type(getType())
+                .totalRespondent(allRespondentData.size())
+                .order(assessmentQuestionPreviewDto.getQuestionOrder())
+                .latestResponse(createLatestResponseForOneWordAnswer(allRespondentData)).build();
+    }
+
+    private List<OneWordLongSurveyDto.OneWordLongSurveyInfo> createLatestResponseForOneWordAnswer(List<QuestionWiseMarks> allRespondentData ) {
+        List<OneWordLongSurveyDto.OneWordLongSurveyInfo> response = new ArrayList<>();
+        allRespondentData.forEach(questionWiseResponse->{
+            response.add(OneWordLongSurveyDto.OneWordLongSurveyInfo.builder()
+                    .answer(questionWiseResponse.getResponseJson())
+                    .email(questionWiseResponse.getStudentAttempt().getRegistration().getUserEmail())
+                    .name(questionWiseResponse.getStudentAttempt().getRegistration().getParticipantName()).build());
+        });
+
+        return response;
     }
 
 }

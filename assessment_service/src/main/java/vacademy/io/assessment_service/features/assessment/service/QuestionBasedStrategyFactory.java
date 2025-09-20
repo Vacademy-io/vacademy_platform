@@ -3,13 +3,16 @@ package vacademy.io.assessment_service.features.assessment.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import vacademy.io.assessment_service.features.assessment.dto.AssessmentQuestionPreviewDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqm.MCQMCorrectAnswerDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqm.MCQMResponseDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqs.MCQSCorrectAnswerDto;
 import vacademy.io.assessment_service.features.assessment.dto.Questio_type_based_dtos.mcqs.MCQSResponseDto;
 import vacademy.io.assessment_service.features.assessment.dto.QuestionWiseBasicDetailDto;
+import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.enums.QuestionResponseEnum;
 import vacademy.io.assessment_service.features.assessment.service.marking_strategy.*;
+import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
 import vacademy.io.assessment_service.features.question_core.enums.QuestionTypes;
 
 import java.util.*;
@@ -116,5 +119,11 @@ public class QuestionBasedStrategyFactory {
         ObjectMapper mapper = new ObjectMapper();
         JsonNode root = mapper.readTree(jsonString);
         return root.get("type").asText();
+    }
+
+    public static Object getSurveyDetailBasedOnType(Assessment assessment, AssessmentQuestionPreviewDto assessmentQuestionPreviewDto, List<QuestionWiseMarks> allRespondentData){
+        String type = assessmentQuestionPreviewDto.getQuestionType();
+        IQuestionTypeBasedStrategy strategy = getStrategy(type);
+        return strategy.validateAndGetSurveyData(assessment,assessmentQuestionPreviewDto,allRespondentData);
     }
 }

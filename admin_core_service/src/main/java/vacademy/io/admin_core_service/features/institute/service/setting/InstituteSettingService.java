@@ -351,8 +351,8 @@ public class InstituteSettingService {
             builder.useFastMode();
             builder.withHtmlContent(sanitizeToXhtml(htmlWithCss), null);
 
-            // Force A4 Landscape (842 x 595 points)
-            builder.useDefaultPageSize(20.5f, 10.3f, PdfRendererBuilder.PageSizeUnits.INCHES);
+            // A4 Landscape is 297mm x 210mm, which is ~11.69in x 8.27in
+            builder.useDefaultPageSize(11.7f, 8.3f, PdfRendererBuilder.PageSizeUnits.INCHES);
 
             builder.toStream(outputStream);
             builder.run();

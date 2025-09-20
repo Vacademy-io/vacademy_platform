@@ -178,4 +178,12 @@ public class QuestionWiseMarksService {
             return "{}"; // Return empty JSON in case of error
         }
     }
+
+    public List<QuestionWiseMarks> getAllQuestionWiseAttemptsForAssessmentIdAndQuestionIdAndSectionId(String assessmentId, String questionId, String sectionId){
+        return questionWiseMarksRepository.findByAssessmentIdAndQuestionIdAndSectionId(questionId,assessmentId,sectionId);
+    }
+
+    public Long countUniqueRespondentForAssessment(String assessmentId) {
+        return questionWiseMarksRepository.countUniqueRespondentForAssessment(assessmentId);
+    }
 }

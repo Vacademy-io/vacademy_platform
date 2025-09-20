@@ -47,4 +47,8 @@ public class AssessmentService {
 
         return ResponseEntity.ok("Done");
     }
+
+    public Optional<Assessment> getAssessmentFromId(String assessmentId) {
+        return assessmentRepository.findById(assessmentId);
+    }
 }

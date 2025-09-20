@@ -85,7 +85,7 @@ public class ReferralBenefitOrchestrator {
             BenefitConfigDTO config = objectMapper.readValue(benefitJson, new TypeReference<>() {});
             long activeReferralCount = referralMappingRepository.countActiveReferralsByReferrerUserId(referrer.getId());
 
-            List<BenefitConfigDTO.BenefitTierDTO> matchingTiers = findTiersForReferralCount(config.getTiers(), activeReferralCount,status);
+            List<BenefitConfigDTO.BenefitTierDTO> matchingTiers = findTiersForReferralCount(config.getTiers(), activeReferralCount,status,beneficiary);
 
             for (BenefitConfigDTO.BenefitTierDTO tier : matchingTiers) {
                 if (tier.getBenefits() == null) continue;
@@ -112,8 +112,12 @@ public class ReferralBenefitOrchestrator {
     private List<BenefitConfigDTO.BenefitTierDTO> findTiersForReferralCount(
             List<BenefitConfigDTO.BenefitTierDTO> tiers,
             long count,
-            String status
+            String status,
+            String befitir
     ) {
+        if (befitir.equalsIgnoreCase(ReferralBenefitLogsBeneficiary.REFEREE.name())){
+            return tiers;
+        }
         long effectiveCount = count;
         if (ReferralStatusEnum.PENDING.name().equalsIgnoreCase(status)) {
             effectiveCount++;

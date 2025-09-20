@@ -75,13 +75,15 @@ const ReferralCodeComponent = ({
   setCouponVerified,
   package_session_id,
   setReferRequest,
+  refCode,
 }: {
   referralOptionId: string;
   setCouponVerified: (value: boolean) => void;
   package_session_id: string;
   setReferRequest: (referRequest: ReferRequest | null) => void;
+  refCode: string | null;
 }) => {
-  const [referralCode, setReferralCode] = useState("");
+  const [referralCode, setReferralCode] = useState(refCode || "");
   const [isApplying, setIsApplying] = useState(false);
   const [appliedReferral, setAppliedReferral] = useState<{
     code: string;

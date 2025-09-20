@@ -85,7 +85,7 @@ const EnrollByInvite = () => {
     },
   });
 
-  const { instituteId, inviteCode } = Route.useSearch();
+  const { instituteId, inviteCode, ref } = Route.useSearch();
   const { data: instituteData, isLoading: isInstituteLoading } =
     useSuspenseQuery(handleGetPublicInstituteDetails({ instituteId }));
 
@@ -438,6 +438,7 @@ const EnrollByInvite = () => {
                   ?.package_session_id
               }
               setReferRequest={setReferRequest}
+              refCode={ref || ""}
             />
           );
         }
@@ -488,6 +489,7 @@ const EnrollByInvite = () => {
                 ?.package_session_id
             }
             setReferRequest={setReferRequest}
+            refCode={ref || ""}
           />
         );
       case 3:

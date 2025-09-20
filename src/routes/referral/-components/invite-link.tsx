@@ -11,8 +11,9 @@ import {
 import { Copy, Share } from "phosphor-react";
 import { toast } from "sonner";
 import { useGetEnrollInvites } from "../-services/get-enroll-invites";
-import { getInstituteId } from "@/constants/helper";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
+import { getInstituteId } from "@/constants/helper";
+import { useEffect, useState } from "react";
 
 interface InviteLinksTableProps {
   referralCode?: string;
@@ -20,10 +21,13 @@ interface InviteLinksTableProps {
 
 export function InviteLinksTable({ referralCode }: InviteLinksTableProps) {
   const { data: invites, isLoading } = useGetEnrollInvites();
+  const [instituteId, setInstituteId] = useState<string | null>(null);
+  useEffect(() => {
+    getInstituteId().then((id) => setInstituteId(id ?? ""));
+  }, []);
 
   const generateInviteLink = (inviteCode: string) => {
     const base_url = window.location.origin;
-    const instituteId = getInstituteId();
     const inviteLink = `${base_url}/learner-invitation-response?instituteId=${instituteId}&inviteCode=${inviteCode}&ref=${referralCode}`;
     return inviteLink;
   };

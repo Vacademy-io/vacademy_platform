@@ -16,6 +16,7 @@ interface ReviewStepProps {
   paymentType?: string;
   package_session_id: string;
   setReferRequest: (referRequest: ReferRequest | null) => void;
+  refCode: string | null;
 }
 
 const ReviewStep = ({
@@ -24,6 +25,7 @@ const ReviewStep = ({
   paymentType,
   package_session_id,
   setReferRequest,
+  refCode,
 }: ReviewStepProps) => {
   return (
     <div className="space-y-6">
@@ -68,12 +70,14 @@ const ReviewStep = ({
                 plan={selectedPayment}
                 package_session_id={package_session_id}
                 setReferRequest={setReferRequest}
+                refCode={refCode}
               />
             ) : (
               <FreePlanReview
                 plan={selectedPayment}
                 package_session_id={package_session_id}
                 setReferRequest={setReferRequest}
+                refCode={refCode}
               />
             )}
           </div>
@@ -162,10 +166,12 @@ const PaidPlanReview = ({
   plan,
   package_session_id,
   setReferRequest,
+  refCode,
 }: {
   plan: SelectedPayment | null;
   package_session_id: string;
   setReferRequest: (referRequest: ReferRequest | null) => void;
+  refCode: string | null;
 }) => {
   const [couponVerified, setCouponVerified] = useState(false);
   if (!plan) return null;
@@ -269,6 +275,7 @@ const PaidPlanReview = ({
           setCouponVerified={setCouponVerified}
           package_session_id={package_session_id || ""}
           setReferRequest={setReferRequest}
+          refCode={refCode}
         />
       )}
 
@@ -369,10 +376,12 @@ const FreePlanReview = ({
   plan,
   package_session_id,
   setReferRequest,
+  refCode,
 }: {
   plan: SelectedPayment | null;
   package_session_id: string;
   setReferRequest: (referRequest: ReferRequest | null) => void;
+  refCode: string | null;
 }) => {
   const [couponVerified, setCouponVerified] = useState(false);
   if (!plan) return null;
@@ -457,6 +466,7 @@ const FreePlanReview = ({
           setCouponVerified={setCouponVerified}
           package_session_id={package_session_id || ""}
           setReferRequest={setReferRequest}
+          refCode={refCode}
         />
       )}
 

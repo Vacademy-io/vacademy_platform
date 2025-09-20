@@ -207,7 +207,7 @@ const RegistrationStep = ({
                                   placeholder="123 456 7890"
                                   name={`${key}.value`}
                                   control={form.control}
-                                  country="in"
+                                  country="gb"
                                   required
                                 />
                               </FormControl>

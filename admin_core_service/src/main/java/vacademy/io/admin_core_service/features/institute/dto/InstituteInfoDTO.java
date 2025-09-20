@@ -17,4 +17,6 @@ public class InstituteInfoDTO {
     private String instituteThemeCode;
     private String setting;
     private String websiteUrl;
+    private String learnerPortalUrl;
+    private String adminPortalUrl;
 }

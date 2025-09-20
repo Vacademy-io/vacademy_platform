@@ -5,6 +5,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.common.util.JsonUtil;
+import vacademy.io.admin_core_service.features.user_subscription.dto.BenefitConfigDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.ReferralBenefitLogDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.ReferralBenefitLogs;
 import vacademy.io.admin_core_service.features.user_subscription.entity.ReferralMapping;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
@@ -17,7 +20,9 @@ import vacademy.io.admin_core_service.features.user_subscription.repository.Refe
 import vacademy.io.common.auth.dto.UserDTO;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -130,4 +135,33 @@ public class ReferralBenefitLogService {
                 break;
         }
     }
+
+    public List<ReferralBenefitLogs>findByUserIdAndBenefitTypeAndStatusIn(String userId, String benefitType, List<String> statusList){
+        return referralBenefitLogRepository.findByUserIdAndBenefitTypeAndStatusIn(userId,benefitType,statusList);
+    }
+
+    public List<ReferralBenefitLogDTO>getReferralBenefitLogsByUserIdAndReferralMappingIdAndBeneficiaryAndStatusInOrderByCreatedAtDesc(String userId, String referralMappingId, String beneficiary, List<String> statusList){
+        return referralBenefitLogRepository.findByUserIdAndReferralMappingIdAndBeneficiaryAndStatusInOrderByCreatedAtDesc(userId,referralMappingId,beneficiary,statusList).stream().map(ReferralBenefitLogs::mapToDTO).collect(Collectors.toList());
+    }
+
+    public List<ReferralBenefitLogDTO>getReferralBenefitLogsByUserIdAndReferralMappingIdAndBeneficiaryAndStatusInOrderByCreatedAtDesc(String userId,String beneficiary, List<String> statusList){
+        return referralBenefitLogRepository.findByUserIdAndBeneficiaryAndStatusInOrderByCreatedAtDesc(userId,beneficiary,statusList).stream().map(ReferralBenefitLogs::mapToDTO).collect(Collectors.toList());
+    }
+
+    public long getPointsCount(String userId){
+        List<ReferralBenefitLogs>referralBenefitLogs = findByUserIdAndBenefitTypeAndStatusIn(userId,ReferralBenefitType.POINTS.name(),List.of(ReferralStatusEnum.ACTIVE.name()));
+        return getPointsCount(referralBenefitLogs);
+    }
+    private long getPointsCount(List<ReferralBenefitLogs> referralBenefitLogs) {
+        if (referralBenefitLogs == null || referralBenefitLogs.isEmpty()) {
+            return 0;
+        }
+
+        return referralBenefitLogs.stream()
+                .map(log -> JsonUtil.fromJson(log.getBenefitValue(), BenefitConfigDTO.PointBenefitValue.class))
+                .filter(Objects::nonNull) // avoid NPE
+                .mapToLong(BenefitConfigDTO.PointBenefitValue::getPoints)
+                .sum();
+    }
+
 }

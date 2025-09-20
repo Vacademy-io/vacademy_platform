@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.user_subscription.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.admin_core_service.features.user_subscription.dto.ReferralBenefitLogDTO;
 
 import java.time.LocalDateTime;
 
@@ -50,4 +51,14 @@ public class ReferralBenefitLogs {
 
     @Column(name = "updated_at", insertable = false, updatable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     private LocalDateTime updatedAt;
+
+
+    public ReferralBenefitLogDTO mapToDTO(){
+        ReferralBenefitLogDTO referralBenefitLogDTO = new ReferralBenefitLogDTO();
+        referralBenefitLogDTO.setBenefitType(this.benefitType);
+        referralBenefitLogDTO.setBenefitValue(this.benefitValue);
+        referralBenefitLogDTO.setStatus(this.status);
+        referralBenefitLogDTO.setCreatedAt(this.createdAt);
+        return referralBenefitLogDTO;
+    }
 }

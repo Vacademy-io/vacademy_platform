@@ -50,7 +50,7 @@ public class PercentageDiscountHandler implements ReferralBenefitHandler {
                 targetUserId,
                 ReferralBenefitType.PERCENTAGE_DISCOUNT.name(),
                 beneficiary,
-                String.valueOf(discountedAmount),
+                String.valueOf(percentageDiscountValue),
                 status
         );
     }

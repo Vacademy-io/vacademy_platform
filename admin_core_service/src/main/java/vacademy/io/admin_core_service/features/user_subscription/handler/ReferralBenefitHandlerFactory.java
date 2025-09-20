@@ -53,6 +53,8 @@ public class ReferralBenefitHandlerFactory {
                 return ContentBenefitProcessor.class;
             case MEMBERSHIP_EXTENSION:
                 return MemberShipBenefit.class;
+             case POINTS:
+                 return RewardPointBenefitHandler.class;
             default:
                 throw new VacademyException("No handler class configured for benefit type: " + type);
         }

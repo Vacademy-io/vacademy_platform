@@ -22,4 +22,23 @@ public interface ReferralBenefitLogsRepository extends JpaRepository<ReferralBen
 """)
     List<ReferralBenefitLogs> findByReferralMappingIdAndStatusIn(@Param("referralMappingId") String referralMappingId,
                                                                  @Param("status") List<String> status);
+
+    List<ReferralBenefitLogs> findByUserIdAndBenefitTypeAndStatusIn(
+            String userId,
+            String benefitType,
+            List<String> statusList
+    );
+
+    List<ReferralBenefitLogs> findByUserIdAndReferralMappingIdAndBeneficiaryAndStatusInOrderByCreatedAtDesc(
+            String userId,
+            String referralMappingId,
+            String beneficiary,
+            List<String> statusList
+    );
+
+    List<ReferralBenefitLogs> findByUserIdAndBeneficiaryAndStatusInOrderByCreatedAtDesc(
+            String userId,
+            String beneficiary,
+            List<String> statusList
+    );
 }

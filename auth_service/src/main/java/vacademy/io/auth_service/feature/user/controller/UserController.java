@@ -43,9 +43,10 @@ public class UserController {
     @PostMapping("/internal/create-user-or-get-existing")
     @Transactional
     public ResponseEntity<UserDTO> createUserOrGetExisting(@RequestBody UserDTO userDTO,
-                                                           @RequestParam(name = "instituteId", required = false) String instituteId) {
+                                                           @RequestParam(name = "instituteId", required = false) String instituteId,
+                                                           @RequestParam(name = "isNotify", required = false, defaultValue = "true") boolean isNotify) {
         try {
-            User user = authService.createUser(userDTO, instituteId,true);
+            User user = authService.createUser(userDTO, instituteId, isNotify);
             return ResponseEntity.ok(new UserDTO(user));
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());

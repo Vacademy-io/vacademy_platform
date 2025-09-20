@@ -143,10 +143,12 @@ public class AuthService {
         user = userRepository.save(user);
 
         // Send appropriate welcome mail
-        if (isAlreadyPresent) {
-            sendKeepingCredentialsWelcomeMailToUser(user, instituteId);
-        } else {
-            sendWelcomeMailToUser(user, instituteId);
+        if(sendWelcomeMail){
+            if (isAlreadyPresent) {
+                sendKeepingCredentialsWelcomeMailToUser(user, instituteId);
+            } else {
+                sendWelcomeMailToUser(user, instituteId);
+            }
         }
 
         return user;

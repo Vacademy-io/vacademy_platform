@@ -5,20 +5,22 @@ import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 
 // Coupon interface based on the API response
-export interface Coupon {
+export interface Invite {
+  currency: string;
+  end_date: string | null;
   id: string;
-  code: string;
-  status: "ACTIVE" | "INACTIVE" | "EXPIRED" | "USED";
-  sourceType: "USER" | "INSTITUTE" | "PACKAGE";
-  sourceId: string;
-  allowedEmailIds: string[] | null;
+  institute_custom_fields: string | null;
+  institute_id: string;
+  invite_code: string;
+  learner_access_days: number | null;
+  name: string;
+  package_session_to_payment_options: string | null;
+  start_date: string | null;
+  status: string;
   tag: string;
-  generationDate: string;
-  redeemStartDate: string;
-  redeemEndDate: string;
-  usageLimit: number;
-  canBeAdded: boolean;
-  emailRestricted: boolean;
+  vendor: string;
+  vendor_id: string;
+  web_page_meta_data_json: string;
 }
 
 export interface GetEnrollInvitesParams {
@@ -32,9 +34,9 @@ export interface CouponQueryOptions {
 
 export const getEnrollInvites = async (
   params: GetEnrollInvitesParams
-): Promise<Coupon[]> => {
+): Promise<Invite[]> => {
   if (!params.instituteId) return [];
-  const response = await authenticatedAxiosInstance.get<Coupon[]>(
+  const response = await authenticatedAxiosInstance.get<Invite[]>(
     GET_ENROLL_INVITES_BY_USER,
     {
       params,

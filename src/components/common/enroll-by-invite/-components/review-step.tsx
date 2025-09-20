@@ -6,6 +6,7 @@ import { SelectedPayment } from "./types";
 import { ReferralCodeComponent, ReferralBenefit } from "./apply-referral";
 import { useState } from "react";
 import { safeJsonParse } from "../-utils/helper";
+import { ReferRequest } from "../-services/enroll-invite-services";
 interface ReviewStepProps {
   courseData: {
     course: string;
@@ -14,6 +15,7 @@ interface ReviewStepProps {
   selectedPayment: SelectedPayment | null;
   paymentType?: string;
   package_session_id: string;
+  setReferRequest: (referRequest: ReferRequest | null) => void;
 }
 
 const ReviewStep = ({
@@ -21,8 +23,8 @@ const ReviewStep = ({
   selectedPayment,
   paymentType,
   package_session_id,
+  setReferRequest,
 }: ReviewStepProps) => {
-  console.log("review payment", selectedPayment);
   return (
     <div className="space-y-6">
       {/* Order Summary Card */}
@@ -65,11 +67,13 @@ const ReviewStep = ({
               <PaidPlanReview
                 plan={selectedPayment}
                 package_session_id={package_session_id}
+                setReferRequest={setReferRequest}
               />
             ) : (
               <FreePlanReview
                 plan={selectedPayment}
                 package_session_id={package_session_id}
+                setReferRequest={setReferRequest}
               />
             )}
           </div>
@@ -157,9 +161,11 @@ const formatDeliveryMediums = (mediums: string[]) => {
 const PaidPlanReview = ({
   plan,
   package_session_id,
+  setReferRequest,
 }: {
   plan: SelectedPayment | null;
   package_session_id: string;
+  setReferRequest: (referRequest: ReferRequest | null) => void;
 }) => {
   const [couponVerified, setCouponVerified] = useState(false);
   if (!plan) return null;
@@ -262,6 +268,7 @@ const PaidPlanReview = ({
           referralOptionId={plan.referral_option.id}
           setCouponVerified={setCouponVerified}
           package_session_id={package_session_id || ""}
+          setReferRequest={setReferRequest}
         />
       )}
 
@@ -361,9 +368,11 @@ const PaidPlanReview = ({
 const FreePlanReview = ({
   plan,
   package_session_id,
+  setReferRequest,
 }: {
   plan: SelectedPayment | null;
   package_session_id: string;
+  setReferRequest: (referRequest: ReferRequest | null) => void;
 }) => {
   const [couponVerified, setCouponVerified] = useState(false);
   if (!plan) return null;
@@ -447,6 +456,7 @@ const FreePlanReview = ({
           referralOptionId={plan.referral_option.id}
           setCouponVerified={setCouponVerified}
           package_session_id={package_session_id || ""}
+          setReferRequest={setReferRequest}
         />
       )}
 

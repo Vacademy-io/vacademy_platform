@@ -5,6 +5,7 @@ import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { AxiosResponse } from "axios";
 import { Check, Tag, X } from "phosphor-react";
 import { useState } from "react";
+import { ReferRequest } from "../-services/enroll-invite-services";
 
 // Common base interface
 interface Benefit {
@@ -73,10 +74,12 @@ const ReferralCodeComponent = ({
   referralOptionId,
   setCouponVerified,
   package_session_id,
+  setReferRequest,
 }: {
   referralOptionId: string;
   setCouponVerified: (value: boolean) => void;
   package_session_id: string;
+  setReferRequest: (referRequest: ReferRequest | null) => void;
 }) => {
   const [referralCode, setReferralCode] = useState("");
   const [isApplying, setIsApplying] = useState(false);
@@ -116,16 +119,27 @@ const ReferralCodeComponent = ({
         },
       });
 
-      console.log("API Response:", response.data);
       if (response.data.verified) {
         setCouponVerified(true);
+
+        // Create and set the ReferRequest when coupon is verified
+        const referRequest: ReferRequest = {
+          referrer_user_id: response.data.source_id,
+          referral_code: referralCode,
+          referral_option_id: referralOptionId,
+        };
+        setReferRequest(referRequest);
+
         setReferralCode("");
       } else {
         setError("Invalid referral code");
         setCouponVerified(false);
+        setReferRequest(null);
       }
     } catch {
       setError("Failed to apply referral code. Please try again.");
+      setCouponVerified(false);
+      setReferRequest(null);
     } finally {
       setIsApplying(false);
     }
@@ -134,6 +148,8 @@ const ReferralCodeComponent = ({
   const removeReferralCode = () => {
     setAppliedReferral(null);
     setError("");
+    setCouponVerified(false);
+    setReferRequest(null);
   };
 
   return (

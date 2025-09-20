@@ -4,6 +4,7 @@ import {
   handleEnrollLearnerForPayment,
   handleGetEnrollInviteData,
   handleGetPublicInstituteDetails,
+  ReferRequest,
 } from "./-services/enroll-invite-services";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { GraduationCap } from "lucide-react";
@@ -72,7 +73,7 @@ const EnrollByInvite = () => {
     tags: [],
     targetAudience: "",
   });
-
+  const [referRequest, setReferRequest] = useState<ReferRequest | null>(null);
   const [enrollmentData, setEnrollmentData] = useState<EnrollmentData>({
     registrationData: {},
     selectedPayment: null,
@@ -94,10 +95,6 @@ const EnrollByInvite = () => {
     handleGetEnrollInviteData({ instituteId, inviteCode })
   );
 
-  // Mock payment options - replace with actual data from API
-  //   const paymentOptions: PaymentOption[] = convertPlansToPaymentOptions(
-  //     inviteData?.package_session_to_payment_options[0]
-  //   );
   const paymentOptions = getDefaultPlanFromPaymentsData(
     inviteData?.package_session_to_payment_options?.[0]?.payment_option
   );
@@ -191,7 +188,6 @@ const EnrollByInvite = () => {
       ...prev,
       selectedPayment: payment,
     }));
-    console.log("adasdasd", payment);
   };
 
   const handleDonationAmountChange = (amount: number) => {
@@ -255,6 +251,7 @@ const EnrollByInvite = () => {
           allowLearnersToCreateCourses:
             JSON.parse(instituteData?.setting)?.setting?.COURSE_SETTING?.data
               ?.permissions?.allowLearnersToCreateCourses || false,
+          referRequest: referRequest,
         });
         setPaymentCompletionResponse(paymentResponse);
         setCurrentStep(5); // Go directly to success for FREE payments
@@ -303,6 +300,7 @@ const EnrollByInvite = () => {
           allowLearnersToCreateCourses:
             JSON.parse(instituteData?.setting)?.setting?.COURSE_SETTING?.data
               ?.permissions?.allowLearnersToCreateCourses || false,
+          referRequest: referRequest,
         });
         setOrderId(paymentResponse?.payment_response?.order_id);
         setPaymentCompletionResponse(paymentResponse);
@@ -439,6 +437,7 @@ const EnrollByInvite = () => {
                 inviteData?.package_session_to_payment_options[0]
                   ?.package_session_id
               }
+              setReferRequest={setReferRequest}
             />
           );
         }
@@ -488,6 +487,7 @@ const EnrollByInvite = () => {
               inviteData?.package_session_to_payment_options[0]
                 ?.package_session_id
             }
+            setReferRequest={setReferRequest}
           />
         );
       case 3:

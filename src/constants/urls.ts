@@ -143,3 +143,5 @@ export const GET_PAYMENT_OPTIONS = `${BASE_URL}/admin-core-service/open/v1/payme
 export const VERIFY_COUPON_URL = `${BASE_URL}/admin-core-service/open/v1/user-subscription/verify`;
 export const GET_COUPON_CODE = `${BASE_URL}/admin-core-service/coupon/v1/by-source`;
 export const GET_ENROLL_INVITES_BY_USER = `${BASE_URL}/admin-core-service/v1/enroll-invite/by-user-and-institute`;
+export const GET_REFERRAL_BENEFITS = `${BASE_URL}/admin-core-service/v1/referral-detail/get-referral-detail-for-beneficiary`;
+export const GET_POINTS_COUNTS = `${BASE_URL}/admin-core-service/v1/points/counts`;

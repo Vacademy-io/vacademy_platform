@@ -27,6 +27,8 @@ public class InstituteService {
                 .instituteThemeCode(institute.getInstituteThemeCode())
                 .address(institute.getAddress())
                 .websiteUrl(institute.getWebsiteUrl())
+                .learnerPortalUrl(institute.getLearnerPortalBaseUrl())
+                .adminPortalUrl(institute.getAdminPortalBaseUrl())
                 .build();
     }
 

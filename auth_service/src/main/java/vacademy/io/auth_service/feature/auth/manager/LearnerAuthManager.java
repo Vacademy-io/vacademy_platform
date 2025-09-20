@@ -214,17 +214,23 @@ public class LearnerAuthManager {
             instituteId = user.getRoles().iterator().next().getInstituteId();
         }
         String instituteName = "Vacademy"; // Default fallback
+        String theme="#E67E22";
+        String learnerLoginUrl="https://dash.vacademy.io";
         if (StringUtils.hasText(instituteId)) {
             instituteInfoDTO=instituteInternalService.getInstituteByInstituteId(instituteId);
             if(instituteInfoDTO.getInstituteName()!=null)
                 instituteName=instituteInfoDTO.getInstituteName();
+            if(instituteInfoDTO.getInstituteThemeCode()!=null)
+                theme=instituteInfoDTO.getInstituteThemeCode();
+            if(instituteInfoDTO.getLearnerPortalUrl()!=null)
+                learnerLoginUrl=instituteInfoDTO.getLearnerPortalUrl();
         }
-        
+
         GenericEmailRequest emailRequest = new GenericEmailRequest();
         emailRequest.setTo(user.getEmail());
         emailRequest.setSubject("Welcome to "+instituteName);
         emailRequest.setBody(NotificationEmailBody.createWelcomeEmailBody(instituteName, user.getFullName(),
-                user.getUsername(), user.getPassword()));
+                user.getUsername(), user.getPassword(),learnerLoginUrl,theme));
         notificationService.sendGenericHtmlMail(emailRequest, instituteId);
     }
 

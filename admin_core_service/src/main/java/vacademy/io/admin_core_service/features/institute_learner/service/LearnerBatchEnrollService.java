@@ -50,7 +50,7 @@ public class LearnerBatchEnrollService {
     private ReferralMappingService referralMappingService;
 
     public UserDTO checkAndCreateStudentAndAddToBatch(UserDTO userDTO, String instituteId, List<InstituteStudentDetails> instituteStudentDetails, List<CustomFieldValueDTO>customFieldValues, Map<String, Object> extraData) {
-        UserDTO createdUser = studentRegistrationManager.createUserFromAuthService(userDTO, instituteId);
+        UserDTO createdUser = studentRegistrationManager.createUserFromAuthService(userDTO, instituteId, false);
         Student student = studentRegistrationManager.createStudentFromRequest(createdUser, (extraData.containsKey("studentExtraDetails") ? (StudentExtraDetails) extraData.get("studentExtraDetails") : null));
         for (InstituteStudentDetails instituteStudentDetail : instituteStudentDetails) {
           String studentSessionId =  studentRegistrationManager.linkStudentToInstitute(student, instituteStudentDetail);

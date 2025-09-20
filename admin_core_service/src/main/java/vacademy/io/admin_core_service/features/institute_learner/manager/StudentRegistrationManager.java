@@ -65,11 +65,11 @@ public class StudentRegistrationManager {
     }
 
 
-    public UserDTO createUserFromAuthService(UserDTO userDTO, String instituteId) {
+    public UserDTO createUserFromAuthService(UserDTO userDTO, String instituteId, boolean isNotify) {
         try {
             userDTO.setRootUser(true);
             ObjectMapper objectMapper = new ObjectMapper();
-            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(applicationName, HttpMethod.POST.name(), authServerBaseUrl, StudentConstants.addUserRoute + "?instituteId=" + instituteId, userDTO);
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(applicationName, HttpMethod.POST.name(), authServerBaseUrl, StudentConstants.addUserRoute + "?instituteId=" + instituteId + "&isNotify=" + isNotify, userDTO);
             return objectMapper.readValue(response.getBody(), UserDTO.class);
 
         } catch (Exception e) {
@@ -83,7 +83,7 @@ public class StudentRegistrationManager {
         setRandomUserNameIfNull(instituteStudentDTO.getUserDetails());
         instituteStudentDTO.getUserDetails().setUsername(instituteStudentDTO.getUserDetails().getUsername().toLowerCase());
         setEnrollmentNumberIfNull(instituteStudentDTO.getInstituteStudentDetails());
-        UserDTO createdUser = createUserFromAuthService(instituteStudentDTO.getUserDetails(), instituteStudentDTO.getInstituteStudentDetails().getInstituteId());
+        UserDTO createdUser = createUserFromAuthService(instituteStudentDTO.getUserDetails(), instituteStudentDTO.getInstituteStudentDetails().getInstituteId(), true);
         return createStudentFromRequest(createdUser, instituteStudentDTO.getStudentExtraDetails());
     }
 

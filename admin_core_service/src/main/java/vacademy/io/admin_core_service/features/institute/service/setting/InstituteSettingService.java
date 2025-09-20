@@ -338,7 +338,33 @@ public class InstituteSettingService {
                             "<html xmlns=\"http://www.w3.org/1999/xhtml\">" +
                             "<head>" +
                             "  <meta charset=\"UTF-8\" />" +
-                            "  <style>@page { size: A4 landscape; margin: 20mm; }</style>" +
+                            "  <style>" +
+                            "    @page { " +
+                            "      margin: 15mm; " +
+                            "      size: auto; " +
+                            "    } " +
+                            "    body { " +
+                            "      font-family: Arial, sans-serif; " +
+                            "      line-height: 1.4; " +
+                            "      max-width: 210mm; " +  // A4 width minus margins
+                            "      min-width: 100mm; " +   // Minimum reasonable width
+                            "      width: fit-content; " +
+                            "      margin: 0 auto; " +
+                            "      box-sizing: border-box; " +
+                            "    } " +
+                            "    * { " +
+                            "      max-width: 100%; " +
+                            "      box-sizing: border-box; " +
+                            "    } " +
+                            "    img { " +
+                            "      max-width: 100%; " +
+                            "      height: auto; " +
+                            "    } " +
+                            "    table { " +
+                            "      width: 100%; " +
+                            "      table-layout: auto; " +
+                            "    } " +
+                            "  </style>" +
                             "</head>" +
                             "<body>" +
                             htmlContent +
@@ -351,8 +377,7 @@ public class InstituteSettingService {
             builder.useFastMode();
             builder.withHtmlContent(sanitizeToXhtml(htmlWithCss), null);
 
-            // A4 Landscape is 297mm x 210mm, which is ~11.69in x 8.27in
-            builder.useDefaultPageSize(11.7f, 8.3f, PdfRendererBuilder.PageSizeUnits.INCHES);
+            // Remove fixed page size to allow dynamic sizing based on content
 
             builder.toStream(outputStream);
             builder.run();

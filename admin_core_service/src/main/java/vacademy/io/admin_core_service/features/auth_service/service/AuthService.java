@@ -89,7 +89,7 @@ public class AuthService {
         }
     }
 
-    public UserDTO createUserFromAuthService(UserDTO userDTO, String instituteId) {
+    public UserDTO createUserFromAuthService(UserDTO userDTO, String instituteId,boolean sendCred) {
         try {
             userDTO.setRootUser(true);
             ObjectMapper objectMapper = new ObjectMapper();

@@ -195,7 +195,7 @@ public class LiveSessionNotificationProcessor {
             // Add schedule details if available
             if (schedule != null) {
                 // Build live class URL based on access level and domain routing
-                String liveClassUrl = buildLiveClassUrl(session, schedule, session.getId());
+                String liveClassUrl = buildLiveClassUrl(session, session.getId());
                 System.out.println("DEBUG: Final live class URL: " + liveClassUrl);
                 placeholders.put("LINK", liveClassUrl);
 
@@ -215,7 +215,7 @@ public class LiveSessionNotificationProcessor {
                 }
             } else {
                 // Build live class URL even if schedule is null
-                String liveClassUrl = buildLiveClassUrl(session, schedule, session.getId());
+                String liveClassUrl = buildLiveClassUrl(session, session.getId());
                 placeholders.put("LINK", liveClassUrl);
                 placeholders.put("TIME", "TBD");
             }
@@ -266,7 +266,7 @@ public class LiveSessionNotificationProcessor {
             // Add schedule details if available
             if (schedule != null) {
                 // Build live class URL based on access level and domain routing
-                String liveClassUrl = buildLiveClassUrl(session, schedule, session.getId());
+                String liveClassUrl = buildLiveClassUrl(session, session.getId());
                 System.out.println("DEBUG: Final live class URL: " + liveClassUrl);
                 placeholders.put("LINK", liveClassUrl);
 
@@ -286,7 +286,7 @@ public class LiveSessionNotificationProcessor {
                 }
             } else {
                 // Build live class URL even if schedule is null
-                String liveClassUrl = buildLiveClassUrl(session, schedule, session.getId());
+                String liveClassUrl = buildLiveClassUrl(session, session.getId());
                 placeholders.put("LINK", liveClassUrl);
                 placeholders.put("TIME", "TBD");
             }
@@ -586,7 +586,7 @@ public class LiveSessionNotificationProcessor {
             // Add schedule details if available
             if (schedule != null) {
                 // Build live class URL based on access level and domain routing
-                String liveClassUrl = buildLiveClassUrl(session, schedule, session.getId());
+                String liveClassUrl = buildLiveClassUrl(session, session.getId());
                 placeholders.put("LINK", liveClassUrl);
 
                 // Format date and time
@@ -605,7 +605,7 @@ public class LiveSessionNotificationProcessor {
                 }
             } else {
                 // Build live class URL even if schedule is null
-                String liveClassUrl = buildLiveClassUrl(session, schedule, session.getId());
+                String liveClassUrl = buildLiveClassUrl(session, session.getId());
                 placeholders.put("LINK", liveClassUrl);
                 placeholders.put("DATE", "TBD");
                 placeholders.put("TIME", "TBD");
@@ -665,53 +665,35 @@ public class LiveSessionNotificationProcessor {
 
     /**
      * Builds the live class URL based on session access level and domain routing
-     * Only applies domain routing logic for YouTube link types, otherwise uses existing meeting link logic
      * @param session LiveSession object containing access level and institute ID
-     * @param schedule SessionSchedule object containing link type and custom meeting link
      * @param sessionId Session ID to append to the URL
      * @return Built URL or fallback URL if domain routing not found
      */
-    private String buildLiveClassUrl(LiveSession session, SessionSchedule schedule, String sessionId) {
+    private String buildLiveClassUrl(LiveSession session, String sessionId) {
         try {
-            if (session == null || sessionId == null) {
+            if (session == null || session.getInstituteId() == null || sessionId == null) {
                 return "#";
             }
 
-            // Check if this is a YouTube link type - only apply domain routing for YouTube
-            if (schedule != null && "youtube".equalsIgnoreCase(schedule.getLinkType())) {
-                if (session.getInstituteId() == null) {
-                    return "#";
-                }
+            // Fetch domain routing for LEARNER role
+            Optional<InstituteDomainRouting> routingOpt = domainRoutingRepository
+                    .findByInstituteIdAndRole(session.getInstituteId(), "LEARNER");
+            
+            if (routingOpt.isEmpty()) {
+                System.out.println("No domain routing found for institute: " + session.getInstituteId() + " with role LEARNER");
+                return "#";
+            }
 
-                // Fetch domain routing for LEARNER role
-                Optional<InstituteDomainRouting> routingOpt = domainRoutingRepository
-                        .findByInstituteIdAndRole(session.getInstituteId(), "LEARNER");
-                
-                if (routingOpt.isEmpty()) {
-                    System.out.println("No domain routing found for institute: " + session.getInstituteId() + " with role LEARNER");
-                    return "#";
-                }
+            InstituteDomainRouting routing = routingOpt.get();
+            String subdomain = routing.getSubdomain();
+            String domain = routing.getDomain();
 
-                InstituteDomainRouting routing = routingOpt.get();
-                String subdomain = routing.getSubdomain();
-                String domain = routing.getDomain();
-
-                // Build URL based on access level
-                String accessLevel = session.getAccessLevel();
-                if ("public".equalsIgnoreCase(accessLevel)) {
-                    return String.format("%s.%s/register/live-class?sessionId=%s", subdomain, domain, sessionId);
-                } else{
-                    return String.format("%s.%s/study-library/live-class/embed?sessionId=%s", subdomain, domain, sessionId);
-                }
+            // Build URL based on access level
+            String accessLevel = session.getAccessLevel();
+            if ("public".equalsIgnoreCase(accessLevel)) {
+                return String.format("%s.%s/register/live-class?sessionId=%s", subdomain, domain, sessionId);
             } else {
-                // For non-YouTube link types, use the existing meeting link logic
-                if (schedule != null) {
-                    String meetingLink = schedule.getCustomMeetingLink() != null ?
-                            schedule.getCustomMeetingLink() : session.getDefaultMeetLink();
-                    return meetingLink != null ? meetingLink : "#";
-                } else {
-                    return session.getDefaultMeetLink() != null ? session.getDefaultMeetLink() : "#";
-                }
+                return String.format("%s.%s/study-library/live-class/embed?sessionId=%s", subdomain, domain, sessionId);
             }
         } catch (Exception e) {
             System.out.println("Error building live class URL for session " + sessionId + ": " + e.getMessage());

@@ -28,6 +28,8 @@ export const HOLISTIC_INSTITUTE_ID =
 export const LOGIN_URL = `${BASE_URL}/auth-service/learner/v1/login`;
 
 export const LOGIN_URL_GOOGLE_GITHUB = `${BASE_URL}/auth-service/oauth2/authorization`;
+export const LOGIN_USING_USERNAME = `${BASE_URL}/auth-service/open/user-details/by-username`;
+export const LOGIN_USING_OTP = `${BASE_URL}/auth-service/learner/v1/login-otp-ten-days`;
 
 export const REQUEST_OTP = `${BASE_URL}/auth-service/learner/v1/request-otp`;
 export const LOGIN_OTP = `${BASE_URL}/auth-service/learner/v1/login-otp`;
@@ -141,3 +143,7 @@ export const GENERATE_CERTIFICATE = `${BASE_URL}/admin-core-service/institute/v1
 // Payment options API endpoint
 export const GET_PAYMENT_OPTIONS = `${BASE_URL}/admin-core-service/open/v1/payment-option/default-payment-option`;
 export const VERIFY_COUPON_URL = `${BASE_URL}/admin-core-service/open/v1/user-subscription/verify`;
+export const GET_COUPON_CODE = `${BASE_URL}/admin-core-service/coupon/v1/by-source`;
+export const GET_ENROLL_INVITES_BY_USER = `${BASE_URL}/admin-core-service/v1/enroll-invite/by-user-and-institute`;
+export const GET_REFERRAL_BENEFITS = `${BASE_URL}/admin-core-service/v1/referral-detail/get-referral-detail-for-beneficiary`;
+export const GET_POINTS_COUNTS = `${BASE_URL}/admin-core-service/v1/points/counts`;

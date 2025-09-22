@@ -1,23 +1,15 @@
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
-import { MyButton } from "@/components/design-system/button";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { createFileRoute } from "@tanstack/react-router";
-import { Mail } from "lucide-react";
-import { Copy, Plus, X } from "phosphor-react";
-import { useEffect, useState } from "react";
+import { Copy } from "phosphor-react";
+import { useEffect } from "react";
 import { toast } from "sonner";
+import { useGetCoupons } from "./-services/get-coupon";
+import { isNullOrEmptyOrUndefined } from "@/lib/utils";
+import { InviteLinksTable } from "./-components/invite-link";
+import { ReferralsTable } from "./-components/referrals";
 
 export const Route = createFileRoute("/referral/")({
   component: () => {
@@ -30,252 +22,124 @@ export const Route = createFileRoute("/referral/")({
 });
 
 function ReferralComponent() {
-  const [emailInput, setEmailInput] = useState("");
-  const [emailList, setEmailList] = useState(["user@gmail.com"]);
+  const { data: coupons, isLoading, isError } = useGetCoupons();
   const { setNavHeading } = useNavHeadingStore();
   useEffect(() => {
     setNavHeading("My Referrals");
-  }, []);
-
-  const referralLink = "shreyashjain/referral/bhdshad";
-  const referralCode = "AD123456";
-
-  const referrals = [
-    { date: "01/06/2025", memberName: "Aarav Sharma", referralNumber: 1 },
-    { date: "01/06/2025", memberName: "Aarav Sharma", referralNumber: 2 },
-    { date: "01/06/2025", memberName: "Aarav Sharma", referralNumber: 3 },
-    { date: "01/06/2025", memberName: "Aarav Sharma", referralNumber: 4 },
-  ];
+  }, [setNavHeading]);
 
   const copyToClipboard = (text: string, type: string) => {
     navigator.clipboard.writeText(text);
     toast.success(`${type} copied to clipboard`);
   };
 
-  const addEmail = () => {
-    if (
-      emailInput &&
-      emailInput.includes("@") &&
-      !emailList.includes(emailInput)
-    ) {
-      setEmailList([...emailList, emailInput]);
-      setEmailInput("");
-    }
-  };
-
-  const removeEmail = (email: string) => {
-    setEmailList(emailList.filter((e) => e !== email));
-  };
-
-  const sendInvites = () => {
-    toast.success(
-      `Sent invitations to ${emailList.length} email${
-        emailList.length > 1 ? "s" : ""
-      }`
+  if (isLoading) return <div>Loading...</div>;
+  if (isError) return <div>Error loading coupons</div>;
+  if (isNullOrEmptyOrUndefined(coupons) || coupons.length === 0)
+    return (
+      <div>
+        <Card className="max-w-md mx-auto">
+          <CardContent className="text-center p-8">
+            <div className="space-y-4">
+              <div className="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center">
+                <Copy className="h-8 w-8 text-gray-400" />
+              </div>
+              <div className="space-y-2">
+                <CardTitle className="text-lg text-gray-700">
+                  No Referral Data Available
+                </CardTitle>
+                <p className="text-sm text-gray-500">
+                  No coupon and referral data found. Please contact your
+                  administrator for assistance.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     );
-  };
+  const referralCode = coupons[0].code;
 
   return (
-    <div className="min-h-screen ">
+    <div className="min-h-screen">
       {/* Desktop: Two-column hero layout, Mobile: Stacked */}
-      <div className="container mx-auto px-4 py-8 lg:py-16">
-        <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center mb-16">
+      <div className="container mx-auto p-4">
+        <Card className="p-4 rounded-lg grid lg:grid-cols-3 gap-12 lg:gap-16 items-center mb-16">
           {/* Left Column - Content */}
-          <div className="space-y-8 lg:pr-8">
-            <div className="space-y-6">
-              <h1 className="text-3xl lg:text-4xl xl:text-5xl font-bold text-gray-800 leading-tight">
-                Invite friends,
-                <br />
-                get rewards
+          <CardContent className="space-y-4 lg:col-span-2">
+            <CardTitle className="space-y-2">
+              <h1 className="text-4xl font-bold text-gray-800 ">
+                Invite friends,{" "}
+                <span className="text-primary inline-block">get rewards</span>
               </h1>
-              <p className="text-lg text-gray-600 leading-relaxed">
-                Share the gift of wellness with your friends and earn rewards
+              <p className="text-base text-gray-500 leading-relaxed">
+                Share the gift of learning with your friends and earn rewards
                 for both of you.
               </p>
-            </div>
+            </CardTitle>
 
-            <div className="rounded-xl border p-6 lg:p-8">
-              <p className="text-gray-700 text-base leading-relaxed">
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <p className="text-gray-700 text-sm leading-relaxed">
                 Share your code with friends, and they'll get a free bonuses or
                 discounts. Once 10 of your friends have signed up through your
                 referral link, you'll also receive a free month.
               </p>
             </div>
-          </div>
 
-          <div className="flex justify-center lg:justify-end">
+            {/* Your Invite Code Section */}
+            <Card className="bg-gray-50 ">
+              <CardHeader className="p-2 px-5">
+                <CardTitle className="text-sm  text-primary-300">
+                  Your Invite Code
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between border p-2 rounded-lg">
+                    <span className="text-lg font-bold text-primary-400 tracking-wider">
+                      {referralCode}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() =>
+                        copyToClipboard(referralCode, "Invite code")
+                      }
+                      className="shrink-0"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Friends can enter this code to join with your referral
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </CardContent>
+
+          <div className="flex justify-center lg:justify-end pr-4 w-full">
             <div className="relative w-full max-w-lg">
               <img
-                src="/meditation.png"
+                src="/referral-image.jpg"
                 alt="Meditation illustration with person in lotus pose surrounded by plants"
-                width={500}
-                height={500}
-                className="w-full h-auto"
+                width={600}
+                height={600}
+                className="w-full h-auto rounded-md"
               />
             </div>
           </div>
-        </div>
-
-        <div className="grid gap-6 lg:grid-cols-3 mb-12">
-          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg lg:col-span-1">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-lg font-semibold text-gray-800">
-                Invite Link
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex gap-2">
-                  <Input
-                    value={referralLink}
-                    readOnly
-                    className="bg-gray-50 border-gray-200 text-sm"
-                  />
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => copyToClipboard(referralLink, "Invite link")}
-                    className="shrink-0"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
-                <p className="text-sm text-gray-500">
-                  Share this link with your friends
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg lg:col-span-1">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-lg font-semibold text-gray-800">
-                Invite Code
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex gap-2">
-                  <Input
-                    value={referralCode}
-                    readOnly
-                    className="bg-gray-50 border-gray-200 text-sm font-mono"
-                  />
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => copyToClipboard(referralCode, "Invite code")}
-                    className="shrink-0"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
-                <p className="text-sm text-gray-500">
-                  Friends can enter this code
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg lg:col-span-1">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-lg font-semibold text-gray-800">
-                Email Invites
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex gap-2">
-                <Input
-                  placeholder="user15@email.com"
-                  value={emailInput}
-                  onChange={(e) => setEmailInput(e.target.value)}
-                  onKeyPress={(e) => e.key === "Enter" && addEmail()}
-                  className="flex-1 text-sm"
-                />
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={addEmail}
-                  className="shrink-0 bg-transparent"
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-
-              {emailList.length > 0 && (
-                <div className="space-y-2 max-h-24 overflow-y-auto">
-                  {emailList.map((email, index) => (
-                    <Badge
-                      key={index}
-                      variant="secondary"
-                      className="flex items-center justify-between w-full px-3 py-1"
-                    >
-                      <span className="text-xs truncate">{email}</span>
-                      <button
-                        onClick={() => removeEmail(email)}
-                        className="ml-2 hover:bg-gray-200 rounded-full p-0.5"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
-              )}
-
-              <MyButton
-                onClick={sendInvites}
-                disabled={emailList.length === 0}
-                className="w-full"
-                size="sm"
-              >
-                <Mail className="h-4 w-4 mr-2" />
-                Send Invite
-              </MyButton>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg font-semibold text-gray-800">
-                Your Referrals
-              </CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <Table className="">
-                <TableHeader>
-                  <TableRow className="text-black bg-primary-100">
-                    <TableHead className="text-black">Date</TableHead>
-                    <TableHead className="text-black">Member Name</TableHead>
-                    <TableHead className="text-black text-center">
-                      Referral #
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {referrals.map((referral, index) => (
-                    <TableRow key={index}>
-                      <TableCell className="font-medium">
-                        {referral.date}
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {referral.memberName}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge variant="secondary">
-                          {referral.referralNumber}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
         </Card>
+
+        {/* Invite Links Table */}
+        <div className="mb-12">
+          <InviteLinksTable referralCode={referralCode} />
+        </div>
+
+        {/* Your Referrals Table */}
+        <div className="mb-12">
+          <ReferralsTable />
+        </div>
       </div>
     </div>
   );

@@ -40,6 +40,7 @@ const PUBLIC_ROUTES = [
   "/terms-and-conditions",
   "/referral",
   "/live-class-guest",
+  "/study-library/live-class/",
   "/learner-invitation-response",
   "/institute-selection",
   "/delete-user",
@@ -80,7 +81,14 @@ const isAuthenticated = async () => {
 
 // Helper function to check if a route is public
 const isPublicRoute = (pathname: string): boolean => {
-  return PUBLIC_ROUTES.some((route) => pathname.startsWith(route));
+  // Check for exact matches and startsWith matches
+  const directMatch = PUBLIC_ROUTES.some((route) => pathname.startsWith(route));
+
+  // Special handling for dynamic routes
+  const isDynamicLiveClassRoute =
+    /^\/study-library\/live-class\/[^/]+\/?$/.test(pathname);
+
+  return directMatch || isDynamicLiveClassRoute;
 };
 
 const RootComponent = () => {
@@ -100,7 +108,6 @@ const RootComponent = () => {
       setPrimaryColor(themeCode ?? "primary");
     }
   };
-
 
   useEffect(() => {
     // Apply tab branding from Preferences (tabText and tabIconFileId) with fallback title
@@ -190,10 +197,16 @@ export const Route = createRootRouteWithContext<{
           throw redirect({ to: "/courses" });
         }
       } catch (error) {
-        if (error instanceof Response && [301, 302, 303, 307, 308].includes(error.status)) {
-          console.log("[__root] Caught redirect Response in root block. Rethrowing.", {
-            status: error.status,
-          });
+        if (
+          error instanceof Response &&
+          [301, 302, 303, 307, 308].includes(error.status)
+        ) {
+          console.log(
+            "[__root] Caught redirect Response in root block. Rethrowing.",
+            {
+              status: error.status,
+            }
+          );
           throw error;
         }
         console.error("Error resolving domain routing:", error);
@@ -247,10 +260,16 @@ export const Route = createRootRouteWithContext<{
           throw redirect({ to: "/courses" });
         }
       } catch (error) {
-        if (error instanceof Response && [301, 302, 303, 307, 308].includes(error.status)) {
-          console.log("[__root] (protected) Caught redirect Response. Rethrowing.", {
-            status: error.status,
-          });
+        if (
+          error instanceof Response &&
+          [301, 302, 303, 307, 308].includes(error.status)
+        ) {
+          console.log(
+            "[__root] (protected) Caught redirect Response. Rethrowing.",
+            {
+              status: error.status,
+            }
+          );
           throw error;
         }
         console.error("Error resolving domain routing:", error);

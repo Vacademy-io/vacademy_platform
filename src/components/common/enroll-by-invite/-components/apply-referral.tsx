@@ -5,16 +5,18 @@ import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { AxiosResponse } from "axios";
 import { Check, Tag, X } from "phosphor-react";
 import { useState } from "react";
+import { ReferRequest } from "../-services/enroll-invite-services";
 
 // Common base interface
 interface Benefit {
   benefitType: string;
-  benefitValue: any;
+  benefitValue: Record<string, unknown>;
+  description?: string;
 }
 
 // Flat discount interface
 export interface FlatBenefit extends Benefit {
-  benefitType: "FLAT";
+  benefitType: "FLAT_DISCOUNT";
   benefitValue: {
     amount: number;
   };
@@ -34,21 +36,54 @@ export interface PercentageDiscountBenefit extends Benefit {
 export interface FreeMembershipDaysBenefit extends Benefit {
   benefitType: "FREE_MEMBERSHIP_DAYS";
   benefitValue: {
-    free_days: number;
+    days: number;
   };
 }
+
+// Content benefit interface
+export interface ContentBenefit extends Benefit {
+  benefitType: "CONTENT";
+  benefitValue: {
+    deliveryMediums: string[];
+    templateId?: string;
+    subject?: string;
+    body?: string;
+    fileIds?: string[];
+    contentUrl?: string;
+  };
+}
+
+// Points benefit interface
+export interface PointsBenefit extends Benefit {
+  benefitType: "POINTS";
+  benefitValue: {
+    points: number;
+  };
+}
+
+// Union type for all benefits
+export type ReferralBenefit =
+  | FlatBenefit
+  | PercentageDiscountBenefit
+  | FreeMembershipDaysBenefit
+  | ContentBenefit
+  | PointsBenefit;
 
 export // Referral Code Component
 const ReferralCodeComponent = ({
   referralOptionId,
   setCouponVerified,
   package_session_id,
+  setReferRequest,
+  refCode,
 }: {
   referralOptionId: string;
   setCouponVerified: (value: boolean) => void;
   package_session_id: string;
+  setReferRequest: (referRequest: ReferRequest | null) => void;
+  refCode: string | null;
 }) => {
-  const [referralCode, setReferralCode] = useState("");
+  const [referralCode, setReferralCode] = useState(refCode || "");
   const [isApplying, setIsApplying] = useState(false);
   const [appliedReferral, setAppliedReferral] = useState<{
     code: string;
@@ -86,16 +121,27 @@ const ReferralCodeComponent = ({
         },
       });
 
-      console.log("API Response:", response.data);
       if (response.data.verified) {
         setCouponVerified(true);
+
+        // Create and set the ReferRequest when coupon is verified
+        const referRequest: ReferRequest = {
+          referrer_user_id: response.data.source_id,
+          referral_code: referralCode,
+          referral_option_id: referralOptionId,
+        };
+        setReferRequest(referRequest);
+
         setReferralCode("");
       } else {
         setError("Invalid referral code");
         setCouponVerified(false);
+        setReferRequest(null);
       }
     } catch {
       setError("Failed to apply referral code. Please try again.");
+      setCouponVerified(false);
+      setReferRequest(null);
     } finally {
       setIsApplying(false);
     }
@@ -104,6 +150,8 @@ const ReferralCodeComponent = ({
   const removeReferralCode = () => {
     setAppliedReferral(null);
     setError("");
+    setCouponVerified(false);
+    setReferRequest(null);
   };
 
   return (

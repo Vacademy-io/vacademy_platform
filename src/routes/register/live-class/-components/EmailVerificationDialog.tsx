@@ -176,7 +176,7 @@ export default function EmailVerificationDialog({
     <MyDialog
       open={open}
       heading="Verify Email"
-      className="w-1/3 max-sm:w-screen h-fit max-sm:rounded-md"
+      className="w-full max-w-md sm:w-2/3 md:w-1/2 lg:w-1/3 h-fit rounded-md"
     >
       <FormProvider {...verificationForm}>
         <div>
@@ -205,7 +205,7 @@ export default function EmailVerificationDialog({
         <div className="flex flex-col gap-4 my-4">
           {isOtpSent && (
             <>
-              <div className="flex justify-start gap-2">
+              <div className="flex justify-center gap-1 sm:gap-2 flex-nowrap">
                 {verificationForm
                   .watch("otp")
                   .map((val: string, index: number) => (
@@ -224,7 +224,7 @@ export default function EmailVerificationDialog({
                           }
                           onKeyDown={(e) => handleKeyDown(index, e)}
                           onPaste={handlePaste}
-                          className="size-10 text-center border border-gray-300 rounded-md focus:outline-none"
+                          className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 text-center border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm sm:text-base md:text-lg"
                         />
                       )}
                     />
@@ -247,40 +247,42 @@ export default function EmailVerificationDialog({
             </>
           )}
         </div>
-        {!isOtpSent && (
-          <MyButton
-            className="text-primary-500"
-            onClick={() => {
-              const email = verificationForm.getValues("email");
-              const emailSchema = z
-                .string()
-                .email("Please enter a valid email address");
-              const emailResult = emailSchema.safeParse(email);
+        <div className="flex flex-col gap-3">
+          {!isOtpSent && (
+            <MyButton
+              className="text-primary-500 w-full"
+              onClick={() => {
+                const email = verificationForm.getValues("email");
+                const emailSchema = z
+                  .string()
+                  .email("Please enter a valid email address");
+                const emailResult = emailSchema.safeParse(email);
 
-              if (!emailResult.success) {
-                toast.error(emailResult.error.errors[0].message);
-              } else {
-                sendEmailOtp(email);
-              }
-            }}
-          >
-            Send Otp
-          </MyButton>
-        )}
-        {isOtpSent && (
-          <MyButton
-            buttonType="primary"
-            className="m-auto"
-            onClick={() => {
-              verifyEmailOtp(
-                verificationForm.getValues("email"),
-                verificationForm.getValues("otp").join("")
-              );
-            }}
-          >
-            Verify
-          </MyButton>
-        )}
+                if (!emailResult.success) {
+                  toast.error(emailResult.error.errors[0].message);
+                } else {
+                  sendEmailOtp(email);
+                }
+              }}
+            >
+              Send OTP
+            </MyButton>
+          )}
+          {isOtpSent && (
+            <MyButton
+              buttonType="primary"
+              className="w-full"
+              onClick={() => {
+                verifyEmailOtp(
+                  verificationForm.getValues("email"),
+                  verificationForm.getValues("otp").join("")
+                );
+              }}
+            >
+              Verify
+            </MyButton>
+          )}
+        </div>
       </FormProvider>
     </MyDialog>
   );

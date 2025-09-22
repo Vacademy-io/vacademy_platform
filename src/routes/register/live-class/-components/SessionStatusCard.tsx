@@ -247,13 +247,13 @@ export default function SessionStatusCard({
   const renderSessionStatus = () => {
     if (isInMainSession) {
       return (
-        <div className="mt-4">
-          <div className="text-green-600 text-sm mb-2">
+        <div className="mt-3 sm:mt-4">
+          <div className="text-green-600 text-sm sm:text-base mb-2 font-medium">
             {getTerminology(ContentTerms.Session, SystemTerms.Session)} is Live!
           </div>
           <MyButton
             buttonType="primary"
-            className="w-full"
+            className="w-full h-10 sm:h-12 text-sm sm:text-base"
             onClick={handleJoinLiveSession}
           >
             Join Live{" "}
@@ -263,13 +263,13 @@ export default function SessionStatusCard({
       );
     } else if (isInWaitingRoom) {
       return (
-        <div className="mt-4">
-          <div className="text-orange-600 text-sm mb-2">
+        <div className="mt-3 sm:mt-4">
+          <div className="text-orange-600 text-sm sm:text-base mb-2 font-medium">
             Waiting Room is Open
           </div>
           <MyButton
             buttonType="primary"
-            className="w-full"
+            className="w-full h-10 sm:h-12 text-sm sm:text-base"
             onClick={handleEnterWaitingRoom}
           >
             Enter Waiting Room
@@ -278,12 +278,12 @@ export default function SessionStatusCard({
       );
     } else {
       return (
-        <div className="mt-4">
-          <div className="text-gray-500 text-sm mb-2">
+        <div className="mt-3 sm:mt-4">
+          <div className="text-gray-500 text-sm sm:text-base mb-2 font-medium">
             {getTerminology(ContentTerms.Session, SystemTerms.Session)} hasn't
             started yet
           </div>
-          <MyButton buttonType="secondary" className="w-full" disabled>
+          <MyButton buttonType="secondary" className="w-full h-10 sm:h-12 text-sm sm:text-base" disabled>
             {getTerminology(ContentTerms.Session, SystemTerms.Session)} will
             start soon
           </MyButton>
@@ -299,32 +299,32 @@ export default function SessionStatusCard({
   const isInMainSession = now >= sessionDate;
 
   return (
-    <div className="flex flex-col gap-6 justify-center items-center m-6 text-center">
-      <div className="flex flex-col gap-4">
-        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-          <span className="text-2xl text-green-600">✓</span>
+    <div className="flex flex-col gap-4 sm:gap-6 justify-center items-center p-4 sm:p-6 text-center">
+      <div className="flex flex-col gap-3 sm:gap-4">
+        <div className="w-12 h-12 sm:w-16 sm:h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+          <span className="text-xl sm:text-2xl text-green-600">✓</span>
         </div>
-        <div className="font-bold text-xl text-green-700">
+        <div className="font-bold text-lg sm:text-xl text-green-700">
           Already Registered!
         </div>
-        <div className="text-gray-600">
+        <div className="text-sm sm:text-base text-gray-600">
           You're already registered for this session with email:
         </div>
-        <div className="font-semibold text-primary-600 bg-primary-50 px-4 py-2 rounded-lg">
+        <div className="font-semibold text-primary-600 bg-primary-50 px-3 py-2 sm:px-4 rounded-lg text-sm sm:text-base break-all">
           {alreadyRegisteredEmail}
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 w-full">
-        <div className="flex flex-col gap-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-gray-600">Start Time:</span>
-            <span className="font-medium">{formatStartTime()}</span>
+      <div className="flex flex-col gap-3 sm:gap-4 w-full">
+        <div className="flex flex-col gap-2 text-sm sm:text-base">
+          <div className="flex flex-col sm:flex-row sm:justify-between gap-1 sm:gap-2">
+            <span className="text-gray-600 font-medium">Start Time:</span>
+            <span className="font-semibold text-gray-800">{formatStartTime()}</span>
           </div>
           {sessionDetails.waitingRoomTime && (
-            <div className="flex justify-between">
-              <span className="text-gray-600">Waiting Room Opens:</span>
-              <span className="font-medium">{formatWaitingRoomTime()}</span>
+            <div className="flex flex-col sm:flex-row sm:justify-between gap-1 sm:gap-2">
+              <span className="text-gray-600 font-medium">Waiting Room Opens:</span>
+              <span className="font-semibold text-gray-800">{formatWaitingRoomTime()}</span>
             </div>
           )}
         </div>

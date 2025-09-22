@@ -59,6 +59,12 @@ export const handleGetStripeKeys = (instituteId: string) => {
   };
 };
 
+export interface ReferRequest {
+  referrer_user_id: string;
+  referral_code: string;
+  referral_option_id: string;
+}
+
 interface EnrollLearnerForPaymentProps {
   registrationData: Record<
     string,
@@ -79,6 +85,11 @@ interface EnrollLearnerForPaymentProps {
   payment_option_id: string;
   package_session_id: string;
   allowLearnersToCreateCourses: boolean;
+  referRequest: {
+    referrer_user_id: string;
+    referral_code: string;
+    referral_option_id: string;
+  } | null;
   returnUrl?: string;
 }
 
@@ -91,6 +102,7 @@ export const handleEnrollLearnerForPayment = async ({
   payment_option_id,
   package_session_id,
   allowLearnersToCreateCourses,
+  referRequest,
   returnUrl,
 }: EnrollLearnerForPaymentProps) => {
   const keysToExclude = ["email", "full_name", "phone_number"];
@@ -120,6 +132,7 @@ export const handleEnrollLearnerForPayment = async ({
       plan_id: enrollmentData.selectedPayment.id,
       payment_option_id: payment_option_id,
       enroll_invite_id: enrollInviteId,
+      refer_request: referRequest,
       payment_initiation_request: {
         amount: enrollmentData.selectedPayment.amount,
         currency: enrollmentData.selectedPayment.currency,

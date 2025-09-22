@@ -4,12 +4,21 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Mail, ArrowLeft, RefreshCw, CheckCircle2 } from "lucide-react";
+import {
+  Loader2,
+  Mail,
+  ArrowLeft,
+  RefreshCw,
+  CheckCircle2,
+} from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import axios from "axios";
-import { LIVE_SESSION_VERIFY_OTP, LIVE_SESSION_REQUEST_OTP } from "@/constants/urls";
-import { checkUserEnrollmentInInstitute, handleEnrolledUser } from "../../utils/enrollment-checker";
+import {
+  LIVE_SESSION_VERIFY_OTP,
+  LIVE_SESSION_REQUEST_OTP,
+} from "@/constants/urls";
+import { handleEnrolledUser } from "../../utils/enrollment-checker";
 import { SignupSettings } from "@/config/signup/defaultSignupSettings";
 
 interface OtpFormData {
@@ -29,7 +38,10 @@ interface OtpVerificationFormProps {
 }
 
 const otpSchema = z.object({
-  otp: z.array(z.string()).length(6).transform((val) => val.join("")),
+  otp: z
+    .array(z.string())
+    .length(6)
+    .transform((val) => val.join("")),
 });
 
 export function OtpVerificationForm({
@@ -41,7 +53,7 @@ export function OtpVerificationForm({
   instituteId,
   onEnrolledUserDetected,
   checkEnrollmentOnce,
-  settings
+  settings,
 }: OtpVerificationFormProps) {
   const [isVerifying, setIsVerifying] = useState(false);
   const [timer, setTimer] = useState(60);
@@ -83,7 +95,7 @@ export function OtpVerificationForm({
   const handleOtpSubmit = async () => {
     try {
       setIsVerifying(true);
-      
+
       // Use local OTP state
       const otpString = otpValues.join("");
 
@@ -106,10 +118,10 @@ export function OtpVerificationForm({
       // - Regular email OTP flow
       // - Any other email verification flows
       // We check here because we now have a verified email address
-      
+
       if (instituteId && checkEnrollmentOnce) {
         const enrollmentResult = await checkEnrollmentOnce(email);
-        
+
         if (enrollmentResult?.isEnrolled) {
           const autoLoginResult = await handleEnrolledUser(
             email,
@@ -120,11 +132,14 @@ export function OtpVerificationForm({
             },
             (error) => {
               // Auto-login failed - show error but don't block signup flow
-              toast.warning("You appear to be already enrolled. You can still proceed with signup if needed.");
+              toast.warning(
+                "You appear to be already enrolled. You can still proceed with signup if needed."
+              );
+              console.error("Auto-login after OTP verification failed:", error);
             },
             true // shouldRedirectAfterLogin - will handle navigation automatically
           );
-          
+
           if (autoLoginResult.success) {
             return; // Auto-login handled everything
           }
@@ -133,10 +148,12 @@ export function OtpVerificationForm({
 
       // OTP verified, call the callback
       // When usernameStrategy is "email", use email as full name
-      const fullNameToUse = settings?.usernameStrategy === "email" ? email : fullName;
+      const fullNameToUse =
+        settings?.usernameStrategy === "email" ? email : fullName;
       await onOtpVerified(email, fullNameToUse);
     } catch (error) {
       toast.error("Invalid OTP. Please try again.");
+      console.error("OTP verification error:", error);
     } finally {
       setIsVerifying(false);
     }
@@ -147,8 +164,9 @@ export function OtpVerificationForm({
 
     try {
       // When usernameStrategy is "email", use email as full name
-      const fullNameToUse = settings?.usernameStrategy === "email" ? email : (fullName || "User");
-      
+      const fullNameToUse =
+        settings?.usernameStrategy === "email" ? email : fullName || "User";
+
       await axios.post(LIVE_SESSION_REQUEST_OTP, {
         to: email,
         subject: "Email Verification",
@@ -161,6 +179,7 @@ export function OtpVerificationForm({
       toast.success("OTP resent successfully");
     } catch (error) {
       toast.error("Failed to resend OTP. Please try again.");
+      console.error("Resend OTP error:", error);
     }
   };
 
@@ -169,12 +188,12 @@ export function OtpVerificationForm({
     if (value.length > 1) {
       value = value[0];
     }
-    
+
     // Update local state
     const newOtpValues = [...otpValues];
     newOtpValues[index] = value;
     setOtpValues(newOtpValues);
-    
+
     // Also update form state for compatibility
     otpForm.setValue("otp", newOtpValues);
 
@@ -184,7 +203,10 @@ export function OtpVerificationForm({
     }
   };
 
-  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (
+    index: number,
+    e: React.KeyboardEvent<HTMLInputElement>
+  ) => {
     if (e.key === "Backspace") {
       if (!e.currentTarget.value && index > 0) {
         // If current field is empty and backspace is pressed, go to previous field
@@ -201,15 +223,20 @@ export function OtpVerificationForm({
 
   const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault();
-    const pastedData = e.clipboardData.getData("text/plain").replace(/\D/g, "").slice(0, 6);
-    
+    const pastedData = e.clipboardData
+      .getData("text/plain")
+      .replace(/\D/g, "")
+      .slice(0, 6);
+
     if (pastedData.length > 0) {
       // Create OTP array with pasted data + empty strings for remaining slots
-      const otpArray = pastedData.split("").concat(Array(6 - pastedData.length).fill(""));
-      
+      const otpArray = pastedData
+        .split("")
+        .concat(Array(6 - pastedData.length).fill(""));
+
       setOtpValues(otpArray);
       otpForm.setValue("otp", otpArray);
-      
+
       // Focus the next empty input or the last input
       const nextIndex = Math.min(pastedData.length, 5);
       if (otpInputRefs.current[nextIndex]) {
@@ -218,9 +245,9 @@ export function OtpVerificationForm({
         // If nextIndex is out of bounds, focus the last input
         otpInputRefs.current[5]?.focus();
       }
-      
+
       // Show success message
-                  // OTP pasted successfully - no need to show toast
+      // OTP pasted successfully - no need to show toast
     }
   };
 
@@ -248,9 +275,7 @@ export function OtpVerificationForm({
           <h3 className="text-lg font-semibold text-gray-900">
             Check your email
           </h3>
-          <p className="text-sm text-gray-600">
-            We've sent a 6-digit code to
-          </p>
+          <p className="text-sm text-gray-600">We've sent a 6-digit code to</p>
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -258,9 +283,7 @@ export function OtpVerificationForm({
             className="inline-flex items-center space-x-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1"
           >
             <CheckCircle2 className="w-3 h-3 text-gray-600" />
-            <span className="text-sm font-medium text-gray-800">
-              {email}
-            </span>
+            <span className="text-sm font-medium text-gray-800">{email}</span>
           </motion.div>
         </div>
       </div>
@@ -296,16 +319,14 @@ export function OtpVerificationForm({
             disabled={timer > 0}
             className="text-sm text-gray-600 hover:text-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors duration-200"
           >
-                      {timer > 0 ? (
-            <span>
-              Resend in {timer}s
-            </span>
-          ) : (
-            <span className="flex items-center justify-center gap-2">
-              <RefreshCw className="w-4 h-4" />
-              Resend OTP
-            </span>
-          )}
+            {timer > 0 ? (
+              <span>Resend in {timer}s</span>
+            ) : (
+              <span className="flex items-center justify-center gap-2">
+                <RefreshCw className="w-4 h-4" />
+                Resend OTP
+              </span>
+            )}
           </button>
         </div>
 

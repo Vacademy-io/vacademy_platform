@@ -3,13 +3,10 @@ import { Separator } from "@/components/ui/separator";
 import { CheckCircle } from "lucide-react";
 import { getCurrencySymbol } from "./payment-selection-step";
 import { SelectedPayment } from "./types";
-import {
-  FlatBenefit,
-  PercentageDiscountBenefit,
-  ReferralCodeComponent,
-} from "./apply-referral";
+import { ReferralCodeComponent, ReferralBenefit } from "./apply-referral";
 import { useState } from "react";
 import { safeJsonParse } from "../-utils/helper";
+import { ReferRequest } from "../-services/enroll-invite-services";
 interface ReviewStepProps {
   courseData: {
     course: string;
@@ -18,6 +15,8 @@ interface ReviewStepProps {
   selectedPayment: SelectedPayment | null;
   paymentType?: string;
   package_session_id: string;
+  setReferRequest: (referRequest: ReferRequest | null) => void;
+  refCode: string | null;
 }
 
 const ReviewStep = ({
@@ -25,8 +24,9 @@ const ReviewStep = ({
   selectedPayment,
   paymentType,
   package_session_id,
+  setReferRequest,
+  refCode,
 }: ReviewStepProps) => {
-  console.log("review payment", selectedPayment);
   return (
     <div className="space-y-6">
       {/* Order Summary Card */}
@@ -69,10 +69,16 @@ const ReviewStep = ({
               <PaidPlanReview
                 plan={selectedPayment}
                 package_session_id={package_session_id}
+                setReferRequest={setReferRequest}
+                refCode={refCode}
               />
             ) : (
-              // @ts-expect-error : //TODO: create interface for this
-              <FreePlanReview plan={selectedPayment} />
+              <FreePlanReview
+                plan={selectedPayment}
+                package_session_id={package_session_id}
+                setReferRequest={setReferRequest}
+                refCode={refCode}
+              />
             )}
           </div>
         </CardContent>
@@ -83,12 +89,89 @@ const ReviewStep = ({
 
 export default ReviewStep;
 
+// Helper functions for referral benefits
+const getReferralDiscountAmount = (
+  benefit: ReferralBenefit,
+  basePrice: number
+): number => {
+  if (!benefit) return 0;
+
+  switch (benefit.benefitType) {
+    case "PERCENTAGE_DISCOUNT": {
+      const discountAmount =
+        (basePrice * benefit.benefitValue.percentage) / 100;
+      const maxDiscount = benefit.benefitValue.applyMaximumDiscountAmount
+        ? benefit.benefitValue.maxDiscountAmount
+        : basePrice;
+      return Math.min(discountAmount, maxDiscount);
+    }
+    case "FLAT_DISCOUNT": {
+      return benefit.benefitValue.amount;
+    }
+    default:
+      return 0;
+  }
+};
+
+const isPricingBenefit = (benefit: ReferralBenefit): boolean => {
+  return (
+    benefit?.benefitType === "PERCENTAGE_DISCOUNT" ||
+    benefit?.benefitType === "FLAT_DISCOUNT"
+  );
+};
+
+const formatNonPricingBenefits = (benefit: ReferralBenefit): string | null => {
+  if (!benefit) return null;
+
+  switch (benefit.benefitType) {
+    case "FREE_MEMBERSHIP_DAYS":
+      return `${benefit.benefitValue.days} Free Membership Days 🎉`;
+    case "CONTENT": {
+      const deliveryText = formatDeliveryMediums(
+        benefit.benefitValue.deliveryMediums
+      );
+      return `You will get bonus content${deliveryText} 🎉`;
+    }
+    case "POINTS":
+      return `Earn ${benefit.benefitValue.points} reward points ⭐️`;
+    default:
+      console.log("Unknown benefit type:", benefit.benefitType);
+      return null;
+  }
+};
+
+// Helper function to format delivery mediums
+const formatDeliveryMediums = (mediums: string[]) => {
+  if (!mediums || mediums.length === 0) return "";
+
+  const formattedMediums = mediums.map((medium) => {
+    switch (medium.toUpperCase()) {
+      case "EMAIL":
+        return "Email";
+      case "WHATSAPP":
+        return "WhatsApp";
+      default:
+        return medium.toLowerCase();
+    }
+  });
+
+  if (formattedMediums.length === 1) {
+    return ` on ${formattedMediums[0]}`;
+  } else if (formattedMediums.length === 2) {
+    return ` on ${formattedMediums[0]} and ${formattedMediums[1]}`;
+  }
+};
+
 const PaidPlanReview = ({
   plan,
   package_session_id,
+  setReferRequest,
+  refCode,
 }: {
   plan: SelectedPayment | null;
   package_session_id: string;
+  setReferRequest: (referRequest: ReferRequest | null) => void;
+  refCode: string | null;
 }) => {
   const [couponVerified, setCouponVerified] = useState(false);
   if (!plan) return null;
@@ -116,8 +199,49 @@ const PaidPlanReview = ({
   const hasReferralOption =
     plan.referral_option && plan.referral_option !== null;
 
-  const refereeDiscount: FlatBenefit | PercentageDiscountBenefit =
-    safeJsonParse(plan.referral_option?.referee_discount_json, null);
+  // Parse the referral benefit from the nested tier structure
+  const getReferralBenefit = (): ReferralBenefit | null => {
+    if (!plan.referral_option?.referee_discount_json) return null;
+
+    const parsed = safeJsonParse(
+      plan.referral_option.referee_discount_json,
+      null
+    );
+
+    if (
+      !parsed ||
+      !parsed.tiers ||
+      !Array.isArray(parsed.tiers) ||
+      parsed.tiers.length === 0
+    ) {
+      console.log("No valid tiers found");
+      return null;
+    }
+
+    const firstTier = parsed.tiers[0];
+
+    if (
+      !firstTier.benefits ||
+      !Array.isArray(firstTier.benefits) ||
+      firstTier.benefits.length === 0
+    ) {
+      console.log("No valid benefits found");
+      return null;
+    }
+
+    const benefit = firstTier.benefits[0];
+
+    // Map the API format to our internal format
+    const mappedBenefit = {
+      benefitType: benefit.type,
+      benefitValue: benefit.value,
+      description: benefit.description,
+    };
+
+    return mappedBenefit;
+  };
+
+  const refereeDiscount: ReferralBenefit | null = getReferralBenefit();
 
   return (
     <div className="py-4 space-y-4">
@@ -150,6 +274,8 @@ const PaidPlanReview = ({
           referralOptionId={plan.referral_option.id}
           setCouponVerified={setCouponVerified}
           package_session_id={package_session_id || ""}
+          setReferRequest={setReferRequest}
+          refCode={refCode}
         />
       )}
 
@@ -178,24 +304,23 @@ const PaidPlanReview = ({
             </div>
           )}
 
-          {/* Referral/Coupon Discount - Only show if coupon is verified */}
-          {couponVerified && refereeDiscount && (
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600">Referral Discount:</span>
-              <span className="text-green-600 font-medium">
-                -{getCurrencySymbol(plan.currency || "")}
-                {refereeDiscount.benefitType === "PERCENTAGE_DISCOUNT"
-                  ? (
-                      (plan.actual_price *
-                        refereeDiscount.benefitValue.percentage) /
-                      100
-                    ).toFixed(2)
-                  : refereeDiscount.benefitValue.amount.toFixed(2)}
-                {refereeDiscount.benefitType === "PERCENTAGE_DISCOUNT" &&
-                  ` (${refereeDiscount.benefitValue.percentage}%)`}
-              </span>
-            </div>
-          )}
+          {/* Referral/Coupon Discount - Only show if coupon is verified and it's a pricing benefit */}
+          {couponVerified &&
+            refereeDiscount &&
+            isPricingBenefit(refereeDiscount) && (
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600">Referral Discount:</span>
+                <span className="text-green-600 font-medium">
+                  -{getCurrencySymbol(plan.currency || "")}
+                  {getReferralDiscountAmount(
+                    refereeDiscount,
+                    plan.actual_price
+                  ).toFixed(2)}
+                  {refereeDiscount.benefitType === "PERCENTAGE_DISCOUNT" &&
+                    ` (${refereeDiscount.benefitValue.percentage}%)`}
+                </span>
+              </div>
+            )}
 
           <div className="flex justify-between items-center border-t pt-2">
             <span className="text-gray-600">Total Price:</span>
@@ -204,22 +329,17 @@ const PaidPlanReview = ({
               {(() => {
                 let finalPrice = plan.actual_price;
 
-                // Apply referral discount if coupon is verified
-                if (couponVerified && refereeDiscount) {
-                  if (refereeDiscount.benefitType === "PERCENTAGE_DISCOUNT") {
-                    const discountAmount =
-                      (finalPrice * refereeDiscount.benefitValue.percentage) /
-                      100;
-                    const maxDiscount = refereeDiscount.benefitValue
-                      .applyMaximumDiscountAmount
-                      ? refereeDiscount.benefitValue.maxDiscountAmount
-                      : finalPrice;
-                    finalPrice =
-                      finalPrice - Math.min(discountAmount, maxDiscount);
-                  } else if (refereeDiscount.benefitType === "FLAT") {
-                    finalPrice =
-                      finalPrice - refereeDiscount.benefitValue.amount;
-                  }
+                // Apply referral discount if coupon is verified and it's a pricing benefit
+                if (
+                  couponVerified &&
+                  refereeDiscount &&
+                  isPricingBenefit(refereeDiscount)
+                ) {
+                  const discountAmount = getReferralDiscountAmount(
+                    refereeDiscount,
+                    finalPrice
+                  );
+                  finalPrice = finalPrice - discountAmount;
                 }
 
                 return Math.max(0, finalPrice).toFixed(2);
@@ -228,16 +348,91 @@ const PaidPlanReview = ({
           </div>
         </div>
       </div>
+
+      {/* Additional Benefits Section - Only show if coupon is verified and there are non-pricing benefits */}
+      {couponVerified &&
+        refereeDiscount &&
+        !isPricingBenefit(refereeDiscount) && (
+          <div className="bg-green-50 rounded-lg p-4">
+            <h3 className="font-semibold text-gray-900 mb-3 text-lg">
+              Referral Benefits
+            </h3>
+
+            <div className="space-y-2">
+              <div className="flex items-start gap-2">
+                <CheckCircle className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                <span className="text-gray-900 font-medium">
+                  {formatNonPricingBenefits(refereeDiscount)}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
     </div>
   );
 };
 
 const FreePlanReview = ({
   plan,
+  package_session_id,
+  setReferRequest,
+  refCode,
 }: {
-  plan: (SelectedPayment & { duration: string; amount: number }) | null;
+  plan: SelectedPayment | null;
+  package_session_id: string;
+  setReferRequest: (referRequest: ReferRequest | null) => void;
+  refCode: string | null;
 }) => {
+  const [couponVerified, setCouponVerified] = useState(false);
   if (!plan) return null;
+
+  // Check if referral option is available
+  const hasReferralOption =
+    plan.referral_option && plan.referral_option !== null;
+
+  // Parse the referral benefit from the nested tier structure
+  const getReferralBenefit = (): ReferralBenefit | null => {
+    if (!plan.referral_option?.referee_discount_json) return null;
+
+    const parsed = safeJsonParse(
+      plan.referral_option.referee_discount_json,
+      null
+    );
+
+    if (
+      !parsed ||
+      !parsed.tiers ||
+      !Array.isArray(parsed.tiers) ||
+      parsed.tiers.length === 0
+    ) {
+      console.error("No valid tiers found");
+      return null;
+    }
+
+    const firstTier = parsed.tiers[0];
+
+    if (
+      !firstTier.benefits ||
+      !Array.isArray(firstTier.benefits) ||
+      firstTier.benefits.length === 0
+    ) {
+      console.error("No valid benefits found");
+      return null;
+    }
+
+    const benefit = firstTier.benefits[0];
+
+    // Map the API format to our internal format
+    const mappedBenefit = {
+      benefitType: benefit.type,
+      benefitValue: benefit.value,
+      description: benefit.description,
+    };
+
+    return mappedBenefit;
+  };
+
+  const refereeDiscount: ReferralBenefit | null = getReferralBenefit();
   return (
     <div className="py-4 space-y-4">
       {/* Plan Details Section */}
@@ -254,10 +449,26 @@ const FreePlanReview = ({
 
           <div className="flex justify-between">
             <span className="text-gray-600">Validity:</span>
-            <div className="font-medium text-gray-900">{plan.duration}</div>
+            <div className="font-medium text-gray-900">
+              {plan.duration ||
+                (plan.validity_in_days
+                  ? `${plan.validity_in_days} days`
+                  : "Lifetime")}
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Referral Code Section - Only show if referral option is available */}
+      {hasReferralOption && (
+        <ReferralCodeComponent
+          referralOptionId={plan.referral_option.id}
+          setCouponVerified={setCouponVerified}
+          package_session_id={package_session_id || ""}
+          setReferRequest={setReferRequest}
+          refCode={refCode}
+        />
+      )}
 
       <div className="bg-gray-50 rounded-lg p-4">
         <h3 className="font-semibold text-gray-900 mb-3 text-lg">Pricing</h3>
@@ -276,6 +487,26 @@ const FreePlanReview = ({
           </div>
         </div>
       </div>
+
+      {/* Additional Benefits Section - Only show if coupon is verified and there are non-pricing benefits */}
+      {couponVerified &&
+        refereeDiscount &&
+        !isPricingBenefit(refereeDiscount) && (
+          <div className="bg-green-50 rounded-lg p-4">
+            <h3 className="font-semibold text-gray-900 mb-3 text-lg">
+              Referral Benefits
+            </h3>
+
+            <div className="space-y-2">
+              <div className="flex items-start gap-2">
+                <CheckCircle className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                <span className="text-gray-900 font-medium">
+                  {formatNonPricingBenefits(refereeDiscount)}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
     </div>
   );
 };

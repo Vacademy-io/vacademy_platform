@@ -55,27 +55,27 @@ export default function SessionInfo({
   const convertedStartTime = getConvertedStartTime();
 
   return (
-    <div className="flex flex-col gap-6 h-full w-[40%] max-sm:w-full items-center">
+    <div className="flex flex-col gap-3 sm:gap-4 md:gap-6 h-full w-full md:w-[45%] lg:w-[40%] items-center text-center">
       {coverFileUrl ? (
         <img
           src={coverFileUrl}
           alt={sessionTitle}
-          className="h-12 w-auto object-contain"
+          className="h-10 sm:h-12 w-auto object-contain"
         />
       ) : (
-        <div>Logo</div>
+        <div className="h-10 sm:h-12 flex items-center text-gray-500">Logo</div>
       )}
-      <div className="text-h2">{sessionTitle}</div>
+      <div className="text-xl sm:text-2xl lg:text-h2 font-bold">{sessionTitle}</div>
       <div>
         {convertedStartTime && (
           <CountdownTimer startTime={convertedStartTime} />
         )}
       </div>
-      <div>
+      <div className="w-full">
         {sessionDetails?.descriptionHtml &&
         sessionDetails.descriptionHtml.trim() !== "" ? (
           <div
-            className="w-full max-h-[45vh] overflow-auto p-4 bg-white rounded-lg shadow-sm border prose prose-sm max-w-none"
+            className="w-full max-h-[30vh] sm:max-h-[45vh] overflow-auto p-3 sm:p-4 bg-white rounded-lg shadow-sm border prose prose-sm max-w-none"
             style={{
               lineHeight: "1.6",
             }}
@@ -84,32 +84,32 @@ export default function SessionInfo({
             }}
           />
         ) : (
-          <div className="size-[45vh]">
+          <div className="w-full h-[30vh] sm:h-[45vh] flex items-center justify-center">
             <img
               src={RegistrationLogo}
               alt="Registration Logo"
-              className="size-full"
+              className="max-w-full max-h-full object-contain"
             />
           </div>
         )}
       </div>
-      <div className="flex flex-col gap-1">
-        <div className="font-bold">Live Class Details</div>
-        <div className="flex flex-row gap-6">
-          <div className="flex flex-row gap-2">
-            <div>Start Time:</div>
-            <div>{formatDateTime(startTime)}</div>
+      <div className="flex flex-col gap-2 w-full">
+        <div className="font-bold text-lg">Live Class Details</div>
+        <div className="flex flex-wrap gap-3 sm:gap-6 text-sm sm:text-base justify-center md:flex-nowrap">
+          <div className="flex flex-row gap-2 whitespace-nowrap">
+            <div className="font-medium">Start Time:</div>
+            <div className="text-gray-700">{formatDateTime(startTime)}</div>
           </div>
-          <div className="flex flex-row gap-2">
-            <div>End Time:</div>
-            <div>{formatDateTime(lastEntryTime)}</div>
+          <div className="flex flex-row gap-2 whitespace-nowrap">
+            <div className="font-medium">End Time:</div>
+            <div className="text-gray-700">{formatDateTime(lastEntryTime)}</div>
           </div>
           {!isNullOrEmptyOrUndefined(subject) && (
-            <div className="flex flex-row gap-2">
-              <div>
+            <div className="flex flex-row gap-2 whitespace-nowrap">
+              <div className="font-medium">
                 {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}:
               </div>
-              <div>{subject}</div>
+              <div className="text-gray-700">{subject}</div>
             </div>
           )}
         </div>

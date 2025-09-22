@@ -3,6 +3,7 @@ package vacademy.io.auth_service.feature.user.service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import vacademy.io.auth_service.feature.auth.constants.AuthConstants;
 import vacademy.io.auth_service.feature.notification.dto.NotificationDTO;
 import vacademy.io.auth_service.feature.notification.dto.NotificationToUserDTO;
 import vacademy.io.auth_service.feature.notification.enums.NotificationSource;
@@ -11,6 +12,9 @@ import vacademy.io.auth_service.feature.notification.service.NotificationService
 import vacademy.io.common.auth.dto.UserCredentials;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.entity.User;
+import vacademy.io.common.auth.entity.UserRole;
+import vacademy.io.common.auth.enums.PortalsEnum;
+import vacademy.io.common.auth.enums.UserRoleStatus;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.exceptions.VacademyException;
@@ -124,4 +128,51 @@ public class UserOperationService {
         return userDTO;
     }
 
+    public Optional<UserDTO> findByUserName(String username,
+                                            String instituteId,
+                                            String portal) {
+
+        Optional<User> optionalUser = userRepository.findByUsername(username);
+        if (optionalUser.isEmpty()) {
+            return Optional.empty();
+        }
+
+        User user = optionalUser.get();
+
+        // Get allowed statuses and roles based on portal
+        List<String> allowedStatuses = getAllowedStatuses(portal);
+        List<String> allowedRoleNames = getValidRoleNames(portal);
+
+        boolean hasValidRole = user.getRoles() != null && user.getRoles().stream()
+                .anyMatch(ur ->
+                        ur.getInstituteId() != null && ur.getInstituteId().equals(instituteId)
+                                && ur.getStatus() != null && allowedStatuses.contains(ur.getStatus())
+                                && ur.getRole() != null && allowedRoleNames.contains(ur.getRole().getName())
+                );
+
+        if (hasValidRole) {
+            return Optional.of(new UserDTO(user));
+        } else {
+            return Optional.empty();
+        }
+    }
+
+    private List<String> getAllowedStatuses(String portal) {
+        // You can extend this if portal-specific statuses are needed
+        return List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name());
+    }
+
+    private List<String> getValidRoleNames(String portal) {
+        if (portal == null) {
+            return List.of(); // empty list if portal is null
+        }
+
+        if (portal.equalsIgnoreCase(PortalsEnum.ADMIN.name())) {
+            return AuthConstants.VALID_ROLES_FOR_ADMIN_PORTAL;
+        } else if (portal.equalsIgnoreCase(PortalsEnum.LEARNER.name())) {
+            return AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL;
+        } else {
+            return List.of(); // empty list for unknown portals
+        }
+    }
 }

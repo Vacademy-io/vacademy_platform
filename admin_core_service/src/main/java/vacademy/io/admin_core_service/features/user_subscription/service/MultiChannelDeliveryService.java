@@ -1,9 +1,12 @@
 package vacademy.io.admin_core_service.features.user_subscription.service;
 
+import org.checkerframework.checker.units.qual.A;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.media_service.service.MediaService;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
 import vacademy.io.admin_core_service.features.notification_service.enums.CommunicationType;
@@ -12,6 +15,7 @@ import vacademy.io.admin_core_service.features.notification_service.utils.Referr
 import vacademy.io.admin_core_service.features.user_subscription.dto.BenefitConfigDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.ReferralMapping;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.media.dto.FileDetailsDTO;
 
 import java.util.HashMap;
@@ -26,6 +30,12 @@ public class MultiChannelDeliveryService {
 
     @Autowired
     private NotificationService notificationService;
+
+    @Autowired
+    private InstituteRepository instituteRepository;
+
+    @Autowired
+    private MediaService mediaService;
 
     /**
      * Delivers a content benefit to the appropriate user(s) through the specified channels.
@@ -91,12 +101,18 @@ public class MultiChannelDeliveryService {
         String finalBody = (benefitValue.getBody() != null && !benefitValue.getBody().isBlank())
                 ? benefitValue.getBody()
                 : defaultBody;
+        Institute institute = instituteRepository.findById(instituteId).get();
+        String instituteLogoUrl = mediaService.getFileUrlById(institute.getLogoFileId());
 
         Map<String, String> placeholders = new HashMap<>();
         placeholders.put("REFERRER_NAME", referrerUser.getFullName());
         placeholders.put("REFEREE_NAME", refereeUser.getFullName());
         placeholders.put("USER_NAME", targetUser.getFullName());
         placeholders.put("CONTENT_LINKS", contentLinks);
+        placeholders.put("INSTITUTE_LOGO_URL",instituteLogoUrl);
+        placeholders.put("INSTITUTE_NAME",institute.getInstituteName());
+        placeholders.put("INSTITUTE_URL",institute.getWebsiteUrl());
+        placeholders.put("INSTITUTE_ADDRESS",institute.getAddress());
 
         NotificationDTO notificationDTO = new NotificationDTO();
         notificationDTO.setBody(finalBody);

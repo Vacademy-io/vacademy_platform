@@ -80,129 +80,158 @@ public class NotificationEmailBody {
                 """.formatted(name, username, password, service);
     }
 
-    public static String createWelcomeEmailBody(String service, String name, String username, String password) {
+
+    public static String createWelcomeEmailBody(
+            String service,
+            String name,
+            String username,
+            String password,
+            String frontendLoginUrl,
+            String themeColor
+    ) {
         return """
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Welcome to %s</title>
-                <style>
-                    body {
-                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen-Sans, Ubuntu, Cantarell, sans-serif;
-                        margin: 0;
-                        padding: 0;
-                        background-color: #fafafa;
-                        line-height: 1.6;
-                    }
-                    .container {
-                        max-width: 640px;
-                        margin: 40px auto;
-                        padding: 0 20px;
-                    }
-                    .card {
-                        background: #ffffff;
-                        border-radius: 8px;
-                        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-                        border: 1px solid #eee;
-                    }
-                    .header {
-                        padding: 32px 40px;
-                        border-bottom: 1px solid #F0F0F0;
-                    }
-                    .content {
-                        padding: 40px;
-                        color: #444444;
-                    }
-                    .footer {
-                        padding: 24px 40px;
-                        background-color: #f8f8f8;
-                        border-top: 1px solid #F0F0F0;
-                        border-radius: 0 0 8px 8px;
-                    }
-                    h1 {
-                        color: #E67E22;
-                        font-size: 24px;
-                        margin: 0 0 8px 0;
-                        font-weight: 600;
-                    }
-                    .credentials-box {
-                        background: #FDF2E9;
-                        border-radius: 6px;
-                        padding: 24px;
-                        margin: 32px 0;
-                    }
-                    .credential-item {
-                        margin: 12px 0;
-                        font-size: 15px;
-                    }
-                    .credential-label {
-                        color: #D35400;
-                        font-weight: 500;
-                        display: block;
-                        margin-bottom: 4px;
-                    }
-                    .login-button {
-                        display: inline-block;
-                        padding: 12px 32px;
-                        background-color: #E67E22;
-                        color: white !important;
-                        text-decoration: none;
-                        border-radius: 6px;
-                        font-weight: 500;
-                        transition: background-color 0.2s;
-                    }
-                    .login-button:hover {
-                        background-color: #D35400;
-                    }
-                    .text-muted {
-                        color: #666666;
-                        font-size: 14px;
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <div class="card">
-                        <div class="header">
-                            <h1>Welcome to %s</h1>
-                            <p class="text-muted">Your account has been successfully created</p>
-                        </div>
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Welcome to %s</title>
+            <style>
+                body {
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen-Sans, Ubuntu, Cantarell, sans-serif;
+                    margin: 0;
+                    padding: 0;
+                    background-color: #fafafa;
+                    line-height: 1.6;
+                }
+                .container {
+                    max-width: 640px;
+                    margin: 40px auto;
+                    padding: 0 20px;
+                }
+                .card {
+                    background: #ffffff;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+                    border: 1px solid #eee;
+                }
+                .header {
+                    padding: 32px 40px;
+                    border-bottom: 1px solid #F0F0F0;
+                }
+                .content {
+                    padding: 40px;
+                    color: #444444;
+                }
+                .footer {
+                    padding: 24px 40px;
+                    background-color: #f8f8f8;
+                    border-top: 1px solid #F0F0F0;
+                    border-radius: 0 0 8px 8px;
+                }
+                h1 {
+                    color: %s; /* Dynamic heading color */
+                    font-size: 24px;
+                    margin: 0 0 8px 0;
+                    font-weight: 600;
+                }
+                .credentials-box {
+                    background: #FDF2E9;
+                    border-radius: 6px;
+                    padding: 24px;
+                    margin: 32px 0;
+                }
+                .credential-item {
+                    margin: 12px 0;
+                    font-size: 15px;
+                }
+                .credential-label {
+                    color: %s; /* Dynamic label color */
+                    font-weight: 500;
+                    display: block;
+                    margin-bottom: 4px;
+                }
+                .login-button {
+                    display: inline-block;
+                    padding: 12px 32px;
+                    background-color: %s; /* Dynamic button color */
+                    color: white !important;
+                    text-decoration: none;
+                    border-radius: 6px;
+                    font-weight: 500;
+                    transition: background-color 0.2s;
+                }
+                .login-button:hover {
+                    background-color: %s; /* Darker hover */
+                }
+                .text-muted {
+                    color: #666666;
+                    font-size: 14px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="card">
+                    <div class="header">
+                        <h1>Welcome to %s</h1>
+                        <p class="text-muted">Your account has been successfully created</p>
+                    </div>
+                    
+                    <div class="content">
+                        <p>Dear %s,</p>
+                        <p>Welcome to %s. Below are your login credentials:</p>
                         
-                        <div class="content">
-                            <p>Dear %s,</p>
-                            <p>Welcome to %s. Below are your login credentials:</p>
-                            
-                            <div class="credentials-box">
-                                <div class="credential-item">
-                                    <span class="credential-label">Username</span>
-                                    %s
-                                </div>
-                                <div class="credential-item">
-                                    <span class="credential-label">Password</span>
-                                    %s
-                                </div>
+                        <div class="credentials-box">
+                            <div class="credential-item">
+                                <span class="credential-label">Username</span>
+                                %s
                             </div>
-                            
-                            <p style="text-align: center; margin: 32px 0;">
-                                <a href="%s" class="login-button">Access Your Account</a>
-                            </p>
-                            
-                            <p class="text-muted">Please keep your credentials secure and do not share them with anyone.</p>
+                            <div class="credential-item">
+                                <span class="credential-label">Password</span>
+                                %s
+                            </div>
                         </div>
                         
-                        <div class="footer">
-                            <p class="text-muted" style="margin: 0;">
-                                Best regards,<br>
-                                <strong>%s Team</strong>
-                            </p>
-                        </div>
+                        <p style="text-align: center; margin: 32px 0;">
+                            <a href="%s" class="login-button">Access Your Account</a>
+                        </p>
+                        
+                        <p class="text-muted">Please keep your credentials secure and do not share them with anyone.</p>
+                    </div>
+                    
+                    <div class="footer">
+                        <p class="text-muted" style="margin: 0;">
+                            Best regards,<br>
+                            <strong>%s Team</strong>
+                        </p>
                     </div>
                 </div>
-            </body>
-            </html>
-            """.formatted(service, service, name, service, username, password, frontendLoginUrl, service);
+            </div>
+        </body>
+        </html>
+        """.formatted(
+                service,           // title
+                themeColor,        // h1 color
+                themeColor,        // label color
+                themeColor,        // button color
+                darkenWelcomeColor(themeColor), // hover color (optional helper below)
+                service, name, service,
+                username, password,
+                frontendLoginUrl,
+                service
+        );
     }
 
+    private static String darkenWelcomeColor(String hexColor) {
+        try {
+            java.awt.Color color = java.awt.Color.decode(hexColor);
+            int r = (int)(color.getRed() * 0.85);
+            int g = (int)(color.getGreen() * 0.85);
+            int b = (int)(color.getBlue() * 0.85);
+            return String.format("#%02x%02x%02x", r, g, b);
+        } catch (Exception e) {
+            return hexColor; // fallback
+        }
+    }
     public static String sendUserPasswords(String service) {
         return """
                 <!DOCTYPE html>
@@ -382,7 +411,14 @@ public class NotificationEmailBody {
                 """.formatted(service, service, name, username, password, LEARNER_LOGIN_URL, service, service);
     }
 
-    public static String createCredentialsFoundEmailBody(String service, String name, String username, String password) {
+    public static String createCredentialsFoundEmailBody(
+            String service,
+            String name,
+            String username,
+            String password,
+            String frontendLoginUrl,
+            String themeColor // <-- NEW PARAMETER
+    ) {
         return """
     <!DOCTYPE html>
     <html>
@@ -422,7 +458,7 @@ public class NotificationEmailBody {
                 border-radius: 0 0 8px 8px;
             }
             h1 {
-                color: #E67E22;
+                color: %s; /* Dynamic heading color */
                 font-size: 24px;
                 margin: 0 0 8px 0;
                 font-weight: 600;
@@ -438,7 +474,7 @@ public class NotificationEmailBody {
                 font-size: 15px;
             }
             .credential-label {
-                color: #D35400;
+                color: %s; /* Dynamic label color */
                 font-weight: 500;
                 display: block;
                 margin-bottom: 4px;
@@ -446,7 +482,7 @@ public class NotificationEmailBody {
             .login-button {
                 display: inline-block;
                 padding: 12px 32px;
-                background-color: #E67E22;
+                background-color: %s; /* Dynamic button color */
                 color: white !important;
                 text-decoration: none;
                 border-radius: 6px;
@@ -454,7 +490,7 @@ public class NotificationEmailBody {
                 transition: background-color 0.2s;
             }
             .login-button:hover {
-                background-color: #D35400;
+                background-color: %s; /* Slightly darker hover */
             }
             .text-muted {
                 color: #666666;
@@ -502,8 +538,42 @@ public class NotificationEmailBody {
         </div>
     </body>
     </html>
-    """.formatted(service, service, name, service, username, password, frontendLoginUrl, service, service);
+    """.formatted(
+                service,                // <title>
+                themeColor,             // h1 color
+                themeColor,             // label color
+                themeColor,             // button color
+                darkenShowCredentialColor(themeColor),// hover color
+                service, name, service,
+                username, password,
+                frontendLoginUrl, service,
+                service
+        );
     }
 
+    /**
+     * Optional helper to darken the hover color slightly.
+     * You can skip this if you want to pass a fixed hover color instead.
+     */
+    private static String darkenShowCredentialColor(String hexOrName) {
+        try {
+            java.awt.Color color = java.awt.Color.decode(
+                    hexOrName.startsWith("#") ? hexOrName :
+                            switch (hexOrName.toLowerCase()) {
+                                case "purple" -> "#800080";
+                                case "blue"   -> "#0000FF";
+                                case "red"    -> "#FF0000";
+                                case "green"  -> "#008000";
+                                default       -> "#333333"; // fallback
+                            }
+            );
+            int r = (int)(color.getRed() * 0.85);
+            int g = (int)(color.getGreen() * 0.85);
+            int b = (int)(color.getBlue() * 0.85);
+            return String.format("#%02x%02x%02x", r, g, b);
+        } catch (Exception e) {
+            return hexOrName;
+        }
+    }
 
 }

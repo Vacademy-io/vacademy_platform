@@ -53,6 +53,12 @@ public class Template {
     @Builder.Default
     private Boolean canDelete = true;
 
+    @Column(name = "status")
+    private String status; // ACTIVE, INACTIVE, DRAFT, etc.
+
+    @Column(name = "template_category")
+    private String templateCategory; // NOTIFICATION, MARKETING, SYSTEM, etc.
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

@@ -21,6 +21,8 @@ import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
 import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
 import vacademy.io.admin_core_service.features.institute.service.InstituteService;
+import vacademy.io.admin_core_service.features.domain_routing.repository.InstituteDomainRoutingRepository;
+import vacademy.io.admin_core_service.features.domain_routing.entity.InstituteDomainRouting;
 
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
@@ -40,6 +42,7 @@ public class LiveSessionNotificationProcessor {
     private final NotificationService notificationService;
     private final ObjectMapper objectMapper; // kept for future template rendering
     private final InstituteService instituteService;
+    private final InstituteDomainRoutingRepository domainRoutingRepository;
     @Autowired
     private SessionScheduleRepository scheduleRepository;
 
@@ -191,10 +194,10 @@ public class LiveSessionNotificationProcessor {
 
             // Add schedule details if available
             if (schedule != null) {
-                String meetingLink = schedule.getCustomMeetingLink() != null ?
-                    schedule.getCustomMeetingLink() : session.getDefaultMeetLink();
-                System.out.println("DEBUG: Final meeting link: " + meetingLink);
-                placeholders.put("LINK", meetingLink != null ? meetingLink : "#");
+                // Build live class URL based on access level and domain routing
+                String liveClassUrl = buildLiveClassUrl(session, session.getId());
+                System.out.println("DEBUG: Final live class URL: " + liveClassUrl);
+                placeholders.put("LINK", liveClassUrl);
 
                 // Format date and time
                 if (schedule.getMeetingDate() != null && schedule.getStartTime() != null) {
@@ -211,7 +214,9 @@ public class LiveSessionNotificationProcessor {
                     placeholders.put("TIME", "TBD");
                 }
             } else {
-                placeholders.put("LINK", "#");
+                // Build live class URL even if schedule is null
+                String liveClassUrl = buildLiveClassUrl(session, session.getId());
+                placeholders.put("LINK", liveClassUrl);
                 placeholders.put("TIME", "TBD");
             }
 
@@ -260,10 +265,10 @@ public class LiveSessionNotificationProcessor {
 
             // Add schedule details if available
             if (schedule != null) {
-                String meetingLink = schedule.getCustomMeetingLink() != null ?
-                        schedule.getCustomMeetingLink() : session.getDefaultMeetLink();
-                System.out.println("DEBUG: Final meeting link: " + meetingLink);
-                placeholders.put("LINK", meetingLink != null ? meetingLink : "#");
+                // Build live class URL based on access level and domain routing
+                String liveClassUrl = buildLiveClassUrl(session, session.getId());
+                System.out.println("DEBUG: Final live class URL: " + liveClassUrl);
+                placeholders.put("LINK", liveClassUrl);
 
                 // Format date and time
                 if (schedule.getMeetingDate() != null && schedule.getStartTime() != null) {
@@ -280,7 +285,9 @@ public class LiveSessionNotificationProcessor {
                     placeholders.put("TIME", "TBD");
                 }
             } else {
-                placeholders.put("LINK", "#");
+                // Build live class URL even if schedule is null
+                String liveClassUrl = buildLiveClassUrl(session, session.getId());
+                placeholders.put("LINK", liveClassUrl);
                 placeholders.put("TIME", "TBD");
             }
 
@@ -578,9 +585,9 @@ public class LiveSessionNotificationProcessor {
 
             // Add schedule details if available
             if (schedule != null) {
-                String meetingLink = schedule.getCustomMeetingLink() != null ?
-                        schedule.getCustomMeetingLink() : session.getDefaultMeetLink();
-                placeholders.put("LINK", meetingLink != null ? meetingLink : "#");
+                // Build live class URL based on access level and domain routing
+                String liveClassUrl = buildLiveClassUrl(session, session.getId());
+                placeholders.put("LINK", liveClassUrl);
 
                 // Format date and time
                 if (schedule.getMeetingDate() != null && schedule.getStartTime() != null) {
@@ -597,7 +604,9 @@ public class LiveSessionNotificationProcessor {
                     placeholders.put("TIME", "TBD");
                 }
             } else {
-                placeholders.put("LINK", "#");
+                // Build live class URL even if schedule is null
+                String liveClassUrl = buildLiveClassUrl(session, session.getId());
+                placeholders.put("LINK", liveClassUrl);
                 placeholders.put("DATE", "TBD");
                 placeholders.put("TIME", "TBD");
             }
@@ -651,6 +660,44 @@ public class LiveSessionNotificationProcessor {
             return "+0:00";
         } else {
             return String.format("%+d:%02d", hours, minutes);
+        }
+    }
+
+    /**
+     * Builds the live class URL based on session access level and domain routing
+     * @param session LiveSession object containing access level and institute ID
+     * @param sessionId Session ID to append to the URL
+     * @return Built URL or fallback URL if domain routing not found
+     */
+    private String buildLiveClassUrl(LiveSession session, String sessionId) {
+        try {
+            if (session == null || session.getInstituteId() == null || sessionId == null) {
+                return "#";
+            }
+
+            // Fetch domain routing for LEARNER role
+            Optional<InstituteDomainRouting> routingOpt = domainRoutingRepository
+                    .findByInstituteIdAndRole(session.getInstituteId(), "LEARNER");
+            
+            if (routingOpt.isEmpty()) {
+                System.out.println("No domain routing found for institute: " + session.getInstituteId() + " with role LEARNER");
+                return "#";
+            }
+
+            InstituteDomainRouting routing = routingOpt.get();
+            String subdomain = routing.getSubdomain();
+            String domain = routing.getDomain();
+
+            // Build URL based on access level
+            String accessLevel = session.getAccessLevel();
+            if ("public".equalsIgnoreCase(accessLevel)) {
+                return String.format("%s.%s/register/live-class?sessionId=%s", subdomain, domain, sessionId);
+            } else {
+                return String.format("%s.%s/study-library/live-class/embed?sessionId=%s", subdomain, domain, sessionId);
+            }
+        } catch (Exception e) {
+            System.out.println("Error building live class URL for session " + sessionId + ": " + e.getMessage());
+            return "#";
         }
     }
 

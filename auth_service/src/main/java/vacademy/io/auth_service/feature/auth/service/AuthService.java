@@ -175,15 +175,21 @@ public class AuthService {
         InstituteInfoDTO instituteInfoDTO=null;
 
         String instituteName = "Vacademy"; // Default fallback
+        String theme="#E67E22";
+        String learnerLoginUrl="https://dash.vacademy.io";
         if (StringUtils.hasText(instituteId)) {
             instituteInfoDTO=instituteInternalService.getInstituteByInstituteId(instituteId);
             if(instituteInfoDTO.getInstituteName()!=null)
                 instituteName=instituteInfoDTO.getInstituteName();
+            if(instituteInfoDTO.getInstituteThemeCode()!=null)
+                theme=instituteInfoDTO.getInstituteThemeCode();
+            if(instituteInfoDTO.getLearnerPortalUrl()!=null)
+                learnerLoginUrl=instituteInfoDTO.getLearnerPortalUrl();
         }
         GenericEmailRequest genericEmailRequest = new GenericEmailRequest();
         genericEmailRequest.setTo(user.getEmail());
         genericEmailRequest.setBody(NotificationEmailBody.createWelcomeEmailBody(instituteName, user.getFullName(),
-                user.getUsername(), user.getPassword()));
+                user.getUsername(), user.getPassword(),learnerLoginUrl,theme));
         genericEmailRequest.setSubject("Welcome to " + instituteName);
         notificationService.sendGenericHtmlMail(genericEmailRequest, instituteId);
     }
@@ -195,22 +201,30 @@ public class AuthService {
         InstituteInfoDTO instituteInfoDTO=null;
 
         String instituteName = "Vacademy"; // Default fallback
+        String theme="#E67E22";
+        String learnerLoginUrl="https://dash.vacademy.io";
         if (StringUtils.hasText(instituteId)) {
             instituteInfoDTO=instituteInternalService.getInstituteByInstituteId(instituteId);
             if(instituteInfoDTO.getInstituteName()!=null)
                 instituteName=instituteInfoDTO.getInstituteName();
+            if(instituteInfoDTO.getInstituteThemeCode()!=null)
+                theme=instituteInfoDTO.getInstituteThemeCode();
+            if(instituteInfoDTO.getLearnerPortalUrl()!=null)
+                learnerLoginUrl=instituteInfoDTO.getLearnerPortalUrl();
         }
 
         String fullName = user.getFullName() != null ? user.getFullName() : "User";
         String username = user.getUsername() != null ? user.getUsername() : "N/A";
         String password = user.getPassword() != null ? user.getPassword() : "N/A"; // You might want to avoid sending
-                                                                                   // passwords in email
+        // passwords in email
 
         String body = NotificationEmailBody.createCredentialsFoundEmailBody(
                 instituteName,
                 fullName,
                 username,
-                password);
+                password,
+                learnerLoginUrl,
+                theme);
 
         GenericEmailRequest emailRequest = new GenericEmailRequest();
         emailRequest.setTo(user.getEmail());

@@ -214,17 +214,23 @@ public class LearnerAuthManager {
             instituteId = user.getRoles().iterator().next().getInstituteId();
         }
         String instituteName = "Vacademy"; // Default fallback
+        String theme="#E67E22";
+        String learnerLoginUrl="https://dash.vacademy.io";
         if (StringUtils.hasText(instituteId)) {
             instituteInfoDTO=instituteInternalService.getInstituteByInstituteId(instituteId);
             if(instituteInfoDTO.getInstituteName()!=null)
                 instituteName=instituteInfoDTO.getInstituteName();
+            if(instituteInfoDTO.getInstituteThemeCode()!=null)
+                theme=instituteInfoDTO.getInstituteThemeCode();
+            if(instituteInfoDTO.getLearnerPortalUrl()!=null)
+                learnerLoginUrl=instituteInfoDTO.getLearnerPortalUrl();
         }
-        
+
         GenericEmailRequest emailRequest = new GenericEmailRequest();
         emailRequest.setTo(user.getEmail());
         emailRequest.setSubject("Welcome to "+instituteName);
         emailRequest.setBody(NotificationEmailBody.createWelcomeEmailBody(instituteName, user.getFullName(),
-                user.getUsername(), user.getPassword()));
+                user.getUsername(), user.getPassword(),learnerLoginUrl,theme));
         notificationService.sendGenericHtmlMail(emailRequest, instituteId);
     }
 
@@ -329,6 +335,34 @@ public class LearnerAuthManager {
                 .service("auth-service")
                 .subject("Vacademy | OTP Verification")
                 .name("Vacademy User")
+                .build();
+    }
+
+    public JwtResponseDto loginViaOtpForTenDays(AuthRequestDto authRequestDTO) {
+        if (authRequestDTO.getOtp() == null)
+            throw new UsernameNotFoundException("Invalid OTP!");
+
+        boolean isValid = notificationService.verifyOTP(
+                EmailOTPRequest.builder().otp(authRequestDTO.getOtp()).to(authRequestDTO.getEmail()).build());
+        if (!isValid)
+            throw new UsernameNotFoundException("Invalid OTP!");
+
+        User user = userRepository
+                .findMostRecentUserByEmailAndRoleStatusAndRoleNames(authRequestDTO.getEmail(),
+                        List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
+                        AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL)
+                .orElseThrow(() -> new VacademyException("User not found!!!"));
+
+        refreshTokenService.deleteAllRefreshToken(user);
+
+        List<String> permissions = userPermissionRepository.findByUserId(user.getId()).stream()
+                .map(UserPermission::getPermissionId).toList();
+        RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getUsername(),
+                authRequestDTO.getClientName());
+
+        return JwtResponseDto.builder()
+                .accessToken(jwtService.generateToken(user, user.getRoles().stream().toList(), permissions,10))
+                .refreshToken(refreshToken.getToken())
                 .build();
     }
 }

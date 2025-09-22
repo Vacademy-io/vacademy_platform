@@ -9,84 +9,92 @@ public class InviteUserEmailBody {
 
     public static final String ADMIN_LOGIN_URL = adminPortalClientUrl + "/login";
 
-    public static String createInviteUserEmail(String name, String username, String password, List<String> roles) {
+    public static String createInviteUserEmail(
+            String name,
+            String username,
+            String password,
+            List<String> roles,
+            String themeColor,
+            String instituteName,
+            String adminLoginUrl
+    ) {
         String rolesFormatted = String.join(", ", roles);
 
         return """
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>You're Invited!</title>
-                    <style>
-                        body {
-                            font-family: Arial, sans-serif;
-                            background-color: #FAF3E0;
-                            padding: 20px;
-                        }
-                        .container {
-                            max-width: 500px;
-                            margin: auto;
-                            background: #FFFFFF;
-                            padding: 20px;
-                            border-radius: 8px;
-                            box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.1);
-                            text-align: center;
-                        }
-                        .header {
-                            font-size: 18px;
-                            font-weight: bold;
-                            color: #333;
-                            margin-bottom: 10px;
-                        }
-                        .content {
-                            font-size: 14px;
-                            color: #555;
-                        }
-                        .credentials {
-                            margin-top: 10px;
-                            padding: 10px;
-                        }
-                        .credentials p {
-                            margin: 5px 0;
-                        }
-                        .button {
-                            display: inline-block;
-                            margin-top: 15px;
-                            padding: 10px 15px;
-                            background-color: #F58220;
-                            color: #ffffff;
-                            text-decoration: none;
-                            border-radius: 5px;
-                            font-size: 14px;
-                        }
-                        .footer {
-                            margin-top: 20px;
-                            font-size: 12px;
-                            color: #777;
-                        }
-                    </style>
-                </head>
-                <body>
-                    <div class="container">
-                        <h2>You're Invited!</h2>
-                        <p>Hello %s,</p>
-                        <p>You have been invited to join our platform.</p>
-                            
-                        <div class="credentials">
-                            <p><strong>Username:</strong> %s</p>
-                            <p><strong>Password:</strong> %s</p>
-                            <p><strong>Roles:</strong> %s</p>
-                        </div>
-                            
-                        <p>To accept this invitation, please log in using the button below:</p>
-                            
-                        <a href="%s" class="button">Accept Invitation</a>
-                            
-                        <p class="footer">Regards,<br>The Vacademy Team</p>
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>You're Invited!</title>
+                <style>
+                    body {
+                        font-family: Arial, sans-serif;
+                        background-color: #FAF3E0;
+                        padding: 20px;
+                    }
+                    .container {
+                        max-width: 500px;
+                        margin: auto;
+                        background: #FFFFFF;
+                        padding: 20px;
+                        border-radius: 8px;
+                        box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.1);
+                        text-align: center;
+                    }
+                    .header {
+                        font-size: 18px;
+                        font-weight: bold;
+                        color: #333;
+                        margin-bottom: 10px;
+                    }
+                    .content {
+                        font-size: 14px;
+                        color: #555;
+                    }
+                    .credentials {
+                        margin-top: 10px;
+                        padding: 10px;
+                    }
+                    .credentials p {
+                        margin: 5px 0;
+                    }
+                    .button {
+                        display: inline-block;
+                        margin-top: 15px;
+                        padding: 10px 15px;
+                        background-color: %s; 
+                        color: #ffffff;
+                        text-decoration: none;
+                        border-radius: 5px;
+                        font-size: 14px;
+                    }
+                    .footer {
+                        margin-top: 20px;
+                        font-size: 12px;
+                        color: #777;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h2>You're Invited!</h2>
+                    <p>Hello %s,</p>
+                    <p>You have been invited to join our platform.</p>
+                        
+                    <div class="credentials">
+                        <p><strong>Username:</strong> %s</p>
+                        <p><strong>Password:</strong> %s</p>
+                        <p><strong>Roles:</strong> %s</p>
                     </div>
-                </body>
-                </html>
-                """.formatted(name, username, password, rolesFormatted, ADMIN_LOGIN_URL);
+                        
+                    <p>To accept this invitation, please log in using the button below:</p>
+                        
+                    <a href="%s" class="button">Accept Invitation</a>
+                        
+                    <p class="footer">Regards,<br>The %s Team</p>
+                </div>
+            </body>
+            </html>
+            """.formatted(themeColor, name, username, password, rolesFormatted, adminLoginUrl,instituteName);
     }
 
     public static String createReminderEmail(String name, String username, String password, List<String> roles) {

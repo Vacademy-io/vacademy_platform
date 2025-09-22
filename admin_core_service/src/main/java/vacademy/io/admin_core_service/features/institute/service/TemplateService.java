@@ -69,6 +69,8 @@ public class TemplateService {
                 .settingJson(settingJsonString)
                 .dynamicParameters(dynamicParametersJson)
                 .canDelete(request.getCanDelete() != null ? request.getCanDelete() : true)
+                .status(request.getStatus())
+                .templateCategory(request.getTemplateCategory())
                 .createdBy(request.getCreatedBy())
                 .updatedBy(request.getUpdatedBy())
                 .build();
@@ -143,6 +145,12 @@ public class TemplateService {
         
         if (request.getCanDelete() != null) {
             existingTemplate.setCanDelete(request.getCanDelete());
+        }
+        if (request.getStatus() != null) {
+            existingTemplate.setStatus(request.getStatus());
+        }
+        if (request.getTemplateCategory() != null) {
+            existingTemplate.setTemplateCategory(request.getTemplateCategory());
         }
         if (request.getUpdatedBy() != null) {
             existingTemplate.setUpdatedBy(request.getUpdatedBy());
@@ -237,6 +245,8 @@ public class TemplateService {
                 .filter(t -> request.getVendorId() == null || request.getVendorId().equals(t.getVendorId()))
                 .filter(t -> request.getCanDelete() == null || t.getCanDelete().equals(request.getCanDelete()))
                 .filter(t -> request.getContentType() == null || request.getContentType().equals(t.getContentType()))
+                .filter(t -> request.getStatus() == null || request.getStatus().equals(t.getStatus()))
+                .filter(t -> request.getTemplateCategory() == null || request.getTemplateCategory().equals(t.getTemplateCategory()))
                 .map(this::convertToResponse)
                 .collect(Collectors.toList());
     }
@@ -320,6 +330,8 @@ public class TemplateService {
                 .settingJson(settingJson)
                 .dynamicParameters(dynamicParameters)
                 .canDelete(template.getCanDelete())
+                .status(template.getStatus())
+                .templateCategory(template.getTemplateCategory())
                 .createdAt(template.getCreatedAt())
                 .updatedAt(template.getUpdatedAt())
                 .createdBy(template.getCreatedBy())

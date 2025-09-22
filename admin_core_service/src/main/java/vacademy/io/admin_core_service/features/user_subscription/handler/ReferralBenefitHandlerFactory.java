@@ -51,7 +51,7 @@ public class ReferralBenefitHandlerFactory {
                 return PercentageDiscountHandler.class;
             case CONTENT:
                 return ContentBenefitProcessor.class;
-            case MEMBERSHIP_EXTENSION:
+            case FREE_MEMBERSHIP_DAYS:
                 return MemberShipBenefit.class;
              case POINTS:
                  return RewardPointBenefitHandler.class;

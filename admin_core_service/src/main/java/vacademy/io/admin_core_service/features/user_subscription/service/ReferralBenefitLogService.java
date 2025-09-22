@@ -15,7 +15,6 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.ReferralB
 import vacademy.io.admin_core_service.features.user_subscription.enums.ReferralStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.handler.AbstractReferralProcessableBenefit;
 import vacademy.io.admin_core_service.features.user_subscription.handler.AbstractReferralProcessableBenefitFactory;
-import vacademy.io.admin_core_service.features.user_subscription.handler.ContentBenefitProcessor;
 import vacademy.io.admin_core_service.features.user_subscription.repository.ReferralBenefitLogsRepository;
 import vacademy.io.common.auth.dto.UserDTO;
 
@@ -113,7 +112,7 @@ public class ReferralBenefitLogService {
                 break;
 
             case CONTENT:
-            case MEMBERSHIP_EXTENSION:
+            case FREE_MEMBERSHIP_DAYS:
                 // Get processor dynamically based on type
                 AbstractReferralProcessableBenefit contentBenefitProcessor =
                         referralProcessableBenefitFactory.getProcessor(log.getBenefitType());

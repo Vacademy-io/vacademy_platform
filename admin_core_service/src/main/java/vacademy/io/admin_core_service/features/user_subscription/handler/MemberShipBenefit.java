@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.user_subscription.handler;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
@@ -19,6 +20,7 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.ReferralS
 import vacademy.io.admin_core_service.features.user_subscription.service.ReferralBenefitLogService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
+import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.Calendar;
 import java.util.Date;
@@ -73,7 +75,7 @@ public class MemberShipBenefit extends AbstractReferralProcessableBenefit {
                     referralMapping.getUserPlan(),
                     referralMapping,
                     targetUser.getId(),
-                    ReferralBenefitType.MEMBERSHIP_EXTENSION.name(),
+                    ReferralBenefitType.FREE_MEMBERSHIP_DAYS.name(),
                     beneficiary,
                     objectMapper.writeValueAsString(membershipValue), // Log the specific benefit value
                     status
@@ -85,18 +87,26 @@ public class MemberShipBenefit extends AbstractReferralProcessableBenefit {
 
     @Override
     public void processPendingBenefit(String benefitJson, String beneficiary, ReferralMapping referralMapping, UserDTO referee, UserDTO referrer, String instituteId) {
-        BenefitConfigDTO.MembershipExtensionValue membershipValue = objectMapper.convertValue(benefitJson, BenefitConfigDTO.MembershipExtensionValue.class);
-        int daysToExtend = membershipValue.getDays();
+        try {
+            BenefitConfigDTO.MembershipExtensionValue membershipValue =
+                    objectMapper.readValue(benefitJson, BenefitConfigDTO.MembershipExtensionValue.class);
 
-        EnrollInvite enrollInvite = referralMapping.getUserPlan().getEnrollInvite();
+            int daysToExtend = membershipValue.getDays();
 
-        List<String>packageSessionIds = packageSessionEnrollInviteToPaymentOptionService.findPackageSessionsOfEnrollInvite(enrollInvite);
+            EnrollInvite enrollInvite = referralMapping.getUserPlan().getEnrollInvite();
+            List<String> packageSessionIds = packageSessionEnrollInviteToPaymentOptionService.findPackageSessionsOfEnrollInvite(enrollInvite);
 
-        // 2. Determine who receives the benefit.
-        boolean isForReferee = beneficiary.equalsIgnoreCase(ReferralBenefitLogsBeneficiary.REFEREE.name());
-        UserDTO targetUser = isForReferee ? referee : referrer;
+            boolean isForReferee = beneficiary.equalsIgnoreCase(ReferralBenefitLogsBeneficiary.REFEREE.name());
+            UserDTO targetUser = isForReferee ? referee : referrer;
 
-        extendMemberShipDaysOfLearner(targetUser.getId(), packageSessionIds, daysToExtend);
+            extendMemberShipDaysOfLearner(targetUser.getId(), packageSessionIds, daysToExtend);
+
+        } catch (JsonProcessingException e) {
+            e.printStackTrace();
+            // handle error
+            throw new VacademyException(e.getMessage());
+        }
+
     }
 
     /**

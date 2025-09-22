@@ -1,7 +1,11 @@
 package vacademy.io.auth_service.feature.user.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+import vacademy.io.auth_service.feature.institute.InstituteInfoDTO;
+import vacademy.io.auth_service.feature.institute.InstituteInternalService;
 import vacademy.io.auth_service.feature.notification.service.NotificationService;
 import vacademy.io.auth_service.feature.user.dto.ModifyUserRolesDTO;
 import vacademy.io.auth_service.feature.user.util.RandomCredentialGenerator;
@@ -22,6 +26,9 @@ public class InviteUserService {
     private final UserService userService;
     private final RoleService roleService;
     private final NotificationService notificationService;
+
+    @Autowired
+    private InstituteInternalService instituteInternalService;
 
     public UserDTO inviteUser(UserDTO userDTO, String instituteId) {
         setRandomCredentials(userDTO);
@@ -71,10 +78,24 @@ public class InviteUserService {
     }
 
     private void sendInvitationEmail(UserDTO userDTO, String instituteId) {
+        InstituteInfoDTO instituteInfoDTO=null;
+
+        String instituteName = "Vacademy"; // Default fallback
+        String theme="#E67E22";
+        String adminLoginUrl="https://dash.vacademy.io";
+        if (StringUtils.hasText(instituteId)) {
+            instituteInfoDTO=instituteInternalService.getInstituteByInstituteId(instituteId);
+            if(instituteInfoDTO.getInstituteName()!=null)
+                instituteName=instituteInfoDTO.getInstituteName();
+            if(instituteInfoDTO.getInstituteThemeCode()!=null)
+                theme=instituteInfoDTO.getInstituteThemeCode();
+            if(instituteInfoDTO.getLearnerPortalUrl()!=null)
+                adminLoginUrl=instituteInfoDTO.getAdminPortalUrl();
+        }
         GenericEmailRequest emailRequest = createEmailRequest(
                 userDTO.getEmail(), "Invitation Mail",
                 InviteUserEmailBody.createInviteUserEmail(
-                        userDTO.getFullName(), userDTO.getUsername(), userDTO.getPassword(), userDTO.getRoles())
+                        userDTO.getFullName(), userDTO.getUsername(), userDTO.getPassword(), userDTO.getRoles(), theme,instituteName,adminLoginUrl)
         );
         notificationService.sendGenericHtmlMail(emailRequest, instituteId);
     }

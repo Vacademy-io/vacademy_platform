@@ -112,7 +112,7 @@ public class MultiChannelDeliveryService {
         placeholders.put("INSTITUTE_LOGO_URL",instituteLogoUrl);
         placeholders.put("INSTITUTE_NAME",institute.getInstituteName());
         placeholders.put("INSTITUTE_URL",institute.getWebsiteUrl());
-        placeholders.put("INSTITUTE_ADRESS",institute.getAddress());
+        placeholders.put("INSTITUTE_ADDRESS",institute.getAddress());
 
         NotificationDTO notificationDTO = new NotificationDTO();
         notificationDTO.setBody(finalBody);

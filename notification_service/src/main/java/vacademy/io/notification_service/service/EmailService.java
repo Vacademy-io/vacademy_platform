@@ -218,14 +218,6 @@ public class EmailService {
                         color: black;
                         line-height: 1.6;
                     }
-                    .footer {
-                        background-color: {{theme}};
-                        color: #FFF;
-                        padding: 10px;
-                        text-align: center;
-                        border-radius: 0 0 10px 10px;
-                        font-size: 14px;
-                    }
                     .otp {
                         font-size: 22px;
                         font-weight: bold;

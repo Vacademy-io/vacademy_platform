@@ -3,6 +3,8 @@ package vacademy.io.admin_core_service.features.institute_learner.entity;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.common.institute.entity.Group;
 import vacademy.io.common.institute.entity.Institute;
@@ -17,52 +19,66 @@ import java.util.Date;
 public class StudentSessionInstituteGroupMapping {
 
     @Id
-    @Column(name = "id", length = 255)
     @UuidGenerator
-    private String id; // Assuming you want to have a unique ID for this mapping
+    @Column(name = "id", length = 255, nullable = false, updatable = false)
+    private String id;
 
-    @Column(name = "user_id", length = 255)
+    @Column(name = "user_id", length = 255, nullable = false)
     private String userId;
 
-    @Column(name = "institute_enrollment_number")
+    @Column(name = "institute_enrollment_number", length = 255)
     private String instituteEnrolledNumber;
 
+    @Temporal(TemporalType.TIMESTAMP)
     @Column(name = "enrolled_date")
     private Date enrolledDate;
 
+    @Temporal(TemporalType.TIMESTAMP)
     @Column(name = "expiry_date")
     private Date expiryDate;
 
-    @Column(name = "status")
+    @Column(name = "status", length = 100)
     private String status;
 
-    @Column(name = "created_at", insertable = false, updatable = false)
+    @CreationTimestamp
+    @Temporal(TemporalType.TIMESTAMP)
+    @Column(name = "created_at", updatable = false)
     private Date createdAt;
 
-    @Column(name = "updated_at", insertable = false, updatable = false)
+    @UpdateTimestamp
+    @Temporal(TemporalType.TIMESTAMP)
+    @Column(name = "updated_at")
     private Date updatedAt;
 
-    // Relationships with other entities
-    @ManyToOne
+    // Relationships
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "group_id", referencedColumnName = "id")
-    private Group group; // Assuming you have a Group entity defined
+    private Group group;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "institute_id", referencedColumnName = "id")
-    private Institute institute; // Assuming you have an Institute entity defined
+    private Institute institute;
 
-    @Column(name = "automated_completion_certificate_file_id")
+    @Column(name = "automated_completion_certificate_file_id", length = 255)
     private String automatedCompletionCertificateFileId;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "package_session_id", referencedColumnName = "id")
-    private PackageSession packageSession; // Assuming you have a PackageSession entity defined
+    private PackageSession packageSession;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "destination_package_session_id", referencedColumnName = "id")
     private PackageSession destinationPackageSession;
 
-    @Column(name = "user_plan_id")
+    @Column(name = "user_plan_id", length = 255)
     private String userPlanId;
 
+    @Column(name = "type_id", length = 255)
+    private String typeId;
+
+    @Column(name = "type", length = 100)
+    private String type;
+
+    @Column(name = "source", length = 100)
+    private String source;
 }

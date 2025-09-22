@@ -6,7 +6,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import vacademy.io.admin_core_service.features.learner.dto.OpenLearnerEnrollRequestDTO;
 import vacademy.io.admin_core_service.features.learner.service.LearnerEnrollRequestService;
+import vacademy.io.admin_core_service.features.learner.service.OpenLearnerEnrollService;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollRequestDTO;
 
@@ -16,6 +18,9 @@ public class LearnerEnrollRequestController {
     @Autowired
     private LearnerEnrollRequestService learnerEnrollRequestService;
 
+    @Autowired
+    private OpenLearnerEnrollService openLearnerEnrollService;
+
     @PostMapping
     public ResponseEntity<LearnerEnrollResponseDTO> enrollLearner(@RequestBody LearnerEnrollRequestDTO learnerEnrollRequestDTO){
         return ResponseEntity.ok(learnerEnrollRequestService.recordLearnerRequest(learnerEnrollRequestDTO));
@@ -24,5 +29,10 @@ public class LearnerEnrollRequestController {
     public String test(@RequestBody LearnerEnrollRequestDTO learnerEnrollRequestDTO){
         learnerEnrollRequestService.test(learnerEnrollRequestDTO.getInstituteId(),learnerEnrollRequestDTO.getUser());
         return "email send";
+    }
+
+    @PostMapping("/detail")
+    public ResponseEntity<String> enrollLearnerDetail(@RequestBody OpenLearnerEnrollRequestDTO openLearnerEnrollRequestDTO,String instituteId){
+        return ResponseEntity.ok(openLearnerEnrollService.enrollUserInPackageSession(openLearnerEnrollRequestDTO,instituteId));
     }
 }

@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.live_session.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.live_session.dto.GroupedSessionsByDateDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionListDTO;
 import vacademy.io.admin_core_service.features.live_session.enums.NotificationStatusEnum;
@@ -271,7 +272,10 @@ public class GetLiveSessionService {
     public List<GroupedSessionsByDateDTO> getLiveAndUpcomingSessionsForUserAndBatch(String batchId, String userId, CustomUserDetails user) {
         // Get sessions for batch
         List<LiveSessionRepository.LiveSessionListProjection> batchProjections =
-                sessionRepository.findUpcomingSessionsForBatch(batchId);
+                new ArrayList<>();
+        if (StringUtils.hasText(batchId)){
+            batchProjections = sessionRepository.findUpcomingSessionsForBatch(batchId);
+        }
         
         // Get sessions for user
         System.out.println("userid is:"+userId);

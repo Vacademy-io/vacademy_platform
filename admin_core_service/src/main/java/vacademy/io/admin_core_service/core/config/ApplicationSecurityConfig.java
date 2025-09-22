@@ -52,7 +52,7 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/live-session/mark-guest-attendance",
             "/admin-core-service/course/ai/v1/**",
             "/admin-core-service/payments/webhook/callback/**",
-            "/admin-core-service/v1/learner/enroll",
+            "/admin-core-service/v1/learner/enroll/**",
             "/admin-core-service/workflow/schedule/**",
             // NOTE: Spring's requestMatchers does not resolve path variables like {instituteId},
             // so you must use a pattern with a wildcard instead.

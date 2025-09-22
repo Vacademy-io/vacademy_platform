@@ -234,7 +234,7 @@ public class EmailService {
             <body>
                 <div class="container">
                     <div class="content">                        
-                        <p>Dear {{name}},</p>
+                        <p>Dear User,</p>
                         <p>Your One-Time Password (OTP) to access <b>{{instituteName}}</b> is:</p>
                         
                         <div class="otp">{{otp}}</div>

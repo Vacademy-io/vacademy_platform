@@ -24,6 +24,16 @@ public interface InstituteDomainRoutingRepository extends CrudRepository<Institu
             """, nativeQuery = true)
     Optional<InstituteDomainRouting> resolveMapping(@Param("domain") String domain,
                                                     @Param("subdomain") String subdomain);
+
+    @Query(value = """
+            SELECT *
+            FROM institute_domain_routing
+            WHERE institute_id = :instituteId
+              AND role = :role
+            LIMIT 1
+            """, nativeQuery = true)
+    Optional<InstituteDomainRouting> findByInstituteIdAndRole(@Param("instituteId") String instituteId,
+                                                              @Param("role") String role);
 }
 
 

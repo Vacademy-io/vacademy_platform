@@ -81,4 +81,7 @@ public class PackageEntity {
 
     @Column(name = "version_number")
     private Integer versionNumber;
+
+    @Column(name = "course_audit_logs", columnDefinition = "TEXT")
+    private String courseAuditLogs;
 }

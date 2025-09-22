@@ -333,42 +333,54 @@ public class InstituteSettingService {
 
     public MultipartFile convertHtmlToPdf(String htmlContent, String fileName){
         try{
-            String htmlWithCss =
-                    "<!DOCTYPE html>" +
-                            "<html xmlns=\"http://www.w3.org/1999/xhtml\">" +
-                            "<head>" +
-                            "  <meta charset=\"UTF-8\" />" +
-                            "  <style>" +
-                            "    @page { " +
-                            "      margin: 15mm; " +
-                            "      size: auto; " +
-                            "    } " +
-                            "    body { " +
-                            "      font-family: Arial, sans-serif; " +
-                            "      line-height: 1.4; " +
-                            "      max-width: 210mm; " +  // A4 width minus margins
-                            "      min-width: 100mm; " +   // Minimum reasonable width
-                            "      width: fit-content; " +
-                            "      margin: 0 auto; " +
-                            "      box-sizing: border-box; " +
-                            "    } " +
-                            "    * { " +
-                            "      max-width: 100%; " +
-                            "      box-sizing: border-box; " +
-                            "    } " +
-                            "    img { " +
-                            "      max-width: 100%; " +
-                            "      height: auto; " +
-                            "    } " +
-                            "    table { " +
-                            "      width: 100%; " +
-                            "      table-layout: auto; " +
-                            "    } " +
-                            "  </style>" +
-                            "</head>" +
-                            "<body>" +
-                            htmlContent +
-                            "</body></html>";
+            String htmlWithCss;
+            
+            // Check if htmlContent is already a complete HTML document
+            boolean isCompleteHtml = htmlContent.trim().toLowerCase().startsWith("<!doctype") || 
+                                   htmlContent.trim().toLowerCase().startsWith("<html");
+            
+            if (isCompleteHtml) {
+                // Use the HTML content as-is since it's already complete
+                htmlWithCss = htmlContent;
+            } else {
+                // Wrap partial HTML content with our default styling
+                htmlWithCss =
+                        "<!DOCTYPE html>" +
+                                "<html xmlns=\"http://www.w3.org/1999/xhtml\">" +
+                                "<head>" +
+                                "  <meta charset=\"UTF-8\" />" +
+                                "  <style>" +
+                                "    @page { " +
+                                "      margin: 15mm; " +
+                                "      size: auto; " +
+                                "    } " +
+                                "    body { " +
+                                "      font-family: Arial, sans-serif; " +
+                                "      line-height: 1.4; " +
+                                "      max-width: 210mm; " +  // A4 width minus margins
+                                "      min-width: 100mm; " +   // Minimum reasonable width
+                                "      width: fit-content; " +
+                                "      margin: 0 auto; " +
+                                "      box-sizing: border-box; " +
+                                "    } " +
+                                "    * { " +
+                                "      max-width: 100%; " +
+                                "      box-sizing: border-box; " +
+                                "    } " +
+                                "    img { " +
+                                "      max-width: 100%; " +
+                                "      height: auto; " +
+                                "    } " +
+                                "    table { " +
+                                "      width: 100%; " +
+                                "      table-layout: auto; " +
+                                "    } " +
+                                "  </style>" +
+                                "</head>" +
+                                "<body>" +
+                                htmlContent +
+                                "</body></html>";
+            }
             // Prepare output stream
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
 

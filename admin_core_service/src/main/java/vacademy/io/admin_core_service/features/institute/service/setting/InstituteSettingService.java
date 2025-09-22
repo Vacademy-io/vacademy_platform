@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.itextpdf.styledxmlparser.jsoup.Jsoup;
 import com.itextpdf.styledxmlparser.jsoup.nodes.Document;
 import com.itextpdf.styledxmlparser.jsoup.nodes.Entities;
+import com.itextpdf.styledxmlparser.jsoup.nodes.Element;
+import com.itextpdf.styledxmlparser.jsoup.select.Elements;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
@@ -387,8 +389,26 @@ public class InstituteSettingService {
             // Build the PDF
             PdfRendererBuilder builder = new PdfRendererBuilder();
             builder.useFastMode();
-            builder.withHtmlContent(sanitizeToXhtml(htmlWithCss), null);
-
+            
+            // Enable image support and set proper rendering options
+            builder.useFont(() -> {
+                try {
+                    return this.getClass().getResourceAsStream("/fonts/Arial.ttf");
+                } catch (Exception e) {
+                    return null; // Fallback to system fonts
+                }
+            }, "Arial");
+            
+            // Process HTML to ensure images are properly handled
+            String processedHtml = processImagesForPdf(htmlWithCss);
+            
+            // Set base URI for relative image paths (if needed)
+            String baseUri = "file:///";
+            builder.withHtmlContent(sanitizeToXhtml(processedHtml), baseUri);
+            
+            // Enable image rendering with better quality
+            builder.useDefaultPageSize(297f, 210f, PdfRendererBuilder.PageSizeUnits.MM); // A4 landscape as fallback
+            
             // Remove fixed page size to allow dynamic sizing based on content
 
             builder.toStream(outputStream);
@@ -410,6 +430,81 @@ public class InstituteSettingService {
         doc.outputSettings().syntax(Document.OutputSettings.Syntax.xml);
         doc.outputSettings().escapeMode(Entities.EscapeMode.xhtml);
         return doc.html();
+    }
+    
+    private String processImagesForPdf(String html) {
+        try {
+            Document doc = Jsoup.parse(html);
+            Elements images = doc.select("img");
+            
+            for (Element img : images) {
+                String src = img.attr("src");
+                if (src != null && !src.isEmpty()) {
+                    // Handle different image source types
+                    if (src.startsWith("http://") || src.startsWith("https://")) {
+                        // For HTTP/HTTPS URLs, try to convert to base64
+                        try {
+                            String base64Image = convertUrlToBase64(src);
+                            if (base64Image != null) {
+                                img.attr("src", base64Image);
+                            }
+                        } catch (Exception e) {
+                            // If conversion fails, keep original URL
+                            System.err.println("Failed to convert image URL to base64: " + src);
+                        }
+                    }
+                    // For data: URLs (base64), keep as-is
+                    // For file: URLs, keep as-is (will be resolved with baseUri)
+                    
+                    // Ensure images have proper styling for PDF rendering
+                    String style = img.attr("style");
+                    if (!style.contains("max-width")) {
+                        style += (style.isEmpty() ? "" : "; ") + "max-width: 100%; height: auto;";
+                        img.attr("style", style);
+                    }
+                }
+            }
+            
+            return doc.html();
+        } catch (Exception e) {
+            System.err.println("Error processing images for PDF: " + e.getMessage());
+            return html; // Return original HTML if processing fails
+        }
+    }
+    
+    private String convertUrlToBase64(String imageUrl) {
+        try {
+            java.net.URL url = new java.net.URL(imageUrl);
+            java.net.HttpURLConnection connection = (java.net.HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("GET");
+            connection.setConnectTimeout(5000); // 5 seconds timeout
+            connection.setReadTimeout(10000); // 10 seconds timeout
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (PDF Generator)");
+            
+            if (connection.getResponseCode() == 200) {
+                try (java.io.InputStream inputStream = connection.getInputStream();
+                     java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream()) {
+                    
+                    byte[] buffer = new byte[4096];
+                    int bytesRead;
+                    while ((bytesRead = inputStream.read(buffer)) != -1) {
+                        outputStream.write(buffer, 0, bytesRead);
+                    }
+                    
+                    byte[] imageBytes = outputStream.toByteArray();
+                    String contentType = connection.getContentType();
+                    if (contentType == null) {
+                        contentType = "image/png"; // Default fallback
+                    }
+                    
+                    String base64 = java.util.Base64.getEncoder().encodeToString(imageBytes);
+                    return "data:" + contentType + ";base64," + base64;
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to convert URL to base64: " + imageUrl + " - " + e.getMessage());
+        }
+        return null;
     }
 
 

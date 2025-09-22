@@ -36,7 +36,7 @@ public class AbstractReferralProcessableBenefitFactory {
         switch (benefitType) {
             case "CONTENT":
                 return ContentBenefitProcessor.class;
-            case "MEMBERSHIP_EXTENSION":
+            case "FREE_MEMBERSHIP_DAYS":
                 return MemberShipBenefit.class;
             default:
                 throw new VacademyException("No handler class configured for benefit type: " + benefitType);

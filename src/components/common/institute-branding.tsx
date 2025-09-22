@@ -59,7 +59,7 @@ export const InstituteBrandingComponent: React.FC<InstituteBrandingProps> = ({
   };
 
   const getInstituteDisplayName = (instituteName: string | null): string => {
-    return instituteName || "Learning Platform";
+    return instituteName || "";
   };
 
   return (
@@ -67,7 +67,7 @@ export const InstituteBrandingComponent: React.FC<InstituteBrandingProps> = ({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className={`flex items-center gap-3 ${className}`}
+      className={`flex flex-col items-center gap-3 ${className}`}
     >
       {/* Logo */}
       <motion.div
@@ -95,19 +95,15 @@ export const InstituteBrandingComponent: React.FC<InstituteBrandingProps> = ({
       {/* Institute Name */}
       {showName && (
         <motion.div
-          initial={{ opacity: 0, x: -10 }}
-          animate={{ opacity: 1, x: 0 }}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.2 }}
-          className="flex flex-col"
+          className="flex flex-col items-center text-center"
         >
           <h2 className={`font-semibold text-gray-900 ${textSizes[size]} leading-tight`}>
             {getInstituteDisplayName(branding.instituteName)}
           </h2>
-          {branding.instituteName && (
-            <p className={`text-gray-600 ${size === "small" ? "text-xs" : "text-sm"} leading-tight`}>
-              Learning Platform
-            </p>
-          )}
+          {branding.instituteName}
         </motion.div>
       )}
     </motion.div>

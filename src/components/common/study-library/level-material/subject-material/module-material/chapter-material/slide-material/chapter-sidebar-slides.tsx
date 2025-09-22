@@ -186,6 +186,75 @@ export const getIcon = (slide: Slide, size?: string): React.ReactNode => {
     }
 };
 
+// Helper function to get slide type display text
+export const getSlideTypeDisplay = (slide: Slide): string => {
+    let baseType = "";
+    let embeddedInfo = "";
+
+    // Handle different source types with better English
+    switch (slide.source_type) {
+        case "VIDEO":
+            baseType = "Video";
+            if (slide.video_slide?.embedded_type) {
+                switch (slide.video_slide.embedded_type) {
+                    case "CODE":
+                        embeddedInfo = " with Coding Exercise";
+                        break;
+                    case "SCRATCH":
+                        embeddedInfo = " with Scratch Problem";
+                        break;
+                    case "JUPYTER":
+                        embeddedInfo = " with Jupyter Notebook";
+                        break;
+                    default:
+                        if (slide.video_slide.embedded_type) {
+                            const embeddedType = String(slide.video_slide.embedded_type);
+                            embeddedInfo = ` with ${embeddedType.charAt(0).toUpperCase() + embeddedType.slice(1).toLowerCase()}`;
+                        }
+                }
+            }
+            break;
+        case "DOCUMENT":
+            if (slide.document_slide?.type) {
+                switch (slide.document_slide.type.toUpperCase()) {
+                    case "PDF":
+                        baseType = "PDF Document";
+                        break;
+                    case "DOC":
+                    case "DOCX":
+                        baseType = "Word Document";
+                        break;
+                    case "PPT":
+                    case "PPTX":
+                        baseType = "Presentation";
+                        break;
+                    default:
+                        baseType = "Document";
+                }
+            } else {
+                baseType = "Document";
+            }
+            break;
+        case "QUESTION":
+            baseType = "Question";
+            break;
+        case "QUIZ":
+            baseType = "Quiz";
+            break;
+        case "ASSIGNMENT":
+            baseType = "Assignment";
+            break;
+        default:
+            if (slide.source_type && typeof slide.source_type === 'string') {
+                baseType = slide.source_type.charAt(0).toUpperCase() + slide.source_type.slice(1).toLowerCase().replace("_", " ");
+            } else {
+                baseType = "Content";
+            }
+    }
+
+    return baseType + embeddedInfo;
+};
+
 // Enhanced Slide Item Component matching admin theme
 const SlideItem = ({
     slide,
@@ -304,73 +373,6 @@ const SlideItem = ({
         return "";
     };
 
-    const getSlideTypeDisplay = (slide: Slide): string => {
-        let baseType = "";
-        let embeddedInfo = "";
-
-        // Handle different source types with better English
-        switch (slide.source_type) {
-            case "VIDEO":
-                baseType = "Video";
-                if (slide.video_slide?.embedded_type) {
-                    switch (slide.video_slide.embedded_type) {
-                        case "CODE":
-                            embeddedInfo = " with Coding Exercise";
-                            break;
-                        case "SCRATCH":
-                            embeddedInfo = " with Scratch Problem";
-                            break;
-                        case "JUPYTER":
-                            embeddedInfo = " with Jupyter Notebook";
-                            break;
-                        default:
-                            if (slide.video_slide.embedded_type) {
-                                const embeddedType = String(slide.video_slide.embedded_type);
-                                embeddedInfo = ` with ${embeddedType.charAt(0).toUpperCase() + embeddedType.slice(1).toLowerCase()}`;
-                            }
-                    }
-                }
-                break;
-            case "DOCUMENT":
-                if (slide.document_slide?.type) {
-                    switch (slide.document_slide.type.toUpperCase()) {
-                        case "PDF":
-                            baseType = "PDF Document";
-                            break;
-                        case "DOC":
-                        case "DOCX":
-                            baseType = "Word Document";
-                            break;
-                        case "PPT":
-                        case "PPTX":
-                            baseType = "Presentation";
-                            break;
-                        default:
-                            baseType = "Document";
-                    }
-                } else {
-                    baseType = "Document";
-                }
-                break;
-            case "QUESTION":
-                baseType = "Question";
-                break;
-            case "QUIZ":
-                baseType = "Quiz";
-                break;
-            case "ASSIGNMENT":
-                baseType = "Assignment";
-                break;
-            default:
-                if (slide.source_type && typeof slide.source_type === 'string') {
-                    baseType = slide.source_type.charAt(0).toUpperCase() + slide.source_type.slice(1).toLowerCase().replace("_", " ");
-                } else {
-                    baseType = "Content";
-                }
-        }
-
-        return baseType + embeddedInfo;
-    };
 
     const handleDoubtClick = (e: React.MouseEvent) => {
         e.stopPropagation();

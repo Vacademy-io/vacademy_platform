@@ -14,7 +14,7 @@ export const DonationHeader = ({ step }: DonationHeaderProps) => {
         </h2>
       </div>
       {step === 'select' && (
-        <p className="text-sm text-gray-600 mb-4">
+        <p className="text-sm text-gray-600 text-center mb-4">
           Choose an amount to donate
         </p>
       )}

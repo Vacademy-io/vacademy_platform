@@ -227,7 +227,7 @@ export const DonationDialog: React.FC<DonationDialogProps> = ({
           </h2>
           
           {step === 'select' && (
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-gray-600 text-center">
               Choose an amount to donate
             </p>
           )}

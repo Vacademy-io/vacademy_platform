@@ -22,6 +22,10 @@ export interface DomainRoutingState {
   error: string | null;
 }
 
+// Global state to prevent multiple simultaneous domain routing calls
+let isResolvingGlobally = false;
+let globalDomainRoutingState: DomainRoutingState | null = null;
+
 export const useDomainRouting = () => {
   const navigate = useNavigate();
   const { setPrimaryColor } = useTheme();
@@ -158,6 +162,19 @@ export const useDomainRouting = () => {
   };
 
   const resolveRouting = async () => {
+    // If already resolving globally, use the cached result
+    if (isResolvingGlobally && globalDomainRoutingState) {
+      setState(globalDomainRoutingState);
+      return;
+    }
+    
+    // If we already have a cached result, use it
+    if (globalDomainRoutingState && globalDomainRoutingState.instituteId) {
+      setState(globalDomainRoutingState);
+      return;
+    }
+    
+    isResolvingGlobally = true;
     setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
     try {
@@ -179,7 +196,7 @@ export const useDomainRouting = () => {
         await storeInstituteData(apiResult);
         applyInstituteTheme(apiResult.instituteThemeCode);
 
-        setState({
+        const newState = {
           isLoading: false,
           instituteId: apiResult.instituteId,
           instituteName: apiResult.instituteName,
@@ -187,7 +204,12 @@ export const useDomainRouting = () => {
           instituteThemeCode: apiResult.instituteThemeCode,
           redirectPath: apiResult.redirect || "/login",
           error: null,
-        });
+        };
+        
+        // Cache the result globally
+        globalDomainRoutingState = newState;
+        isResolvingGlobally = false;
+        setState(newState);
 
         return;
       }
@@ -197,7 +219,7 @@ export const useDomainRouting = () => {
 
       if (fallbackInstituteId) {
         // Using fallback institute ID
-        setState({
+        const newState = {
           isLoading: false,
           instituteId: fallbackInstituteId,
           instituteName: null,
@@ -205,12 +227,16 @@ export const useDomainRouting = () => {
           instituteThemeCode: null,
           redirectPath: "/login",
           error: null,
-        });
+        };
+        
+        globalDomainRoutingState = newState;
+        isResolvingGlobally = false;
+        setState(newState);
         return;
       }
 
       // No institute found anywhere, redirecting to login
-      setState({
+      const newState = {
         isLoading: false,
         instituteId: null,
         instituteName: null,
@@ -218,7 +244,11 @@ export const useDomainRouting = () => {
         instituteThemeCode: null,
         redirectPath: "/login",
         error: null,
-      });
+      };
+      
+      globalDomainRoutingState = newState;
+      isResolvingGlobally = false;
+      setState(newState);
     } catch (error: unknown) {
       console.error("[Domain Routing] Error in resolveRouting:", error);
 
@@ -228,7 +258,7 @@ export const useDomainRouting = () => {
 
         if (fallbackInstituteId) {
           // Using fallback after API error
-          setState({
+          const newState = {
             isLoading: false,
             instituteId: fallbackInstituteId,
             instituteName: null,
@@ -236,7 +266,11 @@ export const useDomainRouting = () => {
             instituteThemeCode: null,
             redirectPath: "/login",
             error: null,
-          });
+          };
+          
+          globalDomainRoutingState = newState;
+          isResolvingGlobally = false;
+          setState(newState);
           return;
         }
       } catch (fallbackError) {
@@ -244,7 +278,7 @@ export const useDomainRouting = () => {
       }
 
       // All fallbacks failed, redirect to login
-      setState({
+      const newState = {
         isLoading: false,
         instituteId: null,
         instituteName: null,
@@ -252,7 +286,11 @@ export const useDomainRouting = () => {
         instituteThemeCode: null,
         redirectPath: "/login",
         error: error instanceof Error ? error.message : "Unknown error",
-      });
+      };
+      
+      globalDomainRoutingState = newState;
+      isResolvingGlobally = false;
+      setState(newState);
     }
   };
 
@@ -300,7 +338,10 @@ export const useDomainRouting = () => {
   };
 
   useEffect(() => {
-    resolveRouting();
+    // Only resolve routing if we haven't already resolved it or if we don't have institute data
+    if (!state.instituteId && state.isLoading) {
+      resolveRouting();
+    }
   }, []);
 
   // Handle redirect when state changes

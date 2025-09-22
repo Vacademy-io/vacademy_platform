@@ -35,8 +35,29 @@ function ReferralComponent() {
 
   if (isLoading) return <div>Loading...</div>;
   if (isError) return <div>Error loading coupons</div>;
-  if (isNullOrEmptyOrUndefined(coupons))
-    return <div>No coupon code available</div>;
+  if (isNullOrEmptyOrUndefined(coupons) || coupons.length === 0)
+    return (
+      <div>
+        <Card className="max-w-md mx-auto">
+          <CardContent className="text-center p-8">
+            <div className="space-y-4">
+              <div className="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center">
+                <Copy className="h-8 w-8 text-gray-400" />
+              </div>
+              <div className="space-y-2">
+                <CardTitle className="text-lg text-gray-700">
+                  No Referral Data Available
+                </CardTitle>
+                <p className="text-sm text-gray-500">
+                  No coupon and referral data found. Please contact your
+                  administrator for assistance.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
   const referralCode = coupons[0].code;
 
   return (

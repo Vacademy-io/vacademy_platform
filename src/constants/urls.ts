@@ -28,6 +28,8 @@ export const HOLISTIC_INSTITUTE_ID =
 export const LOGIN_URL = `${BASE_URL}/auth-service/learner/v1/login`;
 
 export const LOGIN_URL_GOOGLE_GITHUB = `${BASE_URL}/auth-service/oauth2/authorization`;
+export const LOGIN_USING_USERNAME = `${BASE_URL}/auth-service/open/user-details/by-username`;
+export const LOGIN_USING_OTP = `${BASE_URL}/auth-service/learner/v1/login-otp-ten-days`;
 
 export const REQUEST_OTP = `${BASE_URL}/auth-service/learner/v1/request-otp`;
 export const LOGIN_OTP = `${BASE_URL}/auth-service/learner/v1/login-otp`;

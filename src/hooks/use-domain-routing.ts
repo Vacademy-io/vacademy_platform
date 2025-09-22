@@ -74,13 +74,26 @@ export const useDomainRouting = () => {
         termsAndConditionUrl: data.termsAndConditionUrl || null,
         theme: data.theme || data.instituteThemeCode || null,
         fontFamily: data.fontFamily || null,
-        allowSignup: typeof data.allowSignup === "boolean" ? data.allowSignup : null,
+        allowSignup:
+          typeof data.allowSignup === "boolean" ? data.allowSignup : null,
         tabText: data.tabText || null,
         tabIconFileId: data.tabIconFileId || null,
-        allowGoogleAuth: typeof data.allowGoogleAuth === "boolean" ? data.allowGoogleAuth : null,
-        allowGithubAuth: typeof data.allowGithubAuth === "boolean" ? data.allowGithubAuth : null,
-        allowEmailOtpAuth: typeof data.allowEmailOtpAuth === "boolean" ? data.allowEmailOtpAuth : null,
-        allowUsernamePasswordAuth: typeof data.allowUsernamePasswordAuth === "boolean" ? data.allowUsernamePasswordAuth : null,
+        allowGoogleAuth:
+          typeof data.allowGoogleAuth === "boolean"
+            ? data.allowGoogleAuth
+            : null,
+        allowGithubAuth:
+          typeof data.allowGithubAuth === "boolean"
+            ? data.allowGithubAuth
+            : null,
+        allowEmailOtpAuth:
+          typeof data.allowEmailOtpAuth === "boolean"
+            ? data.allowEmailOtpAuth
+            : null,
+        allowUsernamePasswordAuth:
+          typeof data.allowUsernamePasswordAuth === "boolean"
+            ? data.allowUsernamePasswordAuth
+            : null,
       } as const;
       await Preferences.set({
         key: learnerKey,
@@ -92,13 +105,17 @@ export const useDomainRouting = () => {
 
       // Mirror branding into localStorage for earliest-possible application on next load
       try {
-        const tabIconUrl = data.tabIconFileId ? await getPublicUrl(data.tabIconFileId) : null;
+        const tabIconUrl = data.tabIconFileId
+          ? await getPublicUrl(data.tabIconFileId)
+          : null;
         const brandingMirror = {
           tabText: data.tabText || null,
           tabIconUrl,
         };
         localStorage.setItem("TabBranding", JSON.stringify(brandingMirror));
-      } catch {}
+      } catch (error) {
+        console.error("[Domain Routing] Error storing tab branding:", error);
+      }
 
       // Update global state
       setInstituteId(data.instituteId);
@@ -256,11 +273,21 @@ export const useDomainRouting = () => {
       const isOnPublicRoute = publicRoutes.some((route) =>
         currentPath.startsWith(route)
       );
-      
-      // Don't redirect if we're on course details page
-      const isOnCourseDetailsPage = currentPath.startsWith("/courses/course-details");
 
-      if (isOnPublicRoute || isOnCourseDetailsPage) {
+      // Don't redirect if we're on course details page
+      const isOnCourseDetailsPage = currentPath.startsWith(
+        "/courses/course-details"
+      );
+
+      // Don't redirect if we're on live-class dynamic route
+      const isOnLiveClassDynamicRoute =
+        /^\/study-library\/live-class\/[^/]+\/?$/.test(currentPath);
+
+      if (
+        isOnPublicRoute ||
+        isOnCourseDetailsPage ||
+        isOnLiveClassDynamicRoute
+      ) {
         return;
       }
 
@@ -293,11 +320,21 @@ export const useDomainRouting = () => {
       const isOnPublicRoute = publicRoutes.some((route) =>
         currentPath.startsWith(route)
       );
-      
-      // Don't redirect if we're on course details page
-      const isOnCourseDetailsPage = currentPath.startsWith("/courses/course-details");
 
-      if (isOnPublicRoute || isOnCourseDetailsPage) {
+      // Don't redirect if we're on course details page
+      const isOnCourseDetailsPage = currentPath.startsWith(
+        "/courses/course-details"
+      );
+
+      // Don't redirect if we're on live-class dynamic route
+      const isOnLiveClassDynamicRoute =
+        /^\/study-library\/live-class\/[^/]+\/?$/.test(currentPath);
+
+      if (
+        isOnPublicRoute ||
+        isOnCourseDetailsPage ||
+        isOnLiveClassDynamicRoute
+      ) {
         return;
       }
 

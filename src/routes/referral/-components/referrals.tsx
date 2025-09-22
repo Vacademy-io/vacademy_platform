@@ -24,6 +24,13 @@ import {
 import { format } from "date-fns";
 import { ArrowSquareOut, User } from "phosphor-react";
 import { useState } from "react";
+import {
+  BenefitType,
+  getBenefitText,
+  getBenefitTypeLabel,
+  getStatusIcon,
+  parseBenefitLog,
+} from "../-services/utils";
 
 const getStatusBadgeVariant = (status: string) => {
   switch (status) {
@@ -108,48 +115,16 @@ export function ReferralsTable() {
 const ReferralDetailsDialog = ({ referral }: { referral: ReferralBenefit }) => {
   const [isOpen, setIsOpen] = useState(false);
 
-  const getBenefitTypeLabel = (type: string) => {
-    switch (type) {
-      case "PERCENTAGE_DISCOUNT":
-        return "Percentage Discount";
-      case "FLAT_DISCOUNT":
-        return "Flat Discount";
-      case "FREE_MEMBERSHIP_DAYS":
-        return "Free Membership Days";
-      case "CONTENT":
-        return "Content Benefit";
-      case "POINTS":
-        return "Reward Points";
-      default:
-        return type;
-    }
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status.toLowerCase()) {
-      case "active":
-        return "✅";
-      case "pending":
-        return "⏳";
-      default:
-        return "ℹ️";
-    }
-  };
-
-  const getBenefitText = (log: BenefitLog) => {
+  const renderBenefit = (log: BenefitLog) => {
+    const parsed: { type: BenefitType; points?: number; days?: number } =
+      parseBenefitLog(log.benefit_value, log.benefit_type as BenefitType);
     switch (log.benefit_type) {
-      case "PERCENTAGE_DISCOUNT":
-        return `Get a discount on your next purchase`;
-      case "FLAT_DISCOUNT":
-        return `Get a flat off your next purchase`;
-      case "FREE_MEMBERSHIP_DAYS":
-        return `Enjoy free days of membership`;
-      case "CONTENT":
-        return `Exclusive content will be delivered to you`;
       case "POINTS":
-        return `Earn reward points`;
+        return <p>Earned {parsed?.points} points</p>;
+      case "FREE_MEMBERSHIP_DAYS":
+        return <p>Received {parsed?.days} days of free membership</p>;
       default:
-        return "Unknown benefit";
+        return <p>{getBenefitText(parsed.type)}</p>;
     }
   };
 
@@ -215,11 +190,7 @@ const ReferralDetailsDialog = ({ referral }: { referral: ReferralBenefit }) => {
                         {log.status}
                       </Badge>
                     </div>
-                    <div className="text-sm">
-                      <span className="ml-2 font-medium">
-                        {getBenefitText(log)}
-                      </span>
-                    </div>
+                    <div className="text-sm">{renderBenefit(log)}</div>
                   </div>
                 ))}
               </div>

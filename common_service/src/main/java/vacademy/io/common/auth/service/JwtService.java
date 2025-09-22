@@ -108,4 +108,27 @@ public class JwtService {
         extraClaims.put("permissions", userPermissions);
         return buildToken(extraClaims, userDetails, AuthConstant.jwtTokenExpiryInMillis);
     }
+
+    public String generateToken(User userDetails,
+                                List<UserRole> userRoles,
+                                List<String> userPermissions,
+                                int days) {
+
+        // Create a map to hold extra claims (payload for the JWT)
+        Map<String, Object> extraClaims = new HashMap<>();
+
+        // Add user details to the claims
+        extraClaims.put("user", userDetails.getId());
+        extraClaims.put("fullname", userDetails.getFullName());
+        extraClaims.put("username", userDetails.getUsername());
+        extraClaims.put("email", userDetails.getEmail());
+        extraClaims.put("is_root_user", userDetails.isRootUser());  // Indicate if it's a root user
+        extraClaims.put("authorities", UserRoleService.createInstituteRoleMap(userRoles));
+        extraClaims.put("permissions", userPermissions);
+
+        // convert days → milliseconds
+        long expirationMillis = days * 24L * 60L * 60L * 1000L;
+
+        return buildToken(extraClaims, userDetails, expirationMillis);
+    }
 }

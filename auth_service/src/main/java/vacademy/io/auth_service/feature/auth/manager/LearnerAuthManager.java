@@ -337,4 +337,32 @@ public class LearnerAuthManager {
                 .name("Vacademy User")
                 .build();
     }
+
+    public JwtResponseDto loginViaOtpForTenDays(AuthRequestDto authRequestDTO) {
+        if (authRequestDTO.getOtp() == null)
+            throw new UsernameNotFoundException("Invalid OTP!");
+
+        boolean isValid = notificationService.verifyOTP(
+                EmailOTPRequest.builder().otp(authRequestDTO.getOtp()).to(authRequestDTO.getEmail()).build());
+        if (!isValid)
+            throw new UsernameNotFoundException("Invalid OTP!");
+
+        User user = userRepository
+                .findMostRecentUserByEmailAndRoleStatusAndRoleNames(authRequestDTO.getEmail(),
+                        List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
+                        AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL)
+                .orElseThrow(() -> new VacademyException("User not found!!!"));
+
+        refreshTokenService.deleteAllRefreshToken(user);
+
+        List<String> permissions = userPermissionRepository.findByUserId(user.getId()).stream()
+                .map(UserPermission::getPermissionId).toList();
+        RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getUsername(),
+                authRequestDTO.getClientName());
+
+        return JwtResponseDto.builder()
+                .accessToken(jwtService.generateToken(user, user.getRoles().stream().toList(), permissions,10))
+                .refreshToken(refreshToken.getToken())
+                .build();
+    }
 }

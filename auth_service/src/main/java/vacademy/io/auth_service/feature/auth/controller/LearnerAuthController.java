@@ -58,6 +58,11 @@ public class LearnerAuthController {
         return authManager.refreshToken(refreshTokenRequestDTO);
     }
 
+    @PostMapping("/login-otp-ten-days")
+    public JwtResponseDto loginViaOtpForTenDays(@RequestBody AuthRequestDto authRequestDTO) {
+        return authManager.loginViaOtpForTenDays(authRequestDTO);
+    }
+
 }
 
 

@@ -32,7 +32,10 @@ import {
     TabType,
     tabs,
 } from "@/components/common/study-library/level-material/subject-material/-constants/constant";
-import { getIcon } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/chapter-sidebar-slides";
+import { 
+    getIcon,
+    getSlideTypeDisplay
+} from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/chapter-sidebar-slides";
 import { CourseDetailsFormValues } from "./course-details-schema";
 import { getSubjectDetails } from "@/routes/courses/course-details/-utils/helper";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
@@ -1899,11 +1902,11 @@ export const CourseStructureDetails = ({
                 )}
                 {/* Slides */}
                 {selectedChapterId && (
-                    <div className="space-y-1">
-                        {(slidesMap[selectedChapterId] || []).map((sl) => (
+                    <div className="space-y-2">
+                        {(slidesMap[selectedChapterId] || []).map((sl, index) => (
                             <div
                                 key={sl.id}
-                                className={getSlideStyling()}
+                                className={`${getSlideStyling()} flex-col items-start gap-2 p-3`}
                                 onClick={() =>
                                     isSlideClickable() &&
                                     handleSlideNavigation(
@@ -1914,8 +1917,20 @@ export const CourseStructureDetails = ({
                                     )
                                 }
                             >
-                                {getIcon(sl)}
-                                <span className="truncate">{sl.title}</span>
+                                <div className="flex items-center gap-3 w-full">
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex w-6 h-6 items-center justify-center rounded-md text-xs font-bold bg-gray-100 text-gray-500">
+                                            {index + 1}
+                                        </div>
+                                        {getIcon(sl, "4")}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="font-medium text-sm truncate">{sl.title}</div>
+                                        <div className="text-xs text-gray-500 mt-1">
+                                            {getSlideTypeDisplay(sl)}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         ))}
                     </div>

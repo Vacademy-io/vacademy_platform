@@ -147,4 +147,28 @@ public interface StudentSessionInstituteGroupMappingRepository
             @Param("packageSessionIds") List<String> packageSessionIds,
             @Param("statusList") List<String> statusList
     );
+
+    Optional<StudentSessionInstituteGroupMapping> findBySourceAndTypeIdAndTypeAndStatus(
+            String source, String typeId, String type, String status);
+
+    Optional<StudentSessionInstituteGroupMapping> findBySourceAndTypeAndStatus(
+            String source, String type, String status);
+
+    Optional<StudentSessionInstituteGroupMapping> findBySourceAndTypeIdAndStatus(
+            String source, String typeId, String status);
+
+    Optional<StudentSessionInstituteGroupMapping> findByTypeAndTypeIdAndStatus(
+            String type, String typeId, String status);
+
+    Optional<StudentSessionInstituteGroupMapping> findByTypeIdAndSourceAndUserIdAndInstituteIdAndStatus(
+            String typeId, String source, String userId, String instituteId, String status);
+
+    Optional<StudentSessionInstituteGroupMapping> findByTypeIdAndStatus(
+            String typeId, String status);
+
+    Optional<StudentSessionInstituteGroupMapping> findByTypeAndStatus(
+            String type, String status);
+
+    Optional<StudentSessionInstituteGroupMapping> findBySourceAndStatus(
+            String source, String status);
 }

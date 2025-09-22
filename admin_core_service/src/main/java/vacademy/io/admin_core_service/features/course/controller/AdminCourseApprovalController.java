@@ -24,9 +24,10 @@ public class AdminCourseApprovalController {
     @PostMapping("/approve")
     public ResponseEntity<String> approveCourse(
             @RequestParam String courseId,
+            @RequestParam(required = false) String comment,
             @RequestAttribute("user") CustomUserDetails admin) {
         try {
-            String result = courseApprovalService.approveCourseWithValidation(courseId, admin);
+            String result = courseApprovalService.approveCourseWithValidation(courseId, admin, comment);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Error: " + e.getMessage());

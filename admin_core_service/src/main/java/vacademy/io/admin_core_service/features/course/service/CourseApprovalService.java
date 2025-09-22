@@ -43,6 +43,8 @@ import vacademy.io.admin_core_service.features.chapter.repository.ChapterToSlide
 
 import java.util.*;
 import java.util.stream.Collectors;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 
 @Slf4j
 @Service
@@ -67,6 +69,7 @@ public class CourseApprovalService {
     private final ChapterToSlidesRepository chapterToSlidesRepository;
     private final PackageInstituteRepository packageInstituteRepository;
     private final InstituteRepository instituteRepository;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * Create a temporary copy of a published course for teacher editing
@@ -90,6 +93,8 @@ public class CourseApprovalService {
         // Copy package-institute linkages
         copyPackageInstituteLinkages(originalPackage, tempPackage);
 
+        appendAuditLog(tempPackage, "ADD", teacher.getUserId(),
+                "Created editable copy from original " + originalCourseId, null);
         log.info("Created editable copy {} for original course {} by teacher {}", 
                 tempPackage.getId(), originalCourseId, teacher.getUserId());
         
@@ -114,6 +119,7 @@ public class CourseApprovalService {
 
         course.setStatus(PackageStatusEnum.IN_REVIEW.name());
         packageRepository.save(course);
+        appendAuditLog(course, "SUBMIT", teacher.getUserId(), "Submitted course for review", null);
 
         log.info("Course {} submitted for review by teacher {}", courseId, teacher.getUserId());
         return "Course submitted for review successfully";
@@ -137,6 +143,7 @@ public class CourseApprovalService {
 
         course.setStatus(PackageStatusEnum.DRAFT.name());
         packageRepository.save(course);
+        appendAuditLog(course, "WITHDRAW", teacher.getUserId(), "Withdrew course from review", null);
 
         log.info("Course {} withdrawn from review by teacher {}", courseId, teacher.getUserId());
         return "Course withdrawn from review successfully";
@@ -147,6 +154,14 @@ public class CourseApprovalService {
      */
     @Transactional
     public String approveCourse(String tempCourseId, CustomUserDetails admin) {
+        return approveCourse(tempCourseId, admin, null);
+    }
+
+    /**
+     * Admin approves a course with optional comment
+     */
+    @Transactional
+    public String approveCourse(String tempCourseId, CustomUserDetails admin, String comment) {
         PackageEntity tempCourse = packageRepository.findById(tempCourseId)
                 .orElseThrow(() -> new VacademyException("Course not found"));
 
@@ -165,6 +180,7 @@ public class CourseApprovalService {
       
 
         log.info("Course {} approved by admin {}", tempCourseId, admin.getId());
+        appendAuditLog(tempCourse, "APPROVE", admin.getUserId(), "Approved course", comment);
         return result;
     }
 
@@ -182,6 +198,7 @@ public class CourseApprovalService {
         packageRepository.save(tempCourse);
 
         log.info("Course {} rejected by admin {} with reason: {}", tempCourseId, admin.getId(), reason);
+        appendAuditLog(tempCourse, "REJECT", admin.getUserId(), "Rejected course", reason);
         return "Course rejected and sent back to draft";
     }
 
@@ -453,7 +470,28 @@ public class CourseApprovalService {
 
             validateCourseForApproval(tempCourse);
 
-            return approveCourse(tempCourseId, admin);
+            return approveCourse(tempCourseId, admin, null);
+        } catch (VacademyException e) {
+            log.error("Validation failed for approving course {}: {}", tempCourseId, e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("Unexpected error approving course {}: {}", tempCourseId, e.getMessage());
+            throw new VacademyException("Failed to approve course: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Enhanced error handling for approval with optional comment
+     */
+    @Transactional
+    public String approveCourseWithValidation(String tempCourseId, CustomUserDetails admin, String comment) {
+        try {
+            PackageEntity tempCourse = packageRepository.findById(tempCourseId)
+                    .orElseThrow(() -> new VacademyException("Course not found"));
+
+            validateCourseForApproval(tempCourse);
+
+            return approveCourse(tempCourseId, admin, comment);
         } catch (VacademyException e) {
             log.error("Validation failed for approving course {}: {}", tempCourseId, e.getMessage());
             throw e;
@@ -555,6 +593,19 @@ public class CourseApprovalService {
             }
         }
         
+        try {
+            String logs = course.getCourseAuditLogs();
+            if (logs != null && !logs.trim().isEmpty()) {
+                List<Map<String, Object>> parsed = objectMapper.readValue(logs, new TypeReference<List<Map<String, Object>>>(){});
+                history.setAuditLogs(parsed);
+            } else {
+                history.setAuditLogs(Collections.emptyList());
+            }
+        } catch (Exception e) {
+            log.error("Failed to parse audit logs for course {}: {}", courseId, e.getMessage());
+            history.setAuditLogs(Collections.emptyList());
+        }
+
         return history;
     }
 
@@ -859,6 +910,9 @@ public class CourseApprovalService {
 
         // Copy any new package-institute linkages from temp to original
         copyPackageInstituteLinkages(tempCourse, originalCourse);
+
+        appendAuditLog(originalCourse, "UPDATE", tempCourse.getCreatedByUserId(),
+                "Merged changes from temp course " + tempCourse.getId(), null);
 
         return "Changes merged into original course successfully";
     }
@@ -1316,12 +1370,44 @@ public class CourseApprovalService {
         tempCourse.setStatus(PackageStatusEnum.ACTIVE.name());
         tempCourse.setOriginalCourseId(null); // Clear temp relationship
         packageRepository.save(tempCourse);
+        appendAuditLog(tempCourse, "PUBLISH", tempCourse.getCreatedByUserId(), "Published new course", null);
         return "New course published successfully";
     }
 
     private void deleteTempCourse(PackageEntity tempCourse) {
         tempCourse.setStatus(PackageStatusEnum.DELETED.name());
         packageRepository.save(tempCourse);
+        appendAuditLog(tempCourse, "DELETE_TEMP", tempCourse.getCreatedByUserId(), "Deleted temporary course after merge", null);
+    }
+
+    /**
+     * Append an audit event into package.course_audit_logs as JSON array.
+     * Event schema: { timestamp, actorUserId, action, message, comment }
+     */
+    private void appendAuditLog(PackageEntity pkg, String action, String actorUserId, String message, String comment) {
+        try {
+            List<Map<String, Object>> events;
+            String existing = pkg.getCourseAuditLogs();
+            if (existing == null || existing.trim().isEmpty()) {
+                events = new ArrayList<>();
+            } else {
+                events = objectMapper.readValue(existing, new TypeReference<List<Map<String, Object>>>(){});
+            }
+            Map<String, Object> evt = new LinkedHashMap<>();
+            evt.put("timestamp", new Date().getTime());
+            evt.put("actorUserId", actorUserId);
+            evt.put("action", action);
+            evt.put("message", message);
+            if (comment != null && !comment.isEmpty()) {
+                evt.put("comment", comment);
+            }
+            events.add(evt);
+            String updatedJson = objectMapper.writeValueAsString(events);
+            pkg.setCourseAuditLogs(updatedJson);
+            packageRepository.save(pkg);
+        } catch (Exception e) {
+            log.error("Failed to append audit log for package {} action {}: {}", pkg.getId(), action, e.getMessage());
+        }
     }
 
     /**
@@ -1387,6 +1473,7 @@ public class CourseApprovalService {
         private String originalCourseName;
         private String originalCourseStatus;
         private Integer versionNumber;
+        private List<Map<String, Object>> auditLogs;
 
         // Getters and setters
         public String getCourseId() { return courseId; }
@@ -1412,5 +1499,8 @@ public class CourseApprovalService {
         
         public Integer getVersionNumber() { return versionNumber; }
         public void setVersionNumber(Integer versionNumber) { this.versionNumber = versionNumber; }
+
+        public List<Map<String, Object>> getAuditLogs() { return auditLogs; }
+        public void setAuditLogs(List<Map<String, Object>> auditLogs) { this.auditLogs = auditLogs; }
     }
 } 

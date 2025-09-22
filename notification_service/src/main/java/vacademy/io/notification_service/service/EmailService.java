@@ -133,7 +133,6 @@ public class EmailService {
                instituteInfoDTO=internalService.getInstituteByInstituteId(instituteId);
 
             //default vacademy theme
-            service=service==null?"notification-service":service;
             name=name==null?"User":name;
             String instituteTheme="#ED7424";
             String instituteName="Vacademy";
@@ -150,7 +149,7 @@ public class EmailService {
                     : "Your One-Time Password (OTP) for "+instituteName+" Access";
 
             // Build the HTML body for the OTP email
-            final String emailBody = createEmailBody(service, name, otp, instituteTheme, instituteName, instituteUrl,fromToUse);
+            final String emailBody = createEmailBody(name, otp, instituteTheme, instituteName, instituteUrl,fromToUse);
 
             emailDispatcher.sendEmail(() -> {
                 try {
@@ -191,7 +190,7 @@ public class EmailService {
 
     // Method to create the email body
     // Method to create the email body with placeholders {{service}}, {{name}}, {{otp}}
-    private String createEmailBody(String service, String name, String otp, String theme, String instituteName, String instituteWebsite,String instituteEmail) {
+    private String createEmailBody(String name, String otp, String theme, String instituteName, String instituteWebsite,String instituteEmail) {
         String template = """
             <!DOCTYPE html>
             <html>
@@ -209,14 +208,14 @@ public class EmailService {
                         margin: 40px auto;
                         padding: 20px;
                         background-color: #FFFFFF;
-                        border: 1px solid {{theme}};
+                        border: 2px solid {{theme}};
                         border-radius: 10px;
                         box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
                     }
                     .content {
                         padding: 20px;
                         font-size: 16px;
-                        color: #333;
+                        color: black;
                         line-height: 1.6;
                     }
                     .footer {
@@ -230,10 +229,10 @@ public class EmailService {
                     .otp {
                         font-size: 22px;
                         font-weight: bold;
-                        color: {{theme}};
+                        color: white;
                         text-align: center;
                         padding: 10px;
-                        background-color: #FFFAE1;
+                        background-color: {{theme}};
                         border: 2px solid {{theme}};
                         border-radius: 5px;
                         margin: 15px 0;
@@ -259,16 +258,12 @@ public class EmailService {
                         <p>Email: {{instituteEmail}}</p>
                         <p>Web: <a href="{{instituteWebsite}}" target="_blank">{{instituteWebsite}}</a></p>
                     </div>
-                    <div class="footer">
-                        <p>Best regards, <br> {{service}}</p>
-                    </div>
                 </div>
             </body>
             </html>
             """;
 
         return template
-                .replace("{{service}}", service)
                 .replace("{{name}}", name)
                 .replace("{{otp}}", otp)
                 .replace("{{theme}}", theme)

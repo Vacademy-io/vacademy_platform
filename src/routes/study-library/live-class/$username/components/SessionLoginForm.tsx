@@ -98,6 +98,7 @@ export const SessionLoginForm: React.FC<SessionLoginFormProps> = ({
       try {
         await axios.post(REQUEST_OTP, {
           email: data.email,
+          institute_id: instituteId,
         });
 
         setStep("otp");

@@ -283,7 +283,11 @@ export default function SessionStatusCard({
             {getTerminology(ContentTerms.Session, SystemTerms.Session)} hasn't
             started yet
           </div>
-          <MyButton buttonType="secondary" className="w-full h-10 sm:h-12 text-sm sm:text-base" disabled>
+          <MyButton
+            buttonType="secondary"
+            className="w-full h-10 sm:h-12 text-sm sm:text-base"
+            disabled
+          >
             {getTerminology(ContentTerms.Session, SystemTerms.Session)} will
             start soon
           </MyButton>
@@ -319,12 +323,18 @@ export default function SessionStatusCard({
         <div className="flex flex-col gap-2 text-sm sm:text-base">
           <div className="flex flex-col sm:flex-row sm:justify-between gap-1 sm:gap-2">
             <span className="text-gray-600 font-medium">Start Time:</span>
-            <span className="font-semibold text-gray-800">{formatStartTime()}</span>
+            <span className="font-semibold text-gray-800">
+              {formatStartTime()}
+            </span>
           </div>
-          {sessionDetails.waitingRoomTime && (
+          {sessionDetails.waitingRoomTime !== 0 && (
             <div className="flex flex-col sm:flex-row sm:justify-between gap-1 sm:gap-2">
-              <span className="text-gray-600 font-medium">Waiting Room Opens:</span>
-              <span className="font-semibold text-gray-800">{formatWaitingRoomTime()}</span>
+              <span className="text-gray-600 font-medium">
+                Waiting Room Opens:
+              </span>
+              <span className="font-semibold text-gray-800">
+                {formatWaitingRoomTime()}
+              </span>
             </div>
           )}
         </div>

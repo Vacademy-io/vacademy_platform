@@ -29,27 +29,38 @@ export const convertSessionTimeToUserTimezone = (
       timeOnly = sessionTime.split("T")[1];
     }
 
-    const sessionDateTimeString = `${sessionDate}T${timeOnly}`;
-
-    // Create a date object in the session timezone
-    // We'll use a more reliable approach with explicit timezone handling
-    const sessionDateTime = new Date(sessionDateTimeString);
-
-    // Validate the created date
-    if (isNaN(sessionDateTime.getTime())) {
-      throw new Error(`Invalid date created from: ${sessionDateTimeString}`);
-    }
+    // Remove any timezone offset from timeOnly if present
+    timeOnly = timeOnly.replace(/[+-]\d{2}:\d{2}$|Z$/, "");
 
     // Get the user's timezone
     const userTimezone = getUserTimezone();
 
     // If timezones are the same, return as is
     if (sessionTimezone === userTimezone) {
-      return sessionDateTime;
+      return new Date(`${sessionDate}T${timeOnly}`);
     }
 
-    // Create a date formatter for session timezone
-    const sessionTzFormatter = new Intl.DateTimeFormat("en-CA", {
+    // Create the session datetime string
+    const sessionDateTimeString = `${sessionDate}T${timeOnly}`;
+
+    // Modern approach: Use Temporal-like logic with Intl.DateTimeFormat
+    // The idea: create a "moment" that represents the session time in the session timezone
+
+    // Step 1: Parse the date/time components
+    const sessionDateTime = new Date(sessionDateTimeString);
+    if (isNaN(sessionDateTime.getTime())) {
+      throw new Error(`Invalid date created from: ${sessionDateTimeString}`);
+    }
+
+    // Step 2: Use the inverse operation approach
+    // Find what UTC time would result in our desired session time in the session timezone
+
+    // Start with our session time as if it were UTC
+    const candidateUTC = new Date(sessionDateTime.getTime());
+
+    // Check what time this UTC moment appears in the session timezone
+    const formatter = new Intl.DateTimeFormat("sv-SE", {
+      // sv-SE gives us YYYY-MM-DD HH:mm:ss format
       timeZone: sessionTimezone,
       year: "numeric",
       month: "2-digit",
@@ -57,11 +68,17 @@ export const convertSessionTimeToUserTimezone = (
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
-      hour12: false,
     });
 
-    // Create a date formatter for user timezone
-    const userTzFormatter = new Intl.DateTimeFormat("en-CA", {
+    const sessionTzDisplay = formatter.format(candidateUTC);
+    const sessionTzDateTime = new Date(sessionTzDisplay);
+
+    // Calculate the difference and adjust
+    const diff = sessionDateTime.getTime() - sessionTzDateTime.getTime();
+    const correctUTC = new Date(candidateUTC.getTime() + diff);
+
+    // Step 3: Now convert this correct UTC time to user timezone
+    const userFormatter = new Intl.DateTimeFormat("sv-SE", {
       timeZone: userTimezone,
       year: "numeric",
       month: "2-digit",
@@ -69,39 +86,12 @@ export const convertSessionTimeToUserTimezone = (
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
-      hour12: false,
     });
 
-    // Get current time for offset calculation
-    const now = new Date();
+    const userTzDisplay = userFormatter.format(correctUTC);
+    const result = new Date(userTzDisplay);
 
-    // Format current time in both timezones
-    const nowInSessionTz = sessionTzFormatter.format(now);
-    const nowInUserTz = userTzFormatter.format(now);
-
-    // Parse the formatted times back to get offset
-    const sessionTzTime = new Date(
-      nowInSessionTz.replace(
-        /(\d+)-(\d+)-(\d+), (\d+):(\d+):(\d+)/,
-        "$1-$2-$3T$4:$5:$6"
-      )
-    );
-    const userTzTime = new Date(
-      nowInUserTz.replace(
-        /(\d+)-(\d+)-(\d+), (\d+):(\d+):(\d+)/,
-        "$1-$2-$3T$4:$5:$6"
-      )
-    );
-
-    // Calculate offset difference
-    const offsetDifference = userTzTime.getTime() - sessionTzTime.getTime();
-
-    // Apply offset to session time
-    const convertedTime = new Date(
-      sessionDateTime.getTime() + offsetDifference
-    );
-
-    return convertedTime;
+    return result;
   } catch (error) {
     console.error("Error in timezone conversion:", error);
     // Fallback: return the original date without timezone conversion

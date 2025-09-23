@@ -116,6 +116,8 @@ export default function LiveClassRegistrationPage() {
             response
           );
           setSessionDetails(sessionDetailResponse);
+          setIsUserAlreadyRegistered(true);
+          setAlreadyRegisteredEmail(email);
         }
       }
     } catch (error: unknown) {

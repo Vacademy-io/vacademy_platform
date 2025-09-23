@@ -24,32 +24,47 @@ export default function SessionInfo({
   coverFileUrl,
   sessionDetails,
 }: SessionInfoProps) {
+  // Helper function to get session timezone
+  const getSessionTimezone = () => {
+    return "timezone" in (sessionDetails || {})
+      ? (sessionDetails as SessionDetailsResponse & { timezone?: string })
+          .timezone
+      : undefined;
+  };
+
+  // Convert any session time to user timezone for display
+  const convertTimeForDisplay = (timeStr: string | undefined) => {
+    if (!timeStr || !sessionDetails?.meetingDate) return timeStr;
+
+    const sessionTimezone = getSessionTimezone();
+
+    if (sessionTimezone) {
+      try {
+        const convertedTime = convertSessionTimeToUserTimezone(
+          sessionDetails.meetingDate,
+          timeStr,
+          sessionTimezone
+        );
+        return convertedTime.toISOString();
+      } catch (error) {
+        console.error("Error converting time for display:", error);
+        return timeStr;
+      }
+    }
+
+    return timeStr;
+  };
+
   const formatDateTime = (dateStr: string | undefined) => {
     if (!dateStr) return "";
-    return dayjs(dateStr).format("hh:mm A");
+    const convertedTime = convertTimeForDisplay(dateStr);
+    return dayjs(convertedTime).format("hh:mm A");
   };
 
   // Convert session time to user timezone for countdown
   const getConvertedStartTime = () => {
-    if (!startTime || !sessionDetails?.meetingDate) return startTime;
-
-    const sessionTimezone =
-      "timezone" in sessionDetails
-        ? (sessionDetails as SessionDetailsResponse & { timezone?: string })
-            .timezone
-        : undefined;
-
-    if (sessionTimezone) {
-      const convertedTime = convertSessionTimeToUserTimezone(
-        sessionDetails.meetingDate,
-        startTime,
-        sessionTimezone
-      );
-
-      return convertedTime.toISOString();
-    }
-
-    return startTime;
+    const convertedTime = convertTimeForDisplay(startTime);
+    return convertedTime || startTime;
   };
 
   const convertedStartTime = getConvertedStartTime();
@@ -65,7 +80,9 @@ export default function SessionInfo({
       ) : (
         <div className="h-10 sm:h-12 flex items-center text-gray-500">Logo</div>
       )}
-      <div className="text-xl sm:text-2xl lg:text-h2 font-bold">{sessionTitle}</div>
+      <div className="text-xl sm:text-2xl lg:text-h2 font-bold">
+        {sessionTitle}
+      </div>
       <div>
         {convertedStartTime && (
           <CountdownTimer startTime={convertedStartTime} />

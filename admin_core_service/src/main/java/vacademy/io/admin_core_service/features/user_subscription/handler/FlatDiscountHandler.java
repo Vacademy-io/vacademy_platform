@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.user_subscription.handler;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.user_subscription.dto.BenefitConfigDTO;
@@ -8,6 +9,8 @@ import vacademy.io.admin_core_service.features.user_subscription.entity.Referral
 import vacademy.io.admin_core_service.features.user_subscription.entity.ReferralOption;
 import vacademy.io.admin_core_service.features.user_subscription.enums.ReferralBenefitLogsBeneficiary;
 import vacademy.io.admin_core_service.features.user_subscription.enums.ReferralBenefitType;
+import vacademy.io.admin_core_service.features.user_subscription.enums.ReferralStatusEnum;
+import vacademy.io.admin_core_service.features.user_subscription.service.MultiChannelDeliveryService;
 import vacademy.io.admin_core_service.features.user_subscription.service.ReferralBenefitLogService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
@@ -17,6 +20,12 @@ public class FlatDiscountHandler implements ReferralBenefitHandler {
 
     @Autowired
     private ReferralBenefitLogService referralBenefitLogService;
+
+    @Autowired
+    private MultiChannelDeliveryService multiChannelDeliveryService;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Override
     public void processBenefit(LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
@@ -29,35 +38,47 @@ public class FlatDiscountHandler implements ReferralBenefitHandler {
                                BenefitConfigDTO.BenefitDTO benefitDTO,
                                String beneficiary,
                                String status) {
+        try {
+            BenefitConfigDTO.FlatDiscountValue flatDiscountValue = objectMapper.convertValue(benefitDTO.getValue(), BenefitConfigDTO.FlatDiscountValue.class);
+            double discountAmount = getDiscountedAmount(learnerPackageSessionsEnrollDTO, flatDiscountValue);
 
-        // Safely cast the benefit value
-        BenefitConfigDTO.FlatDiscountValue flatDiscountValue = (BenefitConfigDTO.FlatDiscountValue) benefitDTO.getValue();
-        double discountAmount = getDiscountedAmount(learnerPackageSessionsEnrollDTO, flatDiscountValue);
+            learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setAmount(
+                    learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().getAmount() - discountAmount
+            );
 
-        // Apply the flat discount to the payment request amount
-        learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setAmount(
-                learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().getAmount() - discountAmount
-        );
+            // If the benefit is active, send a notification email.
+            if (status.equalsIgnoreCase(ReferralStatusEnum.ACTIVE.name())) {
+                boolean isForReferee = beneficiary.equalsIgnoreCase(ReferralBenefitLogsBeneficiary.REFEREE.name());
+                multiChannelDeliveryService.sendReferralNotification(
+                        referrer,
+                        refereeUser,
+                        flatDiscountValue,
+                        ReferralBenefitType.FLAT_DISCOUNT,
+                        instituteId,
+                        referralMapping,
+                        isForReferee
+                );
+            }
 
-        // Determine the correct user ID for logging purposes
-        String targetUserId = beneficiary.equalsIgnoreCase(ReferralBenefitLogsBeneficiary.REFEREE.name())
-                ? refereeUser.getId()
-                : referrer.getId();
+            String targetUserId = beneficiary.equalsIgnoreCase(ReferralBenefitLogsBeneficiary.REFEREE.name())
+                    ? refereeUser.getId()
+                    : referrer.getId();
 
-        // Create a log entry for this benefit transaction
-        referralBenefitLogService.createLog(
-                referralMapping.getUserPlan(),
-                referralMapping,
-                targetUserId,
-                ReferralBenefitType.FLAT_DISCOUNT.name(),
-                beneficiary,
-                String.valueOf(flatDiscountValue), // Log the actual discount amount applied
-                status
-        );
+            referralBenefitLogService.createLog(
+                    referralMapping.getUserPlan(),
+                    referralMapping,
+                    targetUserId,
+                    ReferralBenefitType.FLAT_DISCOUNT.name(),
+                    beneficiary,
+                    objectMapper.writeValueAsString(flatDiscountValue), // Log benefit details as JSON
+                    status
+            );
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to process flat discount benefit", e);
+        }
     }
 
     private double getDiscountedAmount(LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO, BenefitConfigDTO.FlatDiscountValue flatDiscountValue) {
-        // Ensure the discount does not exceed the total amount
         double amount = learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().getAmount();
         return Math.min(amount, flatDiscountValue.getAmount());
     }

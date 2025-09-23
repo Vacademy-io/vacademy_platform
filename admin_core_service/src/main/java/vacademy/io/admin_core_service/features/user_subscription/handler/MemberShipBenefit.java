@@ -17,6 +17,7 @@ import vacademy.io.admin_core_service.features.user_subscription.entity.Referral
 import vacademy.io.admin_core_service.features.user_subscription.enums.ReferralBenefitLogsBeneficiary;
 import vacademy.io.admin_core_service.features.user_subscription.enums.ReferralBenefitType;
 import vacademy.io.admin_core_service.features.user_subscription.enums.ReferralStatusEnum;
+import vacademy.io.admin_core_service.features.user_subscription.service.MultiChannelDeliveryService;
 import vacademy.io.admin_core_service.features.user_subscription.service.ReferralBenefitLogService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
@@ -42,6 +43,9 @@ public class MemberShipBenefit extends AbstractReferralProcessableBenefit {
     @Autowired
     private PackageSessionEnrollInviteToPaymentOptionService packageSessionEnrollInviteToPaymentOptionService;
 
+    @Autowired
+    private MultiChannelDeliveryService multiChannelDeliveryService;
+
     @Override
     public void processBenefit(LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
                                ReferralOption referralOption,
@@ -54,30 +58,36 @@ public class MemberShipBenefit extends AbstractReferralProcessableBenefit {
                                String beneficiary,
                                String status) {
         try {
-            // 1. Cast the generic benefit value to the specific type for membership extension.
             BenefitConfigDTO.MembershipExtensionValue membershipValue = objectMapper.convertValue(benefitDTO.getValue(), BenefitConfigDTO.MembershipExtensionValue.class);
             int daysToExtend = membershipValue.getDays();
 
-            // 2. Determine who receives the benefit.
             boolean isForReferee = beneficiary.equalsIgnoreCase(ReferralBenefitLogsBeneficiary.REFEREE.name());
             UserDTO targetUser = isForReferee ? refereeUser : referrer;
 
-            // 3. Get the package session IDs to extend from the enrollment DTO.
             List<String> packageSessionIds = learnerPackageSessionsEnrollDTO.getPackageSessionIds();
 
             if (status.equalsIgnoreCase(ReferralStatusEnum.ACTIVE.name())){
-                // 4. Call the method to perform the membership extension.
                 extendMemberShipDaysOfLearner(targetUser.getId(), packageSessionIds, daysToExtend);
+
+                // Send notification upon successful membership extension
+                multiChannelDeliveryService.sendReferralNotification(
+                        referrer,
+                        refereeUser,
+                        membershipValue,
+                        ReferralBenefitType.FREE_MEMBERSHIP_DAYS,
+                        instituteId,
+                        referralMapping,
+                        isForReferee
+                );
             }
 
-            // 5. Create a log entry for this action.
             referralBenefitLogService.createLog(
                     referralMapping.getUserPlan(),
                     referralMapping,
                     targetUser.getId(),
                     ReferralBenefitType.FREE_MEMBERSHIP_DAYS.name(),
                     beneficiary,
-                    objectMapper.writeValueAsString(membershipValue), // Log the specific benefit value
+                    objectMapper.writeValueAsString(membershipValue),
                     status
             );
         } catch (Exception e) {
@@ -101,20 +111,27 @@ public class MemberShipBenefit extends AbstractReferralProcessableBenefit {
 
             extendMemberShipDaysOfLearner(targetUser.getId(), packageSessionIds, daysToExtend);
 
+            // Send notification now that the pending benefit has been applied
+            multiChannelDeliveryService.sendReferralNotification(
+                    referrer,
+                    referee,
+                    membershipValue,
+                    ReferralBenefitType.FREE_MEMBERSHIP_DAYS,
+                    instituteId,
+                    referralMapping,
+                    isForReferee
+            );
+
         } catch (JsonProcessingException e) {
             e.printStackTrace();
-            // handle error
             throw new VacademyException(e.getMessage());
         }
 
     }
 
-    /**
-     * Finds active student mappings and extends their expiry date.
-     */
     private void extendMemberShipDaysOfLearner(String userId, List<String> packageSessionIds, int days) {
         if (packageSessionIds == null || packageSessionIds.isEmpty()) {
-            return; // Cannot extend if we don't know which sessions to extend.
+            return;
         }
 
         List<StudentSessionInstituteGroupMapping> studentSessionInstituteGroupMappings =
@@ -125,7 +142,7 @@ public class MemberShipBenefit extends AbstractReferralProcessableBenefit {
                 );
 
         if (studentSessionInstituteGroupMappings == null || studentSessionInstituteGroupMappings.isEmpty()) {
-            return; // No active memberships to extend for these sessions.
+            return;
         }
 
         Date now = new Date();
@@ -135,10 +152,8 @@ public class MemberShipBenefit extends AbstractReferralProcessableBenefit {
             Date expiryDate = mapping.getExpiryDate();
 
             if (expiryDate == null || expiryDate.before(now)) {
-                // If membership has expired or has no expiry, extend from the current date.
                 calendar.setTime(now);
             } else {
-                // Otherwise, extend from the existing expiry date.
                 calendar.setTime(expiryDate);
             }
 

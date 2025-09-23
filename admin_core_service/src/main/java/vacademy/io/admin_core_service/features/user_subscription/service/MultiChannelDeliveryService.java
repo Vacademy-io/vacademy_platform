@@ -1,6 +1,5 @@
 package vacademy.io.admin_core_service.features.user_subscription.service;
 
-import org.checkerframework.checker.units.qual.A;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,10 +13,12 @@ import vacademy.io.admin_core_service.features.notification_service.service.Noti
 import vacademy.io.admin_core_service.features.notification_service.utils.ReferralsEmailBody;
 import vacademy.io.admin_core_service.features.user_subscription.dto.BenefitConfigDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.ReferralMapping;
+import vacademy.io.admin_core_service.features.user_subscription.enums.ReferralBenefitType;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.media.dto.FileDetailsDTO;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,7 +41,7 @@ public class MultiChannelDeliveryService {
     /**
      * Delivers a content benefit to the appropriate user(s) through the specified channels.
      */
-    public void deliverContent(BenefitConfigDTO.ContentBenefitValue benefitValue, // <-- Corrected DTO
+    private void deliverContent(BenefitConfigDTO.ContentBenefitValue benefitValue,
                                UserDTO referrerUser,
                                UserDTO refereeUser,
                                String instituteId,
@@ -54,7 +55,7 @@ public class MultiChannelDeliveryService {
 
         UserDTO targetUser = isForReferee ? refereeUser : referrerUser;
 
-        for (BenefitConfigDTO.ContentBenefitValue.DeliveryMedium channel : benefitValue.getDeliveryMediums()) { // <-- Corrected DTO
+        for (BenefitConfigDTO.ContentBenefitValue.DeliveryMedium channel : benefitValue.getDeliveryMediums()) {
             switch (channel) {
                 case EMAIL:
                     sendEmailNotification(
@@ -62,7 +63,7 @@ public class MultiChannelDeliveryService {
                             referrerUser,
                             refereeUser,
                             instituteId,
-                            benefitValue, // <-- Pass the whole value object
+                            benefitValue,
                             isForReferee,
                             fileDetails,
                             referralMapping);
@@ -83,7 +84,7 @@ public class MultiChannelDeliveryService {
                                        UserDTO referrerUser,
                                        UserDTO refereeUser,
                                        String instituteId,
-                                       BenefitConfigDTO.ContentBenefitValue benefitValue, // <-- Corrected DTO
+                                       BenefitConfigDTO.ContentBenefitValue benefitValue,
                                        boolean isForReferee,
                                        List<FileDetailsDTO> fileDetails,
                                        ReferralMapping referralMapping) {
@@ -140,5 +141,132 @@ public class MultiChannelDeliveryService {
      */
     private void sendWhatsAppNotification(UserDTO targetUser) {
         log.info("WhatsApp notification requested for user {}. Integration is pending.", targetUser.getId());
+    }
+
+    /**
+     * NEW: A robust method to send notifications for any benefit type.
+     */
+    public void sendReferralNotification(UserDTO referrerUser,
+                                         UserDTO refereeUser,
+                                         Object benefit,
+                                         ReferralBenefitType benefitType,
+                                         String instituteId,
+                                         ReferralMapping referralMapping,
+                                         boolean isForReferee) {
+
+        UserDTO targetUser = isForReferee ? refereeUser : referrerUser;
+        String subject = "You've received a referral reward!"; // Default subject
+        String bodyContent = ""; // This will only be the core message
+
+        switch (benefitType) {
+            case CONTENT:
+                // Content benefits have their own rich templates and multi-channel logic
+                BenefitConfigDTO.ContentBenefitValue contentValue = (BenefitConfigDTO.ContentBenefitValue) benefit;
+                List<FileDetailsDTO> fileDetails = new ArrayList<>();
+                if (contentValue.getFileIds() != null && !contentValue.getFileIds().isEmpty()) {
+                    fileDetails = mediaService.getFilesByIds(contentValue.getFileIds());
+                }
+                deliverContent(contentValue, referrerUser, refereeUser, instituteId, fileDetails, isForReferee, referralMapping);
+                return; // Exit as deliverContent handles its own sending
+
+            case POINTS:
+                BenefitConfigDTO.PointBenefitValue pointsValue = (BenefitConfigDTO.PointBenefitValue) benefit;
+                subject = isForReferee ? "Welcome! Your Bonus Points Are Here!" : "You've Earned Reward Points!";
+                bodyContent = isForReferee
+                        ? String.format("<p>Thanks for joining through <strong>%s</strong>'s referral. We've added <strong>%d bonus points</strong> to your account!</p>", referrerUser.getFullName(), pointsValue.getPoints())
+                        : String.format("<p>Your referral of <strong>%s</strong> was successful! We've added <strong>%d points</strong> to your account.</p>", refereeUser.getFullName(), pointsValue.getPoints());
+                break;
+
+            case FLAT_DISCOUNT:
+                BenefitConfigDTO.FlatDiscountValue flatValue = (BenefitConfigDTO.FlatDiscountValue) benefit;
+                subject = isForReferee ? "A Welcome Gift For You!" : "You've Earned a Reward!";
+                bodyContent = isForReferee
+                        ? String.format("<p>As a special gift for joining through <strong>%s</strong>'s referral, here is a <strong>₹%.2f discount</strong> on your first order.</p>", referrerUser.getFullName(), flatValue.getAmount())
+                        : String.format("<p>Your referral of <strong>%s</strong> was successful! You've earned a <strong>₹%.2f discount</strong> for your next purchase.</p>", refereeUser.getFullName(), flatValue.getAmount());
+                break;
+
+            case PERCENTAGE_DISCOUNT:
+                BenefitConfigDTO.PercentageDiscountValue percValue = (BenefitConfigDTO.PercentageDiscountValue) benefit;
+                subject = isForReferee ? "Your Welcome Discount is Here!" : "A Special Discount For You!";
+                bodyContent = isForReferee
+                        ? String.format("<p>Because you were referred by <strong>%s</strong>, you get a <strong>%.0f%% discount</strong> on your first order!</p>", referrerUser.getFullName(), percValue.getPercentage())
+                        : String.format("<p>Thank you for referring <strong>%s</strong>! As a token of our appreciation, here is a <strong>%.0f%% discount</strong> for your next purchase.</p>", refereeUser.getFullName(), percValue.getPercentage());
+                break;
+
+            case FREE_MEMBERSHIP_DAYS:
+                BenefitConfigDTO.MembershipExtensionValue daysValue = (BenefitConfigDTO.MembershipExtensionValue) benefit;
+                subject = isForReferee ? "Your Membership Just Got an Upgrade!" : "We've Extended Your Membership!";
+                bodyContent = isForReferee
+                        ? String.format("<p>As a welcome gift from <strong>%s</strong>, we've added <strong>%d free days</strong> to your new membership!</p>", referrerUser.getFullName(), daysValue.getDays())
+                        : String.format("<p>Thank you for successfully referring <strong>%s</strong>! We've extended your membership by an additional <strong>%d days</strong>.</p>", refereeUser.getFullName(), daysValue.getDays());
+                break;
+        }
+
+        // Use the enhanced generic email sender for all non-content benefits
+        queueGenericEmail(targetUser, subject, bodyContent, instituteId, referralMapping);
+    }
+
+    /**
+     * A generic helper to queue emails that wraps the message in a full HTML
+     * structure including institute branding.
+     */
+    private void queueGenericEmail(UserDTO targetUser, String subject, String bodyContent, String instituteId, ReferralMapping referralMapping) {
+        Institute institute = instituteRepository.findById(instituteId)
+                .orElseThrow(() -> new IllegalStateException("Institute not found with ID: " + instituteId));
+
+        String logoUrl = mediaService.getFileUrlById(institute.getLogoFileId());
+
+        // Create a full HTML body with a header and footer containing institute details
+        String finalBody = String.format("""
+        <!doctype html>
+        <html>
+        <head>
+          <title>%s</title>
+        </head>
+        <body>
+          <div style="text-align: center; margin-bottom: 20px;">
+            <img src="%s" alt="%s Logo" width="150">
+          </div>
+          <h2>Hi %s,</h2>
+          %s
+          <hr>
+          <div style="text-align: center; margin-top: 20px; font-size: 12px; color: #777;">
+            <p>
+              <strong>%s</strong><br>
+              %s<br>
+              <a href="%s">Visit our website</a>
+            </p>
+          </div>
+        </body>
+        </html>
+        """,
+                subject,
+                logoUrl, institute.getInstituteName(),
+                targetUser.getFullName(),
+                bodyContent,
+                institute.getInstituteName(),
+                institute.getAddress(),
+                institute.getWebsiteUrl()
+        );
+
+        NotificationDTO notificationDTO = new NotificationDTO();
+        notificationDTO.setSubject(subject);
+        notificationDTO.setBody(finalBody);
+        notificationDTO.setNotificationType(CommunicationType.EMAIL.name());
+        notificationDTO.setSource("REFERRAL_BENEFIT");
+        notificationDTO.setSourceId(referralMapping.getId());
+
+        NotificationToUserDTO notificationToUser = new NotificationToUserDTO();
+        notificationToUser.setUserId(targetUser.getId());
+        notificationToUser.setChannelId(targetUser.getEmail());
+        notificationToUser.setPlaceholders(new HashMap<>()); // Body is pre-formatted
+        notificationDTO.setUsers(List.of(notificationToUser));
+
+        try {
+            notificationService.sendEmailToUsers(notificationDTO, instituteId);
+            log.info("Successfully queued generic referral email for user {}.", targetUser.getEmail());
+        } catch (Exception e) {
+            log.error("Failed to send generic referral email to user {}: {}", targetUser.getId(), e.getMessage(), e);
+        }
     }
 }

@@ -11,12 +11,15 @@ import vacademy.io.admin_core_service.features.user_subscription.dto.ReferralBen
 import vacademy.io.admin_core_service.features.user_subscription.entity.ReferralBenefitLogs;
 import vacademy.io.admin_core_service.features.user_subscription.entity.ReferralMapping;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
+import vacademy.io.admin_core_service.features.user_subscription.enums.ReferralBenefitLogsBeneficiary;
 import vacademy.io.admin_core_service.features.user_subscription.enums.ReferralBenefitType;
 import vacademy.io.admin_core_service.features.user_subscription.enums.ReferralStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.handler.AbstractReferralProcessableBenefit;
 import vacademy.io.admin_core_service.features.user_subscription.handler.AbstractReferralProcessableBenefitFactory;
 import vacademy.io.admin_core_service.features.user_subscription.repository.ReferralBenefitLogsRepository;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.exceptions.VacademyException;
+
 
 import java.util.List;
 import java.util.Objects;
@@ -28,14 +31,11 @@ import java.util.stream.Collectors;
 public class ReferralBenefitLogService {
 
     private final ReferralBenefitLogsRepository referralBenefitLogRepository;
+    private final AuthService authService;
+    private final MultiChannelDeliveryService multiChannelDeliveryService;
 
     @Lazy
     private final AbstractReferralProcessableBenefitFactory referralProcessableBenefitFactory;
-
-    @Lazy
-    private final AbstractReferralProcessableBenefit  contentbenefitProcessor;
-
-    private final AuthService authService;
 
     public ReferralBenefitLogs createLog(UserPlan userPlan,
                                          ReferralMapping referralMapping,
@@ -66,24 +66,22 @@ public class ReferralBenefitLogService {
 
     @Transactional
     public void updateStatusAndProcessBenefits(UserPlan userPlan, ReferralMapping referralMapping) {
-        // Fetch users once to avoid multiple DB calls
-        List<UserDTO>users = authService.getUsersFromAuthServiceByUserIds(List.of(referralMapping.getRefereeUserId(),referralMapping.getReferrerUserId()));
-        UserDTO referrer = null;
-        UserDTO referee = null;
-        if(users.get(0).getId().equalsIgnoreCase(referralMapping.getReferrerUserId())){
+        List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(referralMapping.getRefereeUserId(), referralMapping.getReferrerUserId()));
+        UserDTO referrer;
+        UserDTO referee;
+        if (users.get(0).getId().equalsIgnoreCase(referralMapping.getReferrerUserId())) {
             referrer = users.get(0);
             referee = users.get(1);
-        }else{
+        } else {
             referrer = users.get(1);
             referee = users.get(0);
         }
         String instituteId = userPlan.getEnrollInvite().getInstituteId();
 
-        // Find all benefits that were pending for this specific referral
-        List<ReferralBenefitLogs> pendingLogs = referralBenefitLogRepository.findByReferralMappingIdAndStatusIn(referralMapping.getId(),List.of(ReferralStatusEnum.PENDING.name()));
+        List<ReferralBenefitLogs> pendingLogs = referralBenefitLogRepository.findByReferralMappingIdAndStatusIn(referralMapping.getId(), List.of(ReferralStatusEnum.PENDING.name()));
 
         for (ReferralBenefitLogs log : pendingLogs) {
-            processBasedOnBenefitType(log, instituteId, referrer, referee);
+            processBasedOnBenefitType(log, instituteId, referrer, referee, referralMapping);
         }
 
         referralBenefitLogRepository.saveAll(pendingLogs);
@@ -93,32 +91,42 @@ public class ReferralBenefitLogService {
             ReferralBenefitLogs log,
             String instituteId,
             UserDTO referrer,
-            UserDTO referee
+            UserDTO referee,
+            ReferralMapping referralMapping
     ) {
         ReferralBenefitType benefitType;
         try {
             benefitType = ReferralBenefitType.valueOf(log.getBenefitType());
         } catch (IllegalArgumentException | NullPointerException e) {
+            // Log error or handle unknown benefit type
             return;
         }
 
+        boolean isForReferee = log.getBeneficiary().equalsIgnoreCase(ReferralBenefitLogsBeneficiary.REFEREE.name());
+
         switch (benefitType) {
-            case FLAT_DISCOUNT:
-            case PERCENTAGE_DISCOUNT:
-            case POINTS:
-                // These benefits are applied at payment time.
-                // Just mark as ACTIVE since they're already handled.
+            case FLAT_DISCOUNT, PERCENTAGE_DISCOUNT, POINTS -> {
+                // These benefits were pending. Now we activate them and send a notification.
+                Object benefitValue = deserializeBenefitValue(log.getBenefitValue(), benefitType);
+                if (benefitValue != null) {
+                    multiChannelDeliveryService.sendReferralNotification(
+                            referrer,
+                            referee,
+                            benefitValue,
+                            benefitType,
+                            instituteId,
+                            referralMapping,
+                            isForReferee
+                    );
+                }
                 log.setStatus(ReferralStatusEnum.ACTIVE.name());
-                break;
+            }
 
-            case CONTENT:
-            case FREE_MEMBERSHIP_DAYS:
-                // Get processor dynamically based on type
-                AbstractReferralProcessableBenefit contentBenefitProcessor =
-                        referralProcessableBenefitFactory.getProcessor(log.getBenefitType());
-
-                if (contentBenefitProcessor != null) {
-                    contentBenefitProcessor.processPendingBenefit(
+            case CONTENT, FREE_MEMBERSHIP_DAYS -> {
+                // These benefits have their own processing logic which includes sending notifications.
+                AbstractReferralProcessableBenefit processor = referralProcessableBenefitFactory.getProcessor(log.getBenefitType());
+                if (processor != null) {
+                    processor.processPendingBenefit(
                             log.getBenefitValue(),
                             log.getBeneficiary(),
                             log.getReferralMapping(),
@@ -127,40 +135,50 @@ public class ReferralBenefitLogService {
                             instituteId
                     );
                     log.setStatus(ReferralStatusEnum.ACTIVE.name());
+                } else {
+                    throw new VacademyException("No processor found for benefit type " + log.getBenefitType());
                 }
-                break;
-
-            default:
-                break;
+            }
+            default -> {
+                // Handle unknown or unhandled benefit types
+            }
         }
     }
 
-    public List<ReferralBenefitLogs>findByUserIdAndBenefitTypeAndStatusIn(String userId, String benefitType, List<String> statusList){
-        return referralBenefitLogRepository.findByUserIdAndBenefitTypeAndStatusIn(userId,benefitType,statusList);
+    private Object deserializeBenefitValue(String benefitJson, ReferralBenefitType type) {
+        return switch (type) {
+            case POINTS -> JsonUtil.fromJson(benefitJson, BenefitConfigDTO.PointBenefitValue.class);
+            case FLAT_DISCOUNT -> JsonUtil.fromJson(benefitJson, BenefitConfigDTO.FlatDiscountValue.class);
+            case PERCENTAGE_DISCOUNT -> JsonUtil.fromJson(benefitJson, BenefitConfigDTO.PercentageDiscountValue.class);
+            default -> null;
+        };
     }
 
-    public List<ReferralBenefitLogDTO>getReferralBenefitLogsByUserIdAndReferralMappingIdAndBeneficiaryAndStatusInOrderByCreatedAtDesc(String userId, String referralMappingId, String beneficiary, List<String> statusList){
-        return referralBenefitLogRepository.findByUserIdAndReferralMappingIdAndBeneficiaryAndStatusInOrderByCreatedAtDesc(userId,referralMappingId,beneficiary,statusList).stream().map(ReferralBenefitLogs::mapToDTO).collect(Collectors.toList());
+    public List<ReferralBenefitLogs> findByUserIdAndBenefitTypeAndStatusIn(String userId, String benefitType, List<String> statusList) {
+        return referralBenefitLogRepository.findByUserIdAndBenefitTypeAndStatusIn(userId, benefitType, statusList);
     }
 
-    public List<ReferralBenefitLogDTO>getReferralBenefitLogsByUserIdAndReferralMappingIdAndBeneficiaryAndStatusInOrderByCreatedAtDesc(String userId,String beneficiary, List<String> statusList){
-        return referralBenefitLogRepository.findByUserIdAndBeneficiaryAndStatusInOrderByCreatedAtDesc(userId,beneficiary,statusList).stream().map(ReferralBenefitLogs::mapToDTO).collect(Collectors.toList());
+    public List<ReferralBenefitLogDTO> getReferralBenefitLogsByUserIdAndReferralMappingIdAndBeneficiaryAndStatusInOrderByCreatedAtDesc(String userId, String referralMappingId, String beneficiary, List<String> statusList) {
+        return referralBenefitLogRepository.findByUserIdAndReferralMappingIdAndBeneficiaryAndStatusInOrderByCreatedAtDesc(userId, referralMappingId, beneficiary, statusList).stream().map(ReferralBenefitLogs::mapToDTO).collect(Collectors.toList());
     }
 
-    public long getPointsCount(String userId){
-        List<ReferralBenefitLogs>referralBenefitLogs = findByUserIdAndBenefitTypeAndStatusIn(userId,ReferralBenefitType.POINTS.name(),List.of(ReferralStatusEnum.ACTIVE.name()));
+    public List<ReferralBenefitLogDTO> getReferralBenefitLogsByUserIdAndReferralMappingIdAndBeneficiaryAndStatusInOrderByCreatedAtDesc(String userId, String beneficiary, List<String> statusList) {
+        return referralBenefitLogRepository.findByUserIdAndBeneficiaryAndStatusInOrderByCreatedAtDesc(userId, beneficiary, statusList).stream().map(ReferralBenefitLogs::mapToDTO).collect(Collectors.toList());
+    }
+
+    public long getPointsCount(String userId) {
+        List<ReferralBenefitLogs> referralBenefitLogs = findByUserIdAndBenefitTypeAndStatusIn(userId, ReferralBenefitType.POINTS.name(), List.of(ReferralStatusEnum.ACTIVE.name()));
         return getPointsCount(referralBenefitLogs);
     }
+
     private long getPointsCount(List<ReferralBenefitLogs> referralBenefitLogs) {
         if (referralBenefitLogs == null || referralBenefitLogs.isEmpty()) {
             return 0;
         }
-
         return referralBenefitLogs.stream()
                 .map(log -> JsonUtil.fromJson(log.getBenefitValue(), BenefitConfigDTO.PointBenefitValue.class))
-                .filter(Objects::nonNull) // avoid NPE
+                .filter(Objects::nonNull)
                 .mapToLong(BenefitConfigDTO.PointBenefitValue::getPoints)
                 .sum();
     }
-
 }

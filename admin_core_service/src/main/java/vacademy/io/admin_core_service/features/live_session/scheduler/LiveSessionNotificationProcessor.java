@@ -48,11 +48,11 @@ public class LiveSessionNotificationProcessor {
 
     @Transactional
     public void processDueNotifications() {
-        // Use Asia/Kolkata timezone (IST - UTC+5:30)
-        ZoneId kolkataZone = ZoneId.of("Asia/Kolkata");
-        LocalDateTime now = LocalDateTime.now(kolkataZone);
+        // Since trigger times are now stored in UTC, we need to compare with UTC time
+        ZoneId utcZone = ZoneId.of("UTC");
+        LocalDateTime now = LocalDateTime.now(utcZone);
         LocalDateTime windowEnd = now.plusMinutes(15);
-        System.out.println("current time (Asia/Kolkata): " + now);
+        System.out.println("current time (UTC): " + now);
 
         // 1) Mark past-due PENDING notifications as EXPIRED (no send)
         List<ScheduleNotification> pastDue = scheduleNotificationRepository.findPastDue(now.minusMinutes(2));

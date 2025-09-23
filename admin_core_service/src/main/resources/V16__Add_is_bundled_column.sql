@@ -1,2 +1,0 @@
-ALTER TABLE enroll_invite
-ADD COLUMN is_bundled BOOLEAN DEFAULT FALSE;

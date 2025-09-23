@@ -53,6 +53,7 @@ public class LiveSessionNotificationProcessor {
         LocalDateTime now = LocalDateTime.now(utcZone);
         LocalDateTime windowEnd = now.plusMinutes(15);
         System.out.println("current time (UTC): " + now);
+        System.out.println("Current time on server is "+now);
 
         // 1) Mark past-due PENDING notifications as EXPIRED (no send)
         List<ScheduleNotification> pastDue = scheduleNotificationRepository.findPastDue(now.minusMinutes(2));

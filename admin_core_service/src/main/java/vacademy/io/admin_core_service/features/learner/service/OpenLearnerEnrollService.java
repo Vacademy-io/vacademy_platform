@@ -6,6 +6,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.common.enums.CustomFieldValueSourceTypeEnum;
+import vacademy.io.admin_core_service.features.common.service.CustomFieldValueService;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
@@ -42,6 +44,9 @@ public class OpenLearnerEnrollService {
     @Autowired
     private InstituteStudentRepository instituteStudentRepository;
 
+    @Autowired
+    private CustomFieldValueService customFieldValueService;
+
     @Transactional
     public String enrollUserInPackageSession(OpenLearnerEnrollRequestDTO requestDTO, String instituteId) {
         UserDTO user = createOrFetchUser(requestDTO, instituteId);
@@ -49,12 +54,15 @@ public class OpenLearnerEnrollService {
         ensureStudentExists(user);
         validateMapping(requestDTO, user);
         StudentSessionInstituteGroupMapping mapping = buildMapping(requestDTO, user, packageSession, instituteId);
+        if (requestDTO.getCustomFieldValues() != null){
+            customFieldValueService.addCustomFieldValue(requestDTO.getCustomFieldValues(), CustomFieldValueSourceTypeEnum.STUDENT_SESSION_INSTITUTE_GROUP_MAPPING.name(), mapping.getId());
+        }
         mappingRepository.save(mapping);
         return "Success";
     }
 
     private UserDTO createOrFetchUser(OpenLearnerEnrollRequestDTO requestDTO, String instituteId) {
-        return authService.createUserFromAuthService(requestDTO.getUserDTO(), instituteId, true);
+        return authService.createUserFromAuthService(requestDTO.getUserDTO(), instituteId, false);
     }
 
     private PackageSession resolvePackageSession(OpenLearnerEnrollRequestDTO requestDTO) {
@@ -77,29 +85,31 @@ public class OpenLearnerEnrollService {
         String type = requestDTO.getType();
         String typeId = requestDTO.getTypeId();
 
+        String userId = user.getId();
+
         Optional<StudentSessionInstituteGroupMapping> mapping = Optional.empty();
 
         if (StringUtils.hasText(source) && StringUtils.hasText(type) && StringUtils.hasText(typeId)) {
-            mapping = mappingRepository.findBySourceAndTypeIdAndTypeAndStatus(
-                    source, typeId, type, LearnerStatusEnum.INVITED.name());
+            mapping = mappingRepository.findBySourceAndTypeIdAndTypeAndUserIdAndStatus(
+                    source, typeId, type, userId, LearnerStatusEnum.INVITED.name());
         } else if (StringUtils.hasText(source) && StringUtils.hasText(type)) {
-            mapping = mappingRepository.findBySourceAndTypeAndStatus(
-                    source, type, LearnerStatusEnum.INVITED.name());
+            mapping = mappingRepository.findBySourceAndTypeAndUserIdAndStatus(
+                    source, type, userId, LearnerStatusEnum.INVITED.name());
         } else if (StringUtils.hasText(source) && StringUtils.hasText(typeId)) {
-            mapping = mappingRepository.findBySourceAndTypeIdAndStatus(
-                    source, typeId, LearnerStatusEnum.INVITED.name());
+            mapping = mappingRepository.findBySourceAndTypeIdAndUserIdAndStatus(
+                    source, typeId, userId, LearnerStatusEnum.INVITED.name());
         } else if (StringUtils.hasText(type) && StringUtils.hasText(typeId)) {
-            mapping = mappingRepository.findByTypeAndTypeIdAndStatus(
-                    type, typeId, LearnerStatusEnum.INVITED.name());
+            mapping = mappingRepository.findByTypeAndTypeIdAndUserIdAndStatus(
+                    type, typeId, userId, LearnerStatusEnum.INVITED.name());
         } else if (StringUtils.hasText(source)) {
-            mapping = mappingRepository.findBySourceAndStatus(
-                    source, LearnerStatusEnum.INVITED.name());
+            mapping = mappingRepository.findBySourceAndUserIdAndStatus(
+                    source, userId, LearnerStatusEnum.INVITED.name());
         } else if (StringUtils.hasText(type)) {
-            mapping = mappingRepository.findByTypeAndStatus(
-                    type, LearnerStatusEnum.INVITED.name());
+            mapping = mappingRepository.findByTypeAndUserIdAndStatus(
+                    type, userId, LearnerStatusEnum.INVITED.name());
         } else if (StringUtils.hasText(typeId)) {
-            mapping = mappingRepository.findByTypeIdAndStatus(
-                    typeId, LearnerStatusEnum.INVITED.name());
+            mapping = mappingRepository.findByTypeIdAndUserIdAndStatus(
+                    typeId, userId, LearnerStatusEnum.INVITED.name());
         }
 
         if (mapping.isPresent()) {

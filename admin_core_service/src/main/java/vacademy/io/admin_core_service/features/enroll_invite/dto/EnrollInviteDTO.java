@@ -24,6 +24,7 @@ public class EnrollInviteDTO {
     private String tag;
     private Integer learnerAccessDays;
     private String webPageMetaDataJson;
+    private Boolean isBundled;
     private List<InstituteCustomFieldDTO> instituteCustomFields;
     private List<PackageSessionToPaymentOptionDTO> packageSessionToPaymentOptions;
 }

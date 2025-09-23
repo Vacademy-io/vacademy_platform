@@ -15,6 +15,7 @@ import vacademy.io.admin_core_service.features.user_subscription.entity.Referral
 import vacademy.io.admin_core_service.features.user_subscription.enums.ReferralBenefitLogsBeneficiary;
 import vacademy.io.admin_core_service.features.user_subscription.enums.ReferralBenefitType;
 import vacademy.io.admin_core_service.features.user_subscription.enums.ReferralStatusEnum;
+import vacademy.io.admin_core_service.features.user_subscription.service.MultiChannelDeliveryService;
 import vacademy.io.admin_core_service.features.user_subscription.service.ReferralBenefitLogService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
@@ -34,6 +35,8 @@ public class RewardPointBenefitHandler implements ReferralBenefitHandler {
     @Autowired
     @Lazy
     private ReferralBenefitHandlerFactory benefitHandlerFactory;
+    @Autowired
+    private MultiChannelDeliveryService multiChannelDeliveryService;
 
     @Override
     public void processBenefit(LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
@@ -50,7 +53,6 @@ public class RewardPointBenefitHandler implements ReferralBenefitHandler {
             BenefitConfigDTO.PointBenefitValue pointValue = objectMapper.convertValue(benefitDTO.getValue(), BenefitConfigDTO.PointBenefitValue.class);
             UserDTO targetUser = beneficiary.equalsIgnoreCase(ReferralBenefitLogsBeneficiary.REFEREE.name()) ? refereeUser : referrer;
 
-            // Step 1: Log the points being awarded in this transaction.
             referralBenefitLogService.createLog(
                     referralMapping.getUserPlan(),
                     referralMapping,
@@ -61,6 +63,18 @@ public class RewardPointBenefitHandler implements ReferralBenefitHandler {
                     status
             );
 
+            if (status.equalsIgnoreCase(ReferralStatusEnum.ACTIVE.name())) {
+                boolean isForReferee = beneficiary.equalsIgnoreCase(ReferralBenefitLogsBeneficiary.REFEREE.name());
+                multiChannelDeliveryService.sendReferralNotification(
+                        referrer,
+                        refereeUser,
+                        pointValue,
+                        ReferralBenefitType.POINTS,
+                        instituteId,
+                        referralMapping,
+                        isForReferee
+                );
+            }
 
             checkAndProcessPointTriggers(targetUser, benefitDTO, learnerPackageSessionsEnrollDTO, referralOption, paymentOption, referralMapping, refereeUser, referrer, instituteId, beneficiary, status);
 
@@ -69,9 +83,6 @@ public class RewardPointBenefitHandler implements ReferralBenefitHandler {
         }
     }
 
-    /**
-     * Checks if awarding points has unlocked new benefits for the user.
-     */
     private void checkAndProcessPointTriggers(UserDTO targetUser,
                                               BenefitConfigDTO.BenefitDTO currentBenefit,
                                               LearnerPackageSessionsEnrollDTO enrollDTO,
@@ -85,30 +96,24 @@ public class RewardPointBenefitHandler implements ReferralBenefitHandler {
                                               String status) {
 
         if (currentBenefit.getPointTriggers() == null || currentBenefit.getPointTriggers().isEmpty()) {
-            return; // No triggers to check for.
+            return;
         }
 
-        // Calculate user's total points *before* this transaction.
         List<ReferralBenefitLogs> previousPointLogs = referralBenefitLogService.findByUserIdAndBenefitTypeAndStatusIn(targetUser.getId(),ReferralBenefitType.POINTS.name(), List.of(ReferralStatusEnum.ACTIVE.name()));
         long pointsBefore = getPointsCount(previousPointLogs);
 
-        // Calculate user's total points *after* this transaction.
         BenefitConfigDTO.PointBenefitValue newPoints = new BenefitConfigDTO.PointBenefitValue(0);
-        if (status.equalsIgnoreCase(ReferralStatusEnum.PENDING.name())){
+        if (status.equalsIgnoreCase(ReferralStatusEnum.ACTIVE.name())){
             newPoints = (BenefitConfigDTO.PointBenefitValue) currentBenefit.getValue();
         }
         long pointsAfter = pointsBefore + newPoints.getPoints();
 
         log.info("User {} has {} total points after this transaction (previously {}). Checking triggers.", targetUser.getId(), pointsAfter, pointsBefore);
 
-        // Check each trigger defined in the benefit.
         for (BenefitConfigDTO.PointTriggerDTO trigger : currentBenefit.getPointTriggers()) {
-            // The user qualifies if their new total meets the requirement AND their old total did not.
-            // This prevents rewards from being awarded multiple times.
             if (pointsAfter >= trigger.getPointsRequired()) {
                 log.info("User {} has met the trigger for {} points! Processing newly unlocked benefits.", targetUser.getId(), trigger.getPointsRequired());
 
-                // Process each of the newly unlocked benefits using the appropriate handler.
                 for (BenefitConfigDTO.BenefitDTO triggeredBenefit : trigger.getBenefits()) {
                     try {
                         ReferralBenefitHandler processor = benefitHandlerFactory.getProcessor(triggeredBenefit);
@@ -121,9 +126,6 @@ public class RewardPointBenefitHandler implements ReferralBenefitHandler {
         }
     }
 
-    /**
-     * Safely calculates the total points from a list of benefit logs.
-     */
     private long getPointsCount(List<ReferralBenefitLogs> referralBenefitLogs) {
         if (referralBenefitLogs == null || referralBenefitLogs.isEmpty()) {
             return 0;

@@ -49,21 +49,20 @@ public class ContentBenefitProcessor extends AbstractReferralProcessableBenefit 
                                String status) {
         try {
             BenefitConfigDTO.ContentBenefitValue contentValue = objectMapper.convertValue(benefitDTO.getValue(), BenefitConfigDTO.ContentBenefitValue.class);
-            List<FileDetailsDTO> fileDetails = new ArrayList<>();
-            if (contentValue.getFileIds() != null && !contentValue.getFileIds().isEmpty()) {
-                fileDetails = mediaService.getFilesByIds(contentValue.getFileIds());
-            }
-            // If the referral is immediately active, deliver the content now.
+
+            // If the referral is immediately active, deliver the content now using the new robust method.
             if (status.equalsIgnoreCase(ReferralStatusEnum.ACTIVE.name())) {
                 boolean isForReferee = beneficiary.equalsIgnoreCase(ReferralBenefitLogsBeneficiary.REFEREE.name());
-                multiChannelDeliveryService.deliverContent(
-                        contentValue,
+
+                // Call the new unified notification method
+                multiChannelDeliveryService.sendReferralNotification(
                         referrer,
                         refereeUser,
+                        contentValue,
+                        ReferralBenefitType.CONTENT,
                         instituteId,
-                        fileDetails, // Assuming file details would be fetched if needed
-                        isForReferee,
-                        referralMapping
+                        referralMapping,
+                        isForReferee
                 );
             }
 
@@ -92,23 +91,17 @@ public class ContentBenefitProcessor extends AbstractReferralProcessableBenefit 
             // Deserialize the benefit value from the log
             BenefitConfigDTO.ContentBenefitValue contentValue = objectMapper.readValue(benefitJson, BenefitConfigDTO.ContentBenefitValue.class);
 
-            // Fetch any associated files
-            List<FileDetailsDTO> fileDetails = new ArrayList<>();
-            if (contentValue.getFileIds() != null && !contentValue.getFileIds().isEmpty()) {
-                fileDetails = mediaService.getFilesByIds(contentValue.getFileIds());
-            }
-
             boolean isForReferee = beneficiary.equalsIgnoreCase(ReferralBenefitLogsBeneficiary.REFEREE.name());
 
-            // Deliver the content now that the benefit is active
-            multiChannelDeliveryService.deliverContent(
-                    contentValue,
+            // Deliver the content now that the benefit is active using the new robust method
+            multiChannelDeliveryService.sendReferralNotification(
                     referrer,
                     referee,
+                    contentValue,
+                    ReferralBenefitType.CONTENT,
                     instituteId,
-                    fileDetails,
-                    isForReferee,
-                    referralMapping
+                    referralMapping,
+                    isForReferee
             );
         } catch (Exception e) {
             throw new RuntimeException("Failed to process pending content benefit", e);

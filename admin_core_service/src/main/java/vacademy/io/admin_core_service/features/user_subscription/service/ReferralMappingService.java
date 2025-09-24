@@ -176,4 +176,8 @@ public class ReferralMappingService {
     private List<UserDTO> getUsersFromAuthServiceByUserIds(List<String> userIds) {
         return authService.getUsersFromAuthServiceByUserIds(userIds);
     }
+
+    public long countActiveReferralsByReferrerUserId(String referrerUserId) {
+        return referralMappingRepository.countByReferrerUserIdAndStatusList(referrerUserId,List.of(ReferralStatusEnum.ACTIVE.name()));
+    }
 }

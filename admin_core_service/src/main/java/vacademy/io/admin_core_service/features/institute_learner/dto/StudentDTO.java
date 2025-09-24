@@ -54,6 +54,7 @@ public class StudentDTO {
 
     // 🔑 Dynamic custom fields (fieldKey -> value)
     private Map<String, String> customFields = new HashMap<>();
+    private Long referralCount;
 
     // Constructor that takes a Student entity
     public StudentDTO(Student student) {

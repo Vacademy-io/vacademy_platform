@@ -21,7 +21,7 @@ public class LiveSessionNotificationQuartzConfig {
                 .forJob(liveSessionNotificationJobDetail)
                 .withIdentity("liveSessionNotificationTrigger")
                 .withSchedule(SimpleScheduleBuilder.simpleSchedule()
-                        .withIntervalInMinutes(15)
+                        .withIntervalInMinutes(3)
                         .repeatForever())
                 .build();
     }

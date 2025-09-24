@@ -51,7 +51,7 @@ public class LiveSessionNotificationProcessor {
         // Since trigger times are now stored in UTC, we need to compare with UTC time
         ZoneId utcZone = ZoneId.of("UTC");
         LocalDateTime now = LocalDateTime.now(utcZone);
-        LocalDateTime windowEnd = now.plusMinutes(3);
+        LocalDateTime windowEnd = now.plusMinutes(15);
         System.out.println("current time (UTC): " + now);
         System.out.println("Current time on server is "+now);
 

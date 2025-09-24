@@ -2,15 +2,33 @@ import { useState, useRef, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Mail, ArrowRight, ArrowLeft, RefreshCw, CheckCircle2 } from "lucide-react";
+import {
+  Loader2,
+  Mail,
+  ArrowRight,
+  ArrowLeft,
+  RefreshCw,
+  CheckCircle2,
+} from "lucide-react";
 import { motion } from "framer-motion";
 import { SignupSettings } from "@/config/signup/defaultSignupSettings";
 import { toast } from "sonner";
 import axios from "axios";
-import { LIVE_SESSION_REQUEST_OTP, LIVE_SESSION_VERIFY_OTP } from "@/constants/urls";
+import {
+  LIVE_SESSION_REQUEST_OTP,
+  LIVE_SESSION_VERIFY_OTP,
+} from "@/constants/urls";
+import { useDomainRouting } from "@/hooks/use-domain-routing";
 
 interface EmailOtpFormData {
   email: string;
@@ -34,13 +52,18 @@ interface EmailOtpFormProps {
 }
 
 // Dynamic schema based on signup mode
-const createEmailOtpSchema = (signupMode: "direct" | "askCredentials", hideFullName: boolean = false) => {
+const createEmailOtpSchema = (
+  signupMode: "direct" | "askCredentials",
+  hideFullName: boolean = false
+) => {
   const baseSchema: any = {
     email: z.string().email("Please enter a valid email address"),
   };
 
   if (!hideFullName) {
-    baseSchema.fullName = z.string().min(2, "Full name must be at least 2 characters");
+    baseSchema.fullName = z
+      .string()
+      .min(2, "Full name must be at least 2 characters");
   }
 
   return z.object(baseSchema);
@@ -55,9 +78,11 @@ export function EmailOtpForm({
   className = "",
   isOAuth = false,
   hideFullName = false,
-  privateEmailMessage = ""
+  privateEmailMessage = "",
 }: EmailOtpFormProps) {
-  const [currentStep, setCurrentStep] = useState<"form" | "otp" | "verifying">("form");
+  const [currentStep, setCurrentStep] = useState<"form" | "otp" | "verifying">(
+    "form"
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isOtpSent, setIsOtpSent] = useState(false);
   const [timer, setTimer] = useState(0);
@@ -65,8 +90,12 @@ export function EmailOtpForm({
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [formData, setFormData] = useState<EmailOtpFormData | null>(null);
   const [otpValues, setOtpValues] = useState<string[]>(Array(6).fill(""));
+  const domainRouting = useDomainRouting();
 
-  const schema = createEmailOtpSchema(settings.emailOtpSignupMode, hideFullName);
+  const schema = createEmailOtpSchema(
+    settings.emailOtpSignupMode,
+    hideFullName
+  );
   const form = useForm<EmailOtpFormData>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -76,9 +105,14 @@ export function EmailOtpForm({
   });
 
   const otpForm = useForm<OtpFormData>({
-    resolver: zodResolver(z.object({
-      otp: z.array(z.string()).length(6).transform((val) => val.join("")),
-    })),
+    resolver: zodResolver(
+      z.object({
+        otp: z
+          .array(z.string())
+          .length(6)
+          .transform((val) => val.join("")),
+      })
+    ),
     defaultValues: {
       otp: Array(6).fill(""),
     },
@@ -109,16 +143,22 @@ export function EmailOtpForm({
 
   const handleEmailSubmit = async (data: EmailOtpFormData) => {
     try {
+      const instituteId = domainRouting?.instituteId;
       setIsSubmitting(true);
-      
       // Send OTP
-      await axios.post(LIVE_SESSION_REQUEST_OTP, {
-        to: data.email.trim(),
-        subject: "Email Verification",
-        service: "signup",
-        name: data.fullName || initialFullName || "User", // Use initialFullName if fullName not provided
-        otp: "",
-      });
+      await axios.post(
+        LIVE_SESSION_REQUEST_OTP,
+        {
+          to: data.email.trim(),
+          subject: "Email Verification",
+          service: "signup",
+          name: data.fullName || initialFullName || "User", // Use initialFullName if fullName not provided
+          otp: "",
+        },
+        {
+          params: { instituteId },
+        }
+      );
 
       setFormData(data);
       setIsOtpSent(true);
@@ -142,7 +182,7 @@ export function EmailOtpForm({
 
     try {
       setCurrentStep("verifying");
-      
+
       // Use local OTP state instead of form state
       const otpString = otpValues.join("");
 
@@ -174,13 +214,21 @@ export function EmailOtpForm({
     if (!formData || timer > 0) return;
 
     try {
-      await axios.post(LIVE_SESSION_REQUEST_OTP, {
-        to: formData.email.trim(),
-        subject: "Email Verification",
-        service: "signup",
-        name: formData.fullName || initialFullName || "User", // Use initialFullName if fullName not provided
-        otp: "",
-      });
+      const instituteId = domainRouting?.instituteId;
+
+      await axios.post(
+        LIVE_SESSION_REQUEST_OTP,
+        {
+          to: formData.email.trim(),
+          subject: "Email Verification",
+          service: "signup",
+          name: formData.fullName || initialFullName || "User", // Use initialFullName if fullName not provided
+          otp: "",
+        },
+        {
+          params: { instituteId },
+        }
+      );
 
       startTimer();
       toast.success("OTP resent successfully");
@@ -194,12 +242,12 @@ export function EmailOtpForm({
     if (value.length > 1) {
       value = value[0];
     }
-    
+
     // Update local state
     const newOtpValues = [...otpValues];
     newOtpValues[index] = value;
     setOtpValues(newOtpValues);
-    
+
     // Also update form state for compatibility
     otpForm.setValue("otp", newOtpValues);
 
@@ -209,7 +257,10 @@ export function EmailOtpForm({
     }
   };
 
-  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (
+    index: number,
+    e: React.KeyboardEvent<HTMLInputElement>
+  ) => {
     if (e.key === "Backspace") {
       if (!e.currentTarget.value && index > 0) {
         // If current field is empty and backspace is pressed, go to previous field
@@ -226,15 +277,20 @@ export function EmailOtpForm({
 
   const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault();
-    const pastedData = e.clipboardData.getData("text/plain").replace(/\D/g, "").slice(0, 6);
-    
+    const pastedData = e.clipboardData
+      .getData("text/plain")
+      .replace(/\D/g, "")
+      .slice(0, 6);
+
     if (pastedData.length > 0) {
       // Create OTP array with pasted data + empty strings for remaining slots
-      const otpArray = pastedData.split("").concat(Array(6 - pastedData.length).fill(""));
-      
+      const otpArray = pastedData
+        .split("")
+        .concat(Array(6 - pastedData.length).fill(""));
+
       setOtpValues(otpArray);
       otpForm.setValue("otp", otpArray);
-      
+
       // Focus the next empty input or the last input
       const nextIndex = Math.min(pastedData.length, 5);
       if (otpInputRefs.current[nextIndex]) {
@@ -243,9 +299,9 @@ export function EmailOtpForm({
         // If nextIndex is out of bounds, focus the last input
         otpInputRefs.current[5]?.focus();
       }
-      
+
       // Show success message
-                  // OTP pasted successfully - no need to show toast
+      // OTP pasted successfully - no need to show toast
     }
   };
 
@@ -262,27 +318,41 @@ export function EmailOtpForm({
             {isOAuth ? "Verify Your Email" : "Create Your Account"}
           </h3>
           <p className="text-sm text-gray-600">
-            {isOAuth 
+            {isOAuth
               ? "Please verify your email to complete the signup process"
-              : "Enter your details to get started"
-            }
+              : "Enter your details to get started"}
           </p>
         </div>
 
         {/* Email Form */}
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleEmailSubmit)} className="space-y-4">
+          <form
+            onSubmit={form.handleSubmit(handleEmailSubmit)}
+            className="space-y-4"
+          >
             {/* Private Email Message */}
             {hideFullName && privateEmailMessage && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                 <div className="flex items-start space-x-3">
                   <div className="flex-shrink-0">
-                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <svg
+                      className="w-5 h-5 text-blue-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
                     </svg>
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm text-blue-800">{privateEmailMessage}</p>
+                    <p className="text-sm text-blue-800">
+                      {privateEmailMessage}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -378,9 +448,12 @@ export function EmailOtpForm({
           <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <Mail className="w-8 h-8 text-blue-600" />
           </div>
-          <h3 className="text-xl font-semibold text-gray-900">Verify Your Email</h3>
+          <h3 className="text-xl font-semibold text-gray-900">
+            Verify Your Email
+          </h3>
           <p className="text-sm text-gray-600">
-            We've sent a 6-digit code to <span className="font-medium">{formData?.email}</span>
+            We've sent a 6-digit code to{" "}
+            <span className="font-medium">{formData?.email}</span>
           </p>
         </div>
 

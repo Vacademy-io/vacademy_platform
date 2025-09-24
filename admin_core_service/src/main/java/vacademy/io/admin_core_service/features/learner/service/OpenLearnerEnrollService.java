@@ -54,10 +54,10 @@ public class OpenLearnerEnrollService {
         ensureStudentExists(user);
         validateMapping(requestDTO, user);
         StudentSessionInstituteGroupMapping mapping = buildMapping(requestDTO, user, packageSession, instituteId);
+        mapping = mappingRepository.save(mapping);
         if (requestDTO.getCustomFieldValues() != null){
             customFieldValueService.addCustomFieldValue(requestDTO.getCustomFieldValues(), CustomFieldValueSourceTypeEnum.STUDENT_SESSION_INSTITUTE_GROUP_MAPPING.name(), mapping.getId());
         }
-        mappingRepository.save(mapping);
         return "Success";
     }
 

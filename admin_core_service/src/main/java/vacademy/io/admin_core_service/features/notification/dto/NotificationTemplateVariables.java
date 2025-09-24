@@ -76,15 +76,15 @@ public class NotificationTemplateVariables {
                 .instituteName(institute.getInstituteName())
                 .instituteId(institute.getId())
 
-                // Payment details
-                .paymentType(paymentOption.getType())
+
+                .paymentType(paymentOption != null ? paymentOption.getType() : "ENROLLMENT")
                 .paymentAmount("0") // PaymentOption doesn't have amount field, get from PaymentPlan if needed
                 .paymentStatus("PENDING") // Default status
 
                 // Enroll invite details
-                .enrollInviteCode(enrollInvite.getInviteCode())
-                .enrollInviteExpiryDate(enrollInvite.getEndDate() != null ? 
-                    enrollInvite.getEndDate().toString() : "")
+                .enrollInviteCode(enrollInvite != null ? enrollInvite.getInviteCode() : "")
+                .enrollInviteExpiryDate(enrollInvite != null && enrollInvite.getEndDate() != null ?
+                        enrollInvite.getEndDate().toString() : "")
 
                 // Additional context
                 .packageSessionId(packageSessionId)

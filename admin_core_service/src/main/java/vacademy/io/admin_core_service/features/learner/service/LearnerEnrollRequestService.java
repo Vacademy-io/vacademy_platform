@@ -96,19 +96,6 @@ public class LearnerEnrollRequestService {
             userPlan
         );
     }
-    public void test(String instituteId,UserDTO user){
-        try{
-            System.out.println("send email");
-            service.sendUniqueLinkByEmail(instituteId, user, TemplateConstants.PAID_USER_EMAIL_TEMPLATE);
-//        service.sendUniqueLinkByWhatsApp(instituteId, user,TemplateConstants.PAID_USER_WHATSAPP_TEMPLATE);
-        }
-        catch (Exception e){
-            log.error("ERROR: " +e.getMessage());
-        }
-    }
-    /**
-     * Send dynamic notification for learner enrollment
-     */
     private void sendDynamicNotificationForEnrollment(
             String instituteId, 
             UserDTO user, 

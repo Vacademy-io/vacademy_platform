@@ -2,11 +2,17 @@ import { useEffect, useState, useCallback } from "react";
 import { useSessionCustomFields } from "../-hooks/useGetRegistrationFormData";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { toast } from "sonner";
-import { transformToGuestRegistrationDTO } from "../-utils/helper";
+import {
+  transformToCollectPublicUserDataDTO,
+  transformToGuestRegistrationDTO,
+} from "../-utils/helper";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { AccessLevel } from "../-types/enum";
 import { RegistrationFormValues } from "../-types/type";
-import { useLiveSessionGuestRegistration } from "../-hooks/useLiveSessionGuestRegistration";
+import {
+  useCollectPublicUserData,
+  useLiveSessionGuestRegistration,
+} from "../-hooks/useLiveSessionGuestRegistration";
 import { useEarliestScheduleId } from "../-hooks/useEarliestScheduleId";
 import { fetchSessionDetails } from "@/routes/live-class-guest/-hooks/useSessionDetails";
 import { SessionDetailsResponse } from "@/routes/study-library/live-class/-types/types";
@@ -38,6 +44,7 @@ export default function LiveClassRegistrationPage() {
   );
   const [registrationResponse, setRegistrationResponse] = useState<string>("");
   const { mutateAsync: registerGuestUser } = useLiveSessionGuestRegistration();
+  const { mutateAsync: collectPublicUserData } = useCollectPublicUserData();
   const [verifiedEmail, setVerifiedEmail] = useState<string>("");
   const [isUserAlreadyRegistered, setIsUserAlreadyRegistered] =
     useState<boolean>(false);
@@ -79,9 +86,16 @@ export default function LiveClassRegistrationPage() {
 
   const onSubmit = async (formValues: RegistrationFormValues) => {
     let payload;
+    let userPayload;
     const email = String(formValues.email);
     try {
       payload = transformToGuestRegistrationDTO(
+        formValues,
+        data?.sessionId || "",
+        data?.customFields || []
+      );
+
+      userPayload = transformToCollectPublicUserDataDTO(
         formValues,
         data?.sessionId || "",
         data?.customFields || []
@@ -93,16 +107,22 @@ export default function LiveClassRegistrationPage() {
     }
 
     try {
-      const response = await registerGuestUser(payload);
-      setRegistrationResponse(response);
-      if (response) {
+      const [registerResponse, collectResponse] = await Promise.all([
+        registerGuestUser(payload),
+        collectPublicUserData({
+          payload: userPayload,
+          instituteId: data?.instituteId || "",
+        }),
+      ]);
+      setRegistrationResponse(registerResponse);
+      if (registerResponse) {
         await Storage.set({
           key: "live-session-email",
           value: email,
         });
         await Storage.set({
           key: "live-session-guestId",
-          value: response,
+          value: registerResponse,
         });
         toast.success("Registration successful");
 
@@ -113,12 +133,15 @@ export default function LiveClassRegistrationPage() {
         if (sessionDetailResponse) {
           await handlePostRegistrationNavigation(
             sessionDetailResponse,
-            response
+            registerResponse
           );
           setSessionDetails(sessionDetailResponse);
           setIsUserAlreadyRegistered(true);
           setAlreadyRegisteredEmail(email);
         }
+      }
+      if (collectResponse) {
+        console.log("Public user data collected successfully");
       }
     } catch (error: unknown) {
       console.error("Registration API call failed:", error);

@@ -195,13 +195,7 @@ public class DynamicNotificationService {
                     NotificationSourceType.INSTITUTE, 
                     instituteId);
 
-            // If no institute-specific config found, look for global configs
-            if (configs.isEmpty()) {
-                configs = configRepository.findByEventAndSourceType(
-                        NotificationEventType.REFERRAL_INVITATION, 
-                        NotificationSourceType.INSTITUTE);
-            }
-
+            // If no institute-specific config found then return
             if (configs.isEmpty()) {
                 log.info("No referral invitation notification configurations found for institute: {}", instituteId);
                 return;

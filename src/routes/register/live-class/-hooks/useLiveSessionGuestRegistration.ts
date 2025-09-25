@@ -1,8 +1,14 @@
 import { useMutation } from "@tanstack/react-query";
 import axios, { AxiosError } from "axios";
 import { toast } from "sonner";
-import { LIVE_SESSION_REGISTER_GUEST_USER } from "@/constants/urls";
-import { GuestRegistrationRequestDTO } from "../-utils/helper";
+import {
+  COLLECT_PUBLIC_USER_DATA,
+  LIVE_SESSION_REGISTER_GUEST_USER,
+} from "@/constants/urls";
+import {
+  CollectPublicUserDataDTO,
+  GuestRegistrationRequestDTO,
+} from "../-utils/helper";
 
 interface ErrorResponse {
   message: string;
@@ -34,6 +40,27 @@ export const useLiveSessionGuestRegistration = () => {
       }
 
       toast.error(error.response?.data?.message || "Registration failed");
+    },
+  });
+};
+
+export const useCollectPublicUserData = () => {
+  return useMutation({
+    mutationFn: async ({
+      payload,
+      instituteId,
+    }: {
+      payload: CollectPublicUserDataDTO;
+      instituteId: string;
+    }) => {
+      const response = await axios.post(COLLECT_PUBLIC_USER_DATA, payload, {
+        params: { instituteId },
+      });
+      return response.data;
+    },
+    onError: (error: AxiosError<ErrorResponse>) => {
+      console.error("Collecting public user data failed:", error);
+      toast.error(error.response?.data?.message || "Operation failed");
     },
   });
 };

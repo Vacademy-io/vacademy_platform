@@ -167,13 +167,19 @@ export function OtpVerificationForm({
       const fullNameToUse =
         settings?.usernameStrategy === "email" ? email : fullName || "User";
 
-      await axios.post(LIVE_SESSION_REQUEST_OTP, {
-        to: email,
-        subject: "Email Verification",
-        service: "signup",
-        name: fullNameToUse,
-        otp: "",
-      });
+      await axios.post(
+        LIVE_SESSION_REQUEST_OTP,
+        {
+          to: email,
+          subject: "Email Verification",
+          service: "signup",
+          name: fullNameToUse,
+          otp: "",
+        },
+        {
+          params: { instituteId },
+        }
+      );
 
       startTimer();
       toast.success("OTP resent successfully");

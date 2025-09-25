@@ -89,7 +89,8 @@ const EnrollByInvite = () => {
   const { data: instituteData, isLoading: isInstituteLoading } =
     useSuspenseQuery(handleGetPublicInstituteDetails({ instituteId }));
 
-  const { getDetailsFromPackageSessionId } = useInstituteDetailsStore();
+  const { getDetailsFromPackageSessionId, setInstituteDetails } =
+    useInstituteDetailsStore();
 
   const { data: inviteData, isLoading } = useSuspenseQuery(
     handleGetEnrollInviteData({ instituteId, inviteCode })
@@ -525,6 +526,12 @@ const EnrollByInvite = () => {
         );
     }
   };
+
+  useEffect(() => {
+    if (instituteData) {
+      setInstituteDetails(instituteData);
+    }
+  }, [instituteData, setInstituteDetails]);
 
   if (isLoading || isInstituteLoading) return <DashboardLoader />;
 

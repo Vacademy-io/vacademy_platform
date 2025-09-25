@@ -44,6 +44,18 @@ public interface NotificationEventConfigRepository extends JpaRepository<Notific
     );
 
     /**
+     * Find notification configs by event name and source type (for global configs)
+     */
+    @Query("SELECT nec FROM NotificationEventConfig nec " +
+           "WHERE nec.eventName = :eventName " +
+           "AND nec.sourceType = :sourceType " +
+           "AND nec.isActive = true")
+    List<NotificationEventConfig> findByEventAndSourceType(
+            @Param("eventName") NotificationEventType eventName,
+            @Param("sourceType") NotificationSourceType sourceType
+    );
+
+    /**
      * Check if config exists for specific event and source
      */
     @Query("SELECT COUNT(nec) > 0 FROM NotificationEventConfig nec " +

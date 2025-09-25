@@ -157,6 +157,7 @@ export const SessionLoginForm: React.FC<SessionLoginFormProps> = ({
       });
 
       if (response.data.accessToken) {
+        toast.success("OTP verified successfully!");
         // Store tokens
         await setTokenInStorage(
           TokenKey.accessToken,
@@ -168,20 +169,28 @@ export const SessionLoginForm: React.FC<SessionLoginFormProps> = ({
         );
 
         // Decode token to get user data
-        const decodedData = getTokenDecodedData(response.data.accessToken);
-        const userId = decodedData?.user;
+        const tokenData = getTokenDecodedData(response.data.accessToken);
+        const userId = tokenData?.user;
 
-        if (userId) {
-          // Parallel execution of post-login tasks
-          await Promise.all([
-            getStudentDisplaySettings(true),
-            fetchAndStoreInstituteDetails(instituteId, userId),
-            fetchAndStoreStudentDetails(userId, instituteId),
-          ]);
+        if (instituteId && userId) {
+          identifyUser(userId, {
+            username: tokenData?.username,
+            email: tokenData?.email,
+          });
 
-          // Identify user for analytics
-          if (decodedData?.user) {
-            identifyUser(decodedData.user);
+          try {
+            // Fetch and store institute details
+            await fetchAndStoreInstituteDetails(instituteId, userId);
+            getStudentDisplaySettings(true);
+          } catch (error) {
+            console.error("Error fetching institute details:", error);
+            toast.error("Failed to fetch institute details");
+          }
+
+          try {
+            await fetchAndStoreStudentDetails(instituteId, userId);
+          } catch {
+            toast.error("Failed to fetch student details");
           }
 
           toast.success("Login successful! Redirecting...", {
@@ -197,7 +206,8 @@ export const SessionLoginForm: React.FC<SessionLoginFormProps> = ({
           // Call success callback
           onLoginSuccess();
         } else {
-          throw new Error("Failed to get user ID from token");
+          toast.error("Invalid user data received");
+          throw new Error("Invalid user data received");
         }
       } else {
         toast.error("Login failed. Please try again.");

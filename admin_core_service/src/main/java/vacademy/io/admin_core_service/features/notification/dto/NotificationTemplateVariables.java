@@ -45,6 +45,15 @@ public class NotificationTemplateVariables {
     private String packageSessionId;
     private String levelName;
     private String sessionName;
+    
+    // Learner invitation response link
+    private String learnerInvitationResponseLink;
+    
+    // Referral template variables
+    private String name; // User's name for greeting
+    private String referralLink; // The referral link (same as learnerInvitationResponseLink)
+    private String inviteCode; // The invite code
+    private String themeColor; // Theme color from institute
 
     /**
      * Factory method to create variables from entities
@@ -90,6 +99,15 @@ public class NotificationTemplateVariables {
                 .packageSessionId(packageSessionId)
                 .levelName(levelName)
                 .sessionName(sessionName)
+                
+                // Learner invitation response link (will be set separately)
+                .learnerInvitationResponseLink("")
+                
+                // Referral template variables (will be set separately)
+                .name("")
+                .referralLink("")
+                .inviteCode("")
+                .themeColor("#FF9800") // Default orange color
                 .build();
     }
 }

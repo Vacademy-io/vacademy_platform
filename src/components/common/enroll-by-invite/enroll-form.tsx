@@ -419,6 +419,7 @@ const EnrollByInvite = () => {
           <RegistrationStep
             courseData={courseData}
             inviteData={inviteData}
+            instituteId={instituteId}
             onSubmit={onSubmit}
             form={form}
           />
@@ -520,6 +521,7 @@ const EnrollByInvite = () => {
           <RegistrationStep
             courseData={courseData}
             inviteData={inviteData}
+            instituteId={instituteId}
             onSubmit={onSubmit}
             form={form}
           />

@@ -11,6 +11,10 @@ import { Calendar, CreditCard, Globe } from "phosphor-react";
 import { getDefaultPlanFromPaymentsData, PaymentPlan } from "../-utils/helper";
 import { SubscriptionPlanSection } from "./subscription-plan-sections";
 import { OneTimePlanSection } from "./onetime-plan-section";
+import { useState } from "react";
+import { toast } from "sonner";
+import { REQUEST_OTP, LOGIN_OTP } from "@/constants/urls";
+import axios from "axios";
 
 // Course data interface
 export interface FinalCourseData {
@@ -74,6 +78,8 @@ export interface RegistrationStepProps {
   courseData: FinalCourseData;
   /** Invite data containing custom field configurations */
   inviteData: InviteData | null;
+  /** Institute ID for OTP verification */
+  instituteId: string;
   /** Callback function called when form is submitted */
   onSubmit: (values: FormValues) => void;
   /** React Hook Form instance */
@@ -120,14 +126,104 @@ export const getAllUniqueFeatures = (
 const RegistrationStep = ({
   courseData,
   inviteData,
+  instituteId,
   onSubmit,
   form,
 }: RegistrationStepProps) => {
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  const [otp, setOtp] = useState("");
+  const [isLoadingOtp, setIsLoadingOtp] = useState(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+
   const planInfo =
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-expect-error
     inviteData?.package_session_to_payment_options?.[0]?.payment_option;
   const selectedPlan = getDefaultPlanFromPaymentsData(planInfo);
+
+  // Send OTP for email verification
+  const handleSendOTP = async () => {
+    const email = form.getValues("email")?.value;
+    if (!email) {
+      toast.error("Please enter your email address");
+      return;
+    }
+
+    setIsLoadingOtp(true);
+    try {
+      await axios.post(
+        REQUEST_OTP,
+        {
+          institute_id: instituteId,
+          email: email,
+        },
+        {
+          headers: {
+            accept: "*/*",
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      setOtpSent(true);
+      toast.success("OTP sent to your email");
+    } catch (error) {
+      toast.error("Failed to send OTP. Please try again");
+      console.error("Send OTP Error:", error);
+    } finally {
+      setIsLoadingOtp(false);
+    }
+  };
+
+  // Verify OTP
+  const handleVerifyOTP = async () => {
+    if (!otp.trim()) {
+      toast.error("Please enter the OTP");
+      return;
+    }
+
+    const email = form.getValues("email")?.value;
+    setIsVerifyingOtp(true);
+    try {
+      await axios.post(
+        LOGIN_OTP,
+        {
+          email: email,
+          otp: otp,
+          client_name: "LEARNER",
+          institute_id: instituteId,
+        },
+        {
+          headers: {
+            accept: "*/*",
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      setIsEmailVerified(true);
+      setOtpSent(false);
+      setOtp("");
+      toast.success("Email verified successfully");
+    } catch (error) {
+      toast.error("Failed to verify OTP. Please try again");
+      console.error("Verify OTP Error:", error);
+    } finally {
+      setIsVerifyingOtp(false);
+    }
+  };
+
+  // Check if form is valid for submission
+  const isFormValid = () => {
+    return (
+      isEmailVerified &&
+      Object.entries(form.getValues()).every(
+        ([, value]: [string, FormFieldValue]) =>
+          !value.is_mandatory || value.value
+      )
+    );
+  };
 
   return (
     <>
@@ -214,6 +310,85 @@ const RegistrationStep = ({
                             </FormItem>
                           )}
                         />
+                      ) : key === "email" ? (
+                        <div key={key} className="space-y-3">
+                          <FormField
+                            control={form.control}
+                            name={`${key}.value`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormControl>
+                                  <div className="flex items-center gap-2">
+                                    <MyInput
+                                      inputType="email"
+                                      inputPlaceholder={value.name}
+                                      input={field.value}
+                                      onChangeFunction={(e) => {
+                                        field.onChange(e);
+                                        // Reset verification state when email changes
+                                        if (isEmailVerified || otpSent) {
+                                          setIsEmailVerified(false);
+                                          setOtpSent(false);
+                                          setOtp("");
+                                        }
+                                      }}
+                                      required={value.is_mandatory}
+                                      size="large"
+                                      label={value.name}
+                                      className=" !w-[300px] md:!w-[360px] lg:!w-[560px] xl:!w-[760px] 2xl:!w-[860px]"
+                                      disabled={isEmailVerified}
+                                      style={{ width: "100%" }}
+                                    />
+                                    {!otpSent && !isEmailVerified && (
+                                      <MyButton
+                                        type="button"
+                                        buttonType="secondary"
+                                        onClick={handleSendOTP}
+                                        disable={isLoadingOtp || !field.value}
+                                        className="mt-8"
+                                      >
+                                        {isLoadingOtp
+                                          ? "Sending..."
+                                          : "Send OTP"}
+                                      </MyButton>
+                                    )}
+                                  </div>
+                                </FormControl>
+                              </FormItem>
+                            )}
+                          />
+
+                          {otpSent && !isEmailVerified && (
+                            <div className="flex gap-2">
+                              <MyInput
+                                inputType="text"
+                                inputPlaceholder="Enter 6-digit OTP"
+                                input={otp}
+                                onChangeFunction={(e) => setOtp(e.target.value)}
+                                required={true}
+                                size="large"
+                                label="OTP Code"
+                                className="!max-w-full !w-full"
+                                maxLength={6}
+                              />
+                              <MyButton
+                                type="button"
+                                buttonType="primary"
+                                onClick={handleVerifyOTP}
+                                disable={isVerifyingOtp || !otp.trim()}
+                                className="mt-8 whitespace-nowrap"
+                              >
+                                {isVerifyingOtp ? "Verifying..." : "Verify OTP"}
+                              </MyButton>
+                            </div>
+                          )}
+
+                          {isEmailVerified && (
+                            <p className="text-xs text-green-600 flex items-center gap-1">
+                              <span>✓</span> Email verified successfully
+                            </p>
+                          )}
+                        </div>
                       ) : (
                         <FormField
                           key={key}
@@ -266,14 +441,11 @@ const RegistrationStep = ({
                       onClick={form.handleSubmit(onSubmit, (err) =>
                         console.error(err)
                       )}
-                      disable={Object.entries(form.getValues()).some(
-                        ([, value]: [string, FormFieldValue]) =>
-                          value.is_mandatory && !value.value
-                      )}
+                      disable={!isFormValid()}
                       className="w-full md:w-fit bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-2.5 px-5 rounded-md transition-all duration-200 shadow-sm hover:shadow-md"
                     >
                       <GraduationCap className="w-5 h-5 mr-2" />
-                      Register
+                      {!isEmailVerified ? "Verify Email First" : "Register"}
                     </MyButton>
                     <button
                       type="button"

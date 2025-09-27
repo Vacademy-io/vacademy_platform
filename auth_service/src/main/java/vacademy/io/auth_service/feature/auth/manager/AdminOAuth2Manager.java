@@ -105,10 +105,11 @@ public class AdminOAuth2Manager {
     @Transactional
     public User createUser(RegisterRequest registerRequest, Set<UserRole> roles) {
 
+        String normalizedEmail = registerRequest.getEmail() != null ? registerRequest.getEmail().toLowerCase() : null;
         User user = User.builder()
                 .fullName(registerRequest.getFullName())
                 .username(registerRequest.getUserName())
-                .email(registerRequest.getEmail())
+                .email(normalizedEmail)
                 .password(registerRequest.getPassword())
                 .roles(roles)
                 .isRootUser(true)
@@ -137,29 +138,29 @@ public class AdminOAuth2Manager {
 
     public void sendWelcomeMailToUser(User user) {
         String instituteId = null;
-        InstituteInfoDTO instituteInfoDTO=null;
+        InstituteInfoDTO instituteInfoDTO = null;
 
         if (user.getRoles() != null && !user.getRoles().isEmpty()) {
             instituteId = user.getRoles().iterator().next().getInstituteId();
         }
         String instituteName = "Vacademy"; // Default fallback
-        String theme="#E67E22";
-        String learnerLoginUrl="https://dash.vacademy.io";
+        String theme = "#E67E22";
+        String learnerLoginUrl = "https://dash.vacademy.io";
         if (StringUtils.hasText(instituteId)) {
-            instituteInfoDTO=instituteInternalService.getInstituteByInstituteId(instituteId);
-            if(instituteInfoDTO.getInstituteName()!=null)
-                instituteName=instituteInfoDTO.getInstituteName();
-            if(instituteInfoDTO.getInstituteThemeCode()!=null)
-                theme=instituteInfoDTO.getInstituteThemeCode();
-            if(instituteInfoDTO.getLearnerPortalUrl()!=null)
-                learnerLoginUrl=instituteInfoDTO.getLearnerPortalUrl();
+            instituteInfoDTO = instituteInternalService.getInstituteByInstituteId(instituteId);
+            if (instituteInfoDTO.getInstituteName() != null)
+                instituteName = instituteInfoDTO.getInstituteName();
+            if (instituteInfoDTO.getInstituteThemeCode() != null)
+                theme = instituteInfoDTO.getInstituteThemeCode();
+            if (instituteInfoDTO.getLearnerPortalUrl() != null)
+                learnerLoginUrl = instituteInfoDTO.getLearnerPortalUrl();
         }
 
         GenericEmailRequest genericEmailRequest = new GenericEmailRequest();
         genericEmailRequest.setTo(user.getEmail());
         genericEmailRequest.setBody(NotificationEmailBody.createWelcomeEmailBody(instituteName, user.getFullName(),
-                user.getUsername(), user.getPassword(),learnerLoginUrl,theme));
-        genericEmailRequest.setSubject("Welcome to "+instituteName);
+                user.getUsername(), user.getPassword(), learnerLoginUrl, theme));
+        genericEmailRequest.setSubject("Welcome to " + instituteName);
         notificationService.sendGenericHtmlMail(genericEmailRequest, instituteId);
     }
 

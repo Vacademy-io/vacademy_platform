@@ -59,7 +59,8 @@ public class LearnerInvitationResponse {
     public LearnerInvitationResponse() {
     }
 
-    public LearnerInvitationResponse(LearnerInvitationResponseDTO learnerInvitationResponseDTO, LearnerInvitation learnerInvitation) {
+    public LearnerInvitationResponse(LearnerInvitationResponseDTO learnerInvitationResponseDTO,
+            LearnerInvitation learnerInvitation) {
         this.id = learnerInvitationResponseDTO.getId();
         this.instituteId = learnerInvitationResponseDTO.getInstituteId();
         this.status = LearnerInvitationResponseStatusEnum.ACTIVE.name();
@@ -93,7 +94,16 @@ public class LearnerInvitationResponse {
                 .batchOptionsJson(this.batchOptionsJson)
                 .batchSelectionResponseJson(this.batchSelectionJson)
                 .recordedOn(this.recordedOn)
-                .customFieldsResponse(this.customFieldsResponse.stream().map(LearnerInvitationCustomFieldResponse::mapToDTO).collect(Collectors.toList()))
+                .customFieldsResponse(this.customFieldsResponse.stream()
+                        .map(LearnerInvitationCustomFieldResponse::mapToDTO).collect(Collectors.toList()))
                 .build();
+    }
+
+    @PrePersist
+    @PreUpdate
+    private void normalizeEmails() {
+        if (this.email != null) {
+            this.email = this.email.toLowerCase();
+        }
     }
 }

@@ -1,6 +1,5 @@
 package vacademy.io.admin_core_service.features.institute_learner.entity;
 
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -11,7 +10,8 @@ import vacademy.io.common.auth.dto.UserDTO;
 
 import java.sql.Timestamp;
 import java.util.Date;
-
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 
 @Data
 @Builder
@@ -84,5 +84,19 @@ public class Student {
         this.mobileNumber = userDTO.getMobileNumber();
         this.dateOfBirth = userDTO.getDateOfBirth();
         this.gender = userDTO.getGender();
+    }
+
+    @PrePersist
+    @PreUpdate
+    private void normalizeEmails() {
+        if (this.email != null) {
+            this.email = this.email.toLowerCase();
+        }
+        if (this.parentsToMotherEmail != null) {
+            this.parentsToMotherEmail = this.parentsToMotherEmail.toLowerCase();
+        }
+        if (this.parentsEmail != null) {
+            this.parentsEmail = this.parentsEmail.toLowerCase();
+        }
     }
 }

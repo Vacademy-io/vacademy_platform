@@ -25,6 +25,7 @@ import { Route as DeleteUserIndexRouteImport } from './routes/delete-user/index'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as CoursesIndexRouteImport } from './routes/courses/index'
 import { Route as ChangePasswordIndexRouteImport } from './routes/change-password/index'
+import { Route as AssessmentIndexRouteImport } from './routes/assessment/index'
 import { Route as UserProfileEditIndexRouteImport } from './routes/user-profile/edit/index'
 import { Route as StudyLibraryLiveClassIndexRouteImport } from './routes/study-library/live-class/index'
 import { Route as StudyLibraryCoursesIndexRouteImport } from './routes/study-library/courses/index'
@@ -38,6 +39,7 @@ import { Route as HomeworkListIndexRouteImport } from './routes/homework/list/in
 import { Route as DashboardNotificationsIndexRouteImport } from './routes/dashboard/notifications/index'
 import { Route as CoursesCourseDetailsIndexRouteImport } from './routes/courses/course-details/index'
 import { Route as AssessmentReportsIndexRouteImport } from './routes/assessment/reports/index'
+import { Route as AssessmentListIndexRouteImport } from './routes/assessment/list/index'
 import { Route as AssessmentExaminationIndexRouteImport } from './routes/assessment/examination/index'
 import { Route as LoginOauthModalLearnerRouteImport } from './routes/login/oauth/modal-learner'
 import { Route as LoginOauthLearnerRouteImport } from './routes/login/oauth/learner'
@@ -135,6 +137,11 @@ const ChangePasswordIndexRoute = ChangePasswordIndexRouteImport.update({
   path: '/change-password/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AssessmentIndexRoute = AssessmentIndexRouteImport.update({
+  id: '/assessment/',
+  path: '/assessment/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const UserProfileEditIndexRoute = UserProfileEditIndexRouteImport.update({
   id: '/user-profile/edit/',
   path: '/user-profile/edit/',
@@ -206,6 +213,11 @@ const CoursesCourseDetailsIndexRoute =
 const AssessmentReportsIndexRoute = AssessmentReportsIndexRouteImport.update({
   id: '/assessment/reports/',
   path: '/assessment/reports/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AssessmentListIndexRoute = AssessmentListIndexRouteImport.update({
+  id: '/assessment/list/',
+  path: '/assessment/list/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AssessmentExaminationIndexRoute =
@@ -302,6 +314,7 @@ const StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRoute =
   )
 
 export interface FileRoutesByFullPath {
+  '/assessment': typeof AssessmentIndexRoute
   '/change-password': typeof ChangePasswordIndexRoute
   '/courses': typeof CoursesIndexRoute
   '/dashboard': typeof DashboardIndexRoute
@@ -321,6 +334,7 @@ export interface FileRoutesByFullPath {
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
   '/assessment/examination': typeof AssessmentExaminationIndexRoute
+  '/assessment/list': typeof AssessmentListIndexRoute
   '/assessment/reports': typeof AssessmentReportsIndexRoute
   '/courses/course-details': typeof CoursesCourseDetailsIndexRoute
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
@@ -348,6 +362,7 @@ export interface FileRoutesByFullPath {
   '/study-library/courses/course-details/subjects/modules/chapters/slides': typeof StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRoute
 }
 export interface FileRoutesByTo {
+  '/assessment': typeof AssessmentIndexRoute
   '/change-password': typeof ChangePasswordIndexRoute
   '/courses': typeof CoursesIndexRoute
   '/dashboard': typeof DashboardIndexRoute
@@ -367,6 +382,7 @@ export interface FileRoutesByTo {
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
   '/assessment/examination': typeof AssessmentExaminationIndexRoute
+  '/assessment/list': typeof AssessmentListIndexRoute
   '/assessment/reports': typeof AssessmentReportsIndexRoute
   '/courses/course-details': typeof CoursesCourseDetailsIndexRoute
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
@@ -395,6 +411,7 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/assessment/': typeof AssessmentIndexRoute
   '/change-password/': typeof ChangePasswordIndexRoute
   '/courses/': typeof CoursesIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
@@ -414,6 +431,7 @@ export interface FileRoutesById {
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
   '/assessment/examination/': typeof AssessmentExaminationIndexRoute
+  '/assessment/list/': typeof AssessmentListIndexRoute
   '/assessment/reports/': typeof AssessmentReportsIndexRoute
   '/courses/course-details/': typeof CoursesCourseDetailsIndexRoute
   '/dashboard/notifications/': typeof DashboardNotificationsIndexRoute
@@ -443,6 +461,7 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
+    | '/assessment'
     | '/change-password'
     | '/courses'
     | '/dashboard'
@@ -462,6 +481,7 @@ export interface FileRouteTypes {
     | '/login/oauth/learner'
     | '/login/oauth/modal-learner'
     | '/assessment/examination'
+    | '/assessment/list'
     | '/assessment/reports'
     | '/courses/course-details'
     | '/dashboard/notifications'
@@ -489,6 +509,7 @@ export interface FileRouteTypes {
     | '/study-library/courses/course-details/subjects/modules/chapters/slides'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/assessment'
     | '/change-password'
     | '/courses'
     | '/dashboard'
@@ -508,6 +529,7 @@ export interface FileRouteTypes {
     | '/login/oauth/learner'
     | '/login/oauth/modal-learner'
     | '/assessment/examination'
+    | '/assessment/list'
     | '/assessment/reports'
     | '/courses/course-details'
     | '/dashboard/notifications'
@@ -535,6 +557,7 @@ export interface FileRouteTypes {
     | '/study-library/courses/course-details/subjects/modules/chapters/slides'
   id:
     | '__root__'
+    | '/assessment/'
     | '/change-password/'
     | '/courses/'
     | '/dashboard/'
@@ -554,6 +577,7 @@ export interface FileRouteTypes {
     | '/login/oauth/learner'
     | '/login/oauth/modal-learner'
     | '/assessment/examination/'
+    | '/assessment/list/'
     | '/assessment/reports/'
     | '/courses/course-details/'
     | '/dashboard/notifications/'
@@ -582,6 +606,7 @@ export interface FileRouteTypes {
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  AssessmentIndexRoute: typeof AssessmentIndexRoute
   ChangePasswordIndexRoute: typeof ChangePasswordIndexRoute
   CoursesIndexRoute: typeof CoursesIndexRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
@@ -601,6 +626,7 @@ export interface RootRouteChildren {
   LoginOauthLearnerRoute: typeof LoginOauthLearnerRoute
   LoginOauthModalLearnerRoute: typeof LoginOauthModalLearnerRoute
   AssessmentExaminationIndexRoute: typeof AssessmentExaminationIndexRoute
+  AssessmentListIndexRoute: typeof AssessmentListIndexRoute
   AssessmentReportsIndexRoute: typeof AssessmentReportsIndexRoute
   CoursesCourseDetailsIndexRoute: typeof CoursesCourseDetailsIndexRoute
   DashboardNotificationsIndexRoute: typeof DashboardNotificationsIndexRoute
@@ -742,6 +768,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChangePasswordIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/assessment/': {
+      id: '/assessment/'
+      path: '/assessment'
+      fullPath: '/assessment'
+      preLoaderRoute: typeof AssessmentIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/user-profile/edit/': {
       id: '/user-profile/edit/'
       path: '/user-profile/edit'
@@ -831,6 +864,13 @@ declare module '@tanstack/react-router' {
       path: '/assessment/reports'
       fullPath: '/assessment/reports'
       preLoaderRoute: typeof AssessmentReportsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/assessment/list/': {
+      id: '/assessment/list/'
+      path: '/assessment/list'
+      fullPath: '/assessment/list'
+      preLoaderRoute: typeof AssessmentListIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/assessment/examination/': {
@@ -942,6 +982,7 @@ declare module '@tanstack/react-router' {
 }
 
 const rootRouteChildren: RootRouteChildren = {
+  AssessmentIndexRoute: AssessmentIndexRoute,
   ChangePasswordIndexRoute: ChangePasswordIndexRoute,
   CoursesIndexRoute: CoursesIndexRoute,
   DashboardIndexRoute: DashboardIndexRoute,
@@ -961,6 +1002,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginOauthLearnerRoute: LoginOauthLearnerRoute,
   LoginOauthModalLearnerRoute: LoginOauthModalLearnerRoute,
   AssessmentExaminationIndexRoute: AssessmentExaminationIndexRoute,
+  AssessmentListIndexRoute: AssessmentListIndexRoute,
   AssessmentReportsIndexRoute: AssessmentReportsIndexRoute,
   CoursesCourseDetailsIndexRoute: CoursesCourseDetailsIndexRoute,
   DashboardNotificationsIndexRoute: DashboardNotificationsIndexRoute,

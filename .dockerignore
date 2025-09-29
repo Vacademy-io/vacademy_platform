@@ -1,5 +1,6 @@
 # .dockerignore for Vacademy Learner Dashboard
 
+
 # Development files and folders
 node_modules
 .npm

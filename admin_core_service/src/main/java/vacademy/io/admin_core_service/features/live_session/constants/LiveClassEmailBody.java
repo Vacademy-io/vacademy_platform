@@ -16,7 +16,7 @@ public class LiveClassEmailBody {
                       <table role="presentation" style="width:600px; background:#ffffff; border-radius:10px; overflow:hidden; box-shadow:0 4px 10px rgba(0,0,0,0.1);">
                         <tr>
                           <td style="background:{{THEME_COLOR}}; padding:20px; text-align:center; color:#fff;">
-                            <h1 style="margin:0; font-size:24px;">📢 Live Class Invitation</h1>
+                            <h1 style="margin:0; font-size:24px;">📢 Live Class {{ACTION}}</h1>
                           </td>
                         </tr>
                         <tr>

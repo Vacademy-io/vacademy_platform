@@ -178,4 +178,7 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
     @Query(value = "SELECT COUNT(*) FROM session_schedules WHERE session_id = :sessionId AND status <> :status", nativeQuery = true)
     int countActiveSchedulesBySessionId(@Param("sessionId") String sessionId,@Param("status") String status);
 
+    @Query(value = "SELECT id FROM session_schedules WHERE session_id = :sessionId AND status <> :status", nativeQuery = true)
+    List<String> findScheduleIdsBySessionId(@Param("sessionId") String sessionId, @Param("status") String status);
+
 }

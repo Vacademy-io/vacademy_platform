@@ -15,14 +15,11 @@ import org.springframework.stereotype.Component;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
 import vacademy.io.auth_service.feature.auth.manager.AdminOAuth2Manager;
 import vacademy.io.auth_service.feature.auth.manager.LearnerOAuth2Manager;
-import vacademy.io.auth_service.feature.admin_core_service.dto.InstituteSignupPolicy;
-import vacademy.io.auth_service.feature.admin_core_service.service.InstitutePolicyService;
 import vacademy.io.common.auth.service.OAuth2VendorToUserDetailService;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -38,8 +35,7 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
     @Autowired
     private OAuth2VendorToUserDetailService oAuth2VendorToUserDetailService;
 
-    @Autowired
-    private InstitutePolicyService institutePolicyService;
+    // Removed unused InstitutePolicyService field
 
     @Value("${teacher.portal.client.url}:https://dash.vacademy.io")
     private String adminPortalClientUrl;
@@ -47,14 +43,18 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
     private static class DecodedState {
         String fromUrl;
         String instituteId;
+        String userType; // "learner" | "admin"
+        String accountType; // "signup" | "login"
     }
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request,
                                         HttpServletResponse response,
                                         Authentication authentication) throws IOException {
+        log.debug("OAuth2 authentication success triggered");
 
         String encodedState = request.getParameter("state");
+        log.debug("Received state parameter: {}", encodedState != null ? "[REDACTED]" : null);
 
         // Base fallback values
         String fallbackUrl = adminPortalClientUrl;
@@ -63,7 +63,28 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
         String redirectUrl = state.fromUrl != null ? state.fromUrl : fallbackUrl;
         String instituteId = state.instituteId;
 
-        if (redirectUrl == null) return;
+        log.debug("Decoded state - fromUrl: {}, instituteId: {}, userType: {}, accountType: {}",
+                  state.fromUrl, state.instituteId, state.userType, state.accountType);
+        log.debug("Using redirect URL: {}", redirectUrl);
+
+        // Waterfall: Prefer explicit state values; fall back to URL heuristics
+        String derivedUserType = normalizeUserType(state.userType);
+        if (derivedUserType == null) {
+            derivedUserType = deriveUserTypeFromUrl(redirectUrl);
+        }
+        String derivedAccountType = normalizeAccountType(state.accountType);
+        if (derivedAccountType == null) {
+            derivedAccountType = deriveAccountTypeFromUrl(redirectUrl);
+        }
+
+        log.debug("Derived user type: {}, account type: {}", derivedUserType, derivedAccountType);
+
+        if (redirectUrl == null) {
+            log.warn("Redirect URL is null, cannot proceed");
+            return;
+        }
+
+        log.info("OAuth2 redirect base URL: {} instituteId={} userType={} accountType={}", redirectUrl, instituteId, derivedUserType, derivedAccountType);
 
         if (!(authentication instanceof OAuth2AuthenticationToken oauthToken)) {
             log.error("Authentication is not OAuth2AuthenticationToken");
@@ -71,7 +92,8 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
             return;
         }
 
-        processOAuth2User(oauthToken, redirectUrl, response, encodedState, instituteId);
+        log.debug("Processing OAuth2 user for provider: {}", oauthToken.getAuthorizedClientRegistrationId());
+        processOAuth2User(oauthToken, redirectUrl, response, encodedState, instituteId, derivedUserType, derivedAccountType);
     }
 
     private DecodedState decodeState(String encodedState, String fallbackUrl) {
@@ -105,6 +127,19 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
                 result.instituteId = stateNode.get("institute_id").asText(null);
             }
 
+            // Step 5: Extract user_type and account_type (accept snake_case or camelCase)
+            if (stateNode.has("user_type")) {
+                result.userType = stateNode.get("user_type").asText(null);
+            } else if (stateNode.has("userType")) {
+                result.userType = stateNode.get("userType").asText(null);
+            }
+
+            if (stateNode.has("account_type")) {
+                result.accountType = stateNode.get("account_type").asText(null);
+            } else if (stateNode.has("accountType")) {
+                result.accountType = stateNode.get("accountType").asText(null);
+            }
+
         } catch (Exception e) {
             log.warn("Failed to decode Base64 state parameter: {}", encodedState, e);
         }
@@ -115,31 +150,42 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
 
 
     private void processOAuth2User(OAuth2AuthenticationToken oauthToken, String redirectUrl,
-            HttpServletResponse response, String encodedState,String instituteId) throws IOException {
+            HttpServletResponse response, String encodedState,String instituteId, String userType, String accountType) throws IOException {
+        log.debug("Starting OAuth2 user processing for account type: {}", accountType);
         try {
             OAuth2User oauthUser = oauthToken.getPrincipal();
             Map<String, Object> attributes = oauthUser.getAttributes();
             String provider = oauthToken.getAuthorizedClientRegistrationId();
+            log.debug("OAuth2 user attributes count: {}", attributes.size());
 
             UserInfo userInfo = extractUserInfo(attributes, provider, response, redirectUrl,instituteId);
-            if (userInfo == null)
+            if (userInfo == null) {
+                log.debug("UserInfo extraction returned null, aborting process");
                 return;
+            }
 
             String email = userInfo.email;
+            log.debug("Initial email from OAuth2: {}", email != null ? "[EMAIL]" : null);
+            log.debug("Provider ID: {}", userInfo.providerId);
+
             if (email == null || userInfo.providerId.equalsIgnoreCase("github")) {
                 email = oAuth2VendorToUserDetailService.getEmailByProviderIdAndSubject(userInfo.providerId,
                         userInfo.sub,userInfo.email);
+                log.debug("Retrieved email from service: {}", email != null ? "[EMAIL]" : null);
             }
             boolean isEmailVerified = (email != null);
+            log.debug("Email verified: {}", isEmailVerified);
 
-            // Handle sign-up logic differently
-            if (redirectUrl.contains("signup")) {
-                handleSignupFlow(userInfo, redirectUrl, response, encodedState, isEmailVerified);
+            // Route by account type
+            if ("signup".equalsIgnoreCase(accountType)) {
+                log.debug("Routing to signup flow for user type: {}", userType);
+                handleSignupFlow(userInfo, redirectUrl, response, encodedState, isEmailVerified, userType);
                 return;
             }
 
-            // Handle login flow
-            handleLoginFlow(userInfo, redirectUrl, response, encodedState, isEmailVerified);
+            // Default/login
+            log.debug("Routing to login flow for user type: {}", userType);
+            handleLoginFlow(userInfo, redirectUrl, response, encodedState, isEmailVerified, userType);
 
         } catch (Exception e) {
             log.error("Failed during OAuth2 user processing", e);
@@ -148,14 +194,18 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
     }
 
     private void handleSignupFlow(UserInfo userInfo, String redirectUrl, HttpServletResponse response,
-            String encodedState, boolean isEmailVerified) throws IOException {
+            String encodedState, boolean isEmailVerified, String userType) throws IOException {
+        log.debug("Handling signup flow for user: {} with userType: {}", userInfo.name, userType);
+
         String email = userInfo.email;
         if (email == null || userInfo.providerId.equalsIgnoreCase("github")) {
             email = oAuth2VendorToUserDetailService.getEmailByProviderIdAndSubject(userInfo.providerId, userInfo.sub,userInfo.email);
+            log.debug("Retrieved email for signup: {}", email != null ? "[EMAIL]" : null);
         }
 
         // For signup, always return user data to frontend
-       if (!redirectUrl.contains("learner")) {
+       if (!"learner".equalsIgnoreCase(userType)) {
+           log.debug("Processing admin signup flow");
            String userJson = null;
            if (email != null) {
                userJson = String.format(
@@ -170,6 +220,7 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
            String encodedUserInfo = Base64.getUrlEncoder()
                    .withoutPadding()
                    .encodeToString(userJson.getBytes(StandardCharsets.UTF_8));
+           log.debug("Encoded user info for admin signup, length: {}", encodedUserInfo.length());
 
            String separator = redirectUrl.contains("?") ? "&" : "?";
            String redirectWithParams = String.format(
@@ -179,16 +230,22 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
                    URLEncoder.encode(encodedUserInfo, StandardCharsets.UTF_8),
                    URLEncoder.encode(encodedState != null ? encodedState : "", StandardCharsets.UTF_8),
                    URLEncoder.encode(String.valueOf(isEmailVerified), StandardCharsets.UTF_8));
+           log.debug("Admin signup redirect URL prepared");
            response.sendRedirect(redirectWithParams);
            oAuth2VendorToUserDetailService.saveOrUpdateOAuth2VendorToUserDetail(userInfo.providerId, email, userInfo.sub);
+           log.debug("Admin signup flow completed");
        }else {
-           JwtResponseDto jwtResponseDto = getTokenByClientUrlAndUserEmail(redirectUrl, userInfo.name, email,
+           log.debug("Processing learner signup flow");
+           JwtResponseDto jwtResponseDto = getTokenByUserTypeAndUserEmail(userType, userInfo.name, email,
                    userInfo.instituteId);
+           log.debug("Attempting to get token for learner signup, email: {}", email != null ? "[EMAIL]" : null);
           if (jwtResponseDto != null) {
               // User found, return token in URL
+              log.debug("Learner user found, redirecting with tokens");
               redirectWithTokens(response, redirectUrl, jwtResponseDto);
               return;
           }
+          log.debug("Learner user not found, returning user data for registration");
            String userJson = null;
            if (email != null) {
                userJson = String.format(
@@ -214,33 +271,44 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
                    URLEncoder.encode(String.valueOf(isEmailVerified), StandardCharsets.UTF_8));
            response.sendRedirect(redirectWithParams);
            oAuth2VendorToUserDetailService.saveOrUpdateOAuth2VendorToUserDetail(userInfo.providerId, email, userInfo.sub);
+           log.debug("Learner signup flow completed, user data returned to frontend");
        }
     }
 
     private void handleLoginFlow(UserInfo userInfo, String redirectUrl, HttpServletResponse response,
-            String encodedState, boolean isEmailVerified) throws IOException {
+            String encodedState, boolean isEmailVerified, String userType) throws IOException {
+        log.debug("Handling login flow for user: {} with userType: {}", userInfo.name, userType);
+
         String email = userInfo.email;
         if (email == null || userInfo.providerId.equalsIgnoreCase("github")) {
             email = oAuth2VendorToUserDetailService.getEmailByProviderIdAndSubject(userInfo.providerId, userInfo.sub,userInfo.email);
+            log.debug("Retrieved email for login: {}", email != null ? "[EMAIL]" : null);
         }
 
         // First try to login the user by email
-        JwtResponseDto jwtResponseDto = getTokenByClientUrlAndUserEmail(redirectUrl, userInfo.name, email,
+        JwtResponseDto jwtResponseDto = getTokenByUserTypeAndUserEmail(userType, userInfo.name, email,
                 userInfo.instituteId);
+        log.debug("Attempted to get token for login, result: {}", jwtResponseDto != null ? "success" : "user not found");
 
         if (jwtResponseDto != null) {
             // User found, return token in URL
+            log.debug("User found for login, redirecting with tokens");
             redirectWithTokens(response, redirectUrl, jwtResponseDto);
             return;
         }
+        log.debug("User not found for login, returning user data to frontend");
         returnUserDataToFrontend(response, redirectUrl, userInfo, encodedState, isEmailVerified, true);
     }
 
     private void returnUserDataToFrontend(HttpServletResponse response, String redirectUrl, UserInfo userInfo,
             String encodedState, boolean isEmailVerified, boolean hasError) throws IOException {
+        log.info("Redirecting with user handoff to base URL: {} hasError={}", redirectUrl, hasError);
+        log.debug("Preparing user data for frontend return, hasError: {}", hasError);
+
         String email = userInfo.email;
         if (email == null || userInfo.providerId.equalsIgnoreCase("github")) {
             email = oAuth2VendorToUserDetailService.getEmailByProviderIdAndSubject(userInfo.providerId, userInfo.sub,userInfo.email);
+            log.debug("Retrieved email for frontend return: {}", email != null ? "[EMAIL]" : null);
         }
 
         String userJson = null;
@@ -253,10 +321,12 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
                     "{\"name\":\"%s\", \"profile\":\"%s\", \"sub\":\"%s\", \"provider\":\"%s\"}",
                     userInfo.name, userInfo.picture, userInfo.sub, userInfo.providerId);
         }
+        log.debug("Created user JSON for frontend, length: {}", userJson.length());
 
         String encodedUserInfo = Base64.getUrlEncoder()
                 .withoutPadding()
                 .encodeToString(userJson.getBytes(StandardCharsets.UTF_8));
+        log.debug("Encoded user info for frontend return, length: {}", encodedUserInfo.length());
 
         String separator = redirectUrl.contains("?") ? "&" : "?";
         String redirectWithParams = String.format(
@@ -267,6 +337,7 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
                 URLEncoder.encode(encodedState != null ? encodedState : "", StandardCharsets.UTF_8),
                 URLEncoder.encode(String.valueOf(isEmailVerified), StandardCharsets.UTF_8),
                 hasError ? "&error=true" : "");
+        log.debug("Frontend redirect URL prepared, will redirect with {} params", hasError ? "error=true" : "no error");
         response.sendRedirect(redirectWithParams);
     }
 
@@ -307,6 +378,7 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
 
     private void redirectWithTokens(HttpServletResponse response, String redirectUrl, JwtResponseDto jwtResponseDto)
             throws IOException {
+        log.info("Redirecting after login success to base URL: {} (tokens omitted)", redirectUrl);
         String separator = redirectUrl.contains("?") ? "&" : "?";
         String tokenizedRedirectUrl = String.format(
                 "%s%saccessToken=%s&refreshToken=%s",
@@ -319,6 +391,7 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
 
     private void sendErrorRedirect(HttpServletResponse response, String baseUrl, String errorMessage)
             throws IOException {
+        log.warn("Redirecting with error to base URL: {} message={} ", baseUrl, errorMessage);
         if (response.isCommitted()) {
             log.warn("Cannot redirect because response is already committed. Error: {}", errorMessage);
             return;
@@ -331,14 +404,13 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
         response.sendRedirect(redirectUrl);
     }
 
-    private JwtResponseDto getTokenByClientUrlAndUserEmail(String clientUrl, String fullName, String email,
+    private JwtResponseDto getTokenByUserTypeAndUserEmail(String userType, String fullName, String email,
             String instituteId) {
         try {
-            if (clientUrl.contains("learner")) {
+            if ("learner".equalsIgnoreCase(userType)) {
                 return getLearnerOAuth2Manager().loginUserByEmail(fullName, email, instituteId);
-            } else {
-                return getAdminOAuth2Manager().loginUserByEmail(email);
             }
+            return getAdminOAuth2Manager().loginUserByEmail(email);
         } catch (Exception e) {
             log.error("Failed to generate token for user: {}", email, e);
         }
@@ -352,6 +424,30 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
 
     private AdminOAuth2Manager getAdminOAuth2Manager() {
         return applicationContext.getBean(AdminOAuth2Manager.class);
+    }
+
+    private String deriveUserTypeFromUrl(String url) {
+        if (url == null) return "admin";
+        return url.toLowerCase().contains("learner") ? "learner" : "admin";
+    }
+
+    private String deriveAccountTypeFromUrl(String url) {
+        if (url == null) return "login";
+        return url.toLowerCase().contains("signup") ? "signup" : "login";
+    }
+
+    private String normalizeUserType(String userType) {
+        if (userType == null) return null;
+        String normalized = userType.trim().toLowerCase();
+        if ("learner".equals(normalized) || "admin".equals(normalized)) return normalized;
+        return null;
+    }
+
+    private String normalizeAccountType(String accountType) {
+        if (accountType == null) return null;
+        String normalized = accountType.trim().toLowerCase();
+        if ("signup".equals(normalized) || "login".equals(normalized)) return normalized;
+        return null;
     }
 }
 

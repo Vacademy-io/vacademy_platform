@@ -66,6 +66,10 @@ export function ModularDynamicSignupContainer({
   const [enrollmentChecked, setEnrollmentChecked] = useState<Set<string>>(
     new Set()
   );
+  const [uiError, setUiError] = useState<
+    | { type: "alreadyEnrolled" | "oauthError" | "network" | "validation"; message: string }
+    | null
+  >(null);
 
   // Use backend settings if available, otherwise fall back to defaults
   const effectiveSettings = settings || {
@@ -274,37 +278,55 @@ export function ModularDynamicSignupContainer({
 
       if (!popup) {
         toast.error("Popup blocked! Please allow popups for this site.");
+        setUiError({
+          type: "network",
+          message:
+            "We couldn't open the sign up window. Please allow popups or try again.",
+        });
         return;
       }
 
-      // Listen for OAuth completion message from popup
-      const messageHandler = (event: MessageEvent) => {
-        if (event.data.type === "oauth_success") {
-          handleOAuthSuccess(event.data.data);
-          window.removeEventListener("message", messageHandler);
-        } else if (event.data.type === "oauth_error") {
-          toast.error(event.data.data.message || "OAuth authentication failed");
-          window.removeEventListener("message", messageHandler);
+      // Listen for OAuth completion message from popup using a cleanup-aware handler
+      let cleanupTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const cleanup = () => {
+        window.removeEventListener("message", onMessage);
+        if (cleanupTimer) {
+          clearTimeout(cleanupTimer);
+          cleanupTimer = null;
         }
       };
 
-      window.addEventListener("message", messageHandler);
+      const onMessage = (event: MessageEvent) => {
+        // Only handle messages we expect
+        if (!event?.data || typeof event.data !== "object") return;
 
-      // Check if popup was closed manually
-      const checkClosed = setInterval(() => {
-        try {
-          if (popup.closed) {
-            clearInterval(checkClosed);
-            window.removeEventListener("message", messageHandler);
-          }
-        } catch (error) {
-          // Handle Cross-Origin-Opener-Policy restrictions
-          clearInterval(checkClosed);
-          window.removeEventListener("message", messageHandler);
+        if (event.data.type === "oauth_success") {
+          cleanup();
+          handleOAuthSuccess(event.data.data);
+        } else if (event.data.type === "oauth_error") {
+          cleanup();
+          toast.error(event.data.data?.message || "OAuth authentication failed");
+          setUiError({
+            type: "oauthError",
+            message:
+              "Authentication failed. If you already have an account, please sign in instead.",
+          });
         }
-      }, 1000);
+      };
+
+      window.addEventListener("message", onMessage);
+
+      // Fallback cleanup after a timeout to avoid COOP-related access to popup.closed
+      cleanupTimer = setTimeout(() => {
+        cleanup();
+      }, 5 * 60 * 1000);
     } catch (error) {
       toast.error("Failed to initiate signup. Please try again.");
+      setUiError({
+        type: "network",
+        message: "Unable to start signup. Please check your network and try again.",
+      });
     }
   };
 
@@ -425,6 +447,11 @@ export function ModularDynamicSignupContainer({
               setCurrentStep("providers");
               setSelectedProvider(null);
               setOAuthData(null);
+              setUiError({
+                type: "alreadyEnrolled",
+                message:
+                  "This email is already registered. Please sign in to continue.",
+              });
             },
             true // shouldRedirectAfterLogin - will handle navigation automatically
           );
@@ -482,6 +509,11 @@ export function ModularDynamicSignupContainer({
       setSelectedProvider("oauth");
     } catch (error) {
       toast.error("Failed to process OAuth response. Please try again.");
+      setUiError({
+        type: "oauthError",
+        message:
+          "We couldn't complete authentication. Please try again, or sign in if you already have an account.",
+      });
     }
   };
 
@@ -802,6 +834,20 @@ export function ModularDynamicSignupContainer({
   return (
     <div className={className}>
       <AnimatePresence mode="wait">
+        {uiError && (
+          <div className="mb-3 rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+            {uiError.message}{" "}
+            {uiError.type !== "validation" && (
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                onClick={onBackToProviders}
+                className="ml-2 underline font-medium"
+              >
+                Sign in instead
+              </motion.button>
+            )}
+          </div>
+        )}
         {currentStep === "providers" && renderProviderSelection()}
 
         {currentStep === "emailInput" && (

@@ -13,22 +13,21 @@ import { motion } from "framer-motion";
 import { ModularDynamicSignupContainer } from "../../components/ModularDynamicSignupContainer";
 // Removed unused imports - using ModularDynamicSignupContainer instead
 import { useModularSignupFlow } from "../../hooks/use-modular-signup-flow";
+import { useDomainRouting } from "@/hooks/use-domain-routing";
 
 export function SignUpForm({
     type,
-    courseId,
+    // courseId intentionally unused in current flow
 }: {
     type?: string;
     courseId?: string;
 }) {
     const navigate = useNavigate();
     const search = useSearch({ from: "/signup/" });
-    const domainRouting = useDomainRouting();
-    const { setPrimaryColor } = useTheme();
+    useDomainRouting();
     
     // Use search parameters if not provided as props
     const finalType = type || (search as { type?: string; courseId?: string; instituteId?: string }).type;
-    const finalCourseId = courseId || (search as { type?: string; courseId?: string; instituteId?: string }).courseId;
     const instituteId = (search as { instituteId?: string }).instituteId;
 
     // Check for OAuth callback parameters to extract institute ID
@@ -50,7 +49,7 @@ export function SignUpForm({
             setFinalInstituteId(decodedState.institute_id);
             return;
           }
-        } catch (error) {
+        } catch {
           // Silently handle OAuth state decoding errors
         }
       }
@@ -64,7 +63,7 @@ export function SignUpForm({
     }, [instituteId]);
     
     // Use the modular signup flow hook only if we have an institute ID
-    const { settings, isLoading, error, instituteDetails } = useModularSignupFlow({ 
+    const { settings } = useModularSignupFlow({ 
       instituteId: finalInstituteId || "" 
     });
     
@@ -160,43 +159,7 @@ export function SignUpForm({
                         </motion.p>
                         </motion.div>
 
-                    {/* Dynamic Signup Container */}
-                        <motion.div
-                            initial={{ y: 20, opacity: 0 }}
-                            animate={{ y: 0, opacity: 1 }}
-                        transition={{ delay: 0.5, duration: 0.6 }}
-                        className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6"
-                    >
-                        {isLoading ? (
-                            <div className="flex items-center justify-center p-8">
-                                <div className="text-center">
-                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
-                                    <p className="text-gray-600">Loading signup options...</p>
-                                </div>
-                            </div>
-                        ) : error ? (
-                            <div className="text-center p-8">
-                                <p className="text-red-600 mb-4">{error}</p>
-                                <button
-                                    onClick={() => window.location.reload()}
-                                    className="text-blue-600 hover:text-blue-800 underline"
-                                >
-                                    Try again
-                                </button>
-                            </div>
-                        ) : (
-                            <ModularDynamicSignupContainer
-                                instituteId={finalInstituteId}
-                                settings={settings!}
-                                instituteDetails={instituteDetails}
-                                onSignupSuccess={() => {
-                                    // The unified registration hook already handles dynamic redirection
-                                    // based on the postLoginRedirectRoute setting, so we don't need to override it here
-                                }}
-                                onBackToProviders={() => navigate({ to: "/login" })}
-                            />
-                        )}
-                            </motion.div>
+                    {/* Dynamic content removed from left column to avoid duplicate sign-up containers */}
 
                     {/* Footer Features */}
                             <motion.div
@@ -418,11 +381,9 @@ export function SignUpForm({
 
                                 {finalInstituteId && settings ? (
                                     <ModularDynamicSignupContainer
-                                        type={finalType}
-                                        courseId={finalCourseId}
-                                        instituteId={finalInstituteId}
+                                        instituteId={finalInstituteId ?? undefined}
                                         settings={settings}
-                                        onSwitchToLogin={() => navigate({ to: "/login" })}
+                                        onBackToProviders={() => navigate({ to: "/login" })}
                                     />
                                 ) : (
                                     <div className="text-center py-8">

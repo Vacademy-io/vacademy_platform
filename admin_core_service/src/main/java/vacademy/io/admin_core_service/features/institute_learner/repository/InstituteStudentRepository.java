@@ -575,4 +575,254 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             Pageable pageable
     );
 
+    @Query(nativeQuery = true, value = """
+        SELECT
+            s.full_name         AS "fullName",
+            s.email             AS "email",
+            s.username          AS "username",
+            s.mobile_number     AS "phone",
+            ssigm.package_session_id AS "packageSessionId",
+            CAST(GREATEST(0, COALESCE(EXTRACT(DAY FROM (ssigm.expiry_date - ssigm.enrolled_date)), 0)) AS int) AS "accessDays",
+            last_pl.payment_status AS "paymentStatus",
+            last_pl.payment_amount AS "paymentAmount",
+            CAST(
+              COALESCE(
+                json_agg(
+                  DISTINCT jsonb_build_object(
+                    'custom_field_id', cf.id,
+                    'value', cfv.value
+                  )
+                ) FILTER (WHERE cf.id IS NOT NULL), '[]'
+              ) AS text
+            ) AS "customFieldsJson",
+            s.user_id AS "userId",
+            s.id AS "id",
+            s.address_line AS "addressLine",
+            s.region AS "region",
+            s.city AS "city",
+            s.pin_code AS "pinCode",
+            s.date_of_birth AS "dateOfBirth",
+            s.gender AS "gender",
+            s.fathers_name AS "fathersName",
+            s.mothers_name AS "mothersName",
+            s.parents_mobile_number AS "parentsMobileNumber",
+            s.parents_email AS "parentsEmail",
+            s.linked_institute_name AS "linkedInstituteName",
+            s.created_at AS "createdAt",
+            s.updated_at AS "updatedAt",
+            s.face_file_id AS "faceFileId",
+            ssigm.expiry_date AS "expiryDate",
+            s.parents_to_mother_mobile_number AS "parentsToMotherMobileNumber",
+            s.parents_to_mother_email AS "parentsToMotherEmail",
+            ssigm.institute_enrollment_number AS "instituteEnrollmentNumber",
+            ssigm.institute_id AS "instituteId",
+            ssigm.group_id AS "groupId",
+            ssigm.status AS "status",
+            up.plan_json AS "paymentPlanJson",
+            up.payment_option_json AS "paymentOptionJson",
+            ssigm.destination_package_session_id AS "destinationPackageSessionId",
+            ssigm.user_plan_id AS "userPlanId",
+            up.enroll_invite_id AS "enrollInviteId",
+            ssigm.source AS "source",
+            ssigm.type AS "type",
+            ssigm.type_id AS "typeId"
+        FROM student s
+        JOIN student_session_institute_group_mapping ssigm
+            ON s.user_id = ssigm.user_id
+        LEFT JOIN institute_custom_fields icf
+            ON icf.institute_id = ssigm.institute_id
+            AND (:customFieldStatus IS NULL OR icf.status IN :customFieldStatus)
+        LEFT JOIN custom_fields cf
+            ON cf.id = icf.custom_field_id
+        LEFT JOIN custom_field_values cfv
+            ON cfv.source_type = 'STUDENT_SESSION_INSTITUTE_GROUP_MAPPING'
+            AND cfv.source_id = ssigm.id
+            AND cfv.custom_field_id = cf.id
+        LEFT JOIN user_plan up
+            ON up.id = ssigm.user_plan_id
+        LEFT JOIN LATERAL (
+            SELECT pl.payment_status, pl.payment_amount
+            FROM payment_log pl
+            WHERE pl.user_plan_id = up.id
+            ORDER BY pl.created_at DESC NULLS LAST
+            LIMIT 1
+        ) last_pl ON TRUE
+        WHERE (
+            to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name)
+            OR s.full_name LIKE :name || '%'
+            OR s.username LIKE :name || '%'
+            OR ssigm.institute_enrollment_number LIKE :name || '%'
+            OR s.user_id LIKE :name || '%'
+            OR s.mobile_number LIKE :name || '%'
+        )
+          AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))
+          AND (:statuses IS NULL OR ssigm.status IN (:statuses))
+          AND (:paymentStatuses IS NULL OR last_pl.payment_status IN (:paymentStatuses))
+          AND ssigm.source IN (:sources)
+          AND ssigm.type IN (:types)
+          AND (:typeIds IS NULL OR ssigm.type_id IN (:typeIds))
+        GROUP BY s.id, ssigm.id, last_pl.payment_status, last_pl.payment_amount, up.id
+        """, countQuery = """
+        SELECT COUNT(DISTINCT s.id)
+        FROM student s
+        JOIN student_session_institute_group_mapping ssigm
+            ON s.user_id = ssigm.user_id
+        LEFT JOIN user_plan up
+            ON up.id = ssigm.user_plan_id
+        LEFT JOIN LATERAL (
+            SELECT pl.payment_status
+            FROM payment_log pl
+            WHERE pl.user_plan_id = up.id
+            ORDER BY pl.created_at DESC NULLS LAST
+            LIMIT 1
+        ) last_pl ON TRUE
+        WHERE (
+            to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name)
+            OR s.full_name LIKE :name || '%'
+            OR s.username LIKE :name || '%'
+            OR ssigm.institute_enrollment_number LIKE :name || '%'
+            OR s.user_id LIKE :name || '%'
+            OR s.mobile_number LIKE :name || '%'
+        )
+          AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))
+          AND (:statuses IS NULL OR ssigm.status IN (:statuses))
+          AND (:paymentStatuses IS NULL OR last_pl.payment_status IN (:paymentStatuses))
+          AND ssigm.source IN (:sources)
+          AND ssigm.type IN (:types)
+          AND (:typeIds IS NULL OR ssigm.type_id IN (:typeIds))
+        """)
+    Page<StudentListV2Projection> getAllStudentV2WithSearchRaw(
+            @Param("name") String name,
+            @Param("instituteIds") List<String> instituteIds,
+            @Param("statuses") List<String> statuses,
+            @Param("paymentStatuses") List<String> paymentStatuses,
+            @Param("customFieldStatus") List<String> customFieldStatus,
+            @Param("sources") List<String> sources,
+            @Param("types") List<String> types,
+            @Param("typeIds") List<String> typeIds,
+            Pageable pageable);
+
+
+    @Query(nativeQuery = true, value = """
+    SELECT
+        s.full_name         AS "fullName",
+        s.email             AS "email",
+        s.username          AS "username",
+        s.mobile_number     AS "phone",
+        ssigm.package_session_id AS "packageSessionId",
+        CAST(GREATEST(0, COALESCE(EXTRACT(DAY FROM (ssigm.expiry_date - ssigm.enrolled_date)), 0)) AS int) AS "accessDays",
+        last_pl.payment_status AS "paymentStatus",
+        last_pl.payment_amount AS "paymentAmount",
+        CAST(
+          COALESCE(
+            json_agg(
+              DISTINCT jsonb_build_object(
+                'custom_field_id', cf.id,
+                'value', cfv.value
+              )
+            ) FILTER (WHERE cf.id IS NOT NULL), '[]'
+          ) AS text
+        ) AS "customFieldsJson",
+        s.user_id AS "userId",
+        s.id AS "id",
+        s.address_line AS "addressLine",
+        s.region AS "region",
+        s.city AS "city",
+        s.pin_code AS "pinCode",
+        s.date_of_birth AS "dateOfBirth",
+        s.gender AS "gender",
+        s.fathers_name AS "fathersName",
+        s.mothers_name AS "mothersName",
+        s.parents_mobile_number AS "parentsMobileNumber",
+        s.parents_email AS "parentsEmail",
+        s.linked_institute_name AS "linkedInstituteName",
+        s.created_at AS "createdAt",
+        s.updated_at AS "updatedAt",
+        s.face_file_id AS "faceFileId",
+        ssigm.expiry_date AS "expiryDate",
+        s.parents_to_mother_mobile_number AS "parentsToMotherMobileNumber",
+        s.parents_to_mother_email AS "parentsToMotherEmail",
+        ssigm.institute_enrollment_number AS "instituteEnrollmentNumber",
+        ssigm.institute_id AS "instituteId",
+        ssigm.group_id AS "groupId",
+        ssigm.status AS "status",
+        up.plan_json AS "paymentPlanJson",
+        up.payment_option_json AS "paymentOptionJson",
+        ssigm.destination_package_session_id AS "destinationPackageSessionId",
+        ssigm.user_plan_id AS "userPlanId",
+        up.enroll_invite_id AS "enrollInviteId",
+        ssigm.source AS "source",
+        ssigm.type AS "type",
+        ssigm.type_id AS "typeId"
+    FROM student s
+    JOIN student_session_institute_group_mapping ssigm
+        ON s.user_id = ssigm.user_id
+    LEFT JOIN institute_custom_fields icf
+        ON icf.institute_id = ssigm.institute_id
+        AND (:#{#customFieldStatus == null || #customFieldStatus.isEmpty()} = true OR icf.status IN (:customFieldStatus))
+    LEFT JOIN custom_fields cf
+        ON cf.id = icf.custom_field_id
+    LEFT JOIN custom_field_values cfv
+        ON cfv.source_type = 'STUDENT_SESSION_INSTITUTE_GROUP_MAPPING'
+        AND cfv.source_id = ssigm.id
+        AND cfv.custom_field_id = cf.id
+    LEFT JOIN user_plan up
+        ON up.id = ssigm.user_plan_id
+    LEFT JOIN LATERAL (
+        SELECT pl.payment_status, pl.payment_amount
+        FROM payment_log pl
+        WHERE pl.user_plan_id = up.id
+        ORDER BY pl.created_at DESC NULLS LAST
+        LIMIT 1
+    ) last_pl ON TRUE
+    WHERE (:#{#statuses == null || #statuses.isEmpty()} = true OR ssigm.status IN (:statuses))
+      AND (:#{#gender == null || #gender.isEmpty()} = true OR s.gender IN (:gender))
+      AND (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm.institute_id IN (:instituteIds))
+      AND (:#{#groupIds == null || #groupIds.isEmpty()} = true OR ssigm.group_id IN (:groupIds))
+      AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ssigm.package_session_id IN (:packageSessionIds))
+      AND (:#{#paymentStatuses == null || #paymentStatuses.isEmpty()} = true OR last_pl.payment_status IN (:paymentStatuses))
+      AND ssigm.source IN (:sources)
+      AND ssigm.type IN (:types)
+      AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
+    GROUP BY s.id, ssigm.id, last_pl.payment_status, last_pl.payment_amount, up.id
+    """, countQuery = """
+    SELECT COUNT(DISTINCT s.id)
+    FROM student s
+    JOIN student_session_institute_group_mapping ssigm
+        ON s.user_id = ssigm.user_id
+    LEFT JOIN institute_custom_fields icf
+        ON icf.institute_id = ssigm.institute_id
+    LEFT JOIN user_plan up
+        ON up.id = ssigm.user_plan_id
+    LEFT JOIN LATERAL (
+        SELECT pl.payment_status
+        FROM payment_log pl
+        WHERE pl.user_plan_id = up.id
+        ORDER BY pl.created_at DESC NULLS LAST
+        LIMIT 1
+    ) last_pl ON TRUE
+    WHERE (:#{#statuses == null || #statuses.isEmpty()} = true OR ssigm.status IN (:statuses))
+      AND (:#{#gender == null || #gender.isEmpty()} = true OR s.gender IN (:gender))
+      AND (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm.institute_id IN (:instituteIds))
+      AND (:#{#groupIds == null || #groupIds.isEmpty()} = true OR ssigm.group_id IN (:groupIds))
+      AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ssigm.package_session_id IN (:packageSessionIds))
+      AND (:#{#paymentStatuses == null || #paymentStatuses.isEmpty()} = true OR last_pl.payment_status IN (:paymentStatuses))
+      AND (:#{#customFieldStatus == null || #customFieldStatus.isEmpty()} = true OR icf.status IN (:customFieldStatus))
+      AND ssigm.source IN (:sources)
+      AND ssigm.type IN (:types)
+      AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
+    """)
+    Page<StudentListV2Projection> getAllStudentV2WithFilterRaw(
+            @Param("statuses") List<String> statuses,
+            @Param("gender") List<String> gender,
+            @Param("instituteIds") List<String> instituteIds,
+            @Param("groupIds") List<String> groupIds,
+            @Param("packageSessionIds") List<String> packageSessionIds,
+            @Param("paymentStatuses") List<String> paymentStatuses,
+            @Param("sources") List<String> sources,
+            @Param("types") List<String> types,
+            @Param("typeIds") List<String> typeIds,
+            @Param("customFieldStatus") List<String> customFieldStatus,
+            Pageable pageable);
+
 }

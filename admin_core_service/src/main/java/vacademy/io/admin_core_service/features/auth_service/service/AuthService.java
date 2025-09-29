@@ -89,16 +89,29 @@ public class AuthService {
         }
     }
 
-    public UserDTO createUserFromAuthService(UserDTO userDTO, String instituteId,boolean sendCred) {
+    public UserDTO createUserFromAuthService(UserDTO userDTO, String instituteId, boolean sendCred) {
         try {
+            String url = StudentConstants.addUserRoute
+                    + "?instituteId=" + instituteId
+                    + "&isNotify=" + sendCred;
+
             userDTO.setRootUser(true);
             ObjectMapper objectMapper = new ObjectMapper();
-            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(), authServerBaseUrl, StudentConstants.addUserRoute + "?instituteId=" + instituteId , userDTO);
+
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.POST.name(),
+                    authServerBaseUrl,
+                    url,
+                    userDTO
+            );
+
             return objectMapper.readValue(response.getBody(), UserDTO.class);
 
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());
         }
     }
+
 
 }

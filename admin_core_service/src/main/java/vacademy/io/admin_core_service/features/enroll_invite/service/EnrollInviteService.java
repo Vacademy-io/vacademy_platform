@@ -167,6 +167,7 @@ public class EnrollInviteService {
         enrollInvite.setStatus(enrollInviteDTO.getStatus());
         enrollInvite.setName(enrollInviteDTO.getName());
         enrollInvite.setVendorId(enrollInviteDTO.getVendorId());
+        enrollInvite.setIsBundled(enrollInviteDTO.getIsBundled());
     }
 
     public Page<EnrollInviteWithSessionsProjection> getEnrollInvitesByInstituteIdAndFilters(String instituteId,

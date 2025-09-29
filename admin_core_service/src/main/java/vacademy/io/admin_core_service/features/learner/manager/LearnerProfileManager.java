@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSt
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.learner.dto.LearnerBatchDetail;
+import vacademy.io.admin_core_service.features.user_subscription.service.ReferralMappingService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.LevelDTO;
@@ -32,20 +33,27 @@ public class LearnerProfileManager {
     @Autowired
     StudentSessionRepository studentSessionRepository;
 
+    @Autowired
+    private ReferralMappingService referralMappingService;
+
     @Transactional
     public ResponseEntity<List<StudentDTO>> getLearnerInfo(CustomUserDetails user, String instituteId) {
         List<Object[]> optionalEntry = instituteStudentRepository.getStudentWithInstituteAndUserId(user.getUserId(), instituteId);
-
+        long referralCount = referralMappingService.countActiveReferralsByReferrerUserId(user.getUserId());
         if (optionalEntry.isEmpty()) {
             Optional<Student> student = instituteStudentRepository.findTopByUserId(user.getUserId());
             if (student.isEmpty()) {
                 return ResponseEntity.status(201).body(Collections.emptyList());
             }
-            return ResponseEntity.status(201).body(Collections.singletonList(new StudentDTO(student.get())));
+            StudentDTO studentDTO = new StudentDTO(student.get());
+            studentDTO.setReferralCount(referralCount);
+            return ResponseEntity.status(201).body(Collections.singletonList(studentDTO));
         }
         List<StudentDTO> studentDTOS = new ArrayList<>();
         for (Object[] objects : optionalEntry) {
-            studentDTOS.add(new StudentDTO(objects));
+           StudentDTO studentDTO = new StudentDTO(objects);
+           studentDTO.setReferralCount(referralCount);
+            studentDTOS.add(studentDTO);
         }
 
         return ResponseEntity.ok(studentDTOS);

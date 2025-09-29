@@ -9,6 +9,8 @@ import org.hibernate.annotations.UuidGenerator;
 
 import java.sql.Timestamp;
 import java.util.Date;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 
 @Data
 @Builder
@@ -101,5 +103,13 @@ public class Institute {
 
     @Column(name = "cover_text_json")
     private String coverTextJson;
+
+    @PrePersist
+    @PreUpdate
+    private void normalizeEmails() {
+        if (this.email != null) {
+            this.email = this.email.toLowerCase();
+        }
+    }
 
 }

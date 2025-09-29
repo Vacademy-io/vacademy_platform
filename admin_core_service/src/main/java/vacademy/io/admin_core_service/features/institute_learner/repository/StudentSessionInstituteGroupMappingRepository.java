@@ -22,6 +22,7 @@ public interface StudentSessionInstituteGroupMappingRepository
         s.mobile_number AS mobile_number,
         s.email AS email,
         s.username AS username,
+        s.region AS region,
         ps.id AS package_session_id
     FROM student_session_institute_group_mapping ssigm
     JOIN student s ON s.user_id = ssigm.user_id
@@ -42,6 +43,7 @@ public interface StudentSessionInstituteGroupMappingRepository
         s.full_name AS full_name,
         s.mobile_number AS mobile_number,
         s.email AS email,
+        s.region AS region,
         ps.id AS package_session_id
     FROM student_session_institute_group_mapping ssigm
     LEFT JOIN student s ON s.user_id = ssigm.user_id
@@ -109,7 +111,8 @@ public interface StudentSessionInstituteGroupMappingRepository
         s.user_id AS user_id,
         s.full_name AS full_name,
         s.mobile_number AS mobile_number,
-        s.email AS email
+        s.email AS email,
+        s.region AS region
     FROM student s
     WHERE s.user_id IN (:userIds)
     """, nativeQuery = true)
@@ -148,27 +151,28 @@ public interface StudentSessionInstituteGroupMappingRepository
             @Param("statusList") List<String> statusList
     );
 
-    Optional<StudentSessionInstituteGroupMapping> findBySourceAndTypeIdAndTypeAndStatus(
-            String source, String typeId, String type, String status);
+    Optional<StudentSessionInstituteGroupMapping> findBySourceAndTypeIdAndTypeAndUserIdAndStatus(
+            String source, String typeId, String type, String userId, String status);
 
-    Optional<StudentSessionInstituteGroupMapping> findBySourceAndTypeAndStatus(
-            String source, String type, String status);
+    Optional<StudentSessionInstituteGroupMapping> findBySourceAndTypeAndUserIdAndStatus(
+            String source, String type, String userId, String status);
 
-    Optional<StudentSessionInstituteGroupMapping> findBySourceAndTypeIdAndStatus(
-            String source, String typeId, String status);
+    Optional<StudentSessionInstituteGroupMapping> findBySourceAndTypeIdAndUserIdAndStatus(
+            String source, String typeId, String userId, String status);
 
-    Optional<StudentSessionInstituteGroupMapping> findByTypeAndTypeIdAndStatus(
-            String type, String typeId, String status);
+    Optional<StudentSessionInstituteGroupMapping> findByTypeAndTypeIdAndUserIdAndStatus(
+            String type, String typeId, String userId, String status);
 
     Optional<StudentSessionInstituteGroupMapping> findByTypeIdAndSourceAndUserIdAndInstituteIdAndStatus(
             String typeId, String source, String userId, String instituteId, String status);
 
-    Optional<StudentSessionInstituteGroupMapping> findByTypeIdAndStatus(
-            String typeId, String status);
+    Optional<StudentSessionInstituteGroupMapping> findByTypeIdAndUserIdAndStatus(
+            String typeId, String userId, String status);
 
-    Optional<StudentSessionInstituteGroupMapping> findByTypeAndStatus(
-            String type, String status);
+    Optional<StudentSessionInstituteGroupMapping> findByTypeAndUserIdAndStatus(
+            String type, String userId, String status);
 
-    Optional<StudentSessionInstituteGroupMapping> findBySourceAndStatus(
-            String source, String status);
+    Optional<StudentSessionInstituteGroupMapping> findBySourceAndUserIdAndStatus(
+            String source, String userId, String status);
+
 }

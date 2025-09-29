@@ -333,8 +333,8 @@ public class LearnerAuthManager {
         return EmailOTPRequest.builder()
                 .to(email)
                 .service("auth-service")
-                .subject("Vacademy | OTP Verification")
-                .name("Vacademy User")
+                .subject("OTP Verification")
+                .name("User")
                 .build();
     }
 

@@ -43,7 +43,7 @@ public class AssessmentSurveyService {
         // Iterate through each section → each question
         questionMapping.values().forEach(questionList -> {
             for (AssessmentQuestionPreviewDto questionPreview : questionList) {
-                List<QuestionWiseMarks> allRespondentData = questionWiseMarksService.getAllQuestionWiseAttemptsForAssessmentIdAndQuestionIdAndSectionId(questionPreview.getQuestionId(), assessment.getId(), questionPreview.getSectionId());
+                List<QuestionWiseMarks> allRespondentData = questionWiseMarksService.getAllQuestionWiseAttemptsForAssessmentIdAndQuestionIdAndSectionId( assessment.getId(),questionPreview.getQuestionId(), questionPreview.getSectionId());
                 Object surveyDetail = QuestionBasedStrategyFactory.getSurveyDetailBasedOnType(
                         assessment,
                         questionPreview,allRespondentData

@@ -145,25 +145,41 @@ public class Step2Service {
     }
 
     private java.time.LocalDateTime computeTriggerTime(LiveSessionStep2RequestDTO.NotificationActionDTO dto, SessionSchedule schedule) {
-        java.time.LocalDate meetingLocalDate = schedule.getMeetingDate().toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+        // Get the session to access timezone
+        LiveSession session = sessionRepository.findById(schedule.getSessionId())
+                .orElseThrow(() -> new RuntimeException("Session not found: " + schedule.getSessionId()));
+        
+        // Use session timezone, fallback to system default if not set
+        java.time.ZoneId sessionZone = session.getTimezone() != null 
+                ? java.time.ZoneId.of(session.getTimezone())
+                : java.time.ZoneId.systemDefault();
+        
+        java.time.LocalDate meetingLocalDate = schedule.getMeetingDate().toInstant().atZone(sessionZone).toLocalDate();
         java.time.LocalTime startLocalTime = schedule.getStartTime().toLocalTime();
         java.time.LocalTime lastEntryLocalTime = schedule.getLastEntryTime() != null ? schedule.getLastEntryTime().toLocalTime() : null;
 
         java.time.LocalDateTime startDateTime = java.time.LocalDateTime.of(meetingLocalDate, startLocalTime);
+        java.time.LocalDateTime triggerTime;
+        
         if (dto.getType() == NotificationTypeEnum.BEFORE_LIVE) {
             int minutes = extractMinutes(dto.getTime());
-            return startDateTime.minusMinutes(minutes);
+            triggerTime = startDateTime.minusMinutes(minutes);
         } else if (dto.getType() == NotificationTypeEnum.ON_LIVE) {
-            return startDateTime;
+            triggerTime = startDateTime;
         } else if (dto.getType() == NotificationTypeEnum.POST) {
             if (lastEntryLocalTime != null) {
-                return java.time.LocalDateTime.of(meetingLocalDate, lastEntryLocalTime);
+                triggerTime = java.time.LocalDateTime.of(meetingLocalDate, lastEntryLocalTime);
+            } else {
+                triggerTime = startDateTime; // fallback
             }
-            return startDateTime; // fallback
         } else if (dto.getType() == NotificationTypeEnum.ON_CREATE) {
-            return java.time.LocalDateTime.now();
+            triggerTime = java.time.LocalDateTime.now(sessionZone);
+        } else {
+            return null;
         }
-        return null;
+        
+        // Convert from session timezone to UTC before storing
+        return triggerTime.atZone(sessionZone).withZoneSameInstant(java.time.ZoneId.of("UTC")).toLocalDateTime();
     }
 
     private void updateNotificationEntity(ScheduleNotification notification,

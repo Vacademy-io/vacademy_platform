@@ -13,7 +13,10 @@ import { SubscriptionPlanSection } from "./subscription-plan-sections";
 import { OneTimePlanSection } from "./onetime-plan-section";
 import { useState } from "react";
 import { toast } from "sonner";
-import { LIVE_SESSION_REQUEST_OTP, LIVE_SESSION_VERIFY_OTP } from "@/constants/urls";
+import {
+  LIVE_SESSION_REQUEST_OTP,
+  LIVE_SESSION_VERIFY_OTP,
+} from "@/constants/urls";
 import axios from "axios";
 
 // Course data interface
@@ -155,13 +158,15 @@ const RegistrationStep = ({
       await axios.post(
         LIVE_SESSION_REQUEST_OTP,
         {
-          institute_id: instituteId,
           to: email,
         },
         {
           headers: {
             accept: "*/*",
             "Content-Type": "application/json",
+          },
+          params: {
+            instituteId,
           },
         }
       );

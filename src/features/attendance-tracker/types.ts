@@ -10,6 +10,7 @@ export interface Session {
   attendanceTimestamp?: string; // ISO datetime
 }
 
+
 export interface Student {
   studentId: string;
   fullName: string;

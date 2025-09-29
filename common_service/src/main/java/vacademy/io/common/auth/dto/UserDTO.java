@@ -49,4 +49,23 @@ public class UserDTO {
 
         this.roles = user.getRoles().stream().map((ur) -> ur.getRole().getName()).toList();
     }
+
+    public UserDTO(User user,UserDTO userDTO){
+        this.id = user.getId();
+        this.username = user.getUsername();
+        this.email = user.getEmail();
+        this.fullName = user.getFullName();
+        this.addressLine = user.getAddressLine();
+        this.city = user.getCity();
+        this.pinCode = user.getPinCode();
+        this.mobileNumber = user.getMobileNumber();
+        this.dateOfBirth = user.getDateOfBirth();
+        this.gender = user.getGender();
+        this.isRootUser = user.isRootUser();
+        this.profilePicFileId = user.getProfilePicFileId();
+        this.region=userDTO.getRegion();
+
+        this.roles = user.getRoles().stream().map((ur) -> ur.getRole().getName()).toList();
+
+    }
 }

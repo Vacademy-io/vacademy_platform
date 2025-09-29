@@ -30,4 +30,12 @@ public interface ReferralMappingRepository extends JpaRepository<ReferralMapping
             String refereeUserId,
             List<String> statusList
     );
+
+    @Query("SELECT COUNT(r) " +
+            "FROM ReferralMapping r " +
+            "WHERE r.referrerUserId = :referrerUserId " +
+            "AND r.status IN :statusList")
+    long countByReferrerUserIdAndStatusList(@Param("referrerUserId") String referrerUserId,
+                                            @Param("statusList") List<String> statusList);
+
 }

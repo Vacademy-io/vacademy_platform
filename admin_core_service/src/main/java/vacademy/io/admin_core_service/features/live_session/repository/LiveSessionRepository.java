@@ -67,6 +67,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
     WHERE s.status = 'LIVE'
       AND ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)
       AND s.institute_id = :instituteId
+      AND ss.status != 'DELETED'
 """, nativeQuery = true)
     List<LiveSessionRepository.LiveSessionListProjection> findCurrentlyLiveSessions(@Param("instituteId") String instituteId);
 
@@ -95,6 +96,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
                         AND CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS time) < ss.start_time)
           )
     AND s.institute_id = :instituteId
+    AND ss.status != 'DELETED'
     ORDER BY ss.meeting_date ASC, ss.start_time ASC
 """, nativeQuery = true)
     List<LiveSessionRepository.LiveSessionListProjection> findUpcomingSessions(@Param("instituteId") String instituteId);
@@ -123,6 +125,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
                 AND CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS time) > ss.last_entry_time)
           )
       AND s.institute_id = :instituteId
+      AND ss.status != 'DELETED'
     ORDER BY ss.meeting_date ASC, ss.start_time ASC
     """, nativeQuery = true)
     List<LiveSessionRepository.LiveSessionListProjection> findPreviousSessions(@Param("instituteId") String instituteId);
@@ -146,6 +149,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
     JOIN session_schedules ss ON s.id = ss.session_id
     WHERE s.status = 'DRAFT'
     AND s.institute_id = :instituteId
+    AND ss.status != 'DELETED'
     """, nativeQuery = true)
     List<LiveSessionRepository.LiveSessionListProjection> findDraftedSessions(@Param("instituteId") String instituteId);
 
@@ -178,6 +182,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
           AND lsp.source_id = :batchId
           AND ss.meeting_date >= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)
           AND s.status IN ('DRAFT', 'LIVE')
+          AND ss.status != 'DELETED'
         ORDER BY ss.meeting_date, ss.start_time
     """, nativeQuery = true)
     List<LiveSessionRepository.LiveSessionListProjection> findUpcomingSessionsForBatch(@Param("batchId") String batchId);
@@ -211,6 +216,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
           AND lsp.source_id = :userId
           AND ss.meeting_date >= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)
           AND s.status IN ('DRAFT', 'LIVE')
+          AND ss.status != 'DELETED'
         ORDER BY ss.meeting_date, ss.start_time
     """, nativeQuery = true)
     List<LiveSessionRepository.LiveSessionListProjection> findUpcomingSessionsForUser(@Param("userId") String userId);

@@ -8,6 +8,8 @@ import vacademy.io.admin_core_service.features.learner.constants.TemplateConstan
 import vacademy.io.admin_core_service.features.notification.config.NotificationConfig;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
+import vacademy.io.admin_core_service.features.notification.enums.NotificationEventType;
+import vacademy.io.admin_core_service.features.notification.service.DynamicNotificationService;
 import vacademy.io.admin_core_service.features.notification_service.enums.CommunicationType;
 import vacademy.io.admin_core_service.features.notification_service.enums.NotificationSourceEnum;
 import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
@@ -29,8 +31,9 @@ public class LearnerEnrollmentNotificationService {
     private final InstituteRepository instituteRepository;
     private final ExecutorService executor = Executors.newFixedThreadPool(10);
     private final SendUniqueLinkService sendUniqueLinkService;
+    private final DynamicNotificationService dynamicNotificationService;
 
-    
+
     public void sendLearnerEnrollmentNotification(List<InstituteStudentDTO> students, String instituteId) {
         // Submit the task to the thread pool
         executor.submit(() -> {
@@ -40,16 +43,22 @@ public class LearnerEnrollmentNotificationService {
                 //notificationService.sendEmailToUsers(notificationDTO,instituteId);
                 for (InstituteStudentDTO student : students) {
                     if (student != null && student.getUserDetails() != null) {
-                        sendUniqueLinkService.sendUniqueLinkByWhatsApp(
-                                instituteId,
-                                student.getUserDetails(),
-                                TemplateConstants.FREE_USER_WHATSAPP_TEMPLATE
-                        );
-                        sendUniqueLinkService.sendUniqueLinkByEmail(
-                                instituteId,
-                                student.getUserDetails(),
-                                TemplateConstants.FREE_USER_EMAIL_TEMPLATE
-                        );
+                        // Send dynamic notification using packageSessionId
+                        if (student.getInstituteStudentDetails() != null &&
+                                student.getInstituteStudentDetails().getPackageSessionId() != null) {
+
+                            String packageSessionId = student.getInstituteStudentDetails().getPackageSessionId();
+
+                            // Send dynamic notification using the same system as learner enrollment
+                            dynamicNotificationService.sendDynamicNotification(
+                                    NotificationEventType.LEARNER_ENROLL,
+                                    packageSessionId,
+                                    instituteId,
+                                    student.getUserDetails(),
+                                    null, // PaymentOption - not available in this context
+                                    null  // EnrollInvite - not available in this context
+                            );
+                        }
                     }
                 }
             } catch (Exception e) {

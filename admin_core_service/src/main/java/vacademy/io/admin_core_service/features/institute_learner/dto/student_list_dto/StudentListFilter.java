@@ -23,4 +23,7 @@ public class StudentListFilter {
     private List<String> paymentStatuses;
     private List<String> customFields;
     private Map<String, String> sortColumns;
+    private List<String> sources;
+    private List<String> types;
+    private List<String> typeIds;
 }

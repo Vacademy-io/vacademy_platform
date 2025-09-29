@@ -8,10 +8,10 @@ import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInviteService;
-import vacademy.io.admin_core_service.features.learner.constants.TemplateConstants;
 import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.PaymentOptionOperationFactory;
 import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.PaymentOptionOperationStrategy;
-import vacademy.io.admin_core_service.features.notification_service.service.SendUniqueLinkService;
+import vacademy.io.admin_core_service.features.notification.service.DynamicNotificationService;
+import vacademy.io.admin_core_service.features.notification.enums.NotificationEventType;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
@@ -50,11 +50,12 @@ public class LearnerEnrollRequestService {
     @Autowired
     private AuthService authService;
 
-    @Autowired
-    private SendUniqueLinkService service;
 
     @Autowired
     private LearnerCouponService learnerCouponService;
+
+    @Autowired
+    private DynamicNotificationService dynamicNotificationService;
 
     @Transactional
     public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
@@ -68,10 +69,19 @@ public class LearnerEnrollRequestService {
         EnrollInvite enrollInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
         PaymentOption paymentOption = getValidatedPaymentOption(enrollDTO.getPaymentOptionId());
         PaymentPlan paymentPlan = getOptionalPaymentPlan(enrollDTO.getPlanId());
-        sendNotificationBasedOnPaymentOption(
+        // Use new dynamic notification system
+        sendDynamicNotificationForEnrollment(
                 learnerEnrollRequestDTO.getInstituteId(),
                 learnerEnrollRequestDTO.getUser(),
                 paymentOption,
+                enrollInvite,
+                enrollDTO.getPackageSessionIds().get(0) // Get first package session ID
+        );
+        
+        // Send separate referral invitation email
+        sendReferralInvitationEmail(
+                learnerEnrollRequestDTO.getInstituteId(),
+                learnerEnrollRequestDTO.getUser(),
                 enrollInvite
         );
         UserPlan userPlan = createUserPlan(
@@ -89,26 +99,40 @@ public class LearnerEnrollRequestService {
             userPlan
         );
     }
-    public void test(String instituteId,UserDTO user){
-        try{
-            System.out.println("send email");
-            service.sendUniqueLinkByEmail(instituteId, user, TemplateConstants.PAID_USER_EMAIL_TEMPLATE);
-//        service.sendUniqueLinkByWhatsApp(instituteId, user,TemplateConstants.PAID_USER_WHATSAPP_TEMPLATE);
-        }
-        catch (Exception e){
-            log.error("ERROR: " +e.getMessage());
+    private void sendDynamicNotificationForEnrollment(
+            String instituteId, 
+            UserDTO user, 
+            PaymentOption paymentOption, 
+            EnrollInvite enrollInvite,
+            String packageSessionId) {
+        
+        try {
+            dynamicNotificationService.sendDynamicNotification(
+                    NotificationEventType.LEARNER_ENROLL,
+                    packageSessionId,
+                    instituteId,
+                    user,
+                    paymentOption,
+                    enrollInvite
+            );
+        } catch (Exception e) {
+            log.error("Error sending dynamic notification for enrollment", e);
         }
     }
-    private void sendNotificationBasedOnPaymentOption(String instituteId, UserDTO user, PaymentOption paymentOption, EnrollInvite enrollInvite) {
-        String type = paymentOption.getType();
-        if (PaymentOptionType.SUBSCRIPTION.name().equals(type)|| PaymentOptionType.ONE_TIME.name().equals(type)) {
-            //Paid User
-            service.sendUniqueLinkByEmailByEnrollInvite(instituteId, user, TemplateConstants.PAID_USER_EMAIL_TEMPLATE,enrollInvite);
-            service.sendUniqueLinkByWhatsApp(instituteId, user,TemplateConstants.PAID_USER_WHATSAPP_TEMPLATE);
-        } else {
-            //Free User
-            service.sendUniqueLinkByEmailByEnrollInvite(instituteId, user,TemplateConstants.FREE_USER_EMAIL_TEMPLATE,enrollInvite);
-            service.sendUniqueLinkByWhatsApp(instituteId, user,TemplateConstants.FREE_USER_WHATSAPP_TEMPLATE);
+
+    private void sendReferralInvitationEmail(
+            String instituteId, 
+            UserDTO user, 
+            EnrollInvite enrollInvite) {
+        
+        try {
+            dynamicNotificationService.sendReferralInvitationNotification(
+                    instituteId,
+                    user,
+                    enrollInvite
+            );
+        } catch (Exception e) {
+            log.error("Error sending referral invitation email", e);
         }
     }
 

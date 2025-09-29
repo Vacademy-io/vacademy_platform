@@ -232,6 +232,12 @@ public class StudentListManager {
 
             dto.setDestinationPackageSessionId(p.getDestinationPackageSessionId());
 
+            // ---- ADDED MAPPINGS ----
+            dto.setPaymentAmount(p.getPaymentAmount());
+            dto.setSource(p.getSource());
+            dto.setType(p.getType());
+            dto.setTypeId(p.getTypeId());
+
             PaymentPlan paymentPlan = JsonUtil.fromJson(p.getPaymentPlanJson(), PaymentPlan.class);
             if (paymentPlan != null) {
                 dto.setPaymentPlan(paymentPlan.mapToPaymentPlanDTO());
@@ -394,5 +400,51 @@ public class StudentListManager {
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());
         }
+    }
+
+    public ResponseEntity<AllStudentV2Response> getLeads(CustomUserDetails user,
+                                                                    StudentListFilter studentListFilter, int pageNo, int pageSize) {
+
+        Pageable pageable = createPageable(studentListFilter, pageNo, pageSize);
+        Page<StudentListV2Projection> page = fetchLeadsDetails(studentListFilter, pageable);
+        List<StudentV2DTO> content = page != null ? mapProjectionsToDTOs(page.getContent()) : new ArrayList<>();
+
+        if (!content.isEmpty()) {
+            enrichWithUserCredentials(content);
+        }
+
+        return ResponseEntity.ok(buildResponse(content, page, pageSize));
+    }
+
+    private Page<StudentListV2Projection> fetchLeadsDetails(StudentListFilter filter, Pageable pageable) {
+        if (StringUtils.hasText(filter.getName())) {
+            return instituteStudentRepository.getAllStudentV2WithSearchRaw(
+                    filter.getName(),
+                    filter.getInstituteIds(),
+                    filter.getStatuses(),
+                    filter.getPaymentStatuses(),
+                    List.of(StatusEnum.ACTIVE.name()),
+                    filter.getSources(),
+                    filter.getTypes(),
+                    filter.getTypeIds(),
+                    pageable);
+        }
+
+        if (!filter.getInstituteIds().isEmpty()) {
+            return instituteStudentRepository.getAllStudentV2WithFilterRaw(
+                    filter.getStatuses(),
+                    filter.getGender(),
+                    filter.getInstituteIds(),
+                    filter.getGroupIds(),
+                    filter.getPackageSessionIds(),
+                    filter.getPaymentStatuses(),
+                    filter.getSources(),
+                    filter.getTypes(),
+                    filter.getTypeIds(),
+                    List.of(StatusEnum.ACTIVE.name()),
+                    pageable);
+        }
+
+        return null;
     }
 }

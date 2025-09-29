@@ -65,7 +65,8 @@ public class AuthService {
     @Transactional
     public User createUser(RegisterRequest registerRequest, Set<UserRole> roles) {
         boolean isAlreadyPresent = false;
-        Optional<User> optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(registerRequest.getEmail());
+        String normalizedEmail = registerRequest.getEmail() != null ? registerRequest.getEmail().toLowerCase() : null;
+        Optional<User> optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(normalizedEmail);
         User user;
 
         if (optionalUser.isPresent()) {
@@ -75,7 +76,7 @@ public class AuthService {
             user = User.builder()
                     .fullName(registerRequest.getFullName())
                     .username(registerRequest.getUserName())
-                    .email(registerRequest.getEmail())
+                    .email(normalizedEmail)
                     .password(registerRequest.getPassword())
                     .isRootUser(true)
                     .build();
@@ -91,9 +92,9 @@ public class AuthService {
         user = userRepository.save(user); // Save again with roles
 
         if (isAlreadyPresent) {
-            sendKeepingCredentialsWelcomeMailToUser(user,registerRequest.getInstitute().getId());
+            sendKeepingCredentialsWelcomeMailToUser(user, registerRequest.getInstitute().getId());
         } else {
-            sendWelcomeMailToUser(user,registerRequest.getInstitute().getId());
+            sendWelcomeMailToUser(user, registerRequest.getInstitute().getId());
         }
 
         return user;
@@ -101,7 +102,8 @@ public class AuthService {
 
     @Transactional
     public User createUser(UserDTO registerRequest, String instituteId, boolean sendWelcomeMail) {
-        Optional<User> optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(registerRequest.getEmail());
+        String normalizedEmail = registerRequest.getEmail() != null ? registerRequest.getEmail().toLowerCase() : null;
+        Optional<User> optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(normalizedEmail);
         boolean isAlreadyPresent = optionalUser.isPresent();
 
         User user;
@@ -118,7 +120,7 @@ public class AuthService {
             user = User.builder()
                     .fullName(registerRequest.getFullName())
                     .username(registerRequest.getUsername())
-                    .email(registerRequest.getEmail())
+                    .email(normalizedEmail)
                     .password(registerRequest.getPassword())
                     .isRootUser(true)
                     .build();
@@ -143,7 +145,7 @@ public class AuthService {
         user = userRepository.save(user);
 
         // Send appropriate welcome mail
-        if(sendWelcomeMail){
+        if (sendWelcomeMail) {
             if (isAlreadyPresent) {
                 sendKeepingCredentialsWelcomeMailToUser(user, instituteId);
             } else {
@@ -172,24 +174,24 @@ public class AuthService {
     }
 
     public void sendWelcomeMailToUser(User user, String instituteId) {
-        InstituteInfoDTO instituteInfoDTO=null;
+        InstituteInfoDTO instituteInfoDTO = null;
 
         String instituteName = "Vacademy"; // Default fallback
-        String theme="#E67E22";
-        String learnerLoginUrl="https://dash.vacademy.io";
+        String theme = "#E67E22";
+        String learnerLoginUrl = "https://dash.vacademy.io";
         if (StringUtils.hasText(instituteId)) {
-            instituteInfoDTO=instituteInternalService.getInstituteByInstituteId(instituteId);
-            if(instituteInfoDTO.getInstituteName()!=null)
-                instituteName=instituteInfoDTO.getInstituteName();
-            if(instituteInfoDTO.getInstituteThemeCode()!=null)
-                theme=instituteInfoDTO.getInstituteThemeCode();
-            if(instituteInfoDTO.getLearnerPortalUrl()!=null)
-                learnerLoginUrl=instituteInfoDTO.getLearnerPortalUrl();
+            instituteInfoDTO = instituteInternalService.getInstituteByInstituteId(instituteId);
+            if (instituteInfoDTO.getInstituteName() != null)
+                instituteName = instituteInfoDTO.getInstituteName();
+            if (instituteInfoDTO.getInstituteThemeCode() != null)
+                theme = instituteInfoDTO.getInstituteThemeCode();
+            if (instituteInfoDTO.getLearnerPortalUrl() != null)
+                learnerLoginUrl = instituteInfoDTO.getLearnerPortalUrl();
         }
         GenericEmailRequest genericEmailRequest = new GenericEmailRequest();
         genericEmailRequest.setTo(user.getEmail());
         genericEmailRequest.setBody(NotificationEmailBody.createWelcomeEmailBody(instituteName, user.getFullName(),
-                user.getUsername(), user.getPassword(),learnerLoginUrl,theme));
+                user.getUsername(), user.getPassword(), learnerLoginUrl, theme));
         genericEmailRequest.setSubject("Welcome to " + instituteName);
         notificationService.sendGenericHtmlMail(genericEmailRequest, instituteId);
     }
@@ -198,19 +200,19 @@ public class AuthService {
         if (user == null || user.getEmail() == null) {
             throw new IllegalArgumentException("User or user email must not be null");
         }
-        InstituteInfoDTO instituteInfoDTO=null;
+        InstituteInfoDTO instituteInfoDTO = null;
 
         String instituteName = "Vacademy"; // Default fallback
-        String theme="#E67E22";
-        String learnerLoginUrl="https://dash.vacademy.io";
+        String theme = "#E67E22";
+        String learnerLoginUrl = "https://dash.vacademy.io";
         if (StringUtils.hasText(instituteId)) {
-            instituteInfoDTO=instituteInternalService.getInstituteByInstituteId(instituteId);
-            if(instituteInfoDTO.getInstituteName()!=null)
-                instituteName=instituteInfoDTO.getInstituteName();
-            if(instituteInfoDTO.getInstituteThemeCode()!=null)
-                theme=instituteInfoDTO.getInstituteThemeCode();
-            if(instituteInfoDTO.getLearnerPortalUrl()!=null)
-                learnerLoginUrl=instituteInfoDTO.getLearnerPortalUrl();
+            instituteInfoDTO = instituteInternalService.getInstituteByInstituteId(instituteId);
+            if (instituteInfoDTO.getInstituteName() != null)
+                instituteName = instituteInfoDTO.getInstituteName();
+            if (instituteInfoDTO.getInstituteThemeCode() != null)
+                theme = instituteInfoDTO.getInstituteThemeCode();
+            if (instituteInfoDTO.getLearnerPortalUrl() != null)
+                learnerLoginUrl = instituteInfoDTO.getLearnerPortalUrl();
         }
 
         String fullName = user.getFullName() != null ? user.getFullName() : "User";

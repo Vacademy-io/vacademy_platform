@@ -9,6 +9,7 @@ import vacademy.io.admin_core_service.features.institute_learner.repository.Stud
 import vacademy.io.admin_core_service.features.live_session.constants.LiveClassEmailBody;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
 import vacademy.io.admin_core_service.features.live_session.entity.ScheduleNotification;
+import vacademy.io.admin_core_service.features.live_session.enums.LiveClassAction;
 import vacademy.io.admin_core_service.features.live_session.enums.NotificationStatusEnum;
 import vacademy.io.admin_core_service.features.live_session.enums.NotificationTypeEnum;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
@@ -245,6 +246,7 @@ public class LiveSessionNotificationProcessor {
 
             // Add timezone with UTC offset
             placeholders.put("TIMEZONE", getTimezoneWithOffset(session.getTimezone()));
+            placeholders.put("ACTION", LiveClassAction.STARTED.name());
 
             // Add theme color
             placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
@@ -309,6 +311,7 @@ public class LiveSessionNotificationProcessor {
 
             // Add timezone with UTC offset
             placeholders.put("TIMEZONE", getTimezoneWithOffset(session.getTimezone()));
+            placeholders.put("ACTION", LiveClassAction.STARTING.name());
 
             // Add theme color
             placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
@@ -614,6 +617,7 @@ public class LiveSessionNotificationProcessor {
 
             // Add timezone with UTC offset
             placeholders.put("TIMEZONE", getTimezoneWithOffset(session.getTimezone()));
+            placeholders.put("ACTION", LiveClassAction.CREATED.name());
 
             // Add theme color
             placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));

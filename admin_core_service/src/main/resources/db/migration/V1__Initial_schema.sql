@@ -2403,33 +2403,4 @@ CREATE TABLE public.node_execution (
 	CONSTRAINT node_execution_workflow_execution_id_fkey FOREIGN KEY (workflow_execution_id) REFERENCES public.workflow_execution(id) ON DELETE CASCADE
 );
 CREATE INDEX idx_node_exec_st ON public.node_execution USING btree (status, started_at);
-CREATE INDEX idx_node_exec_wf ON public.node_execution USING btree (workflow_execution_id, execution_order);
-
-CREATE TABLE course_catalogue (
-    id VARCHAR(255) PRIMARY KEY,
-    catalogue_json TEXT,
-    status VARCHAR(255),
-    tag_name VARCHAR(255),
-    created_at TIMESTAMP DEFAULT now(),
-    updated_at TIMESTAMP DEFAULT now()
-);
-
-CREATE INDEX idx_cc_tg_name ON public.course_catalogue USING btree (tag_name);
-
-
-CREATE TABLE catalogue_institute_mapping (
-    id VARCHAR(255) PRIMARY KEY,
-    course_catalogue VARCHAR(255) NOT NULL,
-    institute_id VARCHAR(255) NOT NULL,
-    source VARCHAR(255),
-    source_id VARCHAR(255),
-    status VARCHAR(255),
-    is_default BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT now(),
-    updated_at TIMESTAMP DEFAULT now(),
-    CONSTRAINT fk_course_catalogue FOREIGN KEY (course_catalogue) REFERENCES course_catalogue(id),
-    CONSTRAINT fk_institute FOREIGN KEY (institute_id) REFERENCES institute(id)
-);
-
-CREATE INDEX idx_cim_ins_id ON public.catalogue_institute_mapping USING btree (institute_id);
-CREATE INDEX idx_cim_src ON public.catalogue_institute_mapping USING btree (source,source_id);
+CREATE INDEX idx_node_exec_wf ON public.node_execution USING btree (workflow_execution_id, execution_order);r

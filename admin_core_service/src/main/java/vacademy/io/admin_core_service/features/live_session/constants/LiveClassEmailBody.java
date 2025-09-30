@@ -30,8 +30,7 @@ public class LiveClassEmailBody {
                                           <tr>
                                             <td style="padding:10px; background:#fff3ec; border:1px solid #ffe0d1; border-radius:6px;">
                                               <p style="margin:0; font-size:15px;"><strong>📅 Date:</strong> {{DATE}}</p>
-                                              <p style="margin:5px 0 0 0; font-size:15px;"><strong>⏰ Time:</strong> {{TIME}}</p>
-                                              <p style="margin:5px 0 0 0; font-size:15px;"><strong>🌍 Timezone:</strong> {{TIMEZONE}}</p>
+                                              <p style="margin:5px 0 0 0; font-size:15px;"><strong>⏰ Time:<br></strong> {{ALL_TIMEZONE_TIMES}}</p>
                                             </td>
                                           </tr>
                                         </table>
@@ -99,8 +98,7 @@ public class LiveClassEmailBody {
                               <tr>
                                 <td style="padding:15px; background:#f8d7da; border:1px solid #f5c6cb; border-radius:6px;">
                                   <p style="margin:0; font-size:15px; color:#721c24;"><strong>📅 Originally Scheduled:</strong> {{DATE}}</p>
-                                  <p style="margin:5px 0 0 0; font-size:15px; color:#721c24;"><strong>⏰ Time:</strong> {{TIME}}</p>
-                                  <p style="margin:5px 0 0 0; font-size:15px; color:#721c24;"><strong>🌍 Timezone:</strong> {{TIMEZONE}}</p>
+                                  <p style="margin:5px 0 0 0; font-size:15px; color:#721c24;"><strong>⏰ Time:<br></strong> {{ALL_TIMEZONE_TIMES}}</p>
                                 </td>
                               </tr>
                             </table>

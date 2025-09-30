@@ -236,8 +236,8 @@ const RegistrationStep = ({
       {(selectedPlan?.type === "SUBSCRIPTION" ||
         selectedPlan?.type === "ONE_TIME") &&
         courseData.includePaymentPlans && (
-          <Card className="mb-4 flex flex-col gap-0">
-            <div className="flex flex-col items-start gap-3 p-4">
+          <Card className="mb-4 flex flex-col gap-0 mx-4 sm:mx-0">
+            <div className="flex flex-col items-start gap-3 p-3 sm:p-4">
               <div className="flex items-center gap-3">
                 {getPaymentPlanIcon(selectedPlan?.type || "")}
                 <div className="flex flex-1 flex-col font-semibold">
@@ -270,9 +270,9 @@ const RegistrationStep = ({
         )}
       <Card
         id="registration-card"
-        className="overflow-hidden shadow-lg border bg-white w-full"
+        className="overflow-hidden shadow-lg border bg-white w-full mx-4 sm:mx-0"
       >
-        <CardContent className="p-5 sm:p-6">
+        <CardContent className="p-4 sm:p-5 md:p-6">
           <div className="flex items-start gap-2 sm:gap-3 mb-6">
             <div className="p-1.5 sm:p-2 bg-blue-100 rounded-lg flex-shrink-0">
               <GraduationCap className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
@@ -289,8 +289,8 @@ const RegistrationStep = ({
 
           <Separator className="mb-6" />
 
-          <div className="flex justify-center items-center w-full">
-            <div className="flex justify-center items-start w-full flex-col bg-white rounded-xl py-0 mb-4">
+          <div className="flex justify-center items-center w-full px-2 sm:px-0">
+            <div className="flex justify-center items-start w-full flex-col bg-white rounded-xl py-0 mb-4 max-w-full">
               <FormProvider {...form}>
                 <form className="w-full flex flex-col gap-4 mt-4 max-h-full overflow-auto">
                   {Object.entries(form.getValues()).map(
@@ -323,7 +323,7 @@ const RegistrationStep = ({
                             render={({ field }) => (
                               <FormItem>
                                 <FormControl>
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex flex-col gap-2">
                                     <MyInput
                                       inputType="email"
                                       inputPlaceholder={value.name}
@@ -340,9 +340,8 @@ const RegistrationStep = ({
                                       required={value.is_mandatory}
                                       size="large"
                                       label={value.name}
-                                      className=" !w-[300px] md:!w-[360px] lg:!w-[560px] xl:!w-[760px] 2xl:!w-[860px]"
+                                      className="w-full"
                                       disabled={isEmailVerified}
-                                      style={{ width: "100%" }}
                                     />
                                     {!otpSent && !isEmailVerified && (
                                       <MyButton
@@ -350,7 +349,7 @@ const RegistrationStep = ({
                                         buttonType="secondary"
                                         onClick={handleSendOTP}
                                         disable={isLoadingOtp || !field.value}
-                                        className="mt-8"
+                                        className="self-start"
                                       >
                                         {isLoadingOtp
                                           ? "Sending..."
@@ -364,7 +363,7 @@ const RegistrationStep = ({
                           />
 
                           {otpSent && !isEmailVerified && (
-                            <div className="flex gap-2">
+                            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                               <MyInput
                                 inputType="text"
                                 inputPlaceholder="Enter 6-digit OTP"
@@ -373,7 +372,7 @@ const RegistrationStep = ({
                                 required={true}
                                 size="large"
                                 label="OTP Code"
-                                className="!max-w-full !w-full"
+                                className="w-full"
                                 maxLength={6}
                               />
                               <MyButton
@@ -381,7 +380,7 @@ const RegistrationStep = ({
                                 buttonType="primary"
                                 onClick={handleVerifyOTP}
                                 disable={isVerifyingOtp || !otp.trim()}
-                                className="mt-8 whitespace-nowrap"
+                                className="w-full sm:w-auto sm:whitespace-nowrap"
                               >
                                 {isVerifyingOtp ? "Verifying..." : "Verify OTP"}
                               </MyButton>
@@ -437,7 +436,7 @@ const RegistrationStep = ({
                         />
                       )
                   )}
-                  <div className="flex items-center justify-center flex-col gap-4">
+                  <div className="flex items-center justify-center flex-col gap-3 sm:gap-4">
                     <MyButton
                       type="button"
                       buttonType="primary"
@@ -447,14 +446,14 @@ const RegistrationStep = ({
                         console.error(err)
                       )}
                       disable={!isFormValid()}
-                      className="w-full md:w-fit bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-2.5 px-5 rounded-md transition-all duration-200 shadow-sm hover:shadow-md"
+                      className="w-full sm:w-auto bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-2.5 px-4 sm:px-5 rounded-md transition-all duration-200 shadow-sm hover:shadow-md"
                     >
-                      <GraduationCap className="w-5 h-5 mr-2" />
+                      <GraduationCap className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
                       {!isEmailVerified ? "Verify Email First" : "Register"}
                     </MyButton>
                     <button
                       type="button"
-                      className="flex items-center gap-2 text-gray-500 hover:text-gray-700 text-sm mb-2 cursor-pointer transition-colors duration-200"
+                      className="flex items-center justify-center gap-2 text-gray-500 hover:text-gray-700 text-sm cursor-pointer transition-colors duration-200 py-1 px-2 rounded hover:bg-gray-50"
                       onClick={() => form.reset()}
                     >
                       <RotateCcw className="w-4 h-4" />
@@ -470,9 +469,9 @@ const RegistrationStep = ({
       {courseData?.customHtml && (
         <Card
           id="registration-card"
-          className="overflow-hidden shadow-lg border bg-white w-full"
+          className="overflow-hidden shadow-lg border bg-white w-full mx-4 sm:mx-0"
         >
-          <CardContent className="p-5 sm:p-6">
+          <CardContent className="p-4 sm:p-5 md:p-6">
             <div className="flex items-start gap-2 sm:gap-3 mb-6">
               <div
                 className="w-full h-full"

@@ -12,6 +12,8 @@ import { ModalEmailLogin } from "../../forms/modal/ModalEmailOtpForm";
 import { ModalUsernameLogin } from "../../forms/modal/ModalUsernamePasswordForm";
 import { LoginSettings } from "@/config/login/defaultLoginSettings";
 import { SignupSettings } from "@/config/signup/defaultSignupSettings";
+import { TokenKey } from "@/constants/auth/tokens";
+import { setTokenInStorage } from "@/lib/auth/sessionUtility";
 
 interface ModularDynamicLoginContainerProps {
   instituteId?: string;
@@ -93,56 +95,166 @@ export function ModularDynamicLoginContainer({
   }, [enabledProviders, currentProvider, defaultProvider]);
 
   useEffect(() => {
-    // Listen for OAuth completion message from popup
-    const messageHandler = (event: MessageEvent) => {
-      // Only accept messages from the same origin
-      if (event.origin !== window.location.origin) return;
-      
-      const { action, success, error, redirectTo, backendRoute, currentUrl } = event.data;
-      
-      if (action === 'oauth_complete') {
-        if (success) {
-          // OAuth login successful
-          console.group("[Modal OAuth | Completion]");
-          console.log("OAuth completed successfully");
-          console.log("Redirect to:", redirectTo);
-          console.log("Backend route:", backendRoute);
-          console.log("Current URL:", currentUrl);
-          console.groupEnd();
-          
-          // Handle dynamic redirection (same as signup flow)
-          if (redirectTo) {
-            // Close modal first
-            if (onLoginSuccess) {
-              onLoginSuccess();
-            }
-            
-            // Then redirect to the determined route
-            setTimeout(() => {
-              if (/^https?:\/\//.test(redirectTo)) {
-                window.location.assign(redirectTo);
-              } else {
-                window.location.href = redirectTo;
-              }
-            }, 100);
-          } else {
-            // No redirect specified, just close modal
-            if (onLoginSuccess) {
-              onLoginSuccess();
-            }
+    // Helper to finalize login after receiving tokens
+    const finalizeLoginWithTokens = async (accessToken: string, refreshToken: string) => {
+      try {
+        await setTokenInStorage(TokenKey.accessToken, accessToken);
+        await setTokenInStorage(TokenKey.refreshToken, refreshToken);
+
+        // Determine redirect target from sessionStorage (set when opening OAuth)
+        let redirectTo: string | undefined;
+        try {
+          const stored = sessionStorage.getItem('modal_oauth_data');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            redirectTo = parsed?.redirectTo;
           }
-        } else if (error) {
-          // OAuth login failed - show detailed error message with longer duration
-          toast.error(error || "OAuth login failed. Please try again.", {
-            duration: 5000, // Show for 5 seconds
-            description: "Please check your internet connection and try again."
-          });
+        } catch (e) { void e; }
+
+        // Close modal first
+        if (onLoginSuccess) {
+          onLoginSuccess();
         }
+
+        // Redirect shortly after closing modal
+        setTimeout(() => {
+          const target = redirectTo && typeof redirectTo === 'string' ? redirectTo : '/dashboard';
+          if (/^https?:\/\//.test(target)) {
+            window.location.assign(target);
+          } else {
+            window.location.href = target;
+          }
+        }, 100);
+      } catch {
+        toast.error("Failed to store authentication tokens. Please try again.");
       }
     };
 
+    // Ensure we only process once
+    let processed = false;
+
+    // Listen for OAuth completion messages from popup
+    const messageHandler = async (event: MessageEvent) => {
+      const data = event.data;
+
+      // Legacy/custom path: action-based message
+      if (data && data.action === 'oauth_complete') {
+        if (data.success) {
+          const { redirectTo } = data;
+          if (!processed) {
+            processed = true;
+            if (onLoginSuccess) onLoginSuccess();
+            setTimeout(() => {
+              const target = redirectTo && typeof redirectTo === 'string' ? redirectTo : '/dashboard';
+              if (/^https?:\/\//.test(target)) {
+                window.location.assign(target);
+              } else {
+                window.location.href = target;
+              }
+            }, 100);
+          }
+        } else if (data.error) {
+          toast.error(data.error || "OAuth login failed. Please try again.", {
+            duration: 5000,
+            description: "Please check your internet connection and try again."
+          });
+        }
+        return;
+      }
+
+      // Standard path used by oauth-popup-handler.html
+      if (data && data.type === 'oauth_success' && data.data) {
+        const payload = data.data;
+        if (!processed && payload?.accessToken && payload?.refreshToken) {
+          processed = true;
+          await finalizeLoginWithTokens(payload.accessToken, payload.refreshToken);
+        }
+      } else if (data && data.type === 'oauth_error') {
+        toast.error(data?.data?.message || "OAuth authentication failed.");
+      }
+    };
+
+    // Fallback: storage event when COOP blocks postMessage
+    const storageHandler = async (e: StorageEvent) => {
+      if (!e) return;
+      if (e.key === 'OAUTH_RESULT' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (parsed?.type === 'oauth_success' && parsed?.data) {
+            const { accessToken, refreshToken } = parsed.data || {};
+            if (!processed && accessToken && refreshToken) {
+              processed = true;
+              await finalizeLoginWithTokens(accessToken, refreshToken);
+            }
+          } else if (parsed?.type === 'oauth_error') {
+            toast.error(parsed?.data?.message || 'OAuth authentication failed');
+          }
+          // Clean up stored value
+          localStorage.removeItem('OAUTH_RESULT');
+        } catch (err) { void err; }
+      }
+    };
+
+    // Fallback: BroadcastChannel
+    let bc: BroadcastChannel | null = null;
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        bc = new BroadcastChannel('OAUTH_CHANNEL');
+        bc.onmessage = async (ev: MessageEvent) => {
+          const msg = ev?.data;
+          if (!msg || typeof msg !== 'object') return;
+          if (msg.type === 'oauth_success' && msg.data) {
+            const { accessToken, refreshToken } = msg.data || {};
+            if (accessToken && refreshToken) {
+              await finalizeLoginWithTokens(accessToken, refreshToken);
+            }
+          } else if (msg.type === 'oauth_error') {
+            toast.error(msg?.data?.message || 'OAuth authentication failed');
+          }
+        };
+      }
+    } catch (err) { void err; }
+
+    // Immediate localStorage check in case write happened before listener attached
+    const checkLocalOnce = () => {
+      try {
+        const existing = localStorage.getItem('OAUTH_RESULT');
+        if (existing) {
+          const parsed = JSON.parse(existing);
+          if (parsed?.type === 'oauth_success' && parsed?.data) {
+            const { accessToken, refreshToken } = parsed.data || {};
+            if (!processed && accessToken && refreshToken) {
+              processed = true;
+              finalizeLoginWithTokens(accessToken, refreshToken);
+            }
+          } else if (parsed?.type === 'oauth_error') {
+            toast.error(parsed?.data?.message || 'OAuth authentication failed');
+          }
+          localStorage.removeItem('OAUTH_RESULT');
+        }
+      } catch (err) { void err; }
+    };
+    checkLocalOnce();
+
+    // Short polling loop as a last resort when storage event is missed
+    const pollUntil = Date.now() + 15_000; // 15s
+    const pollTimer = window.setInterval(() => {
+      if (processed || Date.now() > pollUntil) {
+        window.clearInterval(pollTimer);
+        return;
+      }
+      checkLocalOnce();
+    }, 400);
+
     window.addEventListener('message', messageHandler);
-    return () => window.removeEventListener('message', messageHandler);
+    window.addEventListener('storage', storageHandler);
+
+    return () => {
+      window.removeEventListener('message', messageHandler);
+      window.removeEventListener('storage', storageHandler);
+      try { window.clearInterval(pollTimer); } catch (err) { void err; }
+      try { if (bc) bc.close(); } catch (err) { void err; }
+    };
   }, [onLoginSuccess]);
 
   const handleOAuthLogin = (provider: "google" | "github") => {
@@ -190,6 +302,7 @@ export function ModularDynamicLoginContainer({
       const stateObj = {
         from: `${window.location.origin}/login/oauth/modal-learner`,
         account_type: "login",
+        user_type: "learner",
       };
 
       const stateJson = JSON.stringify(stateObj);
@@ -288,7 +401,7 @@ export function ModularDynamicLoginContainer({
           }
         }
       }
-    } catch {}
+    } catch (err) { void err; }
     navigate({ to: "/terms-and-conditions" });
   };
 
@@ -305,7 +418,7 @@ export function ModularDynamicLoginContainer({
           }
         }
       }
-    } catch {}
+    } catch (err) { void err; }
     navigate({ to: "/privacy-policy" });
   };
 

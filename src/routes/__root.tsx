@@ -137,6 +137,88 @@ const RootComponent = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Global OAuth completion listener (storage/BroadcastChannel) to redirect parent
+  useEffect(() => {
+    let processed = false;
+
+    const redirectWithTokens = (accessToken: string, refreshToken: string) => {
+      if (processed) return;
+      processed = true;
+      try {
+        const next = new URL('/login', window.location.origin);
+        next.searchParams.set('accessToken', accessToken);
+        next.searchParams.set('refreshToken', refreshToken);
+        window.location.assign(next.toString());
+      } catch (err) {
+        void err;
+      }
+    };
+
+    const storageHandler = (e: StorageEvent) => {
+      if (!e) return;
+      if (e.key === 'OAUTH_RESULT' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (parsed?.type === 'oauth_success' && parsed?.data) {
+            const data: { accessToken?: string; refreshToken?: string } = parsed.data || {};
+            const { accessToken, refreshToken } = data;
+            if (accessToken && refreshToken) {
+              redirectWithTokens(accessToken, refreshToken);
+            }
+          }
+        } catch {
+          // ignore
+        } finally {
+          try { localStorage.removeItem('OAUTH_RESULT'); } catch (err) { void err; }
+        }
+      }
+    };
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        bc = new BroadcastChannel('OAUTH_CHANNEL');
+        bc.onmessage = (ev: MessageEvent) => {
+          const msg = ev?.data;
+          if (!msg || typeof msg !== 'object') return;
+          if (msg.type === 'oauth_success' && msg.data) {
+            const data: { accessToken?: string; refreshToken?: string } = msg.data || {};
+            const { accessToken, refreshToken } = data;
+            if (accessToken && refreshToken) {
+              redirectWithTokens(accessToken, refreshToken);
+            }
+          }
+        };
+      }
+    } catch (err) {
+      void err;
+    }
+
+    // Immediate check in case popup wrote before listeners attached
+    try {
+      const existing = localStorage.getItem('OAUTH_RESULT');
+      if (existing) {
+        const parsed = JSON.parse(existing);
+        if (parsed?.type === 'oauth_success' && parsed?.data) {
+          const data: { accessToken?: string; refreshToken?: string } = parsed.data || {};
+          const { accessToken, refreshToken } = data;
+          if (accessToken && refreshToken) {
+            redirectWithTokens(accessToken, refreshToken);
+          }
+        }
+        localStorage.removeItem('OAUTH_RESULT');
+      }
+    } catch (err) {
+      void err;
+    }
+
+    window.addEventListener('storage', storageHandler);
+    return () => {
+      window.removeEventListener('storage', storageHandler);
+      try { if (bc) bc.close(); } catch (err) { void err; }
+    };
+  }, []);
+
   return (
     <>
       <Outlet />

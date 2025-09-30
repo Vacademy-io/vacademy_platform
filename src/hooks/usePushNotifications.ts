@@ -51,7 +51,7 @@ export const usePushNotifications = () => {
       }
     } catch (error) {
       console.error('Error initializing push notifications:', error);
-      toast.error('Failed to initialize push notifications');
+      
     }
   }, [initialize, setPermissionGranted, setToken]);
 

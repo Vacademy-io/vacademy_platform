@@ -141,7 +141,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
     @Query(value = "SELECT * FROM student where username = :username ORDER BY created_at DESC LIMIT 1", nativeQuery = true)
     Optional<Student> getRecentStudentByUsername(@Param("username") String username);
 
-    Optional<Student> findByUserId(String userId);
+    Optional<Student> findTopByUserIdOrderByCreatedAtDesc(String userId);
 
     Optional<Student> findTopByUserId(String userId);
 

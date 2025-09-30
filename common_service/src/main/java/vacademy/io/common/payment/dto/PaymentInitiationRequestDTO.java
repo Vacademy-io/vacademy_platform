@@ -23,4 +23,5 @@ public class PaymentInitiationRequestDTO {
     private StripeRequestDTO stripeRequest;
     private RazorpayRequestDTO razorpayRequest;
     private PayPalRequestDTO payPalRequest;
+    private ManualPaymentDTO manualRequest;
 }

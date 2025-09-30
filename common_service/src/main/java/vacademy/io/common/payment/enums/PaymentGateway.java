@@ -3,6 +3,7 @@ package vacademy.io.common.payment.enums;
 public enum PaymentGateway {
     STRIPE,
     RAZORPAY,
+    MANUAL,
     PAYPAL;
 
     public static PaymentGateway fromString(String gatewayName) {

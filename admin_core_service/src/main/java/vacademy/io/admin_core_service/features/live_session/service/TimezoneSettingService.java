@@ -95,9 +95,10 @@ public class TimezoneSettingService {
      * @param meetingDate Meeting date
      * @param startTime Meeting start time
      * @param instituteId Institute ID to get timezone settings
+     * @param sessionTimezone The timezone in which the session was created and time is stored
      * @return Map of timezone labels to formatted date-time strings
      */
-    public Map<String, String> formatDateTimeForAllTimezones(Date meetingDate, Date startTime, String instituteId) {
+    public Map<String, String> formatDateTimeForAllTimezones(Date meetingDate, Date startTime, String instituteId, String sessionTimezone) {
         Map<String, String> result = new HashMap<>();
         
         if (meetingDate == null || startTime == null) {
@@ -111,7 +112,7 @@ public class TimezoneSettingService {
             String timezoneId = entry.getValue();
             
             try {
-                String formattedDateTime = formatDateTimeForTimezone(meetingDate, startTime, timezoneId);
+                String formattedDateTime = formatDateTimeForTimezone(meetingDate, startTime, timezoneId, sessionTimezone);
                 result.put(label, formattedDateTime);
             } catch (Exception e) {
                 System.out.println("Error formatting date/time for timezone " + timezoneId + ": " + e.getMessage());
@@ -126,10 +127,11 @@ public class TimezoneSettingService {
      * Formats date and time for a specific timezone
      * @param meetingDate Meeting date
      * @param startTime Meeting start time  
-     * @param timezoneId Timezone ID (e.g., "Asia/Kolkata")
+     * @param targetTimezoneId Target timezone ID (e.g., "Asia/Kolkata", "Europe/London")
+     * @param sessionTimezone Session's timezone - the timezone in which the time is stored
      * @return Formatted date-time string
      */
-    private String formatDateTimeForTimezone(Date meetingDate, Date startTime, String timezoneId) {
+    private String formatDateTimeForTimezone(Date meetingDate, Date startTime, String targetTimezoneId, String sessionTimezone) {
         try {
             // Combine date and time
             Calendar dateCal = Calendar.getInstance();
@@ -143,26 +145,32 @@ public class TimezoneSettingService {
             dateCal.set(Calendar.MINUTE, timeCal.get(Calendar.MINUTE));
             dateCal.set(Calendar.SECOND, timeCal.get(Calendar.SECOND));
             
-            // Convert to the target timezone
-            ZoneId targetZone = ZoneId.of(timezoneId);
-            LocalDateTime localDateTime = dateCal.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime();
-            ZonedDateTime zonedDateTime = localDateTime.atZone(ZoneId.systemDefault()).withZoneSameInstant(targetZone);
+            // Use session's timezone as the source timezone (where the time is stored)
+            // If sessionTimezone is null or empty, fallback to Asia/Kolkata
+            ZoneId sourceZone = (sessionTimezone != null && !sessionTimezone.trim().isEmpty()) 
+                ? ZoneId.of(sessionTimezone) 
+                : ZoneId.of("Asia/Kolkata");
+            
+            ZoneId targetZone = ZoneId.of(targetTimezoneId);
+            
+            // Interpret the stored time as being in the session's timezone
+            LocalDateTime localDateTime = dateCal.toInstant().atZone(sourceZone).toLocalDateTime();
+            
+            // Convert from session's timezone to target timezone
+            ZonedDateTime zonedDateTime = localDateTime.atZone(sourceZone).withZoneSameInstant(targetZone);
             
             // Format the result
-            DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy");
             DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("h:mm a");
-            
-            String formattedDate = zonedDateTime.format(dateFormatter);
             String formattedTime = zonedDateTime.format(timeFormatter);
             
             // Get UTC offset for display
             ZoneOffset offset = zonedDateTime.getOffset();
             String offsetString = formatUtcOffset(offset);
             
-            return String.format("%s (%s %s)", formattedTime, timezoneId, offsetString);
+            return String.format("%s (%s %s)", formattedTime, targetTimezoneId, offsetString);
             
         } catch (Exception e) {
-            System.out.println("Error formatting date/time for timezone " + timezoneId + ": " + e.getMessage());
+            System.out.println("Error formatting date/time for timezone " + targetTimezoneId + ": " + e.getMessage());
             throw e;
         }
     }
@@ -189,10 +197,11 @@ public class TimezoneSettingService {
      * @param meetingDate Meeting date
      * @param startTime Meeting start time
      * @param instituteId Institute ID
+     * @param sessionTimezone The timezone in which the session was created and time is stored
      * @return Formatted string with all timezone times
      */
-    public String createTimezoneDisplayString(Date meetingDate, Date startTime, String instituteId) {
-        Map<String, String> timezoneFormats = formatDateTimeForAllTimezones(meetingDate, startTime, instituteId);
+    public String createTimezoneDisplayString(Date meetingDate, Date startTime, String instituteId, String sessionTimezone) {
+        Map<String, String> timezoneFormats = formatDateTimeForAllTimezones(meetingDate, startTime, instituteId, sessionTimezone);
         
         if (timezoneFormats.isEmpty()) {
             return "TBD";

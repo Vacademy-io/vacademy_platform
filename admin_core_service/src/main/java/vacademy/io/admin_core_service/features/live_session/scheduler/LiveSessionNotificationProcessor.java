@@ -204,7 +204,7 @@ public class LiveSessionNotificationProcessor {
 
                 // Format date and time for all configured timezones
                 String allTimezonesTimes = timezoneSettingService.createTimezoneDisplayString(
-                    schedule.getMeetingDate(), schedule.getStartTime(), session.getInstituteId());
+                    schedule.getMeetingDate(), schedule.getStartTime(), session.getInstituteId(), session.getTimezone());
                 placeholders.put("ALL_TIMEZONE_TIMES", allTimezonesTimes);
                 
                 // Keep individual DATE and TIME for backward compatibility
@@ -270,7 +270,7 @@ public class LiveSessionNotificationProcessor {
 
                 // Format date and time for all configured timezones
                 String allTimezonesTimes = timezoneSettingService.createTimezoneDisplayString(
-                    schedule.getMeetingDate(), schedule.getStartTime(), session.getInstituteId());
+                    schedule.getMeetingDate(), schedule.getStartTime(), session.getInstituteId(), session.getTimezone());
                 placeholders.put("ALL_TIMEZONE_TIMES", allTimezonesTimes);
                 
                 // Keep individual DATE and TIME for backward compatibility
@@ -413,7 +413,7 @@ public class LiveSessionNotificationProcessor {
             if (schedule != null) {
                 // Format date and time for all configured timezones
                 String allTimezonesTimes = timezoneSettingService.createTimezoneDisplayString(
-                    schedule.getMeetingDate(), schedule.getStartTime(), session.getInstituteId());
+                    schedule.getMeetingDate(), schedule.getStartTime(), session.getInstituteId(), session.getTimezone());
                 placeholders.put("ALL_TIMEZONE_TIMES", allTimezonesTimes);
                 
                 // Keep individual DATE and TIME for backward compatibility
@@ -576,7 +576,7 @@ public class LiveSessionNotificationProcessor {
 
                 // Format date and time for all configured timezones
                 String allTimezonesTimes = timezoneSettingService.createTimezoneDisplayString(
-                    schedule.getMeetingDate(), schedule.getStartTime(), session.getInstituteId());
+                    schedule.getMeetingDate(), schedule.getStartTime(), session.getInstituteId(), session.getTimezone());
                 placeholders.put("ALL_TIMEZONE_TIMES", allTimezonesTimes);
                 
                 // Keep individual DATE and TIME for backward compatibility

@@ -37,7 +37,7 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
 
     // Removed unused InstitutePolicyService field
 
-    @Value("${teacher.portal.client.url}:https://dash.vacademy.io")
+    @Value("${teacher.portal.client.url:https://dash.vacademy.io}")
     private String adminPortalClientUrl;
 
     private static class DecodedState {
@@ -103,8 +103,19 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
         }
 
         try {
-            log.debug("Decoding Base64 URL-encoded state: {}", encodedState);
-            byte[] decodedBytes = Base64.getUrlDecoder().decode(encodedState);
+            log.debug("Decoding Base64 encoded state: {}", encodedState);
+            byte[] decodedBytes;
+            
+            // Try URL-safe Base64 decoding first, then fall back to standard Base64
+            try {
+                decodedBytes = Base64.getUrlDecoder().decode(encodedState);
+                log.debug("Successfully decoded using URL-safe Base64 decoder");
+            } catch (IllegalArgumentException e) {
+                log.debug("URL-safe Base64 decoding failed, trying standard Base64 decoder: {}", e.getMessage());
+                decodedBytes = Base64.getDecoder().decode(encodedState);
+                log.debug("Successfully decoded using standard Base64 decoder");
+            }
+            
             String decodedJson = new String(decodedBytes, StandardCharsets.UTF_8);
             log.info("Successfully decoded state to JSON: {}", decodedJson);
 
@@ -215,7 +226,7 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
 
         // For learner signup, try to get existing user token first
         log.debug("Processing learner signup flow");
-        JwtResponseDto jwtResponseDto = getTokenByUserTypeAndUserEmail(userType, userInfo.name, email, userInfo.instituteId);
+        JwtResponseDto jwtResponseDto = getTokenByUserTypeAndUserEmail(userType, userInfo.name, email, userInfo.instituteId, userInfo.sub, userInfo.providerId);
         log.debug("Attempting to get token for learner signup, email: {}", email != null ? "[EMAIL]" : null);
 
         if (jwtResponseDto != null) {
@@ -244,7 +255,7 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
 
         // First try to login the user by email
         JwtResponseDto jwtResponseDto = getTokenByUserTypeAndUserEmail(userType, userInfo.name, email,
-                userInfo.instituteId);
+                userInfo.instituteId, userInfo.sub, userInfo.providerId);
         log.debug("Attempted to get token for login, result: {}", jwtResponseDto != null ? "success" : "user not found");
 
         if (jwtResponseDto != null) {
@@ -383,7 +394,7 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
     }
 
     private JwtResponseDto getTokenByUserTypeAndUserEmail(String userType, String fullName, String email,
-            String instituteId) {
+            String instituteId, String subjectId, String vendorId) {
 
                 if (email == null) {
                     log.warn("Cannot get token because user email is null.");
@@ -391,7 +402,7 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
                 }
         try {
             if ("learner".equalsIgnoreCase(userType)) {
-                return getLearnerOAuth2Manager().loginUserByEmail(fullName, email, instituteId);
+                return getLearnerOAuth2Manager().loginUserByEmail(fullName, email, instituteId, subjectId, vendorId);
             } else {
                 return getAdminOAuth2Manager().loginUserByEmail(email);
             }
@@ -402,6 +413,12 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
             log.debug("Full stack trace for token generation failure:", e);
         }
         return null;
+    }
+
+    // Backward compatibility method
+    private JwtResponseDto getTokenByUserTypeAndUserEmail(String userType, String fullName, String email,
+            String instituteId) {
+        return getTokenByUserTypeAndUserEmail(userType, fullName, email, instituteId, null, null);
     }
 
     // Lazy initialization using ApplicationContext to break potential circular dependencies

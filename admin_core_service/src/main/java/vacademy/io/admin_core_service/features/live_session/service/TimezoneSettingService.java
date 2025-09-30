@@ -211,7 +211,7 @@ public class TimezoneSettingService {
         int count = 0;
         for (Map.Entry<String, String> entry : timezoneFormats.entrySet()) {
             if (count > 0) {
-                sb.append("<br><br>");
+                sb.append("<br>");
             }
             sb.append(String.format("<strong>%s:</strong> %s", entry.getKey(), entry.getValue()));
             count++;

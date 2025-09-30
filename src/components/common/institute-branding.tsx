@@ -80,9 +80,7 @@ export const InstituteBrandingComponent: React.FC<InstituteBrandingProps> = ({
           <div className={`${sizeClasses[size]} bg-gray-200 rounded-lg animate-pulse`} />
         ) : logoUrl ? (
           <img
-            src={logoUrl}
-            alt={`${getInstituteDisplayName(branding.instituteName)} logo`}
-            className={`${sizeClasses[size]} object-contain rounded-lg`}
+            src={logoUrl}            className={`${sizeClasses[size]} object-contain rounded-lg`}
             onError={() => setLogoUrl(null)}
           />
         ) : (
@@ -103,7 +101,7 @@ export const InstituteBrandingComponent: React.FC<InstituteBrandingProps> = ({
           <h2 className={`font-semibold text-gray-900 ${textSizes[size]} leading-tight`}>
             {getInstituteDisplayName(branding.instituteName)}
           </h2>
-          {branding.instituteName}
+          
         </motion.div>
       )}
     </motion.div>

@@ -23,7 +23,6 @@ import vacademy.io.assessment_service.features.learner_assessment.entity.Questio
 import vacademy.io.assessment_service.features.learner_assessment.repository.QuestionWiseMarksRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
-import vacademy.io.common.institute.entity.Institute;
 
 import java.util.*;
 
@@ -106,7 +105,10 @@ public class AssessmentSurveyManager {
             response.add(IndividualResponseDto.builder()
                     .email(questionWise.getStudentAttempt().getRegistration().getUserEmail())
                     .name(questionWise.getStudentAttempt().getRegistration().getParticipantName())
-                    .response(questionWise.getResponseJson()).build());
+                    .response(questionWise.getResponseJson())
+                    .attemptId(questionWise.getStudentAttempt().getId())
+                    .sourceId(questionWise.getStudentAttempt().getRegistration().getSourceId())
+                    .source(questionWise.getStudentAttempt().getRegistration().getSource()).build());
         });
 
         return response;

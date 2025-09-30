@@ -73,7 +73,7 @@ public class OpenLearnerEnrollService {
     }
 
     private void ensureStudentExists(UserDTO user) {
-        Optional<Student> studentOpt = instituteStudentRepository.findByUserId(user.getId());
+        Optional<Student> studentOpt = instituteStudentRepository.findTopByUserIdOrderByCreatedAtDesc(user.getId());
         if (studentOpt.isEmpty()) {
             Student student = new Student(user);
             instituteStudentRepository.save(student);

@@ -51,4 +51,9 @@ public class CourseCatalogueManager {
     public ResponseEntity<CourseCatalogueResponse> getCatalogueByTag(CustomUserDetails userDetails, String instituteId, String tagName) {
         return ResponseEntity.ok(service.getCatalogueByInstituteAndTag(instituteId, tagName));
     }
+
+    // Public method without authentication
+    public ResponseEntity<CourseCatalogueResponse> getCatalogueByTagPublic(String instituteId, String tagName) {
+        return ResponseEntity.ok(service.getCatalogueByInstituteAndTag(instituteId, tagName));
+    }
 }

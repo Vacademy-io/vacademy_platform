@@ -115,6 +115,17 @@ public class LiveSessionNotificationProcessor {
         }
     }
 
+    private List<String> getBatchIdsForSession(String sessionId) {
+        List<LiveSessionParticipants> participants = liveSessionParticipantRepository.findBySessionId(sessionId);
+        if (participants == null || participants.isEmpty()) return Collections.emptyList();
+        Set<String> batchIds = new HashSet<>();
+        for (LiveSessionParticipants p : participants) {
+            if ("BATCH".equalsIgnoreCase(p.getSourceType())) {
+                batchIds.add(p.getSourceId());
+            }
+        }
+        return new ArrayList<>(batchIds);
+    }
 
     private List<Object[]> getStudentsForNotification(List<LiveSessionParticipants> participants, String instituteId) {
         List<Object[]> allStudents = new ArrayList<>();

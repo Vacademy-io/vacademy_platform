@@ -27,6 +27,8 @@ import {
 } from "../utils/enrollment-checker";
 import { Preferences } from "@capacitor/preferences";
 import { useTheme } from "@/providers/theme/theme-provider";
+import { setTokenInStorage } from "@/lib/auth/sessionUtility";
+import { TokenKey } from "@/constants/auth/tokens";
 
 interface ModularDynamicSignupContainerProps {
   instituteId?: string;
@@ -258,6 +260,7 @@ export function ModularDynamicSignupContainer({
       const stateObj = {
         from: `${window.location.origin}/oauth-popup-handler.html`,
         account_type: "signup",
+        user_type: "learner",
         institute_id: instituteId,
         redirectTo: studyLibraryUrl,
         currentUrl,
@@ -288,22 +291,67 @@ export function ModularDynamicSignupContainer({
 
       // Listen for OAuth completion message from popup using a cleanup-aware handler
       let cleanupTimer: ReturnType<typeof setTimeout> | null = null;
+      let processed = false;
 
       const cleanup = () => {
         window.removeEventListener("message", onMessage);
+        window.removeEventListener("storage", onStorage);
+        try {
+          if (bc) {
+            bc.close();
+            bc = null;
+          }
+        } catch {}
         if (cleanupTimer) {
           clearTimeout(cleanupTimer);
           cleanupTimer = null;
         }
       };
 
-      const onMessage = (event: MessageEvent) => {
+      const handleSuccessPayload = async (payload: unknown) => {
+        if (processed) return;
+        processed = true;
+        // Handle tokens-only success (direct login path)
+        if (
+          payload &&
+          typeof payload === "object" &&
+          "accessToken" in payload &&
+          "refreshToken" in payload
+        ) {
+          const { accessToken, refreshToken } = payload as {
+            accessToken: string;
+            refreshToken: string;
+          };
+          try {
+            await setTokenInStorage(TokenKey.accessToken, accessToken);
+            await setTokenInStorage(TokenKey.refreshToken, refreshToken);
+            setCurrentStep("success");
+            onSignupSuccess?.();
+          } catch {
+            toast.error("Failed to store authentication tokens. Please try again.");
+            setUiError({
+              type: "network",
+              message:
+                "We couldn't complete authentication. Please try again, or sign in if you already have an account.",
+            });
+          }
+          return true;
+        }
+        return false;
+      };
+
+      const onMessage = async (event: MessageEvent) => {
         // Only handle messages we expect
         if (!event?.data || typeof event.data !== "object") return;
 
         if (event.data.type === "oauth_success") {
+          const payload = event.data.data;
+          const handled = await handleSuccessPayload(payload);
+          if (!handled) {
+            // Fallback to signup data flow
+            handleOAuthSuccess(payload);
+          }
           cleanup();
-          handleOAuthSuccess(event.data.data);
         } else if (event.data.type === "oauth_error") {
           cleanup();
           toast.error(event.data.data?.message || "OAuth authentication failed");
@@ -316,6 +364,88 @@ export function ModularDynamicSignupContainer({
       };
 
       window.addEventListener("message", onMessage);
+
+      // Fallback: listen for storage events when COOP blocks postMessage
+      const onStorage = async (e: StorageEvent) => {
+        if (!e) return;
+        if (e.key === "OAUTH_RESULT" && e.newValue) {
+          try {
+            const parsed = JSON.parse(e.newValue);
+            if (parsed?.type === "oauth_success") {
+              const handled = await handleSuccessPayload(parsed.data);
+              if (!handled) {
+                handleOAuthSuccess(parsed.data);
+              }
+              // Clean up stored value
+              localStorage.removeItem("OAUTH_RESULT");
+              cleanup();
+            } else if (parsed?.type === "oauth_error") {
+              cleanup();
+              toast.error(parsed?.data?.message || "OAuth authentication failed");
+              setUiError({
+                type: "oauthError",
+                message:
+                  "Authentication failed. If you already have an account, please sign in instead.",
+              });
+            }
+          } catch { return; }
+        }
+      };
+      window.addEventListener("storage", onStorage);
+
+      // BroadcastChannel listener (works when COOP blocks postMessage)
+      let bc: BroadcastChannel | null = null;
+      try {
+        if (typeof BroadcastChannel !== "undefined") {
+          bc = new BroadcastChannel("OAUTH_CHANNEL");
+          bc.onmessage = async (ev: MessageEvent) => {
+            const msg = ev?.data;
+            if (!msg || typeof msg !== "object") return;
+            if (msg.type === "oauth_success") {
+              const handled = await handleSuccessPayload(msg.data);
+              if (!handled) {
+                handleOAuthSuccess(msg.data);
+              }
+              cleanup();
+            } else if (msg.type === "oauth_error") {
+              cleanup();
+              toast.error(msg?.data?.message || "OAuth authentication failed");
+              setUiError({
+                type: "oauthError",
+                message:
+                  "Authentication failed. If you already have an account, please sign in instead.",
+              });
+            }
+          };
+        }
+      } catch {
+        // ignore
+      }
+
+      // Immediate localStorage check in case write happened before listener attached
+      (async () => {
+        try {
+          const existing = localStorage.getItem("OAUTH_RESULT");
+          if (!existing) return;
+          const parsed = JSON.parse(existing);
+          if (parsed?.type === "oauth_success") {
+            const handled = await handleSuccessPayload(parsed.data);
+            if (!handled) {
+              handleOAuthSuccess(parsed.data);
+            }
+            localStorage.removeItem("OAUTH_RESULT");
+            cleanup();
+          } else if (parsed?.type === "oauth_error") {
+            cleanup();
+            toast.error(parsed?.data?.message || "OAuth authentication failed");
+            setUiError({
+              type: "oauthError",
+              message:
+                "Authentication failed. If you already have an account, please sign in instead.",
+            });
+          }
+        } catch { /* ignore */ }
+      })();
 
       // Fallback cleanup after a timeout to avoid COOP-related access to popup.closed
       cleanupTimer = setTimeout(() => {

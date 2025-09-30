@@ -75,6 +75,7 @@ export function ModalSpecificLoginForm({
             const stateObj = {
                 from: `${window.location.origin}/login/oauth/modal-learner`,
                 account_type: "login",
+                user_type: "learner",
             };
 
             const stateJson = JSON.stringify(stateObj);

@@ -135,6 +135,100 @@ export function LoginForm({
     }
   }, [navigate]);
 
+  // Listen for OAuth completion from popup via localStorage/BroadcastChannel
+  useEffect(() => {
+    let processed = false;
+
+    const finalizeLoginWithTokens = async (
+      accessToken: string,
+      refreshToken: string
+    ) => {
+      try {
+        await setTokenInStorage(TokenKey.accessToken, accessToken);
+        await setTokenInStorage(TokenKey.refreshToken, refreshToken);
+        await handleSuccessfulLogin(accessToken, redirect);
+      } catch {
+        toast.error("Failed to complete login. Please try again.");
+      }
+    };
+
+    const storageHandler = async (e: StorageEvent) => {
+      if (!e) return;
+      if (e.key === "OAUTH_RESULT" && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (parsed?.type === "oauth_success" && parsed?.data) {
+            const { accessToken, refreshToken } = parsed.data || {};
+            if (!processed && accessToken && refreshToken) {
+              processed = true;
+              await finalizeLoginWithTokens(accessToken, refreshToken);
+            }
+          }
+          // Clean up
+          localStorage.removeItem("OAUTH_RESULT");
+        } catch {}
+      }
+    };
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      if (typeof BroadcastChannel !== "undefined") {
+        bc = new BroadcastChannel("OAUTH_CHANNEL");
+        bc.onmessage = async (ev: MessageEvent) => {
+          const msg = ev?.data;
+          if (!msg || typeof msg !== "object") return;
+          if (msg.type === "oauth_success" && msg.data) {
+            const { accessToken, refreshToken } = msg.data || {};
+            if (!processed && accessToken && refreshToken) {
+              processed = true;
+              await finalizeLoginWithTokens(accessToken, refreshToken);
+            }
+          }
+        };
+      }
+    } catch {}
+
+    // Immediate localStorage check in case write happened before listener attached
+    const checkLocalOnce = async () => {
+      try {
+        const existing = localStorage.getItem("OAUTH_RESULT");
+        if (existing) {
+          const parsed = JSON.parse(existing);
+          if (parsed?.type === "oauth_success" && parsed?.data) {
+            const { accessToken, refreshToken } = parsed.data || {};
+            if (!processed && accessToken && refreshToken) {
+              processed = true;
+              await finalizeLoginWithTokens(accessToken, refreshToken);
+            }
+          }
+          localStorage.removeItem("OAUTH_RESULT");
+        }
+      } catch {}
+    };
+    checkLocalOnce();
+
+    // Short polling as a last resort
+    const pollUntil = Date.now() + 15000;
+    const pollTimer = window.setInterval(() => {
+      if (processed || Date.now() > pollUntil) {
+        window.clearInterval(pollTimer);
+        return;
+      }
+      void checkLocalOnce();
+    }, 400);
+
+    window.addEventListener("storage", storageHandler);
+    return () => {
+      window.removeEventListener("storage", storageHandler);
+      try {
+        window.clearInterval(pollTimer);
+      } catch {}
+      try {
+        if (bc) bc.close();
+      } catch {}
+    };
+  }, [navigate, redirect]);
+
   // Apply domain routing theme if available
   useEffect(() => {
     if (domainRouting.instituteThemeCode) {
@@ -256,6 +350,7 @@ export function LoginForm({
       const stateObj = {
         from: `${window.location.origin}/login/oauth/learner`,
         account_type: "login",
+        user_type: "learner",
         isModalLogin: false, // Flag to indicate this is a page login
       };
 

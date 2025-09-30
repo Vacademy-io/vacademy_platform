@@ -60,17 +60,116 @@
     </div>
 
     <script>
-        // Function to send message to parent window
-        function sendToParent(type, data) {
+        // Debug flag: enable with ?debug=true or localStorage.OAUTH_DEBUG='true' (also supports DEBUG_AUTH_POPUP='1')
+        (function initDebugFlag() {
             try {
-                if (window.opener) {
-                    window.opener.postMessage({ type, data }, '*');
-                    // Close after a short delay to ensure postMessage is delivered
-                    setTimeout(() => window.close(), 50);
+                const q = new URLSearchParams(window.location.search);
+                const h = new URLSearchParams(window.location.hash.substring(1));
+                const isTrueish = (v) => v === 'true' || v === '1' || v === 'yes' || v === 'on';
+                const lsTrue = (k) => {
+                    try { const v = localStorage.getItem(k); return isTrueish(v); } catch { return false; }
+                };
+                window.DEBUG = isTrueish(q.get('debug')) || isTrueish(h.get('debug')) || lsTrue('OAUTH_DEBUG') || lsTrue('DEBUG_AUTH_POPUP');
+                if (window.DEBUG) {
+                    console.log('[OAuth Popup][DEBUG] Debug mode enabled');
+                    const msg = document.querySelector('.message');
+                    if (msg) {
+                        msg.textContent = 'Debug mode: popup will not auto-close.';
+                    }
                 }
             } catch (e) {
-                // If posting fails, still attempt to close after a moment
-                setTimeout(() => window.close(), 300);
+                window.DEBUG = false;
+            }
+        })();
+
+        // Function to send message to parent window (with robust fallbacks)
+        function sendToParent(type, data) {
+            const payload = { type, data };
+            let openerMessageAttempted = false;
+            let openerMessageFailed = false;
+            // Try postMessage to opener (may be blocked by COOP)
+            try {
+                if (window.opener) {
+                    if (window.DEBUG) console.log('[OAuth Popup][DEBUG] Sending postMessage to opener', payload);
+                    openerMessageAttempted = true;
+                    window.opener.postMessage(payload, '*');
+                }
+            } catch (e) { openerMessageFailed = true; }
+
+            // Always write to localStorage so parent can pick it via storage event
+            try {
+                if (window.DEBUG) console.log('[OAuth Popup][DEBUG] Writing OAUTH_RESULT to localStorage');
+                localStorage.setItem('OAUTH_RESULT', JSON.stringify({ ...payload, ts: Date.now() }));
+            } catch (e) {}
+
+            // BroadcastChannel fallback (same-origin tabs/windows)
+            try {
+                if (typeof BroadcastChannel !== 'undefined') {
+                    if (window.DEBUG) console.log('[OAuth Popup][DEBUG] Broadcasting via BroadcastChannel');
+                    const bc = new BroadcastChannel('OAUTH_CHANNEL');
+                    bc.postMessage(payload);
+                    setTimeout(() => { try { bc.close(); } catch (e) {} }, 0);
+                }
+            } catch (e) {}
+
+            // Close or redirect after a short delay unless in debug mode
+            if (!window.DEBUG) {
+                setTimeout(() => {
+                    try {
+                        // If we couldn't talk to opener (COOP), redirect this window to /login with tokens
+                        if ((!window.opener || openerMessageFailed) && data && data.accessToken && data.refreshToken) {
+                            const next = new URL('/login', window.location.origin);
+                            next.searchParams.set('accessToken', data.accessToken);
+                            next.searchParams.set('refreshToken', data.refreshToken);
+                            window.location.replace(next.toString());
+                            return;
+                        }
+                        window.close();
+                    } catch (e) {}
+                }, 300);
+            } else {
+                console.log('[OAuth Popup][DEBUG] Suppressed auto-close. Payload sent to parent.', payload);
+                // Offer a manual close button
+                try {
+                    let btn = document.getElementById('manual-close-btn');
+                    if (!btn) {
+                        btn = document.createElement('button');
+                        btn.id = 'manual-close-btn';
+                        btn.textContent = 'Close Popup';
+                        btn.style.marginTop = '16px';
+                        btn.style.padding = '8px 12px';
+                        btn.style.borderRadius = '6px';
+                        btn.style.border = '1px solid #cbd5e1';
+                        btn.style.background = '#fff';
+                        btn.style.cursor = 'pointer';
+                        document.querySelector('.container').appendChild(btn);
+                        btn.addEventListener('click', () => { try { window.close(); } catch (e) {} });
+                    }
+                    // Offer a continue button to navigate this window when opener is isolated
+                    if (data && data.accessToken && data.refreshToken) {
+                        let go = document.getElementById('manual-continue-btn');
+                        if (!go) {
+                            go = document.createElement('button');
+                            go.id = 'manual-continue-btn';
+                            go.textContent = 'Continue to App';
+                            go.style.marginTop = '8px';
+                            go.style.padding = '8px 12px';
+                            go.style.borderRadius = '6px';
+                            go.style.border = '1px solid #cbd5e1';
+                            go.style.background = '#fff';
+                            go.style.cursor = 'pointer';
+                            document.querySelector('.container').appendChild(go);
+                            go.addEventListener('click', () => {
+                                try {
+                                    const next = new URL('/login', window.location.origin);
+                                    next.searchParams.set('accessToken', data.accessToken);
+                                    next.searchParams.set('refreshToken', data.refreshToken);
+                                    window.location.replace(next.toString());
+                                } catch (e) {}
+                            });
+                        }
+                    }
+                } catch (e) {}
             }
         }
 
@@ -88,10 +187,14 @@
             
             // Notify opener so it can show contextual UI
             sendToParent('oauth_error', { message });
-            // Auto-close after 2 seconds (postMessage already sent)
-            setTimeout(() => {
-                try { window.close(); } catch {}
-            }, 2000);
+            if (!window.DEBUG) {
+                // Auto-close after 2 seconds (postMessage already sent)
+                setTimeout(() => {
+                    try { window.close(); } catch {}
+                }, 2000);
+            } else {
+                console.log('[OAuth Popup][DEBUG] Error displayed, auto-close suppressed.');
+            }
         }
 
         // Parse URL parameters
@@ -104,7 +207,9 @@
                 state: urlParams.get('state'),
                 emailVerified: urlParams.get('emailVerified'),
                 error: urlParams.get('error') || hashParams.get('error'),
-                error_description: urlParams.get('error_description') || hashParams.get('error_description')
+                error_description: urlParams.get('error_description') || hashParams.get('error_description'),
+                accessToken: urlParams.get('accessToken') || hashParams.get('accessToken'),
+                refreshToken: urlParams.get('refreshToken') || hashParams.get('refreshToken')
             };
         }
 
@@ -123,6 +228,11 @@
                 // Decode parameters
                 const signupData = safeDecode(params.signupData);
                 const state = safeDecode(params.state);
+                
+                if (window.DEBUG) {
+                    console.log('[OAuth Popup][DEBUG] Raw params', params);
+                    console.log('[OAuth Popup][DEBUG] Decoded', { signupData, state });
+                }
                 
                 if (!signupData || !state) {
                     throw new Error('Invalid OAuth response data');
@@ -149,9 +259,46 @@
         // Main execution
         try {
             const params = parseUrlParams();
+            if (window.DEBUG) console.log('[OAuth Popup][DEBUG] Parsed params', params);
             
+            // If backend returned tokens directly (login path), treat as success
+            if (params.accessToken && params.refreshToken) {
+                sendToParent('oauth_success', {
+                    accessToken: params.accessToken,
+                    refreshToken: params.refreshToken
+                });
+
+                // If opened in the same tab (no opener), redirect this window to /login so FE can consume tokens
+                try {
+                    if (!window.opener) {
+                        const next = new URL('/login', window.location.origin);
+                        next.searchParams.set('accessToken', params.accessToken);
+                        next.searchParams.set('refreshToken', params.refreshToken);
+                        if (window.DEBUG) {
+                            // In debug mode, render a manual continue button instead of auto-redirect
+                            const container = document.querySelector('.container');
+                            const btn = document.createElement('button');
+                            btn.textContent = 'Continue to App';
+                            btn.style.marginTop = '16px';
+                            btn.style.padding = '8px 12px';
+                            btn.style.borderRadius = '6px';
+                            btn.style.border = '1px solid #cbd5e1';
+                            btn.style.background = '#fff';
+                            btn.style.cursor = 'pointer';
+                            btn.addEventListener('click', () => {
+                                window.location.replace(next.toString());
+                            });
+                            container.appendChild(btn);
+                        } else {
+                            // Auto-redirect in non-debug mode
+                            setTimeout(() => {
+                                window.location.replace(next.toString());
+                            }, 300);
+                        }
+                    }
+                } catch (e) {}
             // Special case: error=true with signupData means "email not found" (new user) - this is SUCCESS for signup
-            if (params.error === 'true' && params.signupData && params.state) {
+            } else if (params.error === 'true' && params.signupData && params.state) {
                 handleOAuthSuccess(params);
             } else if (params.error && !params.signupData) {
                 // Real OAuth error (no user data)

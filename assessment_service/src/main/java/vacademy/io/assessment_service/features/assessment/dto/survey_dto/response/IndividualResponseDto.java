@@ -15,4 +15,7 @@ public class IndividualResponseDto {
     private String name;
     private String email;
     private String response;
+    private String attemptId;
+    private String sourceId;
+    private String source;
 }

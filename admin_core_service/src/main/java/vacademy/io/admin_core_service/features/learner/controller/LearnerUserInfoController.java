@@ -37,12 +37,6 @@ public class LearnerUserInfoController {
         return learnerProfileManager.getLearnerInfo(user, instituteId);
     }
 
-    @GetMapping("/details-unregistered")
-    @ClientCacheable(maxAgeSeconds = 300, scope = CacheScope.PRIVATE, varyHeaders = {"X-Institute-Id", "X-User-Id"})
-    public ResponseEntity<List<StudentDTO>> getLearnerInfoUnregistered(@RequestAttribute("user") CustomUserDetails user, @RequestParam("instituteId") String instituteId) {
-
-        return learnerProfileManager.getLearnerInfoUnregistered(user, instituteId);
-    }
 
     @PutMapping("/edit")
     public ResponseEntity<String> editLearnerDetails(@RequestBody LearnerDetailsEditDTO learnerDetailsEditDTO,

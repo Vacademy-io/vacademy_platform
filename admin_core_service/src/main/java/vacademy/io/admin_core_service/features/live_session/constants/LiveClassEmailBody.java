@@ -30,7 +30,7 @@ public class LiveClassEmailBody {
                                           <tr>
                                             <td style="padding:10px; background:#fff3ec; border:1px solid #ffe0d1; border-radius:6px;">
                                               <p style="margin:0; font-size:15px;"><strong>📅 Date:</strong> {{DATE}}</p>
-                                              <p style="margin:5px 0 0 0; font-size:15px;"><strong>⏰ Time:<br></strong> {{ALL_TIMEZONE_TIMES}}</p>
+                                              <p style="margin:5px 0 0 0; font-size:15px;"><strong>⏰ Time:<br><br></strong> {{ALL_TIMEZONE_TIMES}}</p>
                                             </td>
                                           </tr>
                                         </table>

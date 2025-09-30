@@ -126,26 +126,28 @@ public class TimezoneSettingService {
     /**
      * Formats date and time for a specific timezone
      * @param meetingDate Meeting date
-     * @param startTime Meeting start time  
+     * @param startTime Meeting start time (stored as raw local time in session's timezone)
      * @param targetTimezoneId Target timezone ID (e.g., "Asia/Kolkata", "Europe/London")
-     * @param sessionTimezone Session's timezone - the timezone in which the time is stored
+     * @param sessionTimezone Session's timezone - the timezone in which the raw time is stored
      * @return Formatted date-time string
      */
     private String formatDateTimeForTimezone(Date meetingDate, Date startTime, String targetTimezoneId, String sessionTimezone) {
         try {
-            // Combine date and time
+            // Extract raw date components
             Calendar dateCal = Calendar.getInstance();
             dateCal.setTime(meetingDate);
+            int year = dateCal.get(Calendar.YEAR);
+            int month = dateCal.get(Calendar.MONTH) + 1; // Calendar.MONTH is 0-based
+            int day = dateCal.get(Calendar.DAY_OF_MONTH);
             
+            // Extract raw time components
             Calendar timeCal = Calendar.getInstance();
             timeCal.setTime(startTime);
+            int hour = timeCal.get(Calendar.HOUR_OF_DAY);
+            int minute = timeCal.get(Calendar.MINUTE);
+            int second = timeCal.get(Calendar.SECOND);
             
-            // Set the time components to the date
-            dateCal.set(Calendar.HOUR_OF_DAY, timeCal.get(Calendar.HOUR_OF_DAY));
-            dateCal.set(Calendar.MINUTE, timeCal.get(Calendar.MINUTE));
-            dateCal.set(Calendar.SECOND, timeCal.get(Calendar.SECOND));
-            
-            // Use session's timezone as the source timezone (where the time is stored)
+            // Use session's timezone as the source timezone (where the raw time is stored)
             // If sessionTimezone is null or empty, fallback to Asia/Kolkata
             ZoneId sourceZone = (sessionTimezone != null && !sessionTimezone.trim().isEmpty()) 
                 ? ZoneId.of(sessionTimezone) 
@@ -153,18 +155,21 @@ public class TimezoneSettingService {
             
             ZoneId targetZone = ZoneId.of(targetTimezoneId);
             
-            // Interpret the stored time as being in the session's timezone
-            LocalDateTime localDateTime = dateCal.toInstant().atZone(sourceZone).toLocalDateTime();
+            // Create LocalDateTime from raw components (this represents the stored local time)
+            LocalDateTime localDateTime = LocalDateTime.of(year, month, day, hour, minute, second);
             
-            // Convert from session's timezone to target timezone
-            ZonedDateTime zonedDateTime = localDateTime.atZone(sourceZone).withZoneSameInstant(targetZone);
+            // Interpret this local time as being in the session's timezone
+            ZonedDateTime sessionZonedDateTime = localDateTime.atZone(sourceZone);
+            
+            // Convert to target timezone
+            ZonedDateTime targetZonedDateTime = sessionZonedDateTime.withZoneSameInstant(targetZone);
             
             // Format the result
             DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("h:mm a");
-            String formattedTime = zonedDateTime.format(timeFormatter);
+            String formattedTime = targetZonedDateTime.format(timeFormatter);
             
             // Get UTC offset for display
-            ZoneOffset offset = zonedDateTime.getOffset();
+            ZoneOffset offset = targetZonedDateTime.getOffset();
             String offsetString = formatUtcOffset(offset);
             
             return String.format("%s (%s %s)", formattedTime, targetTimezoneId, offsetString);

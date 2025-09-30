@@ -24,15 +24,12 @@ import vacademy.io.admin_core_service.features.notification_service.service.Noti
 import vacademy.io.admin_core_service.features.institute.service.InstituteService;
 import vacademy.io.admin_core_service.features.domain_routing.repository.InstituteDomainRoutingRepository;
 import vacademy.io.admin_core_service.features.domain_routing.entity.InstituteDomainRouting;
+import vacademy.io.admin_core_service.features.live_session.service.TimezoneSettingService;
 
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @RequiredArgsConstructor
@@ -47,59 +44,10 @@ public class LiveSessionNotificationProcessor {
     private final ObjectMapper objectMapper; // kept for future template rendering
     private final InstituteService instituteService;
     private final InstituteDomainRoutingRepository domainRoutingRepository;
+    private final TimezoneSettingService timezoneSettingService;
     @Autowired
     private SessionScheduleRepository scheduleRepository;
 
-    // Timezone mapping cache for better performance
-    private static final Map<String, String> REGION_TO_TIMEZONE_MAP = new ConcurrentHashMap<>();
-    
-    static {
-        // Initialize common region to timezone mappings
-        REGION_TO_TIMEZONE_MAP.put("India", "Asia/Kolkata");
-        REGION_TO_TIMEZONE_MAP.put("United Kingdom", "Europe/London");
-        REGION_TO_TIMEZONE_MAP.put("UK", "Europe/London");
-        REGION_TO_TIMEZONE_MAP.put("United States", "America/New_York");
-        REGION_TO_TIMEZONE_MAP.put("USA", "America/New_York");
-        REGION_TO_TIMEZONE_MAP.put("Canada", "America/Toronto");
-        REGION_TO_TIMEZONE_MAP.put("Australia", "Australia/Sydney");
-        REGION_TO_TIMEZONE_MAP.put("Germany", "Europe/Berlin");
-        REGION_TO_TIMEZONE_MAP.put("France", "Europe/Paris");
-        REGION_TO_TIMEZONE_MAP.put("Japan", "Asia/Tokyo");
-        REGION_TO_TIMEZONE_MAP.put("China", "Asia/Shanghai");
-        REGION_TO_TIMEZONE_MAP.put("Singapore", "Asia/Singapore");
-        REGION_TO_TIMEZONE_MAP.put("UAE", "Asia/Dubai");
-        REGION_TO_TIMEZONE_MAP.put("Saudi Arabia", "Asia/Riyadh");
-        REGION_TO_TIMEZONE_MAP.put("Brazil", "America/Sao_Paulo");
-        REGION_TO_TIMEZONE_MAP.put("Mexico", "America/Mexico_City");
-        REGION_TO_TIMEZONE_MAP.put("South Africa", "Africa/Johannesburg");
-        REGION_TO_TIMEZONE_MAP.put("Nigeria", "Africa/Lagos");
-        REGION_TO_TIMEZONE_MAP.put("Egypt", "Africa/Cairo");
-        REGION_TO_TIMEZONE_MAP.put("Kenya", "Africa/Nairobi");
-        REGION_TO_TIMEZONE_MAP.put("Ghana", "Africa/Accra");
-        REGION_TO_TIMEZONE_MAP.put("Morocco", "Africa/Casablanca");
-        REGION_TO_TIMEZONE_MAP.put("Tunisia", "Africa/Tunis");
-        REGION_TO_TIMEZONE_MAP.put("Algeria", "Africa/Algiers");
-        REGION_TO_TIMEZONE_MAP.put("Ethiopia", "Africa/Addis_Ababa");
-        REGION_TO_TIMEZONE_MAP.put("Uganda", "Africa/Kampala");
-        REGION_TO_TIMEZONE_MAP.put("Tanzania", "Africa/Dar_es_Salaam");
-        REGION_TO_TIMEZONE_MAP.put("Zimbabwe", "Africa/Harare");
-        REGION_TO_TIMEZONE_MAP.put("Zambia", "Africa/Lusaka");
-        REGION_TO_TIMEZONE_MAP.put("Botswana", "Africa/Gaborone");
-        REGION_TO_TIMEZONE_MAP.put("Namibia", "Africa/Windhoek");
-        REGION_TO_TIMEZONE_MAP.put("Angola", "Africa/Luanda");
-        REGION_TO_TIMEZONE_MAP.put("Mozambique", "Africa/Maputo");
-        REGION_TO_TIMEZONE_MAP.put("Madagascar", "Indian/Antananarivo");
-        REGION_TO_TIMEZONE_MAP.put("Mauritius", "Indian/Mauritius");
-        REGION_TO_TIMEZONE_MAP.put("Seychelles", "Indian/Mahe");
-        REGION_TO_TIMEZONE_MAP.put("Reunion", "Indian/Reunion");
-        REGION_TO_TIMEZONE_MAP.put("Comoros", "Indian/Comoro");
-        REGION_TO_TIMEZONE_MAP.put("Mayotte", "Indian/Mayotte");
-        REGION_TO_TIMEZONE_MAP.put("Malawi", "Africa/Blantyre");
-        REGION_TO_TIMEZONE_MAP.put("Lesotho", "Africa/Maseru");
-        REGION_TO_TIMEZONE_MAP.put("Eswatini", "Africa/Mbabane");
-        REGION_TO_TIMEZONE_MAP.put("Rwanda", "Africa/Kigali");
-        REGION_TO_TIMEZONE_MAP.put("Burundi", "Africa/Bujumbura");
-    }
 
     @Transactional
     public void processDueNotifications() {
@@ -224,29 +172,25 @@ public class LiveSessionNotificationProcessor {
         List<NotificationToUserDTO> users = new ArrayList<>();
         for (Object[] r : rows) {
             // Handle different data structures from batch vs individual user queries
-            String userId, fullName, email, region;
+            String userId, fullName, email;
             
             if (r.length >= 7) {
                 // Batch query result: [mapping_id, user_id, expiry_date, full_name, mobile_number, email, region, package_session_id]
                 userId = (String) r[1];
                 fullName = (String) r[3];
                 email = (String) r[5];
-                region = (String) r[6];
             } else {
                 // Individual user query result: [user_id, full_name, mobile_number, email, region]
                 userId = (String) r[0];
                 fullName = (String) r[1];
                 email = (String) r[3];
-                region = (String) r[4];
             }
             NotificationToUserDTO u = new NotificationToUserDTO();
             Map<String, String> placeholders = new HashMap<>();
             placeholders.put("NAME", fullName);
             placeholders.put("SESSION_TITLE", session.getTitle() != null ? session.getTitle() : "Live Class");
 
-            // Add timezone with UTC offset
-            placeholders.put("TIMEZONE", getTimezoneWithOffset(session.getTimezone()));
-            placeholders.put("ACTION", LiveClassAction.STARTED.name());
+            placeholders.put("ACTION", LiveClassAction.STARTED.getDisplayName());
 
             // Add theme color
             placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
@@ -258,14 +202,19 @@ public class LiveSessionNotificationProcessor {
                 System.out.println("DEBUG: Final live class URL: " + liveClassUrl);
                 placeholders.put("LINK", liveClassUrl);
 
-                // Format date and time for this specific student's timezone
-                Map<String, String> dateTimeMap = formatDateTimeForStudent(schedule, region, session.getTimezone());
-                placeholders.put("DATE", dateTimeMap.get("DATE"));
-                placeholders.put("TIME", dateTimeMap.get("TIME"));
+                // Format date and time for all configured timezones
+                String allTimezonesTimes = timezoneSettingService.createTimezoneDisplayString(
+                    schedule.getMeetingDate(), schedule.getStartTime(), session.getInstituteId());
+                placeholders.put("ALL_TIMEZONE_TIMES", allTimezonesTimes);
+                
+                // Keep individual DATE and TIME for backward compatibility
+                placeholders.put("DATE", new SimpleDateFormat("EEEE, MMMM d, yyyy").format(schedule.getMeetingDate()));
+                placeholders.put("TIME", new SimpleDateFormat("h:mm a").format(schedule.getStartTime()));
             } else {
                 // Build live class URL even if schedule is null
                 String liveClassUrl = buildLiveClassUrl(session, session.getId());
                 placeholders.put("LINK", liveClassUrl);
+                placeholders.put("ALL_TIMEZONE_TIMES", "TBD");
                 placeholders.put("DATE", "TBD");
                 placeholders.put("TIME", "TBD");
             }
@@ -289,29 +238,25 @@ public class LiveSessionNotificationProcessor {
         List<NotificationToUserDTO> users = new ArrayList<>();
         for (Object[] r : rows) {
             // Handle different data structures from batch vs individual user queries
-            String userId, fullName, email, region;
+            String userId, fullName, email;
             
             if (r.length >= 7) {
                 // Batch query result: [mapping_id, user_id, expiry_date, full_name, mobile_number, email, region, package_session_id]
                 userId = (String) r[1];
                 fullName = (String) r[3];
                 email = (String) r[5];
-                region = (String) r[6];
             } else {
                 // Individual user query result: [user_id, full_name, mobile_number, email, region]
                 userId = (String) r[0];
                 fullName = (String) r[1];
                 email = (String) r[3];
-                region = (String) r[4];
             }
             NotificationToUserDTO u = new NotificationToUserDTO();
             Map<String, String> placeholders = new HashMap<>();
             placeholders.put("NAME", fullName);
             placeholders.put("SESSION_TITLE", session.getTitle() != null ? session.getTitle() : "Live Class");
 
-            // Add timezone with UTC offset
-            placeholders.put("TIMEZONE", getTimezoneWithOffset(session.getTimezone()));
-            placeholders.put("ACTION", LiveClassAction.STARTING.name());
+            placeholders.put("ACTION", LiveClassAction.STARTING.getDisplayName());
 
             // Add theme color
             placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
@@ -323,14 +268,19 @@ public class LiveSessionNotificationProcessor {
                 System.out.println("DEBUG: Final live class URL: " + liveClassUrl);
                 placeholders.put("LINK", liveClassUrl);
 
-                // Format date and time for this specific student's timezone
-                Map<String, String> dateTimeMap = formatDateTimeForStudent(schedule, region, session.getTimezone());
-                placeholders.put("DATE", dateTimeMap.get("DATE"));
-                placeholders.put("TIME", dateTimeMap.get("TIME"));
+                // Format date and time for all configured timezones
+                String allTimezonesTimes = timezoneSettingService.createTimezoneDisplayString(
+                    schedule.getMeetingDate(), schedule.getStartTime(), session.getInstituteId());
+                placeholders.put("ALL_TIMEZONE_TIMES", allTimezonesTimes);
+                
+                // Keep individual DATE and TIME for backward compatibility
+                placeholders.put("DATE", new SimpleDateFormat("EEEE, MMMM d, yyyy").format(schedule.getMeetingDate()));
+                placeholders.put("TIME", new SimpleDateFormat("h:mm a").format(schedule.getStartTime()));
             } else {
                 // Build live class URL even if schedule is null
                 String liveClassUrl = buildLiveClassUrl(session, session.getId());
                 placeholders.put("LINK", liveClassUrl);
+                placeholders.put("ALL_TIMEZONE_TIMES", "TBD");
                 placeholders.put("DATE", "TBD");
                 placeholders.put("TIME", "TBD");
             }
@@ -437,20 +387,18 @@ public class LiveSessionNotificationProcessor {
         List<NotificationToUserDTO> users = new ArrayList<>();
         for (Object[] r : rows) {
             // Handle different data structures from batch vs individual user queries
-            String userId, fullName, email, region;
+            String userId, fullName, email;
             
             if (r.length >= 7) {
                 // Batch query result: [mapping_id, user_id, expiry_date, full_name, mobile_number, email, region, package_session_id]
                 userId = (String) r[1];
                 fullName = (String) r[3];
                 email = (String) r[5];
-                region = (String) r[6];
             } else {
                 // Individual user query result: [user_id, full_name, mobile_number, email, region]
                 userId = (String) r[0];
                 fullName = (String) r[1];
                 email = (String) r[3];
-                region = (String) r[4];
             }
             
             NotificationToUserDTO u = new NotificationToUserDTO();
@@ -458,19 +406,21 @@ public class LiveSessionNotificationProcessor {
             placeholders.put("NAME", fullName);
             placeholders.put("SESSION_TITLE", session.getTitle() != null ? session.getTitle() : "Live Class");
 
-            // Add timezone with UTC offset
-            placeholders.put("TIMEZONE", getTimezoneWithOffset(session.getTimezone()));
-
             // Add theme color
             placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
 
             // Add schedule details if available
             if (schedule != null) {
-                // Format date and time for this specific student's timezone
-                Map<String, String> dateTimeMap = formatDateTimeForStudent(schedule, region, session.getTimezone());
-                placeholders.put("DATE", dateTimeMap.get("DATE"));
-                placeholders.put("TIME", dateTimeMap.get("TIME"));
+                // Format date and time for all configured timezones
+                String allTimezonesTimes = timezoneSettingService.createTimezoneDisplayString(
+                    schedule.getMeetingDate(), schedule.getStartTime(), session.getInstituteId());
+                placeholders.put("ALL_TIMEZONE_TIMES", allTimezonesTimes);
+                
+                // Keep individual DATE and TIME for backward compatibility
+                placeholders.put("DATE", new SimpleDateFormat("EEEE, MMMM d, yyyy").format(schedule.getMeetingDate()));
+                placeholders.put("TIME", new SimpleDateFormat("h:mm a").format(schedule.getStartTime()));
             } else {
+                placeholders.put("ALL_TIMEZONE_TIMES", "TBD");
                 placeholders.put("DATE", "TBD");
                 placeholders.put("TIME", "TBD");
             }
@@ -594,20 +544,18 @@ public class LiveSessionNotificationProcessor {
         List<NotificationToUserDTO> users = new java.util.ArrayList<>();
         for (Object[] r : rows) {
             // Handle different data structures from batch vs individual user queries
-            String userId, fullName, email, region;
+            String userId, fullName, email;
 
             if (r.length >= 7) {
                 // Batch query result: [mapping_id, user_id, expiry_date, full_name, mobile_number, email, region, package_session_id]
                 userId = (String) r[1];
                 fullName = (String) r[3];
                 email = (String) r[5];
-                region = (String) r[6];
             } else {
                 // Individual user query result: [user_id, full_name, mobile_number, email, region]
                 userId = (String) r[0];
                 fullName = (String) r[1];
                 email = (String) r[3];
-                region = (String) r[4];
             }
 
             NotificationToUserDTO u = new NotificationToUserDTO();
@@ -615,9 +563,7 @@ public class LiveSessionNotificationProcessor {
             placeholders.put("NAME", fullName);
             placeholders.put("SESSION_TITLE", session.getTitle() != null ? session.getTitle() : "Live Class");
 
-            // Add timezone with UTC offset
-            placeholders.put("TIMEZONE", getTimezoneWithOffset(session.getTimezone()));
-            placeholders.put("ACTION", LiveClassAction.CREATED.name());
+            placeholders.put("ACTION", LiveClassAction.CREATED.getDisplayName());
 
             // Add theme color
             placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
@@ -628,14 +574,19 @@ public class LiveSessionNotificationProcessor {
                 String liveClassUrl = buildLiveClassUrl(session, session.getId());
                 placeholders.put("LINK", liveClassUrl);
 
-                // Format date and time for this specific student's timezone
-                Map<String, String> dateTimeMap = formatDateTimeForStudent(schedule, region, session.getTimezone());
-                placeholders.put("DATE", dateTimeMap.get("DATE"));
-                placeholders.put("TIME", dateTimeMap.get("TIME"));
+                // Format date and time for all configured timezones
+                String allTimezonesTimes = timezoneSettingService.createTimezoneDisplayString(
+                    schedule.getMeetingDate(), schedule.getStartTime(), session.getInstituteId());
+                placeholders.put("ALL_TIMEZONE_TIMES", allTimezonesTimes);
+                
+                // Keep individual DATE and TIME for backward compatibility
+                placeholders.put("DATE", new SimpleDateFormat("EEEE, MMMM d, yyyy").format(schedule.getMeetingDate()));
+                placeholders.put("TIME", new SimpleDateFormat("h:mm a").format(schedule.getStartTime()));
             } else {
                 // Build live class URL even if schedule is null
                 String liveClassUrl = buildLiveClassUrl(session, session.getId());
                 placeholders.put("LINK", liveClassUrl);
+                placeholders.put("ALL_TIMEZONE_TIMES", "TBD");
                 placeholders.put("DATE", "TBD");
                 placeholders.put("TIME", "TBD");
             }
@@ -649,48 +600,6 @@ public class LiveSessionNotificationProcessor {
         return dto;
     }
 
-    /**
-     * Formats timezone with UTC offset for display in emails
-     * @param timezone Full timezone name (e.g., "Asia/Kolkata", "Europe/London")
-     * @return Timezone with offset (e.g., "Asia/Kolkata (+5:30)", "Europe/London (+0:00)")
-     */
-    private String getTimezoneWithOffset(String timezone) {
-        if (timezone == null || timezone.trim().isEmpty()) {
-            return "UTC (+0:00)";
-        }
-
-        try {
-            ZoneId zoneId = ZoneId.of(timezone);
-            ZoneOffset offset = zoneId.getRules().getOffset(LocalDateTime.now());
-            
-            // Format the UTC offset
-            String offsetString = formatUtcOffset(offset);
-            
-            // Return full timezone name with offset
-            return timezone + " (" + offsetString + " Hr)";
-        } catch (Exception e) {
-            // If timezone parsing fails, return the original string
-            System.out.println("Failed to parse timezone: " + timezone + ", error: " + e.getMessage());
-            return timezone;
-        }
-    }
-
-    /**
-     * Formats UTC offset in a readable format
-     * @param offset ZoneOffset to format
-     * @return Formatted offset string (e.g., "+5:30", "-8:00", "+0:00")
-     */
-    private String formatUtcOffset(ZoneOffset offset) {
-        int totalSeconds = offset.getTotalSeconds();
-        int hours = totalSeconds / 3600;
-        int minutes = Math.abs((totalSeconds % 3600) / 60);
-        
-        if (hours == 0 && minutes == 0) {
-            return "+0:00";
-        } else {
-            return String.format("%+d:%02d", hours, minutes);
-        }
-    }
 
     /**
      * Builds the live class URL based on session access level and domain routing
@@ -746,102 +655,7 @@ public class LiveSessionNotificationProcessor {
         return "#ff6f3c";
     }
 
-    private String getTimezoneFromRegion(String region) {
-        if (region == null || region.trim().isEmpty()) {
-            return "UTC";
-        }
-        
-        // Try exact match first
-        String timezone = REGION_TO_TIMEZONE_MAP.get(region.trim());
-        if (timezone != null) {
-            return timezone;
-        }
-        
-        // Try case-insensitive match
-        for (Map.Entry<String, String> entry : REGION_TO_TIMEZONE_MAP.entrySet()) {
-            if (entry.getKey().equalsIgnoreCase(region.trim())) {
-                return entry.getValue();
-            }
-        }
-        
-        // Default to UTC if no match found
-        System.out.println("No timezone mapping found for region: " + region + ", using UTC");
-        return "UTC";
-    }
 
-    private Map<String, String> formatDateTimeForStudent(SessionSchedule schedule, String studentRegion, String sessionTimezone) {
-        Map<String, String> result = new HashMap<>();
-        
-        if (schedule == null || schedule.getMeetingDate() == null || schedule.getStartTime() == null) {
-            result.put("DATE", "TBD");
-            result.put("TIME", "TBD");
-            return result;
-        }
-        
-        try {
-            // Get student's timezone
-            String studentTimezone = getTimezoneFromRegion(studentRegion);
-            
-            // Get session timezone (fallback to Asia/Kolkata if null)
-            String sessionTz = (sessionTimezone != null && !sessionTimezone.trim().isEmpty()) 
-                ? sessionTimezone 
-                : "Asia/Kolkata";
-            
-            // If both timezones are same, no conversion needed
-            if (studentTimezone.equals(sessionTz)) {
-                String date = new SimpleDateFormat("EEEE, MMMM d, yyyy").format(schedule.getMeetingDate());
-                String time = new SimpleDateFormat("h:mm a").format(schedule.getStartTime());
-                result.put("DATE", date);
-                result.put("TIME", time);
-                return result;
-            }
-            
-            // Calculate time difference between timezones
-            int timeDifferenceMinutes = getTimezoneDifferenceMinutes(sessionTz, studentTimezone);
-            
-            // Convert start time to student's timezone
-            java.util.Calendar cal = java.util.Calendar.getInstance();
-            cal.setTime(schedule.getStartTime());
-            cal.add(java.util.Calendar.MINUTE, timeDifferenceMinutes);
-            
-            // Format the converted time
-            String date = new SimpleDateFormat("EEEE, MMMM d, yyyy").format(schedule.getMeetingDate());
-            String time = new SimpleDateFormat("h:mm a").format(cal.getTime());
-            
-            result.put("DATE", date);
-            result.put("TIME", time);
-            
-        } catch (Exception e) {
-            System.out.println("Error formatting date/time for region " + studentRegion + ": " + e.getMessage());
-            // Fallback to original formatting
-            String date = new SimpleDateFormat("EEEE, MMMM d, yyyy").format(schedule.getMeetingDate());
-            String time = new SimpleDateFormat("h:mm a").format(schedule.getStartTime());
-            result.put("DATE", date);
-            result.put("TIME", time);
-        }
-        
-        return result;
-    }
 
-    private int getTimezoneDifferenceMinutes(String fromTimezone, String toTimezone) {
-        // Simple timezone difference mapping (in hours from UTC)
-        Map<String, Double> timezoneOffsets = new HashMap<>();
-        timezoneOffsets.put("UTC", 0.0);
-        timezoneOffsets.put("Europe/London", 1.0); // BST (British Summer Time) - UTC+1
-        timezoneOffsets.put("Asia/Kolkata", 5.5); // IST (Indian Standard Time) - UTC+5:30
-        timezoneOffsets.put("America/New_York", -5.0); // EST
-        timezoneOffsets.put("America/Los_Angeles", -8.0); // PST
-        timezoneOffsets.put("Asia/Tokyo", 9.0); // JST
-        timezoneOffsets.put("Australia/Sydney", 10.0); // AEST
-        timezoneOffsets.put("Europe/Paris", 2.0); // CEST (Central European Summer Time) - UTC+2
-        timezoneOffsets.put("Asia/Dubai", 4.0); // GST
-        timezoneOffsets.put("Asia/Singapore", 8.0); // SGT
-        
-        double fromOffset = timezoneOffsets.getOrDefault(fromTimezone, 0.0);
-        double toOffset = timezoneOffsets.getOrDefault(toTimezone, 0.0);
-        
-        // Convert hours to minutes
-        return (int) Math.round((toOffset - fromOffset) * 60);
-    }
 }
 

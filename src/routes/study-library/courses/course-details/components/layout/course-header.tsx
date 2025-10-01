@@ -53,7 +53,7 @@ export const CourseHeader = ({ courseData, showConfetti = false }: CourseHeaderP
 
             {/* Content Container */}
             <div className="relative z-20 h-full">
-                <div className="max-w-7xl mx-auto px-2 sm:px-3 lg:px-4 h-full flex items-center">
+                <div className="h-full flex items-center">
                     {courseData.courseMediaId ? (
                         // Layout with video - 3/5 and 2/5 split
                         <div className="w-full grid grid-cols-1 lg:grid-cols-5 gap-3 lg:gap-4 items-center">

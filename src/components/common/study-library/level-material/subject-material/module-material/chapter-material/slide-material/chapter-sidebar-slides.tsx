@@ -656,6 +656,7 @@ export const ChapterSidebarSlides = () => {
                                     ...router.state.location.search,
                                     slideId: slide.id,
                                 },
+                                replace: true,
                             });
                         }}
                     />

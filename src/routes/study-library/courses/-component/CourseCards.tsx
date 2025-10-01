@@ -1,5 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ChevronRight, Play, BookOpen, Users, Clock } from "lucide-react";
+import { IconRocket, IconMoodSmile, IconAdjustments, IconHash } from "@tabler/icons-react";
+import BoringAvatar from "boring-avatars";
 import { useRouter } from "@tanstack/react-router";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import LocalStorageUtils from "@/utils/localstorage";
@@ -59,6 +61,35 @@ const CourseCard: React.FC<CourseCardProps> = ({
     const cappedPercentageCompleted = Math.min(percentageCompleted, 100);
 
     const router = useRouter();
+
+    // Vibrant mode detection (reads global class applied by root)
+    const [isVibrant, setIsVibrant] = useState(false);
+    useEffect(() => {
+        const check = () => {
+            try {
+                setIsVibrant(document.documentElement.classList.contains("ui-vibrant"));
+            } catch {
+                setIsVibrant(false);
+            }
+        };
+        check();
+        const onStorage = (e: StorageEvent) => {
+            if (!e) return;
+            if (e.key === "DEBUG_UI_TYPE") check();
+        };
+        window.addEventListener("storage", onStorage);
+        return () => window.removeEventListener("storage", onStorage);
+    }, []);
+
+    // Tiny sparkline removed: not used currently
+
+    const LevelIcon = useMemo(() => {
+        const lvl = (level_name || "").toLowerCase();
+        if (lvl === "beginner") return IconMoodSmile;
+        if (lvl === "intermediate") return IconAdjustments;
+        if (lvl === "advanced") return IconRocket;
+        return IconMoodSmile;
+    }, [level_name]);
     const handleViewCoureseDetails = (id: string) => {
 
         try {
@@ -130,7 +161,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
     };
 
     return (
-        <div className="group relative overflow-hidden bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md sm:rounded-lg shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 flex flex-col w-full max-w-full animate-fade-in-up">
+        <div className="course-card group relative overflow-hidden bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md sm:rounded-lg shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 flex flex-col w-full max-w-full animate-fade-in-up">
             {/* Background gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md sm:rounded-lg"></div>
 
@@ -139,7 +170,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
             {/* Image Container - Only show if there's an image or loading */}
             {(loadingImage || courseImageUrl) && (
-                <div className="relative w-full h-40 sm:h-48 lg:h-52 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-neutral-800 dark:to-neutral-700 flex items-center justify-center overflow-hidden rounded-t-md sm:rounded-t-lg">
+                <div className="relative w-full h-40 sm:h-48 lg:h-52 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-neutral-800 dark:to-neutral-700 flex items-center justify-center overflow-hidden rounded-t-md sm:rounded-t-lg course-card-image">
                     {/* Play overlay on hover */}
                     {courseImageUrl && (
                         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
@@ -176,16 +207,24 @@ const CourseCard: React.FC<CourseCardProps> = ({
                 {/* Header with title and level badge */}
                 <div className="flex justify-between items-start mb-2 sm:mb-3 lg:mb-4 gap-2">
                     <h3
-                        className="text-base sm:text-lg lg:text-xl font-bold text-gray-900 dark:text-neutral-100 leading-tight group-hover:text-primary-600 dark:group-hover:text-neutral-100 transition-colors duration-300 line-clamp-2 flex-1 min-w-0"
+                        className="course-card-title text-base sm:text-lg lg:text-xl font-bold text-gray-900 dark:text-neutral-100 leading-tight group-hover:text-primary-600 dark:group-hover:text-neutral-100 transition-colors duration-300 line-clamp-2 flex-1 min-w-0 flex items-start gap-1"
                         title={toTitleCase(package_name)}
                     >
                         {toTitleCase(package_name)}
                     </h3>
-                    <span
-                        className={`text-xs font-bold px-2 sm:px-3 py-1 sm:py-1.5 rounded-md shadow-sm border ${getLevelColor()} flex-shrink-0 transition-all duration-200`}
-                    >
-                        {toTitleCase(level_name)}
-                    </span>
+                    {(() => {
+                        const levelLower = (level_name || "").trim().toLowerCase();
+                        const isDefaultLevel = levelLower === "default" || levelLower.includes("default");
+                        const shouldRenderBadge = !isDefaultLevel || (isDefaultLevel && isVibrant);
+                        return shouldRenderBadge ? (
+                            <span
+                                className={`level-badge text-xs font-bold px-2 sm:px-3 py-1 sm:py-1.5 rounded-md shadow-sm border ${getLevelColor()} flex-shrink-0 transition-all duration-200 flex items-center gap-1`}
+                            >
+                                {isVibrant && <LevelIcon size={14} className="text-current" />}
+                                {!isDefaultLevel && toTitleCase(level_name)}
+                            </span>
+                        ) : null;
+                    })()}
                 </div>
 
                 {/* Description */}
@@ -201,11 +240,28 @@ const CourseCard: React.FC<CourseCardProps> = ({
                     <div className="flex items-center mb-3 sm:mb-4 lg:mb-5 p-2 sm:p-3 bg-gray-50/80 dark:bg-neutral-800/60 rounded-md sm:rounded-lg border border-gray-100 dark:border-neutral-700 group-hover:bg-primary-50/50 transition-colors duration-200">
                         <div className="flex items-center space-x-2 sm:space-x-3 flex-1 min-w-0">
                             <div className="relative flex-shrink-0">
-                                <img
-                                    src={instructorImage}
-                                    alt={instructorName}
-                                    className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover border-2 border-white shadow-sm"
+                        {instructor?.image_url ? (
+                            <img
+                                src={instructorImage}
+                                alt={instructorName}
+                                className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover border-2 border-white shadow-sm"
+                            />
+                        ) : isVibrant ? (
+                            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full overflow-hidden border-2 border-white shadow-sm bg-white">
+                                <BoringAvatar
+                                    size={40}
+                                    name={instructorName}
+                                    variant="beam"
+                                    colors={["#FDE68A", "#C7D2FE", "#86EFAC", "#FCA5A5", "#93C5FD"]}
                                 />
+                            </div>
+                        ) : (
+                            <img
+                                src={instructorImage}
+                                alt={instructorName}
+                                className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover border-2 border-white shadow-sm"
+                            />
+                        )}
                                 <div className="absolute -bottom-1 -right-1 w-3 h-3 sm:w-4 sm:h-4 bg-success-500 rounded-full border-2 border-white"></div>
                             </div>
                             <div className="min-w-0 flex-1">
@@ -237,11 +293,14 @@ const CourseCard: React.FC<CourseCardProps> = ({
                 {/* Tags section */}
                 <div className="mb-3 sm:mb-4 lg:mb-5 min-h-[28px] sm:min-h-[32px]">
                     {tags && tags.length > 0 ? (
-                        <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                            {isVibrant && (
+                                <IconHash size={14} className="text-primary-600" />
+                            )}
                             {tags.slice(0, 3).map((tag) => (
                                 <span
                                     key={tag}
-                                    className="text-xs bg-primary-100 text-primary-700 border border-primary-200 px-2 sm:px-3 py-1 sm:py-1.5 rounded-md font-medium"
+                                    className="course-tag text-xs bg-primary-100 text-primary-700 border border-primary-200 px-2 sm:px-3 py-1 sm:py-1.5 rounded-md font-medium"
                                 >
                                     {tag}
                                 </span>
@@ -260,7 +319,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                 </div>
 
                 {/* Rating and stats section */}
-                <div className="flex items-center justify-between mb-3 sm:mb-4 lg:mb-5 p-2 sm:p-3 bg-gradient-to-r from-gray-50/80 to-primary-50/30 rounded-md sm:rounded-lg border border-gray-100 group-hover:from-primary-50/80 group-hover:to-primary-100/50 transition-all duration-200">
+                <div className="course-stats flex items-center justify-between mb-3 sm:mb-4 lg:mb-5 p-2 sm:p-3 bg-gradient-to-r from-gray-50/80 to-primary-50/30 rounded-md sm:rounded-lg border border-gray-100 group-hover:from-primary-50/80 group-hover:to-primary-100/50 transition-all duration-200">
                     <div className="flex items-center space-x-2">
                         <div className="flex items-center space-x-1">
                             {[...Array(5)].map((_, i) => (
@@ -306,6 +365,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                                 </span>
                             </div>
                         )}
+                        
                     </div>
                 </div>
 

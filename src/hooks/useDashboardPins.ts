@@ -20,6 +20,8 @@ export const useDashboardPins = (options: UseDashboardPinsOptions = {}) => {
     dashboardPins,
     fetchDashboardPins,
     markPinAsRead,
+    dismissDashboardPin,
+    dismissAllDashboardPins,
   } = useAnnouncementStore();
 
   const { track } = useAnalytics();
@@ -99,6 +101,24 @@ export const useDashboardPins = (options: UseDashboardPinsOptions = {}) => {
     }
   }, [fetchDashboardPins]);
 
+  const dismiss = useCallback(async (messageId: string) => {
+    try {
+      await dismissDashboardPin(messageId);
+      track('Dashboard Pin Dismissed', { messageId });
+    } catch (error) {
+      console.error('Failed to dismiss dashboard pin:', error);
+    }
+  }, [dismissDashboardPin, track]);
+
+  const dismissAll = useCallback(async () => {
+    try {
+      await dismissAllDashboardPins();
+      track('Dashboard Pins Cleared');
+    } catch (error) {
+      console.error('Failed to dismiss all dashboard pins:', error);
+    }
+  }, [dismissAllDashboardPins, track]);
+
   // Get active pins (filter out expired ones)
   const getActivePins = useCallback(() => {
     const now = new Date();
@@ -148,6 +168,8 @@ export const useDashboardPins = (options: UseDashboardPinsOptions = {}) => {
 
     // Actions
     markAsRead,
+    dismiss,
+    dismissAll,
     refresh,
     startPolling,
     stopPolling,

@@ -121,7 +121,7 @@ export function Navbar() {
         console.warn("Navbar: Error loading user role details, showing fallback UI:", error);
         // Return a simplified navbar without role-dependent features
         return (
-            <div className="sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-14 items-center justify-between bg-white dark:bg-neutral-900 px-4 md:px-5 py-2 transition-all duration-300 shadow-sm">
+            <div className="navbar sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-14 items-center justify-between bg-white dark:bg-neutral-900 px-4 md:px-5 py-2 transition-all duration-300 shadow-sm">
                 <LogoutSidebar />
                 
                 {/* Left Section */}
@@ -179,7 +179,7 @@ export function Navbar() {
     }
 
     return (
-        <div className="sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-14 items-center justify-between bg-white dark:bg-neutral-900 px-4 md:px-5 py-2 transition-all duration-300 shadow-sm">
+        <div className="navbar sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-14 items-center justify-between bg-white dark:bg-neutral-900 px-4 md:px-5 py-2 transition-all duration-300 shadow-sm">
             <LogoutSidebar />
 
             {/* Left Section */}

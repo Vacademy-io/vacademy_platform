@@ -26,6 +26,8 @@ interface AnnouncementStore {
   dashboardPins: DashboardPinsState;
   fetchDashboardPins: () => Promise<void>;
   markPinAsRead: (messageId: string) => Promise<void>;
+  dismissDashboardPin: (messageId: string) => Promise<void>;
+  dismissAllDashboardPins: () => Promise<void>;
   addDashboardPin: (pin: UserMessage) => void;
   removeDashboardPin: (messageId: string) => void;
 
@@ -267,6 +269,39 @@ export const useAnnouncementStore = create<AnnouncementStore>()(
           }));
         } catch (error) {
           console.error('Failed to mark pin as read:', error);
+        }
+      },
+
+      dismissDashboardPin: async (messageId: string) => {
+        try {
+          await announcementApi.dismissMessage(messageId);
+          set((state) => ({
+            dashboardPins: {
+              ...state.dashboardPins,
+              items: state.dashboardPins.items.filter(item => item.messageId !== messageId),
+            }
+          }));
+        } catch (error) {
+          console.error('Failed to dismiss dashboard pin:', error);
+        }
+      },
+
+      dismissAllDashboardPins: async () => {
+        try {
+          const currentPins = get().dashboardPins.items;
+          if (currentPins.length === 0) return;
+
+          const messageIds = currentPins.map(pin => pin.messageId);
+          await announcementApi.batchDismissMessages(messageIds);
+
+          set((state) => ({
+            dashboardPins: {
+              ...state.dashboardPins,
+              items: [],
+            }
+          }));
+        } catch (error) {
+          console.error('Failed to dismiss all dashboard pins:', error);
         }
       },
 

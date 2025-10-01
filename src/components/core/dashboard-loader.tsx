@@ -50,7 +50,7 @@ export function DashboardLoader() {
       <div className="min-h-screen flex flex-col lg:flex-row">
         {/* Main Content Area with Shimmer Cards */}
         <div className="flex-1 p-4 sm:p-6 lg:p-8">
-          <div className="max-w-7xl mx-auto">
+          <div className="mx-auto">
             {/* Header Section */}
             <div className="mb-8">
               <ShimmerCard className="mb-4">

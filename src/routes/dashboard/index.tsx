@@ -50,9 +50,11 @@ import { getTerminology } from "@/components/common/layout-container/sidebar/uti
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { useWeeklyAttendanceQuery } from "@/services/attendance/getWeeklyAttendance";
-import type { StudentDashboardWidgetConfig } from "@/types/student-display-settings";
+import type { StudentDashboardWidgetConfig, StudentUIType } from "@/types/student-display-settings";
 import { Card as DSCard } from "@/components/ui/card";
+import { IconBooks, IconUsersGroup, IconTrophy, IconVideo } from "@tabler/icons-react";
 import { DashboardPinsPanel } from "@/components/announcements";
+import BoringAvatar from "boring-avatars";
 import { RecentSystemNotifications } from "./-components/RecentSystemNotifications";
 
 export const Route = createFileRoute("/dashboard/")({
@@ -87,7 +89,6 @@ const StatCard = ({
   count,
   icon: Icon,
   onClick,
-  gradient,
   isLoading = false,
 }: {
   title: string;
@@ -95,7 +96,6 @@ const StatCard = ({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   icon: any;
   onClick: () => void;
-  gradient: string;
   isLoading?: boolean;
 }) => {
   if (isLoading) return <StatCardSkeleton />;
@@ -120,17 +120,26 @@ const StatCard = ({
       ></div>
 
       {/* Main card */}
-      <div className="relative bg-white border border-gray-200 rounded-md sm:rounded-lg p-3 sm:p-4 md:p-5 shadow-sm hover:shadow-md transition-all duration-300 h-full">
+      <div className="stat-card-inner relative bg-white border border-gray-200 rounded-md sm:rounded-lg p-3 sm:p-4 md:p-5 shadow-sm hover:shadow-md transition-all duration-300 h-full">
         {/* Floating orb effect - Hidden on mobile for performance */}
         <div className="absolute top-0 right-0 w-12 h-12 md:w-20 md:h-20 bg-primary-100/30 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-2 md:-translate-y-4 translate-x-2 md:translate-x-4 hidden sm:block"></div>
 
         <div className="flex items-center justify-between mb-2 sm:mb-3 md:mb-5">
-          <div className="p-1.5 sm:p-2 md:p-3 bg-primary-100 rounded-md sm:rounded-lg text-primary-600 group-hover:scale-110 transition-transform duration-300 shadow-sm">
-            <Icon
-              weight="duotone"
-              size={18}
-              className="sm:w-5 sm:h-5 md:w-6 md:h-6"
-            />
+          <div className="stat-card-icon p-1.5 sm:p-2 md:p-3 bg-primary-100 rounded-md sm:rounded-lg text-primary-600 group-hover:scale-110 transition-transform duration-300 shadow-sm">
+            {/* Swap icon to playful Tabler in vibrant mode */}
+            {document.documentElement.classList.contains("ui-vibrant") ? (
+              title.toLowerCase().includes("course") ? (
+                <IconBooks size={20} className="sm:w-5 sm:h-5 md:w-6 md:h-6" />
+              ) : title.toLowerCase().includes("assignment") ? (
+                <IconUsersGroup size={20} className="sm:w-5 sm:h-5 md:w-6 md:h-6" />
+              ) : title.toLowerCase().includes("evaluation") ? (
+                <IconTrophy size={20} className="sm:w-5 sm:h-5 md:w-6 md:h-6" />
+              ) : (
+                <Icon weight="duotone" size={18} className="sm:w-5 sm:h-5 md:w-6 md:h-6" />
+              )
+            ) : (
+              <Icon weight="duotone" size={18} className="sm:w-5 sm:h-5 md:w-6 md:h-6" />
+            )}
           </div>
           <div className="opacity-60 group-hover:opacity-100 transition-opacity duration-300">
             <ChevronRight
@@ -144,7 +153,7 @@ const StatCard = ({
           <div className="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-neutral-100 tracking-tight leading-tight">
             {(count ?? 0).toLocaleString()}
           </div>
-          <div className="text-xs sm:text-sm font-medium text-gray-600 dark:text-neutral-300 group-hover:text-gray-700 dark:group-hover:text-neutral-200 transition-colors duration-300 line-clamp-2 break-words">
+          <div className="stat-card-title text-xs sm:text-sm font-medium text-gray-600 dark:text-neutral-300 group-hover:text-gray-700 dark:group-hover:text-neutral-200 transition-colors duration-300 line-clamp-2 break-words">
             {title}
           </div>
         </div>
@@ -166,7 +175,7 @@ const ContinueLearningCard = ({
 }) => {
   if (!data?.slides || data.slides.length === 0) {
     return (
-      <Card className="relative overflow-hidden border-0 bg-white shadow-sm hover:shadow-lg transition-all duration-500">
+      <Card className="continue-learning-card relative overflow-hidden border-0 bg-white shadow-sm hover:shadow-lg transition-all duration-500">
         <CardContent className="p-4 sm:p-6 md:p-8 text-center">
           <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 bg-primary-100 rounded-md sm:rounded-lg flex items-center justify-center mx-auto mb-2 sm:mb-3 md:mb-4">
             <Target
@@ -299,6 +308,7 @@ export function DashboardComponent() {
   const { setStudyLibraryData } = useStudyLibraryStore();
   const [data, setData] = useState<DashbaordResponse | null>(null);
   const { setActiveItem } = useContentStore();
+  const [uiType, setUiType] = useState<StudentUIType>("default");
 
   // Add weekly attendance query
   const { data: weeklyAttendance, isLoading: isLoadingAttendance } =
@@ -390,7 +400,10 @@ export function DashboardComponent() {
   // Load dashboard widget configurations
   useEffect(() => {
     getStudentDisplaySettings(false)
-      .then((s) => setWidgetConfigs(s?.dashboard?.widgets || []))
+      .then((s) => {
+        setWidgetConfigs(s?.dashboard?.widgets || []);
+        setUiType((s?.ui?.type as StudentUIType) || "default");
+      })
       .catch(() => setWidgetConfigs(null));
   }, [setNavHeading, trackPageView, handleGetStudyLibraryData]);
 
@@ -529,7 +542,7 @@ export function DashboardComponent() {
   };
 
   return (
-    <div className="min-h-screen bg-white dark:bg-neutral-950 relative overflow-hidden w-full dashboard-container smooth-scroll">
+    <div className={`min-h-screen bg-white dark:bg-neutral-950 relative overflow-hidden w-full dashboard-container smooth-scroll ${uiType === "vibrant" ? "ui-vibrant" : ""}`}>
       <Helmet>
         <title>{document?.title || "Dashboard"}</title>
         <meta
@@ -545,16 +558,25 @@ export function DashboardComponent() {
       {/* Animated background elements - Simplified for mobile performance */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none"></div>
 
-      <div className="relative z-10 space-y-3 sm:space-y-4 md:space-y-5 p-3 sm:p-4 md:p-5 max-w-7xl mx-auto w-full">
+      <div className="relative z-10 space-y-3 sm:space-y-4 md:space-y-5 p-3 sm:p-4 md:p-5 mx-auto w-full">
         {/* Enhanced Header Section */}
         <div className="animate-fade-in-down">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2.5 sm:gap-3.5 lg:gap-5">
             <div className="flex flex-col sm:flex-row sm:items-center space-y-3 sm:space-y-0 sm:space-x-3 md:space-x-4 min-w-0">
               <div className="relative flex-shrink-0">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 bg-primary-100 rounded-md sm:rounded-lg md:rounded-xl flex items-center justify-center shadow-md">
-                  <span className="text-base sm:text-lg font-semibold text-primary-700">
-                    {username?.charAt(0)?.toUpperCase() || "U"}
-                  </span>
+                <div className="dashboard-user-avatar w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 bg-primary-100 rounded-full flex items-center justify-center shadow-md overflow-hidden">
+                  {uiType === "vibrant" ? (
+                    <BoringAvatar
+                      size={64}
+                      name={username || "User"}
+                      variant="beam"
+                      colors={["#FDE68A", "#C7D2FE", "#86EFAC", "#FCA5A5", "#93C5FD"]}
+                    />
+                  ) : (
+                    <span className="text-base sm:text-lg font-semibold text-primary-700">
+                      {username?.charAt(0)?.toUpperCase() || "U"}
+                    </span>
+                  )}
                 </div>
                 <div className="absolute -bottom-0.5 -right-0.5 sm:-bottom-1 sm:-right-1 w-3 h-3 sm:w-4 sm:h-4 md:w-6 md:h-6 bg-success-500 rounded-full border-2 border-white shadow-sm animate-gentle-pulse"></div>
               </div>
@@ -637,7 +659,7 @@ export function DashboardComponent() {
                 {[
                   {
                     id: "coursesStat" as const,
-                    className: "",
+                    className: "stat-card--courses",
                     render: (
                       <StatCard
                         title={`${getTerminology(
@@ -653,14 +675,39 @@ export function DashboardComponent() {
                           });
                           navigate({ to: "/study-library/courses" });
                         }}
-                        gradient=""
                         isLoading={isLoading}
                       />
                     ),
                   },
                   {
-                    id: "assessmentsStat" as const,
+                    id: "thisWeekAttendance" as const,
                     className: "",
+                    render: (
+                      <StatCard
+                        title="Attendance"
+                        count={weeklyAttendance?.days?.filter(d => d.status === "PRESENT").length || 0}
+                        icon={Clock}
+                        onClick={() => navigate({ to: "/learning-centre/attendance" })}
+                        isLoading={isLoadingAttendance}
+                      />
+                    ),
+                  },
+                  {
+                    id: "liveClasses" as const,
+                    className: "",
+                    render: (
+                      <StatCard
+                        title="Live Classes"
+                        count={liveSessions?.live_sessions?.length || 0}
+                        icon={Play}
+                        onClick={() => navigate({ to: "/study-library/live-class" })}
+                        isLoading={isLoadingLiveSessions}
+                      />
+                    ),
+                  },
+                  {
+                    id: "assessmentsStat" as const,
+                    className: "stat-card--assignments",
                     render: (
                       <StatCard
                         title="Assignments"
@@ -673,14 +720,13 @@ export function DashboardComponent() {
                           });
                           navigate({ to: "/homework/list" });
                         }}
-                        gradient=""
                         isLoading={isLoading}
                       />
                     ),
                   },
                   {
                     id: "evaluationStat" as const,
-                    className: "",
+                    className: "stat-card--evaluations",
                     render: (
                       <StatCard
                         title="Evaluations"
@@ -693,7 +739,6 @@ export function DashboardComponent() {
                           });
                           navigate({ to: "/assessment/examination" });
                         }}
-                        gradient=""
                         isLoading={isLoading}
                       />
                     ),
@@ -732,12 +777,12 @@ export function DashboardComponent() {
                   },
                   {
                     id: "liveClasses" as const,
-                    className: "",
+                    className: "stat-card--live",
                     render: null,
                   },
                   {
                     id: "thisWeekAttendance" as const,
-                    className: "",
+                    className: "stat-card--attendance",
                     render: null,
                   },
                   {
@@ -945,11 +990,11 @@ export function DashboardComponent() {
                   <CardContent className="p-3 sm:p-4 md:p-6">
                     <div className="flex items-center space-x-2 sm:space-x-3 md:space-x-4">
                       <div className="p-1.5 sm:p-2 md:p-3 bg-blue-100 rounded-md sm:rounded-lg flex-shrink-0">
-                        <Users
-                          weight="duotone"
-                          size={16}
-                          className="text-blue-600 sm:w-5 sm:h-5"
-                        />
+                        {document.documentElement.classList.contains("ui-vibrant") ? (
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" className="sm:w-5 sm:h-5" fill="currentColor"><path d="M2 8.5C2 7.67 2.67 7 3.5 7H8l1.5-2H14l1.5 2H20.5C21.33 7 22 7.67 22 8.5V19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.5Zm6.75 5.25a.75.75 0 0 0-1.5 0v3a.75.75 0 0 0 1.5 0v-3Zm4 0a.75.75 0 0 0-1.5 0v3a.75.75 0 0 0 1.5 0v-3Zm4 0a.75.75 0 0 0-1.5 0v3a.75.75 0 0 0 1.5 0v-3Z"/></svg>
+                        ) : (
+                          <Users weight="duotone" size={16} className="text-blue-600 sm:w-5 sm:h-5" />
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <h3 className="font-semibold text-gray-900 text-xs sm:text-sm md:text-base truncate">
@@ -979,11 +1024,11 @@ export function DashboardComponent() {
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 md:gap-4">
                     <CardTitle className="flex items-center space-x-2 sm:space-x-3 text-sm sm:text-base md:text-lg">
                       <div className="p-1.5 sm:p-2 bg-green-100 rounded-lg flex-shrink-0">
-                        <BookOpen
-                          weight="duotone"
-                          size={16}
-                          className="text-green-600 sm:w-4 sm:h-4"
-                        />
+                        {document.documentElement.classList.contains("ui-vibrant") ? (
+                          <IconVideo size={18} className="text-green-600 sm:w-4 sm:h-4" />
+                        ) : (
+                          <BookOpen weight="duotone" size={16} className="text-green-600 sm:w-4 sm:h-4" />
+                        )}
                       </div>
                       <span>My Classes</span>
                     </CardTitle>

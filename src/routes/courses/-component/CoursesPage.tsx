@@ -43,8 +43,8 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
 }) => {
   const { courseData } = useCatalogStore();
   const fallbackDescription =
-    "build responsive scalable and human-like AI application";
-  const fallbackTags = "LLMs,Reinforcement Learning";
+    "";
+  const fallbackTags = "";
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
 

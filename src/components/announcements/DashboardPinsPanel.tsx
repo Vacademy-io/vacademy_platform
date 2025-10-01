@@ -1,13 +1,23 @@
 import React, { useState } from 'react';
-import { Pin, Clock, User, X, Loader2, AlertCircle } from 'lucide-react';
+import { Pin, Clock, User, X, Loader2, AlertCircle, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { useDashboardPins } from '@/hooks/useDashboardPins';
-import { formatDistanceToNow } from 'date-fns';
 import { formatLocalDateTime } from '@/helpers/formatISOTime';
-import { processHtmlString } from '@/lib/utils';
+import { sanitizeHtml } from '@/lib/utils';
 import type { UserMessage } from '@/types/announcement';
 import { announcementApi } from '@/services/announcementApi';
 
@@ -27,6 +37,8 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
     isEnabled,
     isLoadingSettings,
     markAsRead,
+    dismiss,
+    dismissAll,
     refresh,
   } = useDashboardPins({
     enablePolling: true,
@@ -76,12 +88,17 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
       return (
         <div 
           className="prose prose-sm max-w-none"
-          dangerouslySetInnerHTML={{ __html: processHtmlString(pin.content.content) }}
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(pin.content.content) }}
         />
       );
     }
     
     return <p className="text-sm text-gray-700">{pin.content.content}</p>;
+  };
+
+  const handleDismissPin = async (messageId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    await dismiss(messageId);
   };
 
   const getTimeRemaining = (endTime?: string) => {
@@ -126,14 +143,49 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
               <Pin className="h-5 w-5 text-blue-600" />
               Important Updates
             </CardTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={refresh}
-              disabled={loading}
-            >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Refresh'}
-            </Button>
+            <div className="flex items-center gap-2">
+              {pins.length > 0 && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      disabled={loading}
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Clear All
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Clear All Pins</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Are you sure you want to dismiss all {pins.length} pin{pins.length === 1 ? '' : 's'}?
+                        This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={dismissAll}
+                        className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+                      >
+                        Clear All
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={refresh}
+                disabled={loading}
+              >
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Refresh'}
+              </Button>
+            </div>
           </div>
         </CardHeader>
         
@@ -177,6 +229,14 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
                         <div className="w-2 h-2 bg-blue-500 rounded-full" />
                       )}
                     </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="ml-2 h-6 w-6 p-0 hover:bg-gray-100"
+                      onClick={(e) => handleDismissPin(pin.messageId, e)}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
                   </div>
                   
                   <div className="text-sm text-gray-600 mb-3 line-clamp-2">

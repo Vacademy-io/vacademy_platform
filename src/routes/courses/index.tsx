@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import CourseCatalougePage from "./-component/CourseCatalougePage";
-import { useSuspenseQuery } from "@tanstack/react-query";
-import { handleGetInstituteIdWithLocalStorageCheck } from "./-services/courses-services";
+// Removed legacy institute resolution in favor of domain routing
+// import { useSuspenseQuery } from "@tanstack/react-query";
+// import { handleGetInstituteIdWithLocalStorageCheck } from "./-services/courses-services";
 import { useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import RootNotFoundComponent from "@/components/core/default-not-found";
@@ -10,7 +11,6 @@ import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
-import { getSubdomain } from "@/helpers/helper";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 
 export const Route = createFileRoute("/courses/")({
@@ -22,15 +22,8 @@ export const Route = createFileRoute("/courses/")({
 
 function CoursesContainerComponent() {
     const navigate = useNavigate();
-    const subdomain = getSubdomain(window.location.hostname);
     const domainRouting = useDomainRouting();
 
-    // Use the new function that checks localStorage first, then compares with API result
-    const { data: apiResult, isLoading } = useSuspenseQuery(
-        handleGetInstituteIdWithLocalStorageCheck({
-            subdomain: subdomain || "",
-        })
-    );
 
     useEffect(() => {
         const redirectToDashboardIfAuthenticated = async () => {
@@ -61,16 +54,16 @@ function CoursesContainerComponent() {
         redirectToDashboardIfAuthenticated();
     }, [navigate]);
 
-    if (isLoading || domainRouting.isLoading) return <DashboardLoader />;
+    if (domainRouting.isLoading) return <DashboardLoader />;
 
-    // If we couldn't get any instituteId (neither from API nor localStorage), show not found
-    if (apiResult === "Data not found" && !domainRouting.instituteId) {
+    // If we couldn't resolve any instituteId, show not found
+    if (!domainRouting.instituteId) {
         return <RootNotFoundComponent />;
     }
 
     return (
         <div className="min-h-screen bg-white">
-            <CourseCatalougePage instituteId={domainRouting.instituteId || apiResult} />
+            <CourseCatalougePage instituteId={domainRouting.instituteId} />
         </div>
     );
 }

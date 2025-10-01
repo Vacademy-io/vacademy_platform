@@ -89,7 +89,7 @@ function RouteComponent() {
       {/* Institute Branding */}
       {domainRouting.instituteId && (
         <div className="w-full bg-white shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 py-4">
+          <div className="mx-auto px-4 py-4">
             <AuthPageBranding
               branding={{
                 instituteId: domainRouting.instituteId,
@@ -128,7 +128,7 @@ function RouteComponent() {
 
       {/* Footer */}
       <div className="bg-white border-t">
-        <div className="max-w-7xl mx-auto px-4 py-4">
+        <div className="mx-auto px-4 py-4">
           <p className="text-center text-sm text-gray-500">
             Need help? Contact support for assistance with accessing your live
             session.

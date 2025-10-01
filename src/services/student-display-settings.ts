@@ -31,6 +31,9 @@ function mergeWithDefaults(
 ): StudentDisplaySettingsData {
   const d = DEFAULT_STUDENT_DISPLAY_SETTINGS;
   const out: StudentDisplaySettingsData = {
+    ui: {
+      type: incoming?.ui?.type ?? d.ui.type,
+    },
     sidebar: {
       visible: incoming?.sidebar?.visible ?? d.sidebar.visible,
       tabs: mergeArrayById<StudentSidebarTabConfig>(
@@ -256,7 +259,9 @@ async function writeCacheForInstitute(
       `${LS_KEY}:${instituteId}`,
       JSON.stringify({ ts: Date.now(), data })
     );
-  } catch {}
+  } catch {
+    // noop
+  }
 }
 
 export async function getStudentDisplaySettings(

@@ -893,7 +893,7 @@ export const handlePaymentForEnrollment = async (params: {
   instituteId: string;
   packageSessionId: string;
   enrollmentData: EnrollmentResponse;
-  paymentGatewayData: PaymentGatewayDetails;
+  paymentGatewayData: PaymentGatewayDetails | null;
   selectedPaymentPlan: PaymentPlan;
   selectedPaymentOption: PaymentOption;
   amount: number;
@@ -972,43 +972,45 @@ export const handlePaymentForEnrollment = async (params: {
       );
     }
 
-    // Validate payment gateway data
-    if (!paymentGatewayData) {
+    // Validate payment gateway data (only required for non-free payments)
+    if (paymentType !== "free" && !paymentGatewayData) {
       throw new Error(
         "Payment gateway configuration is missing. Please try again."
       );
     }
 
     // Handle case where API returns simplified response with just publishableKey
-    const vendor = paymentGatewayData.vendor || "STRIPE";
+    const vendor = paymentGatewayData?.vendor || "STRIPE";
 
     // Note: Payment gateway configuration is handled by the backend
     // We only need to send the stripe_request with payment method details
 
-    // Extract publishable key from payment gateway config
+    // Extract publishable key from payment gateway config (only for non-free payments)
     let publishableKey: string | undefined;
 
-    // Check if publishableKey is directly available in the response
-    if (paymentGatewayData.publishableKey) {
-      publishableKey = paymentGatewayData.publishableKey;
-    } else if (paymentGatewayData.config_json) {
-      try {
-        const config = JSON.parse(paymentGatewayData.config_json);
+    if (paymentGatewayData) {
+      // Check if publishableKey is directly available in the response
+      if (paymentGatewayData.publishableKey) {
+        publishableKey = paymentGatewayData.publishableKey;
+      } else if (paymentGatewayData.config_json) {
+        try {
+          const config = JSON.parse(paymentGatewayData.config_json);
 
-        // Try different possible field names for publishable key
-        publishableKey =
-          config.publishableKey ||
-          config.publishable_key ||
-          config.stripe_publishable_key ||
-          config.stripePublishableKey ||
-          config.key ||
-          config.public_key;
-      } catch (error) {
-        // Silent error handling
+          // Try different possible field names for publishable key
+          publishableKey =
+            config.publishableKey ||
+            config.publishable_key ||
+            config.stripe_publishable_key ||
+            config.stripePublishableKey ||
+            config.key ||
+            config.public_key;
+        } catch (error) {
+          // Silent error handling
+        }
       }
     }
 
-    if (!publishableKey) {
+    if (paymentType !== "free" && !publishableKey) {
       throw new Error(
         "Publishable key not found in payment gateway config. Please check the payment gateway configuration."
       );

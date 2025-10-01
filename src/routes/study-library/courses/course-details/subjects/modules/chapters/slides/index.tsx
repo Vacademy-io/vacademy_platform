@@ -85,12 +85,25 @@ function Slides() {
 
             const completion = calculateOverallCompletion(slides);
 
-            // Automatically go to feedback page if course is 100% completed
+            // Priority 1: If course is 100% completed
             if (completion === 100) {
-                setActiveItem(feedbackSlide);
-                return;
+                // Check if user has already seen feedback for this course
+                const feedbackSeenKey = `feedback_seen_${courseId}_${chapterId}`;
+                const hasSeenFeedback = localStorage.getItem(feedbackSeenKey);
+                
+                if (!hasSeenFeedback) {
+                    // First time completion - show feedback page
+                    localStorage.setItem(feedbackSeenKey, 'true');
+                    setActiveItem(feedbackSlide);
+                    return;
+                } else {
+                    // User returning to completed course - show first slide for better UX
+                    setActiveItem(slidesWithFeedback[0]);
+                    return;
+                }
             }
 
+            // Priority 2: If user explicitly navigated to a specific slide via URL
             if (slideId) {
                 const targetSlide = slidesWithFeedback.find(
                     (s) => s.id === slideId
@@ -101,6 +114,7 @@ function Slides() {
                 }
             }
 
+            // Priority 3: Default to first slide
             setActiveItem(slidesWithFeedback[0]);
         }
     }, [slides, slideId, setActiveItem, setItems]);

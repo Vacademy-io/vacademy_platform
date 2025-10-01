@@ -1,5 +1,5 @@
 import { Preferences } from "@capacitor/preferences";
-import { getPublicUrl } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/excalidrawUtils";
+import { getPublicUrl } from "@/services/upload_file";
 
 export interface TabBrandingResult {
   iconUrl: string | null;

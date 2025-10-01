@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useRef, useEffect, useState, useMemo, useCallback } from "react";
+import { forwardRef, memo, useImperativeHandle, useRef, useEffect, useState, useMemo, useCallback } from "react";
 import { renderAsync } from "docx-preview";
 import TurndownService from "turndown";
 import ReactMarkdown from "react-markdown";
@@ -7,13 +7,15 @@ export interface DocViewerComponentRef {
   jumpToPage: (pageIndex: number) => void;
 }
 
-export const DocViewerComponent = forwardRef<DocViewerComponentRef, {
+type DocViewerComponentProps = {
   docUrl: string;
   handleDocumentLoad: () => void;
   handlePageChange: (page: number) => void;
   initialPage?: number;
   isHtml?: boolean;
-}>((({
+};
+
+const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerComponentProps>(({ 
   docUrl,
   handleDocumentLoad,
   handlePageChange,
@@ -23,8 +25,19 @@ export const DocViewerComponent = forwardRef<DocViewerComponentRef, {
   const containerRef = useRef<HTMLDivElement>(null);
   const totalPagesRef = useRef<number>(0);
   const [markdownContent, setMarkdownContent] = useState<string>("");
+  const [htmlContent, setHtmlContent] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const handleDocumentLoadRef = useRef(handleDocumentLoad);
+  const handlePageChangeRef = useRef(handlePageChange);
+
+  // Keep latest handleDocumentLoad without re-triggering loads
+  useEffect(() => {
+    handleDocumentLoadRef.current = handleDocumentLoad;
+  }, [handleDocumentLoad]);
+  useEffect(() => {
+    handlePageChangeRef.current = handlePageChange;
+  }, [handlePageChange]);
 
   // Memoize the docUrl to prevent unnecessary re-renders
   const stableDocUrl = useMemo(() => docUrl, [docUrl]);
@@ -54,8 +67,8 @@ export const DocViewerComponent = forwardRef<DocViewerComponentRef, {
     const pageHeight = scrollHeight / totalPagesRef.current;
     const currentPage = Math.floor(scrollTop / pageHeight) + 1;
 
-    handlePageChange(currentPage);
-  }, [handlePageChange]);
+    handlePageChangeRef.current?.(currentPage);
+  }, []);
 
   // Add scroll event listener
   useEffect(() => {
@@ -91,16 +104,57 @@ export const DocViewerComponent = forwardRef<DocViewerComponentRef, {
     
     try {
       if (isHtml) {
-        try {
-          // Convert HTML to Markdown using Turndown
-          const markdown = turndownService.turndown(stableDocUrl);
-          setMarkdownContent(markdown);
-        } catch (conversionError) {
-          // Fallback to plain text if conversion fails
-          const tempDiv = document.createElement('div');
-          tempDiv.innerHTML = stableDocUrl;
-          const fallbackContent = tempDiv.textContent || stableDocUrl;
-          setMarkdownContent(fallbackContent);
+        // If the HTML contains embedded content like iframes/videos, render as raw HTML
+        const containsEmbedded = /<(iframe|video|audio|embed|object)/i.test(stableDocUrl);
+        if (containsEmbedded) {
+          try {
+            const parser = new DOMParser();
+            const parsed = parser.parseFromString(stableDocUrl, 'text/html');
+
+            // Make embeds responsive
+            const iframeNodes = Array.from(parsed.getElementsByTagName('iframe'));
+            iframeNodes.forEach((node) => {
+              const widthAttr = Number.parseInt(node.getAttribute('width') || '0', 10);
+              const heightAttr = Number.parseInt(node.getAttribute('height') || '0', 10);
+              const ratio = widthAttr > 0 && heightAttr > 0 ? heightAttr / widthAttr : 9 / 16;
+
+              const wrapper = parsed.createElement('div');
+              wrapper.className = 'responsive-iframe';
+              // Fallback inline style to preserve ratio even if CSS fails
+              wrapper.setAttribute('style', `position:relative;width:100%;padding-top:${Math.min(Math.max(ratio * 100, 40), 100)}%;`);
+
+              const clone = node.cloneNode(true) as HTMLIFrameElement;
+              clone.removeAttribute('width');
+              clone.removeAttribute('height');
+              clone.setAttribute('loading', 'lazy');
+              clone.setAttribute('style', 'position:absolute;top:0;left:0;width:100%;height:100%;border:0;');
+
+              wrapper.appendChild(clone);
+              node.replaceWith(wrapper);
+            });
+
+            const bodyHtml = parsed.body ? parsed.body.innerHTML : stableDocUrl;
+            setHtmlContent(bodyHtml);
+            setMarkdownContent("");
+          } catch {
+            // If parsing fails, fallback to direct assignment
+            setHtmlContent(stableDocUrl);
+            setMarkdownContent("");
+          }
+        } else {
+          try {
+            // Convert HTML to Markdown using Turndown for better theming
+            const markdown = turndownService.turndown(stableDocUrl);
+            setMarkdownContent(markdown);
+            setHtmlContent("");
+          } catch {
+            // Fallback to plain text if conversion fails
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = stableDocUrl;
+            const fallbackContent = tempDiv.textContent || stableDocUrl;
+            setMarkdownContent(fallbackContent);
+            setHtmlContent("");
+          }
         }
       } else {
         // For DOCX content, fetch and render using docx-preview
@@ -141,14 +195,15 @@ export const DocViewerComponent = forwardRef<DocViewerComponentRef, {
         totalPagesRef.current = Math.ceil(contentHeight / viewportHeight);
       }
 
-      handleDocumentLoad();
+      // Notify load completion (stable ref avoids effect loops)
+      handleDocumentLoadRef.current?.();
       
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Unknown error');
     } finally {
       setIsLoading(false);
     }
-  }, [stableDocUrl, isHtml, turndownService, handleDocumentLoad]);
+  }, [stableDocUrl, isHtml, turndownService]);
 
   // Load document when component mounts - simplified approach
   useEffect(() => {
@@ -201,7 +256,11 @@ export const DocViewerComponent = forwardRef<DocViewerComponentRef, {
     <div ref={containerRef} className="min-h-[40vh] sm:min-h-[50vh] lg:min-h-[60vh] max-h-[calc(100vh-120px)] sm:max-h-[calc(100vh-140px)] lg:max-h-[calc(100vh-170px)] overflow-auto bg-white rounded-lg sm:rounded-xl lg:rounded-2xl border border-gray-200 shadow-lg hover:shadow-xl transition-shadow duration-300">
       {isHtml ? (
         <div className="p-4 sm:p-6 lg:p-8 xl:p-12 markdown-content">
-          {markdownContent ? (
+          {htmlContent ? (
+            <div className="prose prose-sm sm:prose-base lg:prose-lg prose-gray max-w-none">
+              <div dangerouslySetInnerHTML={{ __html: htmlContent }} />
+            </div>
+          ) : markdownContent ? (
             <div className="prose prose-sm sm:prose-base lg:prose-lg prose-gray max-w-none">
               <ReactMarkdown 
                 components={{
@@ -267,8 +326,9 @@ export const DocViewerComponent = forwardRef<DocViewerComponentRef, {
                       {children}
                     </ol>
                   ),
-                  li: ({children, ...props}) => {
-                    const isOrdered = (props as any).ordered;
+                  li: (props) => {
+                    const { children } = props as { children?: React.ReactNode };
+                    const isOrdered = (props as { ordered?: boolean }).ordered;
                     return (
                       <li className={`relative pl-8 text-gray-700 text-lg leading-relaxed ${
                         isOrdered ? 'counter-increment-list' : ''
@@ -422,6 +482,18 @@ export const DocViewerComponent = forwardRef<DocViewerComponentRef, {
               max-width: none;
             }
             
+            /* Responsive embeds */
+            .markdown-content iframe,
+            .markdown-content video,
+            .markdown-content embed,
+            .markdown-content object {
+              max-width: 100%;
+              width: 100%;
+              border: 0;
+            }
+            .markdown-content .responsive-iframe { position: relative; width: 100%; }
+            .markdown-content .responsive-iframe iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
+            
             .counter-reset-list {
               counter-reset: list-counter;
             }
@@ -489,4 +561,8 @@ export const DocViewerComponent = forwardRef<DocViewerComponentRef, {
       )}
     </div>
   );
-})); 
+});
+
+export const DocViewerComponent = memo(DocViewerComponentInner, (prev, next) => {
+  return prev.docUrl === next.docUrl && prev.isHtml === next.isHtml;
+}); 

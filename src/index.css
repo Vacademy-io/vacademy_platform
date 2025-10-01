@@ -275,16 +275,16 @@
   .ui-vibrant .btn,
   .ui-vibrant .my-button {
     position: relative;
-    box-shadow: inset 0 -4px 0 hsl(var(--primary-300));
+    box-shadow: inset 0 -1.5px 0 hsl(var(--primary-300));
     transition: transform 120ms ease, box-shadow 120ms ease;
     border-radius: 10px; /* match global radius */
-    outline: 2px solid hsl(var(--border));
+    outline: 0.5px solid hsl(var(--border));
     outline-offset: 0;
   }
   .ui-vibrant button:hover,
   .ui-vibrant .btn:hover,
   .ui-vibrant .my-button:hover {
-    box-shadow: inset 0 -5px 0 hsl(var(--primary-500));
+    box-shadow: inset 0 -6px 0 hsl(var(--primary-500));
     transform: translateY(-1px);
   }
   .ui-vibrant button:active,

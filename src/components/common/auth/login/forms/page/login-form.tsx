@@ -166,7 +166,10 @@ export function LoginForm({
           }
           // Clean up
           localStorage.removeItem("OAUTH_RESULT");
-        } catch {}
+        } catch {
+          // Ignore JSON parse errors while reading OAuth result
+          void 0;
+        }
       }
     };
 
@@ -186,7 +189,10 @@ export function LoginForm({
           }
         };
       }
-    } catch {}
+    } catch {
+      // Ignore BroadcastChannel construction failures in unsupported environments
+      void 0;
+    }
 
     // Immediate localStorage check in case write happened before listener attached
     const checkLocalOnce = async () => {
@@ -203,7 +209,10 @@ export function LoginForm({
           }
           localStorage.removeItem("OAUTH_RESULT");
         }
-      } catch {}
+      } catch {
+        // Ignore localStorage access/parse errors
+        void 0;
+      }
     };
     checkLocalOnce();
 
@@ -222,10 +231,16 @@ export function LoginForm({
       window.removeEventListener("storage", storageHandler);
       try {
         window.clearInterval(pollTimer);
-      } catch {}
+      } catch {
+        // Ignore timer cleanup errors
+        void 0;
+      }
       try {
         if (bc) bc.close();
-      } catch {}
+      } catch {
+        // Ignore BroadcastChannel close errors
+        void 0;
+      }
     };
   }, [navigate, redirect]);
 
@@ -448,34 +463,7 @@ export function LoginForm({
       {/* Subtle Background Pattern (gradients removed) */}
       <div className="absolute inset-0 -z-10" />
 
-      {/* Subtle Floating Background Elements */}
-      <motion.div
-        animate={{
-          x: [0, 20, 0],
-          y: [0, -10, 0],
-          rotate: [0, 2, 0],
-        }}
-        transition={{
-          duration: 12,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
-        className="absolute top-20 left-20 w-48 h-48 bg-muted/10 rounded-full blur-3xl"
-      />
-      <motion.div
-        animate={{
-          x: [0, -20, 0],
-          y: [0, 10, 0],
-          rotate: [0, -2, 0],
-        }}
-        transition={{
-          duration: 15,
-          repeat: Infinity,
-          ease: "easeInOut",
-          delay: 3,
-        }}
-        className="absolute bottom-20 right-20 w-64 h-64 bg-muted/10 rounded-full blur-3xl"
-      />
+      
 
       {/* Centered container */}
       <div className="w-full min-h-[60vh] flex items-center justify-center p-4">

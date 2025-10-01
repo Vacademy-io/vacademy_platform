@@ -48,8 +48,7 @@ import { AuthModal } from "@/components/common/auth/modal/AuthModal";
 // import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 // import { TokenKey } from "@/constants/auth/tokens";
 // import { Preferences } from "@capacitor/preferences";
-import { getSubdomain } from "@/helpers/helper";
-import { handleGetInstituteIdWithLocalStorageCheck } from "../../-services/courses-services";
+import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { extractTextFromHTML } from "@/components/common/helper";
 import { SlideCountEntry } from "@/utils/courseTime";
@@ -170,7 +169,7 @@ export const CourseDetailsPage = () => {
     const [selectedLevel, setSelectedLevel] = useState<string>("");
     const router = useRouter();
     const searchParams = router.state.location.search;
-    const subdomain = getSubdomain(window.location.hostname);
+    const domainRouting = useDomainRouting();
     
     // Get catalog store for fallback instructor data
     const { courseData } = useCatalogStore();
@@ -223,16 +222,9 @@ export const CourseDetailsPage = () => {
         [updateLoadingState]
     );
 
-    // Get instituteId from API using subdomain - Changed from useSuspenseQuery to useQuery to prevent infinite re-renders
-    const { data: instituteIdFromApi, isLoading: isLoadingInstituteId } =
-        useQuery(
-            handleGetInstituteIdWithLocalStorageCheck({
-                subdomain: subdomain || "",
-            })
-        );
-
-
-    const instituteId = instituteIdFromApi;
+    // Use domain routing resolved instituteId
+    const instituteId = domainRouting.instituteId;
+    const isLoadingInstituteId = domainRouting.isLoading;
 
     // Update institute ID loading state
     useEffect(() => {

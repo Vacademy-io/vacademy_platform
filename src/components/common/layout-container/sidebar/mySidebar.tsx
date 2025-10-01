@@ -29,6 +29,19 @@ import type {
 } from "../../../../types/layout-container-types";
 import { useStudentPermissions } from "@/hooks/use-student-permissions";
 
+// Local letter-based icon factory for tabs without predefined icons
+const createLetterIcon = (letter: string) =>
+  ({ className }: { className?: string; weight?: unknown }) => (
+    <div
+      className={`flex items-center justify-center rounded-md bg-neutral-100 dark:bg-neutral-800 ${className || ""}`}
+      aria-hidden
+    >
+      <span className="leading-none font-medium uppercase">
+        {letter}
+      </span>
+    </div>
+  );
+
 export const MySidebar = ({
   sidebarComponent,
 }: {
@@ -92,8 +105,10 @@ export const MySidebar = ({
                 subItemLink: s.route || "/",
               }))
           : undefined;
+        const computedLabel = (t.label || labelByTabId[t.id] || t.id || "").trim();
+        const firstLetter = (computedLabel.charAt(0) || "?").toUpperCase();
         return {
-          icon: iconByTabId[t.id] || House,
+          icon: iconByTabId[t.id] || createLetterIcon(firstLetter),
           title: t.label || labelByTabId[t.id] || t.id,
           to: subItems
             ? undefined

@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { ChevronRight, Play, BookOpen, Users, Clock } from "lucide-react";
 import { IconRocket, IconMoodSmile, IconAdjustments, IconHash } from "@tabler/icons-react";
 import BoringAvatar from "boring-avatars";
-import { ResponsiveContainer, LineChart, Line } from "recharts";
 import { useRouter } from "@tanstack/react-router";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import LocalStorageUtils from "@/utils/localstorage";
@@ -82,15 +81,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
         return () => window.removeEventListener("storage", onStorage);
     }, []);
 
-    // Tiny sparkline data (decorative only)
-    const trendData = useMemo(() => {
-        const seed = (courseId || "").split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
-        const arr = Array.from({ length: 12 }, (_, i) => {
-            const v = (Math.sin((seed + i) * 1.7) + 1) * 50;
-            return { v };
-        });
-        return arr;
-    }, [courseId]);
+    // Tiny sparkline removed: not used currently
 
     const LevelIcon = useMemo(() => {
         const lvl = (level_name || "").toLowerCase();
@@ -221,12 +212,19 @@ const CourseCard: React.FC<CourseCardProps> = ({
                     >
                         {toTitleCase(package_name)}
                     </h3>
-                    <span
-                        className={`level-badge text-xs font-bold px-2 sm:px-3 py-1 sm:py-1.5 rounded-md shadow-sm border ${getLevelColor()} flex-shrink-0 transition-all duration-200 flex items-center gap-1`}
-                    >
-                        {isVibrant && <LevelIcon size={14} className="text-current" />}
-                        {toTitleCase(level_name)}
-                    </span>
+                    {(() => {
+                        const levelLower = (level_name || "").trim().toLowerCase();
+                        const isDefaultLevel = levelLower === "default" || levelLower.includes("default");
+                        const shouldRenderBadge = !isDefaultLevel || (isDefaultLevel && isVibrant);
+                        return shouldRenderBadge ? (
+                            <span
+                                className={`level-badge text-xs font-bold px-2 sm:px-3 py-1 sm:py-1.5 rounded-md shadow-sm border ${getLevelColor()} flex-shrink-0 transition-all duration-200 flex items-center gap-1`}
+                            >
+                                {isVibrant && <LevelIcon size={14} className="text-current" />}
+                                {!isDefaultLevel && toTitleCase(level_name)}
+                            </span>
+                        ) : null;
+                    })()}
                 </div>
 
                 {/* Description */}

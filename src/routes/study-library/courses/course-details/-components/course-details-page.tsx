@@ -57,6 +57,7 @@ import { CertificateCompletionBanner } from "./certificate-completion-banner.tsx
 import { CourseEnrollment } from "./course-enrollment";
 import { CourseContentSections } from "./course-content-sections";
 import { CourseSidebar } from "./course-sidebar";
+import { Button } from "@/components/ui/button";
 
 type SlideType = {
     id: string;
@@ -1493,10 +1494,18 @@ export const CourseDetailsPage = () => {
 
 
 
-                            {/* Content Sections */}
-                            <CourseContentSections
-                                courseData={form.getValues("courseData")}
-                            />
+                            {/* Content Sections with toggle on PROGRESS tab */}
+                            {selectedTab === "PROGRESS" ? (
+                                <div className="mt-4">
+                                    <MoreDetailsToggle
+                                        courseData={form.getValues("courseData")}
+                                    />
+                                </div>
+                            ) : (
+                                <CourseContentSections
+                                    courseData={form.getValues("courseData")}
+                                />
+                            )}
 
                         </div>
 
@@ -1567,5 +1576,26 @@ export const CourseDetailsPage = () => {
                 </div>
             </div>
         </>
+    );
+};
+
+// Local component: More details toggle for PROGRESS tab
+const MoreDetailsToggle = ({ courseData }: { courseData: any }) => {
+    const [showMoreDetails, setShowMoreDetails] = useState<boolean>(false);
+    return (
+        <div>
+            <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowMoreDetails((v) => !v)}
+            >
+                {showMoreDetails ? "Hide details" : "More details"}
+            </Button>
+            {showMoreDetails && (
+                <div className="mt-3">
+                    <CourseContentSections courseData={courseData} />
+                </div>
+            )}
+        </div>
     );
 };

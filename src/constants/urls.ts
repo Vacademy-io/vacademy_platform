@@ -13,7 +13,7 @@ export const INSTITUTE_ID =
 export const CODE_CIRCLE_INSTITUTE_ID =
   import.meta.env.VITE_CODE_CIRCLE_INSTITUTE_ID ||
   "dd9b9687-56ee-467a-9fc4-8c5835eae7f9";
-export const GET_SUBDOMAIN_OR_INSTITUTEID = `${BASE_URL}/admin-core-service/public/institute/v1/get/subdomain-or-id`;
+// Deprecated: subdomain-or-id API removed in favor of domain routing /resolve
 
 export const GET_SLIDES_COUNT = `${BASE_URL}/admin-core-service/open/slide/v1/slide-counts-by-source-type`;
 export const SUBMIT_RATING_URL = `${BASE_URL}/admin-core-service/rating`;

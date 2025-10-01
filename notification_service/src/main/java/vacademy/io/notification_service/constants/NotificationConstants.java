@@ -21,4 +21,12 @@ public class NotificationConstants {
     public static final String UTILITY_WHATSAPP = "UTILITY_WHATSAPP";
     public static final String APP_ID = "appId";
     public static final String ACCESS_TOKEN = "accessToken";
+    
+    // WhatsApp Provider constants
+    public static final String PROVIDER = "provider";
+    public static final String WATI = "wati";
+    public static final String META = "meta";
+    public static final String API_KEY = "apiKey";
+    public static final String API_URL = "apiUrl";
+    public static final String WHATSAPP_NUMBER = "whatsappNumber";
 }

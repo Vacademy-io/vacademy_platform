@@ -1,0 +1,174 @@
+{
+  "_comment": "Example institute settings for WhatsApp integration",
+  "_providers": ["WATI", "META"],
+  
+  "example_1_wati_only": {
+    "setting": {
+      "WHATSAPP_SETTING": {
+        "data": {
+          "UTILITY_WHATSAPP": {
+            "provider": "WATI",
+            "wati": {
+              "apiKey": "YOUR_WATI_API_KEY_HERE",
+              "apiUrl": "https://live-server.wati.io",
+              "whatsappNumber": "919876543210"
+            }
+          },
+          "MARKETING_WHATSAPP": {
+            "provider": "WATI",
+            "wati": {
+              "apiKey": "YOUR_WATI_MARKETING_API_KEY",
+              "apiUrl": "https://live-server.wati.io",
+              "whatsappNumber": "919876543211"
+            }
+          }
+        }
+      }
+    }
+  },
+  
+  "example_2_meta_only": {
+    "setting": {
+      "WHATSAPP_SETTING": {
+        "data": {
+          "UTILITY_WHATSAPP": {
+            "provider": "META",
+            "meta": {
+              "appId": "YOUR_META_APP_ID",
+              "accessToken": "YOUR_META_ACCESS_TOKEN",
+              "phoneNumberId": "YOUR_PHONE_NUMBER_ID"
+            }
+          }
+        }
+      }
+    }
+  },
+  
+  "example_3_meta_legacy_format": {
+    "_comment": "Backward compatible - without provider field, defaults to META",
+    "setting": {
+      "WHATSAPP_SETTING": {
+        "data": {
+          "UTILITY_WHATSAPP": {
+            "appId": "YOUR_META_APP_ID",
+            "accessToken": "YOUR_META_ACCESS_TOKEN"
+          }
+        }
+      }
+    }
+  },
+  
+  "example_4_both_providers": {
+    "_comment": "Configure both providers, choose via 'provider' field",
+    "setting": {
+      "WHATSAPP_SETTING": {
+        "data": {
+          "UTILITY_WHATSAPP": {
+            "provider": "WATI",
+            "wati": {
+              "apiKey": "YOUR_WATI_API_KEY",
+              "apiUrl": "https://live-server.wati.io",
+              "whatsappNumber": "919876543210"
+            },
+            "meta": {
+              "appId": "YOUR_META_APP_ID",
+              "accessToken": "YOUR_META_ACCESS_TOKEN",
+              "phoneNumberId": "YOUR_PHONE_NUMBER_ID"
+            }
+          }
+        }
+      }
+    }
+  },
+  
+  "example_5_complete_with_email": {
+    "_comment": "Complete notification settings with both Email and WhatsApp",
+    "setting": {
+      "EMAIL_SETTING": {
+        "data": {
+          "UTILITY_EMAIL": {
+            "host": "smtp.gmail.com",
+            "port": 587,
+            "username": "your-email@gmail.com",
+            "password": "your-app-password",
+            "from": "noreply@yourschool.com"
+          }
+        }
+      },
+      "WHATSAPP_SETTING": {
+        "data": {
+          "UTILITY_WHATSAPP": {
+            "provider": "WATI",
+            "wati": {
+              "apiKey": "your-wati-api-key",
+              "apiUrl": "https://live-server.wati.io",
+              "whatsappNumber": "919876543210"
+            }
+          }
+        }
+      }
+    }
+  },
+  
+  "_api_usage_example": {
+    "_comment": "How to use the WhatsApp API after configuration",
+    "_endpoint": "POST /notification-service/whatsapp/v1/send-template-whatsapp?instituteId=INST_123",
+    "_request_body": {
+      "templateName": "assignment_reminder",
+      "userDetails": [
+        {
+          "919876543210": {
+            "1": "Student Name",
+            "2": "Math Assignment",
+            "3": "Tomorrow 5 PM"
+          }
+        },
+        {
+          "918765432109": {
+            "1": "Another Student",
+            "2": "Math Assignment",
+            "3": "Tomorrow 5 PM"
+          }
+        }
+      ],
+      "languageCode": "en",
+      "headerType": null,
+      "headerParams": null
+    }
+  },
+  
+  "_wati_template_examples": {
+    "simple_text_template": {
+      "name": "assignment_reminder",
+      "body": "Hello {{1}},\n\nYour assignment *{{2}}* is due on {{3}}.\n\nPlease submit on time.\n\nThanks,\nSchool Team"
+    },
+    "with_header_template": {
+      "name": "exam_notification",
+      "header": "🔔 Important Exam Notice",
+      "body": "Dear {{1}},\n\nYour {{2}} exam is scheduled for {{3}} at {{4}}.\n\nVenue: {{5}}\n\nAll the best!"
+    },
+    "with_buttons_template": {
+      "name": "class_join",
+      "body": "Hi {{1}},\n\nYour {{2}} class is starting in 5 minutes.\n\nClick below to join:",
+      "buttons": [
+        {
+          "type": "URL",
+          "text": "Join Class",
+          "url": "https://yourplatform.com/class/{{3}}"
+        }
+      ]
+    }
+  },
+  
+  "_migration_checklist": [
+    "1. Create WATI account and get API key",
+    "2. Create all required templates in WATI dashboard",
+    "3. Get templates approved by WhatsApp",
+    "4. Test templates with your own number",
+    "5. Update institute settings with WATI credentials",
+    "6. Test with small user group (5-10 users)",
+    "7. Monitor delivery rates and errors",
+    "8. Rollout to all users",
+    "9. Set up monitoring and alerts"
+  ]
+}

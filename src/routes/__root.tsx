@@ -23,6 +23,7 @@ import { TokenKey } from "@/constants/auth/tokens";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { getSubdomain } from "@/helpers/helper";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
+import type { StudentUIType } from "@/types/student-display-settings";
 import {
   resolveDomainRouting,
   getCurrentDomainInfo,
@@ -133,6 +134,47 @@ const RootComponent = () => {
 
     checkForUpdate();
     setPrimaryColorFromStorage();
+    // Apply global ui-vibrant class based on override/settings and expose debug helpers
+    const applyUiType = (t: StudentUIType) => {
+      const root = document.documentElement;
+      if (t === "vibrant") root.classList.add("ui-vibrant");
+      else root.classList.remove("ui-vibrant");
+    };
+
+    const DEBUG_KEY = "DEBUG_UI_TYPE";
+    try {
+      const override = (localStorage.getItem(DEBUG_KEY) || "") as StudentUIType;
+      if (override === "vibrant" || override === "default") {
+        applyUiType(override);
+      } else {
+        getStudentDisplaySettings(false)
+          .then((s) => applyUiType(((s?.ui?.type as StudentUIType) || "default")))
+          .catch(() => { /* ignore */ });
+      }
+    } catch (e) {
+      console.warn("Failed to read DEBUG_UI_TYPE", e);
+    }
+
+    // Debug console helpers
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const w = window as any;
+      w.setStudentUIType = (type: StudentUIType) => {
+        try { localStorage.setItem(DEBUG_KEY, type); } catch (e) { console.warn("setStudentUIType: failed to persist", e); }
+        applyUiType(type);
+      };
+      w.getStudentUIType = () => {
+        try { return localStorage.getItem(DEBUG_KEY) || "(using settings)"; } catch (e) { console.warn("getStudentUIType: failed", e); return "(using settings)"; }
+      };
+      w.clearStudentUIType = () => {
+        try { localStorage.removeItem(DEBUG_KEY); } catch (e) { console.warn("clearStudentUIType: failed to clear", e); }
+        getStudentDisplaySettings(false)
+          .then((s) => applyUiType(((s?.ui?.type as StudentUIType) || "default")))
+          .catch(() => applyUiType("default"));
+      };
+    } catch (e) {
+      console.warn("Failed to initialize UI debug helpers", e);
+    }
     // We intentionally skip deps here to avoid re-running in StrictMode
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

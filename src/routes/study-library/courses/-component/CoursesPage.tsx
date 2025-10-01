@@ -4,7 +4,7 @@ import SearchAndSortBar from "./SearchAndSortBar.tsx";
 import CourseCard from "./CourseCards.tsx";
 import { MyPagination } from "@/components/design-system/pagination.tsx";
 import { CoursePackageResponse } from "@/types/course-catalog/course-catalog-list.ts";
-import { Search, Grid } from "lucide-react";
+import { Search } from "lucide-react";
 import { toTitleCase } from "@/lib/utils";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils.ts";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings.ts";
@@ -48,8 +48,8 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
     selectedTab,
 }) => {
     const fallbackDescription =
-        "build responsive scalable and human-like AI application";
-    const fallbackTags = "LLMs,Reinforcement Learning";
+        "";
+    const fallbackTags: string = "";
 
     const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -102,10 +102,10 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
     return (
         <div
             ref={scrollRef}
-            className="bg-gray-50 dark:bg-neutral-950 min-h-screen"
+            className="min-h-screen"
         >
             <div
-                className={`flex flex-col lg:flex-row ${showFilters ? "gap-4 lg:gap-6" : ""} p-2 sm:p-4 max-w-7xl mx-auto`}
+                className={`flex flex-col lg:flex-row ${showFilters ? "gap-4 lg:gap-6" : ""} mx-auto`}
             >
                 {/* Sidebar - Only show if showFilters is true */}
                 {showFilters && (
@@ -170,36 +170,14 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                         </div>
                     ) : (
                         <div className="space-y-3 sm:space-y-4">
-                            {/* Results Summary */}
-                            <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md shadow-sm p-3 sm:p-4">
-                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                                    <div className="flex items-center space-x-3">
-                                        <div className="p-2 bg-primary-100 rounded-md">
-                                            <Grid
-                                                size={16}
-                                                className="text-primary-600"
-                                            />
-                                        </div>
-                                        <div>
-                                            <p className="text-sm font-semibold text-gray-900 dark:text-neutral-100">
-                                                {courseData.totalElements}{" "}
-                                                {getTerminology(
-                                                    ContentTerms.Course,
-                                                    SystemTerms.Course
-                                                ).toLocaleLowerCase()}
-                                                s found
-                                            </p>
-                                            <p className="text-xs text-gray-500 dark:text-neutral-400">
-                                                Page {courseData.number + 1} of{" "}
-                                                {courseData.totalPages}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <div className="text-xs text-gray-500 dark:text-neutral-400 text-center sm:text-right">
-                                        Showing {courseData.numberOfElements} of{" "}
-                                        {courseData.totalElements} results
-                                    </div>
-                                </div>
+                            {/* Compact Results Summary */}
+                            <div className="text-[11px] sm:text-xs text-gray-500 dark:text-neutral-400 mb-1">
+                                {courseData.totalElements}{" "}
+                                {getTerminology(
+                                    ContentTerms.Course,
+                                    SystemTerms.Course
+                                ).toLocaleLowerCase()}
+                                s • Page {courseData.number + 1}/{courseData.totalPages} • Showing {courseData.numberOfElements} of {courseData.totalElements}
                             </div>
 
                             {/* Course Grid */}
@@ -229,14 +207,12 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                                 course.comma_separeted_tags
                                                     ? course.comma_separeted_tags
                                                           .split(",")
-                                                          .map((tag) =>
-                                                              tag.trim()
-                                                          )
-                                                    : fallbackTags
-                                                          .split(",")
-                                                          .map((tag) =>
-                                                              tag.trim()
-                                                          )
+                                                          .map((tag: string) => tag.trim())
+                                                    : fallbackTags && fallbackTags.trim() !== ""
+                                                        ? fallbackTags
+                                                              .split(",")
+                                                              .map((tag: string) => tag.trim())
+                                                        : []
                                             }
                                             previewImageUrl={
                                                 course.course_preview_image_media_id ||

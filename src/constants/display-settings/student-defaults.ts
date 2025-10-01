@@ -60,6 +60,7 @@ function defaultDashboardWidgets(): StudentDashboardWidgetConfig[] {
 export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
   sidebar: { visible: true, tabs: defaultSidebarTabs() },
   dashboard: { widgets: defaultDashboardWidgets() },
+  ui: { type: "default" },
   signup: {
     providers: { google: true, github: true, usernamePassword: true, emailOtp: true, defaultProvider: "emailOtp" },
     usernameStrategy: "manual",

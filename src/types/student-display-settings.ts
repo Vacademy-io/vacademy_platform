@@ -103,6 +103,13 @@ export interface StudentAllCoursesSettings {
   defaultTab: StudentAllCoursesTabId;
 }
 
+// UI
+export type StudentUIType = "default" | "vibrant";
+
+export interface StudentUISettings {
+  type: StudentUIType;
+}
+
 // Permissions
 export interface StudentPermissions {
   canViewProfile: boolean;
@@ -135,6 +142,7 @@ export interface StudentDisplaySettingsData {
   allCourses: StudentAllCoursesSettings;
   notifications: StudentNotificationSettings;
   certificates: StudentCertificateSettings;
+  ui: StudentUISettings;
   postLoginRedirectRoute: string;
 }
 

@@ -12,6 +12,7 @@ import { getUserId } from "@/constants/getUserId.ts";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance.ts";
 import HeroSection from "../-component1/HeroSection.tsx";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { IconBooks, IconChartBar, IconCheck } from "@tabler/icons-react";
 import { CoursePackageResponse } from "@/types/course-catalog/course-catalog-list.ts";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings.ts";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils.ts";
@@ -428,14 +429,14 @@ const CourseCatalougePage: React.FC = () => {
     }, []);
 
     return (
-        <div className="bg-gray-50 dark:bg-neutral-950 min-h-screen">
+        <div className="min-h-screen">
             {/* Hero Section */}
             <HeroSection
                 allowLeanersToCreateCourses={allowLeanersToCreateCourses}
             />
 
             {/* Main Content Container */}
-            <div className="max-w-7xl mx-auto px-2 sm:px-3 lg:px-4">
+            <div className="mx-auto">
                 <Tabs
                     value={selectedTab}
                     onValueChange={setSelectedTab}
@@ -451,15 +452,23 @@ const CourseCatalougePage: React.FC = () => {
                                         value={t.value}
                                         className="flex-1 sm:flex-none px-1.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium data-[state=active]:bg-white dark:data-[state=active]:bg-neutral-800 data-[state=active]:shadow-sm"
                                     >
-                                        {t.label ||
-                                            (t.value === "ALL"
-                                                ? `All ${getTerminology(
-                                                      ContentTerms.Course,
-                                                      SystemTerms.Course
-                                                  )}s`
-                                                : t.value === "PROGRESS"
-                                                  ? "In Progress"
-                                                  : "Completed")}
+                                        <span className="inline-flex items-center gap-1">
+                                            {/* Icon (visible only in vibrant mode via CSS) */}
+                                            <span className="ui-vibrant:inline hidden">
+                                                {t.value === "ALL" && <IconBooks size={14} />}
+                                                {t.value === "PROGRESS" && <IconChartBar size={14} />}
+                                                {t.value === "COMPLETED" && <IconCheck size={14} />}
+                                            </span>
+                                            {t.label ||
+                                                (t.value === "ALL"
+                                                    ? `All ${getTerminology(
+                                                          ContentTerms.Course,
+                                                          SystemTerms.Course
+                                                      )}s`
+                                                    : t.value === "PROGRESS"
+                                                      ? "In Progress"
+                                                      : "Completed")}
+                                        </span>
                                     </TabsTrigger>
                                 ))}
                             </TabsList>

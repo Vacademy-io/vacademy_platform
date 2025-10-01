@@ -145,6 +145,182 @@
         --sidebar-border: 240 3.7% 15.9%;
         --sidebar-ring: 217.2 91.2% 59.8%;
     }
+  /* Navbar tweaks: stronger separator and playful indicator */
+  .ui-vibrant .navbar .w-1.h-6 { box-shadow: 0 1px 0 hsl(var(--primary-400) / 0.25); }
+  .ui-vibrant .navbar .text-base { letter-spacing: 0.1px; }
+  .ui-vibrant .navbar h1,
+  .ui-vibrant .navbar .text-base { font-size: 1.125rem !important; line-height: 1.6rem !important; }
+
+  /* Sidebar tiles: clearer solid backgrounds */
+  .ui-vibrant .sidebar-content .border { border-width: 2px !important; }
+  .ui-vibrant .sidebar-content .bg-primary-50 { background-color: hsl(var(--primary-100)) !important; }
+  .ui-vibrant .sidebar-content .hover\:bg-primary-50:hover { background-color: hsl(var(--primary-200)) !important; }
+
+  /* Sidebar/menu typography bump for kids */
+  .ui-vibrant .sidebar-content { font-size: 1rem; }
+  .ui-vibrant .sidebar-content a,
+  .ui-vibrant .sidebar-content button,
+  .ui-vibrant .sidebar-content .text-xs,
+  .ui-vibrant .sidebar-content .text-sm { font-size: 1rem !important; line-height: 1.5rem !important; }
+  .ui-vibrant .sidebar-content .text-base { font-size: 1.125rem !important; line-height: 1.6rem !important; }
+
+  /* Course cards and common cards */
+  .ui-vibrant .card,
+  .ui-vibrant .Card,
+  .ui-vibrant .bg-white { border-color: hsl(var(--primary-100)) !important; }
+
+  /* Course card title and headings bump */
+  .ui-vibrant h3.text-base,
+  .ui-vibrant h3.text-lg,
+  .ui-vibrant .course-card-title,
+  .ui-vibrant .course-title { font-size: 1.125rem !important; line-height: 1.6rem !important; letter-spacing: 0.1px; }
+  .ui-vibrant .course-card-subtitle,
+  .ui-vibrant p.text-sm { font-size: 1rem !important; line-height: 1.5rem !important; }
+
+  /* Vibrant accents for course catalog */
+  .ui-vibrant .course-card-image { background-image: none !important; background-color: hsl(var(--primary-50)) !important; }
+  .ui-vibrant .course-card-title-icon { display: inline-block !important; }
+  .ui-vibrant .level-badge { border-width: 2px !important; }
+  .ui-vibrant .course-tag { background-color: hsl(var(--info-100)) !important; color: hsl(var(--info-700)) !important; border-color: hsl(var(--info-300)) !important; }
+  .ui-vibrant .course-stats { background: hsl(var(--primary-50)); border-color: hsl(var(--primary-200)); }
+
+  /* Global small text bumps for better readability */
+  .ui-vibrant .text-xs { font-size: 0.875rem !important; line-height: 1.25rem !important; }
+  .ui-vibrant .text-sm { font-size: 1rem !important; line-height: 1.5rem !important; }
+
+  /* ================= Dashboard vibrant enhancements ================ */
+  /* 1) Solid primary stat cards with contrasting text */
+  /* Use defined variables: --primary-50..--primary-500 exist */
+  .ui-vibrant .stat-card-inner { background-color: hsl(var(--primary-500)) !important; border-color: hsl(var(--primary-400)) !important; color: hsl(var(--primary-foreground)) !important; }
+  .ui-vibrant .stat-card-inner .text-gray-900,
+  .ui-vibrant .stat-card-inner .text-gray-800,
+  .ui-vibrant .stat-card-inner .text-gray-700,
+  .ui-vibrant .stat-card-inner .text-gray-600 { color: hsl(var(--primary-foreground)) !important; }
+  .ui-vibrant .stat-card-inner .bg-primary-100 { background-color: hsl(var(--primary-500)) !important; }
+  .ui-vibrant .stat-card-inner .text-primary-600 { color: hsl(var(--primary-foreground)) !important; }
+
+  /* 2) Larger icons and text for kids */
+  .ui-vibrant .stat-card-icon svg { width: 32px !important; height: 32px !important; }
+  .ui-vibrant .stat-card-inner .text-xl { font-size: 1.5rem !important; line-height: 1.85rem !important; }
+  .ui-vibrant .stat-card-inner .text-xs { font-size: 0.95rem !important; }
+
+  /* 3) Continue learning card accents */
+  .ui-vibrant .continue-learning-card { border-color: hsl(var(--primary-200)) !important; }
+  .ui-vibrant .dashboard-user-avatar { background-color: hsl(var(--primary-200)) !important; }
+  .ui-vibrant .dashboard-user-avatar { border: 2px solid hsl(var(--primary-300)) !important; }
+
+  /* Category-specific solid colors for stat cards */
+  .ui-vibrant .stat-card--courses .stat-card-inner { background-color: hsl(var(--info-500)) !important; border-color: hsl(var(--info-400)) !important; }
+  .ui-vibrant .stat-card--assignments .stat-card-inner { background-color: hsl(var(--warning-500)) !important; border-color: hsl(var(--warning-400)) !important; }
+  .ui-vibrant .stat-card--evaluations .stat-card-inner { background-color: hsl(var(--success-500)) !important; border-color: hsl(var(--success-400)) !important; }
+  .ui-vibrant .stat-card--attendance .stat-card-inner { background-color: hsl(var(--primary-500)) !important; border-color: hsl(var(--primary-400)) !important; }
+  .ui-vibrant .stat-card--live .stat-card-inner { background-color: hsl(var(--success-500)) !important; border-color: hsl(var(--success-400)) !important; }
+
+  /* Ensure icon chip contrasts on solid cards */
+  .ui-vibrant .stat-card--courses .stat-card-icon,
+  .ui-vibrant .stat-card--assignments .stat-card-icon,
+  .ui-vibrant .stat-card--evaluations .stat-card-icon,
+  .ui-vibrant .stat-card--attendance .stat-card-icon,
+  .ui-vibrant .stat-card--live .stat-card-icon { background-color: rgba(255,255,255,0.2) !important; color: hsl(var(--primary-foreground)) !important; }
+
+  /* Playful feel: slightly rounded, subtle scale on hover already exists; add gentle shadow */
+  .ui-vibrant .stat-card-inner { box-shadow: 0 8px 20px rgba(0,0,0,0.12) !important; }
+
+  /* Playful decorative shapes behind stat card titles */
+  .ui-vibrant .stat-card-title {
+    position: relative;
+    padding-left: 18px;
+  }
+  .ui-vibrant .stat-card-title::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 12px;
+    height: 12px;
+    transform: translateY(-50%) rotate(15deg);
+    border-radius: 3px;
+    background: linear-gradient(135deg, hsl(var(--primary-300)), hsl(var(--primary-500)));
+    opacity: 0.9;
+  }
+  .ui-vibrant .stat-card--courses .stat-card-title::before { background: linear-gradient(135deg, hsl(var(--info-300)), hsl(var(--info-500))); }
+  .ui-vibrant .stat-card--assignments .stat-card-title::before { background: linear-gradient(135deg, hsl(var(--warning-300)), hsl(var(--warning-500))); }
+  .ui-vibrant .stat-card--evaluations .stat-card-title::before { background: linear-gradient(135deg, hsl(var(--success-300)), hsl(var(--success-500))); }
+  .ui-vibrant .stat-card--live .stat-card-title::before { background: linear-gradient(135deg, hsl(var(--success-300)), hsl(var(--success-500))); }
+
+  /* ================= Playful page backgrounds (vibrant) ================ */
+  .ui-vibrant .dashboard-container {
+    /* Soft dotted pattern using theme tints; very light for readability */
+    background-image:
+      radial-gradient(hsl(var(--primary-50)) 1px, transparent 1px),
+      radial-gradient(hsl(var(--info-50)) 1px, transparent 1px);
+    background-size: 24px 24px, 32px 32px;
+    background-position: 0 0, 12px 12px;
+  }
+
+  /* ================= Global rounding in vibrant ================= */
+  .ui-vibrant .rounded,
+  .ui-vibrant .rounded-md,
+  .ui-vibrant .rounded-lg,
+  .ui-vibrant .rounded-xl,
+  .ui-vibrant .rounded-2xl,
+  .ui-vibrant .card,
+  .ui-vibrant .Card,
+  .ui-vibrant .stat-card-inner,
+  .ui-vibrant .continue-learning-card,
+  .ui-vibrant .live-session-card { border-radius: 10px !important; }
+
+  /* ================= Buttons: playful bottom outline ================= */
+  .ui-vibrant button,
+  .ui-vibrant .btn,
+  .ui-vibrant .my-button {
+    position: relative;
+    box-shadow: inset 0 -4px 0 hsl(var(--primary-300));
+    transition: transform 120ms ease, box-shadow 120ms ease;
+    border-radius: 10px; /* match global radius */
+    outline: 2px solid hsl(var(--border));
+    outline-offset: 0;
+  }
+  .ui-vibrant button:hover,
+  .ui-vibrant .btn:hover,
+  .ui-vibrant .my-button:hover {
+    box-shadow: inset 0 -5px 0 hsl(var(--primary-500));
+    transform: translateY(-1px);
+  }
+  .ui-vibrant button:active,
+  .ui-vibrant .btn:active,
+  .ui-vibrant .my-button:active {
+    box-shadow: inset 0 -2px 0 hsl(var(--primary-300));
+    transform: translateY(0);
+  }
+
+  /* Use neutral backgrounds where possible in vibrant for non-primary surfaces */
+  .ui-vibrant .bg-gray-50 { background-color: hsl(var(--surface-muted)) !important; }
+  .ui-vibrant .bg-white\/80 { background-color: hsl(var(--surface) / 0.8) !important; }
+
+  /* ================= Neutralize excessive primary accents ================= */
+  /* Dashboard stat cards: avoid primary hover text on vibrant solids */
+  .ui-vibrant .stat-card-inner .group:hover [class*="group-hover:text-primary-"] {
+    color: hsl(var(--primary-foreground)) !important;
+  }
+  .ui-vibrant .stat-card-inner .group:hover .lucide-chevron-right {
+    color: hsl(var(--primary-foreground)) !important;
+  }
+  /* Sidebar hover text: use neutral instead of primary */
+  .ui-vibrant .sidebar-content a:hover,
+  .ui-vibrant .sidebar-content button:hover,
+  .ui-vibrant .sidebar-content [class*="hover:text-primary-"]:hover {
+    color: hsl(var(--text-secondary)) !important;
+  }
+  /* Sidebar outlines and shadows: more neutral */
+  .ui-vibrant .sidebar-content .border,
+  .ui-vibrant .sidebar-content [class*="border-primary-"] {
+    border-color: hsl(var(--border)) !important;
+  }
+  .ui-vibrant .sidebar-content .shadow-sm,
+  .ui-vibrant .sidebar-content .shadow {
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06) !important;
+  }
 }
 
 @layer base {
@@ -347,4 +523,43 @@
   body {
     @apply bg-background text-foreground;
     }
+}
+
+/* ========== Vibrant UI additive styles (opt-in via .ui-vibrant on container) ========== */
+@layer components {
+  .ui-vibrant .dashboard-container {
+    /* playful background accents without gradients */
+  }
+
+  .ui-vibrant .stat-card .text-xl,
+  .ui-vibrant .stat-card .text-2xl,
+  .ui-vibrant .stat-card .text-base,
+  .ui-vibrant .stat-card .text-sm {
+    letter-spacing: 0.1px;
+  }
+
+  .ui-vibrant .continue-learning-card .text-sm,
+  .ui-vibrant .continue-learning-card .text-xs {
+    font-size: 0.95rem; /* slight bump for readability for kids */
+  }
+
+  .ui-vibrant .continue-learning-card .slide-title {
+    font-weight: 700;
+  }
+
+  .ui-vibrant .continue-learning-card .slide-description {
+    opacity: 0.95;
+  }
+
+  /* Solid playful chips for icons using existing semantic colors */
+  .ui-vibrant .bg-primary-100 { background-color: hsl(var(--primary-300) / 0.25) !important; }
+  .ui-vibrant .text-primary-600 { color: hsl(var(--primary-500)) !important; }
+
+  /* Use success/info/warning for multi-colored accents */
+  .ui-vibrant .badge-success,
+  .ui-vibrant .bg-success-100 { background-color: hsl(var(--success-100)) !important; color: hsl(var(--success-700)) !important; }
+  .ui-vibrant .badge-info,
+  .ui-vibrant .bg-info-100 { background-color: hsl(var(--info-100)) !important; color: hsl(var(--info-700)) !important; }
+  .ui-vibrant .badge-warning,
+  .ui-vibrant .bg-warning-100 { background-color: hsl(var(--warning-100)) !important; color: hsl(var(--warning-700)) !important; }
 }

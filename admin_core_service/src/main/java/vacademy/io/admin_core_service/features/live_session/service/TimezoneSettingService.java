@@ -45,7 +45,7 @@ public class TimezoneSettingService {
             // Step 3: Parse JSON and extract TIME_ZONE_SETTING
             JsonNode rootNode = objectMapper.readTree(settingJson);
             JsonNode settingNode = rootNode.path("setting");
-            JsonNode timezoneNode = settingNode.path("TIME_ZONE_SETTING");
+            JsonNode timezoneNode = settingNode.path("TIME_ZONE_SETTING").path("data");
 
             if (timezoneNode.isMissingNode() || timezoneNode.isNull()) {
                 System.out.println("TIME_ZONE_SETTING not found in institute settings for: " + instituteId);
@@ -164,15 +164,15 @@ public class TimezoneSettingService {
             // Convert to target timezone
             ZonedDateTime targetZonedDateTime = sessionZonedDateTime.withZoneSameInstant(targetZone);
             
-            // Format the result
-            DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("h:mm a");
-            String formattedTime = targetZonedDateTime.format(timeFormatter);
+            // Format the result with day, date, and time
+            DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("EEEE,MMMM d, yyyy '<br><strong>Time⏰</strong>:'h.mm a");
+            String formattedDateTime = targetZonedDateTime.format(dateTimeFormatter);
             
             // Get UTC offset for display
             ZoneOffset offset = targetZonedDateTime.getOffset();
             String offsetString = formatUtcOffset(offset);
             
-            return String.format("%s (%s %s)", formattedTime, targetTimezoneId, offsetString);
+            return String.format("%s (%s %s)", formattedDateTime, targetTimezoneId, offsetString);
             
         } catch (Exception e) {
             System.out.println("Error formatting date/time for timezone " + targetTimezoneId + ": " + e.getMessage());

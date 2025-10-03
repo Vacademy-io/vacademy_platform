@@ -13,9 +13,7 @@ import {
   fetchEnrollmentDetails,
   getPaymentOptions,
   getPaymentPlans,
-  formatCurrency,
   handlePaymentForEnrollment,
-  fetchPaymentGatewayDetails,
   formatAccessPeriod,
   type EnrollmentResponse,
   type PaymentOption,
@@ -35,6 +33,7 @@ interface FreePlanDialogProps {
   courseTitle?: string;
   inviteCode?: string;
   onEnrollmentSuccess?: () => void;
+  onNavigateToSlides?: () => void;
 }
 
 export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
@@ -45,7 +44,7 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
   token,
   courseTitle = "Course",
   inviteCode = "default",
-  onEnrollmentSuccess,
+  onNavigateToSlides,
 }) => {
   const [enrollmentData, setEnrollmentData] = useState<EnrollmentResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -76,7 +75,7 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
       const paymentOptions = getPaymentOptions(data);
       console.log('FreePlanDialog - Payment options:', paymentOptions);
       const freeOptions = paymentOptions.filter(option => 
-        option.payment_option_type === 'FREE' || option.type === 'FREE'
+        option.type === 'FREE'
       );
       console.log('FreePlanDialog - Free options:', freeOptions);
       
@@ -116,20 +115,15 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
     setError(null);
     
     try {
-      // For free enrollments, we don't need payment gateway details
-      let paymentGatewayData = null;
-      if (selectedPaymentOption.type?.toLowerCase() !== 'free') {
-        paymentGatewayData = await fetchPaymentGatewayDetails(instituteId, 'STRIPE', token);
-      }
-      
-      // Call the enrollment API
+      // For free enrollment, no payment gateway details needed
+      // Call the enrollment API directly
       await handlePaymentForEnrollment({
         userEmail: "user@example.com", // This should come from user profile
         receiptEmail: "user@example.com", // This should come from user profile
         instituteId,
         packageSessionId,
         enrollmentData,
-        paymentGatewayData,
+        paymentGatewayData: null as any, // No payment gateway needed for free enrollment
         selectedPaymentPlan,
         selectedPaymentOption,
         amount: selectedPaymentPlan.actual_price,
@@ -167,8 +161,8 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
 
   const handleExploreCourse = async () => {
     setShowSuccessDialog(false);
-    if (onEnrollmentSuccess) {
-      await onEnrollmentSuccess();
+    if (onNavigateToSlides) {
+      await onNavigateToSlides();
     }
   };
 
@@ -211,7 +205,7 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
   const paymentOptions = enrollmentData ? getPaymentOptions(enrollmentData) : [];
   const freePlans = paymentOptions.flatMap(option => {
     // Filter for FREE payment options or plans with zero price
-    if (option.payment_option_type === 'FREE' || option.type === 'FREE') {
+    if (option.type === 'FREE') {
       return getPaymentPlans(option);
     }
     return getPaymentPlans(option).filter(plan => plan.actual_price === 0);
@@ -457,7 +451,6 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
         open={showPendingApprovalDialog}
         onOpenChange={setShowPendingApprovalDialog}
         courseTitle={courseTitle}
-        onClose={() => setShowPendingApprovalDialog(false)}
       />
     </>
   );

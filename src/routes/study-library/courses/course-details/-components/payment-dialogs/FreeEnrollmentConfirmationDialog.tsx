@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -7,14 +7,13 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, Gift, CheckCircle, ArrowRight } from "lucide-react";
+import { Loader2, Gift, CheckCircle } from "lucide-react";
 import { Preferences } from "@capacitor/preferences";
 import {
   fetchEnrollmentDetails,
   getPaymentOptions,
   getPaymentPlans,
   handlePaymentForEnrollment,
-  fetchPaymentGatewayDetails,
   type EnrollmentResponse,
   type PaymentOption,
   type PaymentPlan,
@@ -33,6 +32,7 @@ interface FreeEnrollmentConfirmationDialogProps {
   courseTitle?: string;
   inviteCode?: string;
   onEnrollmentSuccess?: () => void;
+  onNavigateToSlides?: () => void;
 }
 
 export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmationDialogProps> = ({
@@ -43,7 +43,7 @@ export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmati
   token,
   courseTitle = "Course",
   inviteCode = "default",
-  onEnrollmentSuccess,
+  onNavigateToSlides,
 }) => {
   const [enrollmentData, setEnrollmentData] = useState<EnrollmentResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -55,8 +55,6 @@ export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmati
   const [showPendingDialog, setShowPendingDialog] = useState(false);
   const [showPendingApprovalDialog, setShowPendingApprovalDialog] = useState(false);
 
-  // Track if we already prefilled the email for this dialog open
-  const hasPrefilledEmailRef = useRef<boolean>(false);
 
   // Helper function to get real user data from preferences
   const getRealUserData = useCallback(async () => {
@@ -108,7 +106,7 @@ export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmati
       const paymentOptions = getPaymentOptions(data);
       console.log('FreeEnrollmentConfirmationDialog - Payment options:', paymentOptions);
       const freeOptions = paymentOptions.filter(option => 
-        option.payment_option_type === 'FREE' || option.type === 'FREE'
+        option.type === 'FREE'
       );
       console.log('FreeEnrollmentConfirmationDialog - Free options:', freeOptions);
       
@@ -148,24 +146,19 @@ export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmati
     setError(null);
     
     try {
-      // For free enrollments, we don't need payment gateway details
-      let paymentGatewayData = null;
-      if (selectedPaymentOption.type?.toLowerCase() !== 'free') {
-        paymentGatewayData = await fetchPaymentGatewayDetails(instituteId, 'STRIPE', token);
-      }
-      
+      // For free enrollment, no payment gateway details needed
       // Get real user data for enrollment
       const userData = await getRealUserData();
       const userProfileEmail = userData?.email || 'guest@example.com';
       
-      // Call the enrollment API
+      // Call the enrollment API directly
       await handlePaymentForEnrollment({
         userEmail: userProfileEmail,
         receiptEmail: userProfileEmail,
         instituteId,
         packageSessionId,
         enrollmentData,
-        paymentGatewayData,
+        paymentGatewayData: null as any, // No payment gateway needed for free enrollment
         selectedPaymentPlan,
         selectedPaymentOption,
         amount: selectedPaymentPlan.actual_price,
@@ -203,8 +196,8 @@ export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmati
 
   const handleExploreCourse = async () => {
     setShowSuccessDialog(false);
-    if (onEnrollmentSuccess) {
-      await onEnrollmentSuccess();
+    if (onNavigateToSlides) {
+      await onNavigateToSlides();
     }
   };
 
@@ -403,7 +396,6 @@ export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmati
         open={showPendingApprovalDialog}
         onOpenChange={setShowPendingApprovalDialog}
         courseTitle={courseTitle}
-        onClose={() => setShowPendingApprovalDialog(false)}
       />
     </>
   );

@@ -35,7 +35,7 @@ public class WorkflowScheduleService {
      */
     public List<WorkflowSchedule> getDueSchedules() {
         try {
-            return workflowScheduleRepository.findById("wf-1-morning-et").stream().toList();
+            return workflowScheduleRepository.findDueSchedules(LocalDateTime.now());
         } catch (Exception e) {
             log.error("Error retrieving due workflow schedules", e);
             return List.of();

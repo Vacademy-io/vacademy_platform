@@ -2190,6 +2190,29 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("facultyMappingStatuses") List<String> facultyMappingStatuses);
 
     @Query(value = """
+    -- CTE to find the cheapest payment plan for each session, respecting the 'DEFAULT' tag
+    WITH payment_info AS (
+        SELECT
+            ps.id AS package_session_id,
+            ei.id AS enroll_invite_id,
+            po.id AS payment_option_id,
+            po.type AS payment_option_type,
+            po.status AS payment_option_status,
+            pp.actual_price,
+            pp.currency,
+            pp.id AS payment_plan_id, -- Added payment plan ID
+            ROW_NUMBER() OVER(PARTITION BY ps.id ORDER BY pp.actual_price ASC NULLS LAST) as row_num
+        FROM package_session ps
+        LEFT JOIN package_session_learner_invitation_to_payment_option psli ON ps.id = psli.package_session_id
+            AND (:#{#psliStatus == null || #psliStatus.isEmpty()} = true OR psli.status IN (:psliStatus))
+        LEFT JOIN enroll_invite ei ON ei.id = psli.enroll_invite_id
+            AND ei.tag = 'DEFAULT' -- Important filter included here
+            AND (:#{#enrollInviteStatus == null || #enrollInviteStatus.isEmpty()} = true OR ei.status IN (:enrollInviteStatus))
+        LEFT JOIN payment_option po ON po.id = psli.payment_option_id
+            AND (:#{#paymentOptionStatus == null || #paymentOptionStatus.isEmpty()} = true OR po.status IN (:paymentOptionStatus))
+        LEFT JOIN payment_plan pp ON pp.payment_option_id = po.id
+            AND (:#{#paymentPlanStatus == null || #paymentPlanStatus.isEmpty()} = true OR pp.status IN (:paymentPlanStatus))
+    )
     SELECT
         p.id AS id,
         p.package_name AS packageName,
@@ -2218,30 +2241,15 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
         ), 0.0) AS rating,
         COALESCE(ps_read_time.total_read_time_minutes, 0) AS readTimeInMinutes,
         
-        -- Aggregating payment info to handle potential duplicates
-        MIN(ei.id) AS enrollInviteId,
-        MIN(po.id) AS paymentOptionId,
-        MIN(po.type) AS paymentOptionType,
-        MIN(po.status) AS paymentOptionStatus,
-        MIN(
-            (
-                SELECT MIN(pp.actual_price)
-                FROM payment_plan pp
-                WHERE pp.payment_option_id = po.id
-                  AND (:#{#paymentPlanStatus == null || #paymentPlanStatus.isEmpty()} = true OR pp.status IN (:paymentPlanStatus))
-            )
-        ) AS minPlanActualPrice,
-        MIN(
-            (
-                SELECT pp.currency
-                FROM payment_plan pp
-                WHERE pp.payment_option_id = po.id
-                  AND (:#{#paymentPlanStatus == null || #paymentPlanStatus.isEmpty()} = true OR pp.status IN (:paymentPlanStatus))
-                ORDER BY pp.actual_price ASC
-                LIMIT 1
-            )
-        ) AS currency,
-        -- Added Faculty User IDs aggregation
+        -- Selecting details from the cheapest plan (row_num = 1)
+        payment_info.enroll_invite_id AS enrollInviteId,
+        payment_info.payment_option_id AS paymentOptionId,
+        payment_info.payment_option_type AS paymentOptionType,
+        payment_info.payment_option_status AS paymentOptionStatus,
+        payment_info.actual_price AS minPlanActualPrice,
+        payment_info.currency AS currency,
+        
+        -- Faculty User IDs aggregation
         ARRAY_REMOVE(
             ARRAY_AGG(DISTINCT fspm.user_id), NULL
         ) AS facultyUserIds
@@ -2257,21 +2265,11 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
         AND fspm.subject_id IS NULL
         AND (:#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true OR fspm.status IN (:facultyPackageSessionStatus))
 
-    -- Corrected JOIN logic for payment and invites, starting from the session
-    LEFT JOIN package_session_learner_invitation_to_payment_option psli 
-        ON psli.package_session_id = ps.id
-       AND (:#{#psliStatus == null || #psliStatus.isEmpty()} = true OR psli.status IN (:psliStatus))
+    -- Join to our pre-calculated payment info CTE
+    LEFT JOIN payment_info
+        ON ps.id = payment_info.package_session_id AND payment_info.row_num = 1
 
-    LEFT JOIN enroll_invite ei 
-        ON ei.id = psli.enroll_invite_id
-       AND ei.tag = 'DEFAULT'
-       AND (:#{#enrollInviteStatus == null || #enrollInviteStatus.isEmpty()} = true OR ei.status IN (:enrollInviteStatus))
-
-    LEFT JOIN payment_option po 
-        ON po.id = psli.payment_option_id
-       AND (:#{#paymentOptionStatus == null || #paymentOptionStatus.isEmpty()} = true OR po.status IN (:paymentOptionStatus))
-
-    -- Enhanced read time subquery
+    -- Read time subquery
     LEFT JOIN (
         SELECT
             cpsm.package_session_id,
@@ -2321,9 +2319,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
         AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
         AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
         AND (:name IS NULL OR LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')))
-        -- Added filter for tags with explicit type CAST
         AND (:#{#tags == null || #tags.isEmpty()} = true OR string_to_array(p.comma_separated_tags, ',') && CAST(ARRAY[:tags] AS text[]))
-        -- Added filter for faculty IDs
         AND (
             :#{#facultyIds == null || #facultyIds.isEmpty()} = true OR
             EXISTS (
@@ -2339,7 +2335,13 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
         p.id,
         ps.id,
         l.id,
-        ps_read_time.total_read_time_minutes
+        ps_read_time.total_read_time_minutes,
+        payment_info.enroll_invite_id,
+        payment_info.payment_option_id,
+        payment_info.payment_option_type,
+        payment_info.payment_option_status,
+        payment_info.actual_price,
+        payment_info.currency
 """,
             countQuery = """
     SELECT COUNT(DISTINCT ps.id)
@@ -2354,9 +2356,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
         AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
         AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
         AND (:name IS NULL OR LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')))
-        -- Added filter for tags with explicit type CAST
         AND (:#{#tags == null || #tags.isEmpty()} = true OR string_to_array(p.comma_separated_tags, ',') && CAST(ARRAY[:tags] AS text[]))
-        -- Added filter for faculty IDs
         AND (
             :#{#facultyIds == null || #facultyIds.isEmpty()} = true OR
             EXISTS (
@@ -2373,7 +2373,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
     Page<PackageDetailV2Projection> getCatalogPackageDetailV2(
             @Param("name") String name,
             @Param("instituteId") String instituteId,
-            // Added new parameters for filtering
             @Param("facultyIds") List<String> facultyIds,
             @Param("facultyPackageSessionStatus") List<String> facultyPackageSessionStatus,
             @Param("tags") List<String> tags,
@@ -2392,6 +2391,28 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             Pageable pageable);
 
     @Query(value = """
+    -- CTE LOGIC FIXED: Now starts from package_session to include all sessions
+    WITH payment_info AS (
+        SELECT
+            ps.id AS package_session_id, -- Select the session ID directly from the source
+            e.id AS enroll_invite_id,
+            po.id AS payment_option_id,
+            po.type AS payment_option_type,
+            pp.id AS payment_plan_id,
+            pp.actual_price,
+            pp.currency,
+            -- Partition by the main session ID
+            ROW_NUMBER() OVER(PARTITION BY ps.id ORDER BY pp.actual_price ASC NULLS LAST) as row_num
+        FROM package_session ps -- START FROM package_session
+        LEFT JOIN package_session_learner_invitation_to_payment_option psli ON ps.id = psli.package_session_id
+            AND (:#{#psliStatus == null || #psliStatus.isEmpty()} = true OR psli.status IN (:psliStatus))
+        LEFT JOIN enroll_invite e ON e.id = psli.enroll_invite_id
+            AND (:#{#enrollInviteStatus == null || #enrollInviteStatus.isEmpty()} = true OR e.status IN (:enrollInviteStatus))
+        LEFT JOIN payment_option po ON po.id = psli.payment_option_id
+            AND (:#{#paymentOptionStatus == null || #paymentOptionStatus.isEmpty()} = true OR po.status IN (:paymentOptionStatus))
+        LEFT JOIN payment_plan pp ON pp.payment_option_id = po.id
+            AND (:#{#paymentPlanStatus == null || #paymentPlanStatus.isEmpty()} = true OR pp.status IN (:paymentPlanStatus))
+    )
     SELECT
         p.id AS id,
         p.package_name AS packageName,
@@ -2416,7 +2437,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             LEFT JOIN package_session ps2
                 ON ps2.id = r.source_id AND r.source_type = 'PACKAGE_SESSION'
                 AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true
-                     OR ps2.status IN (:packageSessionStatus))
+                        OR ps2.status IN (:packageSessionStatus))
             WHERE (
                 (r.source_type = 'PACKAGE_SESSION' AND ps2.package_id = p.id)
                 OR (r.source_type = 'PACKAGE' AND r.source_id = p.id)
@@ -2428,8 +2449,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             ARRAY_AGG(DISTINCT
                 CASE
                     WHEN fspm.subject_id IS NULL AND
-                         (:#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
-                          OR fspm.status IN (:facultyPackageSessionStatus))
+                            (:#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
+                            OR fspm.status IN (:facultyPackageSessionStatus))
                     THEN fspm.user_id
                     ELSE NULL
                 END
@@ -2442,12 +2463,13 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             WHERE ps2.package_id = p.id
         ) AS levelIds,
 
-        -- Aggregating payment info to ensure distinct session rows
-        MIN(e.id) AS enrollInviteId,
-        MIN(po.id) AS paymentOptionId,
-        MIN(po.type) AS paymentOptionType,
-        MIN(pp.actual_price) AS userPlanPrice,
-        MIN(pp.currency) AS userPlanCurrency
+        -- ALIASES FIXED: Aliases now match the Projection interface getters
+        payment_info.enroll_invite_id AS enrollInviteId,
+        payment_info.payment_option_id AS paymentOptionId,
+        payment_info.payment_option_type AS paymentOptionType,
+        payment_info.payment_plan_id AS paymentPlanId,
+        payment_info.actual_price AS minPlanActualPrice, -- FIXED ALIAS
+        payment_info.currency AS currency                -- FIXED ALIAS
 
     FROM package p
     JOIN package_session ps ON ps.package_id = p.id
@@ -2462,23 +2484,9 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             OR fspm.status IN (:facultyPackageSessionStatus)
         )
 
-    -- Join for EnrollInvite + Payment
-    LEFT JOIN package_session_learner_invitation_to_payment_option psli
-        ON psli.package_session_id = ps.id
-        AND (:#{#psliStatus == null || #psliStatus.isEmpty()} = true OR psli.status IN (:psliStatus))
-
-    LEFT JOIN enroll_invite e
-        ON e.id = psli.enroll_invite_id
-        AND e.tag = 'DEFAULT'
-        AND (:#{#enrollInviteStatus == null || #enrollInviteStatus.isEmpty()} = true OR e.status IN (:enrollInviteStatus))
-
-    LEFT JOIN payment_option po
-        ON po.id = psli.payment_option_id
-        AND (:#{#paymentOptionStatus == null || #paymentOptionStatus.isEmpty()} = true OR po.status IN (:paymentOptionStatus))
-
-    LEFT JOIN payment_plan pp
-        ON pp.payment_option_id = po.id
-        AND (:#{#paymentPlanStatus == null || #paymentPlanStatus.isEmpty()} = true OR pp.status IN (:paymentPlanStatus))
+    -- Join to our pre-calculated payment info CTE, only taking the cheapest plan
+    LEFT JOIN payment_info
+        ON ps.id = payment_info.package_session_id AND payment_info.row_num = 1
 
     -- Read time subquery
     LEFT JOIN (
@@ -2530,28 +2538,31 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
         AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
         AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
         AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
-        -- Added filter for tags
-        AND (:#{#tags == null || #tags.isEmpty()} = true OR string_to_array(p.comma_separated_tags, ',') && ARRAY[:tags])
-        -- Added filter for faculty IDs
+        AND (:#{#tags == null || #tags.isEmpty()} = true OR string_to_array(p.comma_separated_tags, ',') && CAST(ARRAY[:tags] AS text[]))
         AND (
             :#{#facultyIds == null || #facultyIds.isEmpty()} = true OR
             EXISTS (
                 SELECT 1
                 FROM faculty_subject_package_session_mapping fspm_sub
                 WHERE fspm_sub.package_session_id = ps.id
-                  AND fspm_sub.subject_id IS NULL
-                  AND fspm_sub.user_id IN (:facultyIds)
-                  AND (:#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
-                       OR fspm_sub.status IN (:facultyPackageSessionStatus))
+                    AND fspm_sub.subject_id IS NULL
+                    AND fspm_sub.user_id IN (:facultyIds)
+                    AND (:#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
+                            OR fspm_sub.status IN (:facultyPackageSessionStatus))
             )
         )
 
-    -- Simplified GROUP BY clause to ensure one row per session
     GROUP BY
         p.id,
         ps.id,
         l.id,
-        ps_read_time.total_read_time_minutes
+        ps_read_time.total_read_time_minutes,
+        payment_info.enroll_invite_id,
+        payment_info.payment_option_id,
+        payment_info.payment_option_type,
+        payment_info.payment_plan_id,
+        payment_info.actual_price,
+        payment_info.currency
 """,
             countQuery = """
     SELECT COUNT(DISTINCT ps.id)
@@ -2566,19 +2577,17 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
         AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
         AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
         AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
-        -- Added filter for tags
-        AND (:#{#tags == null || #tags.isEmpty()} = true OR string_to_array(p.comma_separated_tags, ',') && ARRAY[:tags])
-        -- Added filter for faculty IDs
+        AND (:#{#tags == null || #tags.isEmpty()} = true OR string_to_array(p.comma_separated_tags, ',') && CAST(ARRAY[:tags] AS text[]))
         AND (
             :#{#facultyIds == null || #facultyIds.isEmpty()} = true OR
             EXISTS (
                 SELECT 1
                 FROM faculty_subject_package_session_mapping fspm_sub
                 WHERE fspm_sub.package_session_id = ps.id
-                  AND fspm_sub.subject_id IS NULL
-                  AND fspm_sub.user_id IN (:facultyIds)
-                  AND (:#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
-                       OR fspm_sub.status IN (:facultyPackageSessionStatus))
+                    AND fspm_sub.subject_id IS NULL
+                    AND fspm_sub.user_id IN (:facultyIds)
+                    AND (:#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
+                            OR fspm_sub.status IN (:facultyPackageSessionStatus))
             )
         )
 """,

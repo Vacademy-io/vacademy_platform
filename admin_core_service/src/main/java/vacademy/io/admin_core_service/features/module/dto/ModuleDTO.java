@@ -14,6 +14,7 @@ public class ModuleDTO {
     private String description;
     private String thumbnailId;
     private String parentId;
+    private String thumbnailLink;
 
     public ModuleDTO(Module module) {
         this.id = module.getId();

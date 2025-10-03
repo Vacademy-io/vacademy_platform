@@ -216,6 +216,16 @@ function mergeWithDefaults(
         incoming?.certificates?.generationThresholdPercent ??
         d.certificates.generationThresholdPercent,
     },
+    courseSettings: {
+      quiz: {
+        moveOnlyOnCorrectAnswer:
+          incoming?.courseSettings?.quiz?.moveOnlyOnCorrectAnswer ??
+          d.courseSettings.quiz.moveOnlyOnCorrectAnswer,
+        celebrateOnQuizComplete:
+          incoming?.courseSettings?.quiz?.celebrateOnQuizComplete ??
+          d.courseSettings.quiz.celebrateOnQuizComplete,
+      },
+    },
     postLoginRedirectRoute:
       incoming?.postLoginRedirectRoute ?? d.postLoginRedirectRoute,
   };

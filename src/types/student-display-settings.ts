@@ -132,6 +132,16 @@ export interface StudentCertificateSettings {
   generationThresholdPercent: number;
 }
 
+// Course Settings
+export interface StudentCourseSettingsQuiz {
+  moveOnlyOnCorrectAnswer: boolean;
+  celebrateOnQuizComplete: boolean;
+}
+
+export interface StudentCourseSettings {
+  quiz: StudentCourseSettingsQuiz;
+}
+
 // Root
 export interface StudentDisplaySettingsData {
   sidebar: { visible: boolean; tabs: StudentSidebarTabConfig[] };
@@ -139,6 +149,7 @@ export interface StudentDisplaySettingsData {
   signup: StudentSignupSettings;
   permissions: StudentPermissions;
   courseDetails: StudentCourseDetailsSettings;
+  courseSettings: StudentCourseSettings;
   allCourses: StudentAllCoursesSettings;
   notifications: StudentNotificationSettings;
   certificates: StudentCertificateSettings;

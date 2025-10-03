@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { CheckCircle } from "lucide-react";
 import { MyInput } from "@/components/design-system/input";
 import { MyButton } from "@/components/design-system/button";
@@ -9,6 +9,10 @@ import { getUserId } from "@/constants/getUserId";
 import { v4 as uuidv4 } from "uuid";
 import { toast } from "sonner";
 import QuizReview from "./QuizReview";
+import { getStudentDisplaySettings } from "@/services/student-display-settings";
+import confetti from "canvas-confetti";
+import katex from "katex";
+import "katex/dist/katex.css";
 
 interface Option {
   id: string;
@@ -34,6 +38,7 @@ interface Question {
   }; // Alternative field name for question text
   options: Option[];
   question_type?: string;
+  auto_evaluation_json?: string;
 }
 
 interface QuizViewerProps {
@@ -53,8 +58,60 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showFullPassage, setShowFullPassage] = useState(false); // <-- NEW
   const [showReview, setShowReview] = useState(false); // <-- NEW
+  const [moveOnlyOnCorrectAnswer, setMoveOnlyOnCorrectAnswer] = useState(false);
+  const [celebrateOnQuizComplete, setCelebrateOnQuizComplete] = useState(true);
+  const [showIncorrectNotice, setShowIncorrectNotice] = useState(false);
 
   const submitQuizMutation = useSubmitQuizSlideActivityLog();
+
+  // Helpers: decode HTML entities and render KaTeX spans
+  const decodeHtml = (input: string): string => {
+    const textarea = document.createElement("textarea");
+    textarea.innerHTML = input;
+    return textarea.value || textarea.textContent || "";
+  };
+
+  const renderHtmlWithMath = (html: string | undefined | null): string => {
+    if (!html) return "";
+    // If the string is HTML-escaped (contains &lt;), decode it first
+    const decoded = html.includes("&lt;") ? decodeHtml(html) : html;
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(decoded, "text/html");
+      // Basic hardening: strip script tags
+      doc.querySelectorAll("script").forEach((s) => s.remove());
+      // Find math spans and render using KaTeX
+      const mathNodes = doc.querySelectorAll("span.math-inline, span.math-display");
+      mathNodes.forEach((node) => {
+        const tex = node.getAttribute("data-latex") || node.getAttribute("latex") || node.textContent || "";
+        const display = node.classList.contains("math-display");
+        try {
+          const rendered = katex.renderToString(tex, { displayMode: display, throwOnError: false });
+          node.innerHTML = rendered;
+        } catch {
+          // ignore rendering errors, leave original content
+        }
+      });
+      return doc.body.innerHTML;
+    } catch {
+      return decoded;
+    }
+  };
+
+  // Load student display settings (specifically courseSettings.quiz.moveOnlyOnCorrectAnswer)
+  useEffect(() => {
+    getStudentDisplaySettings(false)
+      .then((s) => {
+        const flag = s?.courseSettings?.quiz?.moveOnlyOnCorrectAnswer ?? false;
+        setMoveOnlyOnCorrectAnswer(Boolean(flag));
+        const celebrate = s?.courseSettings?.quiz?.celebrateOnQuizComplete ?? true;
+        setCelebrateOnQuizComplete(Boolean(celebrate));
+      })
+      .catch(() => {
+        setMoveOnlyOnCorrectAnswer(false);
+        setCelebrateOnQuizComplete(true);
+      });
+  }, []);
 
   // Helper to get URL params
   const getUrlParams = () => {
@@ -105,6 +162,60 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
     };
   };
 
+  const currentQuestion = questions?.[current];
+  const total = questions?.length || 0;
+  const questionType = currentQuestion?.question_type || "MCQS";
+  // Derive correct answers from auto_evaluation_json
+  const correctAnswers = useMemo<(string | number)[]>(() => {
+    const q = currentQuestion;
+    if (!q?.auto_evaluation_json) return [];
+    try {
+      const parsed = JSON.parse(q.auto_evaluation_json);
+      if (Array.isArray(parsed.correctAnswers)) {
+        // If numbers represent indices, map to option ids
+        if (typeof parsed.correctAnswers[0] === "number" && q.options?.length) {
+          return parsed.correctAnswers.map((idx: number) => q.options[idx]?.id ?? idx);
+        }
+        return parsed.correctAnswers;
+      }
+      if (typeof parsed.correctAnswers === "string" || typeof parsed.correctAnswers === "number") {
+        return [parsed.correctAnswers];
+      }
+      if (parsed.data) {
+        if (typeof parsed.data.answer === "string" || typeof parsed.data.answer === "number") {
+          return [parsed.data.answer];
+        }
+        if (parsed.data.answer && typeof parsed.data.answer === "object" && typeof parsed.data.answer.content === "string") {
+          return [parsed.data.answer.content];
+        }
+      }
+    } catch {
+      // ignore parsing errors
+    }
+    return [];
+  }, [currentQuestion]);
+
+  const isCurrentAnswerCorrect = useMemo(() => {
+    // If there are no correct answers available, don't block progression
+    if (!correctAnswers || correctAnswers.length === 0) return true;
+    if (!currentQuestion) return true;
+
+    const userAns = answers[currentQuestion.id];
+    if (userAns == null || (typeof userAns === "string" && userAns.trim() === "")) return false;
+
+    // Multiple answers
+    if (Array.isArray(userAns)) {
+      const asStrings = userAns.map((x) => String(x));
+      const correctAsStrings = correctAnswers.map((x) => String(x));
+      if (asStrings.length !== correctAsStrings.length) return false;
+      // Set equality
+      return correctAsStrings.every((c) => asStrings.includes(c));
+    }
+
+    // Single answer
+    return correctAnswers.map((x) => String(x)).includes(String(userAns));
+  }, [answers, correctAnswers, currentQuestion]);
+
   if (!questions || questions.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -122,20 +233,18 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
     return <QuizReview questions={questions} userAnswers={answers} onRestart={() => { setShowReview(false); setCurrent(0); setAnswers({}); }} />;
   }
 
-  const currentQuestion = questions[current];
-  const total = questions.length;
-  const questionType = currentQuestion.question_type || "MCQS";
-
 
 
   const handleOptionSelect = (optionId: string) => {
     setAnswers((prev) => ({ ...prev, [currentQuestion.id]: optionId }));
     onAnswer(currentQuestion.id, optionId);
+    setShowIncorrectNotice(false);
   };
 
   const handleTextInput = (value: string) => {
     setAnswers((prev) => ({ ...prev, [currentQuestion.id]: value }));
     onAnswer(currentQuestion.id, value);
+    setShowIncorrectNotice(false);
   };
 
   const handleNumericInput = (value: string) => {
@@ -155,6 +264,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
       const numericValue = parseFloat(value) || 0;
       setAnswers((prev) => ({ ...prev, [currentQuestion.id]: numericValue }));
       onAnswer(currentQuestion.id, numericValue);
+      setShowIncorrectNotice(false);
     }
   };
 
@@ -168,6 +278,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
     }
     setAnswers((prev) => ({ ...prev, [currentQuestion.id]: current }));
     onAnswer(currentQuestion.id, current);
+    setShowIncorrectNotice(false);
   };
 
   const handlePrev = () => {
@@ -175,8 +286,16 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
   };
 
   const handleNext = async () => {
+    // Enforce correctness if required
+    if (moveOnlyOnCorrectAnswer && !isCurrentAnswerCorrect) {
+      setShowIncorrectNotice(true);
+      toast.error("Incorrect answer. Please try again.");
+      return;
+    }
+
     if (current < total - 1) {
       setCurrent(current + 1);
+      setShowIncorrectNotice(false);
     } else {
       // On Finish: submit quiz
       setIsSubmitting(true);
@@ -197,6 +316,89 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
         toast.success("Quiz submitted successfully!", {
           className: "text-center"
         });
+        if (celebrateOnQuizComplete) {
+          try {
+            // Confetti: multi-wave, spread across screen with streamers and bursts
+            const shoot = (opts: Partial<import("canvas-confetti").Options>) => confetti({
+              particleCount: 120,
+              spread: 90,
+              startVelocity: 55,
+              ticks: 240,
+              gravity: 0.9,
+              scalar: 1.0,
+              origin: { x: Math.random() * 0.8 + 0.1, y: Math.random() * 0.2 + 0.05 },
+              ...opts,
+            });
+
+            // Fan-shaped side bursts
+            const sideBurst = (x: number) => confetti({
+              particleCount: 80,
+              angle: x < 0.5 ? 60 : 120,
+              spread: 55,
+              origin: { x, y: 0.6 },
+              colors: ["#22C55E", "#3B82F6", "#A78BFA", "#F59E0B"],
+            });
+
+            // Main waves
+            shoot({ colors: ["#00C2FF", "#3B82F6", "#22C55E", "#F59E0B"], shapes: ["square", "circle"], scalar: 1.1 });
+            setTimeout(() => shoot({ colors: ["#A78BFA", "#EC4899", "#F43F5E", "#10B981"], scalar: 1.25 }), 250);
+            setTimeout(() => shoot({ colors: ["#FBBF24", "#34D399", "#60A5FA", "#F472B6"], scalar: 1.2 }), 600);
+
+            // Side streamers
+            setTimeout(() => sideBurst(0.15), 150);
+            setTimeout(() => sideBurst(0.85), 320);
+            setTimeout(() => sideBurst(0.25), 520);
+            setTimeout(() => sideBurst(0.75), 700);
+
+            // Simple fanfare using Web Audio API (no external asset)
+            type WindowWithWebAudio = Window & { webkitAudioContext?: typeof AudioContext; AudioContext?: typeof AudioContext };
+            const w = window as WindowWithWebAudio;
+            const AudioCtx: typeof AudioContext | undefined = w.AudioContext || w.webkitAudioContext;
+            if (AudioCtx) {
+              const ctx = new AudioCtx();
+              const now = ctx.currentTime;
+
+              // Create a short triumphant chord progression with percussion hit
+              const makeVoice = (freqs: number[], type: OscillatorType, startOffset = 0) => {
+                freqs.forEach((freq, i) => {
+                  const o = ctx.createOscillator();
+                  const g = ctx.createGain();
+                  o.type = type;
+                  o.frequency.value = freq;
+                  o.connect(g);
+                  g.connect(ctx.destination);
+                  const t0 = now + startOffset + i * 0.14;
+                  g.gain.setValueAtTime(0, t0);
+                  g.gain.linearRampToValueAtTime(0.15, t0 + 0.03);
+                  g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.35);
+                  o.start(t0);
+                  o.stop(t0 + 0.36);
+                });
+              };
+
+              // Melody and harmony (C major): C5 E5 G5 C6 -> E5 G5 B5 E6
+              makeVoice([523.25, 659.25, 783.99, 1046.5], "triangle", 0); // melody
+              makeVoice([392.0, 523.25, 659.25, 987.77], "sine", 0.02);   // harmony
+
+              // Percussive hit (noise burst)
+              const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 0.2, ctx.sampleRate);
+              const data = noiseBuffer.getChannelData(0);
+              for (let i = 0; i < data.length; i += 1) data[i] = Math.random() * 2 - 1;
+              const noise = ctx.createBufferSource();
+              noise.buffer = noiseBuffer;
+              const noiseGain = ctx.createGain();
+              noise.connect(noiseGain);
+              noiseGain.connect(ctx.destination);
+              noiseGain.gain.setValueAtTime(0.0001, now);
+              noiseGain.gain.exponentialRampToValueAtTime(0.4, now + 0.01);
+              noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+              noise.start(now + 0.02);
+              noise.stop(now + 0.3);
+            }
+          } catch {
+            // ignore celebration errors
+          }
+        }
         setShowReview(true); // <-- Show review page
         if (onComplete) onComplete();
       } catch (err) {
@@ -343,7 +545,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
                     className={`flex items-center text-sm ${selected ? "font-medium text-primary-700" : "text-neutral-700"}`}
                   >
                     <span className="font-medium mr-2">{String.fromCharCode(97 + index)}.</span>
-                    <span dangerouslySetInnerHTML={{ __html: option.text.content }} />
+                    <span dangerouslySetInnerHTML={{ __html: renderHtmlWithMath(option.text.content) }} />
                   </label>
                 </div>
               );
@@ -382,11 +584,11 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
                     className={`flex items-center text-sm ${selected ? "font-medium text-primary-700" : "text-neutral-700"}`}
                   >
                     {questionType === "TRUE_FALSE" ? (
-                      <span dangerouslySetInnerHTML={{ __html: option.text.content }} />
+                      <span dangerouslySetInnerHTML={{ __html: renderHtmlWithMath(option.text.content) }} />
                     ) : (
                       <>
                         <span className="font-medium mr-2">{String.fromCharCode(97 + index)}.</span>
-                        <span dangerouslySetInnerHTML={{ __html: option.text.content }} />
+                        <span dangerouslySetInnerHTML={{ __html: renderHtmlWithMath(option.text.content) }} />
                       </>
                     )}
                   </label>
@@ -443,7 +645,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
             <h3 className="text-sm font-semibold text-gray-700 mb-2">Passage:</h3>
             <div 
               className="text-sm text-gray-800 leading-relaxed"
-              dangerouslySetInnerHTML={{ __html: showFullPassage || !isPassageLong ? passageHtml : passageToShow }}
+              dangerouslySetInnerHTML={{ __html: showFullPassage || !isPassageLong ? renderHtmlWithMath(passageHtml) : renderHtmlWithMath(passageToShow) }}
             />
             {isPassageLong && (
               <button
@@ -459,7 +661,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
               <h3 className="text-sm font-semibold text-gray-700 mb-2">Question:</h3>
               <div 
                 className="text-sm font-medium text-gray-900 leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: getQuestionText() || "Question text not available" }}
+                dangerouslySetInnerHTML={{ __html: renderHtmlWithMath(getQuestionText() || "Question text not available") }}
               />
             </div>
           </div>
@@ -469,7 +671,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
             <h3 className="text-sm font-semibold text-gray-700 mb-2">Question:</h3>
             <div 
               className="text-sm font-medium text-gray-900 leading-relaxed"
-              dangerouslySetInnerHTML={{ __html: getQuestionText() || "Question text not available" }}
+              dangerouslySetInnerHTML={{ __html: renderHtmlWithMath(getQuestionText() || "Question text not available") }}
             />
           </div>
         )}
@@ -497,6 +699,9 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
           <span className="text-sm text-gray-500">
             {isAnswered() ? "Answered" : "Not answered"}
           </span>
+          {showIncorrectNotice && (
+            <span className="text-sm text-danger-600 ml-2">Incorrect. Try again.</span>
+          )}
         </div>
 
         <MyButton

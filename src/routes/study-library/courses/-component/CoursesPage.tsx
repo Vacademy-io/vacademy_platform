@@ -160,7 +160,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                     ContentTerms.Course,
                                     SystemTerms.Course
                                 ).toLocaleLowerCase()}
-                                s found found
+                                s found
                             </h3>
                             <p className="text-gray-600 dark:text-neutral-300 text-sm max-w-md mx-auto">
                                 Try adjusting your search criteria or browse our

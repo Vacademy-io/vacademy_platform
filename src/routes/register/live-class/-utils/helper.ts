@@ -86,7 +86,7 @@ export const transformToCollectPublicUserDataDTO = (
     package_session_id: null,
     type: "PUBLIC_LIVE_SESSION",
     type_id: sessionId,
-    source: null,
+    source: "LEAD",
     custom_field_values: [],
   };
   for (const field of customFields) {

@@ -148,8 +148,11 @@ export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmati
     setError(null);
     
     try {
-      // Fetch payment gateway details (needed for enrollment API)
-      const paymentGatewayData = await fetchPaymentGatewayDetails(instituteId, 'STRIPE', token);
+      // For free enrollments, we don't need payment gateway details
+      let paymentGatewayData = null;
+      if (selectedPaymentOption.type?.toLowerCase() !== 'free') {
+        paymentGatewayData = await fetchPaymentGatewayDetails(instituteId, 'STRIPE', token);
+      }
       
       // Get real user data for enrollment
       const userData = await getRealUserData();

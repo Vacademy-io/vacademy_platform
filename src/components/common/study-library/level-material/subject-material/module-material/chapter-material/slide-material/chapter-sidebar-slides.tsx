@@ -27,6 +27,7 @@ import { BookOpen, Code, Gamepad2 } from "lucide-react";
 import { useDoubtSidebarStore } from "@/stores/study-library/doubt-sidebar-store";
 import { useEffect, useState } from "react";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
+import { getPublicUrl } from "@/services/upload_file";
 
 // Helper function to get responsive truncation length - kept for tooltip usage
 // const getResponsiveTruncationLength = () => {
@@ -62,6 +63,62 @@ export const getSlideStatus = (percentage: number | null | undefined) => {
         return "completed";
     }
     return "in-progress";
+};
+
+// Map slide type to enterprise color palette for details display
+const getTypeColorClasses = (slide: Slide, mediaKind?: "audio" | "video") => {
+    switch (slide.source_type) {
+        case "VIDEO":
+            if (mediaKind === "audio") {
+                return {
+                    text: "text-sky-700",
+                    bg: "bg-sky-50",
+                    dot: "bg-sky-500",
+                    detailText: "text-sky-600",
+                };
+            }
+            return {
+                text: "text-blue-700",
+                bg: "bg-blue-50",
+                dot: "bg-blue-500",
+                detailText: "text-blue-600",
+            };
+        case "DOCUMENT":
+            return {
+                text: "text-amber-700",
+                bg: "bg-amber-50",
+                dot: "bg-amber-500",
+                detailText: "text-amber-600",
+            };
+        case "QUESTION":
+            return {
+                text: "text-purple-700",
+                bg: "bg-purple-50",
+                dot: "bg-purple-500",
+                detailText: "text-purple-600",
+            };
+        case "QUIZ":
+            return {
+                text: "text-teal-700",
+                bg: "bg-teal-50",
+                dot: "bg-teal-500",
+                detailText: "text-teal-600",
+            };
+        case "ASSIGNMENT":
+            return {
+                text: "text-emerald-700",
+                bg: "bg-emerald-50",
+                dot: "bg-emerald-500",
+                detailText: "text-emerald-600",
+            };
+        default:
+            return {
+                text: "text-gray-700",
+                bg: "bg-gray-100",
+                dot: "bg-gray-400",
+                detailText: "text-gray-600",
+            };
+    }
 };
 
 // Helper function to get status details with modern design
@@ -267,6 +324,60 @@ const SlideItem = ({
     isActive: boolean;
     onClick: () => void;
 }) => {
+    const [mediaKind, setMediaKind] = useState<"audio" | "video" | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        const detectMediaKind = async () => {
+            if (slide.source_type !== "VIDEO") return;
+            const publishedId = slide.video_slide?.published_url;
+            if (!publishedId) return;
+            try {
+                const url = await getPublicUrl(publishedId);
+                if (!url) return;
+                // Try HEAD request to detect content-type
+                try {
+                    const res = await fetch(url, { method: "HEAD" });
+                    const contentType = res.headers.get("content-type") || "";
+                    if (!cancelled) {
+                        if (contentType.startsWith("audio")) {
+                            setMediaKind("audio");
+                            return;
+                        }
+                        if (contentType.startsWith("video")) {
+                            setMediaKind("video");
+                            return;
+                        }
+                    }
+                } catch {
+                    // Ignore network/CORS errors and fall back to extension check
+                }
+
+                // Fallback: infer from file extension in URL
+                try {
+                    const pathname = new URL(url).pathname.toLowerCase();
+                    if (/(\.mp3|\.wav|\.m4a|\.aac|\.ogg)$/.test(pathname)) {
+                        if (!cancelled) setMediaKind("audio");
+                        return;
+                    }
+                    if (/(\.mp4|\.webm|\.mov|\.mkv)$/.test(pathname)) {
+                        if (!cancelled) setMediaKind("video");
+                        return;
+                    }
+                } catch {
+                    // If URL parsing fails, do nothing
+                }
+            } catch {
+                // Ignore getPublicUrl errors
+            }
+        };
+        detectMediaKind();
+        return () => {
+            cancelled = true;
+        };
+    }, [slide.id, slide.source_type, slide.video_slide?.published_url]);
+
+    const typeColors = getTypeColorClasses(slide, mediaKind || undefined);
     const statusDetails = getStatusDetails(slide.percentage_completed);
     const StatusIcon = statusDetails.icon;
     const isCompleted = slide.percentage_completed >= 80;
@@ -397,6 +508,8 @@ const SlideItem = ({
             <Tooltip>
                 <TooltipTrigger asChild>
                     <div
+                        role="listitem"
+                        aria-current={isActive ? "true" : undefined}
                         className="w-full transition-all duration-200 ease-in-out animate-fade-in-up cursor-pointer group/slide"
                         onClick={onClick}
                         style={{
@@ -404,13 +517,13 @@ const SlideItem = ({
                         }}
                     >
                         <div
-                            className={`
-                flex w-full items-center gap-2 rounded-lg border px-2 py-1.5 
-                backdrop-blur-sm transition-all duration-200 ease-in-out
+                        className={`
+                flex w-full items-center gap-2 rounded-lg px-3 py-2 min-h-[68px]
+                transition-all duration-200 ease-in-out will-change-transform will-change-opacity
                 ${
                     isActive
-                        ? "text-primary-600 border-primary-300 bg-primary-50/80 shadow-md"
-                        : "border-gray-200/60 bg-white/60 text-gray-600 hover:bg-white hover:border-gray-300 hover:shadow-sm"
+                        ? "text-primary-700 bg-primary-50 shadow-md"
+                        : "bg-white text-gray-700 hover:bg-gray-50 hover:shadow-sm"
                 }
               `}
                         >
@@ -418,7 +531,7 @@ const SlideItem = ({
                                 {/* Slide Number */}
                                 <div
                                     className={`
-                    flex w-5 h-5 items-center justify-center rounded-md text-xs font-bold transition-all duration-200
+                    flex w-6 h-6 items-center justify-center rounded-md text-sm font-bold transition-all duration-200
                     ${
                         isActive
                             ? "bg-primary-500 text-white"
@@ -434,11 +547,11 @@ const SlideItem = ({
                                     {getIcon(slide, "3.5")}
                                 </div>
 
-                                {/* Content area - more compact layout */}
+                                {/* Content area - compact layout */}
                                 <div className="min-w-0 flex-1 space-y-1">
-                                    {/* Title - show full title without truncation */}
+                                    {/* Title - allow up to two lines for readability */}
                                     <div className="flex items-start gap-1.5">
-                                        <h4 className="flex-1 text-xs font-semibold leading-tight">
+                                        <h4 className="flex-1 text-sm font-semibold leading-snug line-clamp-2">
                                             {getSlideTitle()}
                                         </h4>
                                         {getStatusBadge()}
@@ -447,12 +560,15 @@ const SlideItem = ({
                                     {/* Type and content details */}
                                     <div className="flex items-center justify-between gap-2">
                                         <div className="flex-1 min-w-0">
-                                            <p className="text-xs leading-tight text-gray-500 truncate">
-                                                {getSlideTypeDisplay(slide)}
+                                            <p className="text-[11px] leading-tight truncate">
+                                                <span className={`inline-flex items-center gap-1 rounded px-1 py-0.5 ${typeColors.bg} ${typeColors.text}`}>
+                                                    <span className={`w-1.5 h-1.5 rounded-full ${typeColors.dot}`}></span>
+                                                    {slide.source_type === "VIDEO" && mediaKind === "audio" ? "Audio" : getSlideTypeDisplay(slide)}
+                                                </span>
                                             </p>
                                             {/* Content details (duration/pages) */}
                                             {getContentDetails(slide) && (
-                                                <p className="text-xs leading-tight text-gray-400 font-medium">
+                                                <p className={`text-[11px] leading-tight ${typeColors.detailText}`}>
                                                     {getContentDetails(slide)}
                                                 </p>
                                             )}
@@ -461,7 +577,7 @@ const SlideItem = ({
                                         {/* Progress section - more compact */}
                                         {slide.percentage_completed != null && (
                                             <div className="flex items-center gap-1">
-                                                <div className="relative w-6 h-1 bg-gray-200 rounded-full overflow-hidden">
+                                                <div className="relative w-10 h-1 bg-gray-200 rounded-full overflow-hidden">
                                                     <div
                                                         className={`absolute left-0 top-0 h-full rounded-full transition-all duration-300 ${
                                                             isCompleted
@@ -483,7 +599,7 @@ const SlideItem = ({
                                                 </div>
 
                                                 <span
-                                                    className={`text-xs font-bold min-w-[20px] text-right transition-colors duration-200 ${
+                                                    className={`text-[11px] font-semibold min-w-[22px] text-right transition-colors duration-200 ${
                                                         isCompleted
                                                             ? "text-success-600"
                                                             : isActive
@@ -548,6 +664,8 @@ const SlideItem = ({
                                 </div>
                             </div>
                         </div>
+                        {/* Subtle divider for list rhythm */}
+                        <div className="mx-2 h-px bg-gray-100" />
                     </div>
                 </TooltipTrigger>
                 <TooltipContent
@@ -638,7 +756,7 @@ export const ChapterSidebarSlides = () => {
     }
 
     return (
-        <div className="relative w-full max-w-full overflow-hidden animate-fade-in-up">
+        <div className="relative w-full max-w-full overflow-hidden animate-fade-in-up" role="list" aria-label="Chapter slides list">
             {/* Background gradient */}
             <div className="absolute inset-0 bg-gradient-to-b from-transparent to-gray-50/30 pointer-events-none rounded-xl"></div>
             <div className="relative flex w-full flex-col gap-1 text-gray-600">

@@ -84,6 +84,12 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
     courseOverview: { visible: true, showSlidesData: true },
     slidesView: { showLearningPath: true, feedbackVisible: true, canAskDoubt: true },
   },
+  courseSettings: {
+    quiz: {
+      moveOnlyOnCorrectAnswer: true,
+      celebrateOnQuizComplete: true,
+    },
+  },
   allCourses: {
     tabs: [
       { id: "InProgress", order: 1, visible: true },

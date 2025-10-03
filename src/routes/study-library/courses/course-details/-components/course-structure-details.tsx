@@ -1808,9 +1808,9 @@ export const CourseStructureDetails = ({
                 {!selectedSubjectId && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         {studyLibraryData?.map((subject) => (
-                            <div key={subject.id} className="rounded-md border border-neutral-200 bg-white p-3 shadow-sm hover:shadow cursor-pointer" onClick={() => { setSelectedSubjectId(subject.id); }}>
-                                <div className="flex items-center gap-3">
-                                    <div className="w-12 h-12 rounded-md bg-neutral-100 flex items-center justify-center overflow-hidden">
+                            <div key={subject.id} className="rounded-md border border-neutral-200 bg-white p-4 shadow-sm hover:shadow cursor-pointer" onClick={() => { setSelectedSubjectId(subject.id); }}>
+                                <div className="flex items-center gap-4">
+                                    <div className="w-16 h-16 rounded-md bg-neutral-100 flex items-center justify-center overflow-hidden">
                                         {thumbUrlById[`subject:${subject.id}`] ? (
                                             <img
                                                 src={thumbUrlById[`subject:${subject.id}`]}
@@ -1824,7 +1824,7 @@ export const CourseStructureDetails = ({
                                                         }}
                                             />
                                         ) : (
-                                            <Folder size={20} className="text-neutral-500" />
+                                            <Folder size={28} className="text-neutral-500" />
                                         )}
                                     </div>
                                     <div className="min-w-0">
@@ -1839,9 +1839,9 @@ export const CourseStructureDetails = ({
                 {selectedSubjectId && !selectedModuleId && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         {(subjectModulesMap[selectedSubjectId] || []).map((m) => (
-                            <div key={m.module.id} className="rounded-md border border-neutral-200 bg-white p-3 shadow-sm hover:shadow cursor-pointer" onClick={() => { setSelectedModuleId(m.module.id); }}>
-                                <div className="flex items-center gap-3">
-                                    <div className="w-12 h-12 rounded-md bg-neutral-100 flex items-center justify-center overflow-hidden">
+                            <div key={m.module.id} className="rounded-md border border-neutral-200 bg-white p-4 shadow-sm hover:shadow cursor-pointer" onClick={() => { setSelectedModuleId(m.module.id); }}>
+                                <div className="flex items-center gap-4">
+                                    <div className="w-16 h-16 rounded-md bg-neutral-100 flex items-center justify-center overflow-hidden">
                                         {thumbUrlById[`module:${m.module.id}`] ? (
                                             <img
                                                 src={thumbUrlById[`module:${m.module.id}`]}
@@ -1855,7 +1855,7 @@ export const CourseStructureDetails = ({
                                                         }}
                                             />
                                         ) : (
-                                            <Folder size={20} className="text-neutral-500" />
+                                            <Folder size={28} className="text-neutral-500" />
                                         )}
                                     </div>
                                     <div className="min-w-0">
@@ -1873,9 +1873,9 @@ export const CourseStructureDetails = ({
                             .filter((m) => m.module.id === selectedModuleId)
                             .flatMap((m) => m.chapters)
                             .map((ch) => (
-                                <div key={ch.id} className="rounded-md border border-neutral-200 bg-white p-3 shadow-sm hover:shadow cursor-pointer" onClick={async () => { setSelectedChapterId(ch.id); await getSlidesWithChapterId(ch.id); }}>
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-12 h-12 rounded-md bg-neutral-100 flex items-center justify-center overflow-hidden">
+                                <div key={ch.id} className="rounded-md border border-neutral-200 bg-white p-4 shadow-sm hover:shadow cursor-pointer" onClick={async () => { setSelectedChapterId(ch.id); await getSlidesWithChapterId(ch.id); }}>
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-16 h-16 rounded-md bg-neutral-100 flex items-center justify-center overflow-hidden">
                                             {thumbUrlById[`chapter:${ch.id}`] ? (
                                                 <img
                                                     src={thumbUrlById[`chapter:${ch.id}`]}
@@ -1889,7 +1889,7 @@ export const CourseStructureDetails = ({
                                                         }}
                                                 />
                                             ) : (
-                                                <FileText size={18} className="text-neutral-500" />
+                                                <FileText size={24} className="text-neutral-500" />
                                             )}
                                         </div>
                                         <div className="min-w-0">

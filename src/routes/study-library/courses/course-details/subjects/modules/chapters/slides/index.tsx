@@ -356,7 +356,7 @@ function Slides() {
                     className={`absolute ${showLearningPath ? "top-[145px]" : "top-[70px]"} bottom-[85px] left-0 right-0 overflow-y-auto`}
                 >
                     <div className="relative bg-white transition-all duration-300 group min-h-full">
-                        <div className="relative p-3 sm:p-4 animate-fade-in-up">
+                        <div className="relative p-2 sm:p-3 animate-fade-in-up">
                             <ChapterSidebarSlides />
                         </div>
                     </div>

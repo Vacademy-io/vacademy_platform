@@ -1,5 +1,5 @@
 import { Preferences } from "@capacitor/preferences";
-import { getPublicUrl } from "@/services/upload_file";
+import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 
 export interface TabBrandingResult {
   iconUrl: string | null;
@@ -9,6 +9,54 @@ export interface TabBrandingResult {
 // Global state to track current favicon and prevent unnecessary resets
 let currentFaviconUrl: string | null = null;
 let faviconMonitorInterval: NodeJS.Timeout | null = null;
+let lastFaviconRefreshMs = 0;
+const FAVICON_REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+const FALLBACK_FAVICON_URL = "/icons/icon-48.webp"; // Static fallback
+
+// Helper: create favicon link elements
+const createFaviconLink = (href: string, rel: string, sizes?: string, type?: string) => {
+  const el = document.createElement('link');
+  el.rel = rel;
+  if (sizes) el.setAttribute('sizes', sizes);
+  if (type) el.type = type;
+  el.href = href;
+  el.setAttribute('data-custom-favicon', 'true');
+  document.head.appendChild(el);
+  return el;
+};
+
+// Helper: remove all favicon links
+const removeAllFaviconLinks = () => {
+  const existingLinks = document.querySelectorAll<HTMLLinkElement>('link[rel*="icon"]');
+  existingLinks.forEach((link) => link.remove());
+};
+
+// Helper: apply favicon links for a given URL (creates common sizes and apple touch)
+const applyFaviconLinks = (iconUrl: string) => {
+  // Do NOT cache-bust signed URLs (e.g., S3 pre-signed) or the signature will break
+  const isSignedUrl = /[?&]X-Amz-/.test(iconUrl) || /[?&]Signature=/.test(iconUrl);
+  const hrefToUse = isSignedUrl
+    ? iconUrl
+    : (iconUrl.includes('?') ? `${iconUrl}&v=${Date.now()}` : `${iconUrl}?v=${Date.now()}`);
+
+  removeAllFaviconLinks();
+  createFaviconLink(hrefToUse, 'icon', '16x16');
+  createFaviconLink(hrefToUse, 'icon', '32x32');
+  createFaviconLink(hrefToUse, 'icon');
+  createFaviconLink(hrefToUse, 'shortcut icon');
+  createFaviconLink(hrefToUse, 'apple-touch-icon', '180x180');
+  // Nudge browsers to refresh the favicon
+  setTimeout(() => {
+    const links = document.querySelectorAll<HTMLLinkElement>('link[rel*="icon"]');
+    links.forEach((link) => {
+      const originalHref = link.href;
+      link.href = '';
+      setTimeout(() => {
+        link.href = originalHref;
+      }, 1);
+    });
+  }, 100);
+};
 
 // Apply tab title and favicon from stored Preferences. Optional fallbackTitle used if no tabText stored.
 export const applyTabBranding = async (
@@ -28,7 +76,7 @@ export const applyTabBranding = async (
         fontFamily = parsed?.fontFamily || null;
         if (parsed?.tabIconFileId) {
           try {
-            iconUrl = await getPublicUrl(parsed.tabIconFileId);
+            iconUrl = await getPublicUrlWithoutLogin(parsed.tabIconFileId);
           } catch {
             iconUrl = null;
           }
@@ -57,6 +105,11 @@ export const applyTabBranding = async (
       // Ignore font family errors
     }
 
+    // Ensure we always have some icon to show
+    if (!iconUrl) {
+      iconUrl = FALLBACK_FAVICON_URL;
+    }
+
     // Update favicon via DOM - but only if it's different from current
     const shouldUpdateFavicon = iconUrl !== currentFaviconUrl;
     
@@ -64,64 +117,10 @@ export const applyTabBranding = async (
       console.log('[Branding] Favicon change detected:', currentFaviconUrl, '->', iconUrl);
       currentFaviconUrl = iconUrl;
       
-      if (iconUrl) {
-        try {
-          // Add cache busting to ensure fresh icon loads
-          const cacheBustedUrl = `${iconUrl}?v=${Date.now()}`;
-          
-          // Remove all existing favicon links to prevent conflicts
-          const existingLinks = document.querySelectorAll<HTMLLinkElement>('link[rel*="icon"]');
-          existingLinks.forEach((link) => {
-            console.log('[Branding] Removing existing favicon link:', link.outerHTML);
-            link.remove();
-          });
-
-          // Helper to create a new link
-          const createIcon = (rel: string, sizes?: string, type?: string) => {
-            const el = document.createElement('link');
-            el.rel = rel;
-            if (sizes) el.setAttribute('sizes', sizes);
-            if (type) el.type = type;
-            el.href = cacheBustedUrl;
-            el.setAttribute('data-custom-favicon', 'true'); // Mark as custom favicon
-            document.head.appendChild(el);
-            console.log('[Branding] Created', rel, sizes || '', '->', cacheBustedUrl);
-            return el;
-          };
-
-          // Create fresh favicon links for better browser support
-          createIcon('icon', '16x16', 'image/png');
-          createIcon('icon', '32x32', 'image/png');
-          createIcon('icon');
-          createIcon('shortcut icon');
-          createIcon('apple-touch-icon', '180x180', 'image/png');
-          
-          // Force favicon update by temporarily changing the href
-          setTimeout(() => {
-            const links = document.querySelectorAll<HTMLLinkElement>('link[rel*="icon"]');
-            links.forEach((link) => {
-              const originalHref = link.href;
-              link.href = '';
-              setTimeout(() => {
-                link.href = originalHref;
-              }, 1);
-            });
-          }, 100);
-          
-        } catch (e) {
-          console.warn('[Branding] Failed to update favicon links', e);
-        }
-      } else {
-        // If no iconUrl, remove all favicon links to prevent showing default favicon.ico
-        try {
-          const existingLinks = document.querySelectorAll<HTMLLinkElement>('link[rel*="icon"]');
-          existingLinks.forEach((link) => {
-            console.log('[Branding] Removing favicon link (no icon):', link.outerHTML);
-            link.remove();
-          });
-        } catch (e) {
-          console.warn('[Branding] Failed to remove favicon links', e);
-        }
+      try {
+        applyFaviconLinks(iconUrl);
+      } catch (e) {
+        console.warn('[Branding] Failed to update favicon links', e);
       }
       
       // Start monitoring to prevent favicon resets
@@ -130,6 +129,7 @@ export const applyTabBranding = async (
       console.log('[Branding] Favicon unchanged, skipping update');
     }
 
+    lastFaviconRefreshMs = Date.now();
     return { iconUrl, tabText };
   } catch {
     return { iconUrl: null, tabText: null };
@@ -148,7 +148,7 @@ const startFaviconMonitoring = () => {
     return;
   }
   
-  faviconMonitorInterval = setInterval(() => {
+  faviconMonitorInterval = setInterval(async () => {
     try {
       const customFaviconLinks = document.querySelectorAll<HTMLLinkElement>('link[data-custom-favicon="true"]');
       const allFaviconLinks = document.querySelectorAll<HTMLLinkElement>('link[rel*="icon"]');
@@ -160,32 +160,53 @@ const startFaviconMonitoring = () => {
         (link.href.includes('favicon.ico') || link.href.includes('/favicon'))
       );
       
+      // Also refresh periodically to handle expiring signed URLs
+      const now = Date.now();
+      const isTimeToRefresh = now - lastFaviconRefreshMs > FAVICON_REFRESH_INTERVAL_MS;
+
       if (!hasCustomFavicons || hasUnwantedFavicons) {
         console.log('[Branding] Favicon reset detected, reapplying custom favicon');
         
         // Remove all favicon links
         allFaviconLinks.forEach(link => link.remove());
         
-        // Reapply custom favicon if we have one
-        if (currentFaviconUrl) {
-          const cacheBustedUrl = `${currentFaviconUrl}?v=${Date.now()}`;
-          
-          const createIcon = (rel: string, sizes?: string, type?: string) => {
-            const el = document.createElement('link');
-            el.rel = rel;
-            if (sizes) el.setAttribute('sizes', sizes);
-            if (type) el.type = type;
-            el.href = cacheBustedUrl;
-            el.setAttribute('data-custom-favicon', 'true');
-            document.head.appendChild(el);
-          };
-
-          createIcon('icon', '16x16', 'image/png');
-          createIcon('icon', '32x32', 'image/png');
-          createIcon('icon');
-          createIcon('shortcut icon');
-          createIcon('apple-touch-icon', '180x180', 'image/png');
+        // Reapply favicon using the last known URL or fallback
+        applyFaviconLinks(currentFaviconUrl || FALLBACK_FAVICON_URL);
+        lastFaviconRefreshMs = Date.now();
+      } else if (isTimeToRefresh) {
+        console.log('[Branding] Periodic favicon refresh');
+        try {
+          const instituteId = (await Preferences.get({ key: 'InstituteId' })).value || "";
+          let nextUrl: string | null = null;
+          if (instituteId) {
+            const learner = await Preferences.get({ key: `LEARNER_${instituteId}` });
+            const parsed = learner?.value ? JSON.parse(learner.value) : null;
+            const fileId = parsed?.tabIconFileId || null;
+            if (fileId) {
+              try {
+                nextUrl = await getPublicUrlWithoutLogin(fileId);
+              } catch {
+                nextUrl = null;
+              }
+            }
+          }
+          if (!nextUrl) {
+            nextUrl = FALLBACK_FAVICON_URL;
+          }
+          if (nextUrl !== currentFaviconUrl) {
+            currentFaviconUrl = nextUrl;
+            applyFaviconLinks(nextUrl);
+          } else {
+            // Even if unchanged, reapply to bust cache in case URL has expired server-side
+            applyFaviconLinks(nextUrl);
+          }
+        } catch (e) {
+          console.warn('[Branding] Error refreshing favicon URL:', e);
+          // Apply fallback on error
+          currentFaviconUrl = FALLBACK_FAVICON_URL;
+          applyFaviconLinks(FALLBACK_FAVICON_URL);
         }
+        lastFaviconRefreshMs = Date.now();
       }
     } catch (e) {
       console.warn('[Branding] Error in favicon monitoring:', e);

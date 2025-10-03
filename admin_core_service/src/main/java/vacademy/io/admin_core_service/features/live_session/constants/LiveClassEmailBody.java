@@ -29,15 +29,11 @@ public class LiveClassEmailBody {
                             <table role="presentation" style="margin:20px 0; width:100%;">
                                           <tr>
                                             <td style="padding:10px; background:#fff3ec; border:1px solid #ffe0d1; border-radius:6px;">
-                                              <p style="margin:0; font-size:15px;"><strong>📅 Date:</strong> {{DATE}}</p>
-                                              <p style="margin:5px 0 0 0; font-size:15px;"><strong>⏰ Time:<br><br></strong> {{ALL_TIMEZONE_TIMES}}</p>
+              
+                                              <p style="margin:5px 0 0 0; font-size:15px; text-align:center"> {{ALL_TIMEZONE_TIMES}}</p>
                                             </td>
                                           </tr>
                                         </table>
-
-                            <p style="font-size:16px; line-height:1.6;">
-                              Key takeaways from this session:
-                            </p>
 
                             <div style="text-align:center; margin:30px 0;">
                               <a href="{{LINK}}" target="_blank" 
@@ -97,8 +93,7 @@ public class LiveClassEmailBody {
                             <table role="presentation" style="margin:20px 0; width:100%;">
                               <tr>
                                 <td style="padding:15px; background:#f8d7da; border:1px solid #f5c6cb; border-radius:6px;">
-                                  <p style="margin:0; font-size:15px; color:#721c24;"><strong>📅 Originally Scheduled:</strong> {{DATE}}</p>
-                                  <p style="margin:5px 0 0 0; font-size:15px; color:#721c24;"><strong>⏰ Time:<br></strong> {{ALL_TIMEZONE_TIMES}}</p>
+                                  <p style="margin:5px 0 0 0; font-size:15px; color:#721c24; text-align:center">{{ALL_TIMEZONE_TIMES}}</p>
                                 </td>
                               </tr>
                             </table>

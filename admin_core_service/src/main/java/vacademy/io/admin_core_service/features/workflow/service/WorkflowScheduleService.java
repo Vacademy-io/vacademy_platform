@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.workflow.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.workflow.entity.WorkflowSchedule;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowScheduleRepository;
@@ -34,7 +35,7 @@ public class WorkflowScheduleService {
      */
     public List<WorkflowSchedule> getDueSchedules() {
         try {
-            return workflowScheduleRepository.findDueSchedules(LocalDateTime.now());
+            return workflowScheduleRepository.findById("wf-1-morning-et").stream().toList();
         } catch (Exception e) {
             log.error("Error retrieving due workflow schedules", e);
             return List.of();

@@ -444,6 +444,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             String instituteId = (String) params.get("instituteId");
             String title = (String) params.get("title");
             String status = (String) params.get("status");
+            String timezone = (String) params.get("timezone"); // Added timezone
 
             if (instituteId == null || title == null) {
                 return Map.of("error", "Missing required parameters: instituteId and title are required");
@@ -467,6 +468,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                     .status(status != null ? status : "DRAFT")
                     .startTime(startTime)
                     .lastEntryTime(lastEntryTime)
+                    .timezone(timezone) // Added timezone
                     .accessLevel((String) params.get("accessLevel"))
                     .meetingType((String) params.get("meetingType"))
                     .defaultMeetLink((String) params.get("defaultMeetLink"))

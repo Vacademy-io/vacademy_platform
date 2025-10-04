@@ -141,4 +141,13 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
             List<String> destinationPackageSessionIds,
             String userId,
             List<String> status
-    );}
+    );
+
+    Optional<StudentSessionInstituteGroupMapping> findTopByDestinationPackageSessionIdAndInstituteIdAndUserIdAndStatus(
+            String destinationPackageSessionId,
+            String instituteId,
+            String userId,
+            String status
+    );
+
+}

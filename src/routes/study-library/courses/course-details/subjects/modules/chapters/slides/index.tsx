@@ -480,7 +480,7 @@ function Slides() {
                         <div className="block sm:hidden">
                             <h1 className="text-xs font-bold text-gray-900 truncate mb-0.5">
                                 {truncateString(
-                                    toTitleCase(chapterName || "Study Materials"),
+                                    toTitleCase(chapterName || "Course Details"),
                                     25
                                 )}
                             </h1>
@@ -518,7 +518,7 @@ function Slides() {
                                                 ? 15
                                                 : 25
                                       )}`
-                                    : "Study Materials"}
+                                    : "Course Details"}
                             </h1>
                         </div>
                     </div>

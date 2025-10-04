@@ -46,6 +46,7 @@ import { SessionDetails } from "../study-library/live-class/-types/types";
 import { useMarkAttendance } from "../study-library/live-class/-hooks/useMarkAttendance";
 import { SessionStreamingServiceType } from "../register/live-class/-types/enum";
 import { toast } from "sonner";
+import { Howl } from "howler";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
@@ -98,6 +99,7 @@ const StatCard = ({
   onClick: () => void;
   isLoading?: boolean;
 }) => {
+ 
   if (isLoading) return <StatCardSkeleton />;
 
   return (
@@ -125,7 +127,7 @@ const StatCard = ({
         <div className="absolute top-0 right-0 w-12 h-12 md:w-20 md:h-20 bg-primary-100/30 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-2 md:-translate-y-4 translate-x-2 md:translate-x-4 hidden sm:block"></div>
 
         <div className="flex items-center justify-between mb-2 sm:mb-3 md:mb-5">
-          <div className="stat-card-icon p-1.5 sm:p-2 md:p-3 bg-primary-100 rounded-md sm:rounded-lg text-primary-600 group-hover:scale-110 transition-transform duration-300 shadow-sm">
+          <div className={`stat-card-icon p-1.5 sm:p-2 md:p-3 ${document.documentElement.classList.contains("ui-vibrant") ? "pastel-bg-blue" : "bg-primary-100"} rounded-md sm:rounded-lg text-primary-600 group-hover:scale-110 transition-transform duration-300 shadow-sm`}>
             {/* Swap icon to playful Tabler in vibrant mode */}
             {document.documentElement.classList.contains("ui-vibrant") ? (
               title.toLowerCase().includes("course") ? (
@@ -173,11 +175,14 @@ const ContinueLearningCard = ({
   data: DashbaordResponse | null;
   onResumeClick: (slide: DashboardSlide) => void;
 }) => {
+  const hasVibrant =
+    typeof document !== "undefined" &&
+    !!document.documentElement?.classList?.contains("ui-vibrant");
   if (!data?.slides || data.slides.length === 0) {
     return (
       <Card className="continue-learning-card relative overflow-hidden border-0 bg-white shadow-sm hover:shadow-lg transition-all duration-500">
         <CardContent className="p-4 sm:p-6 md:p-8 text-center">
-          <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 bg-primary-100 rounded-md sm:rounded-lg flex items-center justify-center mx-auto mb-2 sm:mb-3 md:mb-4">
+          <div className={`w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 ${hasVibrant ? "pastel-bg-teal" : "bg-primary-100"} rounded-md sm:rounded-lg flex items-center justify-center mx-auto mb-2 sm:mb-3 md:mb-4`}>
             <Target
               weight="duotone"
               size={20}
@@ -212,7 +217,7 @@ const ContinueLearningCard = ({
       <CardHeader className="pb-2 sm:pb-3 md:pb-4 px-3 sm:px-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 md:gap-4">
           <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
-            <div className="p-1.5 sm:p-2 bg-primary-100 rounded-lg flex-shrink-0">
+            <div className={`p-1.5 sm:p-2 ${hasVibrant ? "pastel-bg-teal" : "bg-primary-100"} rounded-lg flex-shrink-0`}>
               <Play
                 weight="duotone"
                 size={16}
@@ -236,6 +241,7 @@ const ContinueLearningCard = ({
           <Badge
             variant="secondary"
             className="bg-primary-100 text-primary-700 border-primary-200 text-xs self-start sm:self-auto flex-shrink-0"
+            data-anim="active-badge"
           >
             <Sparkles size={8} className="mr-1" />
             Active
@@ -249,10 +255,11 @@ const ContinueLearningCard = ({
             <div
               key={slide.slide_id}
               onClick={() => onResumeClick(slide)}
+              data-anim="continue-item"
               className="group flex items-center gap-1.5 sm:gap-2 md:gap-3 p-2 sm:p-2.5 md:p-3 bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md sm:rounded-lg hover:bg-white dark:hover:bg-neutral-800 transition-all duration-200 cursor-pointer hover:shadow-md active:scale-[0.98] w-full overflow-hidden min-h-[52px] sm:min-h-[56px] md:min-h-[64px] max-w-full"
             >
               <div className="flex-shrink-0">
-                <div className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 bg-primary-100 rounded-lg flex items-center justify-center">
+                <div className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 ${hasVibrant ? "pastel-bg-yellow" : "bg-primary-100"} rounded-lg flex items-center justify-center`}>
                   <span className="text-primary-600 font-semibold text-xs">
                     {index + 1}
                   </span>
@@ -268,10 +275,10 @@ const ContinueLearningCard = ({
                 </p>
               </div>
               <div className="flex-shrink-0">
-                <div className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 bg-gray-100 rounded-full flex items-center justify-center group-hover:bg-primary-100 transition-colors duration-300">
+                <div className={`w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 bg-gray-100 rounded-full flex items-center justify-center ${hasVibrant ? "pastel-bg-pink" : "group-hover:bg-primary-100"} transition-colors duration-300`}>
                   <ChevronRight
                     size={10}
-                    className="text-gray-400 group-hover:text-primary-600 sm:w-3 sm:h-3"
+                    className={`${hasVibrant ? "text-slate-800" : "text-gray-400 group-hover:text-primary-600"} sm:w-3 sm:h-3`}
                   />
                 </div>
               </div>
@@ -309,6 +316,14 @@ export function DashboardComponent() {
   const [data, setData] = useState<DashbaordResponse | null>(null);
   const { setActiveItem } = useContentStore();
   const [uiType, setUiType] = useState<StudentUIType>("default");
+  const rootHasVibrant =
+    typeof document !== "undefined" &&
+    !!document.documentElement?.classList?.contains("ui-vibrant");
+  const isVibrant = rootHasVibrant || uiType === "vibrant";
+
+  // Lightweight sound cues
+  const popSound = new Howl({ src: ["/sounds/pop.mp3"], volume: 0.3 });
+  const dingSound = new Howl({ src: ["/sounds/ding.mp3"], volume: 0.35 });
 
   // Add weekly attendance query
   const { data: weeklyAttendance, isLoading: isLoadingAttendance } =
@@ -355,6 +370,7 @@ export function DashboardComponent() {
   const handleResumeClick = (slide: DashboardSlide) => {
     // Track lesson resumed
     trackLessonStarted(slide.slide_id, slide.slide_title, slide.subject_id);
+    try { if (isVibrant) popSound.play(); } catch (e) { void e; }
     track("Resume Learning", {
       slideId: slide.slide_id,
       slideTitle: slide.slide_title,
@@ -457,6 +473,70 @@ export function DashboardComponent() {
     initializeDashboard();
   }, [handleGetStudyLibraryData, setNavHeading, trackPageView]);
 
+  // Vibrant-only GSAP animations for playful entrance and micro-interactions
+  useEffect(() => {
+    if (!isVibrant) return;
+    let ctx: { revert?: () => void } | undefined;
+    (async () => {
+      try {
+        const { default: gsap } = await import("gsap");
+        ctx = gsap.context(() => {
+          // Stagger sections
+          gsap.from("[data-anim=section]", {
+            opacity: 0,
+            y: 10,
+            duration: 0.5,
+            stagger: 0.08,
+            ease: "power2.out",
+          });
+
+          gsap.from(".dashboard-container .stat-card", {
+            opacity: 0,
+            y: 12,
+            duration: 0.6,
+            stagger: 0.08,
+            ease: "power2.out",
+          });
+
+          gsap.from(
+            ".dashboard-container .continue-learning-card [data-anim=\"continue-item\"]",
+            {
+              opacity: 0,
+              x: 14,
+              duration: 0.5,
+              stagger: 0.06,
+              ease: "power2.out",
+              delay: 0.15,
+            }
+          );
+
+          // Bounce the "Active" badge on load
+          const activeBadge = document.querySelector('.continue-learning-card .badge, .continue-learning-card [class*="Badge"]');
+          if (activeBadge) {
+            gsap.from(activeBadge, { scale: 0.8, y: -4, duration: 0.4, ease: "back.out(2)" });
+          }
+
+          const cardEls = Array.from(
+            document.querySelectorAll<HTMLElement>(
+              ".dashboard-container .stat-card-inner"
+            )
+          );
+          cardEls.forEach((el) => {
+            el.addEventListener("mouseenter", () => {
+              gsap.to(el, { y: -2, duration: 0.18, ease: "power2.out" });
+            });
+            el.addEventListener("mouseleave", () => {
+              gsap.to(el, { y: 0, duration: 0.18, ease: "power2.out" });
+            });
+          });
+        }, document.querySelector(".dashboard-container") || undefined);
+      } catch (e) { void e; }
+    })();
+    return () => {
+      if (ctx && ctx.revert) ctx.revert();
+    };
+  }, [isVibrant]);
+
   const handleJoinSession = async (session: SessionDetails) => {
     // Track live session join attempt
     track("Live Session Join Attempted", {
@@ -500,6 +580,7 @@ export function DashboardComponent() {
         });
 
         // Track successful live session join
+        try { if (isVibrant) dingSound.play(); } catch (e) { void e; }
         track("Live Session Joined Successfully", {
           sessionId: session.session_id,
           sessionTitle: session.title,
@@ -542,9 +623,9 @@ export function DashboardComponent() {
   };
 
   return (
-    <div className={`min-h-screen bg-white dark:bg-neutral-950 relative overflow-hidden w-full dashboard-container smooth-scroll ${uiType === "vibrant" ? "ui-vibrant" : ""}`}>
+    <div className={`min-h-screen bg-white dark:bg-neutral-950 relative overflow-hidden w-full dashboard-container smooth-scroll ${isVibrant ? "ui-vibrant" : ""}`}>
       <Helmet>
-        <title>{document?.title || "Dashboard"}</title>
+        <title>{(typeof document !== "undefined" && document.title) ? document.title : "Dashboard"}</title>
         <meta
           name="description"
           content="Enterprise Dashboard - Learning Management System"
@@ -560,12 +641,12 @@ export function DashboardComponent() {
 
       <div className="relative z-10 space-y-3 sm:space-y-4 md:space-y-5 p-3 sm:p-4 md:p-5 mx-auto w-full">
         {/* Enhanced Header Section */}
-        <div className="animate-fade-in-down">
+        <div className="animate-fade-in-down" data-anim="section">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2.5 sm:gap-3.5 lg:gap-5">
             <div className="flex flex-col sm:flex-row sm:items-center space-y-3 sm:space-y-0 sm:space-x-3 md:space-x-4 min-w-0">
               <div className="relative flex-shrink-0">
                 <div className="dashboard-user-avatar w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 bg-primary-100 rounded-full flex items-center justify-center shadow-md overflow-hidden">
-                  {uiType === "vibrant" ? (
+                  {isVibrant ? (
                     <BoringAvatar
                       size={64}
                       name={username || "User"}
@@ -639,12 +720,12 @@ export function DashboardComponent() {
         </div>
 
         {/* Dashboard Pins Panel */}
-        <div className="animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
+        <div className="animate-fade-in-up" style={{ animationDelay: "0.1s" }} data-anim="section">
           <DashboardPinsPanel maxPins={3} />
         </div>
 
         {/* Recent System Notifications Widget */}
-        <div className="animate-fade-in-up" style={{ animationDelay: "0.15s" }}>
+        <div className="animate-fade-in-up" style={{ animationDelay: "0.15s" }} data-anim="section">
           <RecentSystemNotifications />
         </div>
 
@@ -654,6 +735,7 @@ export function DashboardComponent() {
             <div
               className="animate-fade-in-up"
               style={{ animationDelay: "0.2s" }}
+              data-anim="section"
             >
               <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fit,minmax(260px,1fr))] lg:grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-2.5 sm:gap-3.5 md:gap-5">
                 {[
@@ -990,7 +1072,7 @@ export function DashboardComponent() {
                   <CardContent className="p-3 sm:p-4 md:p-6">
                     <div className="flex items-center space-x-2 sm:space-x-3 md:space-x-4">
                       <div className="p-1.5 sm:p-2 md:p-3 bg-blue-100 rounded-md sm:rounded-lg flex-shrink-0">
-                        {document.documentElement.classList.contains("ui-vibrant") ? (
+                        {isVibrant ? (
                           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" className="sm:w-5 sm:h-5" fill="currentColor"><path d="M2 8.5C2 7.67 2.67 7 3.5 7H8l1.5-2H14l1.5 2H20.5C21.33 7 22 7.67 22 8.5V19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.5Zm6.75 5.25a.75.75 0 0 0-1.5 0v3a.75.75 0 0 0 1.5 0v-3Zm4 0a.75.75 0 0 0-1.5 0v3a.75.75 0 0 0 1.5 0v-3Zm4 0a.75.75 0 0 0-1.5 0v3a.75.75 0 0 0 1.5 0v-3Z"/></svg>
                         ) : (
                           <Users weight="duotone" size={16} className="text-blue-600 sm:w-5 sm:h-5" />
@@ -1024,7 +1106,7 @@ export function DashboardComponent() {
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 md:gap-4">
                     <CardTitle className="flex items-center space-x-2 sm:space-x-3 text-sm sm:text-base md:text-lg">
                       <div className="p-1.5 sm:p-2 bg-green-100 rounded-lg flex-shrink-0">
-                        {document.documentElement.classList.contains("ui-vibrant") ? (
+                        {isVibrant ? (
                           <IconVideo size={18} className="text-green-600 sm:w-4 sm:h-4" />
                         ) : (
                           <BookOpen weight="duotone" size={16} className="text-green-600 sm:w-4 sm:h-4" />

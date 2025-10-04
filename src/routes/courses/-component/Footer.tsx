@@ -36,12 +36,12 @@ const Footer: React.FC = () => {
               </a>
             </li>
             <li>
-              <a href="#about" className="hover:text-blue-400 transition">
+              <a href="https://codecircle.org/about.html" className="hover:text-blue-400 transition">
                 About
               </a>
             </li>
             <li>
-              <a href="#impact" className="hover:text-blue-400 transition">
+              <a href="https://codecircle.org/impact/stories.html" className="hover:text-blue-400 transition">
                 Impact
               </a>
             </li>
@@ -51,12 +51,12 @@ const Footer: React.FC = () => {
               </a>
             </li>
             <li>
-              <a href="#involved" className="hover:text-blue-400 transition">
+              <a href="https://codecircle.org/get-involved.html" className="hover:text-blue-400 transition">
                 Get Involved
               </a>
             </li>
             <li>
-              <a href="#contact" className="hover:text-blue-400 transition">
+              <a href="https://codecircle.org/contact.html" className="hover:text-blue-400 transition">
                 Contact
               </a>
             </li>

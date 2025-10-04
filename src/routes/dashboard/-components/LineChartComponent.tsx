@@ -9,11 +9,11 @@ import { Calendar, Clock, TrendingUp, Users } from "lucide-react";
 const chartConfig = {
     avg_daily_time_minutes: {
         label: "Your Time",
-        color: "hsl(var(--primary))", 
+        color: typeof document !== 'undefined' && document.documentElement.classList.contains('ui-vibrant') ? '#AFD9E8' : 'hsl(var(--primary))', 
     },
     avg_daily_time_minutes_batch: {
         label: "Batch Average",
-        color: "hsl(var(--muted-foreground))", 
+        color: typeof document !== 'undefined' && document.documentElement.classList.contains('ui-vibrant') ? '#B2DFDB' : 'hsl(var(--muted-foreground))', 
     },
 } satisfies ChartConfig;
 
@@ -240,18 +240,18 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                                     dataKey="avg_daily_time_minutes_batch"
                                     type="monotone"
                                     name="Batch Average"
-                                    stroke="hsl(var(--muted-foreground))"
+                                    stroke={document.documentElement.classList.contains('ui-vibrant') ? '#B2DFDB' : 'hsl(var(--muted-foreground))'}
                                     strokeWidth={2}
                                     strokeDasharray="8 4"
                                     dot={{
-                                        fill: "hsl(var(--muted-foreground))",
+                                        fill: document.documentElement.classList.contains('ui-vibrant') ? '#B2DFDB' : 'hsl(var(--muted-foreground))',
                                         r: 3,
                                         strokeWidth: 2,
                                         stroke: "white"
                                     }}
                                     activeDot={{
                                         r: 5,
-                                        stroke: "hsl(var(--muted-foreground))",
+                                        stroke: document.documentElement.classList.contains('ui-vibrant') ? '#B2DFDB' : 'hsl(var(--muted-foreground))',
                                         strokeWidth: 3,
                                         fill: "white",
                                         className: "animate-gentle-pulse"
@@ -263,18 +263,18 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                                     dataKey="avg_daily_time_minutes"
                                     type="monotone"
                                     name="Your Time"
-                                    stroke="hsl(var(--primary))"
+                                    stroke={document.documentElement.classList.contains('ui-vibrant') ? '#AFD9E8' : 'hsl(var(--primary))'}
                                     strokeWidth={3}
                                     fill="none"
                                     dot={{
-                                        fill: "hsl(var(--primary))",
+                                        fill: document.documentElement.classList.contains('ui-vibrant') ? '#AFD9E8' : 'hsl(var(--primary))',
                                         r: 4,
                                         strokeWidth: 3,
                                         stroke: "white"
                                     }}
                                     activeDot={{
                                         r: 6,
-                                        stroke: "hsl(var(--primary))",
+                                        stroke: document.documentElement.classList.contains('ui-vibrant') ? '#AFD9E8' : 'hsl(var(--primary))',
                                         strokeWidth: 3,
                                         fill: "white",
                                         className: "animate-gentle-pulse"

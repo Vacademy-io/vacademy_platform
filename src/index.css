@@ -52,6 +52,22 @@
         --primary-400: 26 86% 61%;
         --primary-500: 24 85% 54%;
 
+        /* Secondary palette fallbacks (overridden by theme-provider at runtime) */
+        --secondary-50: 210 40% 98%;
+        --secondary-100: 210 40% 96%;
+        --secondary-200: 210 32% 90%;
+        --secondary-300: 210 24% 82%;
+        --secondary-400: 210 18% 70%;
+        --secondary-500: 210 16% 60%;
+
+        /* Tertiary palette fallbacks (overridden by theme-provider at runtime) */
+        --tertiary-50: 0 0% 99%;
+        --tertiary-100: 0 0% 98%;
+        --tertiary-200: 0 0% 96%;
+        --tertiary-300: 0 0% 92%;
+        --tertiary-400: 0 0% 86%;
+        --tertiary-500: 0 0% 74%;
+
         --danger-50: 0 100% 99%;
         --danger-100: 0 86% 97%;
         --danger-200: 351 100% 96%;
@@ -155,6 +171,11 @@
   .ui-vibrant .sidebar-content .border { border-width: 2px !important; }
   .ui-vibrant .sidebar-content .bg-primary-50 { background-color: hsl(var(--primary-100)) !important; }
   .ui-vibrant .sidebar-content .hover\:bg-primary-50:hover { background-color: hsl(var(--primary-200)) !important; }
+  /* Add secondary/tertiary options in vibrant sidebar */
+  .ui-vibrant .sidebar-content .bg-secondary-50 { background-color: hsl(var(--secondary-100)) !important; }
+  .ui-vibrant .sidebar-content .hover\:bg-secondary-50:hover { background-color: hsl(var(--secondary-200)) !important; }
+  .ui-vibrant .sidebar-content .bg-tertiary-50 { background-color: hsl(var(--tertiary-100)) !important; }
+  .ui-vibrant .sidebar-content .hover\:bg-tertiary-50:hover { background-color: hsl(var(--tertiary-200)) !important; }
 
   /* Sidebar/menu typography bump for kids */
   .ui-vibrant .sidebar-content { font-size: 1rem; }
@@ -182,6 +203,9 @@
   .ui-vibrant .course-card-title-icon { display: inline-block !important; }
   .ui-vibrant .level-badge { border-width: 2px !important; }
   .ui-vibrant .course-tag { background-color: hsl(var(--info-100)) !important; color: hsl(var(--info-700)) !important; border-color: hsl(var(--info-300)) !important; }
+  /* Secondary/Tertiary tag variants */
+  .ui-vibrant .course-tag--secondary { background-color: hsl(var(--secondary-100)) !important; color: hsl(var(--secondary-500)) !important; border-color: hsl(var(--secondary-300)) !important; }
+  .ui-vibrant .course-tag--tertiary { background-color: hsl(var(--tertiary-100)) !important; color: hsl(var(--text-secondary)) !important; border-color: hsl(var(--tertiary-300)) !important; }
   .ui-vibrant .course-stats { background: hsl(var(--primary-50)); border-color: hsl(var(--primary-200)); }
 
   /* Global small text bumps for better readability */
@@ -208,6 +232,9 @@
   .ui-vibrant .continue-learning-card { border-color: hsl(var(--primary-200)) !important; }
   .ui-vibrant .dashboard-user-avatar { background-color: hsl(var(--primary-200)) !important; }
   .ui-vibrant .dashboard-user-avatar { border: 2px solid hsl(var(--primary-300)) !important; }
+  /* Secondary/Tertiary card variants */
+  .ui-vibrant .card-secondary { background-color: hsl(var(--secondary-50)) !important; border-color: hsl(var(--secondary-200)) !important; }
+  .ui-vibrant .card-tertiary { background-color: hsl(var(--tertiary-50)) !important; border-color: hsl(var(--tertiary-200)) !important; }
 
   /* Category-specific solid colors for stat cards */
   .ui-vibrant .stat-card--courses .stat-card-inner { background-color: hsl(var(--info-500)) !important; border-color: hsl(var(--info-400)) !important; }
@@ -215,6 +242,15 @@
   .ui-vibrant .stat-card--evaluations .stat-card-inner { background-color: hsl(var(--success-500)) !important; border-color: hsl(var(--success-400)) !important; }
   .ui-vibrant .stat-card--attendance .stat-card-inner { background-color: hsl(var(--primary-500)) !important; border-color: hsl(var(--primary-400)) !important; }
   .ui-vibrant .stat-card--live .stat-card-inner { background-color: hsl(var(--success-500)) !important; border-color: hsl(var(--success-400)) !important; }
+  /* Pastel overrides for dashboard stat cards (theme-agnostic) */
+  .ui-vibrant .dashboard-container .stat-card--courses .stat-card-inner { background-color: #AFD9E8 !important; border-color: #8BC6DC !important; color: #0f172a !important; }
+  .ui-vibrant .dashboard-container .stat-card--assignments .stat-card-inner { background-color: #FFDAB9 !important; border-color: #FFC899 !important; color: #0f172a !important; }
+  .ui-vibrant .dashboard-container .stat-card--evaluations .stat-card-inner { background-color: #D7BDE2 !important; border-color: #C9A7D7 !important; color: #0f172a !important; }
+  .ui-vibrant .dashboard-container .stat-card--attendance .stat-card-inner { background-color: #B6E2B6 !important; border-color: #94D794 !important; color: #0f172a !important; }
+  .ui-vibrant .dashboard-container .stat-card--live .stat-card-inner { background-color: #B2DFDB !important; border-color: #93D3CD !important; color: #0f172a !important; }
+  /* Optional alt stat colors using secondary/tertiary */
+  .ui-vibrant .stat-card--alt-secondary .stat-card-inner { background-color: hsl(var(--secondary-500)) !important; border-color: hsl(var(--secondary-400)) !important; color: hsl(var(--primary-foreground)) !important; }
+  .ui-vibrant .stat-card--alt-tertiary .stat-card-inner { background-color: hsl(var(--tertiary-500)) !important; border-color: hsl(var(--tertiary-400)) !important; color: hsl(var(--text-primary)) !important; }
 
   /* Ensure icon chip contrasts on solid cards */
   .ui-vibrant .stat-card--courses .stat-card-icon,
@@ -247,6 +283,14 @@
   .ui-vibrant .stat-card--assignments .stat-card-title::before { background: linear-gradient(135deg, hsl(var(--warning-300)), hsl(var(--warning-500))); }
   .ui-vibrant .stat-card--evaluations .stat-card-title::before { background: linear-gradient(135deg, hsl(var(--success-300)), hsl(var(--success-500))); }
   .ui-vibrant .stat-card--live .stat-card-title::before { background: linear-gradient(135deg, hsl(var(--success-300)), hsl(var(--success-500))); }
+
+  /* Prevent double animation conflicts in vibrant mode (GSAP handles it) */
+  .ui-vibrant .animate-fade-in-up { animation: none !important; opacity: 1 !important; transform: none !important; }
+  .ui-vibrant .animate-fade-in-down { animation: none !important; opacity: 1 !important; transform: none !important; }
+
+  /* Ensure non-vibrant animated elements retain their final state */
+  .animate-fade-in-up { animation-fill-mode: both; }
+  .animate-fade-in-down { animation-fill-mode: both; }
 
   /* ================= Playful page backgrounds (vibrant) ================ */
   .ui-vibrant .dashboard-container {
@@ -281,6 +325,12 @@
     outline: 0.5px solid hsl(var(--border));
     outline-offset: 0;
   }
+
+  /* Vibrant chips using secondary and tertiary palettes */
+  .ui-vibrant .chip-secondary { background-color: hsl(var(--secondary-100)) !important; color: hsl(var(--primary-foreground)) !important; border-color: hsl(var(--secondary-300)) !important; }
+  .ui-vibrant .chip-secondary-strong { background-color: hsl(var(--secondary-200)) !important; color: hsl(var(--primary)) !important; border-color: hsl(var(--secondary-400)) !important; }
+  .ui-vibrant .chip-tertiary { background-color: hsl(var(--tertiary-100)) !important; color: hsl(var(--text-secondary)) !important; border-color: hsl(var(--tertiary-300)) !important; }
+  .ui-vibrant .chip-tertiary-strong { background-color: hsl(var(--tertiary-200)) !important; color: hsl(var(--text-primary)) !important; border-color: hsl(var(--tertiary-400)) !important; }
   .ui-vibrant button:hover,
   .ui-vibrant .btn:hover,
   .ui-vibrant .my-button:hover {
@@ -294,6 +344,12 @@
     box-shadow: inset 0 -2px 0 hsl(var(--primary-300));
     transform: translateY(0);
   }
+
+  /* Vibrant buttons using secondary/tertiary */
+  .ui-vibrant .btn-secondary { background-color: hsl(var(--secondary-500)) !important; color: hsl(var(--primary-foreground)) !important; border-color: hsl(var(--secondary-400)) !important; box-shadow: inset 0 -1.5px 0 hsl(var(--secondary-300)); }
+  .ui-vibrant .btn-secondary:hover { background-color: hsl(var(--secondary-400)) !important; box-shadow: inset 0 -6px 0 hsl(var(--secondary-500)); }
+  .ui-vibrant .btn-tertiary { background-color: hsl(var(--tertiary-500)) !important; color: hsl(var(--text-primary)) !important; border-color: hsl(var(--tertiary-400)) !important; box-shadow: inset 0 -1.5px 0 hsl(var(--tertiary-300)); }
+  .ui-vibrant .btn-tertiary:hover { background-color: hsl(var(--tertiary-400)) !important; box-shadow: inset 0 -6px 0 hsl(var(--tertiary-500)); }
 
   /* Use neutral backgrounds where possible in vibrant for non-primary surfaces */
   .ui-vibrant .bg-gray-50 { background-color: hsl(var(--surface-muted)) !important; }
@@ -528,9 +584,7 @@
 
 /* ========== Vibrant UI additive styles (opt-in via .ui-vibrant on container) ========== */
 @layer components {
-  .ui-vibrant .dashboard-container {
-    /* playful background accents without gradients */
-  }
+  
 
   .ui-vibrant .stat-card .text-xl,
   .ui-vibrant .stat-card .text-2xl,
@@ -563,4 +617,134 @@
   .ui-vibrant .bg-info-100 { background-color: hsl(var(--info-100)) !important; color: hsl(var(--info-700)) !important; }
   .ui-vibrant .badge-warning,
   .ui-vibrant .bg-warning-100 { background-color: hsl(var(--warning-100)) !important; color: hsl(var(--warning-700)) !important; }
+  .ui-vibrant .badge-secondary { background-color: hsl(var(--secondary-100)) !important; color: hsl(var(--secondary-500)) !important; border: 1px solid hsl(var(--secondary-300)) !important; }
+  .ui-vibrant .badge-tertiary { background-color: hsl(var(--tertiary-100)) !important; color: hsl(var(--text-secondary)) !important; border: 1px solid hsl(var(--tertiary-300)) !important; }
+  
+  /* ========== Vibrant Pastel Palette (theme-agnostic) ========== */
+  /* Fixed pastel utilities to use across vibrant widgets regardless of theme */
+  .ui-vibrant .pastel-bg-blue { background-color: #AFD9E8 !important; }
+  .ui-vibrant .pastel-border-blue { border-color: #AFD9E8 !important; }
+  .ui-vibrant .pastel-bg-green { background-color: #B6E2B6 !important; }
+  .ui-vibrant .pastel-border-green { border-color: #B6E2B6 !important; }
+  .ui-vibrant .pastel-bg-yellow { background-color: #FFF5BA !important; }
+  .ui-vibrant .pastel-border-yellow { border-color: #FFF5BA !important; }
+  .ui-vibrant .pastel-bg-red { background-color: #FFB5B5 !important; }
+  .ui-vibrant .pastel-border-red { border-color: #FFB5B5 !important; }
+  .ui-vibrant .pastel-bg-purple { background-color: #D7BDE2 !important; }
+  .ui-vibrant .pastel-border-purple { border-color: #D7BDE2 !important; }
+  .ui-vibrant .pastel-bg-orange { background-color: #FFDAB9 !important; }
+  .ui-vibrant .pastel-border-orange { border-color: #FFDAB9 !important; }
+  .ui-vibrant .pastel-bg-pink { background-color: #FBC4C4 !important; }
+  .ui-vibrant .pastel-border-pink { border-color: #FBC4C4 !important; }
+  .ui-vibrant .pastel-bg-teal { background-color: #B2DFDB !important; }
+  .ui-vibrant .pastel-border-teal { border-color: #B2DFDB !important; }
+
+  /* Pastel chips and badges */
+  .ui-vibrant .pastel-chip { color: #0f172a !important; border-width: 1px !important; }
+  .ui-vibrant .pastel-chip-blue { background-color: #AFD9E8 !important; border-color: #8bc6dc !important; color: #0f172a !important; }
+  .ui-vibrant .pastel-chip-green { background-color: #B6E2B6 !important; border-color: #94d794 !important; color: #0f172a !important; }
+  .ui-vibrant .pastel-chip-yellow { background-color: #FFF5BA !important; border-color: #ffe98a !important; color: #0f172a !important; }
+  .ui-vibrant .pastel-chip-red { background-color: #FFB5B5 !important; border-color: #ff9b9b !important; color: #0f172a !important; }
+  .ui-vibrant .pastel-chip-purple { background-color: #D7BDE2 !important; border-color: #c9a7d7 !important; color: #0f172a !important; }
+  .ui-vibrant .pastel-chip-orange { background-color: #FFDAB9 !important; border-color: #ffc899 !important; color: #0f172a !important; }
+  .ui-vibrant .pastel-chip-pink { background-color: #FBC4C4 !important; border-color: #f7a9a9 !important; color: #0f172a !important; }
+  .ui-vibrant .pastel-chip-teal { background-color: #B2DFDB !important; border-color: #93d3cd !important; color: #0f172a !important; }
+
+  /* Tab trigger active override helper */
+  .ui-vibrant .pastel-tab-active[data-state="active"] { background-color: #AFD9E8 !important; color: #0f172a !important; }
+
+  /* ========== Playful white surfaces (vibrant) ========== */
+  /* Subtle dot pattern that respects the current theme palette */
+  .ui-vibrant .bg-white,
+  .ui-vibrant .card,
+  .ui-vibrant .Card {
+    background-image:
+      radial-gradient(hsl(var(--primary-50) / 0.45) 1px, transparent 1px),
+      radial-gradient(hsl(var(--secondary-50) / 0.35) 1px, transparent 1px);
+    background-size: 24px 24px, 32px 32px;
+    background-position: 0 0, 12px 12px;
+  }
+
+  /* Opt‑in helpers for stronger patterns on hero/empty states */
+  .ui-vibrant .playful-surface {
+    background-color: hsl(var(--surface));
+    background-image:
+      radial-gradient(hsl(var(--primary-50) / 0.6) 1px, transparent 1px),
+      radial-gradient(hsl(var(--tertiary-50) / 0.6) 1.2px, transparent 1px);
+    background-size: 22px 22px, 28px 28px;
+    background-position: 0 0, 11px 11px;
+  }
+
+  .ui-vibrant .playful-surface--stripes {
+    background-image:
+      linear-gradient(135deg, hsl(var(--primary-50) / 0.35) 12.5%, transparent 12.5%, transparent 50%, hsl(var(--primary-50) / 0.35) 50%, hsl(var(--primary-50) / 0.35) 62.5%, transparent 62.5%, transparent 100%),
+      linear-gradient(135deg, hsl(var(--secondary-50) / 0.35) 12.5%, transparent 12.5%, transparent 50%, hsl(var(--secondary-50) / 0.35) 50%, hsl(var(--secondary-50) / 0.35) 62.5%, transparent 62.5%, transparent 100%);
+    background-size: 16px 16px, 16px 16px;
+    background-position: 0 0, 8px 8px;
+  }
+
+  /* Escape hatch to opt-out on specific elements */
+  .ui-vibrant .no-surface-pattern { background-image: none !important; }
+
+  /* ========== Additional playful surface variants (opt-in) ========== */
+  /* Crisp grid using theme tints */
+  .ui-vibrant .playful-surface--grid {
+    background-color: hsl(var(--surface));
+    background-image:
+      repeating-linear-gradient(0deg, hsl(var(--secondary-50) / 0.45) 0 1px, transparent 1px 16px),
+      repeating-linear-gradient(90deg, hsl(var(--secondary-50) / 0.45) 0 1px, transparent 1px 16px);
+    background-size: 16px 16px, 16px 16px;
+  }
+
+  /* Playful bubbles using radial spots */
+  .ui-vibrant .playful-surface--bubbles {
+    background-color: hsl(var(--surface));
+    background-image:
+      radial-gradient(circle at 20% 28%, hsl(var(--primary-50) / 0.6) 0 12px, transparent 13px),
+      radial-gradient(circle at 78% 22%, hsl(var(--info-50) / 0.55) 0 10px, transparent 11px),
+      radial-gradient(circle at 64% 76%, hsl(var(--success-50) / 0.55) 0 14px, transparent 15px),
+      radial-gradient(circle at 18% 78%, hsl(var(--warning-50) / 0.45) 0 9px, transparent 10px);
+    background-size: auto;
+    background-repeat: no-repeat;
+  }
+
+  /* Sunburst rays from corners (very subtle) */
+  .ui-vibrant .playful-surface--rays {
+    background-color: hsl(var(--surface));
+    background-image:
+      conic-gradient(from 225deg at 0% 0%, hsl(var(--primary-50) / 0.45) 0 22deg, transparent 22deg),
+      conic-gradient(from 315deg at 100% 0%, hsl(var(--info-50) / 0.4) 0 18deg, transparent 18deg);
+    background-size: 100% 100%, 100% 100%;
+    background-repeat: no-repeat;
+  }
+
+  /* Corner doodles using radial accents */
+  .ui-vibrant .playful-surface--corners {
+    background-color: hsl(var(--surface));
+    background-image:
+      radial-gradient(24px 24px at 12px 12px, hsl(var(--primary-50) / 0.7) 0 12px, transparent 13px),
+      radial-gradient(22px 22px at calc(100% - 12px) 12px, hsl(var(--secondary-50) / 0.6) 0 11px, transparent 12px),
+      radial-gradient(26px 26px at 12px calc(100% - 12px), hsl(var(--info-50) / 0.6) 0 13px, transparent 14px),
+      radial-gradient(20px 20px at calc(100% - 12px) calc(100% - 12px), hsl(var(--success-50) / 0.6) 0 10px, transparent 11px);
+    background-repeat: no-repeat;
+    background-size: auto;
+  }
+
+  /* Soft noise/grain effect (very light, theme-agnostic) */
+  .ui-vibrant .playful-surface--noise {
+    background-color: hsl(var(--surface));
+    background-image:
+      repeating-linear-gradient(0deg, rgba(0,0,0,0.018) 0 2px, rgba(0,0,0,0) 2px 4px),
+      repeating-linear-gradient(90deg, rgba(0,0,0,0.012) 0 2px, rgba(0,0,0,0) 2px 4px);
+    background-blend-mode: multiply;
+  }
 }
+
+/* Ensure dark text on pastel stat cards (override white mapping) */
+.ui-vibrant .dashboard-container [class*="stat-card--"] .stat-card-inner .text-gray-900,
+.ui-vibrant .dashboard-container [class*="stat-card--"] .stat-card-inner .text-gray-800,
+.ui-vibrant .dashboard-container [class*="stat-card--"] .stat-card-inner .text-gray-700,
+.ui-vibrant .dashboard-container [class*="stat-card--"] .stat-card-inner .text-gray-600,
+.ui-vibrant .dashboard-container [class*="stat-card--"] .stat-card-inner .text-primary-600 { color: #0f172a !important; }
+.ui-vibrant .dashboard-container [class*="stat-card--"] .stat-card-inner .group:hover [class*="group-hover:text-primary-"] { color: #0f172a !important; }
+.ui-vibrant .dashboard-container [class*="stat-card--"] .stat-card-inner .group:hover .lucide-chevron-right { color: #0f172a !important; }

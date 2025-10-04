@@ -49,7 +49,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 4;
+  const itemsPerPage = 10;
 
   const paginatedCourses = courseData.slice(
     (currentPage - 1) * itemsPerPage,
@@ -155,7 +155,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                           }))
                         : []
                     }
-                    rating={course.rating || 4}
+                    rating={course.rating || 5}
                     description={
                       course.course_html_description_html || fallbackDescription
                     }

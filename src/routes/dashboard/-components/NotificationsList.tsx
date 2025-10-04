@@ -37,7 +37,7 @@ export function NotificationList() {
             
             <TabsList className="bg-gradient-to-r from-white to-slate-50 rounded-md p-1 w-fit mx-auto shadow border border-slate-200">
               <TabsTrigger
-                className="rounded-md px-4 py-2 text-sm font-medium text-slate-600 transition-colors data-[state=active]:bg-primary-600 data-[state=active]:text-white hover:bg-slate-100 relative overflow-hidden group"
+                className={`rounded-md px-4 py-2 text-sm font-medium text-slate-600 transition-colors ${document.documentElement.classList.contains('ui-vibrant') ? 'pastel-tab-active' : 'data-[state=active]:bg-primary-600 data-[state=active]:text-white'} hover:bg-slate-100 relative overflow-hidden group`}
                 value="General"
               >
                 <span className="relative z-10 flex items-center gap-2">
@@ -46,10 +46,10 @@ export function NotificationList() {
                   </svg>
                 General Notifications
                 </span>
-                <div className="absolute inset-0 bg-gradient-to-r from-primary-400 to-primary-500 opacity-0 group-hover:opacity-10 transition-opacity duration-300"></div>
+                <div className={`absolute inset-0 bg-gradient-to-r ${document.documentElement.classList.contains('ui-vibrant') ? 'from-[#AFD9E8] to-[#B2DFDB]' : 'from-primary-400 to-primary-500'} opacity-0 group-hover:opacity-10 transition-opacity duration-300`}></div>
               </TabsTrigger>
               <TabsTrigger
-                className="rounded-md px-4 py-2 text-sm font-medium text-slate-600 transition-colors data-[state=active]:bg-primary-600 data-[state=active]:text-white hover:bg-slate-100 relative overflow-hidden group"
+                className={`rounded-md px-4 py-2 text-sm font-medium text-slate-600 transition-colors ${document.documentElement.classList.contains('ui-vibrant') ? 'pastel-tab-active' : 'data-[state=active]:bg-primary-600 data-[state=active]:text-white'} hover:bg-slate-100 relative overflow-hidden group`}
                 value="Announcement"
               >
                 <span className="relative z-10 flex items-center gap-2">
@@ -58,7 +58,7 @@ export function NotificationList() {
                   </svg>
                 Announcements
                 </span>
-                <div className="absolute inset-0 bg-gradient-to-r from-primary-400 to-primary-500 opacity-0 group-hover:opacity-10 transition-opacity duration-300"></div>
+                <div className={`absolute inset-0 bg-gradient-to-r ${document.documentElement.classList.contains('ui-vibrant') ? 'from-[#AFD9E8] to-[#B2DFDB]' : 'from-primary-400 to-primary-500'} opacity-0 group-hover:opacity-10 transition-opacity duration-300`}></div>
               </TabsTrigger>
             </TabsList>
           </div>

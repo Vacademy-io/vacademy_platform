@@ -53,13 +53,13 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
   const getPriorityColor = (priority?: string) => {
     switch (priority) {
       case 'HIGH':
-        return 'bg-red-500 text-white';
+        return document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-red text-slate-800' : 'bg-red-500 text-white';
       case 'MEDIUM':
-        return 'bg-yellow-500 text-white';
+        return document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-yellow text-slate-800' : 'bg-yellow-500 text-white';
       case 'LOW':
-        return 'bg-blue-500 text-white';
+        return document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-blue text-slate-800' : 'bg-blue-500 text-white';
       default:
-        return 'bg-gray-500 text-white';
+        return document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-teal text-slate-800' : 'bg-gray-500 text-white';
     }
   };
 

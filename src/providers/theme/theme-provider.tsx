@@ -23,11 +23,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [primaryColor, setPrimaryColor] = useState("neutral");
 
   const getPrimaryColorCode = () => {
-    return (
-      themeData.themes.find((theme) => theme.code === primaryColor)?.colors[
-        "primary-500"
-      ] || "#6B7280"
-    );
+    const entry = themeData.themes.find((theme) => theme.code === primaryColor) as
+      | { colors?: { primary?: Record<"500", string> } }
+      | undefined;
+    const hex = entry?.colors?.primary?.["500"];
+    return hex || "#6B7280";
   };
 
   // Apply CSS variables when primary color changes
@@ -52,23 +52,77 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         }
       };
 
-      // Set all the color variables using our JSON theme data
-      setHSLFromHex("--primary", theme.colors["primary-500"]);
-      setHSLFromHex("--primary-50", theme.colors["primary-50"]);
-      setHSLFromHex("--primary-100", theme.colors["primary-100"]);
-      setHSLFromHex("--primary-200", theme.colors["primary-200"]);
-      setHSLFromHex("--primary-300", theme.colors["primary-300"]);
-      setHSLFromHex("--primary-400", theme.colors["primary-400"]);
-      setHSLFromHex("--primary-500", theme.colors["primary-500"]);
+      // Support both nested (primary.{50..500}) and flat ("primary-50") shapes
+      type Shade = "50" | "100" | "200" | "300" | "400" | "500";
+      type Palette = Record<Shade, string>;
+      type NestedColors = {
+        primary: Palette;
+        secondary?: Palette;
+        tertiary?: Palette;
+      };
+      type FlatColors = Record<`${"primary" | "secondary" | "tertiary"}-${Shade}`, string>;
+      type ThemeColors = NestedColors | FlatColors;
+
+      const isRecord = (value: unknown): value is Record<string, unknown> =>
+        value !== null && typeof value === "object";
+
+      const isNestedColors = (value: unknown): value is NestedColors => {
+        if (!isRecord(value)) return false;
+        const p = (value as Record<string, unknown>)["primary"];
+        if (!isRecord(p)) return false;
+        return typeof (p as Record<string, unknown>)["500"] === "string";
+      };
+
+      const getColorHex = (
+        category: "primary" | "secondary" | "tertiary",
+        shade: Shade
+      ): string | undefined => {
+        const colors: ThemeColors = theme.colors as unknown as ThemeColors;
+        if (isNestedColors(colors)) {
+          const palette = colors[category];
+          return palette ? palette[shade] : undefined;
+        }
+        const key = `${category}-${shade}` as const;
+        return (colors as FlatColors)[key];
+      };
+
+      const shades: Array<"50" | "100" | "200" | "300" | "400" | "500"> = [
+        "50",
+        "100",
+        "200",
+        "300",
+        "400",
+        "500",
+      ];
+
+      // Primary palette
+      const primary500 = getColorHex("primary", "500");
+      if (primary500) {
+        setHSLFromHex("--primary", primary500);
+      }
+      shades.forEach((shade) => {
+        const hex = getColorHex("primary", shade);
+        if (hex) setHSLFromHex(`--primary-${shade}`, hex);
+      });
 
       // Set primary foreground based on the brightness of primary-500
-      const [, , l] = convert.hex.hsl(
-        theme.colors["primary-500"].replace("#", "")
-      );
+      const [, , l] = convert.hex.hsl((primary500 || "#000000").replace("#", ""));
       document.documentElement.style.setProperty(
         "--primary-foreground",
         l > 60 ? "222.2 47.4% 11.2%" : "210 40% 98%"
       );
+
+      // Secondary palette (for vibrant accents)
+      shades.forEach((shade) => {
+        const hex = getColorHex("secondary", shade);
+        if (hex) setHSLFromHex(`--secondary-${shade}`, hex);
+      });
+
+      // Tertiary palette (for vibrant accents)
+      shades.forEach((shade) => {
+        const hex = getColorHex("tertiary", shade);
+        if (hex) setHSLFromHex(`--tertiary-${shade}`, hex);
+      });
 
       // Store the theme selection
       localStorage.setItem("theme-code", primaryColor);

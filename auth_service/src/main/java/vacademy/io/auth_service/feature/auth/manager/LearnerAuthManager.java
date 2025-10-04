@@ -239,7 +239,7 @@ public class LearnerAuthManager {
         String password = authRequestDTO.getPassword();
 
         Authentication authentication = authRequestDTO.getInstituteId() == null
-                ? authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(userName, password))
+                ? authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(null + "@" +userName, password))
                 : authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(
                         authRequestDTO.getInstituteId() + "@" + userName, password));
 

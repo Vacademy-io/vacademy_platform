@@ -154,7 +154,13 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
               ss.meeting_date > CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)
               OR (
                   ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)
-                  AND ss.start_time >= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS time)
+                  AND (
+                      ss.start_time <= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS time)
+                      AND (
+                          ss.last_entry_time IS NULL 
+                          OR ss.last_entry_time >= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS time)
+                      )
+                  )
               )
           )
         ORDER BY ss.meeting_date ASC, ss.start_time ASC

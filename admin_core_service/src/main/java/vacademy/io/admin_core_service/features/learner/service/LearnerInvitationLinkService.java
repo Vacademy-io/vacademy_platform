@@ -62,7 +62,7 @@ public class LearnerInvitationLinkService {
         }
     }
 
-    private String getRefFromUserCoupon(String userId) {
+    public String getRefFromUserCoupon(String userId) {
         try {
             Optional<CouponCode> couponCode = couponCodeService.getCouponCodeBySource(userId, "USER");
             return couponCode.map(CouponCode::getCode).orElse("xyz");

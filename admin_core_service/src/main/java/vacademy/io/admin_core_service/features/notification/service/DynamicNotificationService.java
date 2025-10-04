@@ -218,6 +218,7 @@ public class DynamicNotificationService {
                     .userEmail(user.getEmail())
                     .userMobile(user.getMobileNumber())
                     .userFullName(user.getFullName())
+                    .refCode(learnerInvitationLinkService.getRefFromUserCoupon(user.getId()))
                     
                     // Institute details
                     .instituteName(institute.getInstituteName())

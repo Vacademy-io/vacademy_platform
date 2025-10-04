@@ -52,6 +52,7 @@ public class NotificationTemplateVariables {
     // Referral template variables
     private String name; // User's name for greeting
     private String referralLink; // The referral link (same as learnerInvitationResponseLink)
+    private String refCode;
     private String inviteCode; // The invite code
     private String themeColor; // Theme color from institute
 

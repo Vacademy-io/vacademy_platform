@@ -148,6 +148,9 @@ public class SendUniqueLinkService {
             if (isEmpty(mergedParams.get("theme_color"))) {
                 mergedParams.put("theme_color", userParams.getOrDefault("themeColor", ""));
             }
+            if (isEmpty(mergedParams.get("ref_code"))) {
+                mergedParams.put("ref_code", userParams.getOrDefault("refCode", ""));
+            }
             
             // Add unique_link if not present
             if (isEmpty(mergedParams.get("unique_link"))) {

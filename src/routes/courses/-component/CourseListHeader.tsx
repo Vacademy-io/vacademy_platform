@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
-import { AuthModal } from "@/components/common/auth/modal/AuthModal";
+import { AuthModal, AuthModalRef } from "@/components/common/auth/modal/AuthModal";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { Button } from "@/components/ui/button";
@@ -11,16 +11,21 @@ const CourseListHeader = ({
   instituteId,
   type,
   courseId,
+  autoOpenLogin,
+  autoOpenDonation,
 }: {
   fileId?: string;
   instituteId?: string;
   type?: string;
   courseId?: string;
+  autoOpenLogin?: boolean;
+  autoOpenDonation?: boolean;
 }) => {
   const [imgUrl, setImgUrl] = useState("");
   const [logoLoading, setLogoLoading] = useState<boolean>(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDonationDialogOpen, setIsDonationDialogOpen] = useState(false);
+  const authModalRef = useRef<AuthModalRef | null>(null);
 
   useEffect(() => {
     setLogoLoading(true);
@@ -36,7 +41,21 @@ const CourseListHeader = ({
     };
 
     fetchDynamicLogo();
-  }, [instituteId]);
+  }, [instituteId, fileId]);
+
+  // Auto open login modal when requested via prop
+  useEffect(() => {
+    if (autoOpenLogin) {
+      authModalRef.current?.setIsOpen(true);
+    }
+  }, [autoOpenLogin]);
+
+  // Auto open donation dialog when requested via prop and institute is available
+  useEffect(() => {
+    if (autoOpenDonation && instituteId) {
+      setIsDonationDialogOpen(true);
+    }
+  }, [autoOpenDonation, instituteId]);
 
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
@@ -48,14 +67,14 @@ const CourseListHeader = ({
 
   const navigationItems = [
     { href: "#home", label: "Home" },
-    { href: "#about", label: "About" },
-    { href: "#impact", label: "Impact" },
+    { href: "https://codecircle.org/about.html", label: "About" },
+    { href: "https://codecircle.org/impact/stories.html", label: "Impact" },
     {
       href: "#courses",
       label: getTerminology(ContentTerms.Course, SystemTerms.Course) ,
     },
-    { href: "#involved", label: "Get Involved" },
-    { href: "#contact", label: "Contact" },
+    { href: "https://codecircle.org/get-involved.html", label: "Get Involved" },
+    { href: "https://codecircle.org/contact.html", label: "Contact" },
   ];
 
   return (
@@ -129,6 +148,7 @@ const CourseListHeader = ({
         </ul>
         <div className="flex gap-2 lg:gap-3">
           <AuthModal
+            ref={authModalRef}
             type={type}
             courseId={courseId}
             trigger={

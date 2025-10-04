@@ -1,7 +1,5 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import Footer from "./Footer.tsx";
-import InstructorCTASection from "./InstructorCTASection.tsx";
-import SupportersSection from "./SupportersSection.tsx";
 import CoursesPage from "./CoursesPage.tsx";
 import { useCatalogStore } from "../-store/catalogStore.ts";
 import axios from "axios";
@@ -18,10 +16,7 @@ import { isNullOrEmptyOrUndefined } from "@/lib/utils.ts";
 import { getPublicUrl } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/excalidrawUtils.ts";
 import { useTheme } from "@/providers/theme/theme-provider.tsx";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
-import {
-    AuthModal,
-    AuthModalRef,
-} from "@/components/common/auth/modal/AuthModal.tsx";
+// Auth modal is controlled within CourseListHeader via URL params
 import { Preferences } from "@capacitor/preferences";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 
@@ -49,8 +44,10 @@ const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }
         []
     );
 
-    // Ref for auto-login modal
-    const autoLoginModalRef = useRef<AuthModalRef | null>(null);
+    // Parse URL params for auto-open behaviors
+    const urlParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : "");
+    const autoOpenLogin = urlParams.get('login') === 'true';
+    const autoOpenDonation = urlParams.get('donation') === 'true';
 
     //api call to store the courses details
 
@@ -223,17 +220,7 @@ const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }
         redirectToDashboardIfAuthenticated();
     }, [navigate]);
 
-    // Auto-login modal effect - show modal 1 second after page load
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            // Programmatically open the auto-login modal after 1 second
-            if (autoLoginModalRef.current) {
-                autoLoginModalRef.current.setIsOpen(true);
-            }
-        }, 1000); // 1 second delay
-
-        return () => clearTimeout(timer);
-    }, []);
+    // Removed legacy auto-open login timer in favor of URL param based control
 
     // Show loading state if instituteId is not available yet
     if (!instituteId) {
@@ -244,8 +231,10 @@ const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }
         <div>
             <CourseListHeader
                 fileId={instituteData?.institute_logo_file_id || ""}
-                instituteId={instituteData?.id}
+                instituteId={instituteId}
                 type="coursesPage"
+                autoOpenLogin={autoOpenLogin}
+                autoOpenDonation={autoOpenDonation}
             />
 
             <div className="relative h-[250px] sm:h-[300px] lg:h-[370px]">
@@ -322,8 +311,6 @@ const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }
                 }}
                 instituteId={instituteId}
             />
-            <InstructorCTASection />
-            <SupportersSection />
             <Footer />
         </div>
     );

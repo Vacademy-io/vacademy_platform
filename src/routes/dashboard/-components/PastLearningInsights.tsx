@@ -72,11 +72,13 @@ const StatsCard = ({
   trendColor?: string;
   description: string;
   gradient: string;
-}) => (
+}) => {
+  const isVibrant = typeof document !== 'undefined' && document.documentElement.classList.contains('ui-vibrant');
+  return (
 <Card className="relative overflow-hidden bg-white dark:bg-neutral-900 shadow-sm hover:shadow-md transition-all duration-300 group">
     {/* Background gradient overlay */}
     <div
-      className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-300`}
+      className={`absolute inset-0 bg-gradient-to-br ${gradient} ${isVibrant ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity duration-300`}
     ></div>
 
     <CardContent className="relative p-4 sm:p-5">
@@ -107,10 +109,11 @@ const StatsCard = ({
       </div>
 
       {/* Progress indicator */}
-      <div className="absolute bottom-0 left-0 h-0.5 bg-gradient-to-r from-primary-400 to-primary-600 w-0 group-hover:w-full transition-all duration-500 ease-out"></div>
+      <div className={`absolute bottom-0 left-0 h-0.5 bg-gradient-to-r from-primary-400 to-primary-600 ${isVibrant ? 'w-full' : 'w-0 group-hover:w-full'} transition-all duration-500 ease-out`}></div>
     </CardContent>
   </Card>
 );
+}
 
 export const PastLearningInsights = () => {
   const { mutate: pastLearningInsights, isPending } = usePastLearningInsights();
@@ -183,9 +186,9 @@ export const PastLearningInsights = () => {
 <Card className="relative overflow-hidden bg-gradient-to-br from-white/90 via-primary-50/30 to-white/80 dark:from-neutral-900 dark:via-neutral-900/60 dark:to-neutral-800 shadow-sm hover:shadow-md transition-all duration-300 group">
         {/* Animated background pattern */}
         <div className="absolute inset-0 opacity-5">
-          <div className="absolute top-0 left-1/3 w-20 h-20 sm:w-32 sm:h-32 bg-primary-300 rounded-full blur-3xl animate-gentle-pulse"></div>
+          <div className={`absolute top-0 left-1/3 w-20 h-20 sm:w-32 sm:h-32 rounded-full blur-3xl animate-gentle-pulse ${document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-blue' : 'bg-primary-300'}`}></div>
           <div
-            className="absolute bottom-1/3 right-1/4 w-24 h-24 sm:w-40 sm:h-40 bg-primary-200 rounded-full blur-3xl animate-gentle-pulse"
+            className={`absolute bottom-1/3 right-1/4 w-24 h-24 sm:w-40 sm:h-40 rounded-full blur-3xl animate-gentle-pulse ${document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-teal' : 'bg-primary-200'}`}
             style={{ animationDelay: "1s" }}
           ></div>
         </div>
@@ -193,7 +196,8 @@ export const PastLearningInsights = () => {
         <CardHeader className="relative pb-3 sm:pb-5">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 lg:gap-5">
             <div className="flex flex-col sm:flex-row sm:items-center space-y-3 sm:space-y-0 sm:space-x-4">
-              <div className="p-2 sm:p-3 bg-gradient-to-br from-primary-100 to-primary-200 rounded-md sm:rounded-lg shadow-sm flex-shrink-0">
+              <div className={`p-2 sm:p-3 rounded-md sm:rounded-lg shadow-sm flex-shrink-0 ${document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-orange' : 'bg-gradient-to-br from-primary-100 to-primary-200'}`}
+              >
                 <TrendingUp
                   size={24}
                   className="text-primary-600 sm:w-7 sm:h-7"
@@ -212,7 +216,7 @@ export const PastLearningInsights = () => {
             </div>
 
             <div className="flex items-center justify-center sm:justify-end">
-              <Badge className="bg-primary-100 text-primary-700 border-primary-200 text-xs sm:text-sm px-2 sm:px-3 py-1">
+              <Badge className={`${document.documentElement.classList.contains('ui-vibrant') ? 'pastel-chip pastel-chip-green' : 'bg-primary-100 text-primary-700 border-primary-200'} text-xs sm:text-sm px-2 sm:px-3 py-1`}>
                 <Zap size={12} className="mr-1" />
                 Live Analytics
               </Badge>
@@ -228,7 +232,7 @@ export const PastLearningInsights = () => {
           value={avgTimeSpent}
           icon={Clock}
           description="Daily learning average"
-          gradient="from-blue-500/5 to-primary-500/5"
+          gradient={document.documentElement.classList.contains('ui-vibrant') ? 'from-[#AFD9E8] to-[#B2DFDB]' : 'from-blue-500/5 to-primary-500/5'}
         />
         <StatsCard
           title={`Active ${getTerminology(
@@ -245,7 +249,7 @@ export const PastLearningInsights = () => {
             ContentTerms.LiveSession,
             SystemTerms.LiveSession
           ).toLocaleLowerCase()}s this week`}
-          gradient="from-green-500/5 to-emerald-500/5"
+          gradient={document.documentElement.classList.contains('ui-vibrant') ? 'from-[#B6E2B6] to-[#FFF5BA]' : 'from-green-500/5 to-emerald-500/5'}
         />
         <StatsCard
           title="Learning Streak"
@@ -254,7 +258,7 @@ export const PastLearningInsights = () => {
           trend={streakDays >= 3 ? "🔥" : ""}
           trendColor="bg-warning-100 text-warning-700"
           description="Consecutive learning days"
-          gradient="from-purple-500/5 to-pink-500/5"
+          gradient={document.documentElement.classList.contains('ui-vibrant') ? 'from-[#D7BDE2] to-[#FBC4C4]' : 'from-purple-500/5 to-pink-500/5'}
         />
       </div>
 

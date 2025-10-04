@@ -396,7 +396,7 @@ export const CourseStructureDetails = ({
   useEffect(() => {
     setNavHeading(
       <div className="flex items-center gap-2">
-        <div>Study Materials</div>
+        <div>Course Details</div>
       </div>
     );
   }, []);

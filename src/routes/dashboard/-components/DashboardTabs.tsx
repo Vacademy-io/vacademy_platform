@@ -50,14 +50,14 @@ export function DashboardTabs({
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-primary-50 rounded-lg text-primary-600">
+          <div className={`p-2 ${document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-purple' : 'bg-primary-50'} rounded-lg text-primary-600`}>
             {displayIcon}
           </div>
           <div className="text-base font-semibold text-gray-900">
             {title}
           </div>
         </div>
-        <div className="px-3 py-1 bg-gray-100 rounded-full text-sm font-medium text-gray-700">
+        <div className={`px-3 py-1 ${document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-yellow' : 'bg-gray-100'} rounded-full text-sm font-medium text-gray-700`}>
           {count}
         </div>
       </div>
@@ -76,9 +76,9 @@ export function DashboardTabs({
           {list?.slice(0, 3).map((item, idx) => (
             <div 
               key={idx} 
-              className="flex items-center gap-3 py-2 px-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors duration-150"
+              className={`flex items-center gap-3 py-2 px-3 ${document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-blue' : 'bg-gray-50'} rounded-lg hover:bg-gray-100 transition-colors duration-150`}
             >
-              <div className="w-2 h-2 bg-primary-500 rounded-full flex-shrink-0"></div>
+              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-pink' : 'bg-primary-500'}`}></div>
               <div className="truncate text-sm font-medium text-gray-700">{item.slide_title}</div>
             </div>
           ))}

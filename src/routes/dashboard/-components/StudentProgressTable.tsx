@@ -66,8 +66,8 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
                 return (
                     <div className="flex items-center space-x-3">
                         <div className={`w-3 h-3 rounded-full ${
-                            isToday ? 'bg-primary-500 animate-pulse shadow-md' : 
-                            isRecent ? 'bg-primary-300' : 'bg-gray-300'
+                            isToday ? (document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-pink animate-pulse shadow-md' : 'bg-primary-500 animate-pulse shadow-md') : 
+                            isRecent ? (document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-yellow' : 'bg-primary-300') : 'bg-gray-300'
                         }`}></div>
                         <div>
                             <div className="text-sm font-semibold text-gray-900">
@@ -102,10 +102,10 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
                         <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
                             <div 
                                 className={`h-full rounded-full transition-all duration-700 ease-out ${
-                                    percentage >= 120 ? 'bg-success-500' :
-                                    percentage >= 100 ? 'bg-primary-500' :
-                                    percentage >= 80 ? 'bg-info-500' :
-                                    'bg-warning-500'
+                                    percentage >= 120 ? (document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-green' : 'bg-success-500') :
+                                    percentage >= 100 ? (document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-blue' : 'bg-primary-500') :
+                                    percentage >= 80 ? (document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-teal' : 'bg-info-500') :
+                                    (document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-yellow' : 'bg-warning-500')
                                 }`}
                                 style={{ width: `${Math.min(percentage, 100)}%` }}
                             ></div>

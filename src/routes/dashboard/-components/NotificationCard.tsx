@@ -48,7 +48,7 @@ export function NotifcationCard({
       
       {/* Floating Orb Effects */}
       <div className={`absolute -top-4 -right-4 w-8 h-8 ${
-        isNew ? 'bg-primary-200/30' : 'bg-slate-200/30'
+        isNew ? (document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-pink' : 'bg-primary-200/30') : 'bg-slate-200/30'
       } rounded-full blur-xl opacity-0 group-hover:opacity-100 transition-all duration-1000 animate-pulse`}></div>
       
       <div className="relative z-10">
@@ -56,7 +56,7 @@ export function NotifcationCard({
         <div className="flex items-start gap-3 mb-3">
           <div className={`p-2 rounded-md ${
             isNew 
-              ? 'bg-gradient-to-br from-primary-100 to-primary-200 text-primary-600' 
+              ? (document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-yellow' : 'bg-gradient-to-br from-primary-100 to-primary-200 text-primary-600') 
               : 'bg-gradient-to-br from-slate-100 to-slate-200 text-slate-600'
           } group-hover:scale-110 transition-transform duration-300`}>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -69,8 +69,8 @@ export function NotifcationCard({
             </h3>
             {isNew && (
               <div className="inline-flex items-center gap-1 mt-1">
-                <div className="w-1.5 h-1.5 bg-primary-500 rounded-full animate-pulse"></div>
-                <span className="text-sm font-semibold text-primary-600 tracking-wide">Just arrived</span>
+                <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-red' : 'bg-primary-500'}`}></div>
+                <span className={`text-sm font-semibold tracking-wide ${document.documentElement.classList.contains('ui-vibrant') ? 'text-slate-700' : 'text-primary-600'}`}>Just arrived</span>
               </div>
             )}
           </div>

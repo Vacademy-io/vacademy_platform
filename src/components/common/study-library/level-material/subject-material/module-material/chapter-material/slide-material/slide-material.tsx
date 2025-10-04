@@ -519,7 +519,7 @@ export const SlideMaterial = () => {
                 {heading || "No content"}
               </h3>
               <p className="text-xs font-medium text-neutral-500 uppercase tracking-wide animate-in fade-in slide-in-from-left-4 duration-500 delay-75">
-                Study Material
+                Course Details
               </p>
             </div>
           </div>

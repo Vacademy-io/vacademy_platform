@@ -284,6 +284,12 @@ importers:
       framer-motion:
         specifier: ^11.15.0
         version: 11.18.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      gsap:
+        specifier: ^3.13.0
+        version: 3.13.0
+      howler:
+        specifier: ^2.2.4
+        version: 2.2.4
       html2canvas:
         specifier: ^1.4.1
         version: 1.4.1
@@ -450,6 +456,9 @@ importers:
       '@types/crypto-js':
         specifier: ^4.2.2
         version: 4.2.2
+      '@types/howler':
+        specifier: ^2.2.12
+        version: 2.2.12
       '@types/i18next':
         specifier: ^13.0.0
         version: 13.0.0(typescript@5.6.3)
@@ -3339,6 +3348,9 @@ packages:
   '@types/hast@3.0.4':
     resolution: {integrity: sha512-WPs+bbQw5aCj+x6laNGWLH3wviHtoCv/P3+otBhbOhJgG8qtpdAMlTCxLtsTWA7LH1Oh/bFCHsBn0TPS5m30EQ==}
 
+  '@types/howler@2.2.12':
+    resolution: {integrity: sha512-hy769UICzOSdK0Kn1FBk4gN+lswcj1EKRkmiDtMkUGvFfYJzgaDXmVXkSShS2m89ERAatGIPnTUlp2HhfkVo5g==}
+
   '@types/i18next@13.0.0':
     resolution: {integrity: sha512-gp/SIShAuf4WOqi8ey0nuI7qfWaVpMNCcs/xLygrh/QTQIXmlDC1E0TtVejweNW+7SGDY7g0lyxyKZIJuCKIJw==}
     deprecated: This is a stub types definition. i18next provides its own type definitions, so you do not need this installed.
@@ -5102,6 +5114,9 @@ packages:
   growly@1.3.0:
     resolution: {integrity: sha512-+xGQY0YyAWCnqy7Cd++hc2JqMYzlm0dG30Jd0beaA64sROr8C4nt8Yc9V5Ro3avlSUDTN0ulqP/VBKi1/lLygw==}
 
+  gsap@3.13.0:
+    resolution: {integrity: sha512-QL7MJ2WMjm1PHWsoFrAQH/J8wUeqZvMtHO58qdekHpCfhvhSL4gSiz6vJf5EeMP0LOn3ZCprL2ki/gjED8ghVw==}
+
   hachure-fill@0.5.2:
     resolution: {integrity: sha512-3GKBOn+m2LX9iq+JC1064cSFprJY4jL1jCXTcpnfER5HYE2l/4EfWSGzkPa/ZDBmYI0ZOEj5VHV/eKnPGkHuOg==}
 
@@ -5157,6 +5172,9 @@ packages:
   hosted-git-info@4.1.0:
     resolution: {integrity: sha512-kyCuEOWjJqZuDbRHzL8V93NzQhwIB71oFWSyzVo+KPZI+pnQPPxucdkrOZvkLRnrf5URsQM+IJ09Dw29cRALIA==}
     engines: {node: '>=10'}
+
+  howler@2.2.4:
+    resolution: {integrity: sha512-iARIBPgcQrwtEr+tALF+rapJ8qSc+Set2GJQl7xT1MQzWaVkFebdJhR3alVlSiUf5U7nAANKuj3aWpwerocD5w==}
 
   html-encoding-sniffer@4.0.0:
     resolution: {integrity: sha512-Y22oTqIU4uuPgEemfz7NDJz6OeKf12Lsu+QC+s3BVpda64lTiMYCyGwg5ki4vFxkMwQdeZDl2adZoqUgdFuTgQ==}
@@ -10950,6 +10968,8 @@ snapshots:
     dependencies:
       '@types/unist': 3.0.3
 
+  '@types/howler@2.2.12': {}
+
   '@types/i18next@13.0.0(typescript@5.6.3)':
     dependencies:
       i18next: 24.2.3(typescript@5.6.3)
@@ -13082,6 +13102,8 @@ snapshots:
 
   growly@1.3.0: {}
 
+  gsap@3.13.0: {}
+
   hachure-fill@0.5.2: {}
 
   hammerjs@2.0.8: {}
@@ -13145,6 +13167,8 @@ snapshots:
   hosted-git-info@4.1.0:
     dependencies:
       lru-cache: 6.0.0
+
+  howler@2.2.4: {}
 
   html-encoding-sniffer@4.0.0:
     dependencies:

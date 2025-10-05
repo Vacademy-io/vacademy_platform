@@ -148,6 +148,12 @@ const RegistrationStep = ({
   // Send OTP for email verification
   const handleSendOTP = async () => {
     const email = form.getValues("email")?.value;
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
     if (!email) {
       toast.error("Please enter your email address");
       return;
@@ -380,7 +386,7 @@ const RegistrationStep = ({
                                 buttonType="primary"
                                 onClick={handleVerifyOTP}
                                 disable={isVerifyingOtp || !otp.trim()}
-                                className="w-full sm:w-auto sm:whitespace-nowrap"
+                                className="w-full sm:w-auto sm:whitespace-nowrap self-end"
                               >
                                 {isVerifyingOtp ? "Verifying..." : "Verify OTP"}
                               </MyButton>

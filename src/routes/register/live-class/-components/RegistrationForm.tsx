@@ -92,7 +92,7 @@ export default function RegistrationForm({
                       <FormControl>
                         <PhoneInput
                           {...field}
-                          country="us"
+                          country="gb"
                           enableSearch={true}
                           placeholder={`Enter ${responseField.fieldName.toLowerCase()}`}
                           onChange={(val) => {

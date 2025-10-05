@@ -80,9 +80,8 @@ function ReferralComponent() {
 
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
               <p className="text-gray-700 text-sm leading-relaxed">
-                Share your code with friends, and they'll get a free bonuses or
-                discounts. Once 10 of your friends have signed up through your
-                referral link, you'll also receive a free month.
+                Share your referral code with friends, and both you and your
+                friends will get exclusive referral rewards.
               </p>
             </div>
 
@@ -90,7 +89,7 @@ function ReferralComponent() {
             <Card className="bg-gray-50 ">
               <CardHeader className="p-2 px-5">
                 <CardTitle className="text-sm  text-primary-300">
-                  Your Invite Code
+                  Your Referral Code
                 </CardTitle>
               </CardHeader>
               <CardContent>

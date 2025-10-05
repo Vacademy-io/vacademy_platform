@@ -52,6 +52,8 @@ const EnrollByInvite = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState(0); // 0: Registration, 1: Payment Selection, 2: Review, 3: Payment Details, 4: Payment Pending, 5: Success
+  const [isRegistrationCardVisible, setIsRegistrationCardVisible] =
+    useState(false);
   const [courseData, setCourseData] = useState<FinalCourseData>({
     aboutCourse: "",
     course: "",
@@ -535,6 +537,30 @@ const EnrollByInvite = () => {
     }
   }, [instituteData, setInstituteDetails]);
 
+  // Set up Intersection Observer to detect when registration card is visible
+  useEffect(() => {
+    const registrationCard = document.getElementById("registration-card");
+    if (!registrationCard) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          setIsRegistrationCardVisible(entry.isIntersecting);
+        });
+      },
+      {
+        threshold: 0.1, // Trigger when 10% of the element is visible
+        rootMargin: "-50px 0px", // Add some margin to trigger earlier
+      }
+    );
+
+    observer.observe(registrationCard);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [currentStep]); // Re-run when step changes to ensure the element exists
+
   if (isLoading || isInstituteLoading) return <DashboardLoader />;
 
   return (
@@ -576,8 +602,8 @@ const EnrollByInvite = () => {
           )}
       </div>
 
-      {/* Fixed bottom container with border - Only show in registration step */}
-      {currentStep === 0 && (
+      {/* Fixed bottom container with border - Only show in registration step and when registration card is not visible */}
+      {currentStep === 0 && !isRegistrationCardVisible && (
         <div className="flex items-center justify-center py-4 fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-50">
           <MyButton
             type="button"

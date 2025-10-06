@@ -369,7 +369,6 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
         description: `Subscription for ${selectedPlan.name}`,
         paymentType: 'subscription',
         paymentMethod,
-        token,
         returnUrl: window.location.origin + "/courses", // Default return URL
       });
 

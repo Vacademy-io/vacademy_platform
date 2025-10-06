@@ -96,27 +96,21 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
     setError(null);
     
     try {
-      // For free enrollments, we don't need payment gateway details
-      let paymentGatewayData = null;
-      if (selectedPaymentOption.type?.toLowerCase() !== 'free') {
-        paymentGatewayData = await fetchPaymentGatewayDetails(instituteId, 'STRIPE', token);
-      }
-      
-      // Call the enrollment API
+      // For free enrollment, no payment gateway details needed
+      // Call the enrollment API directly
       await handlePaymentForEnrollment({
         userEmail: "user@example.com", // This should come from user profile
         receiptEmail: "user@example.com", // This should come from user profile
         instituteId,
         packageSessionId,
         enrollmentData,
-        paymentGatewayData,
+        paymentGatewayData: null, // No payment gateway needed for free enrollment
         selectedPaymentPlan,
         selectedPaymentOption,
         amount: selectedPaymentPlan.actual_price,
         currency: selectedPaymentPlan.currency || enrollmentData.currency,
         description: `Free enrollment for ${courseTitle}`,
         paymentType: 'free',
-        token,
       });
 
       // Close the main dialog

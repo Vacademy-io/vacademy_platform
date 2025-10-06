@@ -396,7 +396,6 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
         description: `One-time payment for ${courseTitle}`,
         paymentType: 'one-time',
         paymentMethod,
-        token,
         returnUrl: window.location.origin + "/courses", // Default return URL
       });
 

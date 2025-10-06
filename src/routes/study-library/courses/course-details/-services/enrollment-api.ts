@@ -972,7 +972,7 @@ export const handlePaymentForEnrollment = async (params: {
       );
     }
 
-    // Validate payment gateway data (only required for non-free payments)
+    // Validate payment gateway data (skip for free enrollments)
     if (paymentType !== "free" && !paymentGatewayData) {
       throw new Error(
         "Payment gateway configuration is missing. Please try again."
@@ -985,10 +985,9 @@ export const handlePaymentForEnrollment = async (params: {
     // Note: Payment gateway configuration is handled by the backend
     // We only need to send the stripe_request with payment method details
 
-    // Extract publishable key from payment gateway config (only for non-free payments)
+    // Extract publishable key from payment gateway config (skip for free enrollments)
     let publishableKey: string | undefined;
-
-    if (paymentGatewayData) {
+    if (paymentType !== "free" && paymentGatewayData) {
       // Check if publishableKey is directly available in the response
       if (paymentGatewayData.publishableKey) {
         publishableKey = paymentGatewayData.publishableKey;
@@ -1008,12 +1007,12 @@ export const handlePaymentForEnrollment = async (params: {
           // Silent error handling
         }
       }
-    }
-
-    if (paymentType !== "free" && !publishableKey) {
-      throw new Error(
-        "Publishable key not found in payment gateway config. Please check the payment gateway configuration."
-      );
+      
+      if (!publishableKey) {
+        throw new Error(
+          "Publishable key not found in payment gateway config. Please check the payment gateway configuration."
+        );
+      }
     }
 
     // Create real Stripe payment method from card details

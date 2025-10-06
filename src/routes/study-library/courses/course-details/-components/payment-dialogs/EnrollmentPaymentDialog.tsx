@@ -176,6 +176,7 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
             open={open}
             onOpenChange={onOpenChange}
             {...commonProps}
+            onNavigateToSlides={onNavigateToSlides}
           />
         );
       

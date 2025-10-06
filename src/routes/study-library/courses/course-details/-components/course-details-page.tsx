@@ -33,6 +33,7 @@ import { CourseStructureResponse } from "@/types/institute-details/course-detail
 import { getIdByLevelAndSession } from "@/routes/courses/course-details/-utils/helper";
 import { DonationDialog } from "@/components/common/donation/DonationDialog";
 import { EnrollmentPaymentDialog } from "./payment-dialogs/EnrollmentPaymentDialog";
+import { EnrollmentPendingApprovalDialog } from "./payment-dialogs/EnrollmentPendingApprovalDialog";
 import { useEnrollmentStatus } from "@/hooks/use-enrollment-status";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
@@ -325,6 +326,91 @@ export const CourseDetailsPage = () => {
         // Then handle navigation (donation flow should auto-navigate)
         await handleNavigationToSlides();
     };
+
+    // Handler for free enrollment click - checks user status first
+    const handleFreeEnrollmentClick = async () => {
+        console.log('handleFreeEnrollmentClick - Function called', {
+            packageSessionId: packageSessionIdForCurrentLevel,
+            hasToken: !!authToken,
+            paymentType: paymentType
+        });
+
+        if (!packageSessionIdForCurrentLevel || !authToken) {
+            console.error('handleFreeEnrollmentClick - Missing required data', {
+                packageSessionId: packageSessionIdForCurrentLevel,
+                hasToken: !!authToken
+            });
+            return;
+        }
+
+        try {
+            // Import the payment status API function
+            const { fetchUserPlanStatus } = await import('@/services/payment-status-api');
+            
+            const response = await fetchUserPlanStatus(packageSessionIdForCurrentLevel, authToken);
+            
+            // Parse learner status
+            const parseLearnerStatus = (status: string): 'INVITED' | 'PENDING_FOR_APPROVAL' | 'ACTIVE' | 'UNKNOWN' => {
+                const normalizedStatus = status?.toUpperCase()?.trim();
+                switch (normalizedStatus) {
+                    case 'INVITED':
+                        return 'INVITED';
+                    case 'PENDING_FOR_APPROVAL':
+                    case 'PENDING_APPROVAL':
+                        return 'PENDING_FOR_APPROVAL';
+                    case 'ACTIVE':
+                        return 'ACTIVE';
+                    default:
+                        return 'UNKNOWN';
+                }
+            };
+
+            const learnerStatus = parseLearnerStatus(response.learner_status);
+            
+            console.log('handleFreeEnrollmentClick - User status check', {
+                packageSessionId: packageSessionIdForCurrentLevel,
+                userPlanStatus: response.user_plan_status,
+                learnerStatus: response.learner_status,
+                parsedLearnerStatus: learnerStatus
+            });
+
+            // If user already has a pending approval, show pending approval dialog
+            if (learnerStatus === 'PENDING_FOR_APPROVAL') {
+                console.log('handleFreeEnrollmentClick - User has pending approval, showing pending dialog', {
+                    learnerStatus: response.learner_status,
+                    parsedStatus: learnerStatus,
+                    settingDialogToTrue: true
+                });
+                setPendingApprovalDialogOpen(true);
+                return;
+            }
+
+            // If user is already active, they're already enrolled
+            if (learnerStatus === 'ACTIVE') {
+                console.log('handleFreeEnrollmentClick - User is already enrolled');
+                // Navigate to slides since user is already enrolled
+                await handleNavigationToSlides();
+                return;
+            }
+
+            // If user is invited or unknown status, proceed with enrollment
+            console.log('handleFreeEnrollmentClick - Proceeding with enrollment');
+            setEnrollmentDialogOpen(true);
+            
+        } catch (error) {
+            console.error('handleFreeEnrollmentClick - Error checking user status', error);
+            
+            // If it's a 510 error (no enrollment request), proceed with enrollment
+            if (error instanceof Error && error.message.includes('510')) {
+                console.log('handleFreeEnrollmentClick - No previous enrollment request, proceeding with enrollment');
+                setEnrollmentDialogOpen(true);
+            } else {
+                // For other errors, proceed with enrollment (fallback behavior)
+                console.warn('handleFreeEnrollmentClick - Error checking status, proceeding with enrollment as fallback');
+                setEnrollmentDialogOpen(true);
+            }
+        }
+    };
     const [instituteId, setInstituteId] = useState<string | null>(null);
     const [certificateUrl, setCertificateUrl] = useState<string | null>(null);
     const [showConfetti, setShowConfetti] = useState<boolean>(false);
@@ -498,9 +584,12 @@ export const CourseDetailsPage = () => {
             if (instituteId) {
                 try {
                     const paymentOption = await fetchPaymentOptions(instituteId);
+                    console.log('fetchPaymentType - Payment option received:', paymentOption);
                     if (paymentOption && paymentOption.type) {
+                        console.log('fetchPaymentType - Setting payment type to:', paymentOption.type);
                         setPaymentType(paymentOption.type);
                     } else {
+                        console.log('fetchPaymentType - No payment option type, defaulting to SUBSCRIPTION');
                         setPaymentType("SUBSCRIPTION");
                     }
                 } catch (error) {
@@ -1123,6 +1212,7 @@ export const CourseDetailsPage = () => {
 
     const [enrollmentDialogOpen, setEnrollmentDialogOpen] = useState(false);
     const [donationDialogOpen, setDonationDialogOpen] = useState(false);
+    const [pendingApprovalDialogOpen, setPendingApprovalDialogOpen] = useState(false);
     const [inviteCode, setInviteCode] = useState<string>("default");
     const [authToken, setAuthToken] = useState<string>("");
     const [paymentType, setPaymentType] = useState<string | null>(null);
@@ -1394,6 +1484,13 @@ export const CourseDetailsPage = () => {
                 onNavigateToSlides={handleNavigationToSlides}
             />
 
+            {/* Pending Approval Dialog for Free Enrollments */}
+            <EnrollmentPendingApprovalDialog
+                open={pendingApprovalDialogOpen}
+                onOpenChange={setPendingApprovalDialogOpen}
+                courseTitle={form.getValues("courseData").title}
+            />
+
             <div className="min-h-screen bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 relative w-full max-w-full">
                 {/* Animated background elements */}
                 <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -1456,9 +1553,25 @@ export const CourseDetailsPage = () => {
                                 certificateUrl={certificateUrl}
                                 onSessionChange={handleSessionChange}
                                 onLevelChange={handleLevelChange}
-                                onEnrollmentClick={() => {
-                                    // Always open enrollment dialog - it will determine the correct payment type from API data
-                                    setEnrollmentDialogOpen(true);
+                                onEnrollmentClick={async () => {
+                                    console.log('onEnrollmentClick - Handler called', {
+                                        paymentType: paymentType,
+                                        isFree: paymentType === 'free' || paymentType === 'free_plan' || 
+                                               paymentType === 'FREE' || paymentType === 'FREE_PLAN'
+                                    });
+                                    
+                                    // Check user status for free payment types before opening enrollment dialog
+                                    const isFreePayment = paymentType === 'free' || paymentType === 'free_plan' || 
+                                                         paymentType === 'FREE' || paymentType === 'FREE_PLAN';
+                                    
+                                    if (isFreePayment) {
+                                        console.log('onEnrollmentClick - Calling handleFreeEnrollmentClick');
+                                        await handleFreeEnrollmentClick();
+                                    } else {
+                                        console.log('onEnrollmentClick - Opening enrollment dialog directly');
+                                        // For paid payment types, open enrollment dialog directly
+                                        setEnrollmentDialogOpen(true);
+                                    }
                                 }}
                             />
 
@@ -1546,9 +1659,25 @@ export const CourseDetailsPage = () => {
                                         paymentType={paymentType}
                                         packageSessionIdForCurrentLevel={packageSessionIdForCurrentLevel}
                                         percentageCompleted={completionPercentage}
-                                        onEnrollmentClick={() => {
-                                            // Always open enrollment dialog - it will determine the correct payment type from API data
-                                            setEnrollmentDialogOpen(true);
+                                        onEnrollmentClick={async () => {
+                                            console.log('onEnrollmentClick (second) - Handler called', {
+                                                paymentType: paymentType,
+                                                isFree: paymentType === 'free' || paymentType === 'free_plan' || 
+                                                       paymentType === 'FREE' || paymentType === 'FREE_PLAN'
+                                            });
+                                            
+                                            // Check user status for free payment types before opening enrollment dialog
+                                            const isFreePayment = paymentType === 'free' || paymentType === 'free_plan' || 
+                                                                 paymentType === 'FREE' || paymentType === 'FREE_PLAN';
+                                            
+                                            if (isFreePayment) {
+                                                console.log('onEnrollmentClick (second) - Calling handleFreeEnrollmentClick');
+                                                await handleFreeEnrollmentClick();
+                                            } else {
+                                                console.log('onEnrollmentClick (second) - Opening enrollment dialog directly');
+                                                // For paid payment types, open enrollment dialog directly
+                                                setEnrollmentDialogOpen(true);
+                                            }
                                         }}
                                         onRatingsLoadingChange={handleRatingsLoadingChange}
                                     />

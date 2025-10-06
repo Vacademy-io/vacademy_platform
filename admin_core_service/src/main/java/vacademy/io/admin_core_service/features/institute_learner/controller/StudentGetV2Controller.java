@@ -26,13 +26,4 @@ public class StudentGetV2Controller {
             @RequestParam(value = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE, required = false) int pageSize) {
         return studentListManager.getLinkedStudentsV2(user, studentListFilter, pageNo, pageSize);
     }
-
-    @PostMapping("/all-leads")
-    public ResponseEntity<AllStudentV2Response> getLeads(
-            @RequestAttribute(name = "user") CustomUserDetails user,
-            @RequestBody StudentListFilter studentListFilter,
-            @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
-            @RequestParam(value = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE, required = false) int pageSize) {
-        return studentListManager.getLeads(user, studentListFilter, pageNo, pageSize);
-    }
 }

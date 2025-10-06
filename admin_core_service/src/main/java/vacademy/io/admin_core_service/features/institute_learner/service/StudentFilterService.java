@@ -71,7 +71,9 @@ public class StudentFilterService {
             dto.setFaceFileId((String) row[idx++]);
             dto.setParentsToMotherMobileNumber((String) row[idx++]);
             dto.setParentsToMotherEmail((String) row[idx++]);
-
+            if (row[idx] != null){
+                dto.setReferralCount(((Number) row[idx++]).longValue());
+            }
             // custom fields
             Map<String, String> customMap = new HashMap<>();
             if (safeCustomFieldIds != null) {
@@ -154,7 +156,9 @@ public class StudentFilterService {
             dto.setFaceFileId((String) row[idx++]);
             dto.setParentsToMotherMobileNumber((String) row[idx++]);
             dto.setParentsToMotherEmail((String) row[idx++]);
-
+            if (row[idx] != null){
+                dto.setReferralCount(((Number) row[idx++]).longValue());
+            }
             // custom fields
             Map<String, String> customMap = new HashMap<>();
             if (safeCustomFieldIds != null) {

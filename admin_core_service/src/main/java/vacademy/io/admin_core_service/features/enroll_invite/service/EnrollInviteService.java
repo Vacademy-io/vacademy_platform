@@ -208,6 +208,25 @@ public class EnrollInviteService {
         return buildFullEnrollInviteDTO(enrollInvite, instituteId);
     }
 
+    /**
+     * Finds default EnrollInvite by package session ID without throwing exception
+     * Returns Optional.empty() if no default enroll invite is found
+     * This method only maps basic fields to avoid LazyInitializationException
+     * 
+     * @param packageSessionId The package session ID
+     * @param instituteId The institute ID
+     * @return Optional containing EnrollInviteDTO with basic fields if found, empty otherwise
+     */
+    public Optional<EnrollInviteDTO> findDefaultEnrollInviteByPackageSessionIdOptional(String packageSessionId, String instituteId) {
+        Optional<EnrollInvite> enrollInviteOptional = repository.findLatestForPackageSessionWithFilters(
+                packageSessionId,
+                List.of(StatusEnum.ACTIVE.name()),
+                List.of(EnrollInviteTag.DEFAULT.name()),
+                List.of(StatusEnum.ACTIVE.name()));
+        
+        return enrollInviteOptional.map(enrollInvite -> buildBasicEnrollInviteDTO(enrollInvite));
+    }
+
     public List<EnrollInviteDTO> findByPaymentOptionIds(List<String> paymentOptionIds, String instituteId) {
         List<PackageSessionLearnerInvitationToPaymentOption> mappings = packageSessionEnrollInviteToPaymentOptionService
                 .findByPaymentOptionIds(paymentOptionIds);
@@ -562,6 +581,32 @@ public class EnrollInviteService {
      */
     private EnrollInviteDTO convertToEnrollInviteDTO(EnrollInvite enrollInvite) {
         EnrollInviteDTO dto = enrollInvite.toEnrollInviteDTO();
+        return dto;
+    }
+
+    /**
+     * Builds a basic EnrollInviteDTO with only essential fields to avoid LazyInitializationException
+     * This method is safe to use outside of transaction context
+     * 
+     * @param enrollInvite The EnrollInvite entity
+     * @return EnrollInviteDTO with basic fields populated
+     */
+    private EnrollInviteDTO buildBasicEnrollInviteDTO(EnrollInvite enrollInvite) {
+        EnrollInviteDTO dto = new EnrollInviteDTO();
+        dto.setId(enrollInvite.getId());
+        dto.setName(enrollInvite.getName());
+        dto.setEndDate(enrollInvite.getEndDate());
+        dto.setStartDate(enrollInvite.getStartDate());
+        dto.setInviteCode(enrollInvite.getInviteCode());
+        dto.setStatus(enrollInvite.getStatus());
+        dto.setInstituteId(enrollInvite.getInstituteId());
+        dto.setVendor(enrollInvite.getVendor());
+        dto.setVendorId(enrollInvite.getVendorId());
+        dto.setCurrency(enrollInvite.getCurrency());
+        dto.setTag(enrollInvite.getTag());
+        dto.setLearnerAccessDays(enrollInvite.getLearnerAccessDays());
+        dto.setWebPageMetaDataJson(enrollInvite.getWebPageMetaDataJson());
+        dto.setIsBundled(enrollInvite.getIsBundled());
         return dto;
     }
 }

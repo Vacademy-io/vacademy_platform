@@ -9,6 +9,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.institute.controller.InstituteCertificateController;
 import vacademy.io.admin_core_service.features.institute_learner.constants.StudentConstants;
 import vacademy.io.admin_core_service.features.institute_learner.dto.*;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
@@ -27,6 +28,8 @@ import java.util.*;
 @Component
 public class StudentRegistrationManager {
 
+    private final InstituteCertificateController instituteCertificateController;
+
     @Autowired
     InternalClientUtils internalClientUtils;
 
@@ -43,6 +46,11 @@ public class StudentRegistrationManager {
 
     @Autowired
     private LearnerCouponService learnerCouponService;
+
+
+    StudentRegistrationManager(InstituteCertificateController instituteCertificateController) {
+        this.instituteCertificateController = instituteCertificateController;
+    }
 
 
     public InstituteStudentDTO addStudentToInstitute(CustomUserDetails user, InstituteStudentDTO instituteStudentDTO, BulkUploadInitRequest bulkUploadInitRequest) {
@@ -84,6 +92,7 @@ public class StudentRegistrationManager {
         instituteStudentDTO.getUserDetails().setUsername(instituteStudentDTO.getUserDetails().getUsername().toLowerCase());
         setEnrollmentNumberIfNull(instituteStudentDTO.getInstituteStudentDetails());
         UserDTO createdUser = createUserFromAuthService(instituteStudentDTO.getUserDetails(), instituteStudentDTO.getInstituteStudentDetails().getInstituteId(), true);
+        instituteStudentDTO.getUserDetails().setId(createdUser.getId());
         return createStudentFromRequest(createdUser, instituteStudentDTO.getStudentExtraDetails());
     }
 

@@ -176,6 +176,7 @@ public class StudentListManager {
                     filter.getTypes(),
                     filter.getTypeIds(),
                     filter.getDestinationPackageSessionIds(),
+                    filter.getLevelIds(),
                     pageable);
         }
 
@@ -192,6 +193,7 @@ public class StudentListManager {
                     filter.getTypes(),
                     filter.getTypeIds(),
                     filter.getDestinationPackageSessionIds(),
+                    filter.getLevelIds(),
                     pageable);
         }
 
@@ -258,6 +260,7 @@ public class StudentListManager {
             }
             dto.setCustomFields(parseCustomFields(mapper, p.getCustomFieldsJson()));
             dto.setEnrollInviteId(p.getEnrollInviteId());
+            dto.setDesiredLevelId(p.getDesiredLevelId());
             dtos.add(dto);
         }
 

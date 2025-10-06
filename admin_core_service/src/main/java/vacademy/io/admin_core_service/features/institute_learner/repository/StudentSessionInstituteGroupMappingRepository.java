@@ -22,6 +22,7 @@ public interface StudentSessionInstituteGroupMappingRepository
         s.mobile_number AS mobile_number,
         s.email AS email,
         s.username AS username,
+        s.region AS region,
         ps.id AS package_session_id
     FROM student_session_institute_group_mapping ssigm
     JOIN student s ON s.user_id = ssigm.user_id
@@ -42,6 +43,7 @@ public interface StudentSessionInstituteGroupMappingRepository
         s.full_name AS full_name,
         s.mobile_number AS mobile_number,
         s.email AS email,
+        s.region AS region,
         ps.id AS package_session_id
     FROM student_session_institute_group_mapping ssigm
     LEFT JOIN student s ON s.user_id = ssigm.user_id
@@ -109,7 +111,8 @@ public interface StudentSessionInstituteGroupMappingRepository
         s.user_id AS user_id,
         s.full_name AS full_name,
         s.mobile_number AS mobile_number,
-        s.email AS email
+        s.email AS email,
+        s.region AS region
     FROM student s
     WHERE s.user_id IN (:userIds)
     """, nativeQuery = true)

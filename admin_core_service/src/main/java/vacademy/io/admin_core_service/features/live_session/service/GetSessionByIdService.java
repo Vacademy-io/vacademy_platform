@@ -104,6 +104,7 @@ public class GetSessionByIdService {
             dto.setThumbnailFileId(first.getThumbnailFileId());
             dto.setBackgroundScoreFileId(first.getBackgroundScoreFileId());
             dto.setSessionStreamingServiceType(first.getSessionStreamingServiceType());
+            dto.setTimezone(first.getTimezone());
         }
 
         if (last != null) {

@@ -10,6 +10,7 @@ import vacademy.io.auth_service.feature.auth.constants.AuthConstants;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
 import vacademy.io.auth_service.feature.auth.service.AuthService;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.auth.dto.learner.LearnerEnrollRequestDTO;
 import vacademy.io.common.auth.entity.RefreshToken;
 import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.entity.UserPermission;
@@ -50,7 +51,14 @@ public class LearnerOAuth2Manager {
     @Autowired
     private InstitutePolicyService institutePolicyService;
 
+    @Autowired
+    private LearnerAuthManager learnerAuthManager;
+
     public JwtResponseDto loginUserByEmail(String fullName, String email, String instituteId) throws Exception {
+        return loginUserByEmail(fullName, email, instituteId, null, null);
+    }
+
+    public JwtResponseDto loginUserByEmail(String fullName, String email, String instituteId, String subjectId, String vendorId) throws Exception {
         log.info("Attempting OAuth2 login for email={} fullName={} instituteId={}", email, fullName, instituteId);
 
         Optional<User> userOptional = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(
@@ -58,7 +66,7 @@ public class LearnerOAuth2Manager {
                 List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
                 AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL
         );
-        log.debug("User lookup result for email {}: {}", email, userOptional);
+        log.info("User lookup result for email {}: {}", email, userOptional.isPresent() ? "User found" : "User not found");
 
         if (userOptional.isPresent()) {
             User user = userOptional.get();
@@ -85,8 +93,8 @@ public class LearnerOAuth2Manager {
                         return null;
                     }
                     log.info("Creating user with STUDENT role as per signup policy...");
-                    createUserFromPolicy(signupPolicy, fullName, email, instituteId);
-                    return loginUserByEmail(fullName, email, instituteId);
+                    createUserFromPolicy(signupPolicy, fullName, email, instituteId, subjectId, vendorId);
+                    return loginUserByEmail(fullName, email, instituteId, subjectId, vendorId);
                 }
             }
 
@@ -117,24 +125,36 @@ public class LearnerOAuth2Manager {
                 return null;
             }
             log.info("Creating new user as per institute signup policy...");
-            createUserFromPolicy(signupPolicy, fullName, email, instituteId);
-            return loginUserByEmail(fullName, email, instituteId);
+            createUserFromPolicy(signupPolicy, fullName, email, instituteId, subjectId, vendorId);
+            return loginUserByEmail(fullName, email, instituteId, subjectId, vendorId);
         }
 
         log.error("No user found and no valid signup policy for institute {}", instituteId);
         return null;
     }
 
+    // Backward compatibility method
     private void createUserFromPolicy(InstituteSignupPolicy signupPolicy, String fullName, String email, String instituteId) throws Exception {
+        createUserFromPolicy(signupPolicy, fullName, email, instituteId, null, null);
+    }
+
+    private void createUserFromPolicy(InstituteSignupPolicy signupPolicy, String fullName, String email, String instituteId, String subjectId, String vendorId) throws Exception {
         log.info("Creating user from signup policy for instituteId={} email={}", instituteId, email);
 
         UserDTO userDTO = new UserDTO();
         userDTO.setEmail(email);
         userDTO.setFullName(fullName);
 
+        // Check if we have all required details from policy
+        boolean hasCompleteDetails = true;
+        
         if ("email".equalsIgnoreCase(signupPolicy.getUserNameStrategy())) {
             userDTO.setUsername(email);
             log.debug("Username strategy is 'email', setting username={}", email);
+        } else {
+            // If username strategy is not email, we might need additional input
+            log.debug("Username strategy is not 'email', may need additional details");
+            hasCompleteDetails = false;
         }
 
         if (signupPolicy.isAllowLearnersToCreateCourses()) {
@@ -145,12 +165,38 @@ public class LearnerOAuth2Manager {
             log.debug("Assigning role STUDENT only");
         }
 
-        boolean sendPassword = signupPolicy.getPasswordDelivery() != null &&
+        // Check if password delivery is configured (not manual)
+        boolean isPasswordDeliveryConfigured = signupPolicy.getPasswordDelivery() != null && 
                 !"none".equalsIgnoreCase(signupPolicy.getPasswordDelivery());
 
-        log.info("Invoking authService.createUser with sendPassword={} for userDTO={}", sendPassword, userDTO);
-        authService.createUser(userDTO, instituteId, sendPassword);
-        log.info("User created successfully via signup policy for email={}", email);
+        // Use registerLearner only if we have complete details and OAuth2 data
+        if (hasCompleteDetails && instituteId != null && !instituteId.isBlank() && 
+            subjectId != null && vendorId != null) {
+            try {
+                log.info("Using registerLearner for complete OAuth2 user setup with subjectId={} vendorId={}", subjectId, vendorId);
+                
+                // Create LearnerEnrollRequestDTO for registerLearner with OAuth2 data
+                LearnerEnrollRequestDTO enrollRequest = new LearnerEnrollRequestDTO();
+                enrollRequest.setUser(userDTO);
+                enrollRequest.setInstituteId(instituteId);
+                enrollRequest.setSubjectId(subjectId);
+                enrollRequest.setVendorId(vendorId);
+                // learnerPackageSessionEnroll is null for OAuth2 signup
+                
+                learnerAuthManager.registerLearner(enrollRequest);
+                log.info("Successfully used registerLearner for complete OAuth2 user setup");
+                return; // Success - user and student entity created with OAuth2 verification
+                
+            } catch (Exception e) {
+                log.warn("Failed to use registerLearner with OAuth2 data, falling back to legacy authService: {}", e.getMessage());
+                // Fall through to legacy method
+            }
+        }
+
+        // Fallback to legacy method
+        log.info("Using legacy authService.createUser method");
+        authService.createUser(userDTO, instituteId, isPasswordDeliveryConfigured);
+        log.info("User created successfully via legacy signup policy for email={}", email);
     }
 
     public void signUpUser(UserDTO userDTO, String instituteId, boolean sendNotification) throws Exception {
@@ -160,6 +206,10 @@ public class LearnerOAuth2Manager {
     }
 
     public JwtResponseDto createUserAndLogin(String fullName, String email, String instituteId) throws Exception {
+        return createUserAndLogin(fullName, email, instituteId, null, null);
+    }
+
+    public JwtResponseDto createUserAndLogin(String fullName, String email, String instituteId, String subjectId, String vendorId) throws Exception {
         log.info("Creating new user and logging in via OAuth2 for email={} instituteId={}", email, instituteId);
 
         InstituteSignupPolicy signupPolicy = institutePolicyService.fetchSignupPolicy(instituteId);
@@ -174,7 +224,7 @@ public class LearnerOAuth2Manager {
             throw new RuntimeException("Manual password strategy not allowed for OAuth2");
         }
 
-        createUserFromPolicy(signupPolicy, fullName, email, instituteId);
+        createUserFromPolicy(signupPolicy, fullName, email, instituteId, subjectId, vendorId);
         log.info("User created successfully. Proceeding to login...");
         return loginUserByEmail(fullName, email, instituteId);
     }

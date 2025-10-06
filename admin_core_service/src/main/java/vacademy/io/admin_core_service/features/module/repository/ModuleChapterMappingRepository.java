@@ -26,7 +26,8 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
             'module', json_build_object(
                 'id', m.id,
                 'module_name', m.module_name,
-                'description', m.description
+                'description', m.description,
+                'thumbnail_id', m.thumbnail_id
             ),
             'percentage_completed', COALESCE(CAST(
                 MAX(CASE
@@ -97,7 +98,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
             GROUP BY c.id
         ) AS chap_data ON chap_data.chapter_id = c.id
         WHERE smm.subject_id = :subjectId
-        GROUP BY m.id, m.module_name, m.description, mo.value
+        GROUP BY m.id, m.module_name, m.description, m.thumbnail_id, mo.value
     ) AS module_data
     """, nativeQuery = true)
     String getModuleChapterProgress(
@@ -125,7 +126,8 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
             'module', json_build_object(
                 'id', m.id,
                 'module_name', m.module_name,
-                'description', m.description
+                'description', m.description,
+                'thumbnail_id', m.thumbnail_id
             ),
             'chapters', COALESCE(json_agg(jsonb_build_object(
                 'id', c.id,
@@ -164,7 +166,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
             GROUP BY c.id
         ) AS counts ON counts.chapter_id = c.id
         WHERE smm.subject_id = :subjectId
-        GROUP BY m.id, m.module_name, m.description
+        GROUP BY m.id, m.module_name, m.description, m.thumbnail_id
     ) AS module_data
 """, nativeQuery = true)
     String getOpenModuleChapterDetails(

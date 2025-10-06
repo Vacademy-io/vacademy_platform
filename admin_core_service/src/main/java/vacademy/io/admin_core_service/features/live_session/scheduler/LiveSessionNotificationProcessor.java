@@ -9,6 +9,7 @@ import vacademy.io.admin_core_service.features.institute_learner.repository.Stud
 import vacademy.io.admin_core_service.features.live_session.constants.LiveClassEmailBody;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
 import vacademy.io.admin_core_service.features.live_session.entity.ScheduleNotification;
+import vacademy.io.admin_core_service.features.live_session.enums.LiveClassAction;
 import vacademy.io.admin_core_service.features.live_session.enums.NotificationStatusEnum;
 import vacademy.io.admin_core_service.features.live_session.enums.NotificationTypeEnum;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
@@ -23,11 +24,11 @@ import vacademy.io.admin_core_service.features.notification_service.service.Noti
 import vacademy.io.admin_core_service.features.institute.service.InstituteService;
 import vacademy.io.admin_core_service.features.domain_routing.repository.InstituteDomainRoutingRepository;
 import vacademy.io.admin_core_service.features.domain_routing.entity.InstituteDomainRouting;
+import vacademy.io.admin_core_service.features.live_session.service.TimezoneSettingService;
 
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.*;
 
 @Service
@@ -43,8 +44,10 @@ public class LiveSessionNotificationProcessor {
     private final ObjectMapper objectMapper; // kept for future template rendering
     private final InstituteService instituteService;
     private final InstituteDomainRoutingRepository domainRoutingRepository;
+    private final TimezoneSettingService timezoneSettingService;
     @Autowired
     private SessionScheduleRepository scheduleRepository;
+
 
     @Transactional
     public void processDueNotifications() {
@@ -53,6 +56,7 @@ public class LiveSessionNotificationProcessor {
         LocalDateTime now = LocalDateTime.now(utcZone);
         LocalDateTime windowEnd = now.plusMinutes(15);
         System.out.println("current time (UTC): " + now);
+        System.out.println("Current time on server is "+now);
 
         // 1) Mark past-due PENDING notifications as EXPIRED (no send)
         List<ScheduleNotification> pastDue = scheduleNotificationRepository.findPastDue(now.minusMinutes(2));
@@ -170,13 +174,13 @@ public class LiveSessionNotificationProcessor {
             // Handle different data structures from batch vs individual user queries
             String userId, fullName, email;
             
-            if (r.length >= 6) {
-                // Batch query result: [mapping_id, user_id, expiry_date, full_name, mobile_number, email, package_session_id]
+            if (r.length >= 7) {
+                // Batch query result: [mapping_id, user_id, expiry_date, full_name, mobile_number, email, region, package_session_id]
                 userId = (String) r[1];
                 fullName = (String) r[3];
                 email = (String) r[5];
             } else {
-                // Individual user query result: [user_id, full_name, mobile_number, email]
+                // Individual user query result: [user_id, full_name, mobile_number, email, region]
                 userId = (String) r[0];
                 fullName = (String) r[1];
                 email = (String) r[3];
@@ -186,8 +190,7 @@ public class LiveSessionNotificationProcessor {
             placeholders.put("NAME", fullName);
             placeholders.put("SESSION_TITLE", session.getTitle() != null ? session.getTitle() : "Live Class");
 
-            // Add timezone with UTC offset
-            placeholders.put("TIMEZONE", getTimezoneWithOffset(session.getTimezone()));
+            placeholders.put("ACTION", LiveClassAction.STARTED.getDisplayName());
 
             // Add theme color
             placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
@@ -199,24 +202,20 @@ public class LiveSessionNotificationProcessor {
                 System.out.println("DEBUG: Final live class URL: " + liveClassUrl);
                 placeholders.put("LINK", liveClassUrl);
 
-                // Format date and time
-                if (schedule.getMeetingDate() != null && schedule.getStartTime() != null) {
-                    // format date
-                    String date = new SimpleDateFormat("EEEE, MMMM d, yyyy").format(schedule.getMeetingDate());
-
-                    // format time in 12-hour with AM/PM
-                    String time = new SimpleDateFormat("h:mm a").format(schedule.getStartTime());
-
-                    placeholders.put("DATE", date);
-                    placeholders.put("TIME", time);
-                }
-                else {
-                    placeholders.put("TIME", "TBD");
-                }
+                // Format date and time for all configured timezones
+                String allTimezonesTimes = timezoneSettingService.createTimezoneDisplayString(
+                    schedule.getMeetingDate(), schedule.getStartTime(), session.getInstituteId(), session.getTimezone());
+                placeholders.put("ALL_TIMEZONE_TIMES", allTimezonesTimes);
+                
+                // Keep individual DATE and TIME for backward compatibility
+                placeholders.put("DATE", new SimpleDateFormat("EEEE, MMMM d, yyyy").format(schedule.getMeetingDate()));
+                placeholders.put("TIME", new SimpleDateFormat("h:mm a").format(schedule.getStartTime()));
             } else {
                 // Build live class URL even if schedule is null
                 String liveClassUrl = buildLiveClassUrl(session, session.getId());
                 placeholders.put("LINK", liveClassUrl);
+                placeholders.put("ALL_TIMEZONE_TIMES", "TBD");
+                placeholders.put("DATE", "TBD");
                 placeholders.put("TIME", "TBD");
             }
 
@@ -241,13 +240,13 @@ public class LiveSessionNotificationProcessor {
             // Handle different data structures from batch vs individual user queries
             String userId, fullName, email;
             
-            if (r.length >= 6) {
-                // Batch query result: [mapping_id, user_id, expiry_date, full_name, mobile_number, email, package_session_id]
+            if (r.length >= 7) {
+                // Batch query result: [mapping_id, user_id, expiry_date, full_name, mobile_number, email, region, package_session_id]
                 userId = (String) r[1];
                 fullName = (String) r[3];
                 email = (String) r[5];
             } else {
-                // Individual user query result: [user_id, full_name, mobile_number, email]
+                // Individual user query result: [user_id, full_name, mobile_number, email, region]
                 userId = (String) r[0];
                 fullName = (String) r[1];
                 email = (String) r[3];
@@ -257,8 +256,7 @@ public class LiveSessionNotificationProcessor {
             placeholders.put("NAME", fullName);
             placeholders.put("SESSION_TITLE", session.getTitle() != null ? session.getTitle() : "Live Class");
 
-            // Add timezone with UTC offset
-            placeholders.put("TIMEZONE", getTimezoneWithOffset(session.getTimezone()));
+            placeholders.put("ACTION", LiveClassAction.STARTING.getDisplayName());
 
             // Add theme color
             placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
@@ -270,24 +268,20 @@ public class LiveSessionNotificationProcessor {
                 System.out.println("DEBUG: Final live class URL: " + liveClassUrl);
                 placeholders.put("LINK", liveClassUrl);
 
-                // Format date and time
-                if (schedule.getMeetingDate() != null && schedule.getStartTime() != null) {
-                    // format date
-                    String date = new SimpleDateFormat("EEEE, MMMM d, yyyy").format(schedule.getMeetingDate());
-
-                    // format time in 12-hour with AM/PM
-                    String time = new SimpleDateFormat("h:mm a").format(schedule.getStartTime());
-
-                    placeholders.put("DATE", date);
-                    placeholders.put("TIME", time);
-                }
-                else {
-                    placeholders.put("TIME", "TBD");
-                }
+                // Format date and time for all configured timezones
+                String allTimezonesTimes = timezoneSettingService.createTimezoneDisplayString(
+                    schedule.getMeetingDate(), schedule.getStartTime(), session.getInstituteId(), session.getTimezone());
+                placeholders.put("ALL_TIMEZONE_TIMES", allTimezonesTimes);
+                
+                // Keep individual DATE and TIME for backward compatibility
+                placeholders.put("DATE", new SimpleDateFormat("EEEE, MMMM d, yyyy").format(schedule.getMeetingDate()));
+                placeholders.put("TIME", new SimpleDateFormat("h:mm a").format(schedule.getStartTime()));
             } else {
                 // Build live class URL even if schedule is null
                 String liveClassUrl = buildLiveClassUrl(session, session.getId());
                 placeholders.put("LINK", liveClassUrl);
+                placeholders.put("ALL_TIMEZONE_TIMES", "TBD");
+                placeholders.put("DATE", "TBD");
                 placeholders.put("TIME", "TBD");
             }
 
@@ -395,13 +389,13 @@ public class LiveSessionNotificationProcessor {
             // Handle different data structures from batch vs individual user queries
             String userId, fullName, email;
             
-            if (r.length >= 6) {
-                // Batch query result: [mapping_id, user_id, expiry_date, full_name, mobile_number, email, package_session_id]
+            if (r.length >= 7) {
+                // Batch query result: [mapping_id, user_id, expiry_date, full_name, mobile_number, email, region, package_session_id]
                 userId = (String) r[1];
                 fullName = (String) r[3];
                 email = (String) r[5];
             } else {
-                // Individual user query result: [user_id, full_name, mobile_number, email]
+                // Individual user query result: [user_id, full_name, mobile_number, email, region]
                 userId = (String) r[0];
                 fullName = (String) r[1];
                 email = (String) r[3];
@@ -412,29 +406,21 @@ public class LiveSessionNotificationProcessor {
             placeholders.put("NAME", fullName);
             placeholders.put("SESSION_TITLE", session.getTitle() != null ? session.getTitle() : "Live Class");
 
-            // Add timezone with UTC offset
-            placeholders.put("TIMEZONE", getTimezoneWithOffset(session.getTimezone()));
-
             // Add theme color
             placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
 
             // Add schedule details if available
             if (schedule != null) {
-                // Format date and time
-                if (schedule.getMeetingDate() != null && schedule.getStartTime() != null) {
-                    // format date
-                    String date = new SimpleDateFormat("EEEE, MMMM d, yyyy").format(schedule.getMeetingDate());
-
-                    // format time in 12-hour with AM/PM
-                    String time = new SimpleDateFormat("h:mm a").format(schedule.getStartTime());
-
-                    placeholders.put("DATE", date);
-                    placeholders.put("TIME", time);
-                } else {
-                    placeholders.put("DATE", "TBD");
-                    placeholders.put("TIME", "TBD");
-                }
+                // Format date and time for all configured timezones
+                String allTimezonesTimes = timezoneSettingService.createTimezoneDisplayString(
+                    schedule.getMeetingDate(), schedule.getStartTime(), session.getInstituteId(), session.getTimezone());
+                placeholders.put("ALL_TIMEZONE_TIMES", allTimezonesTimes);
+                
+                // Keep individual DATE and TIME for backward compatibility
+                placeholders.put("DATE", new SimpleDateFormat("EEEE, MMMM d, yyyy").format(schedule.getMeetingDate()));
+                placeholders.put("TIME", new SimpleDateFormat("h:mm a").format(schedule.getStartTime()));
             } else {
+                placeholders.put("ALL_TIMEZONE_TIMES", "TBD");
                 placeholders.put("DATE", "TBD");
                 placeholders.put("TIME", "TBD");
             }
@@ -560,13 +546,13 @@ public class LiveSessionNotificationProcessor {
             // Handle different data structures from batch vs individual user queries
             String userId, fullName, email;
 
-            if (r.length >= 6) {
-                // Batch query result: [mapping_id, user_id, expiry_date, full_name, mobile_number, email, package_session_id]
+            if (r.length >= 7) {
+                // Batch query result: [mapping_id, user_id, expiry_date, full_name, mobile_number, email, region, package_session_id]
                 userId = (String) r[1];
                 fullName = (String) r[3];
                 email = (String) r[5];
             } else {
-                // Individual user query result: [user_id, full_name, mobile_number, email]
+                // Individual user query result: [user_id, full_name, mobile_number, email, region]
                 userId = (String) r[0];
                 fullName = (String) r[1];
                 email = (String) r[3];
@@ -577,8 +563,7 @@ public class LiveSessionNotificationProcessor {
             placeholders.put("NAME", fullName);
             placeholders.put("SESSION_TITLE", session.getTitle() != null ? session.getTitle() : "Live Class");
 
-            // Add timezone with UTC offset
-            placeholders.put("TIMEZONE", getTimezoneWithOffset(session.getTimezone()));
+            placeholders.put("ACTION", LiveClassAction.CREATED.getDisplayName());
 
             // Add theme color
             placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
@@ -589,24 +574,19 @@ public class LiveSessionNotificationProcessor {
                 String liveClassUrl = buildLiveClassUrl(session, session.getId());
                 placeholders.put("LINK", liveClassUrl);
 
-                // Format date and time
-                if (schedule.getMeetingDate() != null && schedule.getStartTime() != null) {
-                    // format date
-                    String date = new java.text.SimpleDateFormat("EEEE, MMMM d, yyyy").format(schedule.getMeetingDate());
-
-                    // format time in 12-hour with AM/PM
-                    String time = new java.text.SimpleDateFormat("h:mm a").format(schedule.getStartTime());
-
-                    placeholders.put("DATE", date);
-                    placeholders.put("TIME", time);
-                } else {
-                    placeholders.put("DATE", "TBD");
-                    placeholders.put("TIME", "TBD");
-                }
+                // Format date and time for all configured timezones
+                String allTimezonesTimes = timezoneSettingService.createTimezoneDisplayString(
+                    schedule.getMeetingDate(), schedule.getStartTime(), session.getInstituteId(), session.getTimezone());
+                placeholders.put("ALL_TIMEZONE_TIMES", allTimezonesTimes);
+                
+                // Keep individual DATE and TIME for backward compatibility
+                placeholders.put("DATE", new SimpleDateFormat("EEEE, MMMM d, yyyy").format(schedule.getMeetingDate()));
+                placeholders.put("TIME", new SimpleDateFormat("h:mm a").format(schedule.getStartTime()));
             } else {
                 // Build live class URL even if schedule is null
                 String liveClassUrl = buildLiveClassUrl(session, session.getId());
                 placeholders.put("LINK", liveClassUrl);
+                placeholders.put("ALL_TIMEZONE_TIMES", "TBD");
                 placeholders.put("DATE", "TBD");
                 placeholders.put("TIME", "TBD");
             }
@@ -620,48 +600,6 @@ public class LiveSessionNotificationProcessor {
         return dto;
     }
 
-    /**
-     * Formats timezone with UTC offset for display in emails
-     * @param timezone Full timezone name (e.g., "Asia/Kolkata", "Europe/London")
-     * @return Timezone with offset (e.g., "Asia/Kolkata (+5:30)", "Europe/London (+0:00)")
-     */
-    private String getTimezoneWithOffset(String timezone) {
-        if (timezone == null || timezone.trim().isEmpty()) {
-            return "UTC (+0:00)";
-        }
-
-        try {
-            ZoneId zoneId = ZoneId.of(timezone);
-            ZoneOffset offset = zoneId.getRules().getOffset(LocalDateTime.now());
-            
-            // Format the UTC offset
-            String offsetString = formatUtcOffset(offset);
-            
-            // Return full timezone name with offset
-            return timezone + " (" + offsetString + " Hr)";
-        } catch (Exception e) {
-            // If timezone parsing fails, return the original string
-            System.out.println("Failed to parse timezone: " + timezone + ", error: " + e.getMessage());
-            return timezone;
-        }
-    }
-
-    /**
-     * Formats UTC offset in a readable format
-     * @param offset ZoneOffset to format
-     * @return Formatted offset string (e.g., "+5:30", "-8:00", "+0:00")
-     */
-    private String formatUtcOffset(ZoneOffset offset) {
-        int totalSeconds = offset.getTotalSeconds();
-        int hours = totalSeconds / 3600;
-        int minutes = Math.abs((totalSeconds % 3600) / 60);
-        
-        if (hours == 0 && minutes == 0) {
-            return "+0:00";
-        } else {
-            return String.format("%+d:%02d", hours, minutes);
-        }
-    }
 
     /**
      * Builds the live class URL based on session access level and domain routing
@@ -701,11 +639,6 @@ public class LiveSessionNotificationProcessor {
         }
     }
 
-    /**
-     * Gets the theme color for the institute, with fallback to default color
-     * @param instituteId Institute ID to fetch theme color for
-     * @return Theme color code or default color if not found
-     */
     private String getThemeColor(String instituteId) {
         try {
             if (instituteId != null && !instituteId.trim().isEmpty()) {
@@ -721,5 +654,8 @@ public class LiveSessionNotificationProcessor {
         // Default fallback color
         return "#ff6f3c";
     }
+
+
+
 }
 

@@ -1,9 +1,6 @@
 package vacademy.io.admin_core_service.features.live_session.dto;
 
 
-import java.sql.Date;
-import java.sql.Time;
-import java.sql.Timestamp;
 import java.time.*;
 
 public interface ScheduleDTO {
@@ -41,4 +38,5 @@ public interface ScheduleDTO {
     String getRecurrenceKey();
     String getCustomMeetingLink();
     String getCustomWaitingRoomMediaId();
+    String getTimezone();
 }

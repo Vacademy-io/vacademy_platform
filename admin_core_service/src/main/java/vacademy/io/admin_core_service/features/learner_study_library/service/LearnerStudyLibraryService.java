@@ -6,7 +6,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import vacademy.io.admin_core_service.features.chapter.dto.ChapterDetailsProjection;
 import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
 import vacademy.io.admin_core_service.features.course.dto.CourseDTOWithDetails;
 import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
@@ -14,12 +13,11 @@ import vacademy.io.admin_core_service.features.learner_operation.enums.LearnerOp
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerModuleDTOWithDetails;
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerSlidesDetailDTO;
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerSubjectProjection;
-import vacademy.io.admin_core_service.features.module.dto.ModuleDTO;
 import vacademy.io.admin_core_service.features.module.enums.ModuleStatusEnum;
 import vacademy.io.admin_core_service.features.module.repository.ModuleChapterMappingRepository;
 import vacademy.io.admin_core_service.features.module.repository.SubjectModuleMappingRepository;
+import vacademy.io.admin_core_service.features.media_service.service.MediaService;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
-import vacademy.io.admin_core_service.features.slide.dto.SlideDTO;
 import vacademy.io.admin_core_service.features.slide.dto.SlideDetailProjection;
 import vacademy.io.admin_core_service.features.slide.enums.QuestionStatusEnum;
 import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
@@ -30,14 +28,10 @@ import vacademy.io.admin_core_service.features.subject.enums.SubjectStatusEnum;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectPackageSessionRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
-import vacademy.io.common.institute.dto.SubjectDTO;
-import vacademy.io.common.institute.entity.module.Module;
-import vacademy.io.common.media.dto.FileDetailsDTO;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 
 @Slf4j
 @Service
@@ -53,6 +47,7 @@ public class LearnerStudyLibraryService {
     private final SlideService slideService;
     private final ObjectMapper objectMapper;
     private final InstituteSettingService instituteSettingService;
+    private final MediaService mediaService;
 
     public List<CourseDTOWithDetails> getLearnerStudyLibraryInitDetails(String instituteId, String packageSessionId, CustomUserDetails user) {
         validateInputs(instituteId, user.getUserId());
@@ -84,7 +79,8 @@ public class LearnerStudyLibraryService {
                 List.of(ChapterStatus.ACTIVE.name()),
                 List.of(ModuleStatusEnum.ACTIVE.name())
         );
-        return mapToLearnerModuleDTOWithDetails(rawResponse);
+        List<LearnerModuleDTOWithDetails> modules = mapToLearnerModuleDTOWithDetails(rawResponse);
+        return modules;
     }
 
     private List<LearnerModuleDTOWithDetails> mapToLearnerModuleDTOWithDetails(String rawJson) {
@@ -94,7 +90,7 @@ public class LearnerStudyLibraryService {
         try {
             return objectMapper.readValue(
                     rawJson,
-                    List.class
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, LearnerModuleDTOWithDetails.class)
             );
         } catch (Exception e) {
             throw new VacademyException("Error parsing module JSON response. "+e.getMessage());

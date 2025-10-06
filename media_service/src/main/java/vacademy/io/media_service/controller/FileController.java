@@ -36,7 +36,9 @@ public class FileController {
 
         String etag = "W/\"" + fileId + ":" + expiryDays + "\"";
         HttpHeaders headers = new HttpHeaders();
-        headers.set("Cache-Control", "public, max-age=3600, stale-while-revalidate=60");
+        // Cache for shorter duration to prevent URL expiry issues
+        // URLs are generated with precise timestamps, so longer caching can cause expiry
+        headers.set("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
         headers.setETag(etag);
 
         if (etag.equals(ifNoneMatch)) {

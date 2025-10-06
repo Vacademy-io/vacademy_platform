@@ -93,7 +93,8 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
         s.thumbnail_file_id AS thumbnailFileId,
         s.background_score_file_id AS backgroundScoreFileId,
         ss.thumbnail_file_id AS scheduleThumbnailFileId,  -- NEW
-        ss.daily_attendance AS dailyAttendance            -- NEW
+        ss.daily_attendance AS dailyAttendance,           -- NEW
+        s.timezone AS timezone
     FROM live_session s
     LEFT JOIN session_schedules ss ON s.id = ss.session_id
     WHERE s.id = :sessionId
@@ -145,10 +146,25 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
     Optional<ScheduleDetailsProjection> findScheduleDetailsById(@Param("scheduleId") String scheduleId);
 
     @Query(value = """
-        SELECT id
-        FROM session_schedules
-        WHERE session_id = :sessionId
-        ORDER BY meeting_date ASC, start_time ASC
+        SELECT ss.id
+        FROM session_schedules ss
+        JOIN live_session s ON ss.session_id = s.id
+        WHERE ss.session_id = :sessionId
+          AND ss.status != 'DELETED'
+          AND (
+              ss.meeting_date > CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)
+              OR (
+                  ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)
+                  AND (
+                      ss.start_time <= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS time)
+                      AND (
+                          ss.last_entry_time IS NULL 
+                          OR ss.last_entry_time >= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS time)
+                      )
+                  )
+              )
+          )
+        ORDER BY ss.meeting_date ASC, ss.start_time ASC
         LIMIT 1
     """, nativeQuery = true)
     String findEarliestScheduleIdBySessionId(@Param("sessionId") String sessionId);
@@ -168,5 +184,8 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
 
     @Query(value = "SELECT COUNT(*) FROM session_schedules WHERE session_id = :sessionId AND status <> :status", nativeQuery = true)
     int countActiveSchedulesBySessionId(@Param("sessionId") String sessionId,@Param("status") String status);
+
+    @Query(value = "SELECT id FROM session_schedules WHERE session_id = :sessionId AND status <> :status", nativeQuery = true)
+    List<String> findScheduleIdsBySessionId(@Param("sessionId") String sessionId, @Param("status") String status);
 
 }

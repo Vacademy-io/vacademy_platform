@@ -88,8 +88,68 @@ const isPublicRoute = (pathname: string): boolean => {
   // Special handling for dynamic routes
   const isDynamicLiveClassRoute =
     /^\/study-library\/live-class\/[^/]+\/?$/.test(pathname);
+  
+  // Course catalogue dynamic routes - any single path segment (tagName)
+  const isCourseCatalogueRoute = /^\/[^/]+\/?$/.test(pathname) && 
+    !pathname.startsWith('/login') && 
+    !pathname.startsWith('/signup') && 
+    !pathname.startsWith('/register') &&
+    !pathname.startsWith('/privacy-policy') &&
+    !pathname.startsWith('/terms-and-conditions') &&
+    !pathname.startsWith('/referral') &&
+    !pathname.startsWith('/live-class-guest') &&
+    !pathname.startsWith('/study-library') &&
+    !pathname.startsWith('/learner-invitation-response') &&
+    !pathname.startsWith('/institute-selection') &&
+    !pathname.startsWith('/delete-user') &&
+    !pathname.startsWith('/change-password') &&
+    !pathname.startsWith('/logout') &&
+    !pathname.startsWith('/courses') &&
+    !pathname.startsWith('/assessment') &&
+    !pathname.startsWith('/dashboard') &&
+    !pathname.startsWith('/homework') &&
+    !pathname.startsWith('/learning-centre') &&
+    !pathname.startsWith('/user-profile') &&
+    !pathname.startsWith('/study-library') &&
+    !pathname.startsWith('/Coursetile');
 
-  return directMatch || isDynamicLiveClassRoute;
+  // Course details dynamic routes - /{tagName}/{courseId}
+  // Check if it's exactly two path segments and not a system route
+  const pathSegments = pathname.split('/').filter(segment => segment.length > 0);
+  const isCourseDetailsRoute = pathSegments.length === 2 && 
+    !pathname.startsWith('/login') && 
+    !pathname.startsWith('/signup') && 
+    !pathname.startsWith('/register') &&
+    !pathname.startsWith('/privacy-policy') &&
+    !pathname.startsWith('/terms-and-conditions') &&
+    !pathname.startsWith('/referral') &&
+    !pathname.startsWith('/live-class-guest') &&
+    !pathname.startsWith('/study-library') &&
+    !pathname.startsWith('/learner-invitation-response') &&
+    !pathname.startsWith('/institute-selection') &&
+    !pathname.startsWith('/delete-user') &&
+    !pathname.startsWith('/change-password') &&
+    !pathname.startsWith('/logout') &&
+    !pathname.startsWith('/courses') &&
+    !pathname.startsWith('/assessment') &&
+    !pathname.startsWith('/dashboard') &&
+    !pathname.startsWith('/homework') &&
+    !pathname.startsWith('/learning-centre') &&
+    !pathname.startsWith('/user-profile');
+
+  const result = directMatch || isDynamicLiveClassRoute || isCourseCatalogueRoute || isCourseDetailsRoute;
+  
+  console.log("[isPublicRoute] Debug:", {
+    pathname,
+    pathSegments,
+    directMatch,
+    isDynamicLiveClassRoute,
+    isCourseCatalogueRoute,
+    isCourseDetailsRoute,
+    result
+  });
+
+  return result;
 };
 
 const RootComponent = () => {
@@ -272,8 +332,12 @@ export const Route = createRootRouteWithContext<{
   queryClient: QueryClient;
 }>()({
   beforeLoad: async ({ location }) => {
+    console.log("[__root] Checking route:", location.pathname);
+    console.log("[__root] Is public route:", isPublicRoute(location.pathname));
+    
     // Skip all logic for public routes - they should work without any redirects
     if (isPublicRoute(location.pathname)) {
+      console.log("[__root] Route is public, skipping authentication check");
       return;
     }
 

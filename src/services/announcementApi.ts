@@ -29,17 +29,35 @@ const notificationApi = axios.create({
 // Helper function to get user context
 const getUserContext = async () => {
   const { Preferences } = await import('@capacitor/preferences');
+  const { getTokenDecodedData } = await import('@/lib/auth/sessionUtility');
   
-  const [studentDetails, instituteDetails] = await Promise.all([
+  const [studentDetails, instituteDetails, accessToken] = await Promise.all([
     Preferences.get({ key: 'StudentDetails' }),
     Preferences.get({ key: 'InstituteDetails' }),
+    Preferences.get({ key: 'accessToken' }),
   ]);
 
   const student = studentDetails.value ? JSON.parse(studentDetails.value) : null;
   const institute = instituteDetails.value ? JSON.parse(instituteDetails.value) : null;
 
+  // Try to get user ID from token first, then fallback to student details
+  let userId = null;
+  if (accessToken?.value) {
+    try {
+      const tokenData = getTokenDecodedData(accessToken.value);
+      userId = tokenData?.user;
+    } catch (error) {
+      console.warn('Failed to decode token, falling back to student details:', error);
+    }
+  }
+
+  // Fallback to student details if token decoding failed
+  if (!userId) {
+    userId = student?.user_id;
+  }
+
   return {
-    userId: student?.user_id,
+    userId,
     instituteId: institute?.id,
   };
 };

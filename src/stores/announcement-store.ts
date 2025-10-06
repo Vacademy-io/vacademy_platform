@@ -556,16 +556,41 @@ export const useAnnouncementStore = create<AnnouncementStore>()(
       createReply: async (announcementId: string, content: string, parentReplyId?: string) => {
         try {
           const { Preferences } = await import('@capacitor/preferences');
-          const studentDetails = await Preferences.get({ key: 'StudentDetails' });
+          const { getTokenDecodedData } = await import('@/lib/auth/sessionUtility');
+          
+          const [studentDetails, accessToken] = await Promise.all([
+            Preferences.get({ key: 'StudentDetails' }),
+            Preferences.get({ key: 'accessToken' }),
+          ]);
+          
           const student = studentDetails.value ? JSON.parse(studentDetails.value) : null;
 
-          if (!student?.user_id) throw new Error('User ID not found');
+          // Try to get user ID from token first, then fallback to student details
+          let userId = null;
+          let userName = student?.full_name || 'Student';
+          
+          if (accessToken?.value) {
+            try {
+              const tokenData = getTokenDecodedData(accessToken.value);
+              userId = tokenData?.user;
+              userName = tokenData?.username || tokenData?.email || userName;
+            } catch (error) {
+              console.warn('Failed to decode token, falling back to student details:', error);
+            }
+          }
+
+          // Fallback to student details if token decoding failed
+          if (!userId) {
+            userId = student?.user_id;
+          }
+
+          if (!userId) throw new Error('User ID not found');
 
           const payload = {
             announcementId,
             parentMessageId: parentReplyId,
-            userId: student.user_id,
-            userName: student.full_name,
+            userId,
+            userName,
             userRole: 'STUDENT',
             content: {
               type: 'text' as const,

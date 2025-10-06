@@ -10,7 +10,7 @@ import { useTheme } from "@/providers/theme/theme-provider";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { applyTabBranding } from "@/utils/branding";
-import { getPublicUrl } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/excalidrawUtils";
+import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 
 export interface DomainRoutingState {
   isLoading: boolean;
@@ -110,7 +110,7 @@ export const useDomainRouting = () => {
       // Mirror branding into localStorage for earliest-possible application on next load
       try {
         const tabIconUrl = data.tabIconFileId
-          ? await getPublicUrl(data.tabIconFileId)
+          ? await getPublicUrlWithoutLogin(data.tabIconFileId)
           : null;
         const brandingMirror = {
           tabText: data.tabText || null,
@@ -315,7 +315,7 @@ export const useDomainRouting = () => {
       // Don't redirect if we're on course details page
       const isOnCourseDetailsPage = currentPath.startsWith(
         "/courses/course-details"
-      );
+      ) || /^\/[^/]+\/[^/]+\/?$/.test(currentPath);
 
       // Don't redirect if we're on live-class dynamic route
       const isOnLiveClassDynamicRoute =
@@ -365,7 +365,7 @@ export const useDomainRouting = () => {
       // Don't redirect if we're on course details page
       const isOnCourseDetailsPage = currentPath.startsWith(
         "/courses/course-details"
-      );
+      ) || /^\/[^/]+\/[^/]+\/?$/.test(currentPath);
 
       // Don't redirect if we're on live-class dynamic route
       const isOnLiveClassDynamicRoute =
@@ -380,9 +380,35 @@ export const useDomainRouting = () => {
       }
 
       // Only redirect if we're not on the root route (to avoid conflicts with root route logic)
-      if (window.location.pathname !== "/") {
+      // and not on a public route like /{tagName}
+      const currentPathForRedirect = window.location.pathname;
+      const isPublicRouteForRedirect = /^\/[^/]+\/?$/.test(currentPathForRedirect) && 
+        !currentPathForRedirect.startsWith('/login') && 
+        !currentPathForRedirect.startsWith('/signup') && 
+        !currentPathForRedirect.startsWith('/register') &&
+        !currentPathForRedirect.startsWith('/privacy-policy') &&
+        !currentPathForRedirect.startsWith('/terms-and-conditions') &&
+        !currentPathForRedirect.startsWith('/referral') &&
+        !currentPathForRedirect.startsWith('/live-class-guest') &&
+        !currentPathForRedirect.startsWith('/study-library') &&
+        !currentPathForRedirect.startsWith('/learner-invitation-response') &&
+        !currentPathForRedirect.startsWith('/institute-selection') &&
+        !currentPathForRedirect.startsWith('/delete-user') &&
+        !currentPathForRedirect.startsWith('/change-password') &&
+        !currentPathForRedirect.startsWith('/logout') &&
+        !currentPathForRedirect.startsWith('/courses') &&
+        !currentPathForRedirect.startsWith('/assessment') &&
+        !currentPathForRedirect.startsWith('/dashboard') &&
+        !currentPathForRedirect.startsWith('/homework') &&
+        !currentPathForRedirect.startsWith('/learning-centre') &&
+        !currentPathForRedirect.startsWith('/user-profile') &&
+        !currentPathForRedirect.startsWith('/Coursetile');
+        
+      if (window.location.pathname !== "/" && !isPublicRouteForRedirect) {
         // Executing redirect to: ${state.redirectPath}
         redirectToResolvedPath();
+      } else if (isPublicRouteForRedirect) {
+        console.log("[Domain Routing] On public route, skipping redirect to:", state.redirectPath);
       }
     }
   }, [state.isLoading, state.redirectPath]);

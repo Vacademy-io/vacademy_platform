@@ -57,6 +57,7 @@ export const GET_ENROLL_DETAILS = `${BASE_URL}/admin-core-service/learner-invita
 export const ENROLL_OPEN_STUDENT_URL = `${BASE_URL}/admin-core-service/open/learner/enroll-invite`;
 export const PEYMENT_LOG_STATUS_URL = `${BASE_URL}/admin-core-service/open/v1/payment-log`;
 export const GET_STRIPE_KEY_URL = `${BASE_URL}/admin-core-service/open/v1/institute/payment-setting/payment-gateway-details`;
+export const ENROLLMENT_INVITE_URL = `${BASE_URL}/admin-core-service/open/learner/enroll-invite`;
 export const ENROLL_USER_INVITE_PAYMENT_URL = `${BASE_URL}/admin-core-service/v1/learner/enroll`;
 export const ENROLL_DETAILS_RESPONSE = `${BASE_URL}/admin-core-service/learner-invitation-response/record`;
 export const STUDENT_DETAIL_EDIT = `${BASE_URL}/admin-core-service/learner/info/v1/edit`;
@@ -118,7 +119,7 @@ export const GET_USER_DETAILS_BY_EMAIL = `${BASE_URL}/auth-service/open/user-det
 export const REGISTER_USER = `${BASE_URL}/auth-service/learner/v1/register`;
 
 export const urlInstituteDetails = `${BASE_URL}/admin-core-service/public/institute/v1/details`;
-export const urlCourseDetails = `${BASE_URL}/admin-core-service/open/packages/v1/search`;
+export const urlCourseDetails = `${BASE_URL}/admin-core-service/open/packages/v2/search`;
 export const urlPublicCourseDetails = `${BASE_URL}/admin-core-service/learner-packages/v1/search`;
 export const urlInstructor = `${BASE_URL}/auth-service/public/v1/users-of-status`;
 export const FEEDBACK_URL = `${BASE_URL}/admin-core-service/rating`;

@@ -26,6 +26,7 @@ import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as CoursesIndexRouteImport } from './routes/courses/index'
 import { Route as ChangePasswordIndexRouteImport } from './routes/change-password/index'
 import { Route as AssessmentIndexRouteImport } from './routes/assessment/index'
+import { Route as TagNameIndexRouteImport } from './routes/$tagName/index'
 import { Route as UserProfileEditIndexRouteImport } from './routes/user-profile/edit/index'
 import { Route as StudyLibraryLiveClassIndexRouteImport } from './routes/study-library/live-class/index'
 import { Route as StudyLibraryCoursesIndexRouteImport } from './routes/study-library/courses/index'
@@ -41,6 +42,7 @@ import { Route as CoursesCourseDetailsIndexRouteImport } from './routes/courses/
 import { Route as AssessmentReportsIndexRouteImport } from './routes/assessment/reports/index'
 import { Route as AssessmentListIndexRouteImport } from './routes/assessment/list/index'
 import { Route as AssessmentExaminationIndexRouteImport } from './routes/assessment/examination/index'
+import { Route as TagNameCourseIdIndexRouteImport } from './routes/$tagName/$courseId/index'
 import { Route as LoginOauthModalLearnerRouteImport } from './routes/login/oauth/modal-learner'
 import { Route as LoginOauthLearnerRouteImport } from './routes/login/oauth/learner'
 import { Route as StudyLibraryLiveClassWaitingRoomIndexRouteImport } from './routes/study-library/live-class/waiting-room/index'
@@ -142,6 +144,11 @@ const AssessmentIndexRoute = AssessmentIndexRouteImport.update({
   path: '/assessment/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TagNameIndexRoute = TagNameIndexRouteImport.update({
+  id: '/$tagName/',
+  path: '/$tagName/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const UserProfileEditIndexRoute = UserProfileEditIndexRouteImport.update({
   id: '/user-profile/edit/',
   path: '/user-profile/edit/',
@@ -226,6 +233,11 @@ const AssessmentExaminationIndexRoute =
     path: '/assessment/examination/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const TagNameCourseIdIndexRoute = TagNameCourseIdIndexRouteImport.update({
+  id: '/$tagName/$courseId/',
+  path: '/$tagName/$courseId/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginOauthModalLearnerRoute = LoginOauthModalLearnerRouteImport.update({
   id: '/login/oauth/modal-learner',
   path: '/login/oauth/modal-learner',
@@ -314,6 +326,7 @@ const StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRoute =
   )
 
 export interface FileRoutesByFullPath {
+  '/$tagName': typeof TagNameIndexRoute
   '/assessment': typeof AssessmentIndexRoute
   '/change-password': typeof ChangePasswordIndexRoute
   '/courses': typeof CoursesIndexRoute
@@ -333,6 +346,7 @@ export interface FileRoutesByFullPath {
   '/user-profile': typeof UserProfileIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
+  '/$tagName/$courseId': typeof TagNameCourseIdIndexRoute
   '/assessment/examination': typeof AssessmentExaminationIndexRoute
   '/assessment/list': typeof AssessmentListIndexRoute
   '/assessment/reports': typeof AssessmentReportsIndexRoute
@@ -362,6 +376,7 @@ export interface FileRoutesByFullPath {
   '/study-library/courses/course-details/subjects/modules/chapters/slides': typeof StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRoute
 }
 export interface FileRoutesByTo {
+  '/$tagName': typeof TagNameIndexRoute
   '/assessment': typeof AssessmentIndexRoute
   '/change-password': typeof ChangePasswordIndexRoute
   '/courses': typeof CoursesIndexRoute
@@ -381,6 +396,7 @@ export interface FileRoutesByTo {
   '/user-profile': typeof UserProfileIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
+  '/$tagName/$courseId': typeof TagNameCourseIdIndexRoute
   '/assessment/examination': typeof AssessmentExaminationIndexRoute
   '/assessment/list': typeof AssessmentListIndexRoute
   '/assessment/reports': typeof AssessmentReportsIndexRoute
@@ -411,6 +427,7 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/$tagName/': typeof TagNameIndexRoute
   '/assessment/': typeof AssessmentIndexRoute
   '/change-password/': typeof ChangePasswordIndexRoute
   '/courses/': typeof CoursesIndexRoute
@@ -430,6 +447,7 @@ export interface FileRoutesById {
   '/user-profile/': typeof UserProfileIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
+  '/$tagName/$courseId/': typeof TagNameCourseIdIndexRoute
   '/assessment/examination/': typeof AssessmentExaminationIndexRoute
   '/assessment/list/': typeof AssessmentListIndexRoute
   '/assessment/reports/': typeof AssessmentReportsIndexRoute
@@ -461,6 +479,7 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
+    | '/$tagName'
     | '/assessment'
     | '/change-password'
     | '/courses'
@@ -480,6 +499,7 @@ export interface FileRouteTypes {
     | '/user-profile'
     | '/login/oauth/learner'
     | '/login/oauth/modal-learner'
+    | '/$tagName/$courseId'
     | '/assessment/examination'
     | '/assessment/list'
     | '/assessment/reports'
@@ -509,6 +529,7 @@ export interface FileRouteTypes {
     | '/study-library/courses/course-details/subjects/modules/chapters/slides'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/$tagName'
     | '/assessment'
     | '/change-password'
     | '/courses'
@@ -528,6 +549,7 @@ export interface FileRouteTypes {
     | '/user-profile'
     | '/login/oauth/learner'
     | '/login/oauth/modal-learner'
+    | '/$tagName/$courseId'
     | '/assessment/examination'
     | '/assessment/list'
     | '/assessment/reports'
@@ -557,6 +579,7 @@ export interface FileRouteTypes {
     | '/study-library/courses/course-details/subjects/modules/chapters/slides'
   id:
     | '__root__'
+    | '/$tagName/'
     | '/assessment/'
     | '/change-password/'
     | '/courses/'
@@ -576,6 +599,7 @@ export interface FileRouteTypes {
     | '/user-profile/'
     | '/login/oauth/learner'
     | '/login/oauth/modal-learner'
+    | '/$tagName/$courseId/'
     | '/assessment/examination/'
     | '/assessment/list/'
     | '/assessment/reports/'
@@ -606,6 +630,7 @@ export interface FileRouteTypes {
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  TagNameIndexRoute: typeof TagNameIndexRoute
   AssessmentIndexRoute: typeof AssessmentIndexRoute
   ChangePasswordIndexRoute: typeof ChangePasswordIndexRoute
   CoursesIndexRoute: typeof CoursesIndexRoute
@@ -625,6 +650,7 @@ export interface RootRouteChildren {
   UserProfileIndexRoute: typeof UserProfileIndexRoute
   LoginOauthLearnerRoute: typeof LoginOauthLearnerRoute
   LoginOauthModalLearnerRoute: typeof LoginOauthModalLearnerRoute
+  TagNameCourseIdIndexRoute: typeof TagNameCourseIdIndexRoute
   AssessmentExaminationIndexRoute: typeof AssessmentExaminationIndexRoute
   AssessmentListIndexRoute: typeof AssessmentListIndexRoute
   AssessmentReportsIndexRoute: typeof AssessmentReportsIndexRoute
@@ -775,6 +801,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AssessmentIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/$tagName/': {
+      id: '/$tagName/'
+      path: '/$tagName'
+      fullPath: '/$tagName'
+      preLoaderRoute: typeof TagNameIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/user-profile/edit/': {
       id: '/user-profile/edit/'
       path: '/user-profile/edit'
@@ -880,6 +913,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AssessmentExaminationIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/$tagName/$courseId/': {
+      id: '/$tagName/$courseId/'
+      path: '/$tagName/$courseId'
+      fullPath: '/$tagName/$courseId'
+      preLoaderRoute: typeof TagNameCourseIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login/oauth/modal-learner': {
       id: '/login/oauth/modal-learner'
       path: '/login/oauth/modal-learner'
@@ -982,6 +1022,7 @@ declare module '@tanstack/react-router' {
 }
 
 const rootRouteChildren: RootRouteChildren = {
+  TagNameIndexRoute: TagNameIndexRoute,
   AssessmentIndexRoute: AssessmentIndexRoute,
   ChangePasswordIndexRoute: ChangePasswordIndexRoute,
   CoursesIndexRoute: CoursesIndexRoute,
@@ -1001,6 +1042,7 @@ const rootRouteChildren: RootRouteChildren = {
   UserProfileIndexRoute: UserProfileIndexRoute,
   LoginOauthLearnerRoute: LoginOauthLearnerRoute,
   LoginOauthModalLearnerRoute: LoginOauthModalLearnerRoute,
+  TagNameCourseIdIndexRoute: TagNameCourseIdIndexRoute,
   AssessmentExaminationIndexRoute: AssessmentExaminationIndexRoute,
   AssessmentListIndexRoute: AssessmentListIndexRoute,
   AssessmentReportsIndexRoute: AssessmentReportsIndexRoute,

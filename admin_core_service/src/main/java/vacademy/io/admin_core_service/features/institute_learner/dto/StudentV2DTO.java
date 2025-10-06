@@ -54,4 +54,5 @@ public class StudentV2DTO {
     private String source;
     private String type;
     private String typeId;
+    private String desiredLevelId;
 }

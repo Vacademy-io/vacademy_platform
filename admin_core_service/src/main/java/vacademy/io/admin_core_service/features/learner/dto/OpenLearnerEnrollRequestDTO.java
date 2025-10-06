@@ -19,4 +19,5 @@ public class OpenLearnerEnrollRequestDTO {
     private String typeId;
     private String source;
     private List<CustomFieldValueDTO>customFieldValues;
+    private String desiredLevelId;
 }

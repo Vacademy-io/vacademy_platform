@@ -66,10 +66,7 @@ public class OpenLearnerEnrollService {
     }
 
     private PackageSession resolvePackageSession(OpenLearnerEnrollRequestDTO requestDTO) {
-        if (StringUtils.hasText(requestDTO.getPackageSessionId())) {
-            return getInvitedPackageSession(requestDTO.getPackageSessionId());
-        }
-        return getDefaultPackageSession();
+        return getInvitedPackageSession(requestDTO.getPackageSessionId());
     }
 
     private void ensureStudentExists(UserDTO user) {
@@ -131,12 +128,10 @@ public class OpenLearnerEnrollService {
         mapping.setUserId(user.getId());
         mapping.setEnrolledDate(new Date());
         mapping.setInstitute(instituteRepository.findById(instituteId).orElseThrow());
-
-        if (StringUtils.hasText(requestDTO.getPackageSessionId())) {
-            mapping.setDestinationPackageSession(
-                    packageSessionRepository.findById(requestDTO.getPackageSessionId()).orElseThrow()
-            );
-        }
+        mapping.setDestinationPackageSession(
+                packageSessionRepository.findById(requestDTO.getPackageSessionId()).orElseThrow()
+        );
+        mapping.setDesiredLevelId(requestDTO.getDesiredLevelId());
         return mapping;
     }
 

@@ -81,4 +81,7 @@ public class StudentSessionInstituteGroupMapping {
 
     @Column(name = "source", length = 100)
     private String source;
+
+    @Column(name = "desired_level_id")
+    private String desiredLevelId;
 }

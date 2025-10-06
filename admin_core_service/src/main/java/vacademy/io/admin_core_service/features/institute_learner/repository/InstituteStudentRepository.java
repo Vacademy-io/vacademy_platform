@@ -624,7 +624,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 up.payment_option_json AS "paymentOptionJson",
                 ssigm.destination_package_session_id AS "destinationPackageSessionId",
                 ssigm.user_plan_id AS "userPlanId",
-                up.enroll_invite_id AS "enrollInviteId"
+                up.enroll_invite_id AS "enrollInviteId",
+                ssigm.desired_level_id AS "desiredLevelId"
             FROM student s
             JOIN student_session_institute_group_mapping ssigm
                 ON s.user_id = ssigm.user_id
@@ -656,6 +657,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#types == null || #types.isEmpty()} = true OR ssigm.type IN (:types))
               AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
               AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
+              AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
             GROUP BY s.id, s.username, s.full_name, s.email, s.mobile_number,
                      ssigm.package_session_id, ssigm.enrolled_date, ssigm.expiry_date,
                      last_pl.payment_status, s.user_id, s.address_line, s.region, s.city,
@@ -663,7 +665,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                      s.parents_mobile_number, s.parents_email, s.linked_institute_name,
                      s.created_at, s.updated_at, s.face_file_id, s.parents_to_mother_mobile_number,
                      s.parents_to_mother_email, ssigm.institute_enrollment_number,
-                     ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id
+                     ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ssigm.desired_level_id
             """, countQuery = """
             SELECT COUNT(DISTINCT s.id)
             FROM student s
@@ -688,6 +690,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#types == null || #types.isEmpty()} = true OR ssigm.type IN (:types))
               AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
               AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
+              AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
             """)
     Page<StudentListV2Projection> getAllStudentV2WithFilterRaw(
             @Param("statuses") List<String> statuses,
@@ -701,6 +704,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             @Param("types") List<String> types,
             @Param("typeIds") List<String> typeIds,
             @Param("destinationPackageSessionIds") List<String> destinationPackageSessionIds,
+            @Param("levelIds") List<String> levelIds,
             Pageable pageable);
 
     @Query(nativeQuery = true, value = """
@@ -749,7 +753,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 up.payment_option_json AS "paymentOptionJson",
                 ssigm.destination_package_session_id AS "destinationPackageSessionId",
                 ssigm.user_plan_id AS "userPlanId",
-                up.enroll_invite_id AS "enrollInviteId"
+                up.enroll_invite_id AS "enrollInviteId",
+                ssigm.desired_level_id AS "desiredLevelId"
             FROM student s
             JOIN student_session_institute_group_mapping ssigm
                 ON s.user_id = ssigm.user_id
@@ -786,6 +791,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#types == null || #types.isEmpty()} = true OR ssigm.type IN (:types))
               AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
               AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
+              AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
             GROUP BY s.id, s.username, s.full_name, s.email, s.mobile_number,
                      ssigm.package_session_id, ssigm.enrolled_date, ssigm.expiry_date,
                      last_pl.payment_status, s.user_id, s.address_line, s.region, s.city,
@@ -793,7 +799,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                      s.parents_mobile_number, s.parents_email, s.linked_institute_name,
                      s.created_at, s.updated_at, s.face_file_id, s.parents_to_mother_mobile_number,
                      s.parents_to_mother_email, ssigm.institute_enrollment_number,
-                     ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id
+                     ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ssigm.desired_level_id
             """, countQuery = """
             SELECT COUNT(DISTINCT s.id)
             FROM student s
@@ -823,6 +829,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#types == null || #types.isEmpty()} = true OR ssigm.type IN (:types))
               AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
               AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
+              AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
             """)
     Page<StudentListV2Projection> getAllStudentV2WithSearchRaw(
             @Param("name") String name,
@@ -834,6 +841,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             @Param("types") List<String> types,
             @Param("typeIds") List<String> typeIds,
             @Param("destinationPackageSessionIds") List<String> destinationPackageSessionIds,
+            @Param("levelIds") List<String> levelIds,
             Pageable pageable);
 
 }

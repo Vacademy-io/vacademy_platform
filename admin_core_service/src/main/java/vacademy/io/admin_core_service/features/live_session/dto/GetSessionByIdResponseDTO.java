@@ -32,6 +32,7 @@ public class GetSessionByIdResponseDTO {
     private String thumbnailFileId;
     private String backgroundScoreFileId;
     private String sessionStreamingServiceType;
+    private String timezone;
     private List<String> packageSessionIds;
     private List<ScheduleItem> addedSchedules;
 

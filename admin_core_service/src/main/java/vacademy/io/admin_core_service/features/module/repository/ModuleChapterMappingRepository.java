@@ -120,62 +120,62 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
     List<ModuleChapterMapping> findByModuleId(@Param("moduleId") String moduleId);
 
     @Query(value = """
-    SELECT json_agg(module_data) AS module_array
-    FROM (
-        SELECT json_build_object(
-            'module', json_build_object(
-                'id', m.id,
-                'module_name', m.module_name,
-                'description', m.description,
-                'thumbnail_id', m.thumbnail_id
-            ),
-            'chapters', COALESCE(json_agg(jsonb_build_object(
-                'id', c.id,
-                'chapter_name', c.chapter_name,
-                'status', c.status,
-                'file_id', c.file_id,
-                'description', c.description,
-                'video_count', counts.video_count,
-                'pdf_count', counts.pdf_count,
-                'doc_count', counts.doc_count,
-                'question_slide_count', counts.question_slide_count,
-                'assignment_slide_count', counts.assignment_slide_count,
-                'survey_slide_count', counts.survey_slide_count,
-                'unknown_count', counts.unknown_count
-            ) ORDER BY c.created_at) FILTER (WHERE c.id IS NOT NULL), CAST('[]' AS json))
-        ) AS module_data
-        FROM subject_module_mapping smm
-        JOIN modules m ON smm.module_id = m.id AND m.status IN (:moduleStatusList)
-        LEFT JOIN module_chapter_mapping mcm ON mcm.module_id = m.id
-        LEFT JOIN chapter c ON c.id = mcm.chapter_id AND c.status IN (:chapterStatusList)
-        LEFT JOIN (
-            SELECT
-                c.id AS chapter_id,
-                COUNT(DISTINCT CASE WHEN s.source_type = 'VIDEO' THEN s.id END) AS video_count,
-                COUNT(DISTINCT CASE WHEN s.source_type = 'DOCUMENT' AND d.type = 'PDF' THEN s.id END) AS pdf_count,
-                COUNT(DISTINCT CASE WHEN s.source_type = 'DOCUMENT' AND d.type = 'DOC' THEN s.id END) AS doc_count,
-                COUNT(DISTINCT CASE WHEN s.source_type = 'QUESTION' THEN s.id END) AS question_slide_count,
-                COUNT(DISTINCT CASE WHEN s.source_type = 'ASSIGNMENT' THEN s.id END) AS assignment_slide_count,
-                COUNT(DISTINCT CASE WHEN s.source_type = 'SURVEY' THEN s.id END) AS survey_slide_count,
-                COUNT(DISTINCT CASE WHEN s.source_type NOT IN ('VIDEO', 'DOCUMENT', 'QUESTION', 'ASSIGNMENT', 'SURVEY') OR s.source_type IS NULL THEN s.id END) AS unknown_count
-            FROM chapter c
-            LEFT JOIN chapter_to_slides cs ON cs.chapter_id = c.id AND cs.status IN (:chapterToSlideStatusList)
-            LEFT JOIN slide s ON cs.slide_id = s.id AND s.status IN (:slideStatusList)
-            LEFT JOIN document_slide d ON d.id = s.source_id
-            WHERE c.status IN (:chapterStatusList)
-            GROUP BY c.id
-        ) AS counts ON counts.chapter_id = c.id
-        WHERE smm.subject_id = :subjectId
-        GROUP BY m.id, m.module_name, m.description, m.thumbnail_id
+SELECT json_agg(module_data) AS module_array
+FROM (
+    SELECT json_build_object(
+        'module', json_build_object(
+            'id', m.id,
+            'module_name', m.module_name,
+            'description', m.description,
+            'thumbnail_id', m.thumbnail_id
+        ),
+        'chapters', COALESCE(json_agg(jsonb_build_object(
+            'id', c.id,
+            'chapter_name', c.chapter_name,
+            'status', c.status,
+            'file_id', c.file_id,
+            'description', c.description,
+            'video_count', counts.video_count,
+            'pdf_count', counts.pdf_count,
+            'doc_count', counts.doc_count,
+            'question_slide_count', counts.question_slide_count,
+            'assignment_slide_count', counts.assignment_slide_count,
+            'survey_slide_count', counts.survey_slide_count,
+            'unknown_count', counts.unknown_count
+        ) ORDER BY c.created_at) FILTER (WHERE c.id IS NOT NULL), CAST('[]' AS json))
     ) AS module_data
+    FROM subject_module_mapping smm
+    JOIN modules m ON smm.module_id = m.id AND m.status IN (:moduleStatusList)
+    -- The only change is in the following line --
+    LEFT JOIN (SELECT DISTINCT module_id, chapter_id FROM module_chapter_mapping) mcm ON mcm.module_id = m.id
+    LEFT JOIN chapter c ON c.id = mcm.chapter_id AND c.status IN (:chapterStatusList)
+    LEFT JOIN (
+        SELECT
+            c.id AS chapter_id,
+            COUNT(DISTINCT CASE WHEN s.source_type = 'VIDEO' THEN s.id END) AS video_count,
+            COUNT(DISTINCT CASE WHEN s.source_type = 'DOCUMENT' AND d.type = 'PDF' THEN s.id END) AS pdf_count,
+            COUNT(DISTINCT CASE WHEN s.source_type = 'DOCUMENT' AND d.type = 'DOC' THEN s.id END) AS doc_count,
+            COUNT(DISTINCT CASE WHEN s.source_type = 'QUESTION' THEN s.id END) AS question_slide_count,
+            COUNT(DISTINCT CASE WHEN s.source_type = 'ASSIGNMENT' THEN s.id END) AS assignment_slide_count,
+            COUNT(DISTINCT CASE WHEN s.source_type = 'SURVEY' THEN s.id END) AS survey_slide_count,
+            COUNT(DISTINCT CASE WHEN s.source_type NOT IN ('VIDEO', 'DOCUMENT', 'QUESTION', 'ASSIGNMENT', 'SURVEY') OR s.source_type IS NULL THEN s.id END) AS unknown_count
+        FROM chapter c
+        LEFT JOIN chapter_to_slides cs ON cs.chapter_id = c.id AND cs.status IN (:chapterToSlideStatusList)
+        LEFT JOIN slide s ON cs.slide_id = s.id AND s.status IN (:slideStatusList)
+        LEFT JOIN document_slide d ON d.id = s.source_id
+        WHERE c.status IN (:chapterStatusList)
+        GROUP BY c.id
+    ) AS counts ON counts.chapter_id = c.id
+    WHERE smm.subject_id = :subjectId
+    GROUP BY m.id, m.module_name, m.description, m.thumbnail_id
+) AS module_data
 """, nativeQuery = true)
     String getOpenModuleChapterDetails(
-        @Param("subjectId") String subjectId,
-        @Param("slideStatusList") List<String> slideStatusList,
-        @Param("chapterToSlideStatusList") List<String> chapterToSlideStatusList,
-        @Param("chapterStatusList") List<String> chapterStatusList,
-        @Param("moduleStatusList") List<String> moduleStatusList
+            @Param("subjectId") String subjectId,
+            @Param("slideStatusList") List<String> slideStatusList,
+            @Param("chapterToSlideStatusList") List<String> chapterToSlideStatusList,
+            @Param("chapterStatusList") List<String> chapterStatusList,
+            @Param("moduleStatusList") List<String> moduleStatusList
     );
-
 
 }

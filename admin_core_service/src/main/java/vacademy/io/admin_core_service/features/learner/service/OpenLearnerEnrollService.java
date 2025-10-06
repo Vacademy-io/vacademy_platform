@@ -62,6 +62,9 @@ public class OpenLearnerEnrollService {
     }
 
     private UserDTO createOrFetchUser(OpenLearnerEnrollRequestDTO requestDTO, String instituteId) {
+        if (!StringUtils.hasText(requestDTO.getUserDTO().getFullName())){
+            throw new VacademyException("Full name required!!!");
+        }
         return authService.createUserFromAuthService(requestDTO.getUserDTO(), instituteId, false);
     }
 

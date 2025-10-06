@@ -93,7 +93,8 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
         s.thumbnail_file_id AS thumbnailFileId,
         s.background_score_file_id AS backgroundScoreFileId,
         ss.thumbnail_file_id AS scheduleThumbnailFileId,  -- NEW
-        ss.daily_attendance AS dailyAttendance            -- NEW
+        ss.daily_attendance AS dailyAttendance,           -- NEW
+        s.timezone AS timezone
     FROM live_session s
     LEFT JOIN session_schedules ss ON s.id = ss.session_id
     WHERE s.id = :sessionId

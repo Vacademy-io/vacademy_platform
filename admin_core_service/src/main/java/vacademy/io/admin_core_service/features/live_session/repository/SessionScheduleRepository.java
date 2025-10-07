@@ -152,15 +152,18 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
         WHERE ss.session_id = :sessionId
           AND ss.status != 'DELETED'
           AND (
-              ss.meeting_date > CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)
-              OR (
-                  ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)
+              -- Future schedules (meeting date + start time > current time in session timezone)
+              CAST((ss.meeting_date + ss.start_time) AS TIMESTAMP)
+              > CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS TIMESTAMP)
+              OR
+              -- Current/active schedules (started but still accepting entries)
+              (
+                  CAST((ss.meeting_date + ss.start_time) AS TIMESTAMP)
+                  <= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS TIMESTAMP)
                   AND (
-                      ss.start_time <= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS time)
-                      AND (
-                          ss.last_entry_time IS NULL 
-                          OR ss.last_entry_time >= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS time)
-                      )
+                      ss.last_entry_time IS NULL 
+                      OR CAST((ss.meeting_date + ss.last_entry_time) AS TIMESTAMP)
+                      >= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS TIMESTAMP)
                   )
               )
           )

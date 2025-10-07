@@ -146,7 +146,7 @@ public class StudentListManager {
     }
 
     public ResponseEntity<AllStudentV2Response> getLinkedStudentsV2(CustomUserDetails user,
-            StudentListFilter studentListFilter, int pageNo, int pageSize) {
+                                                                    StudentListFilter studentListFilter, int pageNo, int pageSize) {
 
         Pageable pageable = createPageable(studentListFilter, pageNo, pageSize);
         Page<StudentListV2Projection> page = fetchStudentPage(studentListFilter, pageable);
@@ -172,6 +172,11 @@ public class StudentListManager {
                     filter.getStatuses(),
                     filter.getPaymentStatuses(),
                     List.of(StatusEnum.ACTIVE.name()),
+                    filter.getSources(),
+                    filter.getTypes(),
+                    filter.getTypeIds(),
+                    filter.getDestinationPackageSessionIds(),
+                    filter.getLevelIds(),
                     pageable);
         }
 
@@ -184,11 +189,18 @@ public class StudentListManager {
                     filter.getPackageSessionIds(),
                     filter.getPaymentStatuses(),
                     List.of(StatusEnum.ACTIVE.name()),
+                    filter.getSources(),
+                    filter.getTypes(),
+                    filter.getTypeIds(),
+                    filter.getDestinationPackageSessionIds(),
+                    filter.getLevelIds(),
                     pageable);
         }
 
         return null;
     }
+
+
 
     private List<StudentV2DTO> mapProjectionsToDTOs(List<StudentListV2Projection> projections) {
         List<StudentV2DTO> dtos = new ArrayList<>();
@@ -248,6 +260,7 @@ public class StudentListManager {
             }
             dto.setCustomFields(parseCustomFields(mapper, p.getCustomFieldsJson()));
             dto.setEnrollInviteId(p.getEnrollInviteId());
+            dto.setDesiredLevelId(p.getDesiredLevelId());
             dtos.add(dto);
         }
 
@@ -400,51 +413,5 @@ public class StudentListManager {
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());
         }
-    }
-
-    public ResponseEntity<AllStudentV2Response> getLeads(CustomUserDetails user,
-                                                                    StudentListFilter studentListFilter, int pageNo, int pageSize) {
-
-        Pageable pageable = createPageable(studentListFilter, pageNo, pageSize);
-        Page<StudentListV2Projection> page = fetchLeadsDetails(studentListFilter, pageable);
-        List<StudentV2DTO> content = page != null ? mapProjectionsToDTOs(page.getContent()) : new ArrayList<>();
-
-        if (!content.isEmpty()) {
-            enrichWithUserCredentials(content);
-        }
-
-        return ResponseEntity.ok(buildResponse(content, page, pageSize));
-    }
-
-    private Page<StudentListV2Projection> fetchLeadsDetails(StudentListFilter filter, Pageable pageable) {
-        if (StringUtils.hasText(filter.getName())) {
-            return instituteStudentRepository.getAllStudentV2WithSearchRaw(
-                    filter.getName(),
-                    filter.getInstituteIds(),
-                    filter.getStatuses(),
-                    filter.getPaymentStatuses(),
-                    List.of(StatusEnum.ACTIVE.name()),
-                    filter.getSources(),
-                    filter.getTypes(),
-                    filter.getTypeIds(),
-                    pageable);
-        }
-
-        if (!filter.getInstituteIds().isEmpty()) {
-            return instituteStudentRepository.getAllStudentV2WithFilterRaw(
-                    filter.getStatuses(),
-                    filter.getGender(),
-                    filter.getInstituteIds(),
-                    filter.getGroupIds(),
-                    filter.getPackageSessionIds(),
-                    filter.getPaymentStatuses(),
-                    filter.getSources(),
-                    filter.getTypes(),
-                    filter.getTypeIds(),
-                    List.of(StatusEnum.ACTIVE.name()),
-                    pageable);
-        }
-
-        return null;
     }
 }

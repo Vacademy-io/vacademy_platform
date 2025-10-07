@@ -84,6 +84,7 @@ public class Student {
         this.mobileNumber = userDTO.getMobileNumber();
         this.dateOfBirth = userDTO.getDateOfBirth();
         this.gender = userDTO.getGender();
+        this.userId = userDTO.getId();
     }
 
     @PrePersist

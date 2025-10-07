@@ -40,7 +40,7 @@ public class ServerTimeService {
      * 
      * @return ServerTimeResponseDTO with UTC time information
      */
-    @Cacheable(value = "serverTimeUTC", unless = "#result == null")
+   
     public ServerTimeResponseDTO getCurrentTimeUTC() {
         ZonedDateTime currentTime = ZonedDateTime.now(ZoneId.of("UTC"));
         return new ServerTimeResponseDTO(currentTime);

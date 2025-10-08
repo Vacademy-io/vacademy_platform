@@ -1,6 +1,7 @@
 package vacademy.io.media_service.manager;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -61,7 +62,8 @@ public class TaskStatusManager {
 
         try {
             String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
-            return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+            String cleanedJson = tryUnwrapQuotedJson(validJson);
+            return ResponseEntity.ok(createAutoQuestionPaperResponse(cleanedJson));
 
         } catch (Exception e) {
             return ResponseEntity.ok(new AutoQuestionPaperResponse());
@@ -90,6 +92,39 @@ public class TaskStatusManager {
         return autoQuestionPaperResponse;
     }
 
+    private String tryUnwrapQuotedJson(String json) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode node = mapper.readTree(json);
+            if (node.isTextual()) {
+                String inner = node.textValue();
+                // inner might itself contain extra wrappers or markdown fences
+                String trimmed = inner.trim()
+                        .replaceFirst("(?is)^```json\\s*", "")
+                        .replaceFirst("(?s)```$", "");
+                return JsonUtils.extractAndSanitizeJson(trimmed);
+            }
+            return json;
+        } catch (Exception ex) {
+            // Fallback manual unescape for cases where the entire JSON is double-escaped
+            String s = json.trim()
+                    .replaceFirst("(?is)^```json\\s*", "")
+                    .replaceFirst("(?s)```$", "");
+            if (s.startsWith("\"") && s.endsWith("\"")) {
+                s = s.substring(1, s.length() - 1);
+            }
+            s = s.replace("\\\"", "\"")
+                    .replace("\\n", "\n")
+                    .replace("\\t", "\t")
+                    .replace("\\/", "/");
+            try {
+                return JsonUtils.extractAndSanitizeJson(s);
+            } catch (Exception ignored) {
+                return s;
+            }
+        }
+    }
+
     public ResponseEntity<LecturePlanDto> getLecturePlan(String taskId) {
         Optional<TaskStatus> taskStatus = taskStatusService.getTaskStatusById(taskId);
         if (taskStatus.isEmpty()) throw new VacademyException("Task Not Found");
@@ -99,7 +134,7 @@ public class TaskStatusManager {
 
         try {
             String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
-            return ResponseEntity.ok(createLecturePlanDtoFromJson(removeExtraSlashes(validJson)));
+            return ResponseEntity.ok(createLecturePlanDtoFromJson(validJson));
 
         } catch (Exception e) {
             return ResponseEntity.ok(new LecturePlanDto());

@@ -137,7 +137,7 @@ export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmati
   };
 
   const handleEnroll = async () => {
-    if (!selectedPaymentOption || !selectedPaymentPlan || !enrollmentData) {
+    if (!selectedPaymentOption || !enrollmentData) {
       setError("Free enrollment configuration not available.");
       return;
     }
@@ -247,7 +247,7 @@ export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmati
             </DialogTitle>
           </DialogHeader>
 
-          {enrollmentData && selectedPaymentPlan && (
+          {enrollmentData && selectedPaymentOption && (
             <div className="space-y-6">
               {/* Course Info Card */}
               <Card className="bg-green-50 border-green-200">
@@ -313,29 +313,6 @@ export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmati
                       </div>
                     )}
 
-                    {/* Features */}
-                    {selectedPaymentPlan.feature_json && (
-                      <div className="space-y-2 text-left">
-                        {(() => {
-                          try {
-                            const features = JSON.parse(selectedPaymentPlan.feature_json);
-                            return Array.isArray(features) ? features.slice(0, 3).map((feature: string, index: number) => (
-                              <div key={index} className="flex items-center space-x-2">
-                                <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
-                                <span className="text-sm text-gray-700">{feature}</span>
-                              </div>
-                            )) : [];
-                          } catch {
-                            return [
-                              <div key="default" className="flex items-center space-x-2">
-                                <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
-                                <span className="text-sm text-gray-700">Full course access</span>
-                              </div>
-                            ];
-                          }
-                        })()}
-                      </div>
-                    )}
                   </div>
                 </CardContent>
               </Card>

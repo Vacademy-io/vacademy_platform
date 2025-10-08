@@ -99,16 +99,13 @@ export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmati
     setError(null);
     try {
       const data = await fetchEnrollmentDetails(inviteCode, instituteId, packageSessionId, token);
-      console.log('FreeEnrollmentConfirmationDialog - Enrollment data:', data);
       setEnrollmentData(data);
       
       // Auto-select first FREE payment option and plan
       const paymentOptions = getPaymentOptions(data);
-      console.log('FreeEnrollmentConfirmationDialog - Payment options:', paymentOptions);
       const freeOptions = paymentOptions.filter(option => 
         option.type === 'FREE'
       );
-      console.log('FreeEnrollmentConfirmationDialog - Free options:', freeOptions);
       
       if (freeOptions.length > 0) {
         const firstFreeOption = freeOptions[0];
@@ -117,6 +114,17 @@ export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmati
         const plans = getPaymentPlans(firstFreeOption);
         if (plans.length > 0) {
           setSelectedPaymentPlan(plans[0]);
+        } else {
+          // Create a minimal payment plan for FREE enrollment without plans
+          const minimalPlan = {
+            id: 'free-plan-default',
+            name: 'Free Plan',
+            actual_price: 0,
+            currency: data.currency || 'USD',
+            description: `Free enrollment for ${courseTitle}`,
+            feature_json: '["Full course access", "Lifetime access", "Certificate of completion"]'
+          };
+          setSelectedPaymentPlan(minimalPlan);
         }
       } else if (paymentOptions.length > 0) {
         // Fallback to any option with free plans
@@ -127,7 +135,20 @@ export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmati
         const freePlans = plans.filter(plan => plan.actual_price === 0);
         if (freePlans.length > 0) {
           setSelectedPaymentPlan(freePlans[0]);
+        } else {
+          // Create a minimal payment plan for FREE enrollment without plans
+          const minimalPlan = {
+            id: 'free-plan-default',
+            name: 'Free Plan',
+            actual_price: 0,
+            currency: data.currency || 'USD',
+            description: `Free enrollment for ${courseTitle}`,
+            feature_json: '["Full course access", "Lifetime access", "Certificate of completion"]'
+          };
+          setSelectedPaymentPlan(minimalPlan);
         }
+      } else {
+        setError("No enrollment options available.");
       }
     } catch (err) {
       setError("Failed to load free enrollment options. Please try again.");
@@ -146,12 +167,26 @@ export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmati
     setError(null);
     
     try {
-      // For free enrollment, no payment gateway details needed
+      // For free enrollment, we don't need payment plans or payment gateway
+      // Create a minimal payment plan object if none exists
+      let paymentPlan = selectedPaymentPlan;
+      if (!paymentPlan) {
+        // Create a minimal payment plan for FREE enrollment without plans
+        paymentPlan = {
+          id: 'free-plan-default',
+          name: 'Free Plan',
+          actual_price: 0,
+          currency: enrollmentData.currency || 'USD',
+          description: `Free enrollment for ${courseTitle}`,
+          feature_json: '["Full course access", "Lifetime access", "Certificate of completion"]'
+        };
+      }
+
       // Get real user data for enrollment
       const userData = await getRealUserData();
       const userProfileEmail = userData?.email || 'guest@example.com';
       
-      // Call the enrollment API directly
+      // Call the enrollment API
       await handlePaymentForEnrollment({
         userEmail: userProfileEmail,
         receiptEmail: userProfileEmail,
@@ -159,10 +194,10 @@ export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmati
         packageSessionId,
         enrollmentData,
         paymentGatewayData: null as any, // No payment gateway needed for free enrollment
-        selectedPaymentPlan,
+        selectedPaymentPlan: paymentPlan,
         selectedPaymentOption,
-        amount: selectedPaymentPlan.actual_price,
-        currency: selectedPaymentPlan.currency || enrollmentData.currency,
+        amount: paymentPlan.actual_price,
+        currency: paymentPlan.currency,
         description: `Free enrollment for ${courseTitle}`,
         paymentType: 'free',
         token,

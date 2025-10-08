@@ -44,43 +44,17 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
     setLoading(true);
     setError(null);
     try {
-      console.log('EnrollmentPaymentDialog: Fetching enrollment details', {
-        inviteCode,
-        instituteId,
-        packageSessionId
-      });
-      
       const data = await fetchEnrollmentDetails(inviteCode, instituteId, packageSessionId, token);
       setEnrollmentData(data);
-      
-      console.log('EnrollmentPaymentDialog: Enrollment data received', {
-        hasPaymentOptions: data.package_session_to_payment_options?.length > 0,
-        paymentOptionsCount: data.package_session_to_payment_options?.length || 0,
-        paymentOptions: data.package_session_to_payment_options?.map(opt => ({
-          id: opt.payment_option.id,
-          name: opt.payment_option.name,
-          type: opt.payment_option.type,
-          require_approval: opt.payment_option.require_approval,
-          hasPaymentPlans: opt.payment_option.payment_plans?.length > 0
-        }))
-      });
       
       // Determine payment type from the first payment option
       if (data.package_session_to_payment_options && data.package_session_to_payment_options.length > 0) {
         const firstPaymentOption = data.package_session_to_payment_options[0].payment_option;
         setPaymentType(firstPaymentOption.type);
-        
-        console.log('EnrollmentPaymentDialog: Payment type determined', {
-          paymentType: firstPaymentOption.type,
-          requireApproval: firstPaymentOption.require_approval,
-          hasPaymentPlans: firstPaymentOption.payment_plans?.length > 0
-        });
       } else {
-        console.warn('EnrollmentPaymentDialog: No payment options found in enrollment data');
         setError("No payment options available for this course.");
       }
     } catch (err) {
-      console.error('EnrollmentPaymentDialog: Error fetching enrollment data', err);
       setError("Failed to load enrollment options. Please try again.");
     } finally {
       setLoading(false);
@@ -129,13 +103,6 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
   const renderPaymentDialog = () => {
     if (!paymentType) return null;
 
-    console.log('EnrollmentPaymentDialog: Rendering payment dialog', {
-      paymentType,
-      enrollmentDataExists: !!enrollmentData,
-      packageSessionId,
-      instituteId
-    });
-
     const commonProps = {
       packageSessionId,
       instituteId,
@@ -148,7 +115,6 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
 
     switch (paymentType.toLowerCase()) {
       case 'donation':
-        console.log('EnrollmentPaymentDialog: Rendering DonationDialog');
         return (
           <DonationDialog
             open={open}
@@ -169,7 +135,6 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
         );
       
       case 'subscription':
-        console.log('EnrollmentPaymentDialog: Rendering EnhancedEnrollmentDialog for subscription');
         return (
           <EnhancedEnrollmentDialog
             open={open}
@@ -189,7 +154,6 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
       case 'one_time':
       case 'onetime':
       case 'one_time_payment':
-        console.log('EnrollmentPaymentDialog: Rendering EnhancedEnrollmentDialog for one-time payment');
         return (
           <EnhancedEnrollmentDialog
             open={open}
@@ -207,7 +171,6 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
       
       case 'free':
       case 'free_plan':
-        console.log('EnrollmentPaymentDialog: Rendering FreeEnrollmentConfirmationDialog for FREE payment');
         return (
           <FreeEnrollmentConfirmationDialog
             open={open}
@@ -218,9 +181,6 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
         );
       
       default:
-        console.log('EnrollmentPaymentDialog: Unknown payment type, falling back to SubscriptionPaymentDialog', {
-          paymentType
-        });
         // Fallback to subscription dialog for unknown types
         return (
           <SubscriptionPaymentDialog

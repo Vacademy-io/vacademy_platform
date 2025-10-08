@@ -39,11 +39,10 @@ export const EnrollmentPendingDialog: React.FC<EnrollmentPendingDialogProps> = (
             Request Submitted Successfully
           </h3>
           
-          <p className="text-gray-600 mb-6">
-            Your enrollment request for <strong>{courseTitle}</strong> has been submitted successfully. 
-            An admin will review and approve your request soon. You will be notified once approved.
+          {/* <p className="text-gray-600 mb-6">
+            Your enrollment request for <strong>{courseTitle}</strong> has been submitted successfully.
           </p>
-          
+           */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
             <div className="flex items-center space-x-2 text-blue-800">
               <CheckCircle className="w-4 h-4" />

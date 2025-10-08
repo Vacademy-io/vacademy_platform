@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-public class DeepSeekService {
+public class ExternalAIApiService {
 
     private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("<!--DEEPSEEK_PLACEHOLDER_(\\d+)-->");
     private final ChatModel chatModel;
@@ -39,10 +39,10 @@ public class DeepSeekService {
     @Autowired
     private ObjectMapper objectMapper;
     @Autowired
-    private DeepSeekApiService deepSeekApiService;
+    private ExternalAIApiServiceImpl deepSeekApiService;
 
     @Autowired
-    public DeepSeekService(ChatModel chatModel) {
+    public ExternalAIApiService(ChatModel chatModel) {
         this.chatModel = chatModel;
     }
 
@@ -285,15 +285,28 @@ public class DeepSeekService {
             String unTaggedHtml = htmlJsonProcessor.removeTags(textPrompt);
 
             String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.TEXT_TO_QUESTIONS);
+            String existingQuestions = allQuestionNumbers;
+            String continuationInstruction = (!StringUtils.hasText(allQuestionNumbers) || "None".equalsIgnoreCase(allQuestionNumbers))
+                    ? "Start from beginning"
+                    : ("Continue for question other than " + allQuestionNumbers + " if needed");
 
-            Map<String, Object> promptMap = Map.of("textPrompt", textPrompt, "numberOfQuestions", numberOfQuestions, "typeOfQuestion", typeOfQuestion, "classLevel", classLevel, "topics", topics, "language", language,
-                    "allQuestionNumbers", allQuestionNumbers);
+            Map<String, Object> promptMap = Map.of(
+                    "textPrompt", textPrompt,
+                    "numberOfQuestions", numberOfQuestions,
+                    "typeOfQuestion", typeOfQuestion,
+                    "classLevel", classLevel,
+                    "topics", topics,
+                    "language", language,
+                    "allQuestionNumbers", allQuestionNumbers,
+                    "existingQuestions", existingQuestions,
+                    "continuationInstruction", continuationInstruction
+            );
             Prompt prompt = new PromptTemplate(template).create(promptMap);
             taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
 
-            DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash", prompt.getContents().trim(), 30000);
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
-                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldJson);
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldJson, "No Response Generate");
                 return oldJson;
             }
 
@@ -306,19 +319,19 @@ public class DeepSeekService {
             String mergedJson = mergeQuestionsJson(oldJson, restored);
 
             if (getIsProcessCompleted(mergedJson)) {
-                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), mergedJson);
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), mergedJson, "Questions Generated");
                 return mergedJson;
             }
             if (getQuestionCount(mergedJson) >= Integer.parseInt(numberOfQuestions)) {
-                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), mergedJson);
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), mergedJson, "Questions Generated");
                 return mergedJson;
             }
 
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.PROGRESS.name(), mergedJson);
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.PROGRESS.name(), mergedJson, "Questions Generating");
 
             return getQuestionsWithDeepSeekFromTextPrompt(textPrompt, numberOfQuestions, typeOfQuestion, classLevel, topics, language, taskStatus, attempt + 1, mergedJson);
         } catch (Exception e) {
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldJson);
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldJson, e.getMessage());
             return oldJson;
         }
     }
@@ -340,7 +353,7 @@ public class DeepSeekService {
             Prompt prompt = new PromptTemplate(template).create(promptMap);
 
 
-            DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash", prompt.getContents().trim(), 30000);
 
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
                 throw new Exception("Failed to get response from deepseek");
@@ -379,7 +392,7 @@ public class DeepSeekService {
 
         Prompt prompt = new PromptTemplate(template).create(Map.of("htmlData", unTaggedHtml, "userPrompt", userPrompt));
 
-        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
+        DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash", prompt.getContents().trim(), 30000);
         if (response.getChoices().isEmpty()) {
             throw new VacademyException("No response from DeepSeek");
         }
@@ -419,9 +432,9 @@ public class DeepSeekService {
 
             Prompt prompt = new PromptTemplate(template).create(promptMap);
 
-            DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash", prompt.getContents().trim(), 30000);
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
-                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), restoredJson);
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), restoredJson, "No Response Generate");
                 return restoredJson;
             }
 
@@ -434,16 +447,16 @@ public class DeepSeekService {
             String mergedJson = mergeQuestionsJson(restoredJson, restored);
 
             if (getIsProcessCompleted(mergedJson)) {
-                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), mergedJson);
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), mergedJson, "Questions Generated");
                 return mergedJson;
             }
 
-            taskStatusService.updateTaskStatus(taskStatus, "PROGRESS", restoredJson);
+            taskStatusService.updateTaskStatus(taskStatus, "PROGRESS", restoredJson, "Questions Generating");
             // Recurse for remaining questions
             return getQuestionsWithDeepSeekFromHTMLRecursive(htmlData, userPrompt, mergedJson, attempt + 1, taskStatus);
         } catch (Exception e) {
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), restoredJson);
-            return restoredJson;
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), restoredJson, e.getMessage());
+            throw new RuntimeException(e);
         }
     }
 
@@ -451,7 +464,7 @@ public class DeepSeekService {
         try {
             if (attempt >= 5) {
                 if(restoredJson == null || restoredJson.isEmpty()) {
-                    taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), restoredJson);
+                    taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), restoredJson, "No Response Generate");
                 }
                 return restoredJson != null ? restoredJson : "";
             }
@@ -470,9 +483,9 @@ public class DeepSeekService {
 
             taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
 
-            DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash", prompt.getContents().trim(), 30000);
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
-                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), restoredJson);
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), restoredJson, "No Response Generate");
                 return restoredJson;
             }
 
@@ -487,15 +500,15 @@ public class DeepSeekService {
             String mergedJson = mergeQuestionsJson(restoredJson, newRestoredJson);
 
             if (getIsProcessCompleted(mergedJson)) {
-                taskStatusService.updateTaskStatus(taskStatus, null, mergedJson);
+                taskStatusService.updateTaskStatus(taskStatus, null, mergedJson, "Questions Generated");
                 return mergedJson;
             }
 
-            taskStatusService.updateTaskStatus(taskStatus, "PROGRESS", restoredJson);
+            taskStatusService.updateTaskStatus(taskStatus, "PROGRESS", restoredJson, "Questions Generating");
             // Recurse for remaining questions
             return getQuestionsWithDeepSeekFromHTMLOfTopics(htmlData, requiredTopics, mergedJson, attempt + 1, taskStatus);
         } catch (Exception e) {
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), restoredJson);
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), restoredJson, e.getMessage());
             throw new RuntimeException(e);
         }
     }
@@ -511,7 +524,7 @@ public class DeepSeekService {
 
         Prompt prompt = new PromptTemplate(template).create(Map.of("htmlQuestionData", htmlQuestionData, "htmlAnswerData", htmlAnswerData, "maxMarks", maxMarks, "evaluationDifficulty", evaluationDifficulty));
 
-        DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
+        DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash", prompt.getContents().trim(), 30000);
         if (response.getChoices().isEmpty()) {
             throw new VacademyException("No response from DeepSeek");
         }
@@ -540,10 +553,10 @@ public class DeepSeekService {
 
             taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
 
-            DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash", prompt.getContents().trim(), 30000);
 
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
-                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldResponse);
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldResponse, "No Response Generate");
                 return oldResponse;
             }
             String resultJson = response.getChoices().get(0).getMessage().getContent();
@@ -556,20 +569,20 @@ public class DeepSeekService {
             log.info("Total Questions: " + currentQuestionCount);
 
             if (getIsProcessCompleted(mergedJson)) {
-                taskStatusService.updateTaskStatus(taskStatus, "COMPLETED", mergedJson);
+                taskStatusService.updateTaskStatus(taskStatus, "COMPLETED", mergedJson, "Questions Generated");
                 return mergedJson;
             }
 
 
             if (!Objects.isNull(numQuestions) && numQuestions.isEmpty() && currentQuestionCount >= Integer.parseInt(numQuestions)) {
-                taskStatusService.updateTaskStatus(taskStatus, "COMPLETED", mergedJson);
+                taskStatusService.updateTaskStatus(taskStatus, "COMPLETED", mergedJson, "Questions Generated");
                 return mergedJson;
             }
 
-            taskStatusService.updateTaskStatus(taskStatus, "PROGRESS", mergedJson);
+            taskStatusService.updateTaskStatus(taskStatus, "PROGRESS", mergedJson, "Questions Generating");
             return getQuestionsWithDeepSeekFromAudio(audioString, difficulty, numQuestions, optionalPrompt, mergedJson, attempt + 1, taskStatus);
         } catch (Exception e) {
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldResponse);
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldResponse, e.getMessage());
             return oldResponse;
         }
     }
@@ -818,9 +831,9 @@ public class DeepSeekService {
 
             taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
 
-            DeepSeekResponse response = deepSeekApiService.getChatCompletion("deepseek/deepseek-chat-v3-0324:free", prompt.getContents().trim(), 30000);
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash", prompt.getContents().trim(), 30000);
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
-                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldJson);
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldJson, "No Response Generate");
                 return oldJson;
             }
 
@@ -833,15 +846,15 @@ public class DeepSeekService {
             String mergedJson = mergeQuestionsJson(oldJson, restored);
 
             if (getIsProcessCompleted(mergedJson)) {
-                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), mergedJson);
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), mergedJson, "Questions Generated");
                 return mergedJson;
             }
 
-            taskStatusService.updateTaskStatus(taskStatus, "PROGRESS", mergedJson);
+            taskStatusService.updateTaskStatus(taskStatus, "PROGRESS", mergedJson, "Questions Generating");
             // Recurse for remaining questions
             return getQuestionsWithDeepSeekFromHTMLWithTopics(htmlData, taskStatus, attempt + 1, mergedJson);
         } catch (Exception e) {
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldJson);
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldJson, e.getMessage());
             return oldJson;
         }
     }

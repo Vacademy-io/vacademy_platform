@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.media.dto.FileDetailsDTO;
-import vacademy.io.media_service.ai.DeepSeekService;
+import vacademy.io.media_service.ai.ExternalAIApiService;
 import vacademy.io.media_service.dto.AiGeneratedQuestionPaperJsonDto;
 import vacademy.io.media_service.dto.AutoDocumentSubmitResponse;
 import vacademy.io.media_service.dto.AutoQuestionPaperResponse;
@@ -32,7 +32,7 @@ public class AudioQuestionGeneratorController {
     @Autowired
     HtmlImageConverter htmlImageConverter;
     @Autowired
-    DeepSeekService deepSeekService;
+    ExternalAIApiService deepSeekService;
     @Autowired
     DeepSeekAsyncTaskService deepSeekAsyncTaskService;
     @Autowired

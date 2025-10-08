@@ -5,12 +5,13 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.HttpClientErrorException;
 import vacademy.io.media_service.dto.DeepSeekResponse;
 
 import java.util.*;
 
 @Service
-public class DeepSeekApiService {
+public class ExternalAIApiServiceImpl {
 
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -19,7 +20,13 @@ public class DeepSeekApiService {
     @Value("${openrouter.api.key}")
     private String API_KEY;
 
-    public DeepSeekApiService() {
+    @Value("${openrouter.http_referer:https://vacademy.io}")
+    private String httpReferer;
+
+    @Value("${openrouter.x_title:Vacademy Platform}")
+    private String xTitle;
+
+    public ExternalAIApiServiceImpl() {
 
     }
 
@@ -29,6 +36,8 @@ public class DeepSeekApiService {
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
         headers.set("Authorization", "Bearer " + API_KEY);
+        headers.set("HTTP-Referer", httpReferer);
+        headers.set("X-Title", xTitle);
 
         // Prepare messages
         List<Map<String, String>> messages = new ArrayList<>();
@@ -44,21 +53,24 @@ public class DeepSeekApiService {
         requestBody.put("temperature", 0.7);           // Less randomness for JSON
         requestBody.put("top_p", 0.9);                 // Slightly narrower sampling
         requestBody.put("stream", false);
-        requestBody.put("transforms", List.of("middle-out"));
+        // Note: Avoid using experimental transforms unless explicitly required/supported by the model
 
         // Create HTTP entity
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
         // Make the API call and parse response
-        ResponseEntity<String> response = restTemplate.exchange(
-                apiUrl,
-                HttpMethod.POST,
-                entity,
-                String.class
-        );
-
         try {
+            ResponseEntity<String> response = restTemplate.exchange(
+                    apiUrl,
+                    HttpMethod.POST,
+                    entity,
+                    String.class
+            );
+
             return objectMapper.readValue(response.getBody(), DeepSeekResponse.class);
+        } catch (HttpClientErrorException e) {
+            String body = e.getResponseBodyAsString();
+            throw new RuntimeException("OpenRouter request failed: " + e.getStatusCode() + (body != null && !body.isBlank() ? (" - " + body) : ""), e);
         } catch (Exception e) {
             throw new RuntimeException("Failed to parse API response", e);
         }

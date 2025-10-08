@@ -13,8 +13,8 @@ public class ConstantAiTemplate {
                                 
                 **Instructions**:
                 1. Continuation Handling:
-                   - Existing Questions: {allQuestionNumbers or "None"}
-                   - {f"Continue for question other than {allQuestionNumbers} if needed" else "Start from beginning"}
+                   - Existing Questions: {existingQuestions}
+                   - {continuationInstruction}
                    - Strictly avoid duplicate content from existing questions
                                 
                 2. Content Requirements:

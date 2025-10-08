@@ -4,7 +4,7 @@ package vacademy.io.media_service.controller.question_metadata_extractor.manager
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
-import vacademy.io.media_service.ai.DeepSeekService;
+import vacademy.io.media_service.ai.ExternalAIApiService;
 import vacademy.io.media_service.controller.question_metadata_extractor.dto.QuestionMetadataExtractorRequest;
 import vacademy.io.media_service.controller.question_metadata_extractor.dto.QuestionMetadataExtractorResponse;
 
@@ -15,7 +15,7 @@ import java.util.Map;
 public class QuestionMetadataManager {
 
     @Autowired
-    DeepSeekService deepSeekService;
+    ExternalAIApiService deepSeekService;
 
     public QuestionMetadataExtractorResponse extractQuestionMetadata(QuestionMetadataExtractorRequest request) {
 

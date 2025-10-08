@@ -7,7 +7,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.media_service.ai.DeepSeekLectureService;
-import vacademy.io.media_service.ai.DeepSeekService;
+import vacademy.io.media_service.ai.ExternalAIApiService;
 import vacademy.io.media_service.dto.TextDTO;
 import vacademy.io.media_service.dto.audio.AudioConversionDeepLevelResponse;
 import vacademy.io.media_service.entity.TaskStatus;
@@ -31,7 +31,7 @@ public class DeepSeekAsyncTaskService {
     TaskStatusService taskStatusService;
 
     @Autowired
-    DeepSeekService deepSeekService;
+    ExternalAIApiService deepSeekService;
 
     @Autowired
     DeepSeekLectureService deepSeekLectureService;
@@ -77,21 +77,22 @@ public class DeepSeekAsyncTaskService {
     public void processDeepSeekTaskInBackground(TaskStatus taskStatus, String userPrompt, String networkHtml) {
         try {
             String restoreJson = (taskStatus.getResultJson() == null) ? "" : taskStatus.getResultJson();
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.PROGRESS.name(), null);
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.PROGRESS.name(), null, "Questions Generating");
 
             String rawOutput = deepSeekService.getQuestionsWithDeepSeekFromHTMLRecursive(
                     networkHtml, userPrompt, restoreJson, 0, taskStatus
             );
             if(rawOutput==null || rawOutput.isEmpty()) taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), rawOutput, "No Response Generate");
-            else taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput);
+            else taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput, "Questions Generated");
         } catch (Exception e) {
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), null, e.getMessage());
             log.error("Failed To Generate: " + e.getMessage());
         }
     }
 
     private void processDeepSeekTaskInBackgroundForPdftoQuestionOfTopic(TaskStatus taskStatus, String topics, String networkHtml) {
         try {
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.PROGRESS.name(), null);
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.PROGRESS.name(), null, "Questions Generating");
 
             String restoreJson = (taskStatus.getResultJson() == null) ? "" : taskStatus.getResultJson();
 
@@ -99,7 +100,7 @@ public class DeepSeekAsyncTaskService {
                     networkHtml, topics, restoreJson, 0, taskStatus
             );
 
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput);
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput, "Questions Generated");
         } catch (Exception e) {
             log.error("Failed To Generate: " + e.getMessage());
         }
@@ -111,7 +112,7 @@ public class DeepSeekAsyncTaskService {
 
             String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromAudio(convertedText, difficulty, numQuestions, prompt, restoreJson, 0, taskStatus));
 
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput);
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput, "Questions Generated"            );
         } catch (Exception e) {
             log.error("Failed To Generate: " + e.getMessage());
         }
@@ -126,7 +127,7 @@ public class DeepSeekAsyncTaskService {
         try {
             String rawOutput = (deepSeekLectureService.generateLecturePlannerFromPrompt(userPrompt, lectureDuration, language, methodOfTeaching, taskStatus, level, 0));
 
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput);
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput, "Questions Generated");
         } catch (Exception e) {
             log.error("Failed To Generate: " + e.getMessage());
         }
@@ -134,14 +135,14 @@ public class DeepSeekAsyncTaskService {
 
     private void processDeepSeekTaskInBackgroundForLectureFeedback(TaskStatus taskStatus, String text, AudioConversionDeepLevelResponse convertedAudioResponse) {
         try {
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.PROGRESS.name(), null);
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.PROGRESS.name(), null, "Questions Generating");
 
             String convertedAudioResponseString = getStringFromObject(convertedAudioResponse);
             String audioPace = getPaceFromTextAndDuration(text, convertedAudioResponse.getAudioDuration());
 
             String rawOutput = (deepSeekLectureService.generateLectureFeedback(text, convertedAudioResponseString, taskStatus, 0, audioPace));
 
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput);
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput, "Questions Generated");
         } catch (Exception e) {
             log.error("Failed To Generate: " + e.getMessage());
         }
@@ -164,25 +165,25 @@ public class DeepSeekAsyncTaskService {
 
     private void processDeepSeekTaskInBackgroundForTextToQuestions(TextDTO textPrompt, TaskStatus taskStatus) {
         String oldJson = taskStatus.getResultJson() != null ? taskStatus.getResultJson() : "";
-        taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.PROGRESS.name(), null);
+        taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.PROGRESS.name(), null, "Questions Generating");
         String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromTextPrompt(textPrompt.getText(), textPrompt.getNum().toString(), textPrompt.getQuestionType(), textPrompt.getClassLevel(), textPrompt.getTopics(), textPrompt.getQuestionLanguage(), taskStatus, 0, oldJson));
         if(rawOutput==null || rawOutput.isEmpty()) taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput,"No Response Generated");
-        else taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput);
+        else taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput, "Questions Generated");
     }
 
     private void processDeepSeekTaskInBackgroundSortPdfQuestionsWithTopics(String networkHtml, TaskStatus taskStatus) {
-        taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.PROGRESS.name(), null);
+        taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.PROGRESS.name(), null, "Questions Generating");
 
         String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTMLWithTopics(networkHtml, taskStatus, 0, ""));
         if(rawOutput==null || rawOutput.isEmpty()) taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), rawOutput, "No Response Generated");
-        else taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput);
+        else taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput, "Questions Generated");
     }
 
     public CompletableFuture<Void> pollAndProcessPdfToQuestions(TaskStatus taskStatus, String pdfId, String userPrompt) {
         return CompletableFuture.runAsync(() -> {
             try {
                 // Update task status as FILE_PROCESSING during polling
-                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING.name(), null);
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING.name(), null, "Questions Generating");
 
                 for (int attempt = 1; attempt <= PDF_MAX_TRIES; attempt++) {
 
@@ -222,7 +223,7 @@ public class DeepSeekAsyncTaskService {
         return CompletableFuture.runAsync(() -> {
             try {
                 // Update task status as FILE_PROCESSING during polling
-                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING.name(), null);
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING.name(), null, "Questions Generating");
 
                 for (int attempt = 1; attempt <= PDF_MAX_TRIES; attempt++) {
 
@@ -263,7 +264,7 @@ public class DeepSeekAsyncTaskService {
         return CompletableFuture.runAsync(() -> {
             try {
                 // Update task status as FILE_PROCESSING during polling
-                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING.name(), null);
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING.name(), null, "Questions Generating");
 
                 for (int attempt = 1; attempt <= PDF_MAX_TRIES; attempt++) {
 
@@ -305,7 +306,7 @@ public class DeepSeekAsyncTaskService {
         return CompletableFuture.runAsync(() -> {
             try {
                 // Update task status as FILE_PROCESSING during polling
-                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING.name(), null);
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING.name(), null, "Questions Generating");
 
                 for (int attempt = 1; attempt <= AUDIO_MAX_TRIES; attempt++) {
                     log.info("Polling attempt {} for pdfId {}", attempt, audioId);
@@ -363,7 +364,7 @@ public class DeepSeekAsyncTaskService {
         return CompletableFuture.runAsync(() -> {
             try {
                 // Update task status as FILE_PROCESSING during polling
-                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING.name(), null);
+                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING.name(), null, "Questions Generating");
 
                 for (int attempt = 1; attempt <= AUDIO_MAX_TRIES; attempt++) {
 

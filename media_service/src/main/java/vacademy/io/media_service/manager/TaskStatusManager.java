@@ -7,7 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import vacademy.io.common.exceptions.VacademyException;
-import vacademy.io.media_service.ai.DeepSeekService;
+import vacademy.io.media_service.ai.ExternalAIApiService;
 import vacademy.io.media_service.dto.AiGeneratedQuestionPaperJsonDto;
 import vacademy.io.media_service.dto.AutoQuestionPaperResponse;
 import vacademy.io.media_service.dto.lecture.LectureFeedbackDto;
@@ -31,7 +31,7 @@ public class TaskStatusManager {
     TaskStatusService taskStatusService;
 
     @Autowired
-    DeepSeekService deepSeekService;
+    ExternalAIApiService deepSeekService;
 
     public static String removeExtraSlashes(String input) {
         // Regular expression to match <img src="..."> and replace with <img src="...">

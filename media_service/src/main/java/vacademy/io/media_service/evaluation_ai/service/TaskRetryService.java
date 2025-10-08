@@ -7,8 +7,8 @@ import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.common.exceptions.VacademyException;
-import vacademy.io.media_service.ai.DeepSeekApiService;
-import vacademy.io.media_service.ai.DeepSeekService;
+import vacademy.io.media_service.ai.ExternalAIApiServiceImpl;
+import vacademy.io.media_service.ai.ExternalAIApiService;
 import vacademy.io.media_service.dto.DeepSeekResponse;
 import vacademy.io.media_service.entity.TaskStatus;
 import vacademy.io.media_service.enums.TaskStatusEnum;
@@ -18,8 +18,8 @@ import vacademy.io.media_service.util.JsonUtils;
 
 import java.util.Map;
 
-import static vacademy.io.media_service.ai.DeepSeekService.getCommaSeparatedQuestionNumbers;
-import static vacademy.io.media_service.ai.DeepSeekService.getIsProcessCompleted;
+import static vacademy.io.media_service.ai.ExternalAIApiService.getCommaSeparatedQuestionNumbers;
+import static vacademy.io.media_service.ai.ExternalAIApiService.getIsProcessCompleted;
 import static vacademy.io.media_service.constant.ConstantAiTemplate.getTemplateBasedOnType;
 
 /**
@@ -38,7 +38,7 @@ public class TaskRetryService {
     private ObjectMapper objectMapper;
 
     @Autowired
-    private DeepSeekApiService deepSeekApiService;
+    private ExternalAIApiServiceImpl deepSeekApiService;
 
     /**
      * Initiates an asynchronous retry of a failed task.
@@ -68,7 +68,7 @@ public class TaskRetryService {
         // Base case: stop retrying after max attempts
         if (retryCount >= MAX_RETRY_ATTEMPTS) {
             if (newTask.getResultJson().isEmpty()) {
-                taskStatusService.updateTaskStatus(newTask, TaskStatusEnum.FAILED.name(), null);
+                taskStatusService.updateTaskStatus(newTask, TaskStatusEnum.FAILED.name(), null, "MAX_RETRY_ATTEMPTS : No Response Generate");
             }
             return;
         }
@@ -83,7 +83,7 @@ public class TaskRetryService {
 
         // Call DeepSeek API for processing
         DeepSeekResponse response = deepSeekApiService.getChatCompletion(
-                "deepseek/deepseek-chat-v3-0324:free",
+                "google/gemini-2.5-flash",
                 prompt.getContents().trim(),
                 30000
         );
@@ -100,7 +100,7 @@ public class TaskRetryService {
         String mergedJson = mergeWithPreviousResults(newTask.getType(), newTask.getResultJson(), sanitizedJson);
 
         // Update task status with intermediate results
-        taskStatusService.updateTaskStatus(newTask, TaskStatusEnum.PROGRESS.name(), mergedJson);
+        taskStatusService.updateTaskStatus(newTask, TaskStatusEnum.PROGRESS.name(), mergedJson, "Questions Generating");
 
         // Check if task is complete
         if (isTaskComplete(newTask, mergedJson, newTask.getType())) {
@@ -144,12 +144,12 @@ public class TaskRetryService {
     private boolean isTaskComplete(TaskStatus task, String currentResultJson, String taskType) {
         if (isQuestionProcessingTask(taskType)) {
             if (getIsProcessCompleted(currentResultJson)) {
-                taskStatusService.updateTaskStatus(task, TaskStatusEnum.COMPLETED.name(), currentResultJson);
+                taskStatusService.updateTaskStatus(task, TaskStatusEnum.COMPLETED.name(), currentResultJson, "Questions Generated");
                 return true;
             }
         } else {
             if (currentResultJson != null && !currentResultJson.isEmpty()) {
-                taskStatusService.updateTaskStatus(task, TaskStatusEnum.COMPLETED.name(), currentResultJson);
+                taskStatusService.updateTaskStatus(task, TaskStatusEnum.COMPLETED.name(), currentResultJson, "Questions Generated");
                 return true;
             }
         }
@@ -166,7 +166,7 @@ public class TaskRetryService {
      */
     private String mergeWithPreviousResults(String taskType, String previousJson, String newJson) {
         if (isQuestionProcessingTask(taskType)) {
-            return DeepSeekService.mergeQuestionsJson(previousJson, newJson);
+            return ExternalAIApiService.mergeQuestionsJson(previousJson, newJson);
         }
         return (previousJson == null || previousJson.isEmpty()) ? newJson : previousJson;
     }

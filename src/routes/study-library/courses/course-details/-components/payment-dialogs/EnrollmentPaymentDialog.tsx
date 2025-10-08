@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
@@ -8,8 +8,6 @@ import {
 } from "../../-services/enrollment-api";
 import { DonationDialog } from "@/components/common/donation/DonationDialog";
 import { SubscriptionPaymentDialog } from "./SubscriptionPaymentDialog";
-import { OneTimePaymentDialog } from "./OneTimePaymentDialog";
-import { FreePlanDialog } from "./FreePlanDialog";
 import { FreeEnrollmentConfirmationDialog } from "./FreeEnrollmentConfirmationDialog";
 import { EnhancedEnrollmentDialog } from "./EnhancedEnrollmentDialog";
 
@@ -42,14 +40,7 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
 
   const [paymentType, setPaymentType] = useState<string | null>(null);
 
-  // Fetch enrollment data when dialog opens
-  useEffect(() => {
-    if (open && packageSessionId) {
-      fetchEnrollmentData();
-    }
-  }, [open, packageSessionId]);
-
-  const fetchEnrollmentData = async () => {
+  const fetchEnrollmentData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -60,13 +51,22 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
       if (data.package_session_to_payment_options && data.package_session_to_payment_options.length > 0) {
         const firstPaymentOption = data.package_session_to_payment_options[0].payment_option;
         setPaymentType(firstPaymentOption.type);
+      } else {
+        setError("No payment options available for this course.");
       }
     } catch (err) {
       setError("Failed to load enrollment options. Please try again.");
     } finally {
       setLoading(false);
     }
-  };
+  }, [inviteCode, instituteId, packageSessionId, token]);
+
+  // Fetch enrollment data when dialog opens
+  useEffect(() => {
+    if (open && packageSessionId) {
+      fetchEnrollmentData();
+    }
+  }, [open, packageSessionId, fetchEnrollmentData]);
 
   if (loading) {
     return (
@@ -127,7 +127,7 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
             mode="enrollment"
             isUserEnrolled={false}
             onEnrollmentSuccess={onEnrollmentSuccess}
-            onSlideAccessSuccess={onNavigateToSlides ? (courseId, subjectId, moduleId, chapterId, slideId) => {
+            onSlideAccessSuccess={onNavigateToSlides ? () => {
               // Convert slide access success to navigation
               onNavigateToSlides();
             } : undefined}

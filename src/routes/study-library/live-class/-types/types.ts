@@ -63,6 +63,7 @@ export interface SessionDetailsResponse {
   scheduleId: string;
   instituteId: string;
   sessionStartTime: string;
+  timezone: string;
   lastEntryTime: string;
   accessLevel: string;
   meetingType: string | null;

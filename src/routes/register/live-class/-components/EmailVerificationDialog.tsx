@@ -89,6 +89,15 @@ export default function EmailVerificationDialog({
       );
 
       if (response.status === 200) {
+        // Save verified email to localStorage
+        const existingEmails = JSON.parse(
+          localStorage.getItem("verifiedEmail") || "[]"
+        );
+        if (!existingEmails.includes(email)) {
+          existingEmails.push(email);
+          localStorage.setItem("verifiedEmail", JSON.stringify(existingEmails));
+        }
+
         onEmailVerified(email);
       } else {
         toast.error("Wrong OTP entered");

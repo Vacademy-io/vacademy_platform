@@ -12,6 +12,8 @@ import { BackgroundMusic } from "./-components/BackgroundMusic";
 import { SessionStreamingServiceType } from "@/routes/register/live-class/-types/enum";
 import { useMarkAttendance } from "../-hooks/useMarkAttendance";
 import { toast } from "sonner";
+import { useServerTime, getServerTime } from "@/hooks/use-server-time";
+import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
 
 export const Route = createFileRoute("/study-library/live-class/waiting-room/")(
   {
@@ -33,48 +35,87 @@ function WaitingRoomComponent() {
     isLoading,
     error,
   } = useSessionDetails(sessionId);
+  const { data: serverTimeData } = useServerTime();
 
-  const fetchThumbnail = async () => {
+  const fetchThumbnail = useCallback(async () => {
     if (sessionDetails?.thumbnailFileId) {
       const thumbnailUrl = await getPublicUrl(sessionDetails.thumbnailFileId);
       setThumbnail(thumbnailUrl);
     }
-  };
+  }, [sessionDetails?.thumbnailFileId]);
 
   useEffect(() => {
     setNavHeading("Waiting Room");
     if (sessionDetails?.thumbnailFileId) {
       fetchThumbnail();
     }
-  }, [sessionDetails]);
+  }, [sessionDetails?.thumbnailFileId, setNavHeading, fetchThumbnail]);
 
   const checkSessionStart = useCallback(async () => {
-    if (!sessionDetails) return;
-    const now = new Date();
-    const sessionStart = new Date(`${sessionDetails.meetingDate}T${sessionDetails.scheduleStartTime}`);
+    if (!sessionDetails || !serverTimeData) return;
 
-    if (now >= sessionStart && sessionDetails.defaultMeetLink) {
+    // Get current time from server converted to user timezone
+    const serverTimestamp = getServerTime(serverTimeData);
+    const now = new Date(serverTimestamp);
+
+    // Convert session time to user timezone
+    const sessionStartInUserTimezone = convertSessionTimeToUserTimezone(
+      sessionDetails.meetingDate,
+      sessionDetails.scheduleStartTime,
+      sessionDetails.timezone
+    );
+
+    // Check if current time is >= session start time
+    if (now >= sessionStartInUserTimezone && sessionDetails.defaultMeetLink) {
+      console.log("Session has started, proceeding to live class");
       try {
-        await markAttendance({ sessionId: sessionDetails.sessionId, scheduleId: sessionId, userSourceType: "USER", userSourceId: "", details: "Joined live class from waiting room" });
+        await markAttendance({
+          sessionId: sessionDetails.sessionId,
+          scheduleId: sessionId,
+          userSourceType: "USER",
+          userSourceId: "",
+          details: "Joined live class from waiting room",
+        });
 
-        if (sessionDetails.sessionStreamingServiceType === SessionStreamingServiceType.EMBED) {
-          navigate({ to: "/study-library/live-class/embed", search: { sessionId } });
+        if (
+          sessionDetails.sessionStreamingServiceType ===
+          SessionStreamingServiceType.EMBED
+        ) {
+          navigate({
+            to: "/study-library/live-class/embed",
+            search: { sessionId },
+          });
         } else {
-          window.open(sessionDetails.defaultMeetLink, "_blank", "noopener,noreferrer");
+          console.log("Opening meeting link:", sessionDetails.defaultMeetLink);
+          window.open(
+            sessionDetails.defaultMeetLink,
+            "_blank",
+            "noopener,noreferrer"
+          );
           navigate({ to: "/study-library/live-class" });
         }
       } catch (error) {
         console.error("Failed to mark attendance:", error);
         toast.error("Failed to mark attendance");
-        if (sessionDetails.sessionStreamingServiceType === SessionStreamingServiceType.EMBED) {
-          navigate({ to: "/study-library/live-class/embed", search: { sessionId } });
+        if (
+          sessionDetails.sessionStreamingServiceType ===
+          SessionStreamingServiceType.EMBED
+        ) {
+          navigate({
+            to: "/study-library/live-class/embed",
+            search: { sessionId },
+          });
         } else {
-          window.open(sessionDetails.defaultMeetLink, "_blank", "noopener,noreferrer");
+          window.open(
+            sessionDetails.defaultMeetLink,
+            "_blank",
+            "noopener,noreferrer"
+          );
           navigate({ to: "/study-library/live-class" });
         }
       }
     }
-  }, [sessionDetails, markAttendance, navigate, sessionId]);
+  }, [sessionDetails, serverTimeData, markAttendance, navigate, sessionId]);
 
   useEffect(() => {
     if (sessionDetails) {
@@ -100,6 +141,16 @@ function WaitingRoomComponent() {
     );
   }
 
+  if (!sessionDetails) {
+    return (
+      <LayoutContainer>
+        <div className="p-4 border border-red-200 rounded-lg bg-red-50 text-red-700">
+          Session details not found.
+        </div>
+      </LayoutContainer>
+    );
+  }
+
   return (
     <LayoutContainer>
       <Helmet>
@@ -115,7 +166,7 @@ function WaitingRoomComponent() {
         <div className="space-y-6">
           {sessionDetails && (
             <CountdownTimer
-              startTime={`${sessionDetails.meetingDate}T${sessionDetails.scheduleStartTime}`}
+              sessionDetails={sessionDetails}
               waitingRoomTime={sessionDetails.waitingRoomTime}
               onExpire={checkSessionStart}
             />

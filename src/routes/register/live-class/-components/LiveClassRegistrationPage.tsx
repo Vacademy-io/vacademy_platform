@@ -31,7 +31,7 @@ import SessionStatusCard from "./SessionStatusCard";
 import SessionInfo from "./SessionInfo";
 
 export default function LiveClassRegistrationPage() {
-  const [dialog, setDialog] = useState<boolean>(true);
+  const [dialog, setDialog] = useState<boolean>(false); // Start with false, will be set based on localStorage
   const [sessionDetails, setSessionDetails] =
     useState<SessionDetailsResponse | null>(null);
   const router = useRouter();
@@ -46,12 +46,30 @@ export default function LiveClassRegistrationPage() {
   const { mutateAsync: registerGuestUser } = useLiveSessionGuestRegistration();
   const { mutateAsync: collectPublicUserData } = useCollectPublicUserData();
   const [verifiedEmail, setVerifiedEmail] = useState<string>("");
+  const [verifiedEmails, setVerifiedEmails] = useState<string[]>([]);
   const [isUserAlreadyRegistered, setIsUserAlreadyRegistered] =
     useState<boolean>(false);
   const [alreadyRegisteredEmail, setAlreadyRegisteredEmail] =
     useState<string>("");
 
   const { mutateAsync: markAttendance } = useMarkAttendance();
+
+  // Check localStorage for verified emails on component mount
+  useEffect(() => {
+    const savedVerifiedEmails = JSON.parse(
+      localStorage.getItem("verifiedEmail") || "[]"
+    );
+    setVerifiedEmails(savedVerifiedEmails);
+
+    if (savedVerifiedEmails.length > 0) {
+      // Auto-select first email and set it as verified
+      const firstEmail = savedVerifiedEmails[0];
+      setVerifiedEmail(firstEmail);
+      setDialog(false); // Don't show email verification dialog
+    } else {
+      setDialog(true); // Show email verification dialog
+    }
+  }, []);
 
   const fetchCoverFileUrl = useCallback(async () => {
     const response = await getPublicFileUrl(data?.coverFileId || "");
@@ -322,8 +340,23 @@ export default function LiveClassRegistrationPage() {
 
   const handleEmailVerified = (email: string) => {
     setVerifiedEmail(email);
+
+    // Update local state with the new verified email
+    const existingEmails = JSON.parse(
+      localStorage.getItem("verifiedEmail") || "[]"
+    );
+    if (!existingEmails.includes(email)) {
+      const updatedEmails = [...existingEmails, email];
+      setVerifiedEmails(updatedEmails);
+    }
+
     checkEmailRegistration(email);
     setDialog(false);
+  };
+
+  const handleEmailChange = (email: string) => {
+    setVerifiedEmail(email);
+    checkEmailRegistration(email);
   };
 
   if (isLoading) return <DashboardLoader />;
@@ -354,8 +387,10 @@ export default function LiveClassRegistrationPage() {
                 <RegistrationForm
                   customFields={data?.customFields || []}
                   verifiedEmail={verifiedEmail}
+                  verifiedEmails={verifiedEmails}
                   onSubmit={onSubmit}
                   onError={onError}
+                  onEmailChange={handleEmailChange}
                 />
               )}
             </div>

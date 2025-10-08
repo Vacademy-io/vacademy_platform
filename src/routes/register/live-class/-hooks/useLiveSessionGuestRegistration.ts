@@ -60,7 +60,7 @@ export const useCollectPublicUserData = () => {
     },
     onError: (error: AxiosError<ErrorResponse>) => {
       console.error("Collecting public user data failed:", error);
-      toast.error(error.response?.data?.message || "Operation failed");
+      toast.error(error.response?.data?.ex);
     },
   });
 };

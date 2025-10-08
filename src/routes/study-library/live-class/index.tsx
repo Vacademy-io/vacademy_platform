@@ -110,14 +110,6 @@ function RouteComponent() {
     });
   };
 
-  const formatTime = (time: string) => {
-    const [hours, minutes] = time.split(":");
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? "PM" : "AM";
-    const displayHour = hour % 12 || 12;
-    return `${displayHour}:${minutes} ${ampm}`;
-  };
-
   const formatDate = (date: Date) => {
     return date.toLocaleDateString("en-US", {
       weekday: "long",
@@ -158,17 +150,31 @@ function RouteComponent() {
       );
     }
 
-    // Check if we're in waiting room period or main session
+    // Check timing status
+    const isBeforeWaitingRoom = now < waitingRoomStart;
     const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
-    const isInMainSession = now >= sessionDate;
+    const isLiveClassStarted = now >= sessionDate;
 
+    // If it's before waiting room time, show error
+    if (isBeforeWaitingRoom) {
+      toast.error(
+        "Class has not started yet. Please wait for the waiting room to open."
+      );
+      return;
+    }
+
+    // If we're in waiting room period, ONLY go to waiting room
     if (isInWaitingRoom) {
       // Navigate to waiting room without marking attendance
       navigate({
         to: "/study-library/live-class/waiting-room",
         search: { sessionId: session.schedule_id },
       });
-    } else if (isInMainSession) {
+      return;
+    }
+
+    // If live class has started, proceed to live session
+    if (isLiveClassStarted) {
       try {
         // Mark attendance only when directly joining live session
         await markAttendance({
@@ -208,6 +214,10 @@ function RouteComponent() {
           window.open(session.meeting_link, "_blank", "noopener,noreferrer");
         }
       }
+    } else {
+      // This should not happen, but add a fallback
+      console.warn("Unexpected timing state - no action taken");
+      toast.error("Unable to determine session status. Please try again.");
     }
   };
 
@@ -260,9 +270,63 @@ function RouteComponent() {
     setUpcomingSessionsCurrentPage(1);
   }, [startDateFilter, endDateFilter]);
 
-  const renderSession = (session: SessionDetails, isLive: boolean) => (
-    isLive && console.log("session ", session),
-    (
+  // Helper function to determine if a session is currently live (in waiting room or live)
+  const isSessionLive = (session: SessionDetails) => {
+    const now = new Date();
+    let sessionDate, waitingRoomStart;
+
+    if (session.timezone) {
+      // Use timezone-aware calculation
+      sessionDate = convertSessionTimeToUserTimezone(
+        session.meeting_date,
+        session.start_time,
+        session.timezone
+      );
+      waitingRoomStart = new Date(sessionDate);
+      waitingRoomStart.setMinutes(
+        waitingRoomStart.getMinutes() - session.waiting_room_time
+      );
+    } else {
+      // Fallback to original logic
+      sessionDate = new Date(`${session.meeting_date}T${session.start_time}`);
+      waitingRoomStart = new Date(sessionDate);
+      waitingRoomStart.setMinutes(
+        waitingRoomStart.getMinutes() - session.waiting_room_time
+      );
+    }
+
+    // Session is considered "live" if we're in waiting room period or main session
+    return now >= waitingRoomStart;
+  };
+
+  const renderSession = (session: SessionDetails, isLive: boolean) => {
+    // Calculate session timing for button text and status
+    const now = new Date();
+    let sessionDate, waitingRoomStart;
+
+    if (session.timezone) {
+      sessionDate = convertSessionTimeToUserTimezone(
+        session.meeting_date,
+        session.start_time,
+        session.timezone
+      );
+      waitingRoomStart = new Date(sessionDate);
+      waitingRoomStart.setMinutes(
+        waitingRoomStart.getMinutes() - session.waiting_room_time
+      );
+    } else {
+      sessionDate = new Date(`${session.meeting_date}T${session.start_time}`);
+      waitingRoomStart = new Date(sessionDate);
+      waitingRoomStart.setMinutes(
+        waitingRoomStart.getMinutes() - session.waiting_room_time
+      );
+    }
+
+    const isBeforeWaitingRoom = now < waitingRoomStart;
+    const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
+    const isLiveClassStarted = now >= sessionDate;
+
+    return (
       <div
         key={session.session_id}
         className="group p-4 border rounded-xl bg-white hover:bg-primary-50/30 border-neutral-200 hover:border-primary-200/60 hover:shadow-sm transition-all duration-200 w-full"
@@ -274,8 +338,20 @@ function RouteComponent() {
                 {session.title}
               </h3>
               {isLive && (
-                <span className="px-2 py-1 bg-danger-600 text-white text-xs font-medium rounded-full animate-pulse">
-                  LIVE
+                <span
+                  className={`px-2 py-1 text-white text-xs font-medium rounded-full animate-pulse ${
+                    isInWaitingRoom
+                      ? "bg-orange-600"
+                      : isLiveClassStarted
+                      ? "bg-danger-600"
+                      : "bg-gray-600"
+                  }`}
+                >
+                  {isInWaitingRoom
+                    ? "WAITING ROOM"
+                    : isLiveClassStarted
+                    ? "LIVE"
+                    : "STARTING SOON"}
                 </span>
               )}
             </div>
@@ -292,7 +368,11 @@ function RouteComponent() {
               onClick={() => handleJoinSession(session)}
             >
               <ArrowSquareOut size={16} className="mr-1.5" />
-              Join Session
+              {isBeforeWaitingRoom
+                ? "Not Started"
+                : isInWaitingRoom
+                ? "Join Waiting Room"
+                : "Join Session"}
             </Button>
           )}
         </div>
@@ -323,8 +403,8 @@ function RouteComponent() {
           </div>
         </div>
       </div>
-    )
-  );
+    );
+  };
 
   // Calendar view functions
   const getCurrentMonth = () => {
@@ -425,8 +505,17 @@ function RouteComponent() {
                               <div className="flex items-center gap-1">
                                 <Clock size={14} />
                                 <span>
-                                  {formatTime(session.start_time)} -{" "}
-                                  {formatTime(session.last_entry_time)}
+                                  {formatDateTime(
+                                    session.meeting_date,
+                                    session.start_time,
+                                    session.timezone
+                                  )}{" "}
+                                  -{" "}
+                                  {formatDateTime(
+                                    session.meeting_date,
+                                    session.last_entry_time,
+                                    session.timezone
+                                  )}
                                   {session.timezone && (
                                     <span className="text-xs text-neutral-500 ml-1">
                                       (
@@ -490,8 +579,17 @@ function RouteComponent() {
                               <div className="flex items-center gap-1">
                                 <Clock size={14} />
                                 <span>
-                                  {formatTime(session.start_time)} -{" "}
-                                  {formatTime(session.last_entry_time)}
+                                  {formatDateTime(
+                                    session.meeting_date,
+                                    session.start_time,
+                                    session.timezone
+                                  )}{" "}
+                                  -{" "}
+                                  {formatDateTime(
+                                    session.meeting_date,
+                                    session.last_entry_time,
+                                    session.timezone
+                                  )}
                                   {session.timezone && (
                                     <span className="text-xs text-neutral-500 ml-1">
                                       (
@@ -857,7 +955,7 @@ function RouteComponent() {
                         <>
                           <div className="space-y-4 w-full">
                             {paginatedLiveSessions.map((session) =>
-                              renderSession(session, true)
+                              renderSession(session, isSessionLive(session))
                             )}
                           </div>
 

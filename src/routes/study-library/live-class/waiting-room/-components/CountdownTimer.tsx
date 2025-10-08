@@ -1,13 +1,16 @@
+import { getServerTime, useServerTime } from "@/hooks/use-server-time";
+import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
 import { useEffect, useState } from "react";
+import { SessionDetailsResponse } from "../../-types/types";
 
 interface CountdownTimerProps {
-  startTime: string;
+  sessionDetails: SessionDetailsResponse;
   waitingRoomTime: number;
   onExpire?: () => void;
 }
 
 export function CountdownTimer({
-  startTime,
+  sessionDetails,
   waitingRoomTime,
   onExpire,
 }: CountdownTimerProps) {
@@ -16,12 +19,19 @@ export function CountdownTimer({
     minutes: number;
     seconds: number;
   } | null>(null);
+  const { data: serverTimeData } = useServerTime();
+  const sessionStartInUserTimezone = convertSessionTimeToUserTimezone(
+    sessionDetails.meetingDate,
+    sessionDetails.scheduleStartTime,
+    sessionDetails.timezone
+  );
 
   useEffect(() => {
     const calculateTimeLeft = () => {
-      const now = new Date();
-      const sessionStart = new Date(startTime);
-      const waitingRoomStart = new Date(sessionStart);
+      const serverTimestamp = getServerTime(serverTimeData);
+      const now = new Date(serverTimestamp);
+
+      const waitingRoomStart = new Date(sessionDetails.scheduleStartTime);
       waitingRoomStart.setMinutes(
         waitingRoomStart.getMinutes() - waitingRoomTime
       );
@@ -32,11 +42,11 @@ export function CountdownTimer({
       }
 
       // If we're past the session start
-      if (now >= sessionStart) {
+      if (now >= sessionStartInUserTimezone) {
         return null;
       }
 
-      const difference = sessionStart.getTime() - now.getTime();
+      const difference = sessionStartInUserTimezone.getTime() - now.getTime();
 
       return {
         hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
@@ -61,7 +71,7 @@ export function CountdownTimer({
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [startTime, waitingRoomTime]);
+  }, [waitingRoomTime, sessionDetails.scheduleStartTime]);
 
   if (!timeLeft) {
     return null;

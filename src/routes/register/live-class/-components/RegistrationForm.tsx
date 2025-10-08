@@ -23,15 +23,19 @@ import { useEffect } from "react";
 interface RegistrationFormProps {
   customFields: CustomField[];
   verifiedEmail: string;
+  verifiedEmails: string[];
   onSubmit: (formValues: RegistrationFormValues) => void;
   onError: (errors: FieldErrors) => void;
+  onEmailChange: (email: string) => void;
 }
 
 export default function RegistrationForm({
   customFields,
   verifiedEmail,
+  verifiedEmails,
   onSubmit,
   onError,
+  onEmailChange,
 }: RegistrationFormProps) {
   const schema = generateZodSchema(customFields);
   const form = useForm({
@@ -119,7 +123,59 @@ export default function RegistrationForm({
                     </FormItem>
                   )}
                 />
+              ) : responseField.fieldKey === "email" ? (
+                // Special handling for email field - show dropdown if verified emails exist
+                verifiedEmails.length > 0 ? (
+                  <SelectField
+                    label={responseField.fieldName}
+                    name={responseField.fieldKey}
+                    options={verifiedEmails.map((email, idx) => ({
+                      value: email,
+                      label: email,
+                      _id: idx,
+                    }))}
+                    control={form.control}
+                    className="mt-[8px] w-full font-thin"
+                    onSelect={(value) => {
+                      form.setValue("email", value);
+                      onEmailChange(value);
+                    }}
+                  />
+                ) : (
+                  <FormField
+                    control={form.control}
+                    name={responseField.fieldKey as never}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormControl>
+                          <MyInput
+                            inputType="text"
+                            inputPlaceholder={field.name}
+                            input={field.value}
+                            labelStyle="font-thin"
+                            onChangeFunction={field.onChange}
+                            required={responseField.mandatory}
+                            size="large"
+                            label={responseField.fieldName}
+                            disabled={
+                              responseField.fieldKey === "email" &&
+                              verifiedEmail !== ""
+                            }
+                            {...field}
+                          />
+                        </FormControl>
+                        {responseField.fieldKey === "email" &&
+                          verifiedEmail !== "" && (
+                            <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                              <span>✓</span> Email verified and auto-filled
+                            </p>
+                          )}
+                      </FormItem>
+                    )}
+                  />
+                )
               ) : (
+                // For all other fields except dropdown, mobile_number, and email
                 <FormField
                   control={form.control}
                   name={responseField.fieldKey as never}
@@ -135,19 +191,9 @@ export default function RegistrationForm({
                           required={responseField.mandatory}
                           size="large"
                           label={responseField.fieldName}
-                          disabled={
-                            responseField.fieldKey === "email" &&
-                            verifiedEmail !== ""
-                          }
                           {...field}
                         />
                       </FormControl>
-                      {responseField.fieldKey === "email" &&
-                        verifiedEmail !== "" && (
-                          <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                            <span>✓</span> Email verified and auto-filled
-                          </p>
-                        )}
                     </FormItem>
                   )}
                 />

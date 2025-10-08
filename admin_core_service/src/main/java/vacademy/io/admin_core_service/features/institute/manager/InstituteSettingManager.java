@@ -4,6 +4,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO;
+import vacademy.io.admin_core_service.features.common.entity.CustomFields;
+import vacademy.io.admin_core_service.features.common.entity.InstituteCustomField;
+import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
 import vacademy.io.admin_core_service.features.institute.dto.settings.GenericSettingRequest;
 import vacademy.io.admin_core_service.features.institute.dto.settings.InstituteSettingDto;
 import vacademy.io.admin_core_service.features.institute.dto.settings.SettingDto;
@@ -15,7 +19,10 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 
+import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Component
 public class InstituteSettingManager {
@@ -25,6 +32,9 @@ public class InstituteSettingManager {
 
     @Autowired
     InstituteSettingService instituteSettingService;
+
+    @Autowired
+    private InstituteCustomFiledService instituteCustomFiledService;
 
     public ResponseEntity<String> createNewNamingSetting(CustomUserDetails userDetails, String instituteId, NameSettingRequest request) {
         Optional<Institute> institute = instituteRepository.findById(instituteId);
@@ -115,8 +125,40 @@ public class InstituteSettingManager {
         return "Done";
     }
 
-    private String handleCaseCustomFieldSettingPresent(Institute institute, CustomFieldSettingRequest request) {
-        instituteSettingService.updateCustomFieldSetting(institute,request);
+    private String handleCaseCustomFieldSettingPresent(Institute institute, CustomFieldSettingRequest customFieldSettingRequest) {
+        if (customFieldSettingRequest.getCustomFieldsAndGroups() != null) {
+            for (var fieldDto : customFieldSettingRequest.getCustomFieldsAndGroups()) {
+                if (!StringUtils.hasText(fieldDto.getCustomFieldId())) {
+                    // This is a new custom field that needs to be created
+                    CustomFieldDTO newCustomFieldDto = new CustomFieldDTO();
+
+                    newCustomFieldDto.setFieldKey(fieldDto.getFieldName().toLowerCase().replace(" ", "_") + "_" + System.currentTimeMillis());
+                    newCustomFieldDto.setFieldName(fieldDto.getFieldName());
+                    newCustomFieldDto.setFieldType(fieldDto.getFieldType());
+                    newCustomFieldDto.setGroupName(fieldDto.getGroupName());
+                    newCustomFieldDto.setGroupInternalOrder(fieldDto.getGroupInternalOrder());
+                    newCustomFieldDto.setIndividualOrder(fieldDto.getIndividualOrder());
+
+                    CustomFields savedCustomField = instituteCustomFiledService.createCustomFieldFromRequest(newCustomFieldDto);
+
+                    InstituteCustomField savedMapping =
+                            instituteCustomFiledService.createInstituteMappingFromCustomField(savedCustomField, institute, newCustomFieldDto);
+
+                    fieldDto.setCustomFieldId(savedCustomField.getId());
+                    fieldDto.setId(savedMapping.getId());
+                }
+            }
+        }
+
+        // Update the list of all custom field IDs
+        if (customFieldSettingRequest.getCustomFieldsAndGroups() != null) {
+            List<String> allCustomFieldIds = customFieldSettingRequest.getCustomFieldsAndGroups().stream()
+                    .map(dto -> dto.getCustomFieldId())
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+            customFieldSettingRequest.setAllCustomFields(allCustomFieldIds);
+        }
+        instituteSettingService.updateCustomFieldSetting(institute,customFieldSettingRequest);
         return "Done";
     }
 }

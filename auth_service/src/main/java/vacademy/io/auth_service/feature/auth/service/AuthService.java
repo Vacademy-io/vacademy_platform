@@ -110,6 +110,21 @@ public class AuthService {
 
         if (isAlreadyPresent) {
             user = optionalUser.get();
+
+            if (StringUtils.hasText(registerRequest.getFullName())) user.setFullName(registerRequest.getFullName());
+            if (StringUtils.hasText(registerRequest.getUsername())) user.setUsername(registerRequest.getUsername());
+            if (StringUtils.hasText(registerRequest.getPassword())) user.setPassword(registerRequest.getPassword());
+            if (StringUtils.hasText(registerRequest.getAddressLine())) user.setAddressLine(registerRequest.getAddressLine());
+            if (StringUtils.hasText(registerRequest.getCity())) user.setCity(registerRequest.getCity());
+            if (StringUtils.hasText(registerRequest.getPinCode())) user.setPinCode(registerRequest.getPinCode());
+            if (StringUtils.hasText(registerRequest.getMobileNumber())) user.setMobileNumber(registerRequest.getMobileNumber());
+            if (registerRequest.getDateOfBirth() != null) user.setDateOfBirth(registerRequest.getDateOfBirth());
+            if (StringUtils.hasText(registerRequest.getGender())) user.setGender(registerRequest.getGender());
+            if (StringUtils.hasText(registerRequest.getProfilePicFileId())) user.setProfilePicFileId(registerRequest.getProfilePicFileId());
+
+            if (!user.isRootUser()) user.setRootUser(true);
+
+            user = userRepository.save(user);
         } else {
             if (!StringUtils.hasText(registerRequest.getUsername())) {
                 registerRequest.setUsername(UsernameGenerator.generateUsername(registerRequest.getFullName()));
@@ -122,15 +137,21 @@ public class AuthService {
                     .username(registerRequest.getUsername())
                     .email(normalizedEmail)
                     .password(registerRequest.getPassword())
+                    .addressLine(registerRequest.getAddressLine())
+                    .city(registerRequest.getCity())
+                    .pinCode(registerRequest.getPinCode())
+                    .mobileNumber(registerRequest.getMobileNumber())
+                    .dateOfBirth(registerRequest.getDateOfBirth())
+                    .gender(registerRequest.getGender())
+                    .profilePicFileId(registerRequest.getProfilePicFileId())
                     .isRootUser(true)
                     .build();
+
             user = userRepository.save(user);
         }
 
-        // Build user roles
         List<Role> allRoles = getAllUserRoles(registerRequest.getRoles());
         Set<UserRole> userRoleSet = new HashSet<>();
-
         for (Role role : allRoles) {
             UserRole userRole = new UserRole();
             userRole.setRole(role);
@@ -139,12 +160,9 @@ public class AuthService {
             userRole.setUser(user);
             userRoleSet.add(userRole);
         }
-
-        // Set roles and save again
         user.setRoles(userRoleSet);
         user = userRepository.save(user);
 
-        // Send appropriate welcome mail
         if (sendWelcomeMail) {
             if (isAlreadyPresent) {
                 sendKeepingCredentialsWelcomeMailToUser(user, instituteId);
@@ -155,6 +173,7 @@ public class AuthService {
 
         return user;
     }
+
 
     private List<Role> getAllUserRoles(List<String> userRoles) {
         return roleRepository.findByNameIn(userRoles);

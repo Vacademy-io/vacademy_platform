@@ -81,7 +81,7 @@ public class StudentRegistrationManager {
             return objectMapper.readValue(response.getBody(), UserDTO.class);
 
         } catch (Exception e) {
-            throw new VacademyException(e.getMessage());
+            throw new vacademy.io.common.exceptions.VacademyException(e.getMessage());
         }
     }
 
@@ -212,21 +212,29 @@ public class StudentRegistrationManager {
                 }
 
                 if (instituteStudentDetails.getEnrollmentId() != null) {
-                    mapping.setInstituteEnrolledNumber(studentSessionInstituteGroupMappingOptional.get().getInstituteEnrolledNumber());
+                    mapping.setInstituteEnrolledNumber(instituteStudentDetails.getEnrollmentId());
                 }
 
                 mapping.setUserPlanId(instituteStudentDetails.getUserPlanId());
 
+                // ### START MODIFICATION ###
                 if (instituteStudentDetails.getAccessDays() != null) {
+                    Date startDate = new Date(); // Default to current date
+                    if (LearnerSessionStatusEnum.ACTIVE.name().equalsIgnoreCase(mapping.getStatus()) && mapping.getExpiryDate() != null) {
+                        // If active, the start date for calculation is either today or the existing expiry date, whichever is later.
+                        startDate = mapping.getExpiryDate().after(new Date()) ? mapping.getExpiryDate() : new Date();
+                    }
+                    // For any other status (TERMINATED, etc.), the start date is always the current date.
                     mapping.setExpiryDate(
                             makeExpiryDate(
-                                    instituteStudentDetails.getEnrollmentDate(),
+                                    startDate,
                                     (instituteStudentDetails.getAccessDays())
                             )
                     );
                 }
+                // ### END MODIFICATION ###
 
-              return  studentSessionRepository.save(mapping).getId();
+                return  studentSessionRepository.save(mapping).getId();
             } else {
                 UUID studentSessionId = UUID.randomUUID();
                 studentSessionRepository.addStudentToInstitute(

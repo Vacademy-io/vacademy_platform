@@ -13,10 +13,14 @@ public class CorsConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
-                .allowCredentials(false)
-                .allowedOrigins("*") // Allow requests from any origin
+                .allowedOriginPatterns(
+                    "http://localhost:*", // All localhost ports
+                    "https://*.vacademy.io", 
+                    "https://*.codecircle.org",// All vacademy.io subdomains
+                    "https://*.vacademy-platform.pages.dev" // All Cloudflare Pages subdomains
+                )
                 .allowedMethods("*")
-                .allowCredentials(true) // Allow any HTTP method (GET, POST, etc.)
+                .allowCredentials(true) // Allow credentials with pattern matching
                 .allowedHeaders("*"); // Allow any headers
     }
 

@@ -67,7 +67,6 @@ function WaitingRoomComponent() {
 
     // Check if current time is >= session start time
     if (now >= sessionStartInUserTimezone && sessionDetails.defaultMeetLink) {
-      console.log("Session has started, proceeding to live class");
       try {
         await markAttendance({
           sessionId: sessionDetails.sessionId,
@@ -76,7 +75,6 @@ function WaitingRoomComponent() {
           userSourceId: "",
           details: "Joined live class from waiting room",
         });
-
         if (
           sessionDetails.sessionStreamingServiceType ===
           SessionStreamingServiceType.EMBED
@@ -86,13 +84,9 @@ function WaitingRoomComponent() {
             search: { sessionId },
           });
         } else {
-          console.log("Opening meeting link:", sessionDetails.defaultMeetLink);
-          window.open(
-            sessionDetails.defaultMeetLink,
-            "_blank",
-            "noopener,noreferrer"
-          );
-          navigate({ to: "/study-library/live-class" });
+          window.location.href = sessionDetails.defaultMeetLink;
+
+          // navigate({ to: "/study-library/live-class" });
         }
       } catch (error) {
         console.error("Failed to mark attendance:", error);

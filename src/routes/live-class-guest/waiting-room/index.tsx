@@ -165,7 +165,7 @@ function GuestWaitingRoomComponent() {
         <div className="space-y-6">
           {sessionDetails && (
             <CountdownTimer
-              startTime={`${sessionDetails.meetingDate}T${sessionDetails.scheduleStartTime}`}
+              sessionDetails={sessionDetails}
               waitingRoomTime={sessionDetails.waitingRoomTime}
               onExpire={() => {
                 // Force an immediate check when countdown expires

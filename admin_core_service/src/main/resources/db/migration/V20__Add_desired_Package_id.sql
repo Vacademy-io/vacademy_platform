@@ -1,0 +1,2 @@
+ALTER TABLE student_session_institute_group_mapping
+ADD COLUMN desired_package_id VARCHAR(255);

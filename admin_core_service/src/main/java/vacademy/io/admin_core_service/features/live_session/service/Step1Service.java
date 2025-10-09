@@ -9,11 +9,11 @@ import vacademy.io.admin_core_service.features.live_session.enums.LinkType;
 import vacademy.io.admin_core_service.features.live_session.enums.LiveSessionStatus;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
+import vacademy.io.admin_core_service.features.live_session.repository.ScheduleNotificationRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.sql.Date;
 import java.sql.Time;
-import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneOffset;
@@ -27,6 +27,9 @@ public class Step1Service {
 
     @Autowired
     private SessionScheduleRepository scheduleRepository;
+
+    @Autowired
+    private ScheduleNotificationRepository scheduleNotificationRepository;
 
     public LiveSession step1AddService(LiveSessionStep1RequestDTO request, CustomUserDetails user) {
         LiveSession session = getOrCreateSession(request, user);
@@ -81,6 +84,10 @@ public class Step1Service {
 
     private void handleDeletedSchedules(LiveSessionStep1RequestDTO request) {
         if (request.getDeletedScheduleIds() != null) {
+            // First, disable all notifications for these schedule IDs
+            scheduleNotificationRepository.disableNotificationsByScheduleIds(request.getDeletedScheduleIds(), "DISABLED");
+            
+            // Then delete the schedules from session_schedule table
             for (String id : request.getDeletedScheduleIds()) {
                 scheduleRepository.deleteById(id);
             }

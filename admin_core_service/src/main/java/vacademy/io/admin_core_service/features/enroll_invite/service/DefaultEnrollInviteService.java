@@ -71,7 +71,7 @@ public class DefaultEnrollInviteService {
         enrollInvite.setVendor(PaymentGateway.STRIPE.name());
         enrollInvite.setVendorId(PaymentGateway.STRIPE.name());
         enrollInvite.setTag(EnrollInviteTag.DEFAULT.name());
-        enrollInvite.setWebPageMetaDataJson(enrollInviteCoursePreviewService.createPreview(packageSession.getId()));
+        enrollInvite.setWebPageMetaDataJson(enrollInviteCoursePreviewService.createPreview(packageSession.getId(),instituteId));
 
 
 

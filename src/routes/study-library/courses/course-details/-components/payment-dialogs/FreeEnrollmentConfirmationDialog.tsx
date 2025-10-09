@@ -7,7 +7,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, Gift, CheckCircle } from "lucide-react";
+import { Loader2, Gift } from "lucide-react";
 import { Preferences } from "@capacitor/preferences";
 import {
   fetchEnrollmentDetails,
@@ -35,7 +35,9 @@ interface FreeEnrollmentConfirmationDialogProps {
   onNavigateToSlides?: () => void;
 }
 
-export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmationDialogProps> = ({
+export const FreeEnrollmentConfirmationDialog: React.FC<
+  FreeEnrollmentConfirmationDialogProps
+> = ({
   open,
   onOpenChange,
   packageSessionId,
@@ -45,16 +47,19 @@ export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmati
   inviteCode = "default",
   onNavigateToSlides,
 }) => {
-  const [enrollmentData, setEnrollmentData] = useState<EnrollmentResponse | null>(null);
+  const [enrollmentData, setEnrollmentData] =
+    useState<EnrollmentResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedPaymentOption, setSelectedPaymentOption] = useState<PaymentOption | null>(null);
-  const [selectedPaymentPlan, setSelectedPaymentPlan] = useState<PaymentPlan | null>(null);
+  const [selectedPaymentOption, setSelectedPaymentOption] =
+    useState<PaymentOption | null>(null);
+  const [selectedPaymentPlan, setSelectedPaymentPlan] =
+    useState<PaymentPlan | null>(null);
   const [processingEnrollment, setProcessingEnrollment] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [showPendingDialog, setShowPendingDialog] = useState(false);
-  const [showPendingApprovalDialog, setShowPendingApprovalDialog] = useState(false);
-
+  const [showPendingApprovalDialog, setShowPendingApprovalDialog] =
+    useState(false);
 
   // Helper function to get real user data from preferences
   const getRealUserData = useCallback(async () => {
@@ -67,22 +72,23 @@ export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmati
       const studentData = JSON.parse(value);
       // Handle both array and object formats
       const student = Array.isArray(studentData) ? studentData[0] : studentData;
-      
+
       return {
-        email: student.email || '',
-        username: student.username || '',
-        full_name: student.full_name || '',
-        mobile_number: student.mobile_number || '',
+        email: student.email || "",
+        username: student.username || "",
+        full_name: student.full_name || "",
+        mobile_number: student.mobile_number || "",
         date_of_birth: student.date_of_birth || new Date().toISOString(),
-        gender: student.gender || 'Not Specified',
-        address_line: student.address_line || '',
-        city: student.city || '',
-        region: student.region || '',
-        pin_code: student.pin_code || '',
-        profile_pic_file_id: student.face_file_id || '',
-        country: student.country || ''
+        gender: student.gender,
+        address_line: student.address_line || "",
+        city: student.city || "",
+        region: student.region || "",
+        pin_code: student.pin_code || "",
+        profile_pic_file_id: student.face_file_id || "",
+        country: student.country || "",
       };
     } catch (error) {
+      console.error("Error fetching user data from preferences:", error);
       return null;
     }
   }, []);
@@ -98,31 +104,37 @@ export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmati
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchEnrollmentDetails(inviteCode, instituteId, packageSessionId, token);
+      const data = await fetchEnrollmentDetails(
+        inviteCode,
+        instituteId,
+        packageSessionId,
+        token
+      );
       setEnrollmentData(data);
-      
+
       // Auto-select first FREE payment option and plan
       const paymentOptions = getPaymentOptions(data);
-      const freeOptions = paymentOptions.filter(option => 
-        option.type === 'FREE'
+      const freeOptions = paymentOptions.filter(
+        (option) => option.type === "FREE"
       );
-      
+
       if (freeOptions.length > 0) {
         const firstFreeOption = freeOptions[0];
         setSelectedPaymentOption(firstFreeOption);
-        
+
         const plans = getPaymentPlans(firstFreeOption);
         if (plans.length > 0) {
           setSelectedPaymentPlan(plans[0]);
         } else {
           // Create a minimal payment plan for FREE enrollment without plans
           const minimalPlan = {
-            id: 'free-plan-default',
-            name: 'Free Plan',
+            id: "free-plan-default",
+            name: "Free Plan",
             actual_price: 0,
-            currency: data.currency || 'USD',
+            currency: data.currency || "USD",
             description: `Free enrollment for ${courseTitle}`,
-            feature_json: '["Full course access", "Lifetime access", "Certificate of completion"]'
+            feature_json:
+              '["Full course access", "Lifetime access", "Certificate of completion"]',
           };
           setSelectedPaymentPlan(minimalPlan);
         }
@@ -130,20 +142,21 @@ export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmati
         // Fallback to any option with free plans
         const firstOption = paymentOptions[0];
         setSelectedPaymentOption(firstOption);
-        
+
         const plans = getPaymentPlans(firstOption);
-        const freePlans = plans.filter(plan => plan.actual_price === 0);
+        const freePlans = plans.filter((plan) => plan.actual_price === 0);
         if (freePlans.length > 0) {
           setSelectedPaymentPlan(freePlans[0]);
         } else {
           // Create a minimal payment plan for FREE enrollment without plans
           const minimalPlan = {
-            id: 'free-plan-default',
-            name: 'Free Plan',
+            id: "free-plan-default",
+            name: "Free Plan",
             actual_price: 0,
-            currency: data.currency || 'USD',
+            currency: data.currency || "USD",
             description: `Free enrollment for ${courseTitle}`,
-            feature_json: '["Full course access", "Lifetime access", "Certificate of completion"]'
+            feature_json:
+              '["Full course access", "Lifetime access", "Certificate of completion"]',
           };
           setSelectedPaymentPlan(minimalPlan);
         }
@@ -165,7 +178,7 @@ export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmati
 
     setProcessingEnrollment(true);
     setError(null);
-    
+
     try {
       // For free enrollment, we don't need payment plans or payment gateway
       // Create a minimal payment plan object if none exists
@@ -173,19 +186,20 @@ export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmati
       if (!paymentPlan) {
         // Create a minimal payment plan for FREE enrollment without plans
         paymentPlan = {
-          id: 'free-plan-default',
-          name: 'Free Plan',
+          id: "free-plan-default",
+          name: "Free Plan",
           actual_price: 0,
-          currency: enrollmentData.currency || 'USD',
+          currency: enrollmentData.currency || "USD",
           description: `Free enrollment for ${courseTitle}`,
-          feature_json: '["Full course access", "Lifetime access", "Certificate of completion"]'
+          feature_json:
+            '["Full course access", "Lifetime access", "Certificate of completion"]',
         };
       }
 
       // Get real user data for enrollment
       const userData = await getRealUserData();
-      const userProfileEmail = userData?.email || 'guest@example.com';
-      
+      const userProfileEmail = userData?.email || "guest@example.com";
+
       // Call the enrollment API
       await handlePaymentForEnrollment({
         userEmail: userProfileEmail,
@@ -199,30 +213,36 @@ export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmati
         amount: paymentPlan.actual_price,
         currency: paymentPlan.currency,
         description: `Free enrollment for ${courseTitle}`,
-        paymentType: 'free',
+        paymentType: "free",
         token,
       });
 
       // Close the main dialog
       onOpenChange(false);
-      
+
       // Check if approval is required
       if (selectedPaymentOption.require_approval) {
         setShowPendingDialog(true);
       } else {
         setShowSuccessDialog(true);
       }
-      
     } catch (err) {
-      console.error('Free enrollment error:', err);
-      
+      console.error("Free enrollment error:", err);
+
       // Handle specific error cases
-      if (err instanceof Error && err.message === 'ENROLLMENT_PENDING_APPROVAL') {
+      if (
+        err instanceof Error &&
+        err.message === "ENROLLMENT_PENDING_APPROVAL"
+      ) {
         // User already has a pending enrollment request
         onOpenChange(false);
         setShowPendingApprovalDialog(true);
       } else {
-        setError(err instanceof Error ? err.message : "Enrollment failed. Please try again.");
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Enrollment failed. Please try again."
+        );
       }
     } finally {
       setProcessingEnrollment(false);
@@ -288,45 +308,72 @@ export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmati
               <Card className="bg-green-50 border-green-200">
                 <CardContent className="p-6">
                   <div className="text-center">
-                    
                     {/* Approval Required - Process Steps */}
                     {selectedPaymentOption?.require_approval && (
                       <div className="bg-gradient-to-br from-slate-50 to-blue-50 border border-slate-200 rounded-xl p-5 mb-4 shadow-sm">
                         <div className="text-center mb-4">
                           <div className="inline-flex items-center justify-center w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full mb-3">
-                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            <svg
+                              className="w-5 h-5 text-white"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                              />
                             </svg>
                           </div>
-                          <h4 className="text-lg font-semibold text-slate-800">What happens next?</h4>
-                          <p className="text-sm text-slate-600 mt-1">Your enrollment request will be processed</p>
+                          <h4 className="text-lg font-semibold text-slate-800">
+                            What happens next?
+                          </h4>
+                          <p className="text-sm text-slate-600 mt-1">
+                            Your enrollment request will be processed
+                          </p>
                         </div>
-                        
+
                         <div className="space-y-4">
                           <div className="flex items-start space-x-3">
                             <div className="flex-shrink-0 w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center mt-0.5">
-                              <span className="text-xs font-semibold text-blue-700">1</span>
+                              <span className="text-xs font-semibold text-blue-700">
+                                1
+                              </span>
                             </div>
                             <div className="flex-1">
-                              <p className="text-sm font-medium text-slate-800">Administrator will review your enrollment request</p>
+                              <p className="text-sm font-medium text-slate-800">
+                                Administrator will review your enrollment
+                                request
+                              </p>
                             </div>
                           </div>
-                          
+
                           <div className="flex items-start space-x-3">
                             <div className="flex-shrink-0 w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center mt-0.5">
-                              <span className="text-xs font-semibold text-blue-700">2</span>
+                              <span className="text-xs font-semibold text-blue-700">
+                                2
+                              </span>
                             </div>
                             <div className="flex-1">
-                              <p className="text-sm font-medium text-slate-800">You will receive an email notification once approved</p>
+                              <p className="text-sm font-medium text-slate-800">
+                                You will receive an email notification once
+                                approved
+                              </p>
                             </div>
                           </div>
-                          
+
                           <div className="flex items-start space-x-3">
                             <div className="flex-shrink-0 w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center mt-0.5">
-                              <span className="text-xs font-semibold text-blue-700">3</span>
+                              <span className="text-xs font-semibold text-blue-700">
+                                3
+                              </span>
                             </div>
                             <div className="flex-1">
-                              <p className="text-sm font-medium text-slate-800">Course access will be granted automatically</p>
+                              <p className="text-sm font-medium text-slate-800">
+                                Course access will be granted automatically
+                              </p>
                             </div>
                           </div>
                         </div>
@@ -338,16 +385,30 @@ export const FreeEnrollmentConfirmationDialog: React.FC<FreeEnrollmentConfirmati
                       <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
                         <div className="text-center">
                           <div className="inline-flex items-center justify-center w-10 h-10 bg-green-100 rounded-full mb-3">
-                            <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            <svg
+                              className="w-5 h-5 text-green-600"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M5 13l4 4L19 7"
+                              />
                             </svg>
                           </div>
-                          <h4 className="text-lg font-semibold text-green-800 mb-2">Ready to Enroll</h4>
-                          <p className="text-sm text-green-700">You'll get instant access to the course after enrollment</p>
+                          <h4 className="text-lg font-semibold text-green-800 mb-2">
+                            Ready to Enroll
+                          </h4>
+                          <p className="text-sm text-green-700">
+                            You'll get instant access to the course after
+                            enrollment
+                          </p>
                         </div>
                       </div>
                     )}
-
                   </div>
                 </CardContent>
               </Card>

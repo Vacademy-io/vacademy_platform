@@ -1007,7 +1007,7 @@ export const handlePaymentForEnrollment = async (params: {
           // Silent error handling
         }
       }
-      
+
       if (!publishableKey) {
         throw new Error(
           "Publishable key not found in payment gateway config. Please check the payment gateway configuration."
@@ -1064,7 +1064,7 @@ export const handlePaymentForEnrollment = async (params: {
         full_name: userData?.full_name || "Donation User",
         mobile_number: userData?.mobile_number || "",
         date_of_birth: userData?.date_of_birth || new Date().toISOString(),
-        gender: userData?.gender || "Not Specified",
+        gender: userData?.gender,
         address_line: userData?.address_line || "",
         city: userData?.city || "",
         region: userData?.region || "",

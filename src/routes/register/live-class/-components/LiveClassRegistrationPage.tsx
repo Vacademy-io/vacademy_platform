@@ -19,7 +19,6 @@ import { SessionDetailsResponse } from "@/routes/study-library/live-class/-types
 import { SessionStreamingServiceType } from "@/routes/register/live-class/-types/enum";
 import { getPublicFileUrl } from "../-hooks/getPublicUrl";
 import { useMarkAttendance } from "@/routes/live-class-guest/-hooks/useMarkAttendance";
-import { Storage } from "@capacitor/storage";
 import axios from "axios";
 import { LIVE_SESSION_CHECK_EMAIL_REGISTRATION } from "@/constants/urls";
 import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
@@ -29,6 +28,7 @@ import EmailVerificationDialog from "./EmailVerificationDialog";
 import RegistrationForm from "./RegistrationForm";
 import SessionStatusCard from "./SessionStatusCard";
 import SessionInfo from "./SessionInfo";
+import { Preferences } from "@capacitor/preferences";
 
 export default function LiveClassRegistrationPage() {
   const [dialog, setDialog] = useState<boolean>(false); // Start with false, will be set based on localStorage
@@ -125,20 +125,16 @@ export default function LiveClassRegistrationPage() {
     }
 
     try {
-      const [registerResponse, collectResponse] = await Promise.all([
-        registerGuestUser(payload),
-        collectPublicUserData({
-          payload: userPayload,
-          instituteId: data?.instituteId || "",
-        }),
-      ]);
+      // First, handle the critical registration API call
+      const registerResponse = await registerGuestUser(payload);
       setRegistrationResponse(registerResponse);
+
       if (registerResponse) {
-        await Storage.set({
+        await Preferences.set({
           key: "live-session-email",
           value: email,
         });
-        await Storage.set({
+        await Preferences.set({
           key: "live-session-guestId",
           value: registerResponse,
         });
@@ -158,8 +154,19 @@ export default function LiveClassRegistrationPage() {
           setAlreadyRegisteredEmail(email);
         }
       }
-      if (collectResponse) {
-        console.log("Public user data collected successfully");
+
+      // Handle collectPublicUserData independently - don't let it affect the main flow
+      try {
+        const collectResponse = await collectPublicUserData({
+          payload: userPayload,
+          instituteId: data?.instituteId || "",
+        });
+        if (collectResponse) {
+          console.log("Public user data collected successfully");
+        }
+      } catch (collectError) {
+        console.error("Failed to collect public user data:", collectError);
+        // Don't show error to user as this is not critical for registration flow
       }
     } catch (error: unknown) {
       console.error("Registration API call failed:", error);
@@ -169,7 +176,7 @@ export default function LiveClassRegistrationPage() {
       ) {
         setIsUserAlreadyRegistered(true);
         setAlreadyRegisteredEmail(email);
-        const storedGuestId = await Storage.get({
+        const storedGuestId = await Preferences.get({
           key: "live-session-guestId",
         });
         if (storedGuestId?.value) {
@@ -319,7 +326,7 @@ export default function LiveClassRegistrationPage() {
       if (response.data === true) {
         setIsUserAlreadyRegistered(true);
         setAlreadyRegisteredEmail(email);
-        const storedGuestId = await Storage.get({
+        const storedGuestId = await Preferences.get({
           key: "live-session-guestId",
         });
         if (storedGuestId?.value) {

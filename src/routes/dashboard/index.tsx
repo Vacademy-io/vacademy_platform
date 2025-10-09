@@ -51,12 +51,25 @@ import { getTerminology } from "@/components/common/layout-container/sidebar/uti
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { useWeeklyAttendanceQuery } from "@/services/attendance/getWeeklyAttendance";
-import type { StudentDashboardWidgetConfig, StudentUIType } from "@/types/student-display-settings";
+import type {
+  StudentDashboardWidgetConfig,
+  StudentUIType,
+} from "@/types/student-display-settings";
 import { Card as DSCard } from "@/components/ui/card";
-import { IconBooks, IconUsersGroup, IconTrophy, IconVideo } from "@tabler/icons-react";
+import {
+  IconBooks,
+  IconUsersGroup,
+  IconTrophy,
+  IconVideo,
+} from "@tabler/icons-react";
 import { DashboardPinsPanel } from "@/components/announcements";
 import BoringAvatar from "boring-avatars";
 import { RecentSystemNotifications } from "./-components/RecentSystemNotifications";
+import { useServerTime } from "@/hooks/use-server-time";
+import {
+  convertSessionTimeToUserTimezone,
+  formatSessionTimeInUserTimezone,
+} from "@/utils/timezone";
 
 export const Route = createFileRoute("/dashboard/")({
   component: () => {
@@ -99,7 +112,6 @@ const StatCard = ({
   onClick: () => void;
   isLoading?: boolean;
 }) => {
- 
   if (isLoading) return <StatCardSkeleton />;
 
   return (
@@ -117,9 +129,7 @@ const StatCard = ({
       }}
     >
       {/* Background gradient overlay - Reduced on mobile for performance */}
-      <div
-        className="absolute inset-0 bg-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-md sm:rounded-lg hidden sm:block"
-      ></div>
+      <div className="absolute inset-0 bg-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-md sm:rounded-lg hidden sm:block"></div>
 
       {/* Main card */}
       <div className="stat-card-inner relative bg-white border border-gray-200 rounded-md sm:rounded-lg p-3 sm:p-4 md:p-5 shadow-sm hover:shadow-md transition-all duration-300 h-full">
@@ -127,20 +137,37 @@ const StatCard = ({
         <div className="absolute top-0 right-0 w-12 h-12 md:w-20 md:h-20 bg-primary-100/30 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-2 md:-translate-y-4 translate-x-2 md:translate-x-4 hidden sm:block"></div>
 
         <div className="flex items-center justify-between mb-2 sm:mb-3 md:mb-5">
-          <div className={`stat-card-icon p-1.5 sm:p-2 md:p-3 ${document.documentElement.classList.contains("ui-vibrant") ? "pastel-bg-blue" : "bg-primary-100"} rounded-md sm:rounded-lg text-primary-600 group-hover:scale-110 transition-transform duration-300 shadow-sm`}>
+          <div
+            className={`stat-card-icon p-1.5 sm:p-2 md:p-3 ${
+              document.documentElement.classList.contains("ui-vibrant")
+                ? "pastel-bg-blue"
+                : "bg-primary-100"
+            } rounded-md sm:rounded-lg text-primary-600 group-hover:scale-110 transition-transform duration-300 shadow-sm`}
+          >
             {/* Swap icon to playful Tabler in vibrant mode */}
             {document.documentElement.classList.contains("ui-vibrant") ? (
               title.toLowerCase().includes("course") ? (
                 <IconBooks size={20} className="sm:w-5 sm:h-5 md:w-6 md:h-6" />
               ) : title.toLowerCase().includes("assignment") ? (
-                <IconUsersGroup size={20} className="sm:w-5 sm:h-5 md:w-6 md:h-6" />
+                <IconUsersGroup
+                  size={20}
+                  className="sm:w-5 sm:h-5 md:w-6 md:h-6"
+                />
               ) : title.toLowerCase().includes("evaluation") ? (
                 <IconTrophy size={20} className="sm:w-5 sm:h-5 md:w-6 md:h-6" />
               ) : (
-                <Icon weight="duotone" size={18} className="sm:w-5 sm:h-5 md:w-6 md:h-6" />
+                <Icon
+                  weight="duotone"
+                  size={18}
+                  className="sm:w-5 sm:h-5 md:w-6 md:h-6"
+                />
               )
             ) : (
-              <Icon weight="duotone" size={18} className="sm:w-5 sm:h-5 md:w-6 md:h-6" />
+              <Icon
+                weight="duotone"
+                size={18}
+                className="sm:w-5 sm:h-5 md:w-6 md:h-6"
+              />
             )}
           </div>
           <div className="opacity-60 group-hover:opacity-100 transition-opacity duration-300">
@@ -182,7 +209,11 @@ const ContinueLearningCard = ({
     return (
       <Card className="continue-learning-card relative overflow-hidden border-0 bg-white shadow-sm hover:shadow-lg transition-all duration-500">
         <CardContent className="p-4 sm:p-6 md:p-8 text-center">
-          <div className={`w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 ${hasVibrant ? "pastel-bg-teal" : "bg-primary-100"} rounded-md sm:rounded-lg flex items-center justify-center mx-auto mb-2 sm:mb-3 md:mb-4`}>
+          <div
+            className={`w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 ${
+              hasVibrant ? "pastel-bg-teal" : "bg-primary-100"
+            } rounded-md sm:rounded-lg flex items-center justify-center mx-auto mb-2 sm:mb-3 md:mb-4`}
+          >
             <Target
               weight="duotone"
               size={20}
@@ -217,7 +248,11 @@ const ContinueLearningCard = ({
       <CardHeader className="pb-2 sm:pb-3 md:pb-4 px-3 sm:px-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 md:gap-4">
           <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
-            <div className={`p-1.5 sm:p-2 ${hasVibrant ? "pastel-bg-teal" : "bg-primary-100"} rounded-lg flex-shrink-0`}>
+            <div
+              className={`p-1.5 sm:p-2 ${
+                hasVibrant ? "pastel-bg-teal" : "bg-primary-100"
+              } rounded-lg flex-shrink-0`}
+            >
               <Play
                 weight="duotone"
                 size={16}
@@ -259,7 +294,11 @@ const ContinueLearningCard = ({
               className="group flex items-center gap-1.5 sm:gap-2 md:gap-3 p-2 sm:p-2.5 md:p-3 bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md sm:rounded-lg hover:bg-white dark:hover:bg-neutral-800 transition-all duration-200 cursor-pointer hover:shadow-md active:scale-[0.98] w-full overflow-hidden min-h-[52px] sm:min-h-[56px] md:min-h-[64px] max-w-full"
             >
               <div className="flex-shrink-0">
-                <div className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 ${hasVibrant ? "pastel-bg-yellow" : "bg-primary-100"} rounded-lg flex items-center justify-center`}>
+                <div
+                  className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 ${
+                    hasVibrant ? "pastel-bg-yellow" : "bg-primary-100"
+                  } rounded-lg flex items-center justify-center`}
+                >
                   <span className="text-primary-600 font-semibold text-xs">
                     {index + 1}
                   </span>
@@ -275,10 +314,18 @@ const ContinueLearningCard = ({
                 </p>
               </div>
               <div className="flex-shrink-0">
-                <div className={`w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 bg-gray-100 rounded-full flex items-center justify-center ${hasVibrant ? "pastel-bg-pink" : "group-hover:bg-primary-100"} transition-colors duration-300`}>
+                <div
+                  className={`w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 bg-gray-100 rounded-full flex items-center justify-center ${
+                    hasVibrant ? "pastel-bg-pink" : "group-hover:bg-primary-100"
+                  } transition-colors duration-300`}
+                >
                   <ChevronRight
                     size={10}
-                    className={`${hasVibrant ? "text-slate-800" : "text-gray-400 group-hover:text-primary-600"} sm:w-3 sm:h-3`}
+                    className={`${
+                      hasVibrant
+                        ? "text-slate-800"
+                        : "text-gray-400 group-hover:text-primary-600"
+                    } sm:w-3 sm:h-3`}
                   />
                 </div>
               </div>
@@ -316,6 +363,7 @@ export function DashboardComponent() {
   const [data, setData] = useState<DashbaordResponse | null>(null);
   const { setActiveItem } = useContentStore();
   const [uiType, setUiType] = useState<StudentUIType>("default");
+  const { getUserTimezone } = useServerTime();
   const rootHasVibrant =
     typeof document !== "undefined" &&
     !!document.documentElement?.classList?.contains("ui-vibrant");
@@ -370,7 +418,11 @@ export function DashboardComponent() {
   const handleResumeClick = (slide: DashboardSlide) => {
     // Track lesson resumed
     trackLessonStarted(slide.slide_id, slide.slide_title, slide.subject_id);
-    try { if (isVibrant) popSound.play(); } catch (e) { void e; }
+    try {
+      if (isVibrant) popSound.play();
+    } catch (e) {
+      void e;
+    }
     track("Resume Learning", {
       slideId: slide.slide_id,
       slideTitle: slide.slide_title,
@@ -499,7 +551,7 @@ export function DashboardComponent() {
           });
 
           gsap.from(
-            ".dashboard-container .continue-learning-card [data-anim=\"continue-item\"]",
+            '.dashboard-container .continue-learning-card [data-anim="continue-item"]',
             {
               opacity: 0,
               x: 14,
@@ -511,9 +563,16 @@ export function DashboardComponent() {
           );
 
           // Bounce the "Active" badge on load
-          const activeBadge = document.querySelector('.continue-learning-card .badge, .continue-learning-card [class*="Badge"]');
+          const activeBadge = document.querySelector(
+            '.continue-learning-card .badge, .continue-learning-card [class*="Badge"]'
+          );
           if (activeBadge) {
-            gsap.from(activeBadge, { scale: 0.8, y: -4, duration: 0.4, ease: "back.out(2)" });
+            gsap.from(activeBadge, {
+              scale: 0.8,
+              y: -4,
+              duration: 0.4,
+              ease: "back.out(2)",
+            });
           }
 
           const cardEls = Array.from(
@@ -530,7 +589,9 @@ export function DashboardComponent() {
             });
           });
         }, document.querySelector(".dashboard-container") || undefined);
-      } catch (e) { void e; }
+      } catch (e) {
+        void e;
+      }
     })();
     return () => {
       if (ctx && ctx.revert) ctx.revert();
@@ -557,8 +618,24 @@ export function DashboardComponent() {
       waitingRoomStart.getMinutes() - session.waiting_room_time
     );
 
-    const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
-    const isInMainSession = now >= sessionDate;
+    // Use timezone conversion for better accuracy if available
+    let convertedSessionDate = sessionDate;
+    try {
+      if (session.timezone) {
+        convertedSessionDate = convertSessionTimeToUserTimezone(
+          session.meeting_date,
+          session.start_time,
+          session.timezone
+        );
+      }
+    } catch (error) {
+      console.error("Error converting session time for comparison:", error);
+      // Fall back to original sessionDate if conversion fails
+    }
+
+    const isInWaitingRoom =
+      now >= waitingRoomStart && now < convertedSessionDate;
+    const isInMainSession = now >= convertedSessionDate;
 
     if (isInWaitingRoom) {
       track("Live Session Waiting Room Entered", {
@@ -580,7 +657,11 @@ export function DashboardComponent() {
         });
 
         // Track successful live session join
-        try { if (isVibrant) dingSound.play(); } catch (e) { void e; }
+        try {
+          if (isVibrant) dingSound.play();
+        } catch (e) {
+          void e;
+        }
         track("Live Session Joined Successfully", {
           sessionId: session.session_id,
           sessionTitle: session.title,
@@ -623,9 +704,17 @@ export function DashboardComponent() {
   };
 
   return (
-    <div className={`min-h-screen bg-white dark:bg-neutral-950 relative overflow-hidden w-full dashboard-container smooth-scroll ${isVibrant ? "ui-vibrant" : ""}`}>
+    <div
+      className={`min-h-screen bg-white dark:bg-neutral-950 relative overflow-hidden w-full dashboard-container smooth-scroll ${
+        isVibrant ? "ui-vibrant" : ""
+      }`}
+    >
       <Helmet>
-        <title>{(typeof document !== "undefined" && document.title) ? document.title : "Dashboard"}</title>
+        <title>
+          {typeof document !== "undefined" && document.title
+            ? document.title
+            : "Dashboard"}
+        </title>
         <meta
           name="description"
           content="Enterprise Dashboard - Learning Management System"
@@ -651,7 +740,13 @@ export function DashboardComponent() {
                       size={64}
                       name={username || "User"}
                       variant="beam"
-                      colors={["#FDE68A", "#C7D2FE", "#86EFAC", "#FCA5A5", "#93C5FD"]}
+                      colors={[
+                        "#FDE68A",
+                        "#C7D2FE",
+                        "#86EFAC",
+                        "#FCA5A5",
+                        "#93C5FD",
+                      ]}
                     />
                   ) : (
                     <span className="text-base sm:text-lg font-semibold text-primary-700">
@@ -720,12 +815,20 @@ export function DashboardComponent() {
         </div>
 
         {/* Dashboard Pins Panel */}
-        <div className="animate-fade-in-up" style={{ animationDelay: "0.1s" }} data-anim="section">
+        <div
+          className="animate-fade-in-up"
+          style={{ animationDelay: "0.1s" }}
+          data-anim="section"
+        >
           <DashboardPinsPanel maxPins={3} />
         </div>
 
         {/* Recent System Notifications Widget */}
-        <div className="animate-fade-in-up" style={{ animationDelay: "0.15s" }} data-anim="section">
+        <div
+          className="animate-fade-in-up"
+          style={{ animationDelay: "0.15s" }}
+          data-anim="section"
+        >
           <RecentSystemNotifications />
         </div>
 
@@ -767,9 +870,15 @@ export function DashboardComponent() {
                     render: (
                       <StatCard
                         title="Attendance"
-                        count={weeklyAttendance?.days?.filter(d => d.status === "PRESENT").length || 0}
+                        count={
+                          weeklyAttendance?.days?.filter(
+                            (d) => d.status === "PRESENT"
+                          ).length || 0
+                        }
                         icon={Clock}
-                        onClick={() => navigate({ to: "/learning-centre/attendance" })}
+                        onClick={() =>
+                          navigate({ to: "/learning-centre/attendance" })
+                        }
                         isLoading={isLoadingAttendance}
                       />
                     ),
@@ -782,7 +891,9 @@ export function DashboardComponent() {
                         title="Live Classes"
                         count={liveSessions?.live_sessions?.length || 0}
                         icon={Play}
-                        onClick={() => navigate({ to: "/study-library/live-class" })}
+                        onClick={() =>
+                          navigate({ to: "/study-library/live-class" })
+                        }
                         isLoading={isLoadingLiveSessions}
                       />
                     ),
@@ -1073,9 +1184,22 @@ export function DashboardComponent() {
                     <div className="flex items-center space-x-2 sm:space-x-3 md:space-x-4">
                       <div className="p-1.5 sm:p-2 md:p-3 bg-blue-100 rounded-md sm:rounded-lg flex-shrink-0">
                         {isVibrant ? (
-                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" className="sm:w-5 sm:h-5" fill="currentColor"><path d="M2 8.5C2 7.67 2.67 7 3.5 7H8l1.5-2H14l1.5 2H20.5C21.33 7 22 7.67 22 8.5V19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.5Zm6.75 5.25a.75.75 0 0 0-1.5 0v3a.75.75 0 0 0 1.5 0v-3Zm4 0a.75.75 0 0 0-1.5 0v3a.75.75 0 0 0 1.5 0v-3Zm4 0a.75.75 0 0 0-1.5 0v3a.75.75 0 0 0 1.5 0v-3Z"/></svg>
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            width="18"
+                            height="18"
+                            className="sm:w-5 sm:h-5"
+                            fill="currentColor"
+                          >
+                            <path d="M2 8.5C2 7.67 2.67 7 3.5 7H8l1.5-2H14l1.5 2H20.5C21.33 7 22 7.67 22 8.5V19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.5Zm6.75 5.25a.75.75 0 0 0-1.5 0v3a.75.75 0 0 0 1.5 0v-3Zm4 0a.75.75 0 0 0-1.5 0v3a.75.75 0 0 0 1.5 0v-3Zm4 0a.75.75 0 0 0-1.5 0v3a.75.75 0 0 0 1.5 0v-3Z" />
+                          </svg>
                         ) : (
-                          <Users weight="duotone" size={16} className="text-blue-600 sm:w-5 sm:h-5" />
+                          <Users
+                            weight="duotone"
+                            size={16}
+                            className="text-blue-600 sm:w-5 sm:h-5"
+                          />
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -1107,12 +1231,21 @@ export function DashboardComponent() {
                     <CardTitle className="flex items-center space-x-2 sm:space-x-3 text-sm sm:text-base md:text-lg">
                       <div className="p-1.5 sm:p-2 bg-green-100 rounded-lg flex-shrink-0">
                         {isVibrant ? (
-                          <IconVideo size={18} className="text-green-600 sm:w-4 sm:h-4" />
+                          <IconVideo
+                            size={18}
+                            className="text-green-600 sm:w-4 sm:h-4"
+                          />
                         ) : (
-                          <BookOpen weight="duotone" size={16} className="text-green-600 sm:w-4 sm:h-4" />
+                          <BookOpen
+                            weight="duotone"
+                            size={16}
+                            className="text-green-600 sm:w-4 sm:h-4"
+                          />
                         )}
                       </div>
                       <span>My Classes</span>
+                      <pre>-</pre>
+                      <span>{getUserTimezone()}</span>
                     </CardTitle>
                     <Button
                       variant="ghost"
@@ -1163,13 +1296,11 @@ export function DashboardComponent() {
                                 {session.title}
                               </h3>
                               <p className="text-xs text-gray-600 mt-0.5 leading-tight session-time dashboard-card-text">
-                                {new Date(
-                                  `${session.meeting_date}T${session.start_time}`
-                                ).toLocaleTimeString("en-US", {
-                                  hour: "numeric",
-                                  minute: "2-digit",
-                                  hour12: true,
-                                })}
+                                {formatSessionTimeInUserTimezone(
+                                  session.meeting_date,
+                                  session.start_time,
+                                  session.timezone
+                                )}
                               </p>
                             </div>
                           </div>
@@ -1218,13 +1349,11 @@ export function DashboardComponent() {
                                     day: "numeric",
                                   })}{" "}
                                   at{" "}
-                                  {new Date(
-                                    `${session.meeting_date}T${session.start_time}`
-                                  ).toLocaleTimeString("en-US", {
-                                    hour: "numeric",
-                                    minute: "2-digit",
-                                    hour12: true,
-                                  })}
+                                  {formatSessionTimeInUserTimezone(
+                                    session.meeting_date,
+                                    session.start_time,
+                                    session.timezone
+                                  )}
                                 </p>
                               </div>
                             </div>

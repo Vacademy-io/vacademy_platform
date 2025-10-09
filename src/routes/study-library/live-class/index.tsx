@@ -44,6 +44,7 @@ import {
   convertSessionTimeToUserTimezone,
   getTimezoneDisplayInfo,
 } from "@/utils/timezone";
+import { getUserTimezone } from "@/hooks/use-server-time";
 export const Route = createFileRoute("/study-library/live-class/")({
   component: RouteComponent,
 });
@@ -726,7 +727,12 @@ function RouteComponent() {
                       : ""
                   }`}
                 >
-                  {session.start_time.slice(0, 5)} {session.title}
+                  {formatSessionTimeInUserTimezone(
+                    session.meeting_date,
+                    session.start_time,
+                    session.timezone
+                  ).slice(0, 5)}{" "}
+                  {session.title}
                 </div>
               );
             })}
@@ -874,9 +880,9 @@ function RouteComponent() {
               Calendar View
             </TabsTrigger>
           </TabsList>
-
           <TabsContent value="list" className="mt-6">
             {/* Filters Section */}
+
             <div className="mb-6 p-4 bg-gradient-to-r from-white to-neutral-50/50 border border-neutral-200 rounded-lg">
               <div className="flex items-center gap-2 mb-4">
                 <FunnelSimple size={20} className="text-neutral-600" />
@@ -927,7 +933,7 @@ function RouteComponent() {
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-semibold text-neutral-800">
-                    Live Sessions
+                    Live Sessions - {getUserTimezone()}
                   </h2>
                   {(() => {
                     const filteredLiveSessions = filterSessions(liveSessions);

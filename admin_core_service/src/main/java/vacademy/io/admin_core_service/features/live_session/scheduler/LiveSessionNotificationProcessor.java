@@ -635,7 +635,7 @@ public class LiveSessionNotificationProcessor {
             } else {
                 String scheduleId = getSessionByIdService.findEarliestSchedule(sessionId);
                 if (scheduleId != null) {
-                    return String.format("%s.%s/study-library/live-class/embed?scheduleId=%s", subdomain, domain, scheduleId);
+                    return String.format("%s.%s/study-library/live-class/embed?sessionId=%s", subdomain, domain, scheduleId);
                 } else {
                     return String.format("%s.%s/study-library/live-class/embed?sessionId=%s", subdomain, domain, sessionId);
                 }

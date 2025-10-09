@@ -221,4 +221,11 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             @Param("statuses") List<String> statuses
     );
 
+    Optional<PackageSession> findByPackageEntity_IdAndLevel_IdAndSession_IdAndStatusIn(
+            String packageId,
+            String levelId,
+            String sessionId,
+            List<String> status
+    );
+
 }

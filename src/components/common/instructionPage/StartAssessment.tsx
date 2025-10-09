@@ -7,6 +7,7 @@ import { fetchPreviewData } from "@/routes/assessment/examination/-utils.ts/useF
 import { useProctoring } from "@/hooks/proctoring/useProctoring";
 import { AssessmentPreview } from "../questionLiveTest/assessment-preview";
 import { Preferences } from "@capacitor/preferences";
+import { useAssessmentStore } from "@/stores/assessment-store";
 // import { enableProtection } from "@/constants/helper";
 
 const AssessmentStartModal = () => {
@@ -48,6 +49,12 @@ const AssessmentStartModal = () => {
         const response = await fetchPreviewData(assessmentId);
         
         if (response) {
+          // Ensure the assessment store is properly initialized with the first question
+          if (response.section_dtos && response.section_dtos.length > 0) {
+            const { setAssessment } = useAssessmentStore.getState();
+            setAssessment(response);
+          }
+          
           fullScreen.trigger();
           setTimeout(() => {
             setIsOpen(false);

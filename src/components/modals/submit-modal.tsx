@@ -32,8 +32,11 @@ export function SubmitModal({ open, onOpenChange, onConfirm }: SubmitModalProps)
   const handleSubmit = async () => {
     setIsSubmitting(true);
     try {
-      onConfirm();
-    } catch  {
+      await onConfirm();
+      // Close the modal after successful submission
+      onOpenChange(false);
+    } catch (error) {
+      console.error("Submission error:", error);
       setIsSubmitting(false);
     }
   };

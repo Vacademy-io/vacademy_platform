@@ -25,6 +25,7 @@ import vacademy.io.admin_core_service.features.institute.service.InstituteServic
 import vacademy.io.admin_core_service.features.domain_routing.repository.InstituteDomainRoutingRepository;
 import vacademy.io.admin_core_service.features.domain_routing.entity.InstituteDomainRouting;
 import vacademy.io.admin_core_service.features.live_session.service.TimezoneSettingService;
+import vacademy.io.admin_core_service.features.live_session.service.GetSessionByIdService;
 
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
@@ -45,6 +46,7 @@ public class LiveSessionNotificationProcessor {
     private final InstituteService instituteService;
     private final InstituteDomainRoutingRepository domainRoutingRepository;
     private final TimezoneSettingService timezoneSettingService;
+    private final GetSessionByIdService getSessionByIdService;
     @Autowired
     private SessionScheduleRepository scheduleRepository;
 
@@ -631,7 +633,12 @@ public class LiveSessionNotificationProcessor {
             if ("public".equalsIgnoreCase(accessLevel)) {
                 return String.format("%s.%s/register/live-class?sessionId=%s", subdomain, domain, sessionId);
             } else {
-                return String.format("%s.%s/study-library/live-class/embed?sessionId=%s", subdomain, domain, sessionId);
+                String scheduleId = getSessionByIdService.findEarliestSchedule(sessionId);
+                if (scheduleId != null) {
+                    return String.format("%s.%s/study-library/live-class/embed?scheduleId=%s", subdomain, domain, scheduleId);
+                } else {
+                    return String.format("%s.%s/study-library/live-class/embed?sessionId=%s", subdomain, domain, sessionId);
+                }
             }
         } catch (Exception e) {
             System.out.println("Error building live class URL for session " + sessionId + ": " + e.getMessage());

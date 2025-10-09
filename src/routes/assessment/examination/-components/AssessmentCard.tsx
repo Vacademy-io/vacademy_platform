@@ -5,6 +5,13 @@ import { PlayMode, StatusChip } from "@/components/design-system/chips";
 import { assessmentTypes } from "@/types/assessment";
 import { Assessment } from "@/types/assessment";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
   AlertDialog,
   AlertDialogContent,
   AlertDialogOverlay,
@@ -43,15 +50,6 @@ export const AssessmentCard = ({
   const [showRestartDialog, setShowRestartDialog] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
 
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (showPopup) {
-      timer = setTimeout(() => {
-        setShowPopup(false);
-      }, 3000);
-    }
-    return () => clearTimeout(timer);
-  }, [showPopup]);
 
   const handleClosePopup = () => setShowPopup(false);
   const handleCloseRestartDialog = () => setShowRestartDialog(false);
@@ -288,20 +286,18 @@ export const AssessmentCard = ({
       </Card>
 
       {/* Pop-up for Upcoming Tests */}
-      <AlertDialog open={showPopup} onOpenChange={handleClosePopup}>
-        <AlertDialogOverlay
-          className="bg-black/50"
-          onClick={handleClosePopup}
-        />
-        <AlertDialogContent className="max-w-sm bg-[#FDFAF6] rounded-lg p-4 sm:mx-4 sm:p-6">
-          <div className="text-gray-700">
-            The assessment{" "}
-            <span className="text-primary-500">{assessmentInfo.name}</span> is
-            not live currently. You can appear for the assessment when it goes
-            live.
-          </div>
-        </AlertDialogContent>
-      </AlertDialog>
+      <Dialog open={showPopup} onOpenChange={handleClosePopup}>
+        <DialogContent className="max-w-sm bg-[#FDFAF6] rounded-lg p-4 sm:mx-4 sm:p-6">
+          <DialogHeader>
+            <DialogTitle className="text-gray-700">
+              Assessment Not Available
+            </DialogTitle>
+          </DialogHeader>
+          <DialogDescription className="text-gray-700">
+            The assessment is not live currently. You can appear for the assessment when it goes live.
+          </DialogDescription>
+        </DialogContent>
+      </Dialog>
 
       {/* Resume Confirmation Dialog */}
       <AlertDialog

@@ -20,10 +20,10 @@ import {
   AlertDialogTitle,
   AlertDialogDescription,
 } from "@/components/ui/alert-dialog";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import dayjs from "dayjs";
 import { restartAssessment } from "../-utils.ts/useFetchRestartAssessment";
-import { storeAssessmentInfo } from "../-utils.ts/useFetchAssessment";
+import { storeAssessmentInfo, fetchPreviewData } from "../-utils.ts/useFetchAssessment";
 import { formatDuration } from "@/constants/helper";
 import { toast } from "sonner";
 
@@ -47,27 +47,26 @@ export const AssessmentCard = ({
 }: AssessmentProps) => {
   const navigate = useNavigate();
   const [showPopup, setShowPopup] = useState(false);
-  const [showSurveyConfirmation, setShowSurveyConfirmation] = useState(false);
   const [showRestartDialog, setShowRestartDialog] = useState(false);
+  const [showSurveyConfirmDialog, setShowSurveyConfirmDialog] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
 
 
   const handleClosePopup = () => setShowPopup(false);
   const handleCloseRestartDialog = () => setShowRestartDialog(false);
-  const handleCloseSurveyConfirmation = () => setShowSurveyConfirmation(false);
+  const handleCloseSurveyConfirmDialog = () => setShowSurveyConfirmDialog(false);
 
-  const handleSurveyStart = async () => {
+  const handleSurveyConfirm = async () => {
     try {
-      await storeAssessmentInfo(assessmentInfo);
-      setShowSurveyConfirmation(false);
-      // Navigate directly to LearnerLiveTest for surveys (skip preview)
+      await fetchPreviewData(assessmentInfo.assessment_id);
       navigate({
         to: `/assessment/examination/${assessmentInfo.assessment_id}/LearnerLiveTest`,
       });
     } catch (error) {
-      console.error("Error starting survey:", error);
+      console.error("Error fetching survey data:", error);
       toast.error("Failed to start survey. Please try again.");
     }
+    setShowSurveyConfirmDialog(false);
   };
 
   const handleOpen = () => {
@@ -77,12 +76,6 @@ export const AssessmentCard = ({
   };
 
   const handleAction = async () => {
-    // Check if this is a survey assessment
-    if (assessmentInfo.play_mode === "SURVEY") {
-      setShowSurveyConfirmation(true);
-      return;
-    }
-
     if (
       ["LIVE", "PREVIEW"].includes(assessmentInfo?.recent_attempt_status ?? "")
     ) {
@@ -102,17 +95,29 @@ export const AssessmentCard = ({
 
       if ((max_posible_attempts ?? 1) > total_given_attempts) {
         storeAssessmentInfo(assessmentInfo);
-        navigate({
-          to: `/assessment/examination/${assessmentInfo.assessment_id}`,
-        });
+        
+        // For Survey assessments, show confirmation dialog
+        if (assessmentInfo.play_mode === "SURVEY") {
+          setShowSurveyConfirmDialog(true);
+        } else {
+          navigate({
+            to: `/assessment/examination/${assessmentInfo.assessment_id}`,
+          });
+        }
       } else {
         return;
       }
     } else {
       storeAssessmentInfo(assessmentInfo);
-      navigate({
-        to: `/assessment/examination/${assessmentInfo.assessment_id}`,
-      });
+      
+      // For Survey assessments, show confirmation dialog
+      if (assessmentInfo.play_mode === "SURVEY") {
+        setShowSurveyConfirmDialog(true);
+      } else {
+        navigate({
+          to: `/assessment/examination/${assessmentInfo.assessment_id}`,
+        });
+      }
     }
   };
 
@@ -352,8 +357,8 @@ export const AssessmentCard = ({
 
       {/* Survey Confirmation Dialog */}
       <AlertDialog
-        open={showSurveyConfirmation}
-        onOpenChange={handleCloseSurveyConfirmation}
+        open={showSurveyConfirmDialog}
+        onOpenChange={handleCloseSurveyConfirmDialog}
       >
         <AlertDialogOverlay className="bg-black/50" />
         <AlertDialogContent className="max-w-sm bg-white rounded-lg p-6">
@@ -364,12 +369,12 @@ export const AssessmentCard = ({
             Are you ready to start filling out the survey? Once you begin, you can complete it at your own pace.
           </AlertDialogDescription>
           <AlertDialogFooter className="flex justify-end gap-3 mt-4">
-            <MyButton buttonType="secondary" onClick={handleCloseSurveyConfirmation}>
+            <MyButton buttonType="secondary" onClick={handleCloseSurveyConfirmDialog}>
               Cancel
             </MyButton>
             <MyButton
               buttonType="primary"
-              onClick={handleSurveyStart}
+              onClick={handleSurveyConfirm}
             >
               Start Survey
             </MyButton>

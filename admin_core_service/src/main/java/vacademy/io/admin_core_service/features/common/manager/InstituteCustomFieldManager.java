@@ -32,34 +32,45 @@ public class InstituteCustomFieldManager {
     private final InstituteCustomFiledService instituteCustomFiledService;
     private final InstituteSettingService instituteSettingService;
 
-    public InstituteCustomFieldManager(InstituteRepository instituteRepository, InstituteCustomFiledService instituteCustomFiledService, InstituteSettingService instituteSettingService) {
+    public InstituteCustomFieldManager(InstituteRepository instituteRepository,
+            InstituteCustomFiledService instituteCustomFiledService, InstituteSettingService instituteSettingService) {
         this.instituteRepository = instituteRepository;
         this.instituteCustomFiledService = instituteCustomFiledService;
         this.instituteSettingService = instituteSettingService;
     }
-
 
     public ResponseEntity<String> createGroupOfCustomField(CustomUserDetails userDetails, String instituteId) {
         return ResponseEntity.ok("Done");
     }
 
     @Transactional
-    public ResponseEntity<String> createCustomFieldForInstitute(CustomUserDetails userDetails, CustomFieldDTO request, String instituteId, String fieldId) {
-        try{
+    public ResponseEntity<String> createCustomFieldForInstitute(CustomUserDetails userDetails, CustomFieldDTO request,
+            String instituteId, String fieldId) {
+        try {
             Optional<Institute> institute = instituteRepository.findById(instituteId);
-            if(institute.isEmpty()) throw new VacademyException("Institute Not Found");
-            if(StringUtils.hasText(fieldId)){
-                return ResponseEntity.ok(instituteCustomFiledService.updateCustomField(institute.get(),request, fieldId));
+            if (institute.isEmpty())
+                throw new VacademyException("Institute Not Found");
+            if (StringUtils.hasText(fieldId)) {
+                return ResponseEntity
+                        .ok(instituteCustomFiledService.updateCustomField(institute.get(), request, fieldId));
             }
-            Optional<InstituteCustomField> instituteCustomField = instituteCustomFiledService.getCustomFieldByInstituteIdAndName(institute.get().getId(), request.getFieldName());
-            if(instituteCustomField.isPresent()) throw new VacademyException("Custom Field Name Should be Unique");
+
+            // Use key-based lookup instead of name-based to prevent duplicates
+            String fieldKey = instituteCustomFiledService.generateFieldKey(request.getFieldName());
+            Optional<CustomFields> existingField = instituteCustomFiledService
+                    .findCustomFieldByKeyAndInstitute(fieldKey, institute.get().getId());
+            if (existingField.isPresent()) {
+                throw new VacademyException(
+                        "Custom Field with key '" + fieldKey + "' already exists for this institute");
+            }
 
             CustomFields savedCustomField = instituteCustomFiledService.createCustomFieldFromRequest(request);
-            InstituteCustomField savedMapping = instituteCustomFiledService.createInstituteMappingFromCustomField(savedCustomField, institute.get(),request);
-            instituteSettingService.updateCustomFieldSetting(institute.get(),request.getSettingRequest());
+            InstituteCustomField savedMapping = instituteCustomFiledService
+                    .createInstituteMappingFromCustomField(savedCustomField, institute.get(), request);
+            instituteSettingService.updateCustomFieldSetting(institute.get(), request.getSettingRequest());
             return ResponseEntity.ok(savedMapping.getCustomFieldId());
         } catch (Exception e) {
-            throw new VacademyException("Failed To Create: "+e.getMessage());
+            throw new VacademyException("Failed To Create: " + e.getMessage());
         }
     }
 
@@ -74,15 +85,18 @@ public class InstituteCustomFieldManager {
                 .typeId(request.getTypeId()).build();
     }
 
-    public ResponseEntity<String> mapCustomFieldWithUsage(CustomUserDetails userDetails, String instituteId, InstituteCustomFieldMappingRequest request) {
+    public ResponseEntity<String> mapCustomFieldWithUsage(CustomUserDetails userDetails, String instituteId,
+            InstituteCustomFieldMappingRequest request) {
         Optional<Institute> institute = instituteRepository.findById(instituteId);
-        if(institute.isEmpty()) throw new VacademyException("Institute Not Found");
+        if (institute.isEmpty())
+            throw new VacademyException("Institute Not Found");
 
-        if(request == null || request.getMappings() == null ||request.getMappings().isEmpty()) throw new VacademyException("Invalid Request");
+        if (request == null || request.getMappings() == null || request.getMappings().isEmpty())
+            throw new VacademyException("Invalid Request");
 
         List<InstituteCustomField> allMappings = new ArrayList<>();
 
-        request.getMappings().forEach(mapping->{
+        request.getMappings().forEach(mapping -> {
             allMappings.add(createCustomFieldMapping(institute.get(), mapping));
         });
 
@@ -90,13 +104,15 @@ public class InstituteCustomFieldManager {
         return ResponseEntity.ok("Done");
     }
 
-    public ResponseEntity<String> deleteMultipleMapping(CustomUserDetails userDetails, String instituteId, List<String> request) {
+    public ResponseEntity<String> deleteMultipleMapping(CustomUserDetails userDetails, String instituteId,
+            List<String> request) {
         Optional<Institute> institute = instituteRepository.findById(instituteId);
-        if(institute.isEmpty()) throw new VacademyException("Institute Not Found");
+        if (institute.isEmpty())
+            throw new VacademyException("Institute Not Found");
 
         List<InstituteCustomField> allMappings = instituteCustomFiledService.getAllMappingFromIds(request);
 
-        allMappings.forEach(mapping->{
+        allMappings.forEach(mapping -> {
             mapping.setStatus(CustomFieldStatusEnum.DELETED.name());
         });
         instituteCustomFiledService.createOrUpdateMappings(allMappings);
@@ -104,38 +120,42 @@ public class InstituteCustomFieldManager {
     }
 
     @Transactional
-    public ResponseEntity<String> deleteMultipleCustomFields(CustomUserDetails userDetails, String instituteId, CustomFieldSettingRequest request, String commaSeparatedFieldsIds, String isPersist) {
-        try{
-            if(!StringUtils.hasText(isPersist)) throw new VacademyException("Invalid Request");
+    public ResponseEntity<String> deleteMultipleCustomFields(CustomUserDetails userDetails, String instituteId,
+            CustomFieldSettingRequest request, String commaSeparatedFieldsIds, String isPersist) {
+        try {
+            if (!StringUtils.hasText(isPersist))
+                throw new VacademyException("Invalid Request");
 
             Optional<Institute> institute = instituteRepository.findById(instituteId);
-            if(institute.isEmpty()) throw new VacademyException("Institute Not Found");
+            if (institute.isEmpty())
+                throw new VacademyException("Institute Not Found");
 
             List<String> allFieldIds = Arrays.stream(commaSeparatedFieldsIds.split(",")).toList();
             List<CustomFields> allFields = instituteCustomFiledService.getAllCustomFields(allFieldIds);
 
-            if(isPersist.equalsIgnoreCase("YES")){
+            if (isPersist.equalsIgnoreCase("YES")) {
                 handleCaseToPersistData(allFields, institute.get());
-            }
-            else handleCaseToNotPersistData(allFields,institute.get());
+            } else
+                handleCaseToNotPersistData(allFields, institute.get());
             instituteSettingService.updateCustomFieldSetting(institute.get(), request);
             return ResponseEntity.ok("Done");
-        }
-        catch (Exception e){
-            throw new VacademyException("Failed To Delete: " +e.getMessage());
+        } catch (Exception e) {
+            throw new VacademyException("Failed To Delete: " + e.getMessage());
         }
     }
 
     private void handleCaseToNotPersistData(List<CustomFields> allFields, Institute institute) {
-        //Update Status of Custom Field to "DELETED"
-        allFields.forEach(field->{
+        // Update Status of Custom Field to "DELETED"
+        allFields.forEach(field -> {
             field.setStatus(CustomFieldStatusEnum.DELETED.name());
         });
 
-        List<InstituteCustomField> allActiveMappingsForFields = instituteCustomFiledService.getAllMappingFromFieldsIds(institute.getId(),allFields, List.of("ACTIVE"));
+        List<InstituteCustomField> allActiveMappingsForFields = instituteCustomFiledService
+                .getAllMappingFromFieldsIds(institute.getId(), allFields, List.of("ACTIVE"));
 
-        //Update mapping Status To "DELETED" so that we cannot get the value for particular custom field(Not Persist)
-        allActiveMappingsForFields.forEach(mapping->{
+        // Update mapping Status To "DELETED" so that we cannot get the value for
+        // particular custom field(Not Persist)
+        allActiveMappingsForFields.forEach(mapping -> {
             mapping.setStatus(CustomFieldStatusEnum.DELETED.name());
         });
         instituteCustomFiledService.createOrUpdateMappings(allActiveMappingsForFields);
@@ -143,24 +163,27 @@ public class InstituteCustomFieldManager {
     }
 
     private void handleCaseToPersistData(List<CustomFields> allFields, Institute institute) {
-        allFields.forEach(field->{
+        allFields.forEach(field -> {
             field.setStatus(CustomFieldStatusEnum.DELETED.name());
         });
         instituteCustomFiledService.createOrSaveAllFields(allFields);
     }
 
-    public ResponseEntity<List<InstituteCustomFieldDTO>> getCustomFieldsForType(CustomUserDetails userDetails, String instituteId, String type, String typeId) {
-        List<InstituteCustomField> allMappings = instituteCustomFiledService.getCusFieldByInstituteAndTypeAndTypeId(instituteId,type,typeId, List.of(CustomFieldStatusEnum.ACTIVE.name()));
+    public ResponseEntity<List<InstituteCustomFieldDTO>> getCustomFieldsForType(CustomUserDetails userDetails,
+            String instituteId, String type, String typeId) {
+        List<InstituteCustomField> allMappings = instituteCustomFiledService.getCusFieldByInstituteAndTypeAndTypeId(
+                instituteId, type, typeId, List.of(CustomFieldStatusEnum.ACTIVE.name()));
 
         List<InstituteCustomFieldDTO> response = createDtoResponse(allMappings);
         return ResponseEntity.ok(response);
     }
 
     private List<InstituteCustomFieldDTO> createDtoResponse(List<InstituteCustomField> allMappings) {
-        if(allMappings==null) return new ArrayList<>();
+        if (allMappings == null)
+            return new ArrayList<>();
         List<InstituteCustomFieldDTO> response = new ArrayList<>();
 
-        allMappings.forEach(mapping->{
+        allMappings.forEach(mapping -> {
             response.add(InstituteCustomFieldDTO.builder()
                     .customField(instituteCustomFiledService.getCustomFieldDtoFromId(mapping.getCustomFieldId()))
                     .fieldId(mapping.getCustomFieldId())
@@ -178,16 +201,19 @@ public class InstituteCustomFieldManager {
         return response;
     }
 
-    public ResponseEntity<String> registerEnrollRequestInCustomFields(CustomUserDetails userDetails, String instituteId, EnrollRequestDto request) {
-        try{
+    public ResponseEntity<String> registerEnrollRequestInCustomFields(CustomUserDetails userDetails, String instituteId,
+            EnrollRequestDto request) {
+        try {
             Optional<Institute> institute = instituteRepository.findById(instituteId);
-            if(institute.isEmpty()) throw new VacademyException("Institute Not Found");
+            if (institute.isEmpty())
+                throw new VacademyException("Institute Not Found");
 
-            if(request==null) throw new VacademyException("Invalid Request");
+            if (request == null)
+                throw new VacademyException("Invalid Request");
 
             List<CustomFieldValues> response = new ArrayList<>();
 
-            request.getValues().forEach(value->{
+            request.getValues().forEach(value -> {
                 response.add(CustomFieldValues.builder()
                         .customFieldId(value.getCustomFieldId())
                         .sourceType(value.getSourceType())

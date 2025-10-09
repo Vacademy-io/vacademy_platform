@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.common.service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO;
+import vacademy.io.admin_core_service.features.common.util.CustomFieldKeyGenerator;
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDeleteRequestDTO;
 import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
@@ -28,6 +29,9 @@ public class InstituteCustomFiledService {
 
     @Autowired
     private CustomFieldRepository customFieldRepository;
+
+    @Autowired
+    private CustomFieldKeyGenerator keyGenerator;
 
     private CustomFieldValuesRepository customFieldValuesRepository;
 
@@ -150,7 +154,7 @@ public class InstituteCustomFiledService {
         return setupDTO;
     }
 
-    public List<InstituteCustomField> createDefaultCustomFieldsForInstitute(Institute institute){
+    public List<InstituteCustomField> createDefaultCustomFieldsForInstitute(Institute institute) {
         CustomFields nameCustomFields = CustomFields.builder()
                 .fieldKey("name")
                 .fieldName("name")
@@ -217,11 +221,12 @@ public class InstituteCustomFiledService {
                 .isSortable(true)
                 .build();
 
-        List<CustomFields> allDefaultCustomFields = List.of(nameCustomFields,emailCustomFields,usernameCustomFields,passwordCustomFields,batchCustomFields,phoneCustomFields);
+        List<CustomFields> allDefaultCustomFields = List.of(nameCustomFields, emailCustomFields, usernameCustomFields,
+                passwordCustomFields, batchCustomFields, phoneCustomFields);
         List<CustomFields> allSavedCustomFields = customFieldRepository.saveAll(allDefaultCustomFields);
         List<InstituteCustomField> defaultInstituteCustomFields = new ArrayList<>();
 
-        allSavedCustomFields.forEach(customField->{
+        allSavedCustomFields.forEach(customField -> {
             defaultInstituteCustomFields.add(InstituteCustomField.builder()
                     .customFieldId(customField.getId())
                     .instituteId(institute.getId())
@@ -230,7 +235,7 @@ public class InstituteCustomFiledService {
                     .build());
         });
 
-       return instituteCustomFieldRepository.saveAll(defaultInstituteCustomFields);
+        return instituteCustomFieldRepository.saveAll(defaultInstituteCustomFields);
     }
 
     public Optional<CustomFields> getCustomFieldById(String customFieldId) {
@@ -238,11 +243,18 @@ public class InstituteCustomFiledService {
     }
 
     public CustomFields createCustomFieldFromRequest(CustomFieldDTO request) {
-        if(Objects.isNull(request)) throw new VacademyException("Invalid Request");
+        if (Objects.isNull(request))
+            throw new VacademyException("Invalid Request");
+
+        // Generate field key if not provided
+        String fieldKey = request.getFieldKey();
+        if (fieldKey == null || fieldKey.trim().isEmpty()) {
+            fieldKey = keyGenerator.generateFieldKey(request.getFieldName());
+        }
 
         return customFieldRepository.save(CustomFields.builder()
                 .fieldName(request.getFieldName())
-                .fieldKey(request.getFieldKey())
+                .fieldKey(fieldKey)
                 .fieldType(request.getFieldType())
                 .defaultValue(request.getDefaultValue())
                 .config(request.getConfig())
@@ -250,7 +262,61 @@ public class InstituteCustomFiledService {
                 .isMandatory(request.getIsMandatory()).build());
     }
 
-    public InstituteCustomField createInstituteMappingFromCustomField(CustomFields savedCustomField, Institute institute, CustomFieldDTO request) {
+    /**
+     * Find custom field by field key for a specific institute
+     */
+    public Optional<CustomFields> findCustomFieldByKeyAndInstitute(String fieldKey, String instituteId) {
+        return customFieldRepository.findByFieldKeyAndInstituteId(fieldKey, instituteId);
+    }
+
+    /**
+     * Find custom field by field key globally
+     */
+    public Optional<CustomFields> findCustomFieldByKey(String fieldKey) {
+        return customFieldRepository.findByFieldKey(fieldKey);
+    }
+
+    /**
+     * Generate field key from field name
+     */
+    public String generateFieldKey(String fieldName) {
+        return keyGenerator.generateFieldKey(fieldName);
+    }
+
+    /**
+     * Create or find existing custom field by key for institute
+     * This method ensures no duplicate custom fields with same key for an institute
+     */
+    public CustomFields createOrFindCustomFieldByKey(CustomFieldDTO request, String instituteId) {
+        if (Objects.isNull(request))
+            throw new VacademyException("Invalid Request");
+
+        // Generate field key
+        String fieldKey = keyGenerator.generateFieldKey(request.getFieldName());
+
+        // Check if custom field with this key already exists for this institute
+        Optional<CustomFields> existingField = findCustomFieldByKeyAndInstitute(fieldKey, instituteId);
+        if (existingField.isPresent()) {
+            return existingField.get();
+        }
+
+        // Create new custom field with generated key
+        CustomFieldDTO requestWithKey = new CustomFieldDTO();
+        requestWithKey.setFieldName(request.getFieldName());
+        requestWithKey.setFieldKey(fieldKey);
+        requestWithKey.setFieldType(request.getFieldType());
+        requestWithKey.setDefaultValue(request.getDefaultValue());
+        requestWithKey.setConfig(request.getConfig());
+        requestWithKey.setIsSortable(request.getIsSortable());
+        requestWithKey.setIsMandatory(request.getIsMandatory());
+        requestWithKey.setIsFilter(request.getIsFilter());
+        requestWithKey.setIsHidden(request.getIsHidden());
+
+        return createCustomFieldFromRequest(requestWithKey);
+    }
+
+    public InstituteCustomField createInstituteMappingFromCustomField(CustomFields savedCustomField,
+            Institute institute, CustomFieldDTO request) {
         return instituteCustomFieldRepository.save(InstituteCustomField.builder()
                 .customFieldId(savedCustomField.getId())
                 .instituteId(institute.getId())
@@ -268,16 +334,25 @@ public class InstituteCustomFiledService {
         CustomFields customField = customFieldsOptional.get();
 
         // Update fields from request DTO
-        if (request.getFieldKey() != null) customField.setFieldKey(request.getFieldKey());
-        if (request.getFieldName() != null) customField.setFieldName(request.getFieldName());
-        if (request.getFieldType() != null) customField.setFieldType(request.getFieldType());
-        if (request.getDefaultValue() != null) customField.setDefaultValue(request.getDefaultValue());
-        if (request.getConfig() != null) customField.setConfig(request.getConfig());
+        if (request.getFieldKey() != null)
+            customField.setFieldKey(request.getFieldKey());
+        if (request.getFieldName() != null)
+            customField.setFieldName(request.getFieldName());
+        if (request.getFieldType() != null)
+            customField.setFieldType(request.getFieldType());
+        if (request.getDefaultValue() != null)
+            customField.setDefaultValue(request.getDefaultValue());
+        if (request.getConfig() != null)
+            customField.setConfig(request.getConfig());
 
-        if (request.getFormOrder() != null) customField.setFormOrder(request.getFormOrder());
-        if (request.getIsMandatory() != null) customField.setIsMandatory(request.getIsMandatory());
-        if (request.getIsFilter() != null) customField.setIsFilter(request.getIsFilter());
-        if (request.getIsSortable() != null) customField.setIsSortable(request.getIsSortable());
+        if (request.getFormOrder() != null)
+            customField.setFormOrder(request.getFormOrder());
+        if (request.getIsMandatory() != null)
+            customField.setIsMandatory(request.getIsMandatory());
+        if (request.getIsFilter() != null)
+            customField.setIsFilter(request.getIsFilter());
+        if (request.getIsSortable() != null)
+            customField.setIsSortable(request.getIsSortable());
 
         // Save updated field
         customFieldRepository.save(customField);
@@ -289,8 +364,10 @@ public class InstituteCustomFiledService {
         return instituteCustomFieldRepository.findByInstituteIdAndFieldName(instituteId, fieldName);
     }
 
-    public Optional<InstituteCustomField> getByInstituteIdAndFieldIdAndTypeAndTypeId(String instituteId, String fieldId, String type, String typeId) {
-        return instituteCustomFieldRepository.findByInstituteIdAndCustomFieldIdAndTypeAndTypeId(instituteId,fieldId,type,typeId);
+    public Optional<InstituteCustomField> getByInstituteIdAndFieldIdAndTypeAndTypeId(String instituteId, String fieldId,
+            String type, String typeId) {
+        return instituteCustomFieldRepository.findByInstituteIdAndCustomFieldIdAndTypeAndTypeId(instituteId, fieldId,
+                type, typeId);
     }
 
     public InstituteCustomField createorupdateinstutefieldmapping(InstituteCustomField instituteCustomField) {
@@ -313,13 +390,15 @@ public class InstituteCustomFiledService {
         customFieldRepository.saveAll(allFields);
     }
 
-    public List<InstituteCustomField> getCusFieldByInstituteAndTypeAndTypeId(String instituteId, String type, String typeId, List<String> status) {
-        return instituteCustomFieldRepository.findByInstituteIdAndTypeAndTypeIdAndStatusIn(instituteId,type,typeId,status);
+    public List<InstituteCustomField> getCusFieldByInstituteAndTypeAndTypeId(String instituteId, String type,
+            String typeId, List<String> status) {
+        return instituteCustomFieldRepository.findByInstituteIdAndTypeAndTypeIdAndStatusIn(instituteId, type, typeId,
+                status);
     }
 
-    public CustomFieldDTO getCustomFieldDtoFromId(String customFieldId){
+    public CustomFieldDTO getCustomFieldDtoFromId(String customFieldId) {
         Optional<CustomFields> customFields = customFieldRepository.findById(customFieldId);
-        if(customFields.isPresent()){
+        if (customFields.isPresent()) {
             return CustomFieldDTO.builder()
                     .id(customFieldId)
                     .fieldName(customFields.get().getFieldName())
@@ -331,8 +410,10 @@ public class InstituteCustomFiledService {
         throw new VacademyException("Custom Field Not Found");
     }
 
-    public List<InstituteCustomField> getAllMappingFromFieldsIds(String instituteId, List<CustomFields> allFields, List<String> status) {
-        return instituteCustomFieldRepository.findByInstituteIdAndCustomFieldIdInAndStatusIn(instituteId,allFields.stream().map(CustomFields::getId).toList(), status);
+    public List<InstituteCustomField> getAllMappingFromFieldsIds(String instituteId, List<CustomFields> allFields,
+            List<String> status) {
+        return instituteCustomFieldRepository.findByInstituteIdAndCustomFieldIdInAndStatusIn(instituteId,
+                allFields.stream().map(CustomFields::getId).toList(), status);
     }
 
     public List<CustomFieldValues> updateOrCreateCustomFieldsValues(List<CustomFieldValues> response) {

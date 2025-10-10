@@ -38,16 +38,16 @@ public class UserDetailsServiceImpl implements UserDetailsService {
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         log.debug("Entering in loadUserByUsername Method...");
-        
+
         // Extract session token from SecurityContext if available
         String sessionToken = extractSessionToken();
-        
+
         // Build endpoint URL with service name and optional session token
-        String endpoint = AuthConstant.userServiceRoute 
-            + "?userName=" + username 
-            + "&serviceName=" + clientName
-            + (sessionToken != null ? "&sessionToken=" + sessionToken : "");
-            
+        String endpoint = AuthConstant.userServiceRoute
+                + "?userName=" + username
+                + "&serviceName=" + clientName
+                + (sessionToken != null ? "&sessionToken=" + sessionToken : "");
+
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                 clientName,
                 HttpMethod.GET.name(),
@@ -76,26 +76,26 @@ public class UserDetailsServiceImpl implements UserDetailsService {
             RequestAttributes requestAttributes = RequestContextHolder.getRequestAttributes();
             if (requestAttributes instanceof ServletRequestAttributes) {
                 HttpServletRequest request = ((ServletRequestAttributes) requestAttributes).getRequest();
-                
+
                 // Check if JWT filter set the session token
                 String sessionToken = (String) request.getAttribute("sessionToken");
                 if (sessionToken != null) {
                     return sessionToken;
                 }
-                
+
                 // Fallback: Extract from Authorization header
                 String authHeader = request.getHeader("Authorization");
                 if (authHeader != null && authHeader.startsWith("Bearer ")) {
                     return generateSessionIdFromToken(authHeader.substring(7));
                 }
-                
+
                 // Fallback: HTTP session
                 HttpSession session = request.getSession(false);
                 if (session != null) {
                     return session.getId();
                 }
             }
-            
+
             return null;
         } catch (Exception e) {
             log.debug("Could not extract session token: {}", e.getMessage());

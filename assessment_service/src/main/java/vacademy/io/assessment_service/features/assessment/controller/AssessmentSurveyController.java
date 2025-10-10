@@ -8,6 +8,7 @@ import vacademy.io.assessment_service.features.assessment.dto.survey_dto.request
 import vacademy.io.assessment_service.features.assessment.dto.survey_dto.request.RespondentAllResponseFilter;
 import vacademy.io.assessment_service.features.assessment.dto.survey_dto.response.IndividualAllResponse;
 import vacademy.io.assessment_service.features.assessment.dto.survey_dto.response.RespondentAllResponse;
+import vacademy.io.assessment_service.features.assessment.dto.survey_dto.response.StudentSurveyReportResponse;
 import vacademy.io.assessment_service.features.assessment.manager.AssessmentSurveyManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -24,37 +25,48 @@ public class AssessmentSurveyController {
     AssessmentSurveyManager surveyManager;
 
     @GetMapping("/get-overview")
-    public ResponseEntity<SurveyOverviewDetailDto> getSurveyOverview(@RequestAttribute("user")CustomUserDetails userDetails,
-                                                                     @RequestParam("instituteId") String instituteId,
-                                                                     @RequestParam("sectionIds") String commaSeparatedSectionIds,
-                                                                     @RequestParam("assessmentId") String assessmentId){
-        return surveyManager.getOverViewDetailsForInstitute(userDetails,instituteId, commaSeparatedSectionIds,assessmentId);
+    public ResponseEntity<SurveyOverviewDetailDto> getSurveyOverview(
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam("sectionIds") String commaSeparatedSectionIds,
+            @RequestParam("assessmentId") String assessmentId) {
+        return surveyManager.getOverViewDetailsForInstitute(userDetails, instituteId, commaSeparatedSectionIds,
+                assessmentId);
     }
 
     @PostMapping("/individual-response")
-    public ResponseEntity<IndividualAllResponse> getIndividualResponse(@RequestAttribute("user")CustomUserDetails userDetails,
-                                                                       @RequestBody IndividualResponseRequestFilter filter,
-                                                                       @RequestParam("instituteId") String instituteId,
-                                                                       @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
-                                                                       @RequestParam(value = "pageSize", defaultValue = DEFAULT_PAGE_SIZE, required = false) int pageSize){
-        return surveyManager.getIndividualPaginatedResponse(userDetails,filter,instituteId, pageNo,pageSize);
+    public ResponseEntity<IndividualAllResponse> getIndividualResponse(
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestBody IndividualResponseRequestFilter filter,
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
+            @RequestParam(value = "pageSize", defaultValue = DEFAULT_PAGE_SIZE, required = false) int pageSize) {
+        return surveyManager.getIndividualPaginatedResponse(userDetails, filter, instituteId, pageNo, pageSize);
     }
 
     @PostMapping("/respondent-response")
-    public ResponseEntity<RespondentAllResponse> getRespondentResponse(@RequestAttribute("user")CustomUserDetails userDetails,
-                                                                       @RequestBody RespondentAllResponseFilter filter,
-                                                                       @RequestParam("instituteId") String instituteId,
-                                                                       @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
-                                                                       @RequestParam(value = "pageSize", defaultValue = DEFAULT_PAGE_SIZE, required = false) int pageSize){
-        return surveyManager.getRespondentResponseForEachQuestion(userDetails,filter,instituteId, pageNo,pageSize);
+    public ResponseEntity<RespondentAllResponse> getRespondentResponse(
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestBody RespondentAllResponseFilter filter,
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
+            @RequestParam(value = "pageSize", defaultValue = DEFAULT_PAGE_SIZE, required = false) int pageSize) {
+        return surveyManager.getRespondentResponseForEachQuestion(userDetails, filter, instituteId, pageNo, pageSize);
     }
 
     @GetMapping("/setup")
-    public ResponseEntity<List<String>> setupForSurvey(@RequestAttribute("user")CustomUserDetails userDetails,
-                                                      @RequestParam("instituteId") String instituteId,
-                                                       @RequestParam("assessmentId") String assessmentId){
-        return surveyManager.createSetupForSurvey(userDetails,instituteId,assessmentId);
+    public ResponseEntity<List<String>> setupForSurvey(@RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam("assessmentId") String assessmentId) {
+        return surveyManager.createSetupForSurvey(userDetails, instituteId, assessmentId);
     }
 
+    @GetMapping("/student-report")
+    public ResponseEntity<StudentSurveyReportResponse> getStudentSurveyReport(
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestParam("assessmentId") String assessmentId,
+            @RequestParam("instituteId") String instituteId) {
+        return surveyManager.getStudentSurveyReport(userDetails, assessmentId, userDetails.getUserId(), instituteId);
+    }
 
 }

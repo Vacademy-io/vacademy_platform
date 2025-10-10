@@ -59,6 +59,9 @@ public class QuestionWiseMarks {
     @JsonIgnore
     private Section section;
 
+    @Column(name = "section_id", insertable = false, updatable = false)
+    private String sectionId;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 

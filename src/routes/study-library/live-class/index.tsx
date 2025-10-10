@@ -495,7 +495,7 @@ function RouteComponent() {
                     .map((session) => (
                       <div
                         key={session.schedule_id}
-                        className="p-4 border rounded-lg bg-gradient-to-r from-red-50/50 to-red-100/30 border-red-200"
+                        className="p-4 border rounded-lg bg-gradient-to-r from-red-50/50 to-red-100/30 border-red-200 dark:from-red-950/30 dark:to-red-900/20 dark:border-red-900"
                       >
                         <div className="flex justify-between items-start">
                           <div className="flex-1">
@@ -569,7 +569,7 @@ function RouteComponent() {
                     .map((session) => (
                       <div
                         key={session.schedule_id}
-                        className="p-4 border rounded-lg bg-blue-50 border-blue-200"
+                        className="p-4 border rounded-lg bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-900"
                       >
                         <div className="flex justify-between items-start">
                           <div className="flex-1">
@@ -662,7 +662,7 @@ function RouteComponent() {
       days.push(
         <div
           key={`empty-${i}`}
-          className="h-24 border border-neutral-200"
+          className="h-24 border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900"
         ></div>
       );
     }
@@ -806,11 +806,11 @@ function RouteComponent() {
         {/* Legend */}
         <div className="flex items-center gap-4 mt-4 text-sm">
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded bg-gradient-to-r from-red-500/20 to-red-600/20 border border-red-200"></div>
+            <div className="w-3 h-3 rounded bg-gradient-to-r from-red-500/20 to-red-600/20 border border-red-200 dark:from-red-900/40 dark:to-red-800/40 dark:border-red-900"></div>
             <span className="text-neutral-600 dark:text-neutral-300">Live Sessions</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded bg-blue-100 border border-blue-200"></div>
+            <div className="w-3 h-3 rounded bg-blue-100 border border-blue-200 dark:bg-blue-950/40 dark:border-blue-900"></div>
             <span className="text-neutral-600 dark:text-neutral-300">Upcoming Sessions</span>
           </div>
           <div className="text-neutral-500 dark:text-neutral-400 text-xs italic">
@@ -864,17 +864,17 @@ function RouteComponent() {
           onValueChange={setSelectedView}
           className="w-full"
         >
-          <TabsList className="h-auto border-b border-neutral-200/80 bg-transparent p-0">
+          <TabsList className="h-auto border-b border-neutral-200/80 dark:border-neutral-800 bg-transparent p-0">
             <TabsTrigger
               value="list"
-              className="data-[state=active]:text-primary data-[state=active]:border-primary hover:text-primary -mb-px px-4 py-2 text-sm font-medium transition-all duration-200 hover:bg-gradient-to-r hover:from-primary-50/60 hover:to-blue-50/40 focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:ring-offset-1 data-[state=active]:rounded-t-lg data-[state=active]:border-b-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-white data-[state=active]:to-primary-50/30 data-[state=inactive]:text-neutral-500 data-[state=inactive]:hover:rounded-t-lg"
+              className="data-[state=active]:text-primary data-[state=active]:border-primary hover:text-primary -mb-px px-4 py-2 text-sm font-medium transition-all duration-200 hover:bg-gradient-to-r hover:from-primary-50/60 hover:to-blue-50/40 dark:hover:from-primary-900/20 dark:hover:to-transparent focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:ring-offset-1 data-[state=active]:rounded-t-lg data-[state=active]:border-b-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-white data-[state=active]:to-primary-50/30 dark:data-[state=active]:from-neutral-900 dark:data-[state=active]:to-primary-900/20 data-[state=inactive]:text-neutral-500 dark:data-[state=inactive]:text-neutral-400 data-[state=inactive]:hover:rounded-t-lg"
             >
               <List size={18} className="mr-2" />
               List View
             </TabsTrigger>
             <TabsTrigger
               value="calendar"
-              className="data-[state=active]:text-primary data-[state=active]:border-primary hover:text-primary -mb-px px-4 py-2 text-sm font-medium transition-all duration-200 hover:bg-gradient-to-r hover:from-primary-50/60 hover:to-blue-50/40 focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:ring-offset-1 data-[state=active]:rounded-t-lg data-[state=active]:border-b-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-white data-[state=active]:to-primary-50/30 data-[state=inactive]:text-neutral-500 data-[state=inactive]:hover:rounded-t-lg"
+              className="data-[state=active]:text-primary data-[state=active]:border-primary hover:text-primary -mb-px px-4 py-2 text-sm font-medium transition-all duration-200 hover:bg-gradient-to-r hover:from-primary-50/60 hover:to-blue-50/40 dark:hover:from-primary-900/20 dark:hover:to-transparent focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:ring-offset-1 data-[state=active]:rounded-t-lg data-[state=active]:border-b-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-white data-[state=active]:to-primary-50/30 dark:data-[state=active]:from-neutral-900 dark:data-[state=active]:to-primary-900/20 data-[state=inactive]:text-neutral-500 dark:data-[state=inactive]:text-neutral-400 data-[state=inactive]:hover:rounded-t-lg"
             >
               <Calendar size={18} className="mr-2" />
               Calendar View

@@ -159,18 +159,31 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
 
             // Fallback to date-based calculation
             log.debug("No valid custom field value found for SSIGM {}, using date-based calculation", ssigmId);
-            Date startDate = new Date();
+                Date startDate = new Date();
 
-            if (endDate == null) {
-                return 9999; // No expiry date set
-            } else if (startDate == null) {
-                return 0; // Fallback if startDate missing
-            } else {
-                long diffMillis = endDate.getTime() - startDate.getTime();
+                if (endDate == null) {
+                    return 9999;
+                }
+
+                // Truncate both to midnight
+                Calendar startCal = Calendar.getInstance();
+                startCal.setTime(startDate);
+                startCal.set(Calendar.HOUR_OF_DAY, 0);
+                startCal.set(Calendar.MINUTE, 0);
+                startCal.set(Calendar.SECOND, 0);
+                startCal.set(Calendar.MILLISECOND, 0);
+
+                Calendar endCal = Calendar.getInstance();
+                endCal.setTime(endDate);
+                endCal.set(Calendar.HOUR_OF_DAY, 0);
+                endCal.set(Calendar.MINUTE, 0);
+                endCal.set(Calendar.SECOND, 0);
+                endCal.set(Calendar.MILLISECOND, 0);
+
+                long diffMillis = endCal.getTimeInMillis() - startCal.getTimeInMillis();
                 long remainingDays = (diffMillis / (1000 * 60 * 60 * 24)) + 1; // include today
-                return Math.max(remainingDays, 0);
-            }
 
+                return Math.max(remainingDays, 0);
         } catch (Exception e) {
             log.error("Error calculating remaining days for SSIGM: {}", ssigmId, e);
             // Ultimate fallback
@@ -367,7 +380,9 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             if (sourceId == null || sessionId == null || sessionId.isEmpty()) {
                 return Map.of("error", "Missing required parameters: sourceId and sessionId are required");
             }
-
+            if (!sourceId.equalsIgnoreCase("e7e0ba30-a05d-460d-ba15-77fba2883d29")){
+                return Map.of("error", "Source id is not valid");
+            }
             log.info("Creating session participant for user: {} in session: {}", sourceId, sessionId);
 
             // Check if participant already exists

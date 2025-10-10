@@ -61,7 +61,7 @@ public class LiveSession {
     @PrePersist
     public void prePersist() {
         if (this.accessLevel == null) {
-            this.accessLevel = "PRIVATE";
+            this.accessLevel = "private";
         }
     }
 }

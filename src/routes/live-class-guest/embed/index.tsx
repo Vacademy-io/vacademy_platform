@@ -38,11 +38,22 @@ function GuestEmbedComponent() {
       sessionDetails.linkType === LinkType.YOUTUBE ||
       sessionDetails.linkType === LinkType.YOUTUBE_RECORDED
     ) {
-      const videoId =
-        extractYouTubeVideoId(sessionDetails.defaultMeetLink) ||
-        sessionDetails.defaultMeetLink;
+      const videoId = extractYouTubeVideoId(sessionDetails.defaultMeetLink);
+      if (!videoId) {
+        return (
+          <div className="p-4 border border-red-200 rounded-lg bg-red-50 text-red-700">
+            Invalid YouTube URL format
+            <a href={sessionDetails.defaultMeetLink} target="_blank">
+              Click here to view the live
+            </a>
+          </div>
+        );
+      }
 
-      const allowPlayPause = sessionDetails.allowPlayPause ?? true;
+      const allowPlayPause =
+        typeof sessionDetails.allowPlayPause === "string"
+          ? sessionDetails.allowPlayPause === "true"
+          : sessionDetails.allowPlayPause ?? true;
       const allowRewind = sessionDetails.allowRewind === "true";
       return (
         <div className="w-full h-full">

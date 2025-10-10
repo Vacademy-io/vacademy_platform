@@ -118,7 +118,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   const { syncVideoTrackingData } = useVideoSync();
   const currentStartTimeInEpochRef = useRef<number>(0);
 
-  const [isPlayed, setIsPlayed] = useState(true);
+  const [isPlayed, setIsPlayed] = useState(allowPlayPause ? true : false);
   const [player, setPlayer] = useState<YouTubePlayer | null>(null);
   const [playerReady, setPlayerReady] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -948,7 +948,14 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   const togglePlay = () => {
     setIsPlayed(true);
     console.log("Video is played");
-    if (player) player.playVideo();
+    if (player) {
+      try {
+        player.unMute();
+      } catch (e) {
+        console.warn("unMute failed (non-fatal)", e);
+      }
+      player.playVideo();
+    }
   };
 
   const onPlayerReady: YouTubeProps["onReady"] = async (
@@ -972,7 +979,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       // Try to hide YouTube elements by injecting CSS
       if (iframe) {
         try {
-          iframe.setAttribute("allow", "autoplay; encrypted-media; picture-in-picture");
+          iframe.setAttribute(
+            "allow",
+            "autoplay; encrypted-media; picture-in-picture; fullscreen"
+          );
         } catch (e) {
           console.error("Error setting iframe allow attribute:", e);
         }

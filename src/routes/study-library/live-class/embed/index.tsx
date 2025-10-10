@@ -66,7 +66,10 @@ function EmbedComponent() {
         );
       }
 
-      const allowPlayPause = sessionDetails.allowPlayPause ?? true;
+      const allowPlayPause =
+        typeof sessionDetails.allowPlayPause === "string"
+          ? sessionDetails.allowPlayPause === "true"
+          : sessionDetails.allowPlayPause ?? true;
       const allowRewind = sessionDetails.allowRewind === "true";
 
       return (

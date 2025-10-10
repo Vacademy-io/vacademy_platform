@@ -114,7 +114,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   const { syncVideoTrackingData } = useVideoSync();
   const currentStartTimeInEpochRef = useRef<number>(0);
 
-  const [isPlayed, setIsPlayed] = useState(true);
+  const [isPlayed, setIsPlayed] = useState(allowPlayPause ? true : false);
   const [player, setPlayer] = useState<YouTubePlayer | null>(null);
   const [playerReady, setPlayerReady] = useState(false);
   const [duration, setDuration] = useState(0);

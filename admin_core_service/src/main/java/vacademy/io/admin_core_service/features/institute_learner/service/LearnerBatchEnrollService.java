@@ -55,6 +55,7 @@ public class LearnerBatchEnrollService {
         for (InstituteStudentDetails instituteStudentDetail : instituteStudentDetails) {
           String studentSessionId =  studentRegistrationManager.linkStudentToInstitute(student, instituteStudentDetail);
           customFieldValueService.addCustomFieldValue(customFieldValues, CustomFieldValueSourceTypeEnum.STUDENT_SESSION_INSTITUTE_GROUP_MAPPING.name(), studentSessionId);
+            customFieldValueService.addCustomFieldValue(customFieldValues, CustomFieldValueSourceTypeEnum.USER.name(), userDTO.getId());
         }
         return createdUser;
     }

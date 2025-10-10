@@ -129,6 +129,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   const [showFullscreenControls, setShowFullscreenControls] = useState(false);
   const fullscreenControlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [isPseudoFullscreen, setIsPseudoFullscreen] = useState(false);
 
   // Playback speed state
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
@@ -1211,26 +1212,49 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     }
 
     try {
-      if (!document.fullscreenElement) {
-        await playerContainerRef.current.requestFullscreen();
-        setIsFullscreen(true);
-        setShowFullscreenControls(true);
+      const elem = playerContainerRef.current as any;
+      const canNativeFullscreen =
+        typeof document.fullscreenEnabled !== "undefined" &&
+        document.fullscreenEnabled &&
+        elem && typeof elem.requestFullscreen === "function";
 
-        // Hide controls after 3 seconds
-        if (fullscreenControlsTimeoutRef.current) {
-          clearTimeout(fullscreenControlsTimeoutRef.current);
-        }
-
-        fullscreenControlsTimeoutRef.current = setTimeout(() => {
-          setShowFullscreenControls(false);
-        }, 3000);
-      } else {
+      if (document.fullscreenElement) {
         await document.exitFullscreen();
         setIsFullscreen(false);
         setShowFullscreenControls(false);
+        return;
       }
+
+      if (isPseudoFullscreen) {
+        // Exit pseudo fullscreen
+        setIsPseudoFullscreen(false);
+        setShowFullscreenControls(false);
+        return;
+      }
+
+      if (canNativeFullscreen) {
+        await elem.requestFullscreen();
+        setIsFullscreen(true);
+        setShowFullscreenControls(true);
+      } else {
+        // Fallback to pseudo fullscreen for iOS Chrome/WebView
+        setIsPseudoFullscreen(true);
+        setShowFullscreenControls(true);
+      }
+
+      // Hide controls after 3 seconds
+      if (fullscreenControlsTimeoutRef.current) {
+        clearTimeout(fullscreenControlsTimeoutRef.current);
+      }
+
+      fullscreenControlsTimeoutRef.current = setTimeout(() => {
+        setShowFullscreenControls(false);
+      }, 3000);
     } catch (error) {
       console.error("Error toggling fullscreen:", error);
+      // As a last resort, toggle pseudo-fullscreen
+      setIsPseudoFullscreen((prev) => !prev);
+      setShowFullscreenControls(true);
     }
   }, []);
 
@@ -1356,7 +1380,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   const handleMouseMoveOnVideo = useCallback(() => {
     console.log("Mouse move detected, isFullscreen:", isFullscreen);
     
-    if (isFullscreen) {
+    if (isFullscreen || isPseudoFullscreen) {
       // Handle fullscreen controls
       console.log("Showing fullscreen controls");
       setShowFullscreenControls(true);
@@ -1387,7 +1411,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         }
       }, 3000);
     }
-  }, [isFullscreen, showSpeedOptions]);
+  }, [isFullscreen, isPseudoFullscreen, showSpeedOptions]);
 
   // Show controls when speed menu opens
   useEffect(() => {
@@ -1476,7 +1500,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         onClick={handleSingleClick}
       >
         {/* Verification overlay - only shown in fullscreen */}
-        {showVerification && isFullscreen && (
+        {showVerification && (isFullscreen || isPseudoFullscreen) && (
           <div className="absolute top-2 left-1/2 transform -translate-x-1/2 w-full max-w-xs z-[10000] animate-in fade-in slide-in-from-top duration-300">
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg shadow-lg overflow-hidden">
               <div className="p-3">
@@ -1511,7 +1535,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         )}
 
         {/* Invisible fullscreen mouse capture overlay */}
-        {isFullscreen && (
+        {(isFullscreen || isPseudoFullscreen) && (
           <div 
             className="absolute inset-0 z-[9998] pointer-events-auto"
             onMouseMove={handleMouseMoveOnVideo}
@@ -1520,7 +1544,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         )}
 
         {/* Fullscreen controls overlay */}
-        {isFullscreen && showFullscreenControls && (
+        {(isFullscreen || isPseudoFullscreen) && showFullscreenControls && (
           <div className="absolute inset-0 z-[9999] flex flex-col justify-between p-4 bg-gradient-to-b from-black/50 via-transparent to-black/50 animate-in fade-in duration-200">
             {/* Top controls - Exit fullscreen */}
             <div className="flex justify-end">
@@ -1620,8 +1644,8 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
           </div>
         )}
 
-        {/* Top Progress Bar */}
-        {!isFullscreen && (
+        {/* Top Controls Overlay (always visible when not fullscreen) */}
+        {!(isFullscreen || isPseudoFullscreen) && (
           <div className={`absolute top-0 left-0 right-0 z-[999] transition-all duration-300 ${
             showControls ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'
           }`}>
@@ -1765,6 +1789,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
               </div>
 
               {/* Progress Bar */}
+              {allowPlayPause && (
               <div className="relative w-full">
                 <div
                   className="w-full h-1 bg-white/30 rounded-full cursor-pointer group"
@@ -1810,12 +1835,15 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                   );
                 })}
               </div>
+              )}
               
               {/* Time Display */}
+              {allowPlayPause && (
               <div className="flex justify-between text-white text-xs mt-2 font-medium">
                 <span>{formatTime(currentTime)}</span>
                 <span>{formatTime(duration)}</span>
               </div>
+              )}
             </div>
           </div>
         )}

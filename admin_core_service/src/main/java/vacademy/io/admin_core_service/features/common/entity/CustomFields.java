@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.common.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO;
 
 import java.util.Date;
@@ -60,16 +61,37 @@ public class CustomFields {
     private Boolean isHidden = false;
 
     public CustomFields(CustomFieldDTO customFieldDTO) {
-        this.id = customFieldDTO.getId();
-        this.fieldKey = customFieldDTO.getFieldKey();
-        this.fieldName = customFieldDTO.getFieldName();
-        this.fieldType = customFieldDTO.getFieldType();
-        this.defaultValue = customFieldDTO.getDefaultValue();
-        this.config = customFieldDTO.getConfig();
-        this.formOrder = customFieldDTO.getFormOrder();
-        this.isMandatory = customFieldDTO.getIsMandatory();
-        this.isFilter = customFieldDTO.getIsFilter();
-        this.isSortable = customFieldDTO.getIsSortable();
-        this.isHidden = customFieldDTO.getIsHidden();
+        if (customFieldDTO.getId() != null)
+            this.id = customFieldDTO.getId();
+
+        if (StringUtils.hasText(customFieldDTO.getFieldKey()))
+            this.fieldKey = customFieldDTO.getFieldKey();
+
+        if (StringUtils.hasText(customFieldDTO.getFieldName()))
+            this.fieldName = customFieldDTO.getFieldName();
+
+        if (StringUtils.hasText(customFieldDTO.getFieldType()))
+            this.fieldType = customFieldDTO.getFieldType();
+
+        if (StringUtils.hasText(customFieldDTO.getDefaultValue()))
+            this.defaultValue = customFieldDTO.getDefaultValue();
+
+        if (StringUtils.hasText(customFieldDTO.getConfig()))
+            this.config = customFieldDTO.getConfig();
+
+        if (customFieldDTO.getFormOrder() != null)
+            this.formOrder = customFieldDTO.getFormOrder();
+
+        if (customFieldDTO.getIsMandatory() != null)
+            this.isMandatory = customFieldDTO.getIsMandatory();
+
+        if (customFieldDTO.getIsFilter() != null)
+            this.isFilter = customFieldDTO.getIsFilter();
+
+        if (customFieldDTO.getIsSortable() != null)
+            this.isSortable = customFieldDTO.getIsSortable();
+
+        if (customFieldDTO.getIsHidden() != null)
+            this.isHidden = customFieldDTO.getIsHidden();
     }
 }

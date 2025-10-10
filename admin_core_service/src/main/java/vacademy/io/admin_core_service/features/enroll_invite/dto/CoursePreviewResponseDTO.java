@@ -71,3 +71,4 @@ public class CoursePreviewResponseDTO {
         private String id;
     }
 }
+

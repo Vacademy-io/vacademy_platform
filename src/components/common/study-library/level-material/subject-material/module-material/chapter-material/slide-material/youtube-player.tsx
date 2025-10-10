@@ -24,11 +24,8 @@ import YouTube, {
   type YouTubePlayer,
   type YouTubeProps,
 } from "react-youtube";
-import { MyButton } from "@/components/design-system/button";
-import { MyInput } from "@/components/design-system/input";
 import {
   ArrowsOut,
-  Check,
   FastForward,
   Pause,
   Play,
@@ -904,7 +901,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       modestbranding: 1, // Hide YouTube logo
       rel: 0, // Don't show related videos
       // showinfo: 0, // Hide video title and uploader
-      autoplay: 0, // Don't autoplay
+      autoplay: allowPlayPause ? 0 : 1, // Autoplay when pause control is disabled
       // cc_load_policy: 0, // Hide closed captions
       origin: window.location.origin, // Set origin for security
       enablejsapi: 1, // Enable JavaScript API
@@ -949,7 +946,6 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   };
 
   const togglePlay = () => {
-    if (!allowPlayPause) return;
     setIsPlayed(true);
     console.log("Video is played");
     if (player) player.playVideo();
@@ -975,6 +971,11 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
       // Try to hide YouTube elements by injecting CSS
       if (iframe) {
+        try {
+          iframe.setAttribute("allow", "autoplay; encrypted-media; picture-in-picture");
+        } catch (e) {
+          console.error("Error setting iframe allow attribute:", e);
+        }
         try {
           const iframeDocument =
             iframe.contentDocument || iframe.contentWindow?.document;
@@ -1175,16 +1176,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     }
   };
 
-  const handleNumericInput = (
-    e: React.ChangeEvent<HTMLInputElement>,
-    setter: React.Dispatch<React.SetStateAction<string>>
-  ) => {
-    const value = e.target.value;
-    // Only allow numbers
-    if (value === "" || /^\d+$/.test(value)) {
-      setter(value);
-    }
-  };
+  // Note: numeric input handler removed as this component does not expose manual time jump UI
 
   const seekToTimestamp = async (
     targetTimeInSeconds?: number,
@@ -1432,7 +1424,13 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
       if (!player || !playerReady) return;
 
-      if (!allowPlayPause) return;
+      // When pause control is disabled, allow only Play via single click
+      if (!allowPlayPause) {
+        if (!isPlayed) {
+          togglePlay();
+        }
+        return; // Ignore pause when already playing
+      }
 
       if (isPlayed) {
         togglePause();
@@ -1658,27 +1656,19 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
               </button>
 
               {isPlayed ? (
-                <button
-                  onClick={togglePause}
-                  className={`p-4 rounded-full bg-black/60 text-white transition-all shadow-lg backdrop-blur-sm border border-white/10 ${
-                    allowPlayPause
-                      ? "hover:bg-black/80 hover:scale-105"
-                      : "opacity-50 cursor-not-allowed"
-                  }`}
-                  disabled={!allowPlayPause}
-                  aria-label="Pause"
-                >
-                  <Pause size={28} weight="bold" />
-                </button>
+                allowPlayPause ? (
+                  <button
+                    onClick={togglePause}
+                    className="p-4 rounded-full bg-black/60 text-white transition-all shadow-lg backdrop-blur-sm border border-white/10 hover:bg-black/80 hover:scale-105"
+                    aria-label="Pause"
+                  >
+                    <Pause size={28} weight="bold" />
+                  </button>
+                ) : null
               ) : (
                 <button
                   onClick={togglePlay}
-                  className={`p-4 rounded-full bg-black/60 text-white transition-all shadow-lg backdrop-blur-sm border border-white/10 ${
-                    allowPlayPause
-                      ? "hover:bg-black/80 hover:scale-105"
-                      : "opacity-50 cursor-not-allowed"
-                  }`}
-                  disabled={!allowPlayPause}
+                  className="p-4 rounded-full bg-black/60 text-white transition-all shadow-lg backdrop-blur-sm border border-white/10 hover:bg-black/80 hover:scale-105"
                   aria-label="Play"
                 >
                   <Play size={28} weight="bold" />
@@ -1735,26 +1725,18 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                 <div className="flex items-center gap-3">
                   {/* Play/Pause */}
                   {isPlayed ? (
-                    <button
-                      onClick={togglePause}
-                      className={`p-2 rounded-full text-white transition-all backdrop-blur-sm ${
-                        allowPlayPause
-                          ? "bg-white/20 hover:bg-white/30"
-                          : "bg-white/10 opacity-50 cursor-not-allowed"
-                      }`}
-                      disabled={!allowPlayPause}
-                    >
-                      <Pause size={20} weight="fill" />
-                    </button>
+                    allowPlayPause ? (
+                      <button
+                        onClick={togglePause}
+                        className="p-2 rounded-full text-white transition-all backdrop-blur-sm bg-white/20 hover:bg-white/30"
+                      >
+                        <Pause size={20} weight="fill" />
+                      </button>
+                    ) : null
                   ) : (
                     <button
                       onClick={togglePlay}
-                      className={`p-2 rounded-full text-white transition-all backdrop-blur-sm ${
-                        allowPlayPause
-                          ? "bg-white/20 hover:bg-white/30"
-                          : "bg-white/10 opacity-50 cursor-not-allowed"
-                      }`}
-                      disabled={!allowPlayPause}
+                      className="p-2 rounded-full text-white transition-all backdrop-blur-sm bg-white/20 hover:bg-white/30"
                     >
                       <Play size={20} weight="fill" />
                     </button>
@@ -1971,38 +1953,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         )}
       </div>
 
-      {/* Custom Time Jump Input - Compact Design - Only show if rewind is allowed */}
-      {!isFullscreen && allowRewind && (
-        <div className="flex items-center justify-center gap-2 mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
-          <span className="text-sm text-gray-600 font-medium">Jump to:</span>
-          <MyInput
-            inputType="text"
-            inputPlaceholder="Min"
-            input={minutesInput}
-            onChangeFunction={(e) => handleNumericInput(e, setMinutesInput)}
-            size="small"
-            className="w-14 h-8 text-center"
-          />
-          <span className="text-gray-500">:</span>
-          <MyInput
-            inputType="text"
-            inputPlaceholder="Sec"
-            input={secondsInput}
-            onChangeFunction={(e) => handleNumericInput(e, setSecondsInput)}
-            size="small"
-            className="w-14 h-8 text-center"
-          />
-          <MyButton
-            buttonType="primary"
-            scale="small"
-            layoutVariant="icon"
-            onClick={() => seekToTimestamp()}
-            disable={!playerReady}
-          >
-            <Check size={16} />
-          </MyButton>
-        </div>
-      )}
+      
     </div>
   );
 };

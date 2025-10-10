@@ -301,7 +301,7 @@ export function LoginForm({
             }
           } catch (error) {
             console.error("Error fetching institute details:", error);
-            toast.error("Failed to fetch institute details");
+            
           }
 
           try {

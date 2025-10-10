@@ -7,7 +7,7 @@ import { useFileUpload } from "@/hooks/use-file-upload";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { extractVideoId } from "@/utils/study-library/tracking/extractVideoId";
 // Removed SidebarTrigger and useSidebar - using doubt sidebar store instead
-import { ChatText } from "@phosphor-icons/react";
+import { ChatText, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { DoubtResolutionSidebar } from "./doubt-resolution-sidebar/components/sidebar";
 import CustomVideoPlayer from "./custom-video-player";
 import QuestionSlide from "./question-slide";
@@ -26,7 +26,7 @@ import { Slide } from "@/hooks/study-library/use-slides";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 
 export const SlideMaterial = () => {
-  const { activeItem } = useContentStore();
+  const { activeItem, items, setActiveItem } = useContentStore();
   const selectionRef = useRef(null);
   const loadGenerationRef = useRef(0);
   const [heading, setHeading] = useState(activeItem?.title || "");
@@ -37,6 +37,22 @@ export const SlideMaterial = () => {
   const { uploadFile, getPublicUrl } = useFileUpload();
 
   const playerRef = useRef<HTMLVideoElement | null>(null);
+
+  // Slide navigation helpers
+  const slidesList = Array.isArray(items) ? items : [];
+  const currentIndex = slidesList.findIndex((s) => s.id === activeItem?.id);
+  const canGoPrev = currentIndex > 0;
+  const canGoNext = currentIndex > -1 && currentIndex < slidesList.length - 1;
+
+  const goToPrev = () => {
+    if (!canGoPrev) return;
+    setActiveItem(slidesList[currentIndex - 1]);
+  };
+
+  const goToNext = () => {
+    if (!canGoNext) return;
+    setActiveItem(slidesList[currentIndex + 1]);
+  };
 
   // Video time update handler - simplified since questions are now handled internally by YouTube player
   const handleVideoTimeUpdate = () => {
@@ -526,6 +542,31 @@ export const SlideMaterial = () => {
         </div>
 
         <div className="flex items-center gap-2 pr-4">
+          {/* Slide navigation */}
+          <div className="flex items-center gap-2">
+            <MyButton
+              scale="medium"
+              buttonType="secondary"
+              onClick={goToPrev}
+              disabled={!canGoPrev}
+              aria-label="Previous slide"
+              className="flex items-center gap-2 px-3 py-2 font-medium transition-all duration-300 bg-white border border-neutral-300 hover:border-primary-400 rounded-lg backdrop-blur-sm hover:bg-primary-50 disabled:opacity-50"
+            >
+              <CaretLeft size={16} />
+              <span className="hidden sm:inline text-sm">Previous</span>
+            </MyButton>
+            <MyButton
+              scale="medium"
+              buttonType="secondary"
+              onClick={goToNext}
+              disabled={!canGoNext}
+              aria-label="Next slide"
+              className="flex items-center gap-2 px-3 py-2 font-medium transition-all duration-300 bg-white border border-neutral-300 hover:border-primary-400 rounded-lg backdrop-blur-sm hover:bg-primary-50 disabled:opacity-50"
+            >
+              <span className="hidden sm:inline text-sm">Next</span>
+              <CaretRight size={16} />
+            </MyButton>
+          </div>
           <div className="h-6 w-px bg-neutral-200"></div>
           <AskDoubtButton />
         </div>

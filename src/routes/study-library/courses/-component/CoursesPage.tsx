@@ -53,15 +53,22 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
 
     const scrollRef = useRef<HTMLDivElement | null>(null);
 
-    // Smooth scroll on page change
+    // Smooth scroll on page change and dev log
     useEffect(() => {
+        if (import.meta.env.DEV) {
+            console.debug("[CoursesPage] page changed", {
+                page: courseData.number,
+                totalPages: courseData.totalPages,
+                totalElements: courseData.totalElements,
+            });
+        }
         if (scrollRef.current) {
             scrollRef.current.scrollIntoView({
                 behavior: "smooth",
                 block: "start",
             });
         }
-    }, []);
+    }, [courseData.number, courseData.totalPages, courseData.totalElements]);
 
     // Helper function to toggle item in array
     const toggleItem = (
@@ -185,7 +192,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                 {courseData.content.map((course, index) => {
                                     return (
                                         <CourseCard
-                                            key={course.id || index}
+                                            key={`${course.id || "no-id"}-${index}`}
                                             courseId={course.id}
                                             package_name={toTitleCase(
                                                 course.package_name ||
@@ -236,7 +243,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                             {courseData.totalPages > 1 && (
                                 <div className="flex justify-center mt-4 sm:mt-6">
                                     <MyPagination
-                                        currentPage={courseData.number + 1}
+                                        currentPage={courseData.number}
                                         totalPages={courseData.totalPages}
                                         onPageChange={handlePageChange}
                                     />

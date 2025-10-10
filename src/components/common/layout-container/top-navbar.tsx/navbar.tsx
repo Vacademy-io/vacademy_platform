@@ -235,18 +235,18 @@ export function Navbar() {
                         <TooltipTrigger>
                             <Button
                                 variant="outline"
-                                size="icon"
-                                className="size-10 rounded-full p-2"
+                                className="h-10 rounded-full px-3 py-2 flex items-center gap-2"
                                 onClick={handleNavigateToAdmin}
                             >
-                                <Student />
+                                <Student className="h-5 w-5" />
+                                <span className="text-sm font-medium">Switch to Instructor</span>
                             </Button>
                         </TooltipTrigger>
                         <TooltipContent
                             className="bg-primary-400 text-white"
                             side="left"
                         >
-                            <p>Switch to Teacher</p>
+                            <p>Switch to Instructor</p>
                         </TooltipContent>
                     </Tooltip>
                 )}

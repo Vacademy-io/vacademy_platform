@@ -122,7 +122,6 @@ export const fetchAndStoreInstituteDetails = async (
     return instituteDetails;
   } catch (error) {
     console.error("Failed to fetch institute details:", error);
-    toast.error("Failed to fetch institute details. Please try again.");
     return null;
   }
 };

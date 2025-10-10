@@ -347,6 +347,7 @@ export function setupContentSecurityPolicy(customScheme: string): void {
       responseHeaders: {
         ...details.responseHeaders,
         'Content-Security-Policy': [insecureCsp],
+        'Cross-Origin-Opener-Policy': ['same-origin-allow-popups'],
       },
     });
   });

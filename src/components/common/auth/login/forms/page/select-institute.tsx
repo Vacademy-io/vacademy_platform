@@ -97,7 +97,7 @@ export function InstituteSelection() {
 
                 setDropdownList(instituteList);
             } catch (error) {
-                toast.error("Failed to fetch institutes");
+                
             } finally {
                 setIsLoadingInstitutes(false);
             }

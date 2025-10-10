@@ -13,7 +13,7 @@ export enum ContentTerms {
 
 export enum RoleTerms {
   Admin = "Admin",
-  Teacher = "Teacher",
+  Teacher = "Instructor",
   CourseCreator = "CourseCreator",
   AssessmentCreator = "AssessmentCreator",
   Evaluator = "Evaluator",
@@ -29,7 +29,7 @@ export enum SystemTerms {
   Slides = "Slides",
   LiveSession = "Live Session",
   Admin = "Admin",
-  Teacher = "Teacher",
+  Teacher = "Instructor",
   CourseCreator = "Course Creator",
   AssessmentCreator = "Assessment Creator",
   Evaluator = "Evaluator",

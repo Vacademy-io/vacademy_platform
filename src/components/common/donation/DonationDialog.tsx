@@ -133,7 +133,7 @@ export const DonationDialog: React.FC<DonationDialogProps> = ({
             });
           }
         } catch (error) {
-          console.error('Failed to fetch institute details:', error);
+          
           // Set fallback branding
           setInstituteBranding({
             instituteId: instituteId,

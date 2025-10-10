@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import CoursesPage from "./CoursesPage.tsx";
 import { useCatalogStore } from "../-store/catalogStore.ts";
 import axios from "axios";
@@ -81,43 +81,45 @@ const CourseCatalougePage: React.FC = () => {
         []
     );
 
-    // Helper function to filter courses based on completion percentage
-    const filterCoursesByCompletion = (data: CoursePackageResponse, tabType: string): CoursePackageResponse => {
-        if (!data || !data.content) {
-            return data;
+    // Debounced search term to avoid multiple API calls during typing
+    const [debouncedSearch, setDebouncedSearch] = useState("");
+    useEffect(() => {
+        const handle = setTimeout(() => setDebouncedSearch(searchTerm), 400);
+        return () => clearTimeout(handle);
+    }, [searchTerm]);
+
+    // Track pagination per tab
+    const [pageByTab, setPageByTab] = useState<{ ALL: number; PROGRESS: number; COMPLETED: number }>({
+        ALL: 0,
+        PROGRESS: 0,
+        COMPLETED: 0,
+    });
+    const pageSize = 10;
+
+    // Version key to trigger fetch only when filters are explicitly applied
+    const [filtersVersion, setFiltersVersion] = useState(0);
+
+    const getSortParam = (sort: string) =>
+        sort === "Newest"
+            ? "created_at,desc"
+            : sort === "Oldest"
+                ? "created_at,asc"
+                : sort === "Rating"
+                    ? "rating,desc"
+                    : "created_at,desc";
+
+    const fetchCoursesForTab = useCallback(async (tabType: "ALL" | "PROGRESS" | "COMPLETED") => {
+        if (import.meta.env.DEV) {
+            console.debug("[Catalog] fetch start", {
+                tabType,
+                page: pageByTab[tabType],
+                sort: sortOption,
+                search: debouncedSearch,
+                levels: selectedLevels,
+                instructors: selectedInstructors,
+                tags: selectedTags,
+            });
         }
-
-        const filteredContent = data.content.filter((course) => {
-            const percentageCompleted = course.percentage_completed || 0;
-            
-            switch (tabType) {
-                case "PROGRESS":
-                    // Show courses that are not completed (less than 100%)
-                    return percentageCompleted < 100;
-                case "COMPLETED":
-                    // Show courses that are completed (100% or more)
-                    return percentageCompleted >= 100;
-                case "ALL":
-                default:
-                    // Show all courses
-                    return true;
-            }
-        });
-
-        return {
-            ...data,
-            content: filteredContent,
-            numberOfElements: filteredContent.length,
-            totalElements: filteredContent.length,
-        };
-    };
-
-    const fetchTabCourses = async (
-        tabType: string,
-        setData: (data: CoursePackageResponse) => void,
-        search = "",
-        sort = "Newest"
-    ) => {
         try {
             const instituteId = await getInstituteId();
             const response = await authenticatedAxiosInstance.post(
@@ -126,7 +128,7 @@ const CourseCatalougePage: React.FC = () => {
                     status: [],
                     level_ids: selectedLevels,
                     faculty_ids: selectedInstructors,
-                    search_by_name: search,
+                    search_by_name: debouncedSearch,
                     tag: selectedTags,
                     min_percentage_completed: 0,
                     max_percentage_completed: 0,
@@ -135,16 +137,9 @@ const CourseCatalougePage: React.FC = () => {
                 {
                     params: {
                         instituteId,
-                        page: 0,
-                        size: 10,
-                        sortBy:
-                            sort === "Newest"
-                                ? "created_at,asc"
-                                : sort === "Oldest"
-                                  ? "created_at,desc"
-                                  : sort === "Rating"
-                                    ? "rating,asc"
-                                    : "created_at,asc",
+                        page: pageByTab[tabType],
+                        size: pageSize,
+                        sortBy: getSortParam(sortOption),
                     },
                     headers: {
                         accept: "*/*",
@@ -152,19 +147,24 @@ const CourseCatalougePage: React.FC = () => {
                     },
                 }
             );
-            
-            // Apply client-side filtering for completed courses
-            const filteredData = filterCoursesByCompletion(response.data, tabType);
-            setData(filteredData);
-        } catch (error) {
-            // Error handling
 
-            // If enrolled courses fail, try to fetch available courses for the "ALL" tab
+            const data = response.data as CoursePackageResponse;
+            if (tabType === "ALL") setAllCourses(data);
+            if (tabType === "PROGRESS") setProgressCourses(data);
+            if (tabType === "COMPLETED") setCompletedCourses(data);
+            if (import.meta.env.DEV) {
+                console.debug("[Catalog] fetch success", {
+                    tabType,
+                    content: data.content.length,
+                    totalPages: data.totalPages,
+                    number: data.number,
+                });
+            }
+        } catch {
+            // Fallback only for ALL tab (older endpoint) if needed
             if (tabType === "ALL") {
                 try {
-                    const { urlCourseDetails } = await import(
-                        "@/constants/urls"
-                    );
+                    const { urlCourseDetails } = await import("@/constants/urls");
                     const instituteId = await getInstituteId();
                     const response = await authenticatedAxiosInstance.post(
                         urlCourseDetails,
@@ -172,7 +172,7 @@ const CourseCatalougePage: React.FC = () => {
                             status: [],
                             level_ids: selectedLevels,
                             faculty_ids: selectedInstructors,
-                            search_by_name: search,
+                            search_by_name: debouncedSearch,
                             tag: selectedTags,
                             min_percentage_completed: 0,
                             max_percentage_completed: 0,
@@ -180,16 +180,9 @@ const CourseCatalougePage: React.FC = () => {
                         {
                             params: {
                                 instituteId,
-                                page: 0,
-                                size: 10,
-                                sortBy:
-                                    sort === "Newest"
-                                        ? "created_at,desc"
-                                        : sort === "Oldest"
-                                          ? "created_at,asc"
-                                          : sort === "Rating"
-                                            ? "rating,desc"
-                                            : "created_at,desc",
+                                page: pageByTab[tabType],
+                                size: pageSize,
+                                sortBy: getSortParam(sortOption),
                             },
                             headers: {
                                 accept: "*/*",
@@ -197,69 +190,25 @@ const CourseCatalougePage: React.FC = () => {
                             },
                         }
                     );
-                    const filteredData = filterCoursesByCompletion(response.data, tabType);
-                    setData(filteredData);
-                } catch (fallbackError) {
-                    // Fallback error handling
+                    setAllCourses(response.data as CoursePackageResponse);
+                } catch {
+                    // swallow
                 }
             }
         }
-    };
-
-    const fetchAllTabs = async (search = searchTerm, sort = sortOption) => {
-        try {
-            // First, fetch all courses from the backend
-            const instituteId = await getInstituteId();
-            const response = await authenticatedAxiosInstance.post(
-                urlPublicCourseDetails,
-                {
-                    status: [],
-                    level_ids: selectedLevels,
-                    faculty_ids: selectedInstructors,
-                    search_by_name: search,
-                    tag: selectedTags,
-                    min_percentage_completed: 0,
-                    max_percentage_completed: 0,
-                    type: "ALL", // Fetch all courses first
-                },
-                {
-                    params: {
-                        instituteId,
-                        page: 0,
-                        size: 50, // Increased size to get more courses
-                        sortBy:
-                            sort === "Newest"
-                                ? "created_at,asc"
-                                : sort === "Oldest"
-                                  ? "created_at,desc"
-                                  : sort === "Rating"
-                                    ? "rating,asc"
-                                    : "created_at,asc",
-                    },
-                    headers: {
-                        accept: "*/*",
-                        "Content-Type": "application/json",
-                    },
-                }
-            );
-
-            // Apply client-side filtering to distribute courses across tabs
-            const allCoursesData = response.data;
-            setAllCourses(allCoursesData);
-            setProgressCourses(filterCoursesByCompletion(allCoursesData, "PROGRESS"));
-            setCompletedCourses(filterCoursesByCompletion(allCoursesData, "COMPLETED"));
-        } catch (error) {
-            // Fallback to individual tab fetching if the combined approach fails
-            await Promise.all([
-                fetchTabCourses("ALL", setAllCourses, search, sort),
-                fetchTabCourses("PROGRESS", setProgressCourses, search, sort),
-                fetchTabCourses("COMPLETED", setCompletedCourses, search, sort),
-            ]);
-        }
-    };
+    }, [
+        selectedLevels,
+        selectedInstructors,
+        debouncedSearch,
+        selectedTags,
+        pageByTab,
+        sortOption,
+    ]);
 
     const handleApplyFilters = async () => {
-        await fetchAllTabs();
+        // reset pages and trigger a fetch via filtersVersion change
+        setPageByTab({ ALL: 0, PROGRESS: 0, COMPLETED: 0 });
+        setFiltersVersion((v) => v + 1);
     };
 
     const clearAllFilters = async () => {
@@ -268,19 +217,42 @@ const CourseCatalougePage: React.FC = () => {
         setSelectedInstructors([]);
         setSearchTerm("");
         setSortOption("Newest");
-        await fetchAllTabs("", "Newest");
+        setPageByTab({ ALL: 0, PROGRESS: 0, COMPLETED: 0 });
+        setFiltersVersion((v) => v + 1);
     };
 
+    // Single consolidated fetch: run when selected tab changes, or
+    // when debounced search, sort, applied filters, or pagination for the active tab changes
+    const currentPageForActiveTab = pageByTab[selectedTab as "ALL" | "PROGRESS" | "COMPLETED"];
     useEffect(() => {
-        fetchAllTabs();
+        fetchCoursesForTab(selectedTab as "ALL" | "PROGRESS" | "COMPLETED");
+    }, [selectedTab, debouncedSearch, sortOption, filtersVersion, currentPageForActiveTab, fetchCoursesForTab]);
+
+    // Reset current tab page to 0 when search or sort changes
+    useEffect(() => {
+        setPageByTab((prev) => ({ ...prev, [selectedTab]: 0 } as typeof prev));
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [
-        searchTerm,
-        sortOption,
-        selectedLevels,
-        selectedTags,
-        selectedInstructors,
-    ]);
+    }, [debouncedSearch, sortOption]);
+
+    // Pagination handlers per tab (MyPagination is zero-based)
+    const handlePageChangeAll = (page: number) => {
+        if (import.meta.env.DEV) {
+            console.debug("[Catalog] change page ALL", { page });
+        }
+        setPageByTab((prev) => ({ ...prev, ALL: Math.max(0, page) }));
+    };
+    const handlePageChangeProgress = (page: number) => {
+        if (import.meta.env.DEV) {
+            console.debug("[Catalog] change page PROGRESS", { page });
+        }
+        setPageByTab((prev) => ({ ...prev, PROGRESS: Math.max(0, page) }));
+    };
+    const handlePageChangeCompleted = (page: number) => {
+        if (import.meta.env.DEV) {
+            console.debug("[Catalog] change page COMPLETED", { page });
+        }
+        setPageByTab((prev) => ({ ...prev, COMPLETED: Math.max(0, page) }));
+    };
 
     // Enforce Student Display Settings: visible/order tabs and default tab
     useEffect(() => {
@@ -336,13 +308,13 @@ const CourseCatalougePage: React.FC = () => {
                     }
                 );
                 setInstituteData(response.data);
-            } catch (error) {
+            } catch {
                 // Error handling
             }
         };
 
         fetchInstituteDetails();
-    }, []);
+    }, [setInstituteData]);
 
     // ✅ Fetch instructor
     useEffect(() => {
@@ -372,41 +344,15 @@ const CourseCatalougePage: React.FC = () => {
                     }
                 );
                 setInstructors(response.data);
-            } catch (error) {
+            } catch {
                 // Error handling
             }
         };
 
         fetchInstructor();
-    }, []);
+    }, [setInstructors]);
 
-    // ✅ Initial course data fetching when component mounts
-    useEffect(() => {
-        const loadInitialCourseData = async () => {
-            try {
-                // Fetch data for the default tab (PROGRESS)
-                await fetchTabCourses("PROGRESS", setProgressCourses, "", sortOption);
-                
-                // Also fetch some data for ALL tab if it's visible
-                if (visibleTabs.some(t => t.value === "ALL")) {
-                    await fetchTabCourses("ALL", setAllCourses, "", sortOption);
-                }
-                
-                // Fetch completed courses if the tab is visible
-                if (visibleTabs.some(t => t.value === "COMPLETED")) {
-                    await fetchTabCourses("COMPLETED", setCompletedCourses, "", sortOption);
-                }
-                
-            } catch (error) {
-                // Failed to load initial course data
-            }
-        };
-
-        // Only load data if we have the necessary settings
-        if (visibleTabs.length > 0) {
-            loadInitialCourseData();
-        }
-    }, [visibleTabs, sortOption]); // Dependencies: visibleTabs and sortOption
+    // Remove extra initial multi-tab fetching; rely on consolidated effect above
 
     useEffect(() => {
         const fetchInstituteDetails = async () => {
@@ -492,7 +438,7 @@ const CourseCatalougePage: React.FC = () => {
                                 setSelectedInstructors={setSelectedInstructors}
                                 onApplyFilters={handleApplyFilters}
                                 clearAllFilters={clearAllFilters}
-                                handlePageChange={() => {}}
+                                handlePageChange={handlePageChangeAll}
                                 showFilters={selectedTab === "ALL"}
                                 selectedTab={selectedTab}
                             />
@@ -514,7 +460,7 @@ const CourseCatalougePage: React.FC = () => {
                                 setSelectedInstructors={setSelectedInstructors}
                                 onApplyFilters={handleApplyFilters}
                                 clearAllFilters={clearAllFilters}
-                                handlePageChange={() => {}}
+                                handlePageChange={handlePageChangeProgress}
                                 showFilters={false}
                                 selectedTab={selectedTab}
                             />
@@ -536,7 +482,7 @@ const CourseCatalougePage: React.FC = () => {
                                 setSelectedInstructors={setSelectedInstructors}
                                 onApplyFilters={handleApplyFilters}
                                 clearAllFilters={clearAllFilters}
-                                handlePageChange={() => {}}
+                                handlePageChange={handlePageChangeCompleted}
                                 showFilters={false}
                                 selectedTab={selectedTab}
                             />

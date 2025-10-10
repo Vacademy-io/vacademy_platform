@@ -279,7 +279,7 @@ export const getSlideTypeDisplay = (slide: Slide): string => {
                         break;
                     case "DOC":
                     case "DOCX":
-                        baseType = "Word Document";
+                        baseType = "Reading Note";
                         break;
                     case "PPT":
                     case "PPTX":

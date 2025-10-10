@@ -60,39 +60,46 @@ export function ModularDynamicLoginContainer({
     .filter(([key, value]) => key !== "defaultProvider" && value === true)
     .map(([key]) => key);
 
+  // Form providers are only emailOtp and usernamePassword
+  const formEnabledProviders = ["emailOtp", "usernamePassword"].filter((p) => {
+    const flags = effectiveSettings.providers as unknown as Record<string, boolean>;
+    return Boolean(flags[p]);
+  });
+
   // Check if signup is available
   const isSignupAvailable = !!(signupSettings && 
     Object.entries(signupSettings.providers)
       .filter(([key, value]) => key !== "defaultProvider" && value === true)
       .length > 0);
 
-  // Determine initial provider based on defaultProvider
+  // Determine initial provider based on defaultProvider (only form providers)
   const defaultProvider = effectiveSettings.providers.defaultProvider;
   
   // State to track current provider being shown
   const [currentProvider, setCurrentProvider] = useState<string>(() => {
-    // Always use the default provider from settings if it's enabled
-    if (enabledProviders.includes(defaultProvider)) {
-      return defaultProvider;
-    }
-    // Only fallback if default provider is not available
-    return enabledProviders[0] || "usernamePassword";
+    // Prefer defaultProvider only if it's a form provider and enabled
+    const isFormDefault = (defaultProvider === "emailOtp" || defaultProvider === "usernamePassword")
+      && formEnabledProviders.includes(defaultProvider);
+    const initial = isFormDefault
+      ? defaultProvider
+      : (formEnabledProviders[0] || "usernamePassword");
+    try { console.info("[ModularDynamicLoginContainer] init currentProvider=", initial, { defaultProvider, enabledProviders, formEnabledProviders }); } catch (err) { void err; }
+    return initial;
   });
 
   // Always show at least one provider, even if only one is enabled
   // (selection UI currently always shown via enabled providers list)
 
-  // Update current provider only if current provider is disabled AND default provider is not available
+  // Update current provider only if current provider is disabled among form providers
   useEffect(() => {
-    if (!enabledProviders.includes(currentProvider) && enabledProviders.length > 0) {
-      // Try to use default provider first, then fallback to first available
-      if (enabledProviders.includes(defaultProvider)) {
-        setCurrentProvider(defaultProvider);
-      } else {
-        setCurrentProvider(enabledProviders[0]);
-      }
+    if (!formEnabledProviders.includes(currentProvider) && formEnabledProviders.length > 0) {
+      const canUseDefault = (defaultProvider === "emailOtp" || defaultProvider === "usernamePassword")
+        && formEnabledProviders.includes(defaultProvider);
+      const next = canUseDefault ? defaultProvider : formEnabledProviders[0];
+      try { console.info("[ModularDynamicLoginContainer] adjusting currentProvider=", next); } catch (err) { void err; }
+      setCurrentProvider(next);
     }
-  }, [enabledProviders, currentProvider, defaultProvider]);
+  }, [formEnabledProviders, currentProvider, defaultProvider]);
 
   useEffect(() => {
     // Helper to finalize login after receiving tokens
@@ -137,6 +144,13 @@ export function ModularDynamicLoginContainer({
     const messageHandler = async (event: MessageEvent) => {
       const data = event.data;
 
+      // DEBUG: Log all received messages for debugging
+      console.log('[OAuth Parent][DEBUG] Received message:', {
+        origin: event.origin,
+        data: data,
+        source: event.source
+      });
+
       // Legacy/custom path: action-based message
       if (data && data.action === 'oauth_complete') {
         if (data.success) {
@@ -170,12 +184,19 @@ export function ModularDynamicLoginContainer({
           await finalizeLoginWithTokens(payload.accessToken, payload.refreshToken);
         }
       } else if (data && data.type === 'oauth_error') {
-        toast.error(data?.data?.message || "OAuth authentication failed.");
+        toast.error(data?.data?.message || "We could not find a user for the credentials used. Please sign up to create a new account or contact the administrator.");
       }
     };
 
     // Fallback: storage event when COOP blocks postMessage
     const storageHandler = async (e: StorageEvent) => {
+      console.log('[OAuth Parent][DEBUG] Storage event received:', {
+        key: e.key,
+        newValue: e.newValue,
+        oldValue: e.oldValue,
+        url: e.url
+      });
+
       if (!e) return;
       if (e.key === 'OAUTH_RESULT' && e.newValue) {
         try {
@@ -187,7 +208,7 @@ export function ModularDynamicLoginContainer({
               await finalizeLoginWithTokens(accessToken, refreshToken);
             }
           } else if (parsed?.type === 'oauth_error') {
-            toast.error(parsed?.data?.message || 'OAuth authentication failed');
+            toast.error(parsed?.data?.message || 'We could not find a user for the credentials used. Please sign up to create a new account or contact the administrator.');
           }
           // Clean up stored value
           localStorage.removeItem('OAUTH_RESULT');
@@ -209,7 +230,7 @@ export function ModularDynamicLoginContainer({
               await finalizeLoginWithTokens(accessToken, refreshToken);
             }
           } else if (msg.type === 'oauth_error') {
-            toast.error(msg?.data?.message || 'OAuth authentication failed');
+            toast.error(msg?.data?.message || 'We could not find a user for the credentials used. Please sign up to create a new account or contact the administrator.');
           }
         };
       }

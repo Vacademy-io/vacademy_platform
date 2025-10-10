@@ -124,7 +124,6 @@ export const useSignupFlow = (isModalSignup?: boolean, type?: string, courseId?:
       }));
       // Removed toast for institute selection to keep UX quiet
     } catch (error) {
-      toast.error("Failed to fetch institute details. Please try again.");
       setState(prev => ({ 
         ...prev, 
         isFetchingInstituteDetails: false 

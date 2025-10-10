@@ -33,6 +33,47 @@ function ModalOAuthRedirectHandler() {
   );
 }
 
+// Robust error notifier: attempts postMessage to opener, writes to localStorage,
+// and broadcasts via BroadcastChannel so the parent can always react.
+function sendOAuthErrorToParent(message: string) {
+  // Try postMessage (may be blocked by COOP)
+  try {
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage(
+        {
+          action: 'oauth_complete',
+          success: false,
+          error: message,
+        },
+        '*'
+      );
+    }
+  } catch {
+    // ignore postMessage failures
+  }
+
+  // Always write to localStorage so parent can pick it via storage event
+  try {
+    localStorage.setItem(
+      'OAUTH_RESULT',
+      JSON.stringify({ type: 'oauth_error', data: { message }, ts: Date.now() })
+    );
+  } catch {
+    // ignore storage errors
+  }
+
+  // BroadcastChannel fallback for same-origin tabs
+  try {
+    if (typeof BroadcastChannel !== 'undefined') {
+      const bc = new BroadcastChannel('OAUTH_CHANNEL');
+      bc.postMessage({ type: 'oauth_error', data: { message } });
+      try { bc.close(); } catch { /* ignore */ }
+    }
+  } catch {
+    // ignore broadcast errors
+  }
+}
+
 const handleModalOAuthCallback = async (
   navigate: ReturnType<typeof useNavigate>,
   setPrimaryColor: (color: string) => void
@@ -68,7 +109,7 @@ const handleModalOAuthCallback = async (
       type = stateObj.type || "";
       courseId = stateObj.courseId || "";
       instituteId = stateObj.instituteId || "";
-    } catch (parseError) {
+    } catch {
       // Error parsing state
     }
   }
@@ -86,7 +127,7 @@ const handleModalOAuthCallback = async (
       type = modalData.type || type;
       courseId = modalData.courseId || courseId;
       instituteId = modalData.instituteId || instituteId;
-    } catch (parseError) {
+    } catch {
       // Error parsing stored modal data
     }
   }
@@ -95,61 +136,23 @@ const handleModalOAuthCallback = async (
     // Check if we have signup data (user exists but needs to signup)
     const signupData = urlParams.get("signupData");
     const emailVerified = urlParams.get("emailVerified");
-    
+
     if (signupData && emailVerified === "true") {
       // User exists but needs to signup - this is not an error, it's a signup flow
     } else {
       // Genuine error - user doesn't exist
     }
-    
-    // For modal login, send error message and signup modal message to parent tab
-    try {
-      // Try to send messages to parent tab
-      if (window.opener && !window.opener.closed) {
-        // First, send error message for user feedback
-        const errorMessage = signupData && emailVerified === "true" 
-          ? "Account not found. Please sign up to continue."
-          : "We couldn't find an account with these details. Please create an account before logging in.";
-          
-        window.opener.postMessage({
-          action: 'oauth_complete',
-          success: false,
-          error: errorMessage
-        }, window.location.origin);
-        
-        // Then send message to open signup modal after a short delay
-        setTimeout(() => {
-          const signupModalData = {
-            action: 'openSignupModal',
-            type: type || '',
-            courseId: courseId || '',
-            instituteId: instituteId || '',
-            fromOAuth: true
-          };
-          
-          window.opener.postMessage(signupModalData, window.location.origin);
-        }, 500);
-        
-        
-        // Close this popup after sending messages (allow time for both messages to be processed)
-        setTimeout(() => {
-          window.close();
-        }, 1000);
-      } else {
-        // Fallback: redirect to signup page with parameters
-        const signupUrl = new URL(window.location.origin + "/signup");
-        signupUrl.searchParams.set("openModal", "true");
-        signupUrl.searchParams.set("type", type || "");
-        signupUrl.searchParams.set("courseId", courseId || "");
-        // Remove instituteId from URL to avoid exposing it
-        // signupUrl.searchParams.set("instituteId", instituteId || "");
-        signupUrl.searchParams.set("fromOAuth", "true");
-        
-        window.location.href = signupUrl.toString();
-      }
-    } catch (error) {
-      // Error communicating with parent tab
-    }
+
+    // For modal login, send clear error message to parent tab via multiple channels
+    const errorMessage = (signupData && emailVerified === "true")
+      ? "We could not find a user for the credentials used. Please sign up to create a new account or contact the administrator."
+      : "We could not find a user for the credentials used. Please sign up to create a new account or contact the administrator.";
+
+    sendOAuthErrorToParent(errorMessage);
+    // Close this popup after sending messages
+    setTimeout(() => {
+      try { window.close(); } catch { /* ignore */ }
+    }, 800);
     return;
   }
 
@@ -171,32 +174,42 @@ const handleModalOAuthCallback = async (
         courseId,
         instituteId
       );
-    } catch (error) {
+    } catch {
       // Failed to store authentication tokens
     }
   } else {
     // Don't show toast in popup - send error message to parent window instead
+    console.log('[OAuth Popup][DEBUG] No tokens received, sending generic error');
+
     // Send error message to parent window and close popup
+    const genericMessage = 'Authentication failed. Please try logging in again.';
+    sendOAuthErrorToParent(genericMessage);
+
     if (window.opener && !window.opener.closed) {
-      window.opener.postMessage({
-        action: 'oauth_complete',
-        success: false,
-        error: 'Authentication failed. Please try logging in again.'
-      }, window.location.origin);
+      setTimeout(() => {
+        console.log('[OAuth Popup][DEBUG] Closing popup after sending generic error');
+        try { window.close(); } catch { /* ignore */ }
+      }, 800);
+    } else {
+      console.log('[OAuth Popup][DEBUG] Parent window not accessible for generic error, redirecting');
+      // Fallback: redirect to signup page with parameters
+      const signupUrl = new URL(window.location.origin + "/signup");
+      signupUrl.searchParams.set("openModal", "true");
+      signupUrl.searchParams.set("fromOAuth", "true");
+      window.location.href = signupUrl.toString();
     }
-    setTimeout(() => window.close(), 1000);
   }
 };
 
 const handleModalSuccessfulLogin = async (
   accessToken: string,
-  refreshToken: string,
-  navigate: ReturnType<typeof useNavigate>,
+  _refreshToken: string,
+  _navigate: ReturnType<typeof useNavigate>,
   setPrimaryColor?: (color: string) => void,
   redirectTo?: string,
-  currentUrl?: string,
-  type?: string,
-  courseId?: string,
+  _currentUrl?: string,
+  _type?: string,
+  _courseId?: string,
   instituteId?: string
 ) => {
   try {
@@ -209,13 +222,7 @@ const handleModalSuccessfulLogin = async (
     if (!userId || authorityKeys.length === 0) {
       toast.error("Invalid user or institute data.");
       // Send error message to parent window and close popup
-      if (window.opener && !window.opener.closed) {
-        window.opener.postMessage({
-          action: 'oauth_complete',
-          success: false,
-          error: 'Invalid user or institute data.'
-        }, window.location.origin);
-      }
+      sendOAuthErrorToParent('Invalid user or institute data.');
       setTimeout(() => window.close(), 1000);
       return;
     }
@@ -231,18 +238,12 @@ const handleModalSuccessfulLogin = async (
         await fetchAndStoreStudentDetails(instituteId, userId);
 
         // Use dynamic redirection logic (same as signup flow)
-        await handleDynamicRedirection(window.opener, currentUrl, redirectTo);
+        await handleDynamicRedirection(window.opener, _currentUrl, redirectTo, accessToken, _refreshToken);
       } else {
         // User is not enrolled in the specified institute
         toast.error("You are not enrolled in this institute.");
         // Send error message to parent window and close popup
-        if (window.opener && !window.opener.closed) {
-          window.opener.postMessage({
-            action: 'oauth_complete',
-            success: false,
-            error: 'You are not enrolled in this institute.'
-          }, window.location.origin);
-        }
+        sendOAuthErrorToParent('You are not enrolled in this institute.');
         setTimeout(() => window.close(), 1000);
       }
     } else {
@@ -256,9 +257,9 @@ const handleModalSuccessfulLogin = async (
       await fetchAndStoreStudentDetails(firstInstituteId, userId);
 
       // Use dynamic redirection logic (same as signup flow)
-      await handleDynamicRedirection(window.opener, currentUrl, redirectTo);
+      await handleDynamicRedirection(window.opener, _currentUrl, redirectTo, accessToken, _refreshToken);
     }
-  } catch (error) {
+  } catch {
     // Error in modal successful login
   } finally {
     // Clean up sessionStorage after processing is complete
@@ -269,8 +270,10 @@ const handleModalSuccessfulLogin = async (
 // Dynamic redirection logic (same as signup flow)
 const handleDynamicRedirection = async (
   opener: Window | null,
-  currentUrl?: string,
-  fallbackRedirect?: string
+  _currentUrl?: string,
+  fallbackRedirect?: string,
+  accessToken?: string,
+  refreshToken?: string
 ) => {
   try {
     // 1. Fetch student display settings (same as signup flow)
@@ -300,14 +303,37 @@ const handleDynamicRedirection = async (
         success: true,
         redirectTo: finalRedirectRoute,
         backendRoute: studentSettings?.postLoginRedirectRoute,
-        currentUrl: currentUrl
-      }, window.location.origin);
+        currentUrl: _currentUrl
+      }, '*');
     }
     
+    // Also persist success for storage/BroadcastChannel-based listeners
+    try {
+      if (accessToken && refreshToken) {
+        localStorage.setItem('OAUTH_RESULT', JSON.stringify({
+          type: 'oauth_success',
+          data: { accessToken, refreshToken },
+          ts: Date.now(),
+        }));
+      }
+    } catch {
+      // ignore
+    }
+
+    try {
+      if (typeof BroadcastChannel !== 'undefined' && accessToken && refreshToken) {
+        const bc = new BroadcastChannel('OAUTH_CHANNEL');
+        bc.postMessage({ type: 'oauth_success', data: { accessToken, refreshToken } });
+        try { bc.close(); } catch { /* ignore */ }
+      }
+    } catch {
+      // ignore
+    }
+
     // Close popup after sending message
     setTimeout(() => window.close(), 500);
     
-  } catch (error) {
+  } catch {
     // Error in dynamic redirection
   }
 };
@@ -334,7 +360,7 @@ const cleanUrlOfSensitiveData = (url: string): string => {
     // Reconstruct URL with only safe parameters
     const cleanUrl = `${urlObj.pathname}${safeParams.toString() ? '?' + safeParams.toString() : ''}`;
     return cleanUrl;
-  } catch (error) {
+  } catch {
     // Error cleaning URL
     return url;
   }

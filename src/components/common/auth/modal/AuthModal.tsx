@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { ModularDynamicLoginContainer } from "@/components/common/auth/login/components/modular/ModularDynamicLoginContainer";
 import { ModularDynamicSignupContainer } from "@/components/common/auth/signup/components/ModularDynamicSignupContainer";
 import { ModalForgotPasswordForm } from "@/components/common/auth/login/forms/modal/ModalForgotPasswordForm";
-import { Preferences } from "@capacitor/preferences";
+// import { Preferences } from "@capacitor/preferences";
 import { useSignupFlow } from "@/components/common/auth/signup/hooks/use-signup-flow";
 import { useModularLoginFlow } from "@/components/common/auth/login/hooks/modular/use-modular-login-flow";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
@@ -46,7 +46,7 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
     
     // Use the login flow hook to get login settings - prioritize domain routing, then storage
     const effectiveInstituteId = domainRouting.instituteId || instituteIdFromStorage || "";
-    const { settings: loginSettings, isLoading: isLoadingLoginSettings, instituteDetails: loginInstituteDetails } = useModularLoginFlow({ 
+    const { settings: loginSettings } = useModularLoginFlow({ 
         instituteId: effectiveInstituteId
     });
 
@@ -157,26 +157,7 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
             // Only accept messages from the same origin
             if (event.origin !== window.location.origin) return;
             
-            const { action, type: oauthType, courseId: oauthCourseId, instituteId, fromOAuth } = event.data;
-            
-            if (action === 'openSignupModal' && fromOAuth) {
-                // Update the modal context with OAuth parameters
-                const newUrl = new URL(window.location.href);
-                if (oauthType) newUrl.searchParams.set('type', oauthType);
-                if (oauthCourseId) newUrl.searchParams.set('courseId', oauthCourseId);
-                // Remove instituteId from URL to avoid exposing sensitive information
-                // if (instituteId) newUrl.searchParams.set('instituteId', instituteId);
-                newUrl.searchParams.set('fromOAuth', 'true');
-                window.history.replaceState({}, '', newUrl.toString());
-                
-                // Switch to signup mode
-                setCurrentMode('signup');
-                
-                // Ensure modal is open
-                if (!isOpen) {
-                    setInternalIsOpen(true);
-                }
-            }
+            // Removed: auto-switching to signup on OAuth failure
         };
 
         window.addEventListener('message', handleMessage);

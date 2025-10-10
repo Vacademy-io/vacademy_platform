@@ -118,6 +118,7 @@
                     try {
                         // If we couldn't talk to opener (COOP), redirect this window to /login with tokens
                         if ((!window.opener || openerMessageFailed) && data && data.accessToken && data.refreshToken) {
+                            showRedirecting('Redirecting to login...');
                             const next = new URL('/login', window.location.origin);
                             next.searchParams.set('accessToken', data.accessToken);
                             next.searchParams.set('refreshToken', data.refreshToken);
@@ -256,6 +257,18 @@
             showError(errorMessage);
         }
 
+        // Show loading UI while redirecting
+        function showRedirecting(message) {
+            try {
+                const spinner = document.querySelector('.spinner');
+                if (spinner) spinner.style.display = 'block';
+                const statusEl = document.querySelector('.status');
+                if (statusEl) statusEl.textContent = 'Signing you in...';
+                const messageEl = document.querySelector('.message');
+                if (messageEl) messageEl.textContent = message || 'Redirecting, please wait...';
+            } catch (e) {}
+        }
+
         // Main execution
         try {
             const params = parseUrlParams();
@@ -291,6 +304,7 @@
                             container.appendChild(btn);
                         } else {
                             // Auto-redirect in non-debug mode
+                            showRedirecting('Redirecting to app...');
                             setTimeout(() => {
                                 window.location.replace(next.toString());
                             }, 300);

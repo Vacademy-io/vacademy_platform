@@ -843,7 +843,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       modestbranding: 1, // Hide YouTube logo
       rel: 0, // Don't show related videos
       // showinfo: 0, // Hide video title and uploader
-      autoplay: 0, // Don't autoplay
+      autoplay: allowPlayPause ? 0 : 1, // Autoplay when pause control is disabled
       // cc_load_policy: 0, // Hide closed captions
       origin: window.location.origin, // Set origin for security
       enablejsapi: 1, // Enable JavaScript API
@@ -885,7 +885,6 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   };
 
   const togglePlay = () => {
-    if (!allowPlayPause) return;
     setIsPlayed(true);
     console.log("Video is played");
     if (player) player.playVideo();
@@ -911,6 +910,11 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
       // Try to hide YouTube elements by injecting CSS
       if (iframe) {
+        try {
+          iframe.setAttribute("allow", "autoplay; encrypted-media; picture-in-picture");
+        } catch (e) {
+          console.error("Error setting iframe allow attribute:", e);
+        }
         try {
           const iframeDocument =
             iframe.contentDocument || iframe.contentWindow?.document;
@@ -1331,9 +1335,13 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
       if (!player || !playerReady) return;
 
-      if (!allowPlayPause) return;
-
-      // No additional rewind restriction needed for single click
+      // When pause control is disabled, allow only Play via single click
+      if (!allowPlayPause) {
+        if (!isPlayed) {
+          togglePlay();
+        }
+        return; // Ignore pause when already playing
+      }
 
       if (isPlayed) {
         togglePause();
@@ -1556,19 +1564,19 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
               )}
 
               {isPlayed ? (
-                <button
-                  onClick={togglePause}
-                  className={`p-4 rounded-full bg-black/60 text-white transition-all shadow-lg backdrop-blur-sm border border-white/10 ${allowPlayPause ? 'hover:bg-black/80 hover:scale-105' : 'opacity-50 cursor-not-allowed'}`}
-                  disabled={!allowPlayPause}
-                  aria-label="Pause"
-                >
-                  <Pause size={28} weight="bold" />
-                </button>
+                allowPlayPause ? (
+                  <button
+                    onClick={togglePause}
+                    className="p-4 rounded-full bg-black/60 text-white transition-all shadow-lg backdrop-blur-sm border border-white/10 hover:bg-black/80 hover:scale-105"
+                    aria-label="Pause"
+                  >
+                    <Pause size={28} weight="bold" />
+                  </button>
+                ) : null
               ) : (
                 <button
                   onClick={togglePlay}
-                  className={`p-4 rounded-full bg-black/60 text-white transition-all shadow-lg backdrop-blur-sm border border-white/10 ${allowPlayPause ? 'hover:bg-black/80 hover:scale-105' : 'opacity-50 cursor-not-allowed'}`}
-                  disabled={!allowPlayPause}
+                  className="p-4 rounded-full bg-black/60 text-white transition-all shadow-lg backdrop-blur-sm border border-white/10 hover:bg-black/80 hover:scale-105"
                   aria-label="Play"
                 >
                   <Play size={28} weight="bold" />
@@ -1624,18 +1632,18 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                 <div className="flex items-center gap-3">
                   {/* Play/Pause */}
                   {isPlayed ? (
-                    <button
-                      onClick={togglePause}
-                      className={`p-2 rounded-full text-white transition-all backdrop-blur-sm ${allowPlayPause ? 'bg-white/20 hover:bg-white/30' : 'bg-white/10 opacity-50 cursor-not-allowed'}`}
-                      disabled={!allowPlayPause}
-                    >
-                      <Pause size={20} weight="fill" />
-                    </button>
+                    allowPlayPause ? (
+                      <button
+                        onClick={togglePause}
+                        className="p-2 rounded-full text-white transition-all backdrop-blur-sm bg-white/20 hover:bg-white/30"
+                      >
+                        <Pause size={20} weight="fill" />
+                      </button>
+                    ) : null
                   ) : (
                     <button
                       onClick={togglePlay}
-                      className={`p-2 rounded-full text-white transition-all backdrop-blur-sm ${allowPlayPause ? 'bg-white/20 hover:bg-white/30' : 'bg-white/10 opacity-50 cursor-not-allowed'}`}
-                      disabled={!allowPlayPause}
+                      className="p-2 rounded-full text-white transition-all backdrop-blur-sm bg-white/20 hover:bg-white/30"
                     >
                       <Play size={20} weight="fill" />
                     </button>

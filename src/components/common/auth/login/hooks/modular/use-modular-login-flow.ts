@@ -16,11 +16,19 @@ export function useModularLoginFlow({ instituteId }: UseModularLoginFlowProps) {
   const { data: instituteDetails, isLoading: isLoadingInstitute, error: instituteError } = useInstituteQuery({ instituteId });
 
   useEffect(() => {
+    console.group("[useModularLoginFlow] Effect run");
+    console.log("instituteId:", instituteId);
+    console.log("has instituteDetails:", Boolean(instituteDetails));
+    console.log("instituteError:", instituteError ? String(instituteError) : null);
+
     // If no institute ID, use default settings
     if (!instituteId || instituteId.trim() === "") {
-      setSettings(mapLoginSettings(null));
+      const defaults = mapLoginSettings(null);
+      console.info("[useModularLoginFlow] No instituteId, using default login settings:", defaults.providers);
+      setSettings(defaults);
       setError(null);
       setIsLoading(false);
+      console.groupEnd();
       return;
     }
 
@@ -28,26 +36,35 @@ export function useModularLoginFlow({ instituteId }: UseModularLoginFlowProps) {
       try {
         // Parse institute settings to extract signup configuration (use signup settings for login)
         const instituteSettings = parseInstituteSettings(instituteDetails.setting || "");
+        console.info("[useModularLoginFlow] Parsed institute settings, signup present:", Boolean(instituteSettings.signup));
         const signupSettings = instituteSettings.signup; // Use signup settings for login
         
         // Map signup settings to login settings format
         const mappedSettings = mapLoginSettings(signupSettings);
+        console.info("[useModularLoginFlow] Mapped login providers:", mappedSettings.providers);
         
         setSettings(mappedSettings);
         setError(null);
       } catch (err) {
-        console.error("Error mapping login settings:", err);
+        console.error("[useModularLoginFlow] Error mapping login settings:", err);
         setError("Failed to load login configuration");
         // Fallback to default settings
-        setSettings(mapLoginSettings(null));
+        const defaults = mapLoginSettings(null);
+        console.info("[useModularLoginFlow] Fallback to default settings:", defaults.providers);
+        setSettings(defaults);
       } finally {
         setIsLoading(false);
+        console.groupEnd();
       }
     } else if (instituteError) {
+      console.warn("[useModularLoginFlow] Institute error, using defaults");
       setError("Failed to load institute details");
       // Fallback to default settings
-      setSettings(mapLoginSettings(null));
+      const defaults = mapLoginSettings(null);
+      console.info("[useModularLoginFlow] Defaults due to error:", defaults.providers);
+      setSettings(defaults);
       setIsLoading(false);
+      console.groupEnd();
     }
   }, [instituteId, instituteDetails, instituteError]);
 

@@ -143,7 +143,7 @@ export const CourseStructureDetails = ({
                 (slide.video_slide as { published_video_length_in_millis?: number }).published_video_length_in_millis ??
                 slide.video_slide.video_length_in_millis;
             const text = formatDuration(ms);
-            if (text) return text;
+            if (text) return text + " mins";
         }
         if (slide.question_slide) {
             const qType = slide.question_slide.question_type;

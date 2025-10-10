@@ -380,9 +380,6 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             if (sourceId == null || sessionId == null || sessionId.isEmpty()) {
                 return Map.of("error", "Missing required parameters: sourceId and sessionId are required");
             }
-            if (!sourceId.equalsIgnoreCase("e7e0ba30-a05d-460d-ba15-77fba2883d29")){
-                return Map.of("error", "Source id is not valid");
-            }
             log.info("Creating session participant for user: {} in session: {}", sourceId, sessionId);
 
             // Check if participant already exists

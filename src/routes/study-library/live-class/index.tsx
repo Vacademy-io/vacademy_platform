@@ -330,12 +330,12 @@ function RouteComponent() {
     return (
       <div
         key={session.session_id}
-        className="group p-4 border rounded-xl bg-white hover:bg-primary-50/30 border-neutral-200 hover:border-primary-200/60 hover:shadow-sm transition-all duration-200 w-full"
+        className="group p-4 border rounded-xl bg-white dark:bg-neutral-900 hover:bg-primary-50/30 dark:hover:bg-primary-900/20 border-neutral-200 dark:border-neutral-800 hover:border-primary-200/60 dark:hover:border-primary-700/60 hover:shadow-sm transition-all duration-200 w-full"
       >
         <div className="flex justify-between items-start">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2">
-              <h3 className="font-semibold text-lg text-neutral-800 group-hover:text-primary-700 transition-colors">
+              <h3 className="font-semibold text-lg text-neutral-800 dark:text-neutral-100 group-hover:text-primary-700 dark:group-hover:text-primary-300 transition-colors">
                 {session.title}
               </h3>
               {isLive && (
@@ -357,8 +357,8 @@ function RouteComponent() {
               )}
             </div>
             <div className="flex items-center gap-1 text-sm text-neutral-600 mb-2">
-              <MapPin size={16} className="text-neutral-500" />
-              <span className="capitalize">{session.subject}</span>
+              <MapPin size={16} className="text-neutral-500 dark:text-neutral-400" />
+              <span className="capitalize dark:text-neutral-300">{session.subject}</span>
             </div>
           </div>
           {isLive && session.meeting_link && (
@@ -380,8 +380,8 @@ function RouteComponent() {
 
         <div className="flex flex-col sm:flex-row gap-4 text-sm">
           <div className="flex items-center gap-2">
-            <Clock size={16} className="text-neutral-500" />
-            <span className="text-neutral-600">
+            <Clock size={16} className="text-neutral-500 dark:text-neutral-400" />
+            <span className="text-neutral-600 dark:text-neutral-300">
               <span className="font-medium">Starts:</span>{" "}
               {formatDateTime(
                 session.meeting_date,
@@ -389,15 +389,15 @@ function RouteComponent() {
                 session.timezone
               )}
               {session.timezone && (
-                <span className="text-xs text-neutral-500 ml-1">
+                <span className="text-xs text-neutral-500 dark:text-neutral-400 ml-1">
                   ({getTimezoneDisplayInfo(session.timezone).sessionTz})
                 </span>
               )}
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <Users size={16} className="text-neutral-500" />
-            <span className="text-neutral-600">
+            <Users size={16} className="text-neutral-500 dark:text-neutral-400" />
+            <span className="text-neutral-600 dark:text-neutral-300">
               <span className="font-medium">Duration:</span>{" "}
               {calculateDuration(session.start_time, session.last_entry_time)}
             </span>
@@ -477,7 +477,7 @@ function RouteComponent() {
       <Dialog open={dayModalOpen} onOpenChange={setDayModalOpen}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-xl font-semibold text-neutral-800">
+            <DialogTitle className="text-xl font-semibold text-neutral-800 dark:text-neutral-100">
               Classes on {formatDate(selectedDayData.date)}
             </DialogTitle>
           </DialogHeader>
@@ -485,7 +485,7 @@ function RouteComponent() {
           <div className="space-y-6 mt-4">
             {liveSessions.length > 0 && (
               <div>
-                <h3 className="text-lg font-semibold text-neutral-800 mb-3 flex items-center gap-2">
+                <h3 className="text-lg font-semibold text-neutral-800 dark:text-neutral-100 mb-3 flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full bg-danger-600 animate-pulse"></div>
                   Live Sessions
                 </h3>
@@ -499,10 +499,10 @@ function RouteComponent() {
                       >
                         <div className="flex justify-between items-start">
                           <div className="flex-1">
-                            <h4 className="font-semibold text-neutral-800 mb-1">
+                            <h4 className="font-semibold text-neutral-800 dark:text-neutral-100 mb-1">
                               {session.title}
                             </h4>
-                            <div className="flex items-center gap-4 text-sm text-neutral-600">
+                            <div className="flex items-center gap-4 text-sm text-neutral-600 dark:text-neutral-300">
                               <div className="flex items-center gap-1">
                                 <Clock size={14} />
                                 <span>
@@ -518,7 +518,7 @@ function RouteComponent() {
                                     session.timezone
                                   )}
                                   {session.timezone && (
-                                    <span className="text-xs text-neutral-500 ml-1">
+                                    <span className="text-xs text-neutral-500 dark:text-neutral-400 ml-1">
                                       (
                                       {
                                         getTimezoneDisplayInfo(session.timezone)
@@ -531,7 +531,7 @@ function RouteComponent() {
                               </div>
                               <div className="flex items-center gap-1">
                                 <MapPin size={14} />
-                                <span className="capitalize">
+                                <span className="capitalize dark:text-neutral-300">
                                   {session.subject}
                                 </span>
                               </div>
@@ -559,7 +559,7 @@ function RouteComponent() {
 
             {upcomingSessions.length > 0 && (
               <div>
-                <h3 className="text-lg font-semibold text-neutral-800 mb-3 flex items-center gap-2">
+                <h3 className="text-lg font-semibold text-neutral-800 dark:text-neutral-100 mb-3 flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full bg-info-600"></div>
                   Upcoming Sessions
                 </h3>
@@ -573,10 +573,10 @@ function RouteComponent() {
                       >
                         <div className="flex justify-between items-start">
                           <div className="flex-1">
-                            <h4 className="font-semibold text-neutral-800 mb-1">
+                            <h4 className="font-semibold text-neutral-800 dark:text-neutral-100 mb-1">
                               {session.title}
                             </h4>
-                            <div className="flex items-center gap-4 text-sm text-neutral-600">
+                            <div className="flex items-center gap-4 text-sm text-neutral-600 dark:text-neutral-300">
                               <div className="flex items-center gap-1">
                                 <Clock size={14} />
                                 <span>
@@ -592,7 +592,7 @@ function RouteComponent() {
                                     session.timezone
                                   )}
                                   {session.timezone && (
-                                    <span className="text-xs text-neutral-500 ml-1">
+                                    <span className="text-xs text-neutral-500 dark:text-neutral-400 ml-1">
                                       (
                                       {
                                         getTimezoneDisplayInfo(session.timezone)
@@ -605,7 +605,7 @@ function RouteComponent() {
                               </div>
                               <div className="flex items-center gap-1">
                                 <MapPin size={14} />
-                                <span className="capitalize">
+                                <span className="capitalize dark:text-neutral-300">
                                   {session.subject}
                                 </span>
                               </div>
@@ -621,7 +621,7 @@ function RouteComponent() {
             {selectedDayData.sessions.length === 0 && (
               <div className="text-center py-8">
                 <Clock size={48} className="mx-auto text-neutral-400 mb-3" />
-                <p className="text-neutral-600">
+                <p className="text-neutral-600 dark:text-neutral-300">
                   No classes scheduled for this day
                 </p>
               </div>
@@ -680,21 +680,21 @@ function RouteComponent() {
       days.push(
         <div
           key={day}
-          className={`h-24 border border-neutral-200 p-1 transition-all duration-200 hover:bg-neutral-50 cursor-pointer ${
-            isToday ? "bg-primary-50/50 border-primary-200" : "bg-white"
+          className={`h-24 border border-neutral-200 dark:border-neutral-800 p-1 transition-all duration-200 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer ${
+            isToday ? "bg-primary-50/50 border-primary-200 dark:bg-primary-950/30 dark:border-primary-700" : "bg-white dark:bg-neutral-900"
           } ${sessionCount > 0 ? "hover:shadow-sm" : ""}`}
           onClick={() => handleDayClick(currentDate, sessionsForDay)}
         >
           <div
             className={`text-sm font-medium mb-1 flex items-center justify-between ${
-              isToday ? "text-primary-700" : "text-neutral-700"
+              isToday ? "text-primary-700 dark:text-primary-300" : "text-neutral-700 dark:text-neutral-200"
             }`}
           >
             <span>{day}</span>
             {sessionCount > 0 && (
               <div
                 className={`flex items-center gap-1 ${
-                  hasLive ? "text-red-600" : "text-blue-600"
+                  hasLive ? "text-red-600 dark:text-red-400" : "text-blue-600 dark:text-blue-400"
                 }`}
               >
                 <div
@@ -716,8 +716,8 @@ function RouteComponent() {
                   key={session.schedule_id}
                   className={`text-xs p-1 rounded truncate transition-all duration-200 ${
                     isLive
-                      ? "bg-red-100 text-red-700 border border-red-200"
-                      : "bg-blue-100 text-blue-700 border border-blue-200"
+                      ? "bg-red-100 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900"
+                      : "bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900"
                   }`}
                   title={`${session.title} - ${session.start_time}${
                     session.timezone
@@ -741,8 +741,8 @@ function RouteComponent() {
               <div
                 className={`text-xs text-center font-medium rounded py-1 ${
                   hasLive
-                    ? "bg-red-100/80 text-red-700 border border-red-200"
-                    : "bg-blue-100/80 text-blue-700 border border-blue-200"
+                    ? "bg-red-100/80 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900"
+                    : "bg-blue-100/80 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900"
                 }`}
               >
                 +{sessionCount - 1} more
@@ -754,10 +754,10 @@ function RouteComponent() {
     }
 
     return (
-      <div className="bg-white rounded-lg border border-neutral-200 p-4">
+      <div className="bg-white dark:bg-neutral-900 rounded-lg border border-neutral-200 dark:border-neutral-800 p-4">
         {/* Calendar Header */}
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-semibold text-neutral-800">
+          <h3 className="text-xl font-semibold text-neutral-800 dark:text-neutral-100">
             {monthNames[month]} {year}
           </h3>
           <div className="flex items-center gap-2">
@@ -765,7 +765,7 @@ function RouteComponent() {
               variant="outline"
               size="sm"
               onClick={() => navigateMonth("prev")}
-              className="border-neutral-300 hover:border-primary-300 hover:bg-primary-50"
+              className="border-neutral-300 dark:border-neutral-700 hover:border-primary-300 dark:hover:border-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20"
             >
               ←
             </Button>
@@ -773,7 +773,7 @@ function RouteComponent() {
               variant="outline"
               size="sm"
               onClick={() => setSelectedDate(new Date())}
-              className="border-neutral-300 hover:border-primary-300 hover:bg-primary-50"
+              className="border-neutral-300 dark:border-neutral-700 hover:border-primary-300 dark:hover:border-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20"
             >
               Today
             </Button>
@@ -781,7 +781,7 @@ function RouteComponent() {
               variant="outline"
               size="sm"
               onClick={() => navigateMonth("next")}
-              className="border-neutral-300 hover:border-primary-300 hover:bg-primary-50"
+              className="border-neutral-300 dark:border-neutral-700 hover:border-primary-300 dark:hover:border-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20"
             >
               →
             </Button>
@@ -794,7 +794,7 @@ function RouteComponent() {
           {dayNames.map((day) => (
             <div
               key={day}
-              className="h-10 border border-neutral-200 bg-neutral-100 flex items-center justify-center font-medium text-sm text-neutral-700"
+              className="h-10 border border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center font-medium text-sm text-neutral-700 dark:text-neutral-200"
             >
               {day}
             </div>
@@ -807,13 +807,13 @@ function RouteComponent() {
         <div className="flex items-center gap-4 mt-4 text-sm">
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded bg-gradient-to-r from-red-500/20 to-red-600/20 border border-red-200"></div>
-            <span className="text-neutral-600">Live Sessions</span>
+            <span className="text-neutral-600 dark:text-neutral-300">Live Sessions</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded bg-blue-100 border border-blue-200"></div>
-            <span className="text-neutral-600">Upcoming Sessions</span>
+            <span className="text-neutral-600 dark:text-neutral-300">Upcoming Sessions</span>
           </div>
-          <div className="text-neutral-500 text-xs italic">
+          <div className="text-neutral-500 dark:text-neutral-400 text-xs italic">
             Click on a day to view all classes
           </div>
         </div>
@@ -827,7 +827,7 @@ function RouteComponent() {
         <div className="flex items-center justify-center min-h-[200px]">
           <div className="flex flex-col items-center gap-3">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-            <div className="text-neutral-600">Loading sessions...</div>
+            <div className="text-neutral-600 dark:text-neutral-300">Loading sessions...</div>
           </div>
         </div>
       </LayoutContainer>
@@ -837,7 +837,7 @@ function RouteComponent() {
   if (error) {
     return (
       <LayoutContainer>
-        <div className="p-4 border border-red-200 rounded-lg bg-red-50 text-red-700">
+        <div className="p-4 border border-red-200 dark:border-red-900 rounded-lg bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300">
           <div className="flex items-center gap-2">
             <span className="font-medium">Error loading sessions:</span>
             <span>{(error as Error).message}</span>
@@ -883,10 +883,10 @@ function RouteComponent() {
           <TabsContent value="list" className="mt-6">
             {/* Filters Section */}
 
-            <div className="mb-6 p-4 bg-gradient-to-r from-white to-neutral-50/50 border border-neutral-200 rounded-lg">
+            <div className="mb-6 p-4 bg-gradient-to-r from-white to-neutral-50/50 dark:from-neutral-900 dark:to-neutral-900/60 border border-neutral-200 dark:border-neutral-800 rounded-lg">
               <div className="flex items-center gap-2 mb-4">
-                <FunnelSimple size={20} className="text-neutral-600" />
-                <h3 className="text-lg font-semibold text-neutral-800">
+                <FunnelSimple size={20} className="text-neutral-600 dark:text-neutral-300" />
+                <h3 className="text-lg font-semibold text-neutral-800 dark:text-neutral-100">
                   Filters
                 </h3>
                 {(startDateFilter || endDateFilter) && (
@@ -894,7 +894,7 @@ function RouteComponent() {
                     variant="outline"
                     size="sm"
                     onClick={clearFilters}
-                    className="ml-auto border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400"
+                    className="ml-auto border-red-300 dark:border-red-900 text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/20 hover:border-red-400 dark:hover:border-red-800"
                   >
                     <X size={14} className="mr-1" />
                     Clear
@@ -904,7 +904,7 @@ function RouteComponent() {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-200 mb-2">
                     Start Date
                   </label>
                   <Input
@@ -916,7 +916,7 @@ function RouteComponent() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-200 mb-2">
                     End Date
                   </label>
                   <Input
@@ -932,14 +932,14 @@ function RouteComponent() {
             <div className="space-y-8">
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl font-semibold text-neutral-800">
+                  <h2 className="text-xl font-semibold text-neutral-800 dark:text-neutral-100">
                     Live Sessions - {getUserTimezone()}
                   </h2>
                   {(() => {
                     const filteredLiveSessions = filterSessions(liveSessions);
                     return (
                       filteredLiveSessions.length > 0 && (
-                        <span className="text-sm text-neutral-600">
+                        <span className="text-sm text-neutral-600 dark:text-neutral-300">
                           {filteredLiveSessions.length} session
                           {filteredLiveSessions.length !== 1 ? "s" : ""} found
                         </span>
@@ -1032,18 +1032,18 @@ function RouteComponent() {
                           )}
                         </>
                       ) : (
-                        <div className="text-neutral-600 p-6 bg-gradient-to-br from-neutral-50 to-neutral-100 rounded-lg w-full border border-neutral-200">
+                        <div className="text-neutral-600 dark:text-neutral-300 p-6 bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-neutral-900 dark:to-neutral-900/60 rounded-lg w-full border border-neutral-200 dark:border-neutral-800">
                           <div className="text-center">
                             <Users
                               size={48}
-                              className="mx-auto text-neutral-400 mb-3"
+                              className="mx-auto text-neutral-400 dark:text-neutral-500 mb-3"
                             />
                             <p className="font-medium">
                               {startDateFilter || endDateFilter
                                 ? "No live sessions match your filters"
                                 : "No live sessions at the moment"}
                             </p>
-                            <p className="text-sm text-neutral-500 mt-1">
+                            <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
                               {startDateFilter || endDateFilter
                                 ? "Try adjusting your filters or clear them to see all sessions"
                                 : "Check back later or view upcoming sessions"}
@@ -1058,7 +1058,7 @@ function RouteComponent() {
 
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl font-semibold text-neutral-800">
+                  <h2 className="text-xl font-semibold text-neutral-800 dark:text-neutral-100">
                     Upcoming Sessions
                   </h2>
                   {(() => {
@@ -1066,7 +1066,7 @@ function RouteComponent() {
                       filterSessions(upcomingSessions);
                     return (
                       filteredUpcomingSessions.length > 0 && (
-                        <span className="text-sm text-neutral-600">
+                        <span className="text-sm text-neutral-600 dark:text-neutral-300">
                           {filteredUpcomingSessions.length} session
                           {filteredUpcomingSessions.length !== 1
                             ? "s"
@@ -1166,18 +1166,18 @@ function RouteComponent() {
                           )}
                         </>
                       ) : (
-                        <div className="text-neutral-600 p-6 bg-gradient-to-br from-neutral-50 to-neutral-100 rounded-lg w-full border border-neutral-200">
+                        <div className="text-neutral-600 dark:text-neutral-300 p-6 bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-neutral-900 dark:to-neutral-900/60 rounded-lg w-full border border-neutral-200 dark:border-neutral-800">
                           <div className="text-center">
                             <Clock
                               size={48}
-                              className="mx-auto text-neutral-400 mb-3"
+                              className="mx-auto text-neutral-400 dark:text-neutral-500 mb-3"
                             />
                             <p className="font-medium">
                               {startDateFilter || endDateFilter
                                 ? "No upcoming sessions match your filters"
                                 : "No upcoming sessions scheduled"}
                             </p>
-                            <p className="text-sm text-neutral-500 mt-1">
+                            <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
                               {startDateFilter || endDateFilter
                                 ? "Try adjusting your filters or clear them to see all sessions"
                                 : "New sessions will appear here when scheduled"}

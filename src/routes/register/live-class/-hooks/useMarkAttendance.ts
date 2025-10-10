@@ -18,7 +18,7 @@ export const useMarkAttendance = () => {
       return response.data;
     },
     onSuccess: () => {
-      toast.success("Attendance marked successfully");
+     
     },
     onError: (error: AxiosError) => {
       console.error("Failed to mark attendance:", error);

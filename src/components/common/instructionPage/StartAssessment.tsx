@@ -51,8 +51,20 @@ const AssessmentStartModal = () => {
         if (response) {
           // Ensure the assessment store is properly initialized with the first question
           if (response.section_dtos && response.section_dtos.length > 0) {
-            const { setAssessment } = useAssessmentStore.getState();
+            const { setAssessment, saveState } = useAssessmentStore.getState();
             setAssessment(response);
+            
+            // Save the state to storage so it persists when navigating
+            await saveState();
+            
+            // Verify the first question is set
+            const store = useAssessmentStore.getState();
+            console.log("Survey assessment initialized:", {
+              hasAssessment: !!store.assessment,
+              hasCurrentQuestion: !!store.currentQuestion,
+              firstQuestionId: store.currentQuestion?.question_id,
+              sectionsCount: store.assessment?.section_dtos?.length
+            });
           }
           
           fullScreen.trigger();

@@ -188,6 +188,21 @@ export default function Page() {
 
   useEffect(() => {
     const initializeAssessment = async () => {
+      // Check if this is a survey and we already have assessment data
+      const state = useAssessmentStore.getState();
+      const assessmentData = await Preferences.get({
+        key: "InstructionID_and_AboutID",
+      });
+      const assessment = assessmentData.value
+        ? JSON.parse(assessmentData.value)
+        : null;
+
+      // For surveys, only load state if we don't already have assessment data
+      if (assessment?.play_mode === "SURVEY" && state.assessment && state.currentQuestion) {
+        console.log("Survey assessment already initialized, skipping loadState");
+        return;
+      }
+
       await loadState();
     };
 

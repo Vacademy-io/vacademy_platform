@@ -301,7 +301,10 @@ export const AssessmentCard = ({
                         assessmentId: assessmentInfo.assessment_id,
                         attemptId: assessmentInfo.last_attempt_id ?? "",
                       },
-                      // state: { report } as any,
+                      state: { 
+                        playMode: assessmentInfo.play_mode,
+                        assessmentInfo: assessmentInfo
+                      } as any,
                     })
                   }
                 >

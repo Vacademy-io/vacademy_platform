@@ -5,6 +5,7 @@ import {
   GET_STRIPE_KEY_URL,
   PEYMENT_LOG_STATUS_URL,
 } from "@/constants/urls";
+import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import axios from "axios";
 
 export const getEnrollInviteData = async ({
@@ -105,16 +106,29 @@ export const handleEnrollLearnerForPayment = async ({
   referRequest,
   returnUrl,
 }: EnrollLearnerForPaymentProps) => {
+  console.log(registrationData);
   const keysToExclude = ["email", "full_name", "phone_number"];
+  let fullName = "";
+  let phoneNumber = "";
+  fullName = isNullOrEmptyOrUndefined(registrationData.full_name?.value)
+    ? `${registrationData.first_name?.value || ""} ${
+        registrationData.last_name?.value || ""
+      }`.trim()
+    : registrationData.full_name.value;
+
+  phoneNumber = isNullOrEmptyOrUndefined(registrationData.phone_number?.value)
+    ? registrationData.phone?.value || ""
+    : registrationData.phone_number.value;
+
   const convertedData = {
     user: {
       email: registrationData.email.value,
-      full_name: registrationData.full_name.value,
+      full_name: fullName,
       address_line: "",
       city: "",
       region: "",
       pin_code: "",
-      mobile_number: registrationData.phone_number.value,
+      mobile_number: phoneNumber,
       date_of_birth: "",
       gender: "",
       password: "",

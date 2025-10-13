@@ -173,12 +173,15 @@ export function AssessmentPreview() {
           <div className="sticky top-0 z-10 bg-white border-b">
             <div className="flex overflow-x-auto items-center justify-between p-4 pb-0">
               <div className="flex flex-nowrap items-center space-x-4">
-                {assessment.section_dtos?.map((section, index) => (
+                {assessment.section_dtos
+                  ?.map((section, originalIndex) => ({ section, originalIndex }))
+                  ?.sort((a, b) => a.section.section_order - b.section.section_order)
+                  ?.map(({ section, originalIndex }) => (
                   <button
                     key={section.id}
-                    onClick={() => setActiveSection(index)}
+                    onClick={() => setActiveSection(originalIndex)}
                     className={`px-4 py-2 text-sm rounded-t-lg ${
-                      activeSection === index
+                      activeSection === originalIndex
                         ? "bg-orange-50 text-primary-500 border border-b-0 border-primary-500"
                         : "text-gray-600"
                     }`}

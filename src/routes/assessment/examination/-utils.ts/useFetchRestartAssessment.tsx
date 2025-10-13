@@ -113,6 +113,12 @@ interface RestartAssessmentResponse {
 
 export async function restartAssessment(assessmentId: string, attemptId: string): Promise<boolean> { 
   console.log('Restarting assessment:', { assessmentId, attemptId });
+  
+  if (!assessmentId || !attemptId) {
+    console.error('Missing required parameters:', { assessmentId, attemptId });
+    return false;
+  }
+  
   const storedAssessmentData = await Storage.get({ key: `ASSESSMENT_STATE_${attemptId}` });
 
   console.log('Stored Assessment Data:', storedAssessmentData);
@@ -173,6 +179,18 @@ export const storeFormattedData = async (formattedData: any, preview_response : 
     }
   
     state.setAssessment(preview_response);
+    
+    // Ensure we have valid data before setting state
+    if (!preview_response.section_dtos || preview_response.section_dtos.length === 0) {
+      console.error("Invalid preview_response: missing section_dtos");
+      return;
+    }
+    
+    if (!preview_response.section_dtos[0].question_preview_dto_list || preview_response.section_dtos[0].question_preview_dto_list.length === 0) {
+      console.error("Invalid preview_response: missing questions in first section");
+      return;
+    }
+    
     useAssessmentStore.setState({
       assessment: preview_response,
       currentSection: 0, 

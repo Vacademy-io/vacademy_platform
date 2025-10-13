@@ -5,6 +5,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
+import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.live_session.constants.LiveClassEmailBody;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
@@ -47,6 +49,7 @@ public class LiveSessionNotificationProcessor {
     private final InstituteDomainRoutingRepository domainRoutingRepository;
     private final TimezoneSettingService timezoneSettingService;
     private final GetSessionByIdService getSessionByIdService;
+    private final InstituteStudentRepository studentRepository;
     @Autowired
     private SessionScheduleRepository scheduleRepository;
 
@@ -56,7 +59,7 @@ public class LiveSessionNotificationProcessor {
         // Since trigger times are now stored in UTC, we need to compare with UTC time
         ZoneId utcZone = ZoneId.of("UTC");
         LocalDateTime now = LocalDateTime.now(utcZone);
-        LocalDateTime windowEnd = now.plusMinutes(15);
+        LocalDateTime windowEnd = now.plusMinutes(5);
         System.out.println("current time (UTC): " + now);
         System.out.println("Current time on server is "+now);
 
@@ -200,7 +203,7 @@ public class LiveSessionNotificationProcessor {
             // Add schedule details if available
             if (schedule != null) {
                 // Build live class URL based on access level and domain routing
-                String liveClassUrl = buildLiveClassUrl(session, session.getId());
+                String liveClassUrl = buildLiveClassUrl(session, session.getId(),userId);
                 System.out.println("DEBUG: Final live class URL: " + liveClassUrl);
                 placeholders.put("LINK", liveClassUrl);
 
@@ -214,7 +217,7 @@ public class LiveSessionNotificationProcessor {
                 placeholders.put("TIME", new SimpleDateFormat("h:mm a").format(schedule.getStartTime()));
             } else {
                 // Build live class URL even if schedule is null
-                String liveClassUrl = buildLiveClassUrl(session, session.getId());
+                String liveClassUrl = buildLiveClassUrl(session, session.getId(),userId);
                 placeholders.put("LINK", liveClassUrl);
                 placeholders.put("ALL_TIMEZONE_TIMES", "TBD");
                 placeholders.put("DATE", "TBD");
@@ -266,7 +269,7 @@ public class LiveSessionNotificationProcessor {
             // Add schedule details if available
             if (schedule != null) {
                 // Build live class URL based on access level and domain routing
-                String liveClassUrl = buildLiveClassUrl(session, session.getId());
+                String liveClassUrl = buildLiveClassUrl(session, session.getId(),userId);
                 System.out.println("DEBUG: Final live class URL: " + liveClassUrl);
                 placeholders.put("LINK", liveClassUrl);
 
@@ -280,7 +283,7 @@ public class LiveSessionNotificationProcessor {
                 placeholders.put("TIME", new SimpleDateFormat("h:mm a").format(schedule.getStartTime()));
             } else {
                 // Build live class URL even if schedule is null
-                String liveClassUrl = buildLiveClassUrl(session, session.getId());
+                String liveClassUrl = buildLiveClassUrl(session, session.getId(),userId);
                 placeholders.put("LINK", liveClassUrl);
                 placeholders.put("ALL_TIMEZONE_TIMES", "TBD");
                 placeholders.put("DATE", "TBD");
@@ -573,7 +576,7 @@ public class LiveSessionNotificationProcessor {
             // Add schedule details if available
             if (schedule != null) {
                 // Build live class URL based on access level and domain routing
-                String liveClassUrl = buildLiveClassUrl(session, session.getId());
+                String liveClassUrl = buildLiveClassUrl(session, session.getId(),userId);
                 placeholders.put("LINK", liveClassUrl);
 
                 // Format date and time for all configured timezones
@@ -586,7 +589,7 @@ public class LiveSessionNotificationProcessor {
                 placeholders.put("TIME", new SimpleDateFormat("h:mm a").format(schedule.getStartTime()));
             } else {
                 // Build live class URL even if schedule is null
-                String liveClassUrl = buildLiveClassUrl(session, session.getId());
+                String liveClassUrl = buildLiveClassUrl(session, session.getId(),userId);
                 placeholders.put("LINK", liveClassUrl);
                 placeholders.put("ALL_TIMEZONE_TIMES", "TBD");
                 placeholders.put("DATE", "TBD");
@@ -609,7 +612,7 @@ public class LiveSessionNotificationProcessor {
      * @param sessionId Session ID to append to the URL
      * @return Built URL or fallback URL if domain routing not found
      */
-    private String buildLiveClassUrl(LiveSession session, String sessionId) {
+    private String buildLiveClassUrl(LiveSession session, String sessionId , String userId) {
         try {
             if (session == null || session.getInstituteId() == null || sessionId == null) {
                 return "#";
@@ -628,17 +631,11 @@ public class LiveSessionNotificationProcessor {
             String subdomain = routing.getSubdomain();
             String domain = routing.getDomain();
 
-            // Build URL based on access level
-            String accessLevel = session.getAccessLevel();
-            if ("public".equalsIgnoreCase(accessLevel)) {
+            Student student=studentRepository.findTopByUserId(userId).orElse(null);
+            if(student!=null){
+                return String.format("%s.%s/study-library/live-class/%s", subdomain, domain, student.getUsername());
+            }else{
                 return String.format("%s.%s/register/live-class?sessionId=%s", subdomain, domain, sessionId);
-            } else {
-                String scheduleId = getSessionByIdService.findEarliestSchedule(sessionId);
-                if (scheduleId != null) {
-                    return String.format("%s.%s/study-library/live-class/embed?sessionId=%s", subdomain, domain, scheduleId);
-                } else {
-                    return String.format("%s.%s/study-library/live-class/embed?sessionId=%s", subdomain, domain, sessionId);
-                }
             }
         } catch (Exception e) {
             System.out.println("Error building live class URL for session " + sessionId + ": " + e.getMessage());

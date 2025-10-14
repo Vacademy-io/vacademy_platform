@@ -1,4 +1,6 @@
 import { Route } from "@/routes/learner-invitation-response";
+import { Preferences } from "@capacitor/preferences";
+import { applyTabBranding } from "@/utils/branding";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import {
   handleEnrollLearnerForPayment,
@@ -536,6 +538,63 @@ const EnrollByInvite = () => {
       setInstituteDetails(instituteData);
     }
   }, [instituteData, setInstituteDetails]);
+
+  // Ensure branding is applied on invitation pages using public institute details
+  useEffect(() => {
+    const syncBranding = async () => {
+      try {
+        if (!instituteId || !instituteData) return;
+
+        // Persist minimal institute context for branding utilities
+        await Preferences.set({ key: "InstituteId", value: instituteId });
+
+        // Map public details to the structure expected elsewhere
+        const mappedDetails = {
+          id: instituteId,
+          institute_name: instituteData?.institute_name ?? instituteData?.name ?? "",
+          institute_logo_file_id: instituteData?.institute_logo_file_id ?? null,
+          institute_theme_code: instituteData?.institute_theme_code ?? (instituteData?.theme as string) ?? "primary",
+          institute_settings_json: instituteData?.setting ?? "",
+        } as unknown as {
+          id: string;
+          institute_name: string;
+          institute_logo_file_id: string | null;
+          institute_theme_code: string;
+          institute_settings_json: string;
+        };
+
+        await Preferences.set({
+          key: "InstituteDetails",
+          value: JSON.stringify(mappedDetails),
+        });
+
+        // Store learner branding subset used by applyTabBranding
+        const learnerKey = `LEARNER_${instituteId}`;
+        const learnerSettings = {
+          tabText: instituteData?.tabText ?? instituteData?.institute_name ?? null,
+          tabIconFileId: instituteData?.tabIconFileId ?? instituteData?.institute_logo_file_id ?? null,
+          fontFamily: instituteData?.fontFamily ?? null,
+          theme: instituteData?.institute_theme_code ?? null,
+          privacyPolicyUrl: null,
+          termsAndConditionUrl: null,
+          allowSignup: null,
+          allowGoogleAuth: null,
+          allowGithubAuth: null,
+          allowEmailOtpAuth: null,
+          allowUsernamePasswordAuth: null,
+        };
+        await Preferences.set({ key: learnerKey, value: JSON.stringify(learnerSettings) });
+
+        // Apply tab title, favicon, and font
+        await applyTabBranding(document.title);
+      } catch (e) {
+        // best-effort; do not block invitation flow
+        console.warn("[Invite] Branding sync failed", e);
+      }
+    };
+
+    void syncBranding();
+  }, [instituteId, instituteData]);
 
   // Set up Intersection Observer to detect when registration card is visible
   useEffect(() => {

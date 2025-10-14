@@ -89,12 +89,13 @@ export const applyTabBranding = async (
       document.title = tabText ?? (fallbackTitle as string);
     }
 
-    // Apply font family if provided
+    // Apply font family if provided, else fall back to default Inter stack
     try {
+      const defaultStack = 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
       if (fontFamily) {
         const mapFamily = (f: string) => {
           const key = String(f).toUpperCase();
-          if (key === "INTER") return 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
+          if (key === "INTER") return defaultStack;
           if (key === "CAIRO") return 'Cairo, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
           if (key === "PLAYPEN SANS") return 'Playpen Sans, cursive, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
           if (key === "WORK SANS") return 'Work Sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
@@ -103,6 +104,10 @@ export const applyTabBranding = async (
         const resolved = mapFamily(fontFamily);
         document.documentElement.style.setProperty("--app-font-family", resolved);
         document.body.style.fontFamily = resolved;
+      } else {
+        // Default to Inter stack when no font is available (e.g., /resolve 404)
+        document.documentElement.style.setProperty("--app-font-family", defaultStack);
+        document.body.style.fontFamily = defaultStack;
       }
     } catch {
       // Ignore font family errors

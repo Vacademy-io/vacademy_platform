@@ -10,13 +10,13 @@ export interface ModernCardProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 const modernCardVariants = {
-  base: "transition-all duration-300 ease-out",
+  base: "card-base card-interactive transition-all duration-300 ease-out",
   
   variant: {
-    default: "bg-card text-card-foreground border border-border shadow-sm",
-    elevated: "bg-card text-card-foreground shadow-lg hover:shadow-xl border border-border/50",
+    default: "card-hover",
+    elevated: "shadow-lg hover:shadow-xl",
     glass: "bg-white/80 backdrop-blur-sm border border-white/20 shadow-lg hover:shadow-xl hover:bg-white/90",
-    outlined: "bg-transparent border-2 border-border hover:border-primary-300 hover:bg-accent/5",
+    outlined: "bg-transparent border border-border hover:bg-accent/5",
     subtle: "bg-accent/30 border border-accent hover:bg-accent/50",
   },
   
@@ -29,8 +29,8 @@ const modernCardVariants = {
   },
   
   rounded: {
-    sm: "rounded-sm",
-    md: "rounded-md",
+    sm: "rounded-md",
+    md: "rounded-lg",
     lg: "rounded-lg",
     xl: "rounded-xl",
     "2xl": "rounded-2xl",

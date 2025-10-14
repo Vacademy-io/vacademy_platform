@@ -1,6 +1,7 @@
 import { Route } from "@/routes/learner-invitation-response";
 import { Preferences } from "@capacitor/preferences";
 import { applyTabBranding } from "@/utils/branding";
+import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import {
   handleEnrollLearnerForPayment,
@@ -24,6 +25,12 @@ import { AssessmentCustomFieldOpenRegistration } from "@/types/assessment-open-r
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { MyButton } from "@/components/design-system/button";
+import {
+  ModernCard,
+  ModernCardHeader,
+  ModernCardTitle,
+} from "@/components/design-system/modern-card";
+import { InstituteBrandingComponent } from "@/components/common/institute-branding";
 
 // Import step components
 import {
@@ -44,6 +51,8 @@ import { useElements, useStripe, CardElement } from "@stripe/react-stripe-js";
 // SUBSCRIPTION, FREE, UPFRONT, DONATION
 
 const EnrollByInvite = () => {
+  // Ensure domain resolution runs on this public route to fetch fontFamily/tab branding from /resolve
+  useDomainRouting();
   const [paymentType, setPaymentType] = useState<string>("");
   const [orderId, setOrderId] = useState<string>("");
   const [paymentCompletionResponse, setPaymentCompletionResponse] =
@@ -56,6 +65,8 @@ const EnrollByInvite = () => {
   const [currentStep, setCurrentStep] = useState(0); // 0: Registration, 1: Payment Selection, 2: Review, 3: Payment Details, 4: Payment Pending, 5: Success
   const [isRegistrationCardVisible, setIsRegistrationCardVisible] =
     useState(false);
+  const [privacyPolicyUrl, setPrivacyPolicyUrl] = useState<string | null>(null);
+  const [termsAndConditionUrl, setTermsAndConditionUrl] = useState<string | null>(null);
   const [courseData, setCourseData] = useState<FinalCourseData>({
     aboutCourse: "",
     course: "",
@@ -596,6 +607,25 @@ const EnrollByInvite = () => {
     void syncBranding();
   }, [instituteId, instituteData]);
 
+  // Load policy URLs from per-institute learner settings stored by domain resolution
+  useEffect(() => {
+    const loadPolicyLinks = async () => {
+      try {
+        if (!instituteId) return;
+        const key = `LEARNER_${instituteId}`;
+        const stored = await Preferences.get({ key });
+        if (stored?.value) {
+          const parsed = JSON.parse(stored.value);
+          setPrivacyPolicyUrl(parsed?.privacyPolicyUrl || null);
+          setTermsAndConditionUrl(parsed?.termsAndConditionUrl || null);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    void loadPolicyLinks();
+  }, [instituteId]);
+
   // Set up Intersection Observer to detect when registration card is visible
   useEffect(() => {
     const registrationCard = document.getElementById("registration-card");
@@ -627,38 +657,124 @@ const EnrollByInvite = () => {
       className={`w-full h-auto bg-gradient-to-br from-slate-50 to-blue-50 py-8 px-4 sm:px-6 lg:px-8 pb-24`}
     >
       <div className="md:max-w-[80%] mx-auto space-y-8">
-        {/* Course Information Card - Only show in registration step */}
-        {currentStep === 0 && (
-          <CourseInfoCard
-            courseData={courseData}
-            levelName={
-              getDetailsFromPackageSessionId({
-                packageSessionId:
-                  inviteData.package_session_to_payment_options[0]
-                    .package_session_id,
-              })?.level.level_name || "-"
-            }
-          />
+        {/* Branded Header */}
+        <ModernCard
+          variant="glass"
+          padding="md"
+          rounded="lg"
+          className="border border-white/30 bg-white/80 backdrop-blur-md"
+        >
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <InstituteBrandingComponent
+              branding={{
+                instituteId: instituteId || null,
+                instituteName:
+                  instituteData?.institute_name ?? instituteData?.name ?? null,
+                instituteLogoFileId:
+                  instituteData?.institute_logo_file_id ?? null,
+                instituteThemeCode:
+                  (instituteData?.institute_theme_code as string) ||
+                  (instituteData?.theme as string) ||
+                  null,
+              }}
+              size="small"
+              showName={true}
+              className="justify-start"
+            />
+
+            <div className="text-center md:text-right w-full md:w-auto">
+              <ModernCardHeader className="p-0">
+                <ModernCardTitle size="md" className="truncate max-w-[40ch]">
+                  {courseData.course}
+                </ModernCardTitle>
+              </ModernCardHeader>
+            </div>
+          </div>
+
+          {/* Progress Bar (no text) */}
+          <div className="mt-3 w-full">
+            <div className="h-1.5 w-full rounded-full bg-slate-200 overflow-hidden">
+              <div
+                className="h-full bg-primary-600 transition-all duration-300"
+                style={{ width: `${Math.min(100, Math.max(0, Math.round((currentStep / 5) * 100)))}%` }}
+              />
+            </div>
+          </div>
+        </ModernCard>
+
+        {/* Main Grid Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Left: Step Content */}
+          <div className="lg:col-span-2 space-y-6">
+            {renderCurrentStep()}
+
+            {/* Navigation Buttons - Show for steps 1-3, but skip step 1 for FREE payments */}
+            {currentStep > 0 &&
+              currentStep < 4 &&
+              !(currentStep === 1 && paymentType === "FREE") && (
+                <NavigationButtons
+                  currentStep={currentStep}
+                  selectedPayment={enrollmentData.selectedPayment}
+                  onPrevious={handlePrevious}
+                  onNext={handleNext}
+                  onSubmitEnrollment={handleSubmitEnrollment}
+                  loading={loading}
+                  paymentType={paymentType}
+                  donationAmountValid={donationAmountValid}
+                />
+              )}
+          </div>
+
+          {/* Right: Course Info Sidebar */}
+          <div className="lg:col-span-1 space-y-6 lg:sticky lg:top-6 self-start">
+            <CourseInfoCard
+              courseData={{ ...courseData, instituteLogo: "" }}
+              levelName={
+                getDetailsFromPackageSessionId({
+                  packageSessionId:
+                    inviteData.package_session_to_payment_options[0]
+                      .package_session_id,
+                })?.level.level_name || "-"
+              }
+            />
+          </div>
+        </div>
+
+        {/* Custom HTML Section (Bottom of page) */}
+        {courseData?.customHtml && courseData.customHtml.trim().length > 0 && (
+          <ModernCard
+            variant="elevated"
+            padding="lg"
+            rounded="xl"
+            className="mt-4"
+          >
+            <div
+              className="text-gray-800 text-sm sm:text-base leading-relaxed"
+              dangerouslySetInnerHTML={{ __html: courseData.customHtml }}
+            />
+          </ModernCard>
         )}
 
-        {/* Current Step Content */}
-        {renderCurrentStep()}
-
-        {/* Navigation Buttons - Show for steps 1-3, but skip step 1 for FREE payments */}
-        {currentStep > 0 &&
-          currentStep < 4 &&
-          !(currentStep === 1 && paymentType === "FREE") && (
-            <NavigationButtons
-              currentStep={currentStep}
-              selectedPayment={enrollmentData.selectedPayment}
-              onPrevious={handlePrevious}
-              onNext={handleNext}
-              onSubmitEnrollment={handleSubmitEnrollment}
-              loading={loading}
-              paymentType={paymentType}
-              donationAmountValid={donationAmountValid}
-            />
-          )}
+        {/* Policy Links */}
+        <div className="flex items-center justify-center gap-4 text-sm text-gray-600">
+          <a
+            href={privacyPolicyUrl || "/privacy-policy"}
+            target={privacyPolicyUrl ? "_blank" : undefined}
+            rel={privacyPolicyUrl ? "noopener noreferrer" : undefined}
+            className="hover:underline"
+          >
+            Privacy Policy
+          </a>
+          <span className="text-gray-300">•</span>
+          <a
+            href={termsAndConditionUrl || "/terms-and-conditions"}
+            target={termsAndConditionUrl ? "_blank" : undefined}
+            rel={termsAndConditionUrl ? "noopener noreferrer" : undefined}
+            className="hover:underline"
+          >
+            Terms & Conditions
+          </a>
+        </div>
       </div>
 
       {/* Fixed bottom container with border - Only show in registration step and when registration card is not visible */}

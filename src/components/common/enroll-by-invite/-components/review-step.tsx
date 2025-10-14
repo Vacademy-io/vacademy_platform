@@ -30,17 +30,17 @@ const ReviewStep = ({
   return (
     <div className="space-y-6">
       {/* Order Summary Card */}
-      <Card className="shadow-lg border bg-white">
+      <Card className="shadow-lg">
         <CardContent className="p-5 sm:p-6">
           <div className="flex items-start gap-2 sm:gap-3 mb-4">
             <div className="p-1.5 sm:p-2 bg-green-100 rounded-lg flex-shrink-0">
               <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
             </div>
             <div>
-              <h2 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900 leading-tight">
+              <h2 className="text-title-lg font-semibold text-gray-900 leading-tight">
                 Order Summary
               </h2>
-              <p className="text-gray-600 text-sm mt-1">
+              <p className="text-caption text-muted-foreground mt-1">
                 Review your order before proceeding to payment
               </p>
             </div>
@@ -59,7 +59,7 @@ const ReviewStep = ({
                 </div>
               )}
 
-              <div className="text-lg font-medium">
+              <div className="text-subtitle font-medium">
                 <span>{courseData.course}</span>
               </div>
             </div>
@@ -247,7 +247,7 @@ const PaidPlanReview = ({
     <div className="py-4 space-y-4">
       {/* Plan Details Section */}
       <div className="bg-gray-50 rounded-lg p-4">
-        <h3 className="font-semibold text-gray-900 mb-3 text-lg">
+        <h3 className="text-subtitle font-semibold text-gray-900 mb-3">
           Plan Details
         </h3>
 
@@ -281,7 +281,7 @@ const PaidPlanReview = ({
 
       {/* Pricing Section */}
       <div className="bg-gray-50 rounded-lg p-4">
-        <h3 className="font-semibold text-gray-900 mb-3 text-lg">Pricing</h3>
+        <h3 className="text-subtitle font-semibold text-gray-900 mb-3">Pricing</h3>
 
         <div className="space-y-2">
           {hasDiscount && (
@@ -324,7 +324,7 @@ const PaidPlanReview = ({
 
           <div className="flex justify-between items-center border-t pt-2">
             <span className="text-gray-600">Total Price:</span>
-            <span className="font-bold text-lg text-primary-600">
+            <span className="font-bold text-subtitle text-primary-600">
               {getCurrencySymbol(plan.currency || "")}
               {(() => {
                 let finalPrice = plan.actual_price;
@@ -354,7 +354,7 @@ const PaidPlanReview = ({
         refereeDiscount &&
         !isPricingBenefit(refereeDiscount) && (
           <div className="bg-green-50 rounded-lg p-4">
-            <h3 className="font-semibold text-gray-900 mb-3 text-lg">
+            <h3 className="text-subtitle font-semibold text-gray-900 mb-3">
               Referral Benefits
             </h3>
 

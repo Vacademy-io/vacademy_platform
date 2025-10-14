@@ -40,28 +40,18 @@ const extractYouTubeVideoId = (url: string): string | null => {
 const CourseInfoCard = ({ courseData, levelName }: CourseInfoCardProps) => {
   return (
     <Card className="overflow-hidden shadow-lg border bg-white w-full">
-      {/* Instiute Logo */}
-      {courseData.instituteLogo && (
-        <div className="flex justify-center items-center pt-8 rounded-lg">
-          <img
-            src={courseData.instituteLogo}
-            alt="Institute Logo"
-            className="size-12 rounded-full"
-          />
-        </div>
-      )}
-      {/* Banner Image */}
+      {/* Banner Image - full cover with rounded corners; no top logo duplication */}
       <div className="p-6 rounded-md !pb-0">
         {courseData.courseBanner ? (
-          <div className="rounded-lg relative h-32 sm:h-56 lg:h-72 w-full overflow-hidden">
+          <div className="rounded-xl relative w-full overflow-hidden aspect-video">
             <img
               src={courseData.courseBanner}
               alt="Course Banner"
-              className="w-full h-full object-contain"
+              className="absolute inset-0 w-full h-full object-cover"
             />
           </div>
         ) : (
-          <div className="rounded-lg relative h-32 sm:h-56 lg:h-72 w-full overflow-hidden bg-primary-500"></div>
+          <div className="rounded-xl relative w-full overflow-hidden aspect-video bg-gradient-to-br from-slate-200 to-slate-100" />
         )}
       </div>
       <CardContent className="p-5 sm:p-6">
@@ -78,8 +68,8 @@ const CourseInfoCard = ({ courseData, levelName }: CourseInfoCardProps) => {
             {courseData?.tags?.map((tag: string, index: number) => (
               <Badge
                 key={index}
-                variant="secondary"
-                className="px-3 py-1 text-sm font-medium bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors"
+                variant="outline"
+                className="h-7 rounded-full px-3 text-xs font-medium uppercase tracking-wide bg-gray-100 text-gray-700 border-gray-200"
               >
                 {tag}
               </Badge>
@@ -95,16 +85,22 @@ const CourseInfoCard = ({ courseData, levelName }: CourseInfoCardProps) => {
           }}
         />
 
-        {/* Level Badge */}
-        <div className="flex items-start gap-2 mb-8">
-          <Award className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-          <Badge
-            variant="outline"
-            className="px-3 py-1 text-sm font-medium border-amber-200 text-amber-700"
-          >
-            Level:&nbsp;{levelName}
-          </Badge>
-        </div>
+        {/* Level Wedge - hidden when level is 'default' (case-insensitive) or empty */}
+        {(() => {
+          const normalizedLevel = (levelName || "").trim().toLowerCase();
+          if (!normalizedLevel || normalizedLevel === "default") return null;
+          return (
+            <div className="flex items-start gap-2 mb-8">
+              <Award className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+              <Badge
+                variant="outline"
+                className="h-7 rounded-full px-3 text-xs font-medium uppercase tracking-wide border-amber-200 text-amber-700 bg-amber-50"
+              >
+                {levelName}
+              </Badge>
+            </div>
+          );
+        })()}
 
         <Separator className="my-8" />
 

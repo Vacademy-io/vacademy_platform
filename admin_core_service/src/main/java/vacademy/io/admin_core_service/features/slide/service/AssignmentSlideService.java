@@ -97,7 +97,7 @@ public class AssignmentSlideService {
             richTextDTOs.add(dto.getTextData());
 
         if (!richTextDTOs.isEmpty()) {
-            richTextDataService.updateRichTextDataInBulk(richTextDTOs); // 🔥
+            richTextDataService.updateRichTextDataInBulk(richTextDTOs);
         }
 
         if (dto.getLiveDate() != null) {
@@ -113,10 +113,13 @@ public class AssignmentSlideService {
             assignmentSlide.setCommaSeparatedMediaIds(dto.getCommaSeparatedMediaIds());
         }
 
+        List<AssignmentSlideQuestion> existingQuestions = assignmentSlide.getAssignmentSlideQuestions();
+        existingQuestions.clear();
+
         if (dto.getQuestions() != null && !dto.getQuestions().isEmpty()) {
-            assignmentSlide.setAssignmentSlideQuestions(dto.getQuestions().stream()
-                    .map(questionDTO -> new AssignmentSlideQuestion(questionDTO, assignmentSlide))
-                    .collect(Collectors.toList()));
+            for (var questionDTO : dto.getQuestions()) {
+                existingQuestions.add(new AssignmentSlideQuestion(questionDTO, assignmentSlide));
+            }
         }
 
         assignmentSlideRepository.save(assignmentSlide);

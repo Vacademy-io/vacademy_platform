@@ -75,20 +75,23 @@ export function SectionTabs() {
 
   return (
     <div className="flex gap-2 px-4 pt-2 border-b bg-white overflow-x-auto">
-      {assessment?.section_dtos?.map((section, index) => {
-        const timer = sectionTimers[index]
+      {assessment?.section_dtos
+        ?.map((section, originalIndex) => ({ section, originalIndex }))
+        ?.sort((a, b) => a.section.section_order - b.section.section_order)
+        ?.map(({ section, originalIndex }) => {
+        const timer = sectionTimers[originalIndex]
         const isTimeUp = timer?.timeLeft === 0
-        const isActive = currentSection === index
+        const isActive = currentSection === originalIndex
         const isAvailable =
           assessment.can_switch_section ||
           assessment.section_dtos
-            .slice(0, index)
+            .slice(0, originalIndex)
             .every((_, i) => sectionTimers[i]?.timeLeft === 0);
 
         return (
           <div key={section.id} className="flex items-center">
             <button
-              onClick={() => handleSectionChange(index)}
+              onClick={() => handleSectionChange(originalIndex)}
               disabled={!isAvailable || isTimeUp}
               className={cn(
                 "relative px-4 py-2 rounded-t-lg text-sm",
@@ -113,7 +116,8 @@ export function SectionTabs() {
                 )}
               </div>
             </button>
-            {!assessment.can_switch_section && isActive && (
+            {/* Hide End Section button */}
+            {false && !assessment.can_switch_section && isActive && (
               <button
                 onClick={handleEndSection}
                 className="ml-2 px-3 py-1 text-sm border rounded hover:bg-gray-50"

@@ -23,7 +23,7 @@ import {
 import { useState, useEffect } from "react";
 import dayjs from "dayjs";
 import { restartAssessment } from "../-utils.ts/useFetchRestartAssessment";
-import { storeAssessmentInfo } from "../-utils.ts/useFetchAssessment";
+import { storeAssessmentInfo, fetchPreviewData } from "../-utils.ts/useFetchAssessment";
 import { formatDuration } from "@/constants/helper";
 import { toast } from "sonner";
 
@@ -48,11 +48,26 @@ export const AssessmentCard = ({
   const navigate = useNavigate();
   const [showPopup, setShowPopup] = useState(false);
   const [showRestartDialog, setShowRestartDialog] = useState(false);
+  const [showSurveyConfirmDialog, setShowSurveyConfirmDialog] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
 
 
   const handleClosePopup = () => setShowPopup(false);
   const handleCloseRestartDialog = () => setShowRestartDialog(false);
+  const handleCloseSurveyConfirmDialog = () => setShowSurveyConfirmDialog(false);
+
+  const handleSurveyConfirm = async () => {
+    try {
+      await fetchPreviewData(assessmentInfo.assessment_id);
+      navigate({
+        to: `/assessment/examination/${assessmentInfo.assessment_id}/LearnerLiveTest`,
+      });
+    } catch (error) {
+      console.error("Error fetching survey data:", error);
+      toast.error("Failed to start survey. Please try again.");
+    }
+    setShowSurveyConfirmDialog(false);
+  };
 
   const handleOpen = () => {
     if (assessmentType === assessmentTypes.UPCOMING) {
@@ -80,17 +95,29 @@ export const AssessmentCard = ({
 
       if ((max_posible_attempts ?? 1) > total_given_attempts) {
         storeAssessmentInfo(assessmentInfo);
-        navigate({
-          to: `/assessment/examination/${assessmentInfo.assessment_id}`,
-        });
+        
+        // For Survey assessments, show confirmation dialog
+        if (assessmentInfo.play_mode === "SURVEY") {
+          setShowSurveyConfirmDialog(true);
+        } else {
+          navigate({
+            to: `/assessment/examination/${assessmentInfo.assessment_id}`,
+          });
+        }
       } else {
         return;
       }
     } else {
       storeAssessmentInfo(assessmentInfo);
-      navigate({
-        to: `/assessment/examination/${assessmentInfo.assessment_id}`,
-      });
+      
+      // For Survey assessments, show confirmation dialog
+      if (assessmentInfo.play_mode === "SURVEY") {
+        setShowSurveyConfirmDialog(true);
+      } else {
+        navigate({
+          to: `/assessment/examination/${assessmentInfo.assessment_id}`,
+        });
+      }
     }
   };
 
@@ -219,7 +246,7 @@ export const AssessmentCard = ({
                     </div>
                   </>
                 )}
-                {assessmentInfo.duration && (
+                {assessmentInfo.duration && assessmentInfo.play_mode !== "SURVEY" && (
                   <div>
                     Duration: {formatDuration(assessmentInfo.duration * 60)}
                   </div>
@@ -274,7 +301,10 @@ export const AssessmentCard = ({
                         assessmentId: assessmentInfo.assessment_id,
                         attemptId: assessmentInfo.last_attempt_id ?? "",
                       },
-                      // state: { report } as any,
+                      state: { 
+                        playMode: assessmentInfo.play_mode,
+                        assessmentInfo: assessmentInfo
+                      } as any,
                     })
                   }
                 >
@@ -323,6 +353,33 @@ export const AssessmentCard = ({
               disabled={isRestarting}
             >
               {isRestarting ? "Proceeding..." : "Resume"}
+            </MyButton>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Survey Confirmation Dialog */}
+      <AlertDialog
+        open={showSurveyConfirmDialog}
+        onOpenChange={handleCloseSurveyConfirmDialog}
+      >
+        <AlertDialogOverlay className="bg-black/50" />
+        <AlertDialogContent className="max-w-sm bg-white rounded-lg p-6">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Start Survey</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogDescription className="text-gray-700">
+            Are you ready to start filling out the survey? Once you begin, you can complete it at your own pace.
+          </AlertDialogDescription>
+          <AlertDialogFooter className="flex justify-end gap-3 mt-4">
+            <MyButton buttonType="secondary" onClick={handleCloseSurveyConfirmDialog}>
+              Cancel
+            </MyButton>
+            <MyButton
+              buttonType="primary"
+              onClick={handleSurveyConfirm}
+            >
+              Start Survey
             </MyButton>
           </AlertDialogFooter>
         </AlertDialogContent>

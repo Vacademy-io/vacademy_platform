@@ -6,6 +6,8 @@ import { useLocation } from "@tanstack/react-router";
 import { fetchPreviewData } from "@/routes/assessment/examination/-utils.ts/useFetchAssessment";
 import { useProctoring } from "@/hooks/proctoring/useProctoring";
 import { AssessmentPreview } from "../questionLiveTest/assessment-preview";
+import { Preferences } from "@capacitor/preferences";
+import { useAssessmentStore } from "@/stores/assessment-store";
 // import { enableProtection } from "@/constants/helper";
 
 const AssessmentStartModal = () => {
@@ -34,23 +36,69 @@ const AssessmentStartModal = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetchPreviewData(assessmentId);
+      // Check if this is a Survey assessment
+      const assessmentData = await Preferences.get({
+        key: "InstructionID_and_AboutID",
+      });
+      const assessment = assessmentData.value
+        ? JSON.parse(assessmentData.value)
+        : null;
 
-      if (response) {
-        fullScreen.trigger();
-        // Wait before react finishes updating state
-        setTimeout(() => {
+      if (assessment?.play_mode === "SURVEY") {
+        // For Survey assessments, fetch data and go directly to live test
+        const response = await fetchPreviewData(assessmentId);
+        
+        if (response) {
+          // Ensure the assessment store is properly initialized with the first question
+          if (response.section_dtos && response.section_dtos.length > 0) {
+            const { setAssessment, saveState } = useAssessmentStore.getState();
+            setAssessment(response);
+            
+            // Save the state to storage so it persists when navigating
+            await saveState();
+            
+            // Verify the first question is set
+            const store = useAssessmentStore.getState();
+            console.log("Survey assessment initialized:", {
+              hasAssessment: !!store.assessment,
+              hasCurrentQuestion: !!store.currentQuestion,
+              firstQuestionId: store.currentQuestion?.question_id,
+              sectionsCount: store.assessment?.section_dtos?.length
+            });
+          }
+          
+          fullScreen.trigger();
+          setTimeout(() => {
+            setIsOpen(false);
+            setExamHasStarted(true);
+            navigate({
+              to: `/assessment/examination/${assessmentId}/LearnerLiveTest`,
+              replace: true,
+            });
+          }, 100);
+        } else {
           setIsOpen(false);
-          setExamHasStarted(true);
-          // enableProtection();
-          navigate({
-            to: `/assessment/examination/${assessmentId}/assessmentPreview`,
-            replace: true,
-          });
-        }, 100);
+        }
       } else {
-        // setShowErrorAlert(true);
-        setIsOpen(false);
+        // For other assessments, use the normal preview flow
+        const response = await fetchPreviewData(assessmentId);
+
+        if (response) {
+          fullScreen.trigger();
+          // Wait before react finishes updating state
+          setTimeout(() => {
+            setIsOpen(false);
+            setExamHasStarted(true);
+            // enableProtection();
+            navigate({
+              to: `/assessment/examination/${assessmentId}/assessmentPreview`,
+              replace: true,
+            });
+          }, 100);
+        } else {
+          // setShowErrorAlert(true);
+          setIsOpen(false);
+        }
       }
     } catch (error) {
       console.error("Error during assessment action:", error);

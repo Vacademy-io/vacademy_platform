@@ -8,7 +8,9 @@ import { getPublicUrl } from "@/services/upload_file";
 import { BackgroundMusic } from "@/routes/study-library/live-class/waiting-room/-components/BackgroundMusic";
 import { SessionStreamingServiceType } from "@/routes/register/live-class/-types/enum";
 import { useMarkAttendance } from "../-hooks/useMarkAttendance";
+import { useServerTime, getServerTime } from "@/hooks/use-server-time";
 import { toast } from "sonner";
+import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
 
 export const Route = createFileRoute("/live-class-guest/waiting-room/")({
   validateSearch: z.object({
@@ -22,6 +24,7 @@ function GuestWaitingRoomComponent() {
   const [thumbnail, setThumbnail] = useState<string | null>(null);
   const { sessionId, guestId } = Route.useSearch();
   const navigate = useNavigate();
+  const { data: serverTimeData } = useServerTime();
   const { mutateAsync: markAttendance } = useMarkAttendance();
   const {
     data: sessionDetails,
@@ -46,18 +49,25 @@ function GuestWaitingRoomComponent() {
   useEffect(() => {
     if (sessionDetails) {
       const checkSessionStatus = async () => {
-        const now = new Date();
-        const sessionDate = new Date(
-          `${sessionDetails?.meetingDate}T${sessionDetails?.scheduleStartTime}`
+        const serverTimestamp = getServerTime(serverTimeData);
+        const now = new Date(serverTimestamp);
+
+        // Convert session time to user timezone
+        const sessionStartInUserTimezone = convertSessionTimeToUserTimezone(
+          sessionDetails.meetingDate,
+          sessionDetails.scheduleStartTime,
+          sessionDetails.timezone
         );
-        const waitingRoomStart = new Date(sessionDate);
+
+        const waitingRoomStart = new Date(sessionStartInUserTimezone);
         waitingRoomStart.setMinutes(
           waitingRoomStart.getMinutes() - (sessionDetails?.waitingRoomTime ?? 0)
         );
 
         // Check if we're in waiting room period or main session
-        const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
-        const isInMainSession = now >= sessionDate;
+        const isInWaitingRoom =
+          now >= waitingRoomStart && now < sessionStartInUserTimezone;
+        const isInMainSession = now >= sessionStartInUserTimezone;
 
         // Case 1: Session has already started.
         if (isInMainSession) {

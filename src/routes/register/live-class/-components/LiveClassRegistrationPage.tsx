@@ -56,20 +56,44 @@ export default function LiveClassRegistrationPage() {
 
   // Check localStorage for verified emails on component mount
   useEffect(() => {
-    const savedVerifiedEmails = JSON.parse(
-      localStorage.getItem("verifiedEmail") || "[]"
-    );
-    setVerifiedEmails(savedVerifiedEmails);
+    const autoRegisterWithStoredEmail = async () => {
+      const savedVerifiedEmails = JSON.parse(
+        localStorage.getItem("verifiedEmail") || "[]"
+      );
+      setVerifiedEmails(savedVerifiedEmails);
 
-    if (savedVerifiedEmails.length > 0) {
-      // Auto-select first email and set it as verified
-      const firstEmail = savedVerifiedEmails[0];
-      setVerifiedEmail(firstEmail);
-      setDialog(false); // Don't show email verification dialog
-    } else {
-      setDialog(true); // Show email verification dialog
-    }
-  }, []);
+      if (savedVerifiedEmails.length > 0) {
+        // Auto-select first email and set it as verified
+        const firstEmail = savedVerifiedEmails[0];
+        setVerifiedEmail(firstEmail);
+        setDialog(false);
+
+        // Automatically check email registration status
+        if (sessionId && data) {
+          try {
+            await registerGuestUser({
+              session_id: sessionId,
+              email: firstEmail,
+              custom_fields: [],
+            });
+          } catch (error) {
+            // @ts-expect-error : error is of unknown type
+            if (error.response.data.ex.includes("already")) {
+              setIsUserAlreadyRegistered(true);
+              setAlreadyRegisteredEmail(firstEmail);
+            } else {
+              toast.error("Please register yourself to join");
+              console.log("User needs to register:", error);
+            }
+          }
+        }
+      } else {
+        setDialog(true);
+      }
+    };
+
+    autoRegisterWithStoredEmail();
+  }, [sessionId, data, earliestScheduleId]);
 
   const fetchCoverFileUrl = useCallback(async () => {
     const response = await getPublicFileUrl(data?.coverFileId || "");

@@ -235,14 +235,16 @@ export const useDomainRouting = () => {
         return;
       }
 
-      // No institute found anywhere, redirecting to login
+      // No institute found anywhere
+      const isInvitationRoute = window.location.pathname.startsWith("/learner-invitation-response");
       const newState = {
         isLoading: false,
         instituteId: null,
         instituteName: null,
         instituteLogoFileId: null,
         instituteThemeCode: null,
-        redirectPath: "/login",
+        // Stay on page for invitation route; otherwise fall back to /login
+        redirectPath: isInvitationRoute ? "" : "/login",
         error: null,
       };
       
@@ -277,14 +279,16 @@ export const useDomainRouting = () => {
         console.error("[Domain Routing] Fallback also failed:", fallbackError);
       }
 
-      // All fallbacks failed, redirect to login
+      // All fallbacks failed
+      const isInvitationRoute = window.location.pathname.startsWith("/learner-invitation-response");
       const newState = {
         isLoading: false,
         instituteId: null,
         instituteName: null,
         instituteLogoFileId: null,
         instituteThemeCode: null,
-        redirectPath: "/login",
+        // Stay on page for invitation route; otherwise fall back to /login
+        redirectPath: isInvitationRoute ? "" : "/login",
         error: error instanceof Error ? error.message : "Unknown error",
       };
       
@@ -307,6 +311,7 @@ export const useDomainRouting = () => {
         "/register",
         "/privacy-policy",
         "/terms-and-conditions",
+        "/learner-invitation-response",
       ];
       const isOnPublicRoute = publicRoutes.some((route) =>
         currentPath.startsWith(route)
@@ -357,6 +362,7 @@ export const useDomainRouting = () => {
         "/register",
         "/privacy-policy",
         "/terms-and-conditions",
+        "/learner-invitation-response",
       ];
       const isOnPublicRoute = publicRoutes.some((route) =>
         currentPath.startsWith(route)

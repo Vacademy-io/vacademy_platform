@@ -84,7 +84,7 @@ const PaymentSelectionStep = ({
 
       hasInitialized.current = true;
     }
-  }, [paymentType, donationMetadata, selectedPayment]);
+  }, [paymentType, donationMetadata, selectedPayment, onPaymentSelect, onAmountChange]);
 
   // Reset initialization flag when payment type changes
   useEffect(() => {
@@ -179,10 +179,10 @@ const PaymentSelectionStep = ({
             <Heart className="w-5 h-5 sm:w-6 sm:h-6 text-red-600" />
           </div>
           <div>
-            <h2 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900 leading-tight">
+            <h2 className="text-title-lg font-semibold text-gray-900 leading-tight">
               Make a Donation
             </h2>
-            <p className="text-gray-600 text-sm mt-1">
+            <p className="text-caption text-muted-foreground mt-1">
               Support our cause with your generous contribution
             </p>
           </div>
@@ -193,7 +193,7 @@ const PaymentSelectionStep = ({
         {/* Suggested Amounts */}
         {filteredAmounts.length > 0 && (
           <div className="space-y-3">
-            <h3 className="text-lg font-semibold text-gray-900">
+            <h3 className="text-subtitle font-semibold text-gray-900">
               Suggested Amounts
             </h3>
             <div className="flex flex-wrap gap-3">
@@ -221,7 +221,7 @@ const PaymentSelectionStep = ({
         {/* Custom Amount Input */}
         {donationMetadata.allowCustomAmount && (
           <div className="space-y-3">
-            <h3 className="text-lg font-semibold text-gray-900">
+            <h3 className="text-subtitle font-semibold text-gray-900">
               Custom Amount
             </h3>
             <div className="relative">
@@ -240,7 +240,7 @@ const PaymentSelectionStep = ({
                 )}${minAmount}`}
               />
             </div>
-            <p className="text-sm text-gray-600">
+            <p className="text-caption text-muted-foreground">
               Minimum donation amount:{" "}
               {getCurrencySymbol(selectedPayment?.currency || "GBP")}
               {minAmount}
@@ -278,10 +278,10 @@ const PaymentSelectionStep = ({
             <CreditCard className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
           </div>
           <div>
-            <h2 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900 leading-tight">
+            <h2 className="text-title-lg font-semibold text-gray-900 leading-tight">
               Select Payment Plan
             </h2>
-            <p className="text-gray-600 text-sm mt-1">
+            <p className="text-caption text-muted-foreground mt-1">
               Choose the payment option that best suits your needs
             </p>
           </div>
@@ -314,7 +314,7 @@ const PaymentSelectionStep = ({
   };
 
   return (
-    <Card className="shadow-lg border bg-white w-full">
+    <Card className="shadow-lg w-full">
       <CardContent className="p-5 sm:p-6">
         {renderDonationSection()}
         {renderRegularPaymentOptions()}

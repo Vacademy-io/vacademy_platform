@@ -29,7 +29,7 @@
         --border: 210 18% 84%;
         --input: 214.3 31.8% 91.4%;
         --ring: 222.2 84% 4.9%;
-        --radius: 0.25rem;
+        --radius: 8px;
         --chart-1: 12 76% 61%;
         --chart-2: 173 58% 39%;
         --chart-3: 197 37% 24%;
@@ -429,14 +429,61 @@
 }
 
 @layer utilities {
+    /* ================= Typography scale (tokens used across the app) ================ */
+    /* Keep text sizes uniform by using these utilities instead of ad-hoc responsive sizes */
+    .text-title {
+        font-size: 20px; /* 1.25rem */
+        line-height: 28px; /* 1.75rem */
+        letter-spacing: -0.005em;
+    }
+    .text-title-lg {
+        font-size: 24px; /* 1.5rem */
+        line-height: 32px; /* 2rem */
+        letter-spacing: -0.01em;
+    }
+    .text-subtitle {
+        font-size: 18px; /* 1.125rem */
+        line-height: 26px; /* ~1.625rem */
+        letter-spacing: -0.003em;
+    }
+    .text-body {
+        font-size: 16px; /* 1rem */
+        line-height: 24px; /* 1.5rem */
+    }
+    .text-caption {
+        font-size: 13px; /* ~0.8125rem */
+        line-height: 18px; /* ~1.125rem */
+    }
+
+    /* ================= Card and interactive utilities ================= */
+    /* Apply a consistent base for card-like surfaces */
+    .card-base {
+        @apply bg-card text-card-foreground border rounded-[8px] shadow-sm transition;
+        border-color: hsl(var(--border));
+    }
+    /* Uniform interactive focus and hover states for cards */
+    .card-interactive {
+        @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+    }
+    .card-hover {
+        @apply hover:shadow-md;
+        border-color: hsl(var(--border));
+    }
+
     /* Make borders on white, rounded surfaces more visible by default */
     .bg-white.border.rounded,
     .bg-white.border.rounded-md,
     .bg-white.border.rounded-lg,
     .bg-white.border.rounded-xl,
     .bg-white.border.rounded-2xl {
-        border-width: 2px !important;
-        border-color: hsl(var(--border)) !important;
+        border-width: 1.5px !important;
+        border-color: hsl(var(--border) / 0.5) !important; /* lighter by default */
+        transition: border-color 0.18s;
+    }
+    .bg-white.border.rounded-2xl:hover,
+    .bg-white.border.rounded-2xl:focus,
+    .bg-white.border.rounded-2xl:active {
+        border-color: hsl(var(--border)) !important; /* darker on hover/focus/active */
     }
 
     /* In dark mode, many cards still use dark:bg-neutral-900 class; ensure their borders are visible too */

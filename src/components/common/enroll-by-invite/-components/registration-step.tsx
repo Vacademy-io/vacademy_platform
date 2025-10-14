@@ -276,7 +276,7 @@ const RegistrationStep = ({
         )}
       <Card
         id="registration-card"
-        className="overflow-hidden shadow-lg border bg-white w-full mx-4 sm:mx-0"
+        className="overflow-hidden shadow-lg w-full mx-4 sm:mx-0"
       >
         <CardContent className="p-4 sm:p-5 md:p-6">
           <div className="flex items-start gap-2 sm:gap-3 mb-6">
@@ -284,10 +284,10 @@ const RegistrationStep = ({
               <GraduationCap className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
             </div>
             <div>
-              <h2 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900 leading-tight">
+              <h2 className="text-title-lg font-semibold text-gray-900 leading-tight">
                 Registration Details
               </h2>
-              <p className="text-gray-600 text-sm mt-1">
+              <p className="text-caption text-muted-foreground mt-1">
                 Fill in your details to enroll in the course
               </p>
             </div>
@@ -452,7 +452,7 @@ const RegistrationStep = ({
                         console.error(err)
                       )}
                       disable={!isFormValid()}
-                      className="w-full sm:w-auto bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-2.5 px-4 sm:px-5 rounded-md transition-all duration-200 shadow-sm hover:shadow-md"
+                      className="w-full sm:w-auto"
                     >
                       <GraduationCap className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
                       {!isEmailVerified ? "Verify Email First" : "Register"}
@@ -475,7 +475,7 @@ const RegistrationStep = ({
       {courseData?.customHtml && (
         <Card
           id="registration-card"
-          className="overflow-hidden shadow-lg border bg-white w-full mx-4 sm:mx-0"
+          className="overflow-hidden shadow-lg w-full mx-4 sm:mx-0"
         >
           <CardContent className="p-4 sm:p-5 md:p-6">
             <div className="flex items-start gap-2 sm:gap-3 mb-6">

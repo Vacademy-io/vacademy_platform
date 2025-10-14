@@ -10,13 +10,13 @@ export interface ModernCardProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 const modernCardVariants = {
-  base: "transition-all duration-300 ease-out focus-visible:ring-4 focus-visible:ring-primary/30 focus-visible:border-primary-600",
+  base: "card-base card-interactive transition-all duration-300 ease-out",
   
   variant: {
-    default: "bg-card text-card-foreground border-2 border-gray-200 dark:border-neutral-800 hover:border-gray-300 dark:hover:border-neutral-700 active:border-gray-500 dark:active:border-neutral-600 shadow-sm transition-colors",
-    elevated: "bg-card text-card-foreground shadow-lg hover:shadow-xl border border-border/50",
+    default: "card-hover",
+    elevated: "shadow-lg hover:shadow-xl",
     glass: "bg-white/80 backdrop-blur-sm border border-white/20 shadow-lg hover:shadow-xl hover:bg-white/90",
-    outlined: "bg-transparent border-2 border-border hover:border-primary-300 hover:bg-accent/5",
+    outlined: "bg-transparent border border-border hover:bg-accent/5",
     subtle: "bg-accent/30 border border-accent hover:bg-accent/50",
   },
   

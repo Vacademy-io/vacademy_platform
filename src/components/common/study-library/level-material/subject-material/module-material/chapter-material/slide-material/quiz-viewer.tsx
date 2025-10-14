@@ -13,6 +13,7 @@ import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import confetti from "canvas-confetti";
 import katex from "katex";
 import "katex/dist/katex.css";
+import { useSlidesRefresh } from "@/hooks/study-library/useSlidesRefresh";
 
 interface Option {
   id: string;
@@ -63,6 +64,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
   const [showIncorrectNotice, setShowIncorrectNotice] = useState(false);
 
   const submitQuizMutation = useSubmitQuizSlideActivityLog();
+  const { refreshSlides } = useSlidesRefresh();
 
   // Helpers: decode HTML entities and render KaTeX spans
   const decodeHtml = (input: string): string => {
@@ -302,8 +304,32 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
       try {
         const { slideId, chapterId, moduleId, subjectId, packageSessionId } = getUrlParams();
         const userId = (await getUserId()) || "";
+
+        if (!slideId || !chapterId || !moduleId || !subjectId || !packageSessionId || !userId) {
+          console.error("❌ [QuizViewer] Missing required params for quiz submission", {
+            slideId,
+            chapterId,
+            moduleId,
+            subjectId,
+            packageSessionId,
+            userId,
+          });
+          toast.error("Cannot submit quiz — missing context. Please reopen this slide.");
+          return;
+        }
+
         const payload = await buildQuizPayload();
-        await submitQuizMutation.mutateAsync({
+
+        console.group("📤 [QuizViewer] Submitting quiz activity log");
+        console.log("Params:", { slideId, chapterId, moduleId, subjectId, packageSessionId, userId });
+        console.log("Payload summary:", {
+          id: payload.id,
+          slide_id: payload.slide_id,
+          questionsCount: payload.quiz_sides?.length || 0,
+          new_activity: payload.new_activity,
+        });
+        console.debug("Full payload:", payload);
+        const response = await submitQuizMutation.mutateAsync({
           slideId,
           chapterId,
           moduleId,
@@ -312,10 +338,19 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
           userId,
           requestPayload: payload,
         });
+        console.log("✅ [QuizViewer] API response:", response?.data ?? response);
+        console.groupEnd();
         console.log("Quiz submitted successfully");
         toast.success("Quiz submitted successfully!", {
           className: "text-center"
         });
+        try {
+          console.log("🔄 [QuizViewer] Refreshing slides after quiz submission...");
+          await refreshSlides();
+          console.log("✅ [QuizViewer] Slides refreshed");
+        } catch (e) {
+          console.warn("⚠️ [QuizViewer] Slides refresh failed", e);
+        }
         if (celebrateOnQuizComplete) {
           try {
             // Confetti: multi-wave, spread across screen with streamers and bursts
@@ -402,7 +437,8 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
         setShowReview(true); // <-- Show review page
         if (onComplete) onComplete();
       } catch (err) {
-        console.error("Quiz submission failed", err);
+        console.error("❌ [QuizViewer] Quiz submission failed", err);
+        toast.error("Failed to submit quiz. Please try again.");
       } finally {
         setIsSubmitting(false);
       }

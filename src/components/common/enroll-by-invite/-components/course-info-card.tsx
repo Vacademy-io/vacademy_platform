@@ -85,16 +85,22 @@ const CourseInfoCard = ({ courseData, levelName }: CourseInfoCardProps) => {
           }}
         />
 
-        {/* Level Wedge */}
-        <div className="flex items-start gap-2 mb-8">
-          <Award className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-          <Badge
-            variant="outline"
-            className="h-7 rounded-full px-3 text-xs font-medium uppercase tracking-wide border-amber-200 text-amber-700 bg-amber-50"
-          >
-            {levelName}
-          </Badge>
-        </div>
+        {/* Level Wedge - hidden when level is 'default' (case-insensitive) or empty */}
+        {(() => {
+          const normalizedLevel = (levelName || "").trim().toLowerCase();
+          if (!normalizedLevel || normalizedLevel === "default") return null;
+          return (
+            <div className="flex items-start gap-2 mb-8">
+              <Award className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+              <Badge
+                variant="outline"
+                className="h-7 rounded-full px-3 text-xs font-medium uppercase tracking-wide border-amber-200 text-amber-700 bg-amber-50"
+              >
+                {levelName}
+              </Badge>
+            </div>
+          );
+        })()}
 
         <Separator className="my-8" />
 

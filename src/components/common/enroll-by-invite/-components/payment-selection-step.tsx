@@ -61,6 +61,7 @@ const PaymentSelectionStep = ({
   const [customAmount, setCustomAmount] = useState<string>("");
   const [isDonation, setIsDonation] = useState(false);
   const hasInitialized = useRef(false);
+  const hasAutoSelectedSinglePlan = useRef(false);
 
   useEffect(() => {
     setIsDonation(paymentType === "DONATION");
@@ -270,6 +271,21 @@ const PaymentSelectionStep = ({
 
   const renderRegularPaymentOptions = () => {
     if (isDonation) return null;
+
+    // Auto-select if there's only one plan and nothing is selected yet
+    useEffect(() => {
+      if (hasAutoSelectedSinglePlan.current) return;
+      const plans = paymentOptions?.payment_options || [];
+      if (plans.length === 1 && !selectedPayment) {
+        const only = plans[0];
+        const upd: SelectedPayment = {
+          ...only,
+          type: paymentOptions?.type,
+        } as unknown as SelectedPayment;
+        onPaymentSelect(upd);
+        hasAutoSelectedSinglePlan.current = true;
+      }
+    }, [paymentOptions, selectedPayment, onPaymentSelect]);
 
     return (
       <>

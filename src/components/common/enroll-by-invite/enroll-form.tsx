@@ -194,6 +194,50 @@ const EnrollByInvite = () => {
       ...prev,
       registrationData: values,
     }));
+
+    // Detect single plan (non-donation)
+    const paymentOptionMeta =
+      inviteData?.package_session_to_payment_options?.[0]?.payment_option;
+    const plans = paymentOptionMeta?.payment_plans || [];
+    const hasSinglePlan = plans.length === 1;
+
+    // If there's exactly one plan, preselect and skip selection step
+    if (hasSinglePlan && paymentType !== "DONATION") {
+      if (!enrollmentData.selectedPayment) {
+        const onlyPlan = plans[0];
+        try {
+          const metadata = JSON.parse(
+            paymentOptionMeta?.payment_option_metadata_json || "{}"
+          );
+          const unit = metadata?.unit || "days";
+          const duration =
+            unit === "days"
+              ? `${onlyPlan.validity_in_days} days`
+              : `${Math.floor(onlyPlan.validity_in_days / 30)} months`;
+
+          // @ts-expect-error // TODO: strong type SelectedPayment mapping
+          const preselected: SelectedPayment = {
+            id: onlyPlan.id,
+            name: onlyPlan.name,
+            amount: onlyPlan.actual_price,
+            currency: onlyPlan.currency,
+            description: onlyPlan.description,
+            duration,
+            // include numeric pricing fields for summary calculations
+            actual_price: onlyPlan.actual_price,
+            elevated_price: onlyPlan.elevated_price,
+            validity_in_days: onlyPlan.validity_in_days,
+            referral_option: onlyPlan.referral_option,
+          };
+          setEnrollmentData((prev) => ({ ...prev, selectedPayment: preselected }));
+        } catch {
+          // ignore parse errors and continue normal flow
+        }
+      }
+      setCurrentStep(2);
+      return;
+    }
+
     // For FREE payments, go directly to review step (step 2)
     // For other payment types, go to payment selection step (step 1)
     setCurrentStep(paymentType === "FREE" ? 2 : 1);
@@ -227,6 +271,12 @@ const EnrollByInvite = () => {
       // If payment type is FREE and we're on registration step, skip payment selection
       if (currentStep === 0 && paymentType === "FREE") {
         setCurrentStep(2); // Skip to review step
+      } else if (
+        currentStep === 0 &&
+        paymentType !== "DONATION" &&
+        (inviteData?.package_session_to_payment_options?.[0]?.payment_option?.payment_plans?.length || 0) === 1
+      ) {
+        setCurrentStep(2); // Skip selection when only one plan
       } else if (currentStep === 2 && paymentType === "FREE") {
         setCurrentStep(5); // Skip payment steps and go directly to success
       } else {
@@ -242,6 +292,12 @@ const EnrollByInvite = () => {
         setCurrentStep(2);
       } else if (currentStep === 2 && paymentType === "FREE") {
         setCurrentStep(0);
+      } else if (
+        currentStep === 2 &&
+        paymentType !== "DONATION" &&
+        (inviteData?.package_session_to_payment_options?.[0]?.payment_option?.payment_plans?.length || 0) === 1
+      ) {
+        setCurrentStep(0); // Skip selection on back when only one plan
       } else {
         setCurrentStep(currentStep - 1);
       }
@@ -356,14 +412,14 @@ const EnrollByInvite = () => {
           paymentTypeValue === "ONE_TIME" ||
           paymentTypeValue === "DONATION"
         ) {
-          const defaultPaymentPlan =
-            inviteData?.package_session_to_payment_options[0]?.payment_option
-              ?.payment_plans?.[0];
+          const paymentOptionMeta =
+            inviteData?.package_session_to_payment_options[0]?.payment_option;
+          const plans = paymentOptionMeta?.payment_plans || [];
+          const defaultPaymentPlan = plans[0];
           if (defaultPaymentPlan) {
             // Get the unit from payment option metadata to format duration correctly
             const paymentOptionMetadata = JSON.parse(
-              inviteData?.package_session_to_payment_options[0]?.payment_option
-                ?.payment_option_metadata_json || "{}"
+              paymentOptionMeta?.payment_option_metadata_json || "{}"
             );
             const unit = paymentOptionMetadata?.unit || "days";
 
@@ -375,7 +431,7 @@ const EnrollByInvite = () => {
                   )} months`;
 
             // @ts-expect-error // TODO:fix this
-            const paymentOption: SelectedPayment = {
+            const preselectedPayment: SelectedPayment = {
               id: defaultPaymentPlan.id,
               name: defaultPaymentPlan.name,
               amount: defaultPaymentPlan.actual_price,
@@ -388,7 +444,7 @@ const EnrollByInvite = () => {
             };
             setEnrollmentData((prev) => ({
               ...prev,
-              selectedPayment: paymentOption,
+              selectedPayment: preselectedPayment,
             }));
           }
         }

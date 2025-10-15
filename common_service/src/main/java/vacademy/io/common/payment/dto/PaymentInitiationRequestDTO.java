@@ -19,9 +19,10 @@ public class PaymentInitiationRequestDTO {
     private String email;
     private String vendor;
     private String vendorId;
-
+    private String country;
     private StripeRequestDTO stripeRequest;
     private RazorpayRequestDTO razorpayRequest;
     private PayPalRequestDTO payPalRequest;
     private ManualPaymentDTO manualRequest;
+    private EwayRequestDTO ewayRequest;
 }

@@ -257,14 +257,14 @@ const PaidPlanReview = ({
             <div className="font-medium text-gray-900">{plan.name}</div>
           </div>
 
-          <div className="flex justify-between">
-            <span className="text-gray-600">Validity:</span>
-            <div className="font-medium text-gray-900">
-              {plan.validity_in_days
-                ? formatValidity(plan.validity_in_days)
-                : "Lifetime"}
+          {plan.validity_in_days != null && (
+            <div className="flex justify-between">
+              <span className="text-gray-600">Validity:</span>
+              <div className="font-medium text-gray-900">
+                {formatValidity(plan.validity_in_days)}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -327,7 +327,12 @@ const PaidPlanReview = ({
             <span className="font-bold text-subtitle text-primary-600">
               {getCurrencySymbol(plan.currency || "")}
               {(() => {
-                let finalPrice = plan.actual_price;
+                let finalPrice =
+                  typeof plan.actual_price === "number"
+                    ? plan.actual_price
+                    : typeof plan.amount === "number"
+                    ? plan.amount
+                    : 0;
 
                 // Apply referral discount if coupon is verified and it's a pricing benefit
                 if (
@@ -447,15 +452,14 @@ const FreePlanReview = ({
             <div className="font-medium text-gray-900">{plan.name}</div>
           </div>
 
-          <div className="flex justify-between">
-            <span className="text-gray-600">Validity:</span>
-            <div className="font-medium text-gray-900">
-              {plan.duration ||
-                (plan.validity_in_days
-                  ? `${plan.validity_in_days} days`
-                  : "Lifetime")}
+          {plan.validity_in_days != null && (
+            <div className="flex justify-between">
+              <span className="text-gray-600">Validity:</span>
+              <div className="font-medium text-gray-900">
+                {plan.duration || `${plan.validity_in_days} days`}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 

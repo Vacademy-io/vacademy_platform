@@ -49,88 +49,50 @@ public class WatiService {
             String apiUrl,
             String broadcastName) {
         
-        log.info("Sending WATI template messages: template={}, recipients={}", 
+        log.info("Sending WATI template messages (bulk): template={}, recipients={}",
                 templateName, userDetails.size());
         
         // Deduplicate based on phone number
         Map<String, Map<String, String>> uniqueUsers = userDetails.stream()
                 .collect(Collectors.toMap(
-                        detail -> detail.keySet().iterator().next(),  // Phone number as key
-                        detail -> detail.get(detail.keySet().iterator().next()),  // Params as value
-                        (existing, replacement) -> existing  // Keep first entry on duplicates
+                        detail -> detail.keySet().iterator().next(),
+                        detail -> detail.get(detail.keySet().iterator().next()),
+                        (existing, replacement) -> existing
                 ));
         
-        return uniqueUsers.entrySet().stream()
-                .map(entry -> {
-                    String phoneNumber = entry.getKey();
-                    Map<String, String> params = entry.getValue();
-                    
-                    try {
-                        ResponseEntity<String> response = sendSingleTemplateMessage(
-                                phoneNumber,
-                                templateName,
-                                params,
-                                languageCode,
-                                apiKey,
-                                apiUrl,
-                                broadcastName
-                        );
-                        
-                        log.info("WATI Response for {}: {}", phoneNumber, response.getStatusCode());
-                        
-                        return Map.of(phoneNumber, response.getStatusCode().is2xxSuccessful());
-                    } catch (Exception e) {
-                        log.error("Failed to send WATI message to {}: {}", phoneNumber, e.getMessage(), e);
-                        return Map.of(phoneNumber, false);
-                    }
-                })
-                .collect(Collectors.toList());
-    }
-    
-    /**
-     * Send template message to a single recipient
-     */
-    private ResponseEntity<String> sendSingleTemplateMessage(
-            String phoneNumber,
-            String templateName,
-            Map<String, String> params,
-            String languageCode,
-            String apiKey,
-            String apiUrl,
-            String broadcastName) throws Exception {
-        
-        // Ensure phone number is in correct format (no + or -, just digits)
-        String formattedPhone = phoneNumber.replaceAll("[^0-9]", "");
-        
-        // Build WATI request
+        // Build bulk request
         WatiTemplateRequest request = new WatiTemplateRequest();
         request.setTemplateName(templateName);
         request.setBroadcastName(broadcastName != null ? broadcastName : "Notification");
+        request.setLanguageCode(languageCode);
         
-        // Build receivers list
         List<WatiReceiver> receivers = new ArrayList<>();
-        WatiReceiver receiver = new WatiReceiver();
-        receiver.setWhatsappNumber(formattedPhone);
-        
-        // Convert parameters to WATI format
-        List<WatiCustomParam> customParams = params.entrySet().stream()
-                .sorted(Comparator.comparingInt(e -> {
-                    try {
-                        return Integer.parseInt(e.getKey());
-                    } catch (NumberFormatException ex) {
-                        return Integer.MAX_VALUE;
-                    }
-                }))
-                .map(e -> {
-                    WatiCustomParam param = new WatiCustomParam();
-                    param.setName(e.getKey());
-                    param.setValue(e.getValue());
-                    return param;
-                })
-                .collect(Collectors.toList());
-        
-        receiver.setCustomParams(customParams);
-        receivers.add(receiver);
+        for (Map.Entry<String, Map<String, String>> entry : uniqueUsers.entrySet()) {
+            String phoneNumber = entry.getKey();
+            Map<String, String> params = entry.getValue();
+            
+            String formattedPhone = phoneNumber.replaceAll("[^0-9]", "");
+            WatiReceiver receiver = new WatiReceiver();
+            receiver.setWhatsappNumber(formattedPhone);
+            
+            List<WatiCustomParam> customParams = params.entrySet().stream()
+                    .sorted(Comparator.comparingInt(e -> {
+                        try {
+                            return Integer.parseInt(e.getKey());
+                        } catch (NumberFormatException ex) {
+                            return Integer.MAX_VALUE;
+                        }
+                    }))
+                    .map(e -> {
+                        WatiCustomParam param = new WatiCustomParam();
+                        param.setName(e.getKey());
+                        param.setValue(e.getValue());
+                        return param;
+                    })
+                    .collect(Collectors.toList());
+            receiver.setCustomParams(customParams);
+            receivers.add(receiver);
+        }
         request.setReceivers(receivers);
         
         // Create headers
@@ -138,89 +100,32 @@ public class WatiService {
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(apiKey);
         
-        // Convert request to JSON
-        String jsonRequest = objectMapper.writeValueAsString(request);
-        log.debug("WATI Request: {}", jsonRequest);
-        
-        // Create HTTP entity
-        HttpEntity<String> entity = new HttpEntity<>(jsonRequest, headers);
-        
-        // Send request
-        String endpoint = apiUrl + "/api/v1/sendTemplateMessage";
-        return restTemplate.exchange(endpoint, HttpMethod.POST, entity, String.class);
+        try {
+            String jsonRequest = objectMapper.writeValueAsString(request);
+            log.debug("WATI Bulk Request: {}", jsonRequest);
+            HttpEntity<String> entity = new HttpEntity<>(jsonRequest, headers);
+            
+            String endpoint = apiUrl + "/api/v1/sendTemplateMessages";
+            ResponseEntity<String> response = restTemplate.exchange(endpoint, HttpMethod.POST, entity, String.class);
+            boolean success = response.getStatusCode().is2xxSuccessful();
+            
+            return uniqueUsers.keySet().stream()
+                    .map(phone -> Map.of(phone, success))
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Failed to send WATI bulk message: {}", e.getMessage(), e);
+            return uniqueUsers.keySet().stream()
+                    .map(phone -> Map.of(phone, false))
+                    .collect(Collectors.toList());
+        }
     }
-    
-    /**
-     * Send session message (within 24-hour window)
-     * 
-     * @param phoneNumber Recipient phone number
-     * @param messageText Message text to send
-     * @param apiKey WATI API key
-     * @param apiUrl WATI API base URL
-     * @return Response entity
-     */
-    public ResponseEntity<String> sendSessionMessage(
-            String phoneNumber,
-            String messageText,
-            String apiKey,
-            String apiUrl) throws Exception {
-        
-        // Ensure phone number is in correct format
-        String formattedPhone = phoneNumber.replaceAll("[^0-9]", "");
-        
-        // Build WATI session message request
-        Map<String, String> request = new HashMap<>();
-        request.put("whatsappNumber", formattedPhone);
-        request.put("message", messageText);
-        
-        // Create headers
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(apiKey);
-        
-        // Convert request to JSON
-        String jsonRequest = objectMapper.writeValueAsString(request);
-        log.debug("WATI Session Message Request: {}", jsonRequest);
-        
-        // Create HTTP entity
-        HttpEntity<String> entity = new HttpEntity<>(jsonRequest, headers);
-        
-        // Send request
-        String endpoint = apiUrl + "/api/v1/sendSessionMessage/" + formattedPhone;
-        return restTemplate.exchange(endpoint, HttpMethod.POST, entity, String.class);
-    }
-    
-    /**
-     * Check message status
-     * 
-     * @param messageId WATI message ID
-     * @param apiKey WATI API key
-     * @param apiUrl WATI API base URL
-     * @return Message status response
-     */
-    public ResponseEntity<String> getMessageStatus(
-            String messageId,
-            String apiKey,
-            String apiUrl) throws Exception {
-        
-        // Create headers
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(apiKey);
-        
-        // Create HTTP entity
-        HttpEntity<Void> entity = new HttpEntity<>(headers);
-        
-        // Send request
-        String endpoint = apiUrl + "/api/v1/getMessageStatus/" + messageId;
-        return restTemplate.exchange(endpoint, HttpMethod.GET, entity, String.class);
-    }
-    
-    // ==================== WATI API Data Models ====================
+
     
     @Data
     public static class WatiTemplateRequest {
         private String templateName;
         private String broadcastName;
+        private String languageCode;
         private List<WatiReceiver> receivers;
     }
     

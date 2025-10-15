@@ -740,21 +740,6 @@ const EnrollByInvite = () => {
           </div>
         </div>
 
-        {/* Custom HTML Section (Bottom of page) */}
-        {courseData?.customHtml && courseData.customHtml.trim().length > 0 && (
-          <ModernCard
-            variant="elevated"
-            padding="lg"
-            rounded="xl"
-            className="mt-4"
-          >
-            <div
-              className="text-gray-800 text-sm sm:text-base leading-relaxed"
-              dangerouslySetInnerHTML={{ __html: courseData.customHtml }}
-            />
-          </ModernCard>
-        )}
-
         {/* Policy Links */}
         <div className="flex items-center justify-center gap-4 text-sm text-gray-600">
           <a

@@ -119,7 +119,7 @@ public class WatiService {
                     .collect(Collectors.toList());
         }
     }
-
+    
     
     @Data
     public static class WatiTemplateRequest {

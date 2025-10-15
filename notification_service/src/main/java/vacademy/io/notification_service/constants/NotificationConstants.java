@@ -29,4 +29,7 @@ public class NotificationConstants {
     public static final String API_KEY = "apiKey";
     public static final String API_URL = "apiUrl";
     public static final String WHATSAPP_NUMBER = "whatsappNumber";
+    // Testing allowlist for WhatsApp sending
+    public static final String TEST_PHONE_NUMBER = "TEST_PHONE_NUMBER";
+    public static final String FLAG = "flag";
 }

@@ -95,6 +95,13 @@ public class WhatsAppService {
                     .path(NotificationConstants.DATA)
                     .path(NotificationConstants.UTILITY_WHATSAPP);
 
+            // Apply optional testing allowlist filter
+            bodyParams = filterRecipientsByTestAllowListIfEnabled(root, bodyParams);
+            if (bodyParams.isEmpty()) {
+                log.info("TEST allowlist active and no recipients matched; skipping sends");
+                return List.of();
+            }
+
             // Check provider type (defaults to META for backward compatibility)
             String provider = whatsappSetting.path(NotificationConstants.PROVIDER).asText("META").toUpperCase();
             log.info("WhatsApp provider for institute {}: {}", instituteId, provider);
@@ -110,6 +117,46 @@ public class WhatsAppService {
             log.error("Exception occurred while sending WhatsApp messages for institute {}: {}", instituteId, e.getMessage(), e);
             return null;
         }
+    }
+
+    private List<Map<String, Map<String, String>>> filterRecipientsByTestAllowListIfEnabled(
+            JsonNode root,
+            List<Map<String, Map<String, String>>> bodyParams) {
+
+        if (root == null || bodyParams == null || bodyParams.isEmpty()) return bodyParams;
+
+        JsonNode testConfig = root.path(NotificationConstants.SETTING)
+                .path(NotificationConstants.TEST_PHONE_NUMBER);
+
+        // Ensure path exists and flag is true
+        if (testConfig.isMissingNode() || !testConfig.has(NotificationConstants.FLAG) || !testConfig.path(NotificationConstants.FLAG).asBoolean(false)) {
+            return bodyParams; // no filtering
+        }
+
+        JsonNode dataNode = testConfig.path(NotificationConstants.DATA);
+        if (dataNode == null || !dataNode.isArray() || dataNode.size() == 0) {
+            return bodyParams; // nothing to filter by
+        }
+
+        Set<String> allow = new HashSet<>();
+        for (JsonNode node : dataNode) {
+            String raw = node.asText();
+            if (raw != null && !raw.isBlank()) {
+                allow.add(raw.replaceAll("[^0-9]", ""));
+            }
+        }
+        if (allow.isEmpty()) return bodyParams;
+
+        List<Map<String, Map<String, String>>> filtered = bodyParams.stream()
+                .filter(detail -> {
+                    String phone = detail.keySet().iterator().next();
+                    String normalized = phone.replaceAll("[^0-9]", "");
+                    return allow.contains(normalized);
+                })
+                .collect(Collectors.toList());
+
+        log.info("TEST allowlist enabled: {} of {} recipients will be sent", filtered.size(), bodyParams.size());
+        return filtered;
     }
 
     /**

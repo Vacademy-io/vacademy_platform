@@ -3,7 +3,7 @@ import { Page, GlobalSettings } from "../-types/course-catalogue-types";
 import { HeaderComponent } from "./components/HeaderComponent";
 import { BannerComponent } from "./components/BannerComponent";
 import { CourseCatalogComponent } from "./components/CourseCatalogComponent";
-import { CourseRecommendationsComponent } from "./components/CourseRecommendationsComponent";
+// Removed CourseRecommendationsComponent import as it's not used
 // Removed CourseDetailsComponent import as it's not used
 import { FooterComponent } from "./components/FooterComponent";
 import { HeroSectionComponent } from "./components/HeroSectionComponent";
@@ -70,7 +70,6 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
         return null;
     }
   };
-
 
   return (
     <div className="page w-full" data-page-id={page.id}>

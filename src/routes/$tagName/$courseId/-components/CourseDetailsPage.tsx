@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LeadCollectionModal } from "../../-components/LeadCollectionModal";
-import { GET_COURSE_DETAILS, ENROLLMENT_INVITE_URL } from "@/constants/urls";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import axios from "axios";
 import { JsonRenderer } from "../../-components/JsonRenderer";
@@ -10,6 +9,7 @@ import { CourseCatalogueService } from "../../-services/course-catalogue-service
 import { CourseCatalogueData } from "../../-types/course-catalogue-types";
 import { CourseStructureDetails } from "../../-components/CourseStructureDetails"; // Course structure component
 import { EnrollmentPaymentDialog } from "../../-components/EnrollmentPaymentDialog";
+import { getBackendCourseDuration, formatMinutesHuman } from "@/utils/courseTime";
 
 
 interface CourseDetailsPageProps {
@@ -20,12 +20,13 @@ interface CourseDetailsPageProps {
   enrollInviteId?: string;
   packageSessionId?: string;
   bannerImage?: string;
+  level?: string;
 }
 
 interface CourseData {
   id: string;
   title: string;
-  description: string;
+  description: string | null;
   duration: string | null;
   instructor: string | null;
   price: number;
@@ -39,7 +40,7 @@ interface CourseData {
   requirements: string[];
   whoShouldLearn: string;
   whyLearn: string;
-  aboutCourse: string;
+  aboutCourse: string | null;
   instructors: Array<{
     name: string;
     email: string;
@@ -54,6 +55,8 @@ interface CourseData {
   courseDepth: number;
   packageSessionId: string;
   enrollInviteId?: string;
+  levelId?: string;
+  courseId?: string;
 }
 
 export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
@@ -64,7 +67,9 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   enrollInviteId,
   packageSessionId,
   bannerImage,
+  level,
 }) => {
+  console.log("=== CourseDetailsPage RENDERED ===");
   const navigate = useNavigate();
   const domainRouting = useDomainRouting();
   const [courseData, setCourseData] = useState<CourseData | null>(null);
@@ -98,16 +103,58 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   };
   const [showLeadCollection, setShowLeadCollection] = useState(false);
   const [catalogueData, setCatalogueData] = useState<CourseCatalogueData | null>(null);
+  
+  // Debug catalogue data changes
+  useEffect(() => {
+    console.log("[CourseDetailsPage] Catalogue data loaded:", !!catalogueData);
+  }, [catalogueData]);
   const [enrollmentDialogOpen, setEnrollmentDialogOpen] = useState(false);
 
   // Fetch catalogue data for header and footer
   useEffect(() => {
     const fetchCatalogueData = async () => {
       try {
+        console.log("[CourseDetailsPage] Fetching catalogue data for:", { instituteId, tagName });
         const data = await CourseCatalogueService.getCourseCatalogueByTag(instituteId, tagName);
+        console.log("[CourseDetailsPage] Catalogue data received:", data);
         setCatalogueData(data);
       } catch (error) {
-        console.warn("[CourseDetailsPage] Failed to fetch catalogue data:", error);
+        console.error("[CourseDetailsPage] Failed to fetch catalogue data:", error);
+        console.error("[CourseDetailsPage] Error details:", {
+          message: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : undefined,
+          response: (error as any)?.response?.data
+        });
+        // Set empty catalogue data as fallback
+        setCatalogueData({
+          globalSettings: {
+            mode: "light",
+            compactness: "medium",
+            audience: "all",
+            leadCollection: {
+              enabled: false,
+              mandatory: false,
+              inviteLink: null,
+              formStyle: {
+                type: "single",
+                showProgress: false,
+                progressType: "bar",
+                transition: "slide"
+              },
+              fields: []
+            },
+            enrquiry: {
+              enabled: true,
+              requirePayment: false
+            },
+            payment: {
+              enabled: true,
+              provider: "razorpay",
+              fields: []
+            }
+          },
+          pages: []
+        });
       }
     };
 
@@ -123,40 +170,56 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
         setIsLoading(true);
         console.log("[CourseDetailsPage] Fetching course details for:", { courseId, tagName, instituteId });
         
-        // Call the real API
-        const response = await axios.get(GET_COURSE_DETAILS, {
+        // First, fetch course details from /init API to get full course information
+        const initResponse = await axios.get(`${import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_BASE_URL || "https://backend-stage.vacademy.io"}/admin-core-service/open/v1/learner-study-library/init`, {
           params: {
-            packageId: courseId,
             instituteId: instituteId,
+            packageId: courseId,
           },
           headers: {
             "Content-Type": "application/json",
           },
         });
 
-        console.log("[CourseDetailsPage] API response:", response.data);
-        console.log("[CourseDetailsPage] Course details API response fields:", {
-          id: response.data.id,
-          package_name: response.data.package_name,
-          enroll_invite_id: response.data.enroll_invite_id,
-          package_session_id: response.data.package_session_id,
-          min_plan_actual_price: response.data.min_plan_actual_price,
-          payment_options_id: response.data.payment_options_id
+        console.log("[CourseDetailsPage] Init API response:", initResponse.data);
+
+        // Find the course in the init response
+        const initData = initResponse.data;
+        const courseResponse = initData.find((item: any) => item.course.id === courseId);
+        
+        if (!courseResponse) {
+          console.log("[CourseDetailsPage] Course not found in init response");
+          setError("Course not found.");
+          return;
+        }
+
+        const course = courseResponse.course;
+
+        // Check if course is published to catalogue
+        if (course.is_course_published_to_catalaouge !== true) {
+          console.log("[CourseDetailsPage] Course is not published to catalogue, showing error");
+          setError("This course is not available for public viewing.");
+          return;
+        }
+
+        console.log("[CourseDetailsPage] Course details from init API:", {
+          id: course.id,
+          package_name: course.package_name,
+          course_html_description: course.course_html_description,
+          course_preview_image_media_id: course.course_preview_image_media_id,
+          course_banner_media_id: course.course_banner_media_id,
+          why_learn: course.why_learn,
+          who_should_learn: course.who_should_learn,
+          about_the_course: course.about_the_course,
+          tags: course.tags,
+          course_depth: course.course_depth,
+          is_course_published_to_catalaouge: course.is_course_published_to_catalaouge
         });
         
         console.log("[CourseDetailsPage] Props from search API:", {
           enrollInviteId,
           packageSessionId
         });
-        
-        const course = response.data;
-        console.log("[CourseDetailsPage] Course thumbnail fields:", {
-          course_preview_image_media_id: course.course_preview_image_media_id,
-          thumbnail_file_id: course.thumbnail_file_id,
-          course_banner_media_id: course.course_banner_media_id
-        });
-        
-        console.log("[CourseDetailsPage] Package session ID:", course.package_session_id);
         
         
         // Use banner image from props if available, otherwise use API fields (raw media IDs)
@@ -170,6 +233,10 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           thumbnailUrl = thumbnailField || "/api/placeholder/800/400";
           console.log("[CourseDetailsPage] Using raw media ID from API:", thumbnailUrl);
         }
+
+        // For now, set price to 0 (free) since init API doesn't have pricing info
+        // TODO: Implement pricing logic if needed
+        let finalPrice = 0;
 
         // Parse HTML content safely
         const parseHtmlContent = (htmlString: string) => {
@@ -205,115 +272,65 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
         };
 
 
-        // Get accurate pricing from enrollment invite API if available
-        let finalPrice = 0;
-        let isFree = true;
-        
-        // Use enrollInviteId from props (passed from course catalog) or fallback to course details API
-        const finalEnrollInviteId = enrollInviteId || course.enroll_invite_id;
-        
-        console.log(`[CourseDetailsPage] Course data for pricing:`, {
-          id: course.id,
-          enroll_invite_id_from_props: enrollInviteId,
-          enroll_invite_id_from_api: course.enroll_invite_id,
-          final_enroll_invite_id: finalEnrollInviteId,
-          min_plan_actual_price: course.min_plan_actual_price,
-          payment_options_id: course.payment_options_id,
-          hasEnrollInviteId: !!finalEnrollInviteId
+
+        // Debug logging for description fields
+        console.log("[CourseDetailsPage] Description debug:", {
+          course_html_description: course.course_html_description,
+          parsed_html_description: parseHtmlContent(course.course_html_description),
+          final_description: parseHtmlContent(course.course_html_description) || null
         });
-        
-        if (finalEnrollInviteId) {
-          try {
-            console.log(`[CourseDetailsPage] Fetching enrollment invite for course ${course.id}:`, finalEnrollInviteId);
-            const enrollmentResponse = await fetch(`${ENROLLMENT_INVITE_URL}/${instituteId}/${finalEnrollInviteId}`, {
-              method: 'GET',
-              headers: {
-                'Content-Type': 'application/json',
-                'accept': '*/*'
-              }
-            });
-            
-            if (enrollmentResponse.ok) {
-              const enrollmentData = await enrollmentResponse.json();
-              console.log(`[CourseDetailsPage] Enrollment data for course ${course.id}:`, enrollmentData);
-              
-              // Check if there are payment options
-              if (enrollmentData.package_session_to_payment_options && 
-                  enrollmentData.package_session_to_payment_options.length > 0) {
-                const paymentOption = enrollmentData.package_session_to_payment_options[0].payment_option;
-                if (paymentOption.payment_plans && paymentOption.payment_plans.length > 0) {
-                  // Find the minimum actual price from all payment plans
-                  const allPlans = paymentOption.payment_plans;
-                  const minPricePlan = allPlans.reduce((min: any, current: any) => {
-                    return (current.actual_price < min.actual_price) ? current : min;
-                  });
-                  
-                  finalPrice = minPricePlan.actual_price || 0;
-                  isFree = finalPrice === 0;
-                  console.log(`[CourseDetailsPage] All payment plans for course ${course.id}:`, allPlans);
-                  console.log(`[CourseDetailsPage] Minimum price plan selected:`, minPricePlan);
-                  console.log(`[CourseDetailsPage] Final price: ${finalPrice}, isFree: ${isFree}`);
-                }
-              }
-            } else {
-              console.warn(`[CourseDetailsPage] Failed to fetch enrollment data for course ${course.id}:`, enrollmentResponse.status);
-              // Fallback to min_plan_actual_price from course details API
-              finalPrice = course.min_plan_actual_price || 0;
-              isFree = finalPrice === 0;
-            }
-          } catch (error) {
-            console.error(`[CourseDetailsPage] Error fetching enrollment data for course ${course.id}:`, error);
-            // Fallback to min_plan_actual_price from course details API
-            finalPrice = course.min_plan_actual_price || 0;
-            isFree = finalPrice === 0;
-          }
-        } else {
-          // No enroll_invite_id, use min_plan_actual_price from course details API
-          console.log(`[CourseDetailsPage] No enroll_invite_id found, using min_plan_actual_price:`, course.min_plan_actual_price);
-          finalPrice = course.min_plan_actual_price || 0;
-          isFree = finalPrice === 0;
-        }
 
         // Transform API response to CourseData interface
         const courseData: CourseData = {
           id: course.id || courseId,
           title: course.package_name || "Untitled Course",
-          description: parseHtmlContent(course.course_html_description_html) || "No description available",
-          duration: course.read_time_in_minutes ? `${course.read_time_in_minutes} minutes` : null,
-          instructor: course.instructors?.[0]?.full_name || null,
+          description: parseHtmlContent(course.course_html_description) || null,
+          duration: courseResponse.sessions?.[0]?.level_with_details?.[0]?.read_time_in_minutes ? getBackendCourseDuration(courseResponse.sessions[0].level_with_details[0].read_time_in_minutes) : null,
+          instructor: courseResponse.sessions?.[0]?.level_with_details?.[0]?.instructors?.[0]?.full_name || null,
           price: finalPrice,
           type: "Course", // Generic type since it's not specified in the API
-          level: course.level_name || "Basic",
+          level: level || "Basic",
           thumbnail: thumbnailUrl,
-          // Add fields for hero section
-          previewImage: course.course_preview_image_media_id || course.thumbnail_file_id,
-          bannerImage: course.course_banner_media_id || course.course_preview_image_media_id || course.thumbnail_file_id,
-          fullDescription: parseHtmlContent(course.about_the_course_html) || parseHtmlContent(course.course_html_description_html) || "No detailed description available",
-          learningOutcomes: course.learning_outcomes || course.objectives || extractLearningOutcomes(course.who_should_learn_html || course.why_learn_html),
-          requirements: course.requirements || course.prerequisites || [
+          // Add fields for hero section - use placeholder if no valid image
+          previewImage: (course.course_preview_image_media_id && course.course_preview_image_media_id !== null && course.course_preview_image_media_id !== 'null') ? course.course_preview_image_media_id : "/api/placeholder/400/300",
+          bannerImage: (course.course_banner_media_id && course.course_banner_media_id !== null && course.course_banner_media_id !== 'null') ? course.course_banner_media_id : "/api/placeholder/400/300",
+          fullDescription: parseHtmlContent(course.about_the_course) || parseHtmlContent(course.course_html_description) || "",
+          learningOutcomes: extractLearningOutcomes(course.who_should_learn || course.why_learn),
+          requirements: [
             "Basic computer skills",
             "Internet connection", 
             "Motivation to learn"
           ],
-          whoShouldLearn: parseHtmlContent(course.who_should_learn_html) || "Anyone interested in learning this subject",
-          whyLearn: parseHtmlContent(course.why_learn_html) || "Gain valuable skills and knowledge",
-          aboutCourse: parseHtmlContent(course.about_the_course_html) || parseHtmlContent(course.course_html_description_html) || "No detailed description available",
-          instructors: course.instructors?.map((inst: any) => ({
+          whoShouldLearn: parseHtmlContent(course.who_should_learn) || "Anyone interested in learning this subject",
+          whyLearn: parseHtmlContent(course.why_learn) || "Gain valuable skills and knowledge",
+          aboutCourse: parseHtmlContent(course.about_the_course) || parseHtmlContent(course.course_html_description) || null,
+          instructors: courseResponse.sessions?.[0]?.level_with_details?.[0]?.instructors?.map((inst: any) => ({
             name: inst.full_name || "Unknown Instructor",
             email: inst.email || "No email provided"
           })) || [{
-            name: course.instructors?.[0]?.full_name || "Unknown Instructor",
-            email: course.instructors?.[0]?.email || "No email provided"
+            name: courseResponse.sessions?.[0]?.level_with_details?.[0]?.instructors?.[0]?.full_name || "Unknown Instructor",
+            email: courseResponse.sessions?.[0]?.level_with_details?.[0]?.instructors?.[0]?.email || "No email provided"
           }],
           rating: course.rating || 0,
-          tags: parseTags(course.comma_separeted_tags || ""),
+          tags: parseTags(course.tags || ""),
           curriculum: [], // No curriculum data available from API yet
-          courseDepth: course.course_depth || 3, // Default to 3 if not provided
+          courseDepth: course.course_depth || 5, // Default to 5 to show full structure
           packageSessionId: packageSessionId || course.package_session_id || courseId, // Use passed packageSessionId or fallback to API response
-          enrollInviteId: enrollInviteId || course.enroll_invite_id // Use passed enrollInviteId or fallback to API response
+          enrollInviteId: enrollInviteId || course.enroll_invite_id, // Use passed enrollInviteId or fallback to API response
+          levelId: course.level_id, // Add levelId from API response
+          courseId: course.course_id || courseId // Add courseId from API response or use the route param
         };
         
         setCourseData(courseData);
+        
+        // Debug: Log the courseData that was set
+        console.log("[CourseDetailsPage] CourseData set with values:", {
+          levelId: courseData.levelId,
+          courseId: courseData.courseId,
+          packageSessionId: courseData.packageSessionId,
+          levelIdFromAPI: course.level_id,
+          courseIdFromAPI: course.course_id
+        });
         
         // Check if lead collection should be shown based on JSON configuration
         const globalSettings = catalogueData?.globalSettings as any;
@@ -344,11 +361,27 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
     }
   }, [instituteThemeCode]);
 
+  // Listen for openLeadCollection event from HeaderComponent
+  useEffect(() => {
+    const handleOpenLeadCollection = () => {
+      console.log("[CourseDetailsPage] Received openLeadCollection event from HeaderComponent");
+      setShowLeadCollection(true);
+    };
+
+    window.addEventListener('openLeadCollection', handleOpenLeadCollection);
+    
+    return () => {
+      window.removeEventListener('openLeadCollection', handleOpenLeadCollection);
+    };
+  }, []);
+
   const handleLeadCollectionClose = () => {
+    console.log("[CourseDetailsPage] Closing lead collection modal, catalogueData:", catalogueData);
     setShowLeadCollection(false);
   };
 
   const handleLeadCollectionSubmit = () => {
+    console.log("[CourseDetailsPage] Lead collection form submitted");
     setShowLeadCollection(false);
   };
 
@@ -379,7 +412,22 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
   return (
     <div className="min-h-screen bg-white w-full">
+      {/* Debug Info */}
+      {console.log("CourseDetailsPage render state:", {
+        isLoading,
+        catalogueData: !!catalogueData,
+        showLeadCollection,
+        enrollmentDialogOpen: enrollmentDialogOpen
+      })}
+
       {/* Render header and footer - add them if not in JSON */}
+      {!catalogueData && (
+        <div className="container mx-auto p-8 text-center">
+          <h2 className="text-2xl font-semibold text-gray-900 mb-4">Loading Course Catalogue...</h2>
+          <p className="text-gray-600">Please wait while we load the course information.</p>
+        </div>
+      )}
+      
       {catalogueData && (
         <>
           {/* Header from JSON globalSettings */}
@@ -420,12 +468,160 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
             {/* Main Content */}
             <div className="lg:col-span-2 space-y-4">
+              {/* Course Overview Card - Mobile First */}
+              <div className="lg:hidden">
+                <div
+                  className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
+                  style={{ animationDelay: "0.7s" }}
+                >
+                  {/* Background gradient overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
+
+                  {/* Floating orb effect */}
+                  <div className="absolute top-0 right-0 w-12 h-12 bg-primary-100/20 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3"></div>
+
+                  <div className="relative">
+                    {/* Header */}
+                    <div className="flex items-center space-x-2 mb-4">
+                      <div className="p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg shadow-sm">
+                        <svg className="w-4 h-4 text-primary-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 2L3 7v11a1 1 0 001 1h12a1 1 0 001-1V7l-7-5zM8 15V9h4v6H8z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                      <h2 className="text-base font-bold text-gray-900">
+                        Course Overview
+                      </h2>
+                    </div>
+
+                    {/* Course Stats */}
+                    <div className="space-y-3">
+                      {/* Price - Only show if payment is enabled */}
+                      {catalogueData?.globalSettings?.payment?.enabled !== false && (
+                        <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-primary-50 to-primary-100 rounded-lg border border-primary-200">
+                          <span className="text-xs font-medium text-primary-700">Price</span>
+                          <span className="text-lg font-bold text-primary-800">
+                            {courseData.price === 0 ? "Free" : `$${courseData.price}`}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Rating */}
+                      <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg">
+                        <span className="text-xs font-medium text-gray-700">Rating</span>
+                        <div className="flex items-center space-x-1">
+                          <div className="flex items-center">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <svg
+                                key={star}
+                                className={`w-3 h-3 ${
+                                  star <= Math.floor(courseData.rating)
+                                    ? "text-yellow-400"
+                                    : "text-gray-300"
+                                }`}
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                              >
+                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                              </svg>
+                            ))}
+                          </div>
+                          <span className="text-xs font-bold text-gray-900">
+                            {courseData.rating > 0 ? courseData.rating.toFixed(1) : "No rating"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Level */}
+                      <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg">
+                        <span className="text-xs font-medium text-gray-700">Level</span>
+                        <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
+                          {courseData.level}
+                        </span>
+                      </div>
+
+                      {/* Duration */}
+                      {courseData.duration && (
+                        <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg">
+                          <span className="text-xs font-medium text-gray-700">Duration</span>
+                          <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
+                            {courseData.duration}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Instructor */}
+                      {courseData.instructor && (
+                        <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg">
+                          <span className="text-xs font-medium text-gray-700">Instructor</span>
+                          <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
+                            {courseData.instructor}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Enroll Button */}
+                      <button
+                        onClick={() => {
+                          console.log("[CourseDetailsPage] Enroll button clicked!");
+                          // Check if payment is disabled and lead collection is enabled
+                          const globalSettings = catalogueData?.globalSettings as any;
+                          const leadCollectionConfig = globalSettings?.leadCollection;
+                          const paymentConfig = globalSettings?.payment;
+                          
+                          // Check if payment is explicitly disabled (showPayment=false)
+                          const showPayment = paymentConfig?.enabled === true;
+                          const leadCollectionEnabled = leadCollectionConfig?.enabled;
+                          
+                          console.log("Payment config:", paymentConfig);
+                          console.log("Lead collection config:", leadCollectionConfig);
+                          console.log("Show payment:", showPayment);
+                          console.log("Lead collection enabled:", leadCollectionEnabled);
+                          
+                          // Check if this is a "Get Started" button (when payment is disabled)
+                          const isGetStartedButton = catalogueData?.globalSettings?.payment?.enabled === false;
+                          
+                          // If this is a "Get Started" button or payment is disabled, always open lead collection
+                          if (isGetStartedButton || !showPayment) {
+                            console.log("Get Started button clicked - opening lead collection modal!");
+                            console.log("Setting showLeadCollection to true");
+                            setShowLeadCollection(true);
+                          } else {
+                            console.log("Enroll button clicked - opening enrollment payment dialog!");
+                            setEnrollmentDialogOpen(true);
+                          }
+                        }}
+                        className="w-full text-white py-3 px-4 rounded-lg text-sm font-semibold transition-all duration-200 transform shadow-lg"
+                        style={{
+                          backgroundColor: domainRouting.instituteThemeCode ? 
+                            `hsl(var(--primary))` : 
+                            '#3b82f6'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'translateY(-1px)';
+                          e.currentTarget.style.boxShadow = '0 8px 25px rgba(0,0,0,0.15)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.boxShadow = '0 4px 15px rgba(0,0,0,0.1)';
+                        }}
+                      >
+                        {catalogueData?.globalSettings?.payment?.enabled !== false 
+                          ? (courseData.price === 0 ? "Enroll for Free" : "Enroll Now")
+                          : "Get Started"
+                        }
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Course Structure */}
               <CourseStructureDetails
                 courseDepth={courseData.courseDepth}
-                courseId={courseId}
+                courseId={courseData.courseId || courseId}
                 instituteId={instituteId}
                 packageSessionId={courseData.packageSessionId}
+                levelId={courseData.levelId}
               />
 
               {/* Content Sections in Card Layout */}
@@ -459,7 +655,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                 )}
 
                 {/* About Course Section */}
-                {courseData.aboutCourse && (
+                {courseData.aboutCourse && courseData.aboutCourse.trim() !== "" && (
                   <div
                     className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
                     style={{ animationDelay: "0.4s" }}
@@ -593,9 +789,9 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             {/* Sidebar */}
             <div className="lg:col-span-1">
               <div className="sticky top-4 space-y-4 lg:max-h-[calc(100vh-1rem)] overflow-y-auto">
-                {/* Course Overview Card */}
+                {/* Course Overview Card - Hidden on mobile, shown on desktop */}
                 <div
-                  className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
+                  className="hidden lg:block relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
                   style={{ animationDelay: "0.7s" }}
                 >
                   {/* Background gradient overlay */}
@@ -619,13 +815,15 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
                     {/* Course Stats */}
                     <div className="space-y-3">
-                      {/* Price */}
+                      {/* Price - Only show if payment is enabled */}
+                      {catalogueData?.globalSettings?.payment?.enabled !== false && (
                       <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-primary-50 to-primary-100 rounded-lg border border-primary-200">
                         <span className="text-xs font-medium text-primary-700">Price</span>
                         <span className="text-lg font-bold text-primary-800">
                           {courseData.price === 0 ? "Free" : `$${courseData.price}`}
                         </span>
                       </div>
+                      )}
 
                       {/* Rating */}
                       <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg">
@@ -687,8 +885,33 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                     <div className="mt-4">
                       <button 
                         onClick={() => {
-                          console.log("Enroll button clicked - opening enrollment payment dialog!");
-                          setEnrollmentDialogOpen(true);
+                          console.log("[CourseDetailsPage] Enroll button clicked!");
+                          // Check if payment is disabled and lead collection is enabled
+                          const globalSettings = catalogueData?.globalSettings as any;
+                          const leadCollectionConfig = globalSettings?.leadCollection;
+                          const paymentConfig = globalSettings?.payment;
+                          
+                          // Check if payment is explicitly disabled (showPayment=false)
+                          const showPayment = paymentConfig?.enabled === true;
+                          const leadCollectionEnabled = leadCollectionConfig?.enabled;
+                          
+                          console.log("Payment config:", paymentConfig);
+                          console.log("Lead collection config:", leadCollectionConfig);
+                          console.log("Show payment:", showPayment);
+                          console.log("Lead collection enabled:", leadCollectionEnabled);
+                          
+                          // Check if this is a "Get Started" button (when payment is disabled)
+                          const isGetStartedButton = catalogueData?.globalSettings?.payment?.enabled === false;
+                          
+                          // If this is a "Get Started" button or payment is disabled, always open lead collection
+                          if (isGetStartedButton || !showPayment) {
+                            console.log("Get Started button clicked - opening lead collection modal!");
+                            console.log("Setting showLeadCollection to true");
+                            setShowLeadCollection(true);
+                          } else {
+                            console.log("Enroll button clicked - opening enrollment payment dialog!");
+                            setEnrollmentDialogOpen(true);
+                          }
                         }}
                         className="w-full text-white py-3 px-4 rounded-lg text-sm font-semibold transition-all duration-200 transform shadow-lg"
                         style={{
@@ -752,15 +975,56 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             const globalSettings = catalogueData?.globalSettings as any;
             const leadCollectionConfig = globalSettings?.leadCollection;
             
+            console.log("Lead collection settings being passed:", {
+              catalogueData,
+              globalSettings,
+              leadCollectionConfig,
+              fields: leadCollectionConfig?.fields,
+              formStyle: leadCollectionConfig?.formStyle
+            });
+            
             return {
-              enabled: leadCollectionConfig?.enabled || false,
+              enabled: true, // Force enable when triggered by buttons
               mandatory: leadCollectionConfig?.mandatory || false,
               inviteLink: leadCollectionConfig?.inviteLink || null,
-              fields: leadCollectionConfig?.fields || ["name", "email", "phone"]
+              formStyle: leadCollectionConfig?.formStyle || {
+                type: 'single',
+                showProgress: false,
+                progressType: 'bar',
+                transition: 'slide'
+              },
+              fields: leadCollectionConfig?.fields || [
+                {
+                  name: "name",
+                  label: "Full Name",
+                  type: "text",
+                  required: true,
+                  step: 1
+                },
+                {
+                  name: "email",
+                  label: "Email",
+                  type: "email",
+                  required: true,
+                  step: 2
+                },
+                {
+                  name: "phone",
+                  label: "Phone Number",
+                  type: "tel",
+                  required: true,
+                  step: 3
+                }
+              ]
             };
           })()}
           instituteId={instituteId}
-          mandatory={false}
+          mandatory={(() => {
+            const mandatoryValue = catalogueData?.globalSettings?.leadCollection?.mandatory;
+            console.log("[CourseDetailsPage] Mandatory value from JSON:", mandatoryValue);
+            console.log("[CourseDetailsPage] Full leadCollection config:", catalogueData?.globalSettings?.leadCollection);
+            return mandatoryValue || false;
+          })()}
         />
       )}
 
@@ -845,6 +1109,49 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           }}
         />
       )}
+
+      {/* Mobile Action Buttons - Fixed at bottom for course details page */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 p-4">
+        <div className="flex flex-col gap-3">
+          {/* Get Started Button */}
+          <button
+            onClick={() => {
+              console.log("[CourseDetailsPage] Mobile Get Started button clicked");
+              setShowLeadCollection(true);
+            }}
+            className="w-full px-4 py-2 text-white font-medium hover:opacity-90 rounded-md transition-colors"
+            style={{
+              backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+            }}
+          >
+            Get Started
+          </button>
+          
+          {/* Login Text */}
+          <div className="text-center">
+            <span
+              onClick={() => navigate({ to: '/login' })}
+              className="cursor-pointer text-sm transition-colors"
+              onMouseEnter={(e) => {
+                e.currentTarget.style.opacity = '0.8';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.opacity = '1';
+              }}
+            >
+              <span className="text-black">Already have an account? </span>
+              <span 
+                className="underline"
+                style={{
+                  color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                }}
+              >
+                Login
+              </span>
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

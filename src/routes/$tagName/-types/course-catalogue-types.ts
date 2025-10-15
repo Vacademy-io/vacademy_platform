@@ -6,25 +6,54 @@ export interface GlobalSettings {
   leadCollection: {
     enabled: boolean;
     mandatory: boolean;
-    inviteLink: string;
-    fields: string[];
+    inviteLink: string | null;
+    formStyle: {
+      type: "single" | "multiStep";
+      showProgress: boolean;
+      progressType: "bar" | "dots" | "steps";
+      transition: "slide" | "fade";
+    };
+    fields: Array<{
+      name: string;
+      label: string;
+      type: "text" | "email" | "tel" | "chips" | "dropdown";
+      required: boolean;
+      step: number;
+      options?: Array<{
+        label: string;
+        value: string;
+        levelId?: string;
+        packageSessionId?: string;
+      }>;
+      style?: {
+        variant?: "filled" | "outlined";
+        chipColor?: string;
+        allowMultiple?: boolean;
+      };
+    }>;
   };
-  enrollment: {
+  enrquiry: {
     enabled: boolean;
     requirePayment: boolean;
   };
   payment: {
     enabled: boolean;
     provider: "razorpay" | "stripe" | "paypal";
+    fields: string[];
   };
   layout?: {
     header?: {
       id: string;
       type: string;
+      enabled: boolean;
       props: {
         logo?: string;
         title?: string;
         navigation?: Array<{
+          label: string;
+          route: string;
+        }>;
+        authLinks?: Array<{
           label: string;
           route: string;
         }>;
@@ -33,6 +62,7 @@ export interface GlobalSettings {
     footer?: {
       id: string;
       type: string;
+      enabled: boolean;
       props: {
         text?: string;
         links?: Array<{
@@ -47,18 +77,55 @@ export interface GlobalSettings {
 export interface Page {
   id: string;
   route: string;
-  title: string;
+  title?: string;
   components: Component[];
 }
 
 export interface Component {
   id: string;
   type: string;
+  enabled: boolean;
   props: Record<string, any>;
+}
+
+export interface IntroPage {
+  enabled: boolean;
+  fullScreen: boolean;
+  showHeader: boolean;
+  logo?: {
+    height: string;
+    alignment: "left" | "center" | "right";
+  };
+  imageSlider: {
+    autoPlay: boolean;
+    interval: number;
+    images: Array<{
+      source: string;
+      caption: string;
+    }>;
+    styles: {
+      height: string;
+      objectFit: "contain" | "cover" | "fill" | "none" | "scale-down";
+      transitionEffect: "fade" | "slide" | "zoom";
+    };
+  };
+  actions: {
+    alignment: "top" | "center" | "bottom";
+    buttons: Array<{
+      label: string;
+      action: "loadNextSection" | "navigateToLogin" | "openLeadCollection";
+      style: "primary" | "outlined" | "text";
+    }>;
+  };
+  afterIntro: {
+    action: "loadAllSections" | "navigateToCatalogue";
+    target: string;
+  };
 }
 
 export interface CourseCatalogueData {
   globalSettings: GlobalSettings;
+  introPage?: IntroPage;
   pages: Page[];
 }
 
@@ -102,6 +169,7 @@ export interface CourseCatalogProps {
 export interface CourseDetailsProps {
   showEnroll: boolean;
   showPayment: boolean;
+  showEnquiry: boolean;
   fields: {
     title: string;
     description: string;
@@ -115,6 +183,38 @@ export interface CourseDetailsProps {
     rating: string;
     price: string;
   };
+  leadCollection?: {
+    enabled: boolean;
+    mandatory: boolean;
+    inviteLink: string | null;
+    formStyle: {
+      type: "single" | "multiStep";
+      showProgress: boolean;
+      progressType: "bar" | "dots" | "steps";
+      transition: "slide" | "fade";
+    };
+    fields: Array<{
+      name: string;
+      label: string;
+      type: "text" | "email" | "tel" | "chips" | "dropdown";
+      required: boolean;
+      step: number;
+      options?: Array<{
+        label: string;
+        value: string;
+        levelId?: string;
+        packageSessionId?: string;
+      }>;
+      style?: {
+        variant?: "filled" | "outlined";
+        chipColor?: string;
+        allowMultiple?: boolean;
+      };
+    }>;
+  };
+  instituteId?: string;
+  courseId?: string;
+  courseData?: any;
 }
 
 export interface CourseRecommendationsProps {

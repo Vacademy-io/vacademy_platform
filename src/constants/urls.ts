@@ -98,6 +98,7 @@ export const GET_LAST_7_DAYS_PROGRESS = `${BASE_URL}/admin-core-service/learner-
 // Live session
 export const LIVE_SESSION_REQUEST_OTP = `${BASE_URL}/notification-service/v1/send-email-otp`;
 export const LIVE_SESSION_VERIFY_OTP = `${BASE_URL}/notification-service/v1/verify-email-otp`;
+export const LEAD_COLLECTION_ENROLL_URL = `${BASE_URL}/admin-core-service/v1/learner/enroll/detail`;
 export const LIVE_SESSION_GET_REGISTRATION_DATA = `${BASE_URL}/admin-core-service/live-session/get-registration-data`;
 export const LIVE_SESSION_GET_LIVE_AND_UPCOMING = `${BASE_URL}/admin-core-service/get-sessions/learner/live-and-upcoming`;
 export const LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID = `${BASE_URL}/admin-core-service/get-sessions/by-schedule-id`;

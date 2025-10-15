@@ -13,8 +13,9 @@ interface MediaItemComponentProps {
 }
 
 const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEdges }) => {
-  const [resolvedUrl, setResolvedUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Initialize with placeholder to prevent flickering
+  const [resolvedUrl, setResolvedUrl] = useState<string>("/api/placeholder/400/300");
+  const [loading, setLoading] = useState(false);
   const [hasTriedLoading, setHasTriedLoading] = useState(false);
 
   useEffect(() => {
@@ -26,7 +27,13 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
     }
     
     const loadUrl = async () => {
-      if (!item.url || item.url.includes('/api/placeholder/')) {
+      if (!item.url || 
+          item.url === null || 
+          item.url === undefined ||
+          item.url.includes('/api/placeholder/') || 
+          item.url.trim() === '' ||
+          item.url === 'null' ||
+          item.url === 'undefined') {
         if (isMounted) {
           setLoading(false);
           setResolvedUrl("/api/placeholder/400/300");
@@ -59,13 +66,14 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
     return () => { isMounted = false; };
   }, [item.url, hasTriedLoading]);
 
-  if (loading) {
-    return (
-      <div className="w-full h-64 bg-gray-200 flex items-center justify-center">
-        <div className="text-gray-400 text-sm">Loading...</div>
-      </div>
-    );
-  }
+  // Remove loading state to prevent flickering
+  // if (loading) {
+  //   return (
+  //     <div className="w-full h-64 bg-gray-200 flex items-center justify-center">
+  //       <div className="text-gray-400 text-sm">Loading...</div>
+  //     </div>
+  //   );
+  // }
 
   return (
     <div className="relative group">

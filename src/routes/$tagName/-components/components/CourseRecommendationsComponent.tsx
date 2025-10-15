@@ -8,6 +8,7 @@ import axios from "axios";
 interface CourseRecommendationsComponentProps extends CourseRecommendationsProps {
   instituteId: string;
   tagName: string;
+  globalSettings?: any;
 }
 
 export const CourseRecommendationsComponent: React.FC<CourseRecommendationsComponentProps> = ({
@@ -15,6 +16,7 @@ export const CourseRecommendationsComponent: React.FC<CourseRecommendationsCompo
   limit = 3,
   instituteId,
   tagName,
+  globalSettings,
 }) => {
   const navigate = useNavigate();
   const [recommendedCourses, setRecommendedCourses] = useState<any[]>([]);
@@ -143,9 +145,12 @@ export const CourseRecommendationsComponent: React.FC<CourseRecommendationsCompo
                   {course.description}
                 </p>
                 <div className="flex justify-between items-center">
-                  <span className="text-lg font-bold text-primary-600">
-                    {course.price === 0 ? "Free" : `$${course.price}`}
-                  </span>
+                  {/* Price - Only show if payment is enabled */}
+                  {globalSettings?.payment?.enabled !== false && (
+                    <span className="text-lg font-bold text-primary-600">
+                      {course.price === 0 ? "Free" : `$${course.price}`}
+                    </span>
+                  )}
                   <span className="text-sm text-gray-500">
                     by {course.instructor}
                   </span>

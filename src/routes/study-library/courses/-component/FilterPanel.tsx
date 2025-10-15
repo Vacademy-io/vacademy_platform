@@ -256,7 +256,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                     />
 
                     <FilterSection
-                        title="Tags"
+                        title="Popular Tags"
                         items={tags}
                         selectedItems={selectedTags}
                         handleChange={onTagChange}

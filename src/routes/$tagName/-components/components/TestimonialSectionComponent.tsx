@@ -25,7 +25,8 @@ const TestimonialCard: React.FC<{ testimonial: Testimonial; hoverEffect: string 
   testimonial,
   hoverEffect 
 }) => {
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  // Initialize with placeholder to prevent flickering
+  const [avatarUrl, setAvatarUrl] = useState<string>("/api/placeholder/60/60");
   const [loadingAvatar, setLoadingAvatar] = useState(false);
   const [hasTriedLoading, setHasTriedLoading] = useState(false);
 
@@ -40,7 +41,13 @@ const TestimonialCard: React.FC<{ testimonial: Testimonial; hoverEffect: string 
     const loadAvatar = async () => {
       console.log("[TestimonialCard] Loading avatar with URL:", testimonial.avatar);
       
-      if (!testimonial.avatar || testimonial.avatar.includes('/api/placeholder/')) {
+      if (!testimonial.avatar || 
+          testimonial.avatar === null || 
+          testimonial.avatar === undefined ||
+          testimonial.avatar.includes('/api/placeholder/') || 
+          testimonial.avatar.trim() === '' ||
+          testimonial.avatar === 'null' ||
+          testimonial.avatar === 'undefined') {
         console.log("[TestimonialCard] Using placeholder - no valid avatar URL");
         if (isMounted) {
           setLoadingAvatar(false);
@@ -104,27 +111,14 @@ const TestimonialCard: React.FC<{ testimonial: Testimonial; hoverEffect: string 
     <div className={`bg-white p-6 rounded-lg shadow-md transition-all duration-300 ${getHoverClass()}`}>
       <div className="flex items-start space-x-4">
         <div className="flex-shrink-0">
-          {loadingAvatar ? (
-            <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center">
-              <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
-            </div>
-          ) : (
-            <img
-              src={avatarUrl || "/api/placeholder/60/60"}
-              alt={testimonial.name}
-              className="w-12 h-12 rounded-full object-cover"
-              onError={(e) => {
-                // Only set placeholder if we haven't already tried loading
-                if (!hasTriedLoading) {
-                  e.currentTarget.src = "/api/placeholder/60/60";
-                }
-              }}
-              onLoad={() => {
-                // Mark as successfully loaded
-                setHasTriedLoading(true);
-              }}
-            />
-          )}
+          <img
+            src={avatarUrl || "/api/placeholder/60/60"}
+            alt={testimonial.name}
+            className="w-12 h-12 rounded-full object-cover"
+            onError={(e) => {
+              e.currentTarget.src = "/api/placeholder/60/60";
+            }}
+          />
         </div>
         <div className="flex-1">
           <blockquote className="text-gray-700 mb-4 italic">
@@ -132,7 +126,7 @@ const TestimonialCard: React.FC<{ testimonial: Testimonial; hoverEffect: string 
           </blockquote>
           <div>
             <div className="font-semibold text-gray-900">{testimonial.name}</div>
-            <div className="text-sm text-gray-600">{testimonial.role}</div>
+            <div className="text-sm text-gray-600 whitespace-pre-line">{testimonial.role}</div>
           </div>
         </div>
       </div>

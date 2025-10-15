@@ -2,10 +2,14 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LeadCollectionModal } from "./LeadCollectionModal";
+import { IntroPageComponent } from "./IntroPageComponent";
 import { JsonRenderer } from "./JsonRenderer";
 import { CourseCatalogueService } from "../-services/course-catalogue-service";
 import { CourseCatalogueData } from "../-types/course-catalogue-types";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
+import { Preferences } from "@capacitor/preferences";
+import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 
 interface CourseCataloguePageProps {
   tagName: string;
@@ -18,12 +22,51 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   instituteId,
   instituteThemeCode,
 }) => {
+  console.log("[CourseCataloguePage] Component mounted with props:", {
+    tagName,
+    instituteId,
+    instituteThemeCode
+  });
+  
   const navigate = useNavigate();
   const domainRouting = useDomainRouting();
   const [catalogueData, setCatalogueData] = useState<CourseCatalogueData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showLeadCollection, setShowLeadCollection] = useState(false);
+  const [showIntroPage, setShowIntroPage] = useState(false);
+  const [introCompleted, setIntroCompleted] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
+  // Check if user is authenticated and redirect to login if they are
+  useEffect(() => {
+    const checkAuthentication = async () => {
+      try {
+        const token = await getTokenFromStorage("accessToken");
+        const studentDetails = await Preferences.get({ key: "StudentDetails" });
+        const instituteDetails = await Preferences.get({ key: "InstituteDetails" });
+
+        const hasToken = !isNullOrEmptyOrUndefined(token);
+        const hasStudentDetails = !isNullOrEmptyOrUndefined(studentDetails);
+        const hasInstituteDetails = !isNullOrEmptyOrUndefined(instituteDetails);
+
+        // If user is authenticated, redirect to login page
+        if (hasToken && hasStudentDetails && hasInstituteDetails) {
+          console.log("[CourseCataloguePage] User is authenticated, redirecting to login");
+          navigate({ to: "/login" });
+          return;
+        }
+
+        console.log("[CourseCataloguePage] User is not authenticated, showing catalogue");
+      } catch (error) {
+        console.error("[CourseCataloguePage] Error checking authentication:", error);
+      } finally {
+        setIsCheckingAuth(false);
+      }
+    };
+
+    checkAuthentication();
+  }, [navigate]);
 
   // Fetch course catalogue data
   useEffect(() => {
@@ -34,8 +77,27 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         
         setCatalogueData(data);
         
-        // Check if lead collection should be shown
-        if (data.globalSettings.leadCollection.enabled) {
+        // Check if intro page should be shown based on localStorage
+        const introPageSeenKey = `introPageSeen_${instituteId}_${tagName}`;
+        const hasSeenIntroPage = localStorage.getItem(introPageSeenKey) === 'true';
+        
+        console.log("Checking intro page and lead collection:", {
+          introPageEnabled: data.introPage?.enabled,
+          leadCollectionEnabled: data.globalSettings.leadCollection.enabled,
+          hasSeenIntroPage,
+          introPageSeenKey
+        });
+        
+        if (data.introPage?.enabled && !hasSeenIntroPage) {
+          console.log("Setting showIntroPage to true - first time visit or cache cleared");
+          setShowIntroPage(true);
+        } else if (data.introPage?.enabled && hasSeenIntroPage) {
+          console.log("Intro page already seen, skipping intro page");
+          // Mark intro as completed since user has already seen it
+          setIntroCompleted(true);
+        } else if (data.globalSettings.leadCollection.enabled) {
+          // Only show lead collection if no intro page or intro already seen
+          console.log("Setting showLeadCollection to true (no intro page or intro already seen)");
           setShowLeadCollection(true);
         }
       } catch (err) {
@@ -62,20 +124,75 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     }
   }, [instituteThemeCode]);
 
+  // Listen for custom event to open lead collection
+  useEffect(() => {
+    const handleOpenLeadCollection = () => {
+      console.log("[CourseCataloguePage] Received openLeadCollection event");
+      setShowLeadCollection(true);
+    };
+
+    console.log("[CourseCataloguePage] Adding openLeadCollection event listener");
+    window.addEventListener('openLeadCollection', handleOpenLeadCollection);
+    
+    return () => {
+      console.log("[CourseCataloguePage] Removing openLeadCollection event listener");
+      window.removeEventListener('openLeadCollection', handleOpenLeadCollection);
+    };
+  }, []);
+
   // Handle lead collection modal
   const handleLeadCollectionClose = () => {
+    console.log("[CourseCataloguePage] Closing lead collection modal");
     if (catalogueData?.globalSettings.leadCollection.mandatory) {
       // If mandatory, don't allow closing
+      console.log("[CourseCataloguePage] Lead collection is mandatory, not allowing close");
       return;
     }
     setShowLeadCollection(false);
   };
 
   const handleLeadCollectionSubmit = () => {
+    console.log("[CourseCataloguePage] Lead collection form submitted");
     setShowLeadCollection(false);
   };
 
-  if (isLoading) {
+  // Intro page handlers
+  const handleIntroGetStarted = () => {
+    // This will be handled internally by IntroPageComponent
+    // No need to show separate lead collection modal
+  };
+
+  const handleIntroLogin = () => {
+    // Navigate to login page
+    navigate({ to: '/login' });
+  };
+
+  const handleIntroComplete = () => {
+    setIntroCompleted(true);
+    setShowIntroPage(false);
+    
+    // Mark intro page as seen in localStorage
+    const introPageSeenKey = `introPageSeen_${instituteId}_${tagName}`;
+    localStorage.setItem(introPageSeenKey, 'true');
+    console.log(`[CourseCataloguePage] Marked intro page as seen: ${introPageSeenKey}`);
+    
+    // Show lead collection if enabled and not already shown
+    if (catalogueData?.globalSettings.leadCollection.enabled && !showLeadCollection) {
+      setShowLeadCollection(true);
+    }
+  };
+
+  const handleIntroClose = () => {
+    setShowIntroPage(false);
+    setIntroCompleted(true);
+    
+    // Mark intro page as seen in localStorage even when closed
+    const introPageSeenKey = `introPageSeen_${instituteId}_${tagName}`;
+    localStorage.setItem(introPageSeenKey, 'true');
+    console.log(`[CourseCataloguePage] Marked intro page as seen (closed): ${introPageSeenKey}`);
+  };
+
+  if (isLoading || isCheckingAuth) {
     return <DashboardLoader />;
   }
 
@@ -100,10 +217,33 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     );
   }
 
+  // Debug logging
+  console.log("CourseCataloguePage render state:", {
+    isLoading,
+    error,
+    showIntroPage,
+    introCompleted,
+    showLeadCollection,
+    catalogueData: !!catalogueData
+  });
+
   return (
-    <div className="min-h-screen bg-white w-full">
-      {/* Render header and footer from JSON, plus course catalog */}
-      {catalogueData && (
+    <div className="min-h-screen bg-white w-full pb-20 md:pb-0 pt-20 md:pt-0">
+      {/* Intro Page - Show first if enabled and not completed */}
+      {showIntroPage && catalogueData?.introPage && (
+        <IntroPageComponent
+          introPage={catalogueData.introPage}
+          onGetStarted={handleIntroGetStarted}
+          onLogin={handleIntroLogin}
+          onComplete={handleIntroComplete}
+          onClose={handleIntroClose}
+          leadCollectionSettings={catalogueData.globalSettings.leadCollection}
+          instituteId={instituteId}
+        />
+      )}
+
+      {/* Main Content - Only show after intro is completed or if no intro page */}
+      {(!showIntroPage || introCompleted) && catalogueData && (
         <>
           {/* Header from JSON globalSettings */}
           {(catalogueData.globalSettings as any).layout?.header && (catalogueData.globalSettings as any).layout?.header?.enabled !== false && (
@@ -119,7 +259,6 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
               tagName={tagName}
             />
           )}
-
 
           {/* Header Section with Theme Colors - Only show if title exists in JSON */}
           {catalogueData?.pages?.[0]?.title && (
@@ -169,16 +308,68 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         </>
       )}
 
-      {/* Lead Collection Modal */}
-      {showLeadCollection && (
+      {/* Lead Collection Modal - Show when requested and intro is completed or not active */}
+      {showLeadCollection && catalogueData && (!showIntroPage || introCompleted) && (
         <LeadCollectionModal
           isOpen={showLeadCollection}
           onClose={handleLeadCollectionClose}
           onSubmit={handleLeadCollectionSubmit}
-          settings={catalogueData.globalSettings.leadCollection}
+          settings={{
+            enabled: true, // Force enable when triggered by buttons
+            mandatory: catalogueData.globalSettings.leadCollection.mandatory,
+            inviteLink: catalogueData.globalSettings.leadCollection.inviteLink,
+            formStyle: catalogueData.globalSettings.leadCollection.formStyle,
+            fields: catalogueData.globalSettings.leadCollection.fields || []
+          }}
           instituteId={instituteId}
           mandatory={catalogueData.globalSettings.leadCollection.mandatory}
         />
+      )}
+
+
+      {/* Mobile Action Buttons - Fixed at bottom for catalogue page */}
+      {(!showIntroPage || introCompleted) && catalogueData && (
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 p-4">
+          <div className="flex flex-col gap-3">
+            {/* Get Started Button */}
+            <button
+              onClick={() => {
+                console.log("[CourseCataloguePage] Mobile Get Started button clicked");
+                setShowLeadCollection(true);
+              }}
+              className="w-full px-4 py-2 text-white font-medium hover:opacity-90 rounded-md transition-colors"
+              style={{
+                backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+              }}
+            >
+              Get Started
+            </button>
+            
+            {/* Login Text */}
+            <div className="text-center">
+              <span
+                onClick={handleIntroLogin}
+                className="cursor-pointer text-sm transition-colors"
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.opacity = '0.8';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.opacity = '1';
+                }}
+              >
+                <span className="text-black">Already have an account? </span>
+                <span 
+                  className="underline"
+                  style={{
+                    color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                  }}
+                >
+                  Login
+                </span>
+              </span>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

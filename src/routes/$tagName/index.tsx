@@ -9,9 +9,15 @@ export const Route = createFileRoute("/$tagName/")({
   component: RouteComponent,
 });
 
+console.log("[Course Catalogue] Route file loaded");
+
 function RouteComponent() {
-  const { tagName } = Route.useParams() as { tagName: string };
-  const domainRouting = useDomainRouting();
+  try {
+    console.log("[Course Catalogue] RouteComponent function called");
+    const { tagName } = Route.useParams() as { tagName: string };
+    const domainRouting = useDomainRouting();
+    
+    console.log("[Course Catalogue] RouteComponent mounted with tagName:", tagName);
 
   // Debug logging to track domain routing
   useEffect(() => {
@@ -72,4 +78,8 @@ function RouteComponent() {
       instituteThemeCode={domainRouting.instituteThemeCode}
     />
   );
+  } catch (error) {
+    console.error("[Course Catalogue] Error in RouteComponent:", error);
+    return <RootNotFoundComponent />;
+  }
 }

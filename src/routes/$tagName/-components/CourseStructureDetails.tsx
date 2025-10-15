@@ -60,6 +60,7 @@ interface CourseStructureDetailsProps {
   courseId: string;
   instituteId: string;
   packageSessionId: string;
+  levelId?: string; // Add levelId parameter
 }
 
 export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
@@ -67,12 +68,19 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
   courseId,
   instituteId,
   packageSessionId,
+  levelId,
 }) => {
   console.log("[CourseStructureDetails] Component props:", {
     courseDepth,
     courseId,
     instituteId,
-    packageSessionId
+    packageSessionId,
+    levelId,
+    levelIdType: typeof levelId,
+    levelIdValue: levelId,
+    levelIdIsUndefined: levelId === undefined,
+    levelIdIsNull: levelId === null,
+    levelIdIsEmpty: levelId === ""
   });
 
   const [isLoading, setIsLoading] = useState(true);
@@ -82,7 +90,6 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
   const [openSubjects, setOpenSubjects] = useState<Set<string>>(new Set());
   const [openModules, setOpenModules] = useState<Set<string>>(new Set());
   const [openChapters, setOpenChapters] = useState<Set<string>>(new Set());
-  const [openSlides, setOpenSlides] = useState<Set<string>>(new Set());
 
   // Function to get slide icon and color based on slide type
   const getSlideIcon = (slide: Slide) => {
@@ -120,13 +127,14 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
     return { Icon: PresentationChart, color: "text-gray-500", label: "Slide" };
   };
 
-  // Step 1: Fetch package session data from init API
-  const fetchPackageSessionData = async () => {
-    console.log("[CourseStructureDetails] Step 1: Fetching package session data for:", packageSessionId);
+  // Step 1: Fetch subjects from init-details API
+  const fetchSubjectsFromInitDetails = async () => {
+    console.log("[CourseStructureDetails] Step 1: Fetching subjects from init-details API for packageSessionId:", packageSessionId);
     try {
       const baseUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_BASE_URL || "https://backend-stage.vacademy.io";
-      const url = `${baseUrl}/admin-core-service/open/v1/learner-study-library/init?instituteId=${instituteId}&packageSessionId=${packageSessionId}`;
-      console.log("[CourseStructureDetails] Init API URL:", url);
+      const url = `${baseUrl}/admin-core-service/open/v1/learner-study-library/init-details?packageSessionId=${packageSessionId}`;
+      
+      console.log("[CourseStructureDetails] Init-details API URL:", url);
       
       const response = await fetch(url, {
         method: 'GET',
@@ -140,10 +148,10 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
       }
       
       const data = await response.json();
-      console.log("[CourseStructureDetails] Package session data received:", data);
+      console.log("[CourseStructureDetails] Subjects data received:", data);
       return data;
     } catch (error) {
-      console.error("[CourseStructureDetails] Error fetching package session data:", error);
+      console.error("[CourseStructureDetails] Error fetching subjects data:", error);
       throw error;
     }
   };
@@ -269,74 +277,33 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
         setIsLoading(true);
         console.log("[CourseStructureDetails] Starting data load for course depth:", courseDepth);
 
-        // Step 1: Fetch package session data from init API
-        const packageSessionData = await fetchPackageSessionData();
-        console.log("[CourseStructureDetails] Package session data loaded");
-        console.log("[CourseStructureDetails] Raw package session data:", JSON.stringify(packageSessionData, null, 2));
+        // Step 1: Fetch subjects from init-details API
+        const subjectsData = await fetchSubjectsFromInitDetails();
+        console.log("[CourseStructureDetails] Subjects data loaded");
+        console.log("[CourseStructureDetails] Raw subjects data:", JSON.stringify(subjectsData, null, 2));
 
-        // Extract subjects from package session data for the specific courseId
+        // Transform subjects data to SubjectType format
         const subjects: SubjectType[] = [];
         
-        console.log("[CourseStructureDetails] Looking for courseId:", courseId);
-        console.log("[CourseStructureDetails] Looking for packageSessionId:", packageSessionId);
-        
-        if (Array.isArray(packageSessionData)) {
-          console.log("[CourseStructureDetails] Processing array with", packageSessionData.length, "courses");
+        if (Array.isArray(subjectsData)) {
+          console.log("[CourseStructureDetails] Processing subjects array with", subjectsData.length, "subjects");
           
-          // Find the specific course by courseId
-          const targetCourse = packageSessionData.find(courseData => courseData.course && courseData.course.id === courseId);
-          
-          if (targetCourse) {
-            console.log("[CourseStructureDetails] Found target course:", targetCourse.course.package_name);
+          subjectsData.forEach((subject: any, index: number) => {
+            console.log(`[CourseStructureDetails] Processing subject ${index}:`, subject);
             
-            if (targetCourse.sessions && Array.isArray(targetCourse.sessions)) {
-              console.log(`[CourseStructureDetails] Course has ${targetCourse.sessions.length} sessions`);
-              
-              // For now, let's use the first session since the session matching logic might be incorrect
-              // The packageSessionId might not match the session_dto.id in the response
-              const targetSession = targetCourse.sessions[0]; // Use first session as fallback
-              
-              console.log(`[CourseStructureDetails] Using session:`, targetSession.session_dto?.session_name || 'Unknown');
-              console.log(`[CourseStructureDetails] Session ID in response:`, targetSession.session_dto?.id);
-              console.log(`[CourseStructureDetails] Expected packageSessionId:`, packageSessionId);
-              
-              if (targetSession.level_with_details && Array.isArray(targetSession.level_with_details)) {
-                console.log(`[CourseStructureDetails] Session has ${targetSession.level_with_details.length} levels`);
-                
-                targetSession.level_with_details.forEach((level: any, levelIndex: number) => {
-                  console.log(`[CourseStructureDetails] Level ${levelIndex}:`, level.name);
-                  
-                  if (level.subjects && Array.isArray(level.subjects)) {
-                    console.log(`[CourseStructureDetails] Level has ${level.subjects.length} subjects`);
-                    
-                    level.subjects.forEach((subject: any, subjectIndex: number) => {
-                      console.log(`[CourseStructureDetails] Subject ${subjectIndex}:`, subject);
-                      
-                      if (subject.id) {
-                        const transformedSubject: SubjectType = {
-                          id: subject.id,
-                          subject_name: subject.subject_name || `Subject ${subjectIndex + 1}`,
-                          subject_order: subject.subject_order || subjectIndex,
-                          description: subject.description || '',
-                        };
-                        subjects.push(transformedSubject);
-                        console.log("[CourseStructureDetails] Added subject with real ID:", subject.id, subject.subject_name);
-                      }
-                    });
-                  }
-                });
-              } else {
-                console.log("[CourseStructureDetails] No level_with_details found in target session");
-              }
-            } else {
-              console.log("[CourseStructureDetails] No sessions found in target course");
+            if (subject.id) {
+              const transformedSubject: SubjectType = {
+                id: subject.id,
+                subject_name: subject.subject_name || `Subject ${index + 1}`,
+                subject_order: subject.subject_order || index,
+                description: subject.description || '',
+              };
+              subjects.push(transformedSubject);
+              console.log("[CourseStructureDetails] Added subject:", subject.id, subject.subject_name);
             }
-          } else {
-            console.log("[CourseStructureDetails] No course found with courseId:", courseId);
-            console.log("[CourseStructureDetails] Available course IDs:", packageSessionData.map((c: any) => c.course?.id));
-          }
+          });
         } else {
-          console.log("[CourseStructureDetails] PackageSessionData is not an array");
+          console.log("[CourseStructureDetails] Subjects data is not an array");
         }
         
         console.log("[CourseStructureDetails] Subjects extracted:", subjects.length);
@@ -520,53 +487,18 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
               });
             });
           });
-          setOpenSubjects(new Set(subjects.map(s => s.id)));
+          // Keep collapsed by default for all depths
+          console.log("[CourseStructureDetails] Depth 2: Will show chapters and slides (collapsed by default)");
         } else if (courseDepth === 3) {
           // Depth 3: Show chapters and slides
-          console.log("[CourseStructureDetails] Depth 3: Will show chapters and slides");
-          const allChapterIds = new Set<string>();
-          Object.values(modulesMap).forEach((modules) => {
-            modules.forEach((mod) => {
-              mod.chapters.forEach((ch) => {
-                allChapterIds.add(ch.id);
-              });
-            });
-          });
-          setOpenSubjects(new Set(subjects.map(s => s.id)));
-          setOpenChapters(allChapterIds);
+          console.log("[CourseStructureDetails] Depth 3: Will show chapters and slides (collapsed by default)");
         } else if (courseDepth === 4) {
           // Depth 4: Show modules, chapters, slides
-          console.log("[CourseStructureDetails] Depth 4: Will show modules, chapters, slides");
-          const allModuleIds = new Set<string>();
-          const allChapterIds = new Set<string>();
-          Object.values(modulesMap).forEach((modules) => {
-            modules.forEach((mod) => {
-              allModuleIds.add(mod.module.id);
-              mod.chapters.forEach((ch) => {
-                allChapterIds.add(ch.id);
-              });
-            });
-          });
-          setOpenSubjects(new Set(subjects.map(s => s.id)));
-          setOpenModules(allModuleIds);
-          setOpenChapters(allChapterIds);
+          console.log("[CourseStructureDetails] Depth 4: Will show modules, chapters, slides (collapsed by default)");
         } else if (courseDepth === 5) {
           // Depth 5: Show everything - subjects, modules, chapters, slides
-          console.log("[CourseStructureDetails] Depth 5: Will show full hierarchy");
-          const allSubjectIds = new Set<string>(subjects.map(s => s.id));
-          const allModuleIds = new Set<string>();
-          const allChapterIds = new Set<string>();
-          Object.values(modulesMap).forEach((modules) => {
-            modules.forEach((mod) => {
-              allModuleIds.add(mod.module.id);
-              mod.chapters.forEach((ch) => {
-                allChapterIds.add(ch.id);
-              });
-            });
-          });
-          setOpenSubjects(allSubjectIds);
-          setOpenModules(allModuleIds);
-          setOpenChapters(allChapterIds);
+          console.log("[CourseStructureDetails] Depth 5: Will show full hierarchy (collapsed by default)");
+          // Keep everything collapsed by default - users can expand as needed
         }
 
         console.log("[CourseStructureDetails] Data loading completed successfully");
@@ -605,9 +537,10 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
   };
 
   const toggleChapter = (chapterId: string) => {
+    const isCurrentlyOpen = openChapters.has(chapterId);
     toggleOpenState(chapterId, setOpenChapters);
-    // Load slides when chapter is expanded
-    if (!openChapters.has(chapterId)) {
+    // Load slides when chapter is expanded (if it wasn't open before)
+    if (!isCurrentlyOpen) {
       getSlidesWithChapterId(chapterId);
     }
   };
@@ -616,19 +549,13 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
     const allSubjectIds = new Set(studyLibraryData.map(s => s.id));
     const allModuleIds = new Set<string>();
     const allChapterIds = new Set<string>();
-    const allSlideIds = new Set<string>();
 
-    // Collect all module, chapter, and slide IDs
+    // Collect all module and chapter IDs
     Object.values(subjectModulesMap).forEach(modules => {
       modules.forEach(module => {
         allModuleIds.add(module.module.id);
         module.chapters.forEach(chapter => {
           allChapterIds.add(chapter.id);
-          if (slidesMap[chapter.id]) {
-            slidesMap[chapter.id].forEach(slide => {
-              allSlideIds.add(slide.id);
-            });
-          }
         });
       });
     });
@@ -636,14 +563,12 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
     setOpenSubjects(allSubjectIds);
     setOpenModules(allModuleIds);
     setOpenChapters(allChapterIds);
-    setOpenSlides(allSlideIds);
   };
 
   const collapseAll = () => {
     setOpenSubjects(new Set());
     setOpenModules(new Set());
     setOpenChapters(new Set());
-    setOpenSlides(new Set());
   };
 
   const isAllExpanded = 
@@ -678,21 +603,20 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
             <CollapsibleTrigger asChild>
               <Button
                 variant="ghost"
-                className="w-full justify-start p-2 h-auto text-left border border-gray-200 rounded-lg"
+                className="w-full justify-start p-2 h-auto text-left border border-gray-200 rounded-lg overflow-hidden"
               >
-                <FileText size={16} className="mr-2 text-green-500" />
-                <span className="text-sm font-medium">{chapter.chapter_name || 'Unnamed Chapter'}</span>
-                {openChapters.has(chapter.id) ? (
-                  <CaretDown size={16} className="ml-auto" />
-                ) : (
-                  <CaretRight size={16} className="ml-auto" />
-                )}
+                <FileText size={16} className="mr-2 text-green-500 flex-shrink-0" />
+                <span className="text-sm font-medium break-words truncate flex-1 min-w-0">{chapter.chapter_name || 'Unnamed Chapter'}</span>
+                <div className="flex-shrink-0 ml-2">
+                  {openChapters.has(chapter.id) ? (
+                    <CaretDown size={16} />
+                  ) : (
+                    <CaretRight size={16} />
+                  )}
+                </div>
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="ml-4 mt-2">
-              <div className="p-2 bg-gray-50 rounded text-sm text-gray-600 mb-2">
-                {chapter.description || 'No description available'}
-              </div>
               {renderSlides(chapter.id)}
             </CollapsibleContent>
           </Collapsible>
@@ -703,6 +627,16 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
 
   const renderSlides = (chapterId: string) => {
     const slides = slidesMap[chapterId] || [];
+    
+    // If slides haven't been fetched yet, show loading state
+    if (!slidesMap[chapterId]) {
+      return (
+        <div className="text-sm text-gray-500 italic">
+          Loading slides...
+        </div>
+      );
+    }
+    
     if (slides.length === 0) {
       return (
         <div className="text-sm text-gray-500 italic">
@@ -716,34 +650,18 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
         {slides.map((slide, index) => {
           const { Icon, color, label } = getSlideIcon(slide);
           return (
-            <Collapsible
+            <div
               key={`${slide.id}-${index}`}
-              open={openSlides.has(slide.id)}
-              onOpenChange={() => toggleOpenState(slide.id, setOpenSlides)}
+              className="flex items-center gap-2 p-2 border border-gray-200 rounded-lg hover:bg-gray-50 overflow-hidden"
             >
-              <CollapsibleTrigger asChild>
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start p-2 h-auto text-left border border-gray-200 rounded-lg hover:bg-gray-50"
-                >
-                  <Icon size={16} className={`mr-2 ${color}`} />
-                  <div className="flex-1">
-                    <span className="text-sm font-medium">{slide.title}</span>
-                    <span className="text-xs text-gray-500 ml-2">({label})</span>
-                  </div>
-                  {openSlides.has(slide.id) ? (
-                    <CaretDown size={16} className="ml-auto" />
-                  ) : (
-                    <CaretRight size={16} className="ml-auto" />
-                  )}
-                </Button>
-              </CollapsibleTrigger>
-              <CollapsibleContent className="ml-4 mt-2">
-                <div className="p-2 bg-gray-50 rounded text-sm text-gray-600">
-                  {slide.description || 'No description available'}
+              <Icon size={16} className={`flex-shrink-0 ${color}`} />
+              <div className="flex-1 min-w-0 overflow-hidden">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm font-medium break-words truncate">{slide.title}</span>
+                  <span className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0">({label})</span>
                 </div>
-              </CollapsibleContent>
-            </Collapsible>
+              </div>
+            </div>
           );
         })}
       </div>
@@ -766,21 +684,25 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
             <CollapsibleTrigger asChild>
               <Button
                 variant="ghost"
-                className="w-full justify-start p-2 h-auto text-left border border-gray-200 rounded-lg"
+                className="w-full justify-start p-2 h-auto text-left border border-gray-200 rounded-lg overflow-hidden"
               >
-                <Folder size={16} className="mr-2 text-orange-500" />
-                <span className="text-sm font-medium">{moduleWithChapters.module?.module_name || 'Unnamed Module'}</span>
-                {openModules.has(moduleWithChapters.module?.id) ? (
-                  <CaretDown size={16} className="ml-auto" />
-                ) : (
-                  <CaretRight size={16} className="ml-auto" />
-                )}
+                <Folder size={16} className="mr-2 text-orange-500 flex-shrink-0" />
+                <span className="text-sm font-medium break-words truncate flex-1 min-w-0">{moduleWithChapters.module?.module_name || 'Unnamed Module'}</span>
+                <div className="flex-shrink-0 ml-2">
+                  {openModules.has(moduleWithChapters.module?.id) ? (
+                    <CaretDown size={16} />
+                  ) : (
+                    <CaretRight size={16} />
+                  )}
+                </div>
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="ml-4 mt-2">
-              <div className="p-2 bg-gray-50 rounded text-sm text-gray-600 mb-2">
-                {moduleWithChapters.module?.description || 'No description available'}
-              </div>
+              {moduleWithChapters.module?.description && moduleWithChapters.module.description.trim() !== '' && (
+                <div className="p-2 bg-gray-50 rounded text-sm text-gray-600 mb-2">
+                  {moduleWithChapters.module.description}
+                </div>
+              )}
               {renderChapters(moduleWithChapters)}
             </CollapsibleContent>
           </Collapsible>
@@ -827,12 +749,14 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
           return (
             <div
               key={`${slide.id}-${index}`}
-              className="flex items-center gap-2 p-2 border border-gray-200 rounded-lg hover:bg-gray-50"
+              className="flex items-center gap-2 p-2 border border-gray-200 rounded-lg hover:bg-gray-50 overflow-hidden"
             >
-              <Icon size={16} className={color} />
-              <div className="flex-1">
-                <span className="text-sm font-medium">{slide.title}</span>
-                <span className="text-xs text-gray-500 ml-2">({label})</span>
+              <Icon size={16} className={`flex-shrink-0 ${color}`} />
+              <div className="flex-1 min-w-0 overflow-hidden">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm font-medium break-words truncate">{slide.title}</span>
+                  <span className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0">({label})</span>
+                </div>
               </div>
             </div>
           );
@@ -870,21 +794,20 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
             <CollapsibleTrigger asChild>
               <Button
                 variant="ghost"
-                className="w-full justify-start p-2 h-auto text-left border border-gray-200 rounded-lg"
+                className="w-full justify-start p-2 h-auto text-left border border-gray-200 rounded-lg overflow-hidden"
               >
-                <FileText size={16} className="mr-2 text-green-500" />
-                <span className="text-sm font-medium">{chapter.chapter_name || 'Unnamed Chapter'}</span>
-                {openChapters.has(chapter.id) ? (
-                  <CaretDown size={16} className="ml-auto" />
-                ) : (
-                  <CaretRight size={16} className="ml-auto" />
-                )}
+                <FileText size={16} className="mr-2 text-green-500 flex-shrink-0" />
+                <span className="text-sm font-medium break-words truncate flex-1 min-w-0">{chapter.chapter_name || 'Unnamed Chapter'}</span>
+                <div className="flex-shrink-0 ml-2">
+                  {openChapters.has(chapter.id) ? (
+                    <CaretDown size={16} />
+                  ) : (
+                    <CaretRight size={16} />
+                  )}
+                </div>
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="ml-4 mt-2">
-              <div className="p-2 bg-gray-50 rounded text-sm text-gray-600 mb-2">
-                {chapter.description || 'No description available'}
-              </div>
               {renderSlides(chapter.id)}
             </CollapsibleContent>
           </Collapsible>
@@ -922,21 +845,25 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
             <CollapsibleTrigger asChild>
               <Button
                 variant="ghost"
-                className="w-full justify-start p-2 h-auto text-left border border-gray-200 rounded-lg"
+                className="w-full justify-start p-2 h-auto text-left border border-gray-200 rounded-lg overflow-hidden"
               >
-                <Folder size={16} className="mr-2 text-blue-500" />
-                <span className="text-sm font-medium">{moduleWithChapters.module?.module_name || 'Unnamed Module'}</span>
-                {openModules.has(moduleWithChapters.module?.id) ? (
-                  <CaretDown size={16} className="ml-auto" />
-                ) : (
-                  <CaretRight size={16} className="ml-auto" />
-                )}
+                <Folder size={16} className="mr-2 text-blue-500 flex-shrink-0" />
+                <span className="text-sm font-medium break-words truncate flex-1 min-w-0">{moduleWithChapters.module?.module_name || 'Unnamed Module'}</span>
+                <div className="flex-shrink-0 ml-2">
+                  {openModules.has(moduleWithChapters.module?.id) ? (
+                    <CaretDown size={16} />
+                  ) : (
+                    <CaretRight size={16} />
+                  )}
+                </div>
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="ml-4 mt-2">
-              <div className="p-2 bg-gray-50 rounded text-sm text-gray-600 mb-2">
-                {moduleWithChapters.module?.description || 'No description available'}
-              </div>
+              {moduleWithChapters.module?.description && moduleWithChapters.module.description.trim() !== '' && (
+                <div className="p-2 bg-gray-50 rounded text-sm text-gray-600 mb-2">
+                  {moduleWithChapters.module.description}
+                </div>
+              )}
               {renderChapters(moduleWithChapters)}
             </CollapsibleContent>
           </Collapsible>
@@ -947,6 +874,10 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
 
   // Render all subjects for depth 5
   const renderSubjectsForDepth5 = () => {
+    console.log("[CourseStructureDetails] Rendering subjects for depth 5 - studyLibraryData:", studyLibraryData);
+    console.log("[CourseStructureDetails] Subjects count:", studyLibraryData.length);
+    console.log("[CourseStructureDetails] Subject names:", studyLibraryData.map(s => s.subject_name));
+    
     if (studyLibraryData.length === 0) {
       return (
         <div className="text-sm text-gray-500 italic">
@@ -966,18 +897,20 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
             <CollapsibleTrigger asChild>
               <Button
                 variant="ghost"
-                className="w-full justify-start p-3 h-auto text-left border border-gray-200 rounded-lg"
+                className="w-full justify-start p-3 h-auto text-left border border-gray-200 rounded-lg overflow-hidden"
               >
-                <FolderOpen size={18} className="mr-3 text-purple-500" />
-                <div className="flex-1">
-                  <div className="font-medium text-gray-900">{subject.subject_name}</div>
-                  <div className="text-sm text-gray-500">{subject.description}</div>
+                <FolderOpen size={18} className="mr-3 text-purple-500 flex-shrink-0" />
+                <div className="flex-1 min-w-0 overflow-hidden">
+                  <div className="font-medium text-gray-900 break-words truncate">{subject.subject_name}</div>
+                  <div className="text-sm text-gray-500 break-words truncate">{subject.description}</div>
                 </div>
-                {openSubjects.has(subject.id) ? (
-                  <CaretDown size={16} className="ml-auto" />
-                ) : (
-                  <CaretRight size={16} className="ml-auto" />
-                )}
+                <div className="flex-shrink-0 ml-2">
+                  {openSubjects.has(subject.id) ? (
+                    <CaretDown size={16} />
+                  ) : (
+                    <CaretRight size={16} />
+                  )}
+                </div>
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="ml-4 mt-2">
@@ -1062,6 +995,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
             </div>
           )}
 
+          {console.log("[CourseStructureDetails] Course depth check - courseDepth:", courseDepth, "type:", typeof courseDepth, "equals 5:", courseDepth === 5)}
           {courseDepth === 5 && (
             <div className="space-y-2">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Course Content (Full Structure)</h3>

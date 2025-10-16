@@ -21,14 +21,17 @@ import java.util.stream.Collectors;
 public class WhatsAppService {
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
+    private final WatiService watiService;
 
     String appId=null;
     String accessToken=null;
+    
+    private final InstituteInternalService internalService;
+
     @Autowired
-    private InstituteInternalService internalService;
-
-    public WhatsAppService() {
-
+    public WhatsAppService(WatiService watiService, InstituteInternalService internalService) {
+        this.internalService = internalService;
+        this.watiService = watiService;
         this.restTemplate = new RestTemplate();
         this.objectMapper = new ObjectMapper();
         this.objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
@@ -75,32 +78,154 @@ public class WhatsAppService {
                                                            List<Map<String, Map<String, String>>> bodyParams,
                                                            Map<String, Map<String, String>> headerParams, String languageCode, String headerType,String instituteId) {
 
-        if(instituteId!=null){
-            InstituteInfoDTO instituteDTO=internalService.getInstituteByInstituteId(instituteId);
-            String jsonString=instituteDTO.getSetting();
-            System.out.println(instituteDTO);
+        if(instituteId==null){
+            log.error("Missing instituteId for WhatsApp message sending");
+            return null;
+        }
 
-            try{
-                JsonNode root = objectMapper.readTree(jsonString);
-                // Navigate to WhatsApp Utility Setting
-                JsonNode whatsappSetting = root.path(NotificationConstants.SETTING)
-                        .path(NotificationConstants.WHATSAPP_SETTING)
-                        .path(NotificationConstants.DATA)
-                        .path(NotificationConstants.UTILITY_WHATSAPP);
+        try {
+            InstituteInfoDTO instituteDTO = internalService.getInstituteByInstituteId(instituteId);
+            String jsonString = instituteDTO.getSetting();
+            log.info("Retrieved institute settings for: {}", instituteId);
 
-                appId=whatsappSetting.path(NotificationConstants.APP_ID).asText();
-                accessToken=whatsappSetting.path(NotificationConstants.ACCESS_TOKEN).asText();
+            JsonNode root = objectMapper.readTree(jsonString);
+            // Navigate to WhatsApp Utility Setting
+            JsonNode whatsappSetting = root.path(NotificationConstants.SETTING)
+                    .path(NotificationConstants.WHATSAPP_SETTING)
+                    .path(NotificationConstants.DATA)
+                    .path(NotificationConstants.UTILITY_WHATSAPP);
 
-
-            }catch (Exception e){
-                System.out.println("Exception occur"+e);
-                return null;
+            // Apply optional testing allowlist filter
+            bodyParams = filterRecipientsByTestAllowListIfEnabled(root, bodyParams);
+            if (bodyParams.isEmpty()) {
+                log.info("TEST allowlist active and no recipients matched; skipping sends");
+                return List.of();
             }
 
+            // Check provider type (defaults to META for backward compatibility)
+            String provider = whatsappSetting.path(NotificationConstants.PROVIDER).asText("META").toUpperCase();
+            log.info("WhatsApp provider for institute {}: {}", instituteId, provider);
 
-        }else{
-            System.out.println("missing instituteId");
+            // Route to appropriate provider
+            if ("WATI".equals(provider)) {
+                return sendViaWati(templateName, bodyParams, languageCode, whatsappSetting);
+            } else {
+                return sendViaMeta(templateName, bodyParams, headerParams, languageCode, headerType, whatsappSetting);
+            }
+
+        } catch (Exception e) {
+            log.error("Exception occurred while sending WhatsApp messages for institute {}: {}", instituteId, e.getMessage(), e);
             return null;
+        }
+    }
+
+    private List<Map<String, Map<String, String>>> filterRecipientsByTestAllowListIfEnabled(
+            JsonNode root,
+            List<Map<String, Map<String, String>>> bodyParams) {
+
+        if (root == null || bodyParams == null || bodyParams.isEmpty()) return bodyParams;
+
+        JsonNode testConfig = root.path(NotificationConstants.SETTING)
+                .path(NotificationConstants.TEST_PHONE_NUMBER);
+
+        // Ensure path exists and flag is true
+        if (testConfig.isMissingNode() || !testConfig.has(NotificationConstants.FLAG) || !testConfig.path(NotificationConstants.FLAG).asBoolean(false)) {
+            return bodyParams; // no filtering
+        }
+
+        JsonNode dataNode = testConfig.path(NotificationConstants.DATA);
+        if (dataNode == null || !dataNode.isArray() || dataNode.size() == 0) {
+            return bodyParams; // nothing to filter by
+        }
+
+        Set<String> allow = new HashSet<>();
+        for (JsonNode node : dataNode) {
+            String raw = node.asText();
+            if (raw != null && !raw.isBlank()) {
+                allow.add(raw.replaceAll("[^0-9]", ""));
+            }
+        }
+        if (allow.isEmpty()) return bodyParams;
+
+        List<Map<String, Map<String, String>>> filtered = bodyParams.stream()
+                .filter(detail -> {
+                    String phone = detail.keySet().iterator().next();
+                    String normalized = phone.replaceAll("[^0-9]", "");
+                    return allow.contains(normalized);
+                })
+                .collect(Collectors.toList());
+
+        log.info("TEST allowlist enabled: {} of {} recipients will be sent", filtered.size(), bodyParams.size());
+        return filtered;
+    }
+
+    /**
+     * Send WhatsApp messages via WATI
+     */
+    private List<Map<String, Boolean>> sendViaWati(String templateName,
+                                                   List<Map<String, Map<String, String>>> bodyParams,
+                                                   String languageCode,
+                                                   JsonNode whatsappSetting) {
+        try {
+            JsonNode watiConfig = whatsappSetting.path(NotificationConstants.WATI);
+            
+            String apiKey = watiConfig.path(NotificationConstants.API_KEY).asText();
+            String apiUrl = watiConfig.path(NotificationConstants.API_URL).asText("https://live-server.wati.io");
+            
+            if (apiKey == null || apiKey.isBlank()) {
+                log.error("WATI API key not configured");
+                return bodyParams.stream()
+                        .map(detail -> Map.of(detail.keySet().iterator().next(), false))
+                        .collect(Collectors.toList());
+            }
+
+            log.info("Sending WhatsApp messages via WATI: template={}, recipients={}", 
+                    templateName, bodyParams.size());
+
+            return watiService.sendTemplateMessages(
+                    templateName,
+                    bodyParams,
+                    languageCode != null ? languageCode : "en",
+                    apiKey,
+                    apiUrl,
+                    "Notification - " + templateName
+            );
+
+        } catch (Exception e) {
+            log.error("Error sending via WATI: {}", e.getMessage(), e);
+            return bodyParams.stream()
+                    .map(detail -> Map.of(detail.keySet().iterator().next(), false))
+                    .collect(Collectors.toList());
+        }
+    }
+
+    /**
+     * Send WhatsApp messages via Meta (Facebook) - existing implementation
+     */
+    private List<Map<String, Boolean>> sendViaMeta(String templateName,
+                                                   List<Map<String, Map<String, String>>> bodyParams,
+                                                   Map<String, Map<String, String>> headerParams,
+                                                   String languageCode,
+                                                   String headerType,
+                                                   JsonNode whatsappSetting) {
+        
+        // Extract Meta credentials
+        JsonNode metaConfig = whatsappSetting.path(NotificationConstants.META);
+        
+        // Fallback to root level for backward compatibility
+        if (metaConfig.isMissingNode()) {
+            appId = whatsappSetting.path(NotificationConstants.APP_ID).asText();
+            accessToken = whatsappSetting.path(NotificationConstants.ACCESS_TOKEN).asText();
+        } else {
+            appId = metaConfig.path(NotificationConstants.APP_ID).asText();
+            accessToken = metaConfig.path(NotificationConstants.ACCESS_TOKEN).asText();
+        }
+
+        if (appId == null || appId.isBlank() || accessToken == null || accessToken.isBlank()) {
+            log.error("Meta WhatsApp credentials not configured");
+            return bodyParams.stream()
+                    .map(detail -> Map.of(detail.keySet().iterator().next(), false))
+                    .collect(Collectors.toList());
         }
 
 

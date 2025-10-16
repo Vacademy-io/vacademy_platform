@@ -9,6 +9,7 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LinkType } from "@/routes/register/live-class/-types/enum";
 import YouTubePlayerWrapper from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/youtube-player";
 import ZoomEmbedPlayer from "./-components/ZoomEmbedPlayer";
+import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
 
 export const Route = createFileRoute("/study-library/live-class/embed/")({
   validateSearch: z.object({
@@ -72,12 +73,23 @@ function EmbedComponent() {
           : sessionDetails.allowPlayPause ?? true;
       const allowRewind = sessionDetails.allowRewind === "true";
 
+      // Check if this is a live session (not recorded)
+      const isLive = sessionDetails.linkType === LinkType.YOUTUBE;
+      const sessionStartTime = convertSessionTimeToUserTimezone(
+        sessionDetails.meetingDate,
+        sessionDetails.scheduleStartTime,
+        sessionDetails.timezone
+      );
       return (
         <div className="w-full h-full">
           <YouTubePlayerWrapper
             videoId={videoId}
             allowPlayPause={allowPlayPause}
             allowRewind={allowRewind}
+            isLiveStream={isLive}
+            liveClassStartTime={
+              isLive ? sessionStartTime.toISOString() : undefined
+            }
           />
         </div>
       );
@@ -124,7 +136,9 @@ function EmbedComponent() {
   return (
     <LayoutContainer>
       <Helmet>
-        <title>{document?.title || sessionDetails.title || "Live Session"}</title>
+        <title>
+          {document?.title || sessionDetails.title || "Live Session"}
+        </title>
         <meta
           name="description"
           content={`Live session: ${sessionDetails.title}`}

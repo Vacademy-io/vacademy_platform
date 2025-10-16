@@ -76,6 +76,7 @@ interface YouTubePlayerProps {
   allowRewind?: boolean; // If false, rewind controls are disabled
   isLiveStream?: boolean; // If true, indicates this is a live stream
   liveTimestamp?: number; // Current live timestamp in seconds (for live streams)
+  liveClassStartTime?: string; // ISO timestamp when the live class started (for syncing video position)
 }
 
 export const formatTime = (timeInSeconds: number) => {
@@ -93,6 +94,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   allowRewind = true,
   isLiveStream = false,
   liveTimestamp = 0,
+  liveClassStartTime,
 }) => {
   const { activeItem } = useContentStore();
   // Subscribe only to addActivity to avoid re-render on every trackingData update
@@ -902,7 +904,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       modestbranding: 1, // Hide YouTube logo
       rel: 0, // Don't show related videos
       // showinfo: 0, // Hide video title and uploader
-      autoplay: allowPlayPause ? 0 : 1, // Autoplay when pause control is disabled
+      autoplay: allowPlayPause ? 1 : 0, // Autoplay when pause control is disabled
       // cc_load_policy: 0, // Hide closed captions
       origin: window.location.origin, // Set origin for security
       enablejsapi: 1, // Enable JavaScript API
@@ -980,7 +982,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       // Try to hide YouTube elements by injecting CSS
       if (iframe) {
         try {
-          iframe.setAttribute("allow", "autoplay; encrypted-media; picture-in-picture; fullscreen");
+          iframe.setAttribute(
+            "allow",
+            "autoplay; encrypted-media; picture-in-picture; fullscreen"
+          );
           iframe.setAttribute("allowfullscreen", "true");
         } catch (e) {
           console.error("Error setting iframe allow attribute:", e);
@@ -1243,7 +1248,6 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
   useEffect(() => {
     // Only seek if ms is greater than 0 and player is ready
-    console.log("ms: ", ms);
     if (ms > 0 && player && playerReady) {
       const totalSeconds = ms / 1000;
       const minutes = Math.floor(totalSeconds / 60);
@@ -1258,6 +1262,35 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     }
   }, [ms, player, playerReady]);
 
+  // Live class synchronization - automatically sync video to live class progress
+  useEffect(() => {
+    if (!liveClassStartTime || !player || !playerReady || !isLiveStream) return;
+
+    const syncToLiveClassProgress = () => {
+      try {
+        // Parse the live class start time (ISO string)
+        const startTime = new Date(liveClassStartTime).getTime();
+        const currentTime = Date.now();
+
+        // Calculate elapsed time in seconds since live class started
+        const elapsedSeconds = Math.floor((currentTime - startTime) / 1000);
+
+        // Only sync if elapsed time is positive (class has started)
+        if (elapsedSeconds > 0) {
+          // Seek to the calculated position (force it to bypass restrictions)
+          seekToTimestamp(elapsedSeconds, true);
+        } else {
+          console.log("Live class hasn't started yet, waiting...");
+        }
+      } catch (error) {
+        console.error("Error syncing to live class progress:", error);
+      }
+    };
+
+    // Initial sync when player becomes ready
+    syncToLiveClassProgress();
+  }, [liveClassStartTime, player, playerReady, isLiveStream]);
+
   const toggleFullscreen = useCallback(async () => {
     if (!playerContainerRef.current) {
       console.error("Player container not available");
@@ -1269,7 +1302,8 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       const canNativeFullscreen =
         typeof document.fullscreenEnabled !== "undefined" &&
         document.fullscreenEnabled &&
-        elem && typeof elem.requestFullscreen === "function";
+        elem &&
+        typeof elem.requestFullscreen === "function";
 
       if (document.fullscreenElement) {
         await document.exitFullscreen();
@@ -1598,7 +1632,9 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       <div
         ref={playerContainerRef}
         className={`aspect-video w-full relative min-h-[200px] sm:min-h-[250px] md:min-h-[300px] lg:h-full items-center flex justify-center overflow-hidden bg-black rounded-lg group ${
-          isPseudoFullscreen ? "fixed inset-0 w-screen h-screen z-[10000] rounded-none" : ""
+          isPseudoFullscreen
+            ? "fixed inset-0 w-screen h-screen z-[10000] rounded-none"
+            : ""
         }`}
         onMouseMove={handleMouseMoveOnVideo}
         onMouseEnter={handleMouseMoveOnVideo}
@@ -1882,83 +1918,83 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
               {/* Progress Bar */}
               {allowPlayPause && (
-              <div className="relative w-full">
-                <div
-                  className={`w-full h-1 bg-white/30 rounded-full group ${
-                    allowRewind ? "cursor-pointer" : "cursor-not-allowed"
-                  }`}
-                  onClick={handleProgressBarClick}
-                >
+                <div className="relative w-full">
                   <div
-                    className="h-full bg-white rounded-full transition-all duration-150 group-hover:h-1.5"
-                    style={{
-                      width: `${
-                        duration > 0 ? (currentTime / duration) * 100 : 0
-                      }%`,
-                    }}
-                  ></div>
-                </div>
-
-                {/* Question Markers */}
-                {timeToQuestionMap.map(({ time, question }, index) => {
-                  const position =
-                    duration > 0 ? (time / 1000 / duration) * 100 : 0;
-                  const isAnswered = answeredQuestions[question.id]?.answered;
-                  const canSkip = question.can_skip;
-
-                  return (
-                    <button
-                      key={question.id}
-                      className={`absolute w-3 h-3 rounded-full transform -translate-x-1/2 -translate-y-1 top-0 border-2 border-white shadow-lg transition-all z-10 ${
-                        isAnswered
-                          ? "bg-green-500"
-                          : canSkip
-                          ? "bg-yellow-500"
-                          : "bg-red-500"
-                      } ${
-                        allowRewind
-                          ? "hover:scale-125 cursor-pointer hover:bg-green-600"
-                          : "cursor-not-allowed opacity-75"
-                      }`}
+                    className={`w-full h-1 bg-white/30 rounded-full group ${
+                      allowRewind ? "cursor-pointer" : "cursor-not-allowed"
+                    }`}
+                    onClick={handleProgressBarClick}
+                  >
+                    <div
+                      className="h-full bg-white rounded-full transition-all duration-150 group-hover:h-1.5"
                       style={{
-                        left: `${Math.max(1.5, Math.min(98.5, position))}%`,
+                        width: `${
+                          duration > 0 ? (currentTime / duration) * 100 : 0
+                        }%`,
                       }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (allowRewind) {
-                          handleQuestionMarkerClick(question);
-                        }
-                      }}
-                      disabled={!allowRewind}
-                      title={`Question ${index + 1}${
-                        isAnswered
-                          ? " (Answered)"
-                          : canSkip
-                          ? " (Skippable)"
-                          : " (Required)"
-                      }${!allowRewind ? " (Navigation disabled)" : ""}`}
-                    >
-                      {isAnswered ? (
-                        <span className="text-white text-xs font-bold flex items-center justify-center w-full h-full">
-                          ✓
-                        </span>
-                      ) : (
-                        <span className="text-white text-xs font-bold flex items-center justify-center w-full h-full">
-                          ?
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+                    ></div>
+                  </div>
+
+                  {/* Question Markers */}
+                  {timeToQuestionMap.map(({ time, question }, index) => {
+                    const position =
+                      duration > 0 ? (time / 1000 / duration) * 100 : 0;
+                    const isAnswered = answeredQuestions[question.id]?.answered;
+                    const canSkip = question.can_skip;
+
+                    return (
+                      <button
+                        key={question.id}
+                        className={`absolute w-3 h-3 rounded-full transform -translate-x-1/2 -translate-y-1 top-0 border-2 border-white shadow-lg transition-all z-10 ${
+                          isAnswered
+                            ? "bg-green-500"
+                            : canSkip
+                            ? "bg-yellow-500"
+                            : "bg-red-500"
+                        } ${
+                          allowRewind
+                            ? "hover:scale-125 cursor-pointer hover:bg-green-600"
+                            : "cursor-not-allowed opacity-75"
+                        }`}
+                        style={{
+                          left: `${Math.max(1.5, Math.min(98.5, position))}%`,
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (allowRewind) {
+                            handleQuestionMarkerClick(question);
+                          }
+                        }}
+                        disabled={!allowRewind}
+                        title={`Question ${index + 1}${
+                          isAnswered
+                            ? " (Answered)"
+                            : canSkip
+                            ? " (Skippable)"
+                            : " (Required)"
+                        }${!allowRewind ? " (Navigation disabled)" : ""}`}
+                      >
+                        {isAnswered ? (
+                          <span className="text-white text-xs font-bold flex items-center justify-center w-full h-full">
+                            ✓
+                          </span>
+                        ) : (
+                          <span className="text-white text-xs font-bold flex items-center justify-center w-full h-full">
+                            ?
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
               )}
 
               {/* Time Display */}
               {allowPlayPause && (
-              <div className="flex justify-between text-white text-xs mt-2 font-medium">
-                <span>{formatTime(currentTime)}</span>
-                <span>{formatTime(duration)}</span>
-              </div>
+                <div className="flex justify-between text-white text-xs mt-2 font-medium">
+                  <span>{formatTime(currentTime)}</span>
+                  <span>{formatTime(duration)}</span>
+                </div>
               )}
             </div>
           </div>
@@ -1990,8 +2026,6 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
           />
         )}
       </div>
-
-      
     </div>
   );
 };
@@ -2023,6 +2057,7 @@ interface YouTubePlayerWrapperProps {
   allowRewind?: boolean;
   isLiveStream?: boolean;
   liveTimestamp?: number;
+  liveClassStartTime?: string;
 }
 
 // This is a wrapper component that exposes the YouTube player methods
@@ -2037,6 +2072,7 @@ const YouTubePlayerWrapper = forwardRef<any, YouTubePlayerWrapperProps>(
       allowRewind,
       isLiveStream,
       liveTimestamp,
+      liveClassStartTime,
     },
     ref
   ) => {
@@ -2078,7 +2114,6 @@ const YouTubePlayerWrapper = forwardRef<any, YouTubePlayerWrapperProps>(
         onTimeUpdate(currentTime);
       }
     };
-
     return (
       <YouTubePlayerComp
         videoId={videoId}
@@ -2089,6 +2124,7 @@ const YouTubePlayerWrapper = forwardRef<any, YouTubePlayerWrapperProps>(
         allowRewind={allowRewind}
         isLiveStream={isLiveStream}
         liveTimestamp={liveTimestamp}
+        liveClassStartTime={liveClassStartTime}
       />
     );
   }

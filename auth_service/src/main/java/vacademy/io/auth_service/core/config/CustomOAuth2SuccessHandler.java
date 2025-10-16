@@ -262,7 +262,32 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
             log.info("Successfully generated tokens for user '{}'. Redirecting with tokens.", email);
             redirectWithTokens(response, redirectUrl, jwtResponseDto);
         } else {
-            log.warn("Login failed for user '{}' - user not found in our system. Redirecting to signup.", email);
+            // Attempt guarded auto-signup for learners only when we have instituteId and email
+            if ("learner".equalsIgnoreCase(userType)
+                    && userInfo.instituteId != null && !userInfo.instituteId.isBlank()
+                    && email != null) {
+                try {
+                    log.info("User not found. Attempting auto-signup for learner as per institute settings. email={} instituteId={}", email, userInfo.instituteId);
+                    JwtResponseDto autoSignupJwt = getLearnerOAuth2Manager().createUserAndLogin(
+                            userInfo.name,
+                            email,
+                            userInfo.instituteId,
+                            userInfo.sub,
+                            userInfo.providerId
+                    );
+                    if (autoSignupJwt != null) {
+                        log.info("Auto-signup succeeded for learner '{}'. Redirecting with tokens.", email);
+                        redirectWithTokens(response, redirectUrl, autoSignupJwt);
+                        return;
+                    } else {
+                        log.warn("Auto-signup skipped or not allowed by policy for learner '{}'. Falling back to signup handoff.", email);
+                    }
+                } catch (Exception ex) {
+                    log.warn("Auto-signup failed for learner '{}': {}. Falling back to signup handoff.", email, ex.getMessage());
+                    log.debug("Auto-signup exception stack:", ex);
+                }
+            }
+            log.warn("Login failed for user '{}' - user not found or auto-signup not performed. Redirecting to signup.", email);
             returnUserDataToFrontend(response, redirectUrl, userInfo, encodedState, isEmailVerified, true);
         }
     }

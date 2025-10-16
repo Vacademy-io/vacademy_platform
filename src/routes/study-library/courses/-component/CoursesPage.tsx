@@ -27,6 +27,7 @@ interface CoursesPageProps {
     handlePageChange: (page: number) => void;
     showFilters?: boolean;
     selectedTab: string;
+    isLoading?: boolean;
 }
 
 const CoursesPage: React.FC<CoursesPageProps> = ({
@@ -46,6 +47,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
     handlePageChange,
     showFilters = true,
     selectedTab,
+    isLoading = false,
 }) => {
     const fallbackDescription =
         "";
@@ -153,7 +155,22 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                         onSortChange={onSortChange}
                     />
 
-                    {courseData.content.length === 0 ? (
+                    {isLoading ? (
+                        <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md shadow-sm p-5 sm:p-6">
+                            <div className="animate-pulse space-y-3 sm:space-y-4">
+                                <div className="h-4 bg-gray-200 dark:bg-neutral-800 rounded w-1/3"></div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-3 sm:gap-4">
+                                    {Array.from({ length: 4 }).map((_, i) => (
+                                        <div key={i} className="bg-gray-50 dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md p-3 sm:p-4">
+                                            <div className="h-32 sm:h-36 bg-gray-200 dark:bg-neutral-800 rounded mb-3"></div>
+                                            <div className="h-4 bg-gray-200 dark:bg-neutral-800 rounded w-3/4 mb-2"></div>
+                                            <div className="h-3 bg-gray-200 dark:bg-neutral-800 rounded w-1/2"></div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    ) : courseData.content.length === 0 ? (
                         <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md shadow-sm p-5 sm:p-6 text-center">
                             <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 rounded-md mx-auto mb-3 sm:mb-4 flex items-center justify-center">
                                 <Search

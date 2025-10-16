@@ -59,6 +59,7 @@ import { CourseEnrollment } from "./course-enrollment";
 import { CourseContentSections } from "./course-content-sections";
 import { CourseSidebar } from "./course-sidebar";
 import { Button } from "@/components/ui/button";
+import { extractTextFromHTML } from "@/components/common/helper";
 
 type SlideType = {
     id: string;
@@ -233,7 +234,7 @@ export const CourseDetailsPage = () => {
         // Add the enrolled session and wait for it to complete
         try {
             await addEnrolledSession(newEnrolledSession);
-        } catch (error) {
+        } catch {
             toast.error("Failed to update enrollment status. Please refresh the page.");
             return;
         }
@@ -291,13 +292,13 @@ export const CourseDetailsPage = () => {
                                     if (slides && slides.length > 0) {
                                         slideId = slides[0].id || "";
                                     }
-                                } catch (slideError) {
+                                } catch {
                                     // Silent fallback
                                 }
                             }
                         }
                     }
-                } catch (error) {
+                } catch {
                     // Silent fallback
                 }
             }
@@ -658,7 +659,7 @@ export const CourseDetailsPage = () => {
             let settings;
             try {
                 settings = await getStudentDisplaySettings(false);
-            } catch (settingsError) {
+            } catch {
                 // If we can't fetch settings, assume certificate generation is disabled
                 return;
             }
@@ -811,8 +812,8 @@ export const CourseDetailsPage = () => {
                                 gravity: 0.9,
                             });
 
-                            // Subtle fireworks loop for 2s
-                            const end = Date.now() + 2000;
+                // Subtle fireworks loop for 2s
+                const end = Date.now() + 2000;
                             (function frame() {
                                 confetti({
                                     ...defaults,
@@ -1518,7 +1519,7 @@ export const CourseDetailsPage = () => {
                 /> */}
 
                 {/* Main Content Container */}
-                <div className="relative z-10 w-full px-0 py-3 lg:py-4">
+                <div className="relative z-10 w-full px-2 sm:px-0 py-3 lg:py-4">
                     <div
                         className={`grid grid-cols-1 ${hasRightSidebar ? "lg:grid-cols-3" : ""} gap-3 lg:gap-4`}
                     >
@@ -1709,8 +1710,21 @@ export const CourseDetailsPage = () => {
 };
 
 // Local component: More details toggle for PROGRESS tab
-const MoreDetailsToggle = ({ courseData }: { courseData: any }) => {
+type CourseDetailsForSections = {
+    whatYoullLearn: string;
+    aboutTheCourse: string;
+    whoShouldLearn: string;
+    instructors: Array<{ name: string; email: string }>;
+};
+
+const MoreDetailsToggle = ({ courseData }: { courseData: CourseDetailsForSections }) => {
     const [showMoreDetails, setShowMoreDetails] = useState<boolean>(false);
+    const hasWhatYoullLearn = !!extractTextFromHTML(courseData?.whatYoullLearn);
+    const hasAboutTheCourse = !!extractTextFromHTML(courseData?.aboutTheCourse);
+    const hasWhoShouldLearn = !!extractTextFromHTML(courseData?.whoShouldLearn);
+    const hasAnyDetails = hasWhatYoullLearn || hasAboutTheCourse || hasWhoShouldLearn;
+
+    if (!hasAnyDetails) return null;
     return (
         <div>
             <Button

@@ -527,11 +527,11 @@ export const SlideMaterial = () => {
     <div className="flex h-full w-full flex-col bg-white" ref={selectionRef}>
       {/* Compact Professional Header */}
       <div className="flex flex-shrink-0 items-center justify-between border-b border-neutral-200 bg-white">
-        <div className="flex items-center gap-3 px-4 py-3">
+        <div className="flex items-center gap-3 px-3 py-2 sm:px-4 sm:py-3">
           <div className="flex items-center gap-2.5">
             <div className="w-1 h-6 bg-primary-500 rounded-full"></div>
-            <div className="flex flex-col">
-              <h3 className="text-base font-semibold text-neutral-900 leading-tight animate-in fade-in slide-in-from-left-4 duration-500">
+            <div className="flex flex-col min-w-0">
+              <h3 className="text-sm sm:text-base font-semibold text-neutral-900 leading-tight animate-in fade-in slide-in-from-left-4 duration-500 truncate max-w-[60vw] sm:max-w-none">
                 {heading || "No content"}
               </h3>
               <p className="text-xs font-medium text-neutral-500 uppercase tracking-wide animate-in fade-in slide-in-from-left-4 duration-500 delay-75">
@@ -541,7 +541,7 @@ export const SlideMaterial = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 pr-4">
+        <div className="hidden sm:flex items-center gap-1.5 sm:gap-2 pr-3 sm:pr-4 flex-wrap">
           {/* Slide navigation */}
           <div className="flex items-center gap-2">
             <MyButton
@@ -550,7 +550,7 @@ export const SlideMaterial = () => {
               onClick={goToPrev}
               disabled={!canGoPrev}
               aria-label="Previous slide"
-              className="flex items-center gap-2 px-3 py-2 font-medium transition-all duration-300 bg-white border border-neutral-300 hover:border-primary-400 rounded-lg backdrop-blur-sm hover:bg-primary-50 disabled:opacity-50"
+              className="flex items-center justify-center gap-0 sm:gap-2 px-0 py-0 sm:px-3 sm:py-2 w-8 h-8 sm:w-auto sm:h-auto min-w-0 font-medium transition-all duration-300 bg-white border border-neutral-300 hover:border-primary-400 rounded-lg backdrop-blur-sm hover:bg-primary-50 disabled:opacity-50"
             >
               <CaretLeft size={16} />
               <span className="hidden sm:inline text-sm">Previous</span>
@@ -561,18 +561,18 @@ export const SlideMaterial = () => {
               onClick={goToNext}
               disabled={!canGoNext}
               aria-label="Next slide"
-              className="flex items-center gap-2 px-3 py-2 font-medium transition-all duration-300 bg-white border border-neutral-300 hover:border-primary-400 rounded-lg backdrop-blur-sm hover:bg-primary-50 disabled:opacity-50"
+              className="flex items-center justify-center gap-0 sm:gap-2 px-0 py-0 sm:px-3 sm:py-2 w-8 h-8 sm:w-auto sm:h-auto min-w-0 font-medium transition-all duration-300 bg-white border border-neutral-300 hover:border-primary-400 rounded-lg backdrop-blur-sm hover:bg-primary-50 disabled:opacity-50"
             >
               <span className="hidden sm:inline text-sm">Next</span>
               <CaretRight size={16} />
             </MyButton>
           </div>
-          <div className="h-6 w-px bg-neutral-200"></div>
+          <div className="hidden sm:block h-6 w-px bg-neutral-200"></div>
           <AskDoubtButton />
         </div>
       </div>
 
-      <div className="w-full flex-1 min-h-0 relative">
+      <div className="w-full flex-1 min-h-0 relative pb-16 sm:pb-0">
         <div className="h-full w-full transition-all duration-500">
           {content}
         </div>
@@ -618,6 +618,42 @@ export const SlideMaterial = () => {
           </div>
         </div>
       )}
+
+      {/* Mobile bottom navigation */}
+      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40">
+        <div className="pointer-events-none absolute -top-3 left-0 right-0 h-3 bg-gradient-to-t from-white to-transparent"></div>
+        <div className="bg-white border-t border-neutral-200 shadow-[0_-8px_20px_-12px_rgba(0,0,0,0.25)] px-3 py-2 pb-[calc(env(safe-area-inset-bottom)+10px)]">
+          <div className="flex items-center gap-2">
+            <MyButton
+              scale="large"
+              layoutVariant="icon"
+              buttonType="secondary"
+              onClick={goToPrev}
+              disabled={!canGoPrev}
+              aria-label="Previous slide"
+              className="flex items-center justify-center font-medium transition-all duration-300 bg-white border border-neutral-300 hover:border-primary-400 rounded-lg backdrop-blur-sm hover:bg-primary-50 disabled:opacity-50"
+            >
+              <span className="text-base">{"<"}</span>
+            </MyButton>
+
+            <div className="flex-1 flex justify-center">
+              <AskDoubtButton />
+            </div>
+
+            <MyButton
+              scale="large"
+              layoutVariant="icon"
+              buttonType="secondary"
+              onClick={goToNext}
+              disabled={!canGoNext}
+              aria-label="Next slide"
+              className="flex items-center justify-center font-medium transition-all duration-300 bg-white border border-neutral-300 hover:border-primary-400 rounded-lg backdrop-blur-sm hover:bg-primary-50 disabled:opacity-50"
+            >
+              <span className="text-base">{">"}</span>
+            </MyButton>
+          </div>
+        </div>
+      </div>
 
       <DoubtResolutionSidebar />
     </div>

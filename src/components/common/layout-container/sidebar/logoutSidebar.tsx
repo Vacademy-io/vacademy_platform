@@ -108,7 +108,7 @@ export const LogoutSidebar = ({
     <Sheet open={sideBarOpen} onOpenChange={setSidebarOpen}>
       <SheetContent
         side="right"
-        className="sidebar-content flex flex-col bg-white border-l border-neutral-200 dark:bg-neutral-900 dark:border-neutral-800 p-0 w-80 transition-all duration-300 ease-in-out z-[9999] shadow-xl"
+        className="sidebar-content flex flex-col bg-white border-l border-neutral-200 dark:bg-neutral-900 dark:border-neutral-800 p-0 w-[86vw] sm:w-80 transition-all duration-300 ease-in-out z-[9999] shadow-xl"
       >
         <SheetHeader className="px-5 py-5 border-b border-neutral-100 dark:border-neutral-800 bg-gradient-to-r from-white to-neutral-50 dark:from-neutral-900 dark:to-neutral-900">
           <div className="flex items-center justify-center">

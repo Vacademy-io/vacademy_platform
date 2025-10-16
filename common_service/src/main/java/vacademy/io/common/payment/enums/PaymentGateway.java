@@ -4,7 +4,8 @@ public enum PaymentGateway {
     STRIPE,
     RAZORPAY,
     MANUAL,
-    PAYPAL,EWAY;
+    PAYPAL,
+    EWAY;
 
     public static PaymentGateway fromString(String gatewayName) {
         if (gatewayName == null || gatewayName.isBlank()) {

@@ -7,17 +7,19 @@ import vacademy.io.admin_core_service.features.payments.enums.WebHookStatus;
 import vacademy.io.admin_core_service.features.payments.repository.WebHookRepository;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 public class WebHookService {
     @Autowired
     private WebHookRepository webHookRepository;
 
-    public String saveWebhook(String vendor,String payload){
+    public String saveWebhook(String vendor,String payload,String orderId){
         WebHook webHook = new WebHook();
         webHook.setVendor(vendor);
         webHook.setPayload(payload);
         webHook.setStatus(WebHookStatus.RECEIVED);
+        webHook.setOrderId(orderId);
         webHookRepository.save(webHook);
         return webHook.getId();
     }
@@ -36,5 +38,14 @@ public class WebHookService {
         webHook.setOrderId(orderId);
         webHook.setEventType(eventType);
         webHookRepository.save(webHook);
+    }
+
+    public List<WebHook> getPendingWebHooks(String vendor) {
+        return webHookRepository.findByCreatedAtBetweenAndStatusAndVendor(
+            LocalDateTime.now().minusMinutes(30),
+            LocalDateTime.now(),
+            WebHookStatus.RECEIVED,
+            vendor
+        );
     }
 }

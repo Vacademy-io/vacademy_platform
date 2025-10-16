@@ -12,12 +12,14 @@ public class PaymentServiceFactory {
     public PaymentServiceFactory(
             StripePaymentManager stripe,
             RazorpayPaymentManager razorpay,
-            PayPalPaymentManager paypal
+            PayPalPaymentManager paypal,
+            EwayPaymentManager eway
     ) {
         strategies = Map.of(
                 PaymentGateway.STRIPE, stripe,
                 PaymentGateway.RAZORPAY, razorpay,
-                PaymentGateway.PAYPAL, paypal
+                PaymentGateway.PAYPAL, paypal,
+                PaymentGateway.EWAY, eway
         );
     }
 

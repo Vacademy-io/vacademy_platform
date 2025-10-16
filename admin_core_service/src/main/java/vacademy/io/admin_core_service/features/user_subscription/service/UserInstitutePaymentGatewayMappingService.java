@@ -32,7 +32,6 @@ public class UserInstitutePaymentGatewayMappingService {
             String vendor,
             String paymentGatewayCustomerId,
             Object paymentGatewaySpecificData) {
-        System.out.println(paymentGatewaySpecificData);
         UserInstitutePaymentGatewayMapping mapping = new UserInstitutePaymentGatewayMapping();
         mapping.setUserId(userId);
         mapping.setInstitutePaymentGatewayMapping(

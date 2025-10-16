@@ -56,7 +56,7 @@ public class InstituteCustomFieldManager {
             }
 
             // Use key-based lookup instead of name-based to prevent duplicates
-            String fieldKey = instituteCustomFiledService.generateFieldKey(request.getFieldName());
+            String fieldKey = instituteCustomFiledService.generateFieldKey(request.getFieldName(),instituteId);
             Optional<CustomFields> existingField = instituteCustomFiledService
                     .findCustomFieldByKeyAndInstitute(fieldKey, institute.get().getId());
             if (existingField.isPresent()) {
@@ -64,7 +64,7 @@ public class InstituteCustomFieldManager {
                         "Custom Field with key '" + fieldKey + "' already exists for this institute");
             }
 
-            CustomFields savedCustomField = instituteCustomFiledService.createCustomFieldFromRequest(request);
+            CustomFields savedCustomField = instituteCustomFiledService.createCustomFieldFromRequest(request,instituteId);
             InstituteCustomField savedMapping = instituteCustomFiledService
                     .createInstituteMappingFromCustomField(savedCustomField, institute.get(), request);
             instituteSettingService.updateCustomFieldSetting(institute.get(), request.getSettingRequest());

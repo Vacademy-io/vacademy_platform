@@ -3,8 +3,6 @@ package vacademy.io.common.payment.dto;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
-import vacademy.io.common.auth.dto.UserDTO;
-import vacademy.io.common.payment.enums.PaymentGateway;
 
 @Data
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -19,9 +17,9 @@ public class PaymentInitiationRequestDTO {
     private String email;
     private String vendor;
     private String vendorId;
-
     private StripeRequestDTO stripeRequest;
     private RazorpayRequestDTO razorpayRequest;
     private PayPalRequestDTO payPalRequest;
     private ManualPaymentDTO manualRequest;
+    private EwayRequestDTO ewayRequest;
 }

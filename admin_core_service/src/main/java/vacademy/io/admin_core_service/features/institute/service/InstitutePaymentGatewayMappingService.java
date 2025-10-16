@@ -60,8 +60,8 @@ public class InstitutePaymentGatewayMappingService {
         String publicKey = paymentGatewaySpecificData == null ? null : (String) paymentGatewaySpecificData.get("publicKey");
 
         return Map.of(
-                "encryptionKey", encryptionKey,
-                "publicKey", publicKey
+            "encryptionKey", encryptionKey,
+            "publicKey", publicKey
         );
     }
 }

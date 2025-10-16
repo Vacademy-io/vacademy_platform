@@ -72,6 +72,11 @@ const CourseCatalougePage: React.FC = () => {
         useState<CoursePackageResponse>({
             ...allCourses,
         });
+    const [isLoadingByTab, setIsLoadingByTab] = useState<{ ALL: boolean; PROGRESS: boolean; COMPLETED: boolean }>({
+        ALL: false,
+        PROGRESS: false,
+        COMPLETED: false,
+    });
     const [searchTerm, setSearchTerm] = useState("");
     const [sortOption, setSortOption] = useState("Newest");
 
@@ -120,6 +125,7 @@ const CourseCatalougePage: React.FC = () => {
                 tags: selectedTags,
             });
         }
+        setIsLoadingByTab((prev) => ({ ...prev, [tabType]: true }));
         try {
             const instituteId = await getInstituteId();
             const response = await authenticatedAxiosInstance.post(
@@ -195,6 +201,8 @@ const CourseCatalougePage: React.FC = () => {
                     // swallow
                 }
             }
+        } finally {
+            setIsLoadingByTab((prev) => ({ ...prev, [tabType]: false }));
         }
     }, [
         selectedLevels,
@@ -441,6 +449,7 @@ const CourseCatalougePage: React.FC = () => {
                                 handlePageChange={handlePageChangeAll}
                                 showFilters={selectedTab === "ALL"}
                                 selectedTab={selectedTab}
+                                isLoading={isLoadingByTab.ALL}
                             />
                         </TabsContent>
                     )}
@@ -463,6 +472,7 @@ const CourseCatalougePage: React.FC = () => {
                                 handlePageChange={handlePageChangeProgress}
                                 showFilters={false}
                                 selectedTab={selectedTab}
+                                isLoading={isLoadingByTab.PROGRESS}
                             />
                         </TabsContent>
                     )}
@@ -485,6 +495,7 @@ const CourseCatalougePage: React.FC = () => {
                                 handlePageChange={handlePageChangeCompleted}
                                 showFilters={false}
                                 selectedTab={selectedTab}
+                                isLoading={isLoadingByTab.COMPLETED}
                             />
                         </TabsContent>
                     )}

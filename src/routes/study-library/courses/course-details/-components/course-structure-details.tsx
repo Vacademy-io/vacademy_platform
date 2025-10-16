@@ -675,7 +675,7 @@ export const CourseStructureDetails = ({
                             Structure
                         </span>
                     </div>
-                    <div className="flex items-center gap-2 ml-auto">
+                    <div className="flex items-center gap-2 ml-auto w-full md:w-auto">
                         <div className="hidden md:flex items-center gap-2">
                             <Input
                                 value={searchQuery}
@@ -712,9 +712,9 @@ export const CourseStructureDetails = ({
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             placeholder="Search slides…"
-                            className="h-8 flex-1"
+                            className="h-9 flex-1 min-w-0"
                         />
-                        <div className="flex items-center gap-2 text-xs text-neutral-600">
+                        <div className="flex items-center gap-2 text-xs text-neutral-600 shrink-0">
                             <Switch id="only-incomplete-sm" checked={onlyIncomplete} onCheckedChange={setOnlyIncomplete} />
                             <label htmlFor="only-incomplete-sm" className="cursor-pointer">Only incomplete</label>
                         </div>
@@ -888,13 +888,13 @@ export const CourseStructureDetails = ({
                                                                         }
                                                                     </span>
                                                                     {/* Module Progress Indicator */}
-                                                                    <div className="flex items-center gap-2 ml-auto shrink-0">
+                                                                    <div className="flex items-center gap-2 ml-auto shrink-0 min-w-[88px]">
                                                                         {(() => {
                                                                             const progress = calculateModuleProgress(mod.chapters || []);
                                                                             // const progressStatus = getModuleProgressStatus(mod.chapters || []);
                                                                             return (
                                                                                 <>
-                                                                                    <div className="w-16 hidden sm:block">
+                                                                                    <div className="w-14 sm:w-16 hidden sm:block">
                                                                                         {renderProgressBar(progress, 'sm')}
                                                                                     </div>
                                                                                     {renderCompletionBadge(progress)}
@@ -908,7 +908,7 @@ export const CourseStructureDetails = ({
                                                             <CollapsibleContent
                                                                 className={`py-1 ${moduleContentIndent}`}
                                                             >
-                                                                <div className="space-y-0.5 border-l-2 border-blue-200/40 pl-2.5 relative">
+                                                                                <div className="space-y-0.5 border-l-2 border-blue-200/40 pl-2.5 relative">
                                                                     <div className="absolute left-0 top-0 w-0.5 h-full bg-blue-300/60"></div>
                                                                     {(
                                                                         mod.chapters ??
@@ -1049,7 +1049,7 @@ export const CourseStructureDetails = ({
                                                                                                                 key={
                                                                                                                     slide.id
                                                                                                                 }
-                                                                                                                className={getSlideStyling()}
+                                                                                                                className={getSlideStyling() + " rounded-md"}
                                                                                                                 onClick={isSlideClickable() ? () => {
                                                                                                                     handleSlideNavigation(
                                                                                                                         subject.id,
@@ -1335,7 +1335,7 @@ export const CourseStructureDetails = ({
                                                                                     </div>
                                                                                 </CollapsibleTrigger>
                                                                                 <CollapsibleContent>
-                                                                                    <div className="space-y-px ml-5 border-l border-green-200/50 py-1 pl-2 relative">
+                                                                                <div className="space-y-px ml-3 sm:ml-5 border-l border-green-200/50 py-1 pl-2 relative">
                                                                                         <div className="absolute left-0 top-0 w-px h-full bg-green-300/50"></div>
                                                                                         {(filterSlides(
                                                                                             slidesMap[
@@ -1368,7 +1368,7 @@ export const CourseStructureDetails = ({
                                                                                                         key={
                                                                                                             slide.id
                                                                                                         }
-                                                                                                        className={getSlideStyling()}
+                                                                                                        className={getSlideStyling() + " rounded-md"}
                                                                                                         onClick={isSlideClickable() ? () => {
                                                                                                             handleSlideNavigation(
                                                                                                                 subject.id,
@@ -1430,7 +1430,7 @@ export const CourseStructureDetails = ({
                                                                                                                                 {meta}
                                                                                                                             </Badge>
                                                                                                                         )}
-                                                                                                                        <div className="w-8 hidden sm:block">
+                                                                                                                        <div className="w-7 sm:w-8 hidden sm:block">
                                                                                                                             {renderProgressBar(progress, 'sm')}
                                                                                                                         </div>
                                                                                                                         <div className={`w-2 h-2 rounded-full ${progress >= 80 ? 'bg-green-500' : progress > 0 ? 'bg-primary-500' : 'bg-neutral-300'}`} />
@@ -1494,7 +1494,7 @@ export const CourseStructureDetails = ({
                                                         <CollapsibleContent
                                                             className={`py-1`}
                                                         >
-                                                            <div className="space-y-0.5">
+                                                                                <div className="space-y-0.5">
                                                                 {(
                                                                     mod.chapters ??
                                                                     []
@@ -1622,7 +1622,7 @@ export const CourseStructureDetails = ({
                                                                                                         key={
                                                                                                             slide.id
                                                                                                         }
-                                                                                                        className={getSlideStyling()}
+                                                                                                        className={getSlideStyling() + " rounded-md"}
                                                                                                         onClick={isSlideClickable() ? () => {
                                                                                                             handleSlideNavigation(
                                                                                                                 subject.id,
@@ -1684,7 +1684,7 @@ export const CourseStructureDetails = ({
                                                                                                                                 {meta}
                                                                                                                             </span>
                                                                                                                         )}
-                                                                                                                        <div className="w-8 hidden sm:block">
+                                                                                                                        <div className="w-7 sm:w-8 hidden sm:block">
                                                                                                                             {renderProgressBar(progress, 'sm')}
                                                                                                                         </div>
                                                                                                                         <div className={`w-2 h-2 rounded-full ${progress >= 80 ? 'bg-green-500' : progress > 0 ? 'bg-primary-500' : 'bg-neutral-300'}`} />
@@ -1933,9 +1933,9 @@ export const CourseStructureDetails = ({
                 {!selectedSubjectId && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         {studyLibraryData?.map((subject) => (
-                            <div key={subject.id} className="rounded-md border border-neutral-200 bg-white p-4 shadow-sm hover:shadow cursor-pointer" onClick={() => { setSelectedSubjectId(subject.id); }}>
+                            <div key={subject.id} className="rounded-md border border-neutral-200 bg-white p-3 sm:p-4 shadow-sm hover:shadow cursor-pointer" onClick={() => { setSelectedSubjectId(subject.id); }}>
                                 <div className="flex items-center gap-4">
-                                    <div className="w-16 h-16 rounded-md bg-neutral-100 flex items-center justify-center overflow-hidden">
+                                    <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-md bg-neutral-100 flex items-center justify-center overflow-hidden">
                                         {thumbUrlById[`subject:${subject.id}`] ? (
                                             <img
                                                 src={thumbUrlById[`subject:${subject.id}`]}
@@ -1964,9 +1964,9 @@ export const CourseStructureDetails = ({
                 {selectedSubjectId && !selectedModuleId && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         {(subjectModulesMap[selectedSubjectId] || []).map((m) => (
-                            <div key={m.module.id} className="rounded-md border border-neutral-200 bg-white p-4 shadow-sm hover:shadow cursor-pointer" onClick={() => { setSelectedModuleId(m.module.id); }}>
+                            <div key={m.module.id} className="rounded-md border border-neutral-200 bg-white p-3 sm:p-4 shadow-sm hover:shadow cursor-pointer" onClick={() => { setSelectedModuleId(m.module.id); }}>
                                 <div className="flex items-center gap-4">
-                                    <div className="w-16 h-16 rounded-md bg-neutral-100 flex items-center justify-center overflow-hidden">
+                                    <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-md bg-neutral-100 flex items-center justify-center overflow-hidden">
                                         {thumbUrlById[`module:${m.module.id}`] ? (
                                             <img
                                                 src={thumbUrlById[`module:${m.module.id}`]}
@@ -1998,9 +1998,9 @@ export const CourseStructureDetails = ({
                             .filter((m) => m.module.id === selectedModuleId)
                             .flatMap((m) => m.chapters)
                             .map((ch) => (
-                                <div key={ch.id} className="rounded-md border border-neutral-200 bg-white p-4 shadow-sm hover:shadow cursor-pointer" onClick={async () => { setSelectedChapterId(ch.id); await getSlidesWithChapterId(ch.id); }}>
+                                <div key={ch.id} className="rounded-md border border-neutral-200 bg-white p-3 sm:p-4 shadow-sm hover:shadow cursor-pointer" onClick={async () => { setSelectedChapterId(ch.id); await getSlidesWithChapterId(ch.id); }}>
                                     <div className="flex items-center gap-4">
-                                        <div className="w-16 h-16 rounded-md bg-neutral-100 flex items-center justify-center overflow-hidden">
+                                        <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-md bg-neutral-100 flex items-center justify-center overflow-hidden">
                                             {thumbUrlById[`chapter:${ch.id}`] ? (
                                                 <img
                                                     src={thumbUrlById[`chapter:${ch.id}`]}
@@ -2042,7 +2042,7 @@ export const CourseStructureDetails = ({
                                     )
                                 }
                             >
-                                <div className="flex items-center gap-3 w-full">
+                                <div className="flex items-center gap-2 sm:gap-3 w-full">
                                     <div className="flex items-center gap-2">
                                         <div className="flex w-6 h-6 items-center justify-center rounded-md text-xs font-bold bg-gray-100 text-gray-500">
                                             {index + 1}
@@ -2051,7 +2051,7 @@ export const CourseStructureDetails = ({
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="font-medium text-sm truncate">{sl.title}</div>
-                                        <div className="text-xs text-gray-500 mt-1">
+                                        <div className="text-xs text-gray-500 mt-0.5 sm:mt-1">
                                             {getSlideTypeDisplay(sl)}
                                         </div>
                                     </div>

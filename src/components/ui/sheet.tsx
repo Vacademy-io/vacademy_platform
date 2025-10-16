@@ -61,7 +61,10 @@ const SheetContent = React.forwardRef<
             className={cn(sheetVariants({ side }), className)}
             {...props}
         >
-            <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
+            <SheetPrimitive.Close
+                className="absolute right-4 left-auto top-4 grid h-9 w-9 place-items-center rounded-md bg-white/90 text-foreground shadow-md ring-1 ring-black/10 backdrop-blur-sm opacity-95 transition hover:opacity-100 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none data-[state=open]:bg-secondary dark:bg-neutral-800/90 dark:ring-white/10"
+                style={{ position: "absolute", right: "1rem", top: "1rem", left: "auto" }}
+            >
                 <Cross2Icon className="size-4" />
                 <span className="sr-only">Close</span>
             </SheetPrimitive.Close>

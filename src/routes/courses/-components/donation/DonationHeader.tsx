@@ -1,12 +1,33 @@
 import { Heart } from "lucide-react";
+import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { InstituteBrandingComponent } from "@/components/common/institute-branding";
 
 interface DonationHeaderProps {
   step: string;
 }
 
 export const DonationHeader = ({ step }: DonationHeaderProps) => {
+  const {
+    instituteId,
+    instituteName,
+    instituteLogoFileId,
+    instituteThemeCode,
+  } = useDomainRouting();
+
   return (
     <div className="mb-6">
+      <div className="flex w-full items-center justify-center mb-4">
+        <InstituteBrandingComponent
+          branding={{
+            instituteId,
+            instituteName,
+            instituteLogoFileId,
+            instituteThemeCode,
+          }}
+          size="small"
+          showName={false}
+        />
+      </div>
       <div className="flex items-center justify-center gap-2 mb-3">
         <Heart className="w-6 h-6 text-red-500" />
         <h2 className="text-xl font-bold text-gray-900">

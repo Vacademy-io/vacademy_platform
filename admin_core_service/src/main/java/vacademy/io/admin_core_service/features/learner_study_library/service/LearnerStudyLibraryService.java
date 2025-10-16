@@ -136,4 +136,20 @@ public class LearnerStudyLibraryService {
             throw new VacademyException("Unable to map to SlideDTO list: " + e.getMessage());
         }
     }
+
+    public List<LearnerModuleDTOWithDetails> getModulesDetailsWithChaptersAndSlides(String subjectId, String packageSessionId, CustomUserDetails user) {
+        String rawResponse = moduleChapterMappingRepository.getModuleChapterProgressWithSlides(
+                subjectId,
+                packageSessionId,
+                user.getUserId(),
+                LearnerOperationEnum.PERCENTAGE_MODULE_COMPLETED.name(),
+                LearnerOperationEnum.PERCENTAGE_CHAPTER_COMPLETED.name(),
+                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                List.of(ChapterStatus.ACTIVE.name()),
+                List.of(ModuleStatusEnum.ACTIVE.name()),
+                List.of(QuestionStatusEnum.ACTIVE.name())
+        );
+        return mapToLearnerModuleDTOWithDetails(rawResponse);
+    }
 }

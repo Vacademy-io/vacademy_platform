@@ -9,6 +9,7 @@ import vacademy.io.admin_core_service.features.learner_study_library.dto.Learner
 import vacademy.io.admin_core_service.features.learner_study_library.service.LearnerStudyLibraryService;
 import vacademy.io.admin_core_service.features.slide.dto.SlideDetailProjection;
 import vacademy.io.admin_core_service.features.study_library.dto.ChapterDTOWithDetails;
+import vacademy.io.admin_core_service.features.study_library.dto.ModuleDTOWithDetails;
 import vacademy.io.admin_core_service.features.study_library.service.StudyLibraryService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.admin_core_service.config.cache.ClientCacheable;
@@ -55,4 +56,10 @@ public class LearnerStudyLibraryController {
     public ResponseEntity<List<ChapterDTOWithDetails>>getChaptersWithSlides(@RequestParam("moduleId") String subjectId, @RequestParam("packageSessionId") String packageSessionId) {
         return ResponseEntity.ok(studyLibraryService.getChaptersWithSlides(subjectId, packageSessionId, null));
     }
+
+    @GetMapping("/modules-chapters-slides")
+    public ResponseEntity<List<LearnerModuleDTOWithDetails>>getModuleChapterSlides(@RequestParam("subjectId") String subjectId, @RequestParam("packageSessionId") String packageSessionId,@RequestAttribute("user")CustomUserDetails userDetails) {
+        return ResponseEntity.ok(learnerStudyLibraryService.getModulesDetailsWithChaptersAndSlides(subjectId, packageSessionId, userDetails));
+    }
+
 }

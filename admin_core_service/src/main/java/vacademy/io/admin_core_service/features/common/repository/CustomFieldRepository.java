@@ -105,4 +105,8 @@ public interface CustomFieldRepository extends JpaRepository<CustomFields, Strin
   Optional<CustomFields> findByFieldKeyAndInstituteId(@Param("fieldKey") String fieldKey,
       @Param("instituteId") String instituteId);
 
+    // In CustomFieldRepository
+    Optional<CustomFields> findTopByFieldKeyAndStatusOrderByCreatedAtDesc(String fieldKey, String status);
+
+
 }

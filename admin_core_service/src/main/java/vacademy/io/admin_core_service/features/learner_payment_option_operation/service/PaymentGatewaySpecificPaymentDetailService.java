@@ -22,7 +22,11 @@ public class PaymentGatewaySpecificPaymentDetailService {
                             .setCustomerId(userInstitutePaymentGatewayMapping.getPaymentGatewayCustomerId());
                 }
                 break;
-
+            case EWAY:
+                if (paymentInitiationRequestDTO.getEwayRequest() != null){
+                    paymentInitiationRequestDTO.getEwayRequest().setCustomerId(userInstitutePaymentGatewayMapping.getPaymentGatewayCustomerId());
+                }
+                break;
             default:
                 throw new IllegalStateException("Unexpected value: " + vendor);
         }

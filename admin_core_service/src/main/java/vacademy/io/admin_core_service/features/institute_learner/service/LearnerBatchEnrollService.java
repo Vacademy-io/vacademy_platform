@@ -69,15 +69,14 @@ public class LearnerBatchEnrollService {
     }
 
     private void shiftLearnerToActiveStatus(List<String> packageSessionIds, String userId, String enrollInviteId, LearnerStatusEnum fromStatus) {
-        List<StudentSessionInstituteGroupMapping> mappings = studentSessionRepository
+        List<StudentSessionInstituteGroupMapping> invitedMappings = studentSessionRepository
                 .findByDestinationPackageSession_IdInAndUserIdAndStatusIn(
                         packageSessionIds, userId, List.of(fromStatus.name())
                 );
 
-        for (StudentSessionInstituteGroupMapping mapping : mappings) {
+        for (StudentSessionInstituteGroupMapping mapping : invitedMappings) {
             if (mapping.getDestinationPackageSession() != null) {
                 String newSessionId = studentRegistrationManager.shiftStudentBatch(
-                        mapping.getDestinationPackageSession().getId(),
                         mapping,
                         LearnerStatusEnum.ACTIVE.name()
                 );
@@ -90,8 +89,17 @@ public class LearnerBatchEnrollService {
                         enrollInviteId
                 );
 
-                if (mappings.size() > 0){
-                    String userPlanId = mappings.get(0).getUserPlanId();
+
+                customFieldValueService.shiftCustomField(
+                    CustomFieldValueSourceTypeEnum.USER.name(),
+                    mapping.getId(),
+                    newSessionId,
+                    CustomFieldTypeEnum.ENROLL_INVITE.name(),
+                    enrollInviteId
+                );
+
+                if (invitedMappings.size() > 0){
+                    String userPlanId = invitedMappings.get(0).getUserPlanId();
                     UserPlan userPlan = userPlanService.findById(userPlanId);
                     referralMappingService.processReferralBenefitsIfApplicable(userPlan);
                 }
@@ -106,45 +114,45 @@ public class LearnerBatchEnrollService {
      */
     public BulkApprovalResult processBulkLearnerApproval(BulkLearnerApprovalRequestDTO request) {
         log.info("Processing bulk learner approval request with {} items", request != null ? request.getItems().size() : 0);
-        
+
         if (request == null || request.getItems() == null || request.getItems().isEmpty()) {
             log.warn("Bulk approval request is null or empty");
             return new BulkApprovalResult(0, 0, "Request cannot be null or empty");
         }
-        
+
         int successCount = 0;
         int totalCount = request.getItems().size();
-        
+
         // Process each item in the bulk request
         for (BulkLearnerApprovalRequestDTO.LearnerApprovalItem item : request.getItems()) {
             try {
                 // Validate individual item
-                if (item.getPackageSessionIds() == null || item.getPackageSessionIds().isEmpty() || 
+                if (item.getPackageSessionIds() == null || item.getPackageSessionIds().isEmpty() ||
                     item.getUserId() == null || item.getUserId().trim().isEmpty() ||
                     item.getEnrollInviteId() == null || item.getEnrollInviteId().trim().isEmpty()) {
-                    log.warn("Skipping invalid item: userId={}, enrollInviteId={}, packageSessionIds={}", 
+                    log.warn("Skipping invalid item: userId={}, enrollInviteId={}, packageSessionIds={}",
                             item.getUserId(), item.getEnrollInviteId(), item.getPackageSessionIds());
                     continue; // Skip invalid items
                 }
-                
-                log.debug("Processing item: userId={}, enrollInviteId={}, packageSessionIds={}", 
+
+                log.debug("Processing item: userId={}, enrollInviteId={}, packageSessionIds={}",
                          item.getUserId(), item.getEnrollInviteId(), item.getPackageSessionIds());
-                
+
                 shiftLearnerFromPendingForApprovalToActivePackageSessions(
-                    item.getPackageSessionIds(), 
-                    item.getUserId(), 
+                    item.getPackageSessionIds(),
+                    item.getUserId(),
                     item.getEnrollInviteId()
                 );
                 successCount++;
                 log.debug("Successfully processed item for userId: {}", item.getUserId());
             } catch (Exception e) {
                 // Log error but continue processing other items
-                log.error("Error processing item for userId: {}, enrollInviteId: {}, error: {}", 
+                log.error("Error processing item for userId: {}, enrollInviteId: {}, error: {}",
                          item.getUserId(), item.getEnrollInviteId(), e.getMessage(), e);
                 continue;
             }
         }
-        
+
         String message;
         if (successCount == 0) {
             message = "No items were processed successfully";
@@ -153,11 +161,11 @@ public class LearnerBatchEnrollService {
         } else {
             message = String.format("Bulk approval successful: %d items processed", successCount);
         }
-        
+
         log.info("Bulk approval completed: {}/{} items processed successfully", successCount, totalCount);
         return new BulkApprovalResult(successCount, totalCount, message);
     }
-    
+
     /**
      * Result class for bulk approval operations
      */
@@ -165,13 +173,13 @@ public class LearnerBatchEnrollService {
         private final int successCount;
         private final int totalCount;
         private final String message;
-        
+
         public BulkApprovalResult(int successCount, int totalCount, String message) {
             this.successCount = successCount;
             this.totalCount = totalCount;
             this.message = message;
         }
-        
+
         public int getSuccessCount() { return successCount; }
         public int getTotalCount() { return totalCount; }
         public String getMessage() { return message; }

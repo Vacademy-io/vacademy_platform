@@ -168,7 +168,7 @@ public class StripePaymentManager implements PaymentServiceStrategy {
         responseData.put("transactionId", paymentIntent.getId());
         responseData.put("status", paymentIntent.getStatus());
         responseData.put("clientSecret", paymentIntent.getClientSecret());
-        responseData.put("amount", paymentIntent.getAmount()); // Amount is in cents
+        responseData.put("amount", paymentIntent.getAmount()/100); // Amount is in cents
         responseData.put("currency", paymentIntent.getCurrency());
         responseData.put("created", paymentIntent.getCreated()); // NEW: Capture the transaction timestamp
         // Assuming 'paymentIntent' is your parsed PaymentIntent object

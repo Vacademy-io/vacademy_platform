@@ -1,8 +1,6 @@
 package vacademy.io.admin_core_service.features.payments.manager;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,12 +8,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import vacademy.io.admin_core_service.features.common.util.JsonUtil;
+import vacademy.io.admin_core_service.features.payments.service.WebHookService;
+import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
-import vacademy.io.common.payment.dto.EwayRequestDTO;
-import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
-import vacademy.io.common.payment.dto.PaymentResponseDTO;
+import vacademy.io.common.payment.dto.*;
+import vacademy.io.common.payment.enums.PaymentGateway;
+import vacademy.io.common.payment.enums.PaymentStatusEnum;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
@@ -26,43 +29,25 @@ public class EwayPaymentManager implements PaymentServiceStrategy {
     private static final Logger LOGGER = LoggerFactory.getLogger(EwayPaymentManager.class);
     private final WebClient webClient;
     private final ObjectMapper jsonMapper = new ObjectMapper();
+    private final WebHookService webHookService;
+    private final PaymentLogService paymentLogService;
 
-    public EwayPaymentManager() {
+    public EwayPaymentManager(WebClient.Builder webClientBuilder,WebHookService webHookService,PaymentLogService paymentLogService) {
+        this.webClient = webClientBuilder.build();
         this.jsonMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
-        this.webClient = WebClient.create("https://api.sandbox.ewaypayments.com");
+        this.webHookService = webHookService;
+        this.paymentLogService = paymentLogService;
     }
 
-    private EwayApiResponse callEwayTransactionApi(Transaction transaction, Map<String, Object> paymentGatewaySpecificData) {
-        String apiKey = (String) paymentGatewaySpecificData.get("apiKey");
-        String password = (String) paymentGatewaySpecificData.get("password");
-
-        try {
-            String jsonPayload = jsonMapper.writerWithDefaultPrettyPrinter().writeValueAsString(transaction);
-            LOGGER.info("---------------- EWAY API REQUEST to /Transaction ----------------");
-            LOGGER.info("Payload:\n{}", jsonPayload);
-            LOGGER.info("------------------------------------------------------------------");
-        } catch (JsonProcessingException e) {
-            LOGGER.error("Could not serialize transaction for logging", e);
-        }
-
-        String authHeader = "Basic " + Base64.getEncoder().encodeToString((apiKey + ":" + password).getBytes());
-
-        return webClient.post()
-            .uri("/Transaction")
-            .header("Authorization", authHeader)
-            .header("Content-Type", "application/json")
-            .bodyValue(transaction)
-            .retrieve()
-            .onStatus(status -> status.isError(), resp -> Mono.error(new VacademyException("Eway API error: " + resp.statusCode())))
-            .bodyToMono(EwayApiResponse.class)
-            .block();
-    }
+    // ===================================================================================
+    // Overridden Methods from PaymentServiceStrategy
+    // ===================================================================================
 
     @Override
     public PaymentResponseDTO initiatePayment(UserDTO user, PaymentInitiationRequestDTO request,
                                               Map<String, Object> paymentGatewaySpecificData) {
 
-        Transaction transaction;
+        EwayApiResponseDTO.Transaction transaction;
         EwayRequestDTO ewayRequest = request.getEwayRequest();
 
         if (StringUtils.hasText(ewayRequest.getCustomerId())) {
@@ -70,7 +55,8 @@ public class EwayPaymentManager implements PaymentServiceStrategy {
             transaction = createTokenTransactionPayload(
                 ewayRequest.getCustomerId(),
                 (int) (request.getAmount() * 100),
-                ewayRequest.getCvn()
+                ewayRequest.getCvn(),
+                request.getCurrency()
             );
         } else {
             LOGGER.info("Performing a new card payment.");
@@ -82,86 +68,27 @@ public class EwayPaymentManager implements PaymentServiceStrategy {
                 email,
                 ewayRequest,
                 (int) (request.getAmount() * 100),
-                "ProcessPayment"
+                "ProcessPayment",
+                request.getCurrency()
             );
         }
 
-        EwayApiResponse response = callEwayTransactionApi(transaction, paymentGatewaySpecificData);
+        EwayApiResponseDTO response = callEwayTransactionApi(transaction, paymentGatewaySpecificData);
 
-        if (response.Errors != null || !response.TransactionStatus) {
-            throw new VacademyException("e-way payment failed: " + response.Errors);
-        }
 
-        PaymentResponseDTO paymentResponse = new PaymentResponseDTO();
-        paymentResponse.setOrderId(request.getOrderId());
+        PaymentResponseDTO paymentResponseDTO = buildPaymentResponseFromIntent(response, request.getOrderId());
 
-        Map<String, Object> responseData = new HashMap<>();
-        responseData.put("transactionId", response.TransactionID);
-        if (response.Customer != null && StringUtils.hasText(response.Customer.TokenCustomerID)) {
-            responseData.put("tokenCustomerId", response.Customer.TokenCustomerID);
-        }
-        responseData.put("status", "succeeded");
+        createWebHook(request.getInstituteId(),paymentResponseDTO);
 
-        paymentResponse.setResponseData(responseData);
-        return paymentResponse;
-    }
-
-    private Transaction createTokenTransactionPayload(String customerId, int amount, String cvn) {
-        Customer customer = new Customer();
-        customer.TokenCustomerID = customerId;
-        customer.CardDetails = new CardDetails();
-        customer.CardDetails.CVN = cvn;
-
-        PaymentDetails payment = new PaymentDetails();
-        payment.TotalAmount = amount;
-        payment.CurrencyCode = "AUD";
-
-        Transaction transaction = new Transaction();
-        transaction.Customer = customer;
-        transaction.Payment = payment;
-        transaction.Method = "ProcessPayment";
-        transaction.TransactionType = "Recurring";
-
-        return transaction;
-    }
-
-    private Transaction createCardTransactionPayload(String fullName, String email, EwayRequestDTO ewayRequest, int amount, String method) {
-        CardDetails cardDetails = new CardDetails();
-        cardDetails.Name = fullName;
-        cardDetails.Number = ewayRequest.getCardNumber();
-        cardDetails.ExpiryMonth = ewayRequest.getExpiryMonth();
-        cardDetails.ExpiryYear = ewayRequest.getExpiryYear();
-        cardDetails.CVN = ewayRequest.getCvn();
-
-        Customer customer = new Customer();
-        customer.CardDetails = cardDetails;
-        customer.Email = email;
-        customer.Country = "au";
-        String[] nameParts = fullName.trim().split("\\s+", 2);
-        customer.FirstName = nameParts[0];
-        customer.LastName = nameParts.length > 1 ? nameParts[1] : "";
-
-        Transaction transaction = new Transaction();
-        transaction.Customer = customer;
-        transaction.Method = method;
-        transaction.TransactionType = "Purchase";
-
-        if ("ProcessPayment".equals(method)) {
-            PaymentDetails paymentDetails = new PaymentDetails();
-            paymentDetails.TotalAmount = amount;
-            paymentDetails.CurrencyCode = "AUD";
-            transaction.Payment = paymentDetails;
-        }
-
-        return transaction;
+        return paymentResponseDTO;
     }
 
     @Override
     public Map<String, Object> createCustomer(UserDTO user, PaymentInitiationRequestDTO request,
                                               Map<String, Object> paymentGatewaySpecificData) {
 
-        Transaction transaction = createTransactionPayload(user.getFullName(), user.getEmail(), request.getEwayRequest(), 0, "CreateTokenCustomer");
-        EwayApiResponse response = callEwayTransactionApi(transaction, paymentGatewaySpecificData);
+        EwayApiResponseDTO.Transaction transaction = createCardTransactionPayload(user.getFullName(), user.getEmail(), request.getEwayRequest(), 0, "CreateTokenCustomer", request.getCurrency());
+        EwayApiResponseDTO response = callEwayTransactionApi(transaction, paymentGatewaySpecificData);
 
         if (response.Errors != null || !StringUtils.hasText(response.Customer.TokenCustomerID)) {
             throw new VacademyException("Failed to create e-way customer: " + response.Errors);
@@ -169,6 +96,7 @@ public class EwayPaymentManager implements PaymentServiceStrategy {
 
         Map<String, Object> responseMap = new HashMap<>();
         responseMap.put("customerId", response.Customer.TokenCustomerID);
+        responseMap.put("customerData", response);
         return responseMap;
     }
 
@@ -176,8 +104,9 @@ public class EwayPaymentManager implements PaymentServiceStrategy {
     public Map<String, Object> createCustomerForUnknownUser(String email, PaymentInitiationRequestDTO request,
                                                             Map<String, Object> paymentGatewaySpecificData) {
 
-        Transaction transaction = createTransactionPayload("Anonymous User", email, request.getEwayRequest(), 0, "CreateTokenCustomer");
-        EwayApiResponse response = callEwayTransactionApi(transaction, paymentGatewaySpecificData);
+        EwayApiResponseDTO.Transaction transaction = createCardTransactionPayload("Anonymous User", email, request.getEwayRequest(), 0, "CreateTokenCustomer", request.getCurrency());
+        EwayApiResponseDTO
+            response = callEwayTransactionApi(transaction, paymentGatewaySpecificData);
 
         if (response.Errors != null || !StringUtils.hasText(response.Customer.TokenCustomerID)) {
             throw new VacademyException("Failed to create e-way customer for unknown user: " + response.Errors);
@@ -189,22 +118,25 @@ public class EwayPaymentManager implements PaymentServiceStrategy {
         return responseMap;
     }
 
+    @Override
+    public Map<String, Object> findCustomerByEmail(String email, Map<String, Object> paymentGatewaySpecificData) {
+        return null;
+    }
+
+
+    // ===================================================================================
+    // Public Methods specific to EwayPaymentManager
+    // ===================================================================================
+
     public PaymentResponseDTO chargeToken(String tokenCustomerId, double amount, String cvn, Map<String, Object> paymentGatewaySpecificData) {
-        Customer customer = new Customer();
-        customer.TokenCustomerID = tokenCustomerId;
-        customer.CardDetails = new CardDetails();
-        customer.CardDetails.CVN = cvn;
+        EwayApiResponseDTO.Transaction transaction = createTokenTransactionPayload(
+            tokenCustomerId,
+            (int) (amount * 100),
+            cvn,
+            null // Assuming default currency or it should be passed in
+        );
 
-        PaymentDetails payment = new PaymentDetails();
-        payment.TotalAmount = (int) (amount * 100);
-
-        Transaction transaction = new Transaction();
-        transaction.Customer = customer;
-        transaction.Payment = payment;
-        transaction.Method = "ProcessPayment";
-        transaction.TransactionType = "Recurring";
-
-        EwayApiResponse response = callEwayTransactionApi(transaction, paymentGatewaySpecificData);
+        EwayApiResponseDTO response = callEwayTransactionApi(transaction, paymentGatewaySpecificData);
 
         if (response.Errors != null || !response.TransactionStatus) {
             throw new VacademyException("e-way token payment failed: " + response.Errors);
@@ -218,91 +150,158 @@ public class EwayPaymentManager implements PaymentServiceStrategy {
         return paymentResponse;
     }
 
-    private Transaction createTransactionPayload(String fullName, String email, EwayRequestDTO ewayRequest, int amount, String method) {
-        CardDetails cardDetails = new CardDetails();
+    public EwayTransaction getTransactionById(String transactionId, Map<String, Object> paymentGatewaySpecificData) {
+        LOGGER.info("Fetching Eway transaction details for transactionId: {}", transactionId);
+
+        String apiKey = (String) paymentGatewaySpecificData.get("apiKey");
+        String password = (String) paymentGatewaySpecificData.get("password");
+        String baseUrl = (String) paymentGatewaySpecificData.get("baseUrl");
+
+        if (!StringUtils.hasText(apiKey) || !StringUtils.hasText(password) || !StringUtils.hasText(baseUrl)) {
+            throw new VacademyException("Eway API credentials (apiKey, password, baseUrl) are missing.");
+        }
+
+        String authHeader = "Basic " + Base64.getEncoder().encodeToString((apiKey + ":" + password).getBytes());
+
+        String str = webClient.get()
+            .uri(baseUrl + "/Transaction/" + transactionId)
+            .header("Authorization", authHeader)
+            .header("Content-Type", "application/json")
+            .retrieve()
+            .onStatus(status -> status.isError(), resp -> {
+                LOGGER.error("Eway API error while fetching transaction {}: {}", transactionId, resp.statusCode());
+                return Mono.error(new VacademyException("Eway API error: " + resp.statusCode()));
+            })
+            .bodyToMono(String.class)
+            .block();
+        EwayTransactionQueryResponse response = JsonUtil.fromJson(str, EwayTransactionQueryResponse.class);
+        if (response == null) {
+            throw new VacademyException("No response from Eway API for transactionId: " + transactionId);
+        }
+
+        if (StringUtils.hasText(response.getErrors())) {
+            throw new VacademyException("Eway API returned errors for transactionId " + transactionId + ": " + response.getErrors());
+        }
+
+        if (response.getTransactions() == null || response.getTransactions().isEmpty()) {
+            LOGGER.warn("No transaction found for transactionId: {}", transactionId);
+            return null;
+        }
+
+        return response.getTransactions().get(0);
+    }
+
+    // ===================================================================================
+    // Private Helper Methods
+    // ===================================================================================
+
+    private EwayApiResponseDTO callEwayTransactionApi(EwayApiResponseDTO.Transaction transaction, Map<String, Object> paymentGatewaySpecificData) {
+        String apiKey = (String) paymentGatewaySpecificData.get("apiKey");
+        String password = (String) paymentGatewaySpecificData.get("password");
+        String baseUrl = (String) paymentGatewaySpecificData.get("baseUrl");
+
+        String authHeader = "Basic " + Base64.getEncoder().encodeToString((apiKey + ":" + password).getBytes());
+
+        return webClient.post()
+            .uri(baseUrl + "/Transaction")
+            .header("Authorization", authHeader)
+            .header("Content-Type", "application/json")
+            .bodyValue(transaction)
+            .retrieve()
+            .onStatus(status -> status.isError(), resp -> Mono.error(new VacademyException("Eway API error: " + resp.statusCode())))
+            .bodyToMono(EwayApiResponseDTO.class)
+            .block();
+    }
+
+    private EwayApiResponseDTO.Transaction createTokenTransactionPayload(String customerId, int amount, String cvn, String currencyCode) {
+        EwayApiResponseDTO.Customer customer = new EwayApiResponseDTO.Customer();
+        customer.TokenCustomerID = customerId;
+        customer.CardDetails = new EwayApiResponseDTO.CardDetails();
+        customer.CardDetails.CVN = cvn;
+
+        EwayApiResponseDTO.PaymentDetails payment = new EwayApiResponseDTO.PaymentDetails();
+        payment.TotalAmount = amount;
+        payment.CurrencyCode = currencyCode;
+
+        EwayApiResponseDTO.Transaction transaction = new EwayApiResponseDTO.Transaction();
+        transaction.Customer = customer;
+        transaction.Payment = payment;
+        transaction.Method = "ProcessPayment";
+        transaction.TransactionType = "Recurring";
+
+        return transaction;
+    }
+
+    private EwayApiResponseDTO.Transaction createCardTransactionPayload(String fullName, String email, EwayRequestDTO ewayRequest, int amount, String method, String currencyCode) {
+        EwayApiResponseDTO.CardDetails cardDetails = new EwayApiResponseDTO.CardDetails();
         cardDetails.Name = fullName;
         cardDetails.Number = ewayRequest.getCardNumber();
         cardDetails.ExpiryMonth = ewayRequest.getExpiryMonth();
         cardDetails.ExpiryYear = ewayRequest.getExpiryYear();
         cardDetails.CVN = ewayRequest.getCvn();
 
-        Customer customer = new Customer();
+        EwayApiResponseDTO.Customer customer = new EwayApiResponseDTO.Customer();
         customer.CardDetails = cardDetails;
         customer.Email = email;
-        customer.Country = ewayRequest.getCountry();
+        customer.Country = ewayRequest.getCountryCode();
         String[] nameParts = fullName.trim().split("\\s+", 2);
         customer.FirstName = nameParts[0];
         customer.LastName = nameParts.length > 1 ? nameParts[1] : "";
 
-        Transaction transaction = new Transaction();
+        EwayApiResponseDTO.Transaction transaction = new EwayApiResponseDTO.Transaction();
         transaction.Customer = customer;
         transaction.Method = method;
         transaction.TransactionType = "Purchase";
 
         if ("ProcessPayment".equals(method)) {
-            PaymentDetails paymentDetails = new PaymentDetails();
+            EwayApiResponseDTO.PaymentDetails paymentDetails = new EwayApiResponseDTO.PaymentDetails();
             paymentDetails.TotalAmount = amount;
-            paymentDetails.CurrencyCode = "AUD";
+            paymentDetails.CurrencyCode = currencyCode;
             transaction.Payment = paymentDetails;
         }
 
         return transaction;
     }
 
-    @Override
-    public Map<String, Object> findCustomerByEmail(String email, Map<String, Object> paymentGatewaySpecificData) {
-        return null;
+    private PaymentResponseDTO buildPaymentResponseFromIntent(EwayApiResponseDTO responseDTO, String orderId) {
+        if (responseDTO == null) {
+            throw new IllegalArgumentException("EwayApiResponseDTO cannot be null");
+        }
+
+        Map<String, Object> responseData = new HashMap<>();
+
+        int amount = 0;
+        if (responseDTO.getPayment() != null && responseDTO.getPayment().getTotalAmount() != 0) {
+            amount = responseDTO.getPayment().getTotalAmount()/100; // convert cents to actual amount
+        }
+
+        responseData.put("transactionId", responseDTO.getTransactionID());
+        responseData.put("status", responseDTO.getTransactionStatus());
+        responseData.put("amount", amount);
+        responseData.put("currency", responseDTO.getPayment() != null ? responseDTO.getPayment().getCurrencyCode() : null);
+        responseData.put("created", Instant.now().getEpochSecond());
+        PaymentStatusEnum paymentStatus;
+        if ("00".equalsIgnoreCase(responseDTO.getResponseCode()) && Boolean.TRUE.equals(responseDTO.getTransactionStatus())) {
+            paymentStatus = PaymentStatusEnum.PAID;
+        } else if (responseDTO.getResponseCode() == null) {
+            paymentStatus = PaymentStatusEnum.PAYMENT_PENDING;
+        } else {
+            paymentStatus = PaymentStatusEnum.FAILED;
+        }
+
+        responseData.put("paymentStatus", paymentStatus.name());
+
+        PaymentResponseDTO dto = new PaymentResponseDTO();
+        dto.setResponseData(responseData);
+        dto.setOrderId(orderId);
+
+        return dto;
     }
 
-    public Customer findCustomerById(String tokenCustomerId, Map<String, Object> paymentGatewaySpecificData) {
-        String apiKey = (String) paymentGatewaySpecificData.get("apiKey");
-        String password = (String) paymentGatewaySpecificData.get("password");
-        String authHeader = "Basic " + Base64.getEncoder().encodeToString((apiKey + ":" + password).getBytes());
-
-        EwayApiResponse response = webClient.get()
-            .uri("/Customer/" + tokenCustomerId)
-            .header("Authorization", authHeader)
-            .retrieve()
-            .onStatus(status -> status.isError(), resp -> Mono.error(new VacademyException("Eway API error: " + resp.statusCode())))
-            .bodyToMono(EwayApiResponse.class)
-            .block();
-
-        return response.Customer;
-    }
-
-    private static class Transaction {
-        @JsonProperty("Customer") public Customer Customer;
-        @JsonProperty("Payment") public PaymentDetails Payment;
-        @JsonProperty("Method") public String Method;
-        @JsonProperty("TransactionType") public String TransactionType;
-    }
-
-    private static class Customer {
-        @JsonProperty("TokenCustomerID") public String TokenCustomerID;
-        @JsonProperty("FirstName") public String FirstName;
-        @JsonProperty("LastName") public String LastName;
-        @JsonProperty("Email") public String Email;
-        @JsonProperty("Country") public String Country;
-        @JsonProperty("CardDetails") public CardDetails CardDetails;
-    }
-
-    private static class CardDetails {
-        @JsonProperty("Name") public String Name;
-        @JsonProperty("Number") public String Number;
-        @JsonProperty("ExpiryMonth") public String ExpiryMonth;
-        @JsonProperty("ExpiryYear") public String ExpiryYear;
-        @JsonProperty("CVN") public String CVN;
-    }
-
-    private static class PaymentDetails {
-        @JsonProperty("TotalAmount") public int TotalAmount;
-        @JsonProperty("CurrencyCode") public String CurrencyCode;
-    }
-
-    private static class EwayApiResponse {
-        @JsonProperty("Customer") public Customer Customer;
-        @JsonProperty("TransactionStatus") public Boolean TransactionStatus;
-        @JsonProperty("TransactionID") public String TransactionID;
-        @JsonProperty("Errors") public String Errors;
+    private void createWebHook(String instituteId,PaymentResponseDTO paymentResponseDTO){
+        EwayWebHookDTO eWayWebHookDTO = new EwayWebHookDTO();
+        eWayWebHookDTO.setInstituteId(instituteId);
+        eWayWebHookDTO.setPaymentResponse(paymentResponseDTO);
+        webHookService.saveWebhook(PaymentGateway.EWAY.name(),JsonUtil.toJson(eWayWebHookDTO),paymentResponseDTO.getOrderId());
     }
 }

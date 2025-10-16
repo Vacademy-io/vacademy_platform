@@ -133,8 +133,8 @@ public class PaymentNotificatonService {
             .toLocalDate()
             .format(DateTimeFormatter.ofPattern("dd MMM yyyy"));
 
-        long amountInCents = ((Number) responseData.get("amount")).longValue();
-        String displayAmount = BigDecimal.valueOf(amountInCents).divide(new BigDecimal(100)).toString();
+
+        String displayAmount = String.valueOf(responseDTO.getResponseData().get("amount"));
 
         // FIX: Pass the receiptUrl to the email body generator
         return StripeInvoiceEmailBody.getPaymentConfirmationEmailBody(
@@ -173,8 +173,7 @@ public class PaymentNotificatonService {
                 .format(DateTimeFormatter.ofPattern("dd MMM yyyy"));
 
         // This line already uses the correct pattern
-        long amountInCents = ((Number) responseData.get("amount")).longValue();
-        String displayAmount = BigDecimal.valueOf(amountInCents).divide(new BigDecimal(100)).toString();
+        String displayAmount = String.valueOf(responseDTO.getResponseData().get("amount"));
 
         return StripeInvoiceEmailBody.getPaymentConfirmationEmailBody(
                 safe(institute.getInstituteName()),

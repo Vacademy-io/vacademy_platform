@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.common.util;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
@@ -12,24 +13,12 @@ public class CustomFieldKeyGenerator {
     private static final Pattern SPECIAL_CHARS_PATTERN = Pattern.compile("[^a-zA-Z0-9_]");
     private static final Pattern MULTIPLE_UNDERSCORES_PATTERN = Pattern.compile("_+");
 
-    /**
-     * Generates a consistent field key from field name
-     * Rules:
-     * 1. Convert to lowercase
-     * 2. Replace spaces and special characters with underscores
-     * 3. Remove multiple consecutive underscores
-     * 4. Ensure it starts with a letter or underscore
-     * 5. Ensure it doesn't end with underscore
-     * 
-     * @param fieldName The field name to convert to key
-     * @return Generated field key
-     */
-    public String generateFieldKey(String fieldName) {
+    public String generateFieldKey(String fieldName, String instituteId) {
         if (!StringUtils.hasText(fieldName)) {
             throw new IllegalArgumentException("Field name cannot be null or empty");
         }
 
-        // Convert to lowercase
+        // Convert field name to lowercase
         String key = fieldName.toLowerCase(Locale.ENGLISH);
 
         // Replace spaces and special characters with underscores
@@ -41,7 +30,7 @@ public class CustomFieldKeyGenerator {
         // Remove leading/trailing underscores
         key = key.replaceAll("^_+|_+$", "");
 
-        // Ensure it starts with a letter (not underscore or number)
+        // Ensure it starts with a letter
         if (key.isEmpty() || Character.isDigit(key.charAt(0))) {
             key = "field_" + key;
         }
@@ -51,20 +40,23 @@ public class CustomFieldKeyGenerator {
             key = key + "_field";
         }
 
+        // Append institute ID to make it unique per institute
+        key = key + "_inst_" + instituteId;
+
         return key;
     }
 
     /**
-     * Generates a unique field key by appending timestamp if needed
-     * This method should be used when creating new custom fields to ensure
-     * uniqueness
-     * 
+     * Generates a unique field key by appending a counter if needed.
+     * This method should be used when creating new custom fields to ensure uniqueness.
+     *
      * @param fieldName    The field name to convert to key
+     * @param instituteId  The institute ID to include in the key
      * @param existingKeys List of existing keys to check against
      * @return Unique field key
      */
-    public String generateUniqueFieldKey(String fieldName, java.util.List<String> existingKeys) {
-        String baseKey = generateFieldKey(fieldName);
+    public String generateUniqueFieldKey(String fieldName, String instituteId, List<String> existingKeys) {
+        String baseKey = generateFieldKey(fieldName, instituteId);
 
         if (existingKeys == null || existingKeys.isEmpty()) {
             return baseKey;
@@ -81,5 +73,3 @@ public class CustomFieldKeyGenerator {
         return uniqueKey;
     }
 }
-
-

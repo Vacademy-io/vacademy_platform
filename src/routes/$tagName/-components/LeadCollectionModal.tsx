@@ -464,13 +464,13 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
         <label htmlFor={field.name} className="block text-sm font-medium text-gray-700 mb-1">
           {field.label} {field.required && "*"}
         </label>
-        <div className="flex gap-2">
+        <div className="space-y-2">
           <input
             type={field.type}
             id={field.name}
             value={fieldValue}
             onChange={(e) => handleInputChange(field.name, e.target.value)}
-            className={`flex-1 px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary-500 focus:border-transparent ${
+            className={`w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary-500 focus:border-transparent ${
               (field.type === 'email' && fieldValue && !validateEmail(fieldValue)) ||
               (field.type === 'tel' && fieldValue && !validatePhone(fieldValue))
                 ? 'border-red-300' 
@@ -481,55 +481,67 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
             maxLength={field.type === 'tel' ? 10 : undefined}
             pattern={field.type === 'tel' ? '[0-9]{10}' : undefined}
           />
-          {field.type === 'email' && fieldValue && validateEmail(fieldValue) && !emailVerified && (
-            <button
-              type="button"
-              onClick={handleSendOtp}
-              disabled={emailOtpSent}
-              className="px-4 py-2 text-white rounded-md hover:opacity-90 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm whitespace-nowrap"
-              style={{
-                backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
-              }}
-            >
-              {emailOtpSent ? 'Sent' : 'Send OTP'}
-            </button>
-          )}
+          
+           {/* OTP Buttons - Responsive layout */}
+           {field.type === 'email' && fieldValue && validateEmail(fieldValue) && !emailVerified && (
+             <div className="flex flex-col sm:flex-row sm:justify-end gap-2">
+               {!emailOtpSent ? (
+                 <button
+                   type="button"
+                   onClick={handleSendOtp}
+                   className="w-full sm:w-auto px-4 py-2 text-white rounded-md hover:opacity-90 text-sm"
+                   style={{
+                     backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                   }}
+                 >
+                   Send OTP
+                 </button>
+               ) : (
+                 <div className="flex items-center justify-center sm:justify-end px-3 py-2 bg-green-100 text-green-800 rounded-md text-sm">
+                   ✓ OTP Sent to your email
+                 </div>
+               )}
+             </div>
+           )}
+          
           {field.type === 'email' && emailVerified && (
-            <div className="flex items-center px-3 py-2 bg-green-100 text-green-800 rounded-md text-sm">
-              ✓ Verified
+            <div className="flex items-center justify-center sm:justify-start px-3 py-2 bg-green-100 text-green-800 rounded-md text-sm">
+              ✓ Email Verified
             </div>
           )}
         </div>
         
-        {/* OTP Verification Section */}
-        {field.type === 'email' && emailOtpSent && !emailVerified && (
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">
-              Enter OTP sent to your email
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={emailOtp}
-                onChange={(e) => setEmailOtp(e.target.value)}
-                placeholder="Enter 6-digit OTP"
-                maxLength={6}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              />
-              <button
-                type="button"
-                onClick={handleVerifyOtp}
-                disabled={isVerifyingOtp || emailOtp.length !== 6}
-                className="px-4 py-2 text-white rounded-md hover:opacity-90 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm whitespace-nowrap"
-                style={{
-                  backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
-                }}
-              >
-                {isVerifyingOtp ? 'Verifying...' : 'Verify'}
-              </button>
-            </div>
-          </div>
-        )}
+         {/* OTP Verification Section */}
+         {field.type === 'email' && emailOtpSent && !emailVerified && (
+           <div className="space-y-2">
+             <label className="block text-sm font-medium text-gray-700">
+               Enter OTP sent to your email
+             </label>
+             <div className="space-y-2">
+               <input
+                 type="text"
+                 value={emailOtp}
+                 onChange={(e) => setEmailOtp(e.target.value)}
+                 placeholder="Enter 6-digit OTP"
+                 maxLength={6}
+                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+               />
+               <div className="flex justify-end">
+                 <button
+                   type="button"
+                   onClick={handleVerifyOtp}
+                   disabled={isVerifyingOtp || emailOtp.length !== 6}
+                   className="w-full sm:w-auto px-4 py-2 text-white rounded-md hover:opacity-90 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm"
+                   style={{
+                     backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                   }}
+                 >
+                   {isVerifyingOtp ? 'Verifying...' : 'Verify OTP'}
+                 </button>
+               </div>
+             </div>
+           </div>
+         )}
         
         {/* Helper Text for Phone Numbers */}
         {field.type === 'tel' && (

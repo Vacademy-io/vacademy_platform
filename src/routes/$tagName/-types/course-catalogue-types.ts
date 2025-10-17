@@ -64,11 +64,19 @@ export interface GlobalSettings {
       type: string;
       enabled: boolean;
       props: {
-        text?: string;
-        links?: Array<{
-          label: string;
-          route: string;
+        layout: "two-column" | "three-column" | "four-column";
+        leftSection: {
+          title: string;
+          text: string;
+        };
+        rightSections: Array<{
+          title: string;
+          links: Array<{
+            label: string;
+            route: string;
+          }>;
         }>;
+        bottomNote: string;
       };
     };
   };
@@ -223,5 +231,32 @@ export interface CourseRecommendationsProps {
 }
 
 export interface FooterProps {
-  description: string;
+  layout: "two-column" | "three-column" | "four-column";
+  leftSection: {
+    title: string;
+    text: string;
+  };
+  rightSections?: Array<{
+    title: string;
+    links: Array<{
+      label: string;
+      route: string;
+    }>;
+  }>;
+  rightSection?: {
+    title: string;
+    links: Array<{
+      label: string;
+      route: string;
+    }>;
+  };
+  socialsSection?: {
+    title: string;
+    links: Array<{
+      platform: string;
+      icon: string;
+      url: string;
+    }>;
+  };
+  bottomNote: string;
 }

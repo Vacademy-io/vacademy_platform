@@ -1592,7 +1592,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   };
 
   return (
-    <div className="w-full flex flex-col items-center gap-4">
+    <div className="w-full max-w-[100vw] overflow-x-hidden flex flex-col items-center gap-4">
       {/* Non-fullscreen verification overlay - shown outside the player */}
       {showVerification && !isFullscreen && (
         <div className="w-full mb-2 animate-in fade-in slide-in-from-top duration-300">
@@ -1631,9 +1631,9 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       {/* Video player container with verification overlay */}
       <div
         ref={playerContainerRef}
-        className={`aspect-video w-full relative min-h-[200px] sm:min-h-[250px] md:min-h-[300px] lg:h-full items-center flex justify-center overflow-hidden bg-black rounded-lg group ${
+        className={`aspect-video w-full max-w-[100vw] relative min-h-[200px] sm:min-h-[250px] md:min-h-[300px] lg:h-full items-center flex justify-center overflow-hidden bg-black rounded-lg group ${
           isPseudoFullscreen
-            ? "fixed inset-0 w-screen h-screen z-[10000] rounded-none"
+            ? "fixed inset-0 z-[10000] rounded-none overflow-hidden max-w-[100vw] max-h-[100vh]"
             : ""
         }`}
         onMouseMove={handleMouseMoveOnVideo}
@@ -2001,7 +2001,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         )}
 
         {/* YouTube player */}
-        <div className="w-full h-full pointer-events-none">
+        <div className="w-full h-full max-w-[100vw] overflow-hidden pointer-events-none">
           <YouTube
             videoId={videoId}
             opts={opts}

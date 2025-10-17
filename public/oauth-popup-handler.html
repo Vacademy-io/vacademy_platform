@@ -116,9 +116,10 @@
             if (!window.DEBUG) {
                 setTimeout(() => {
                     try {
-                        // If we couldn't talk to opener (COOP), redirect this window to /login with tokens
-                        if ((!window.opener || openerMessageFailed) && data && data.accessToken && data.refreshToken) {
-                            showRedirecting('Redirecting to login...');
+                        // If this page was opened in the same tab (no opener), redirect this window to /login
+                        // Otherwise, always close the popup and let the parent handle via storage/BroadcastChannel
+                        if (!window.opener && data && data.accessToken && data.refreshToken) {
+                            showRedirecting('Redirecting to app...');
                             const next = new URL('/login', window.location.origin);
                             next.searchParams.set('accessToken', data.accessToken);
                             next.searchParams.set('refreshToken', data.refreshToken);
@@ -283,7 +284,18 @@
 
                 // If opened in the same tab (no opener), redirect this window to /login so FE can consume tokens
                 try {
-                    if (!window.opener) {
+                    const isPopupWindow = (function(){
+                        try {
+                            if (window.name && window.name.toLowerCase() === 'oauth_popup') return true;
+                        } catch(e) {}
+                        try {
+                            const q = new URLSearchParams(window.location.search);
+                            if (q.get('popup') === '1') return true;
+                        } catch(e) {}
+                        return false;
+                    })();
+
+                    if (!window.opener && !isPopupWindow) {
                         const next = new URL('/login', window.location.origin);
                         next.searchParams.set('accessToken', params.accessToken);
                         next.searchParams.set('refreshToken', params.refreshToken);
@@ -309,6 +321,9 @@
                                 window.location.replace(next.toString());
                             }, 300);
                         }
+                    } else if (isPopupWindow) {
+                        // In popup mode, just close after sending result; parent will handle navigation
+                        setTimeout(() => { try { window.close(); } catch(e) {} }, 400);
                     }
                 } catch (e) {}
             // Special case: error=true with signupData means "email not found" (new user) - this is SUCCESS for signup

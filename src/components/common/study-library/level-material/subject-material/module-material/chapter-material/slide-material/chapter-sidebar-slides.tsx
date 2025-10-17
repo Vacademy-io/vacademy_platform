@@ -56,10 +56,10 @@ export const calculateOverallCompletion = (slides: Slide[]): number => {
 
 // Helper function to get slide status
 export const getSlideStatus = (percentage: number | null | undefined) => {
-    if (percentage === null || percentage === undefined) {
+    if (percentage === null || percentage === undefined || percentage === 0) {
         return "not-started";
     }
-    if (percentage >= 80) {
+    if (percentage >= 90) {
         return "completed";
     }
     return "in-progress";

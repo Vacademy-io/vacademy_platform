@@ -41,6 +41,71 @@ function OAuthRedirectHandler() {
   );
 }
 
+// Robust success notifier for popup contexts: postMessage, localStorage, BroadcastChannel
+function sendOAuthSuccessToParent(accessToken: string, refreshToken: string) {
+  // Try postMessage (may be blocked by COOP)
+  try {
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage(
+        { type: 'oauth_success', data: { accessToken, refreshToken } },
+        '*'
+      );
+    }
+  } catch {
+    // ignore postMessage failures
+  }
+
+  // Always write to localStorage so parent can pick via storage event
+  try {
+    localStorage.setItem(
+      'OAUTH_RESULT',
+      JSON.stringify({ type: 'oauth_success', data: { accessToken, refreshToken }, ts: Date.now() })
+    );
+  } catch {
+    // ignore storage errors
+  }
+
+  // BroadcastChannel fallback
+  try {
+    if (typeof BroadcastChannel !== 'undefined') {
+      const bc = new BroadcastChannel('OAUTH_CHANNEL');
+      bc.postMessage({ type: 'oauth_success', data: { accessToken, refreshToken } });
+      try { bc.close(); } catch { /* ignore */ }
+    }
+  } catch {
+    // ignore broadcast errors
+  }
+}
+
+function sendOAuthErrorToParent(message: string) {
+  // Try postMessage
+  try {
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage(
+        { type: 'oauth_error', data: { message } },
+        '*'
+      );
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    localStorage.setItem(
+      'OAUTH_RESULT',
+      JSON.stringify({ type: 'oauth_error', data: { message }, ts: Date.now() })
+    );
+  } catch {}
+
+  try {
+    if (typeof BroadcastChannel !== 'undefined') {
+      const bc = new BroadcastChannel('OAUTH_CHANNEL');
+      bc.postMessage({ type: 'oauth_error', data: { message } });
+      try { bc.close(); } catch { /* ignore */ }
+    }
+  } catch {}
+}
+
 const handleOAuthCallback = async (
   navigate: ReturnType<typeof useNavigate>,
   setPrimaryColor: (color: string) => void
@@ -67,15 +132,42 @@ const handleOAuthCallback = async (
     }
   }
 
+  // Detect popup context: opener present, or known window.name, or explicit flag
+  const isPopupWindow = (() => {
+    try {
+      if (window.opener && !window.opener.closed) return true;
+    } catch {}
+    try {
+      if (window.name && window.name.toLowerCase() === 'oauth_popup') return true;
+    } catch {}
+    try {
+      const qp = new URLSearchParams(window.location.search);
+      if (qp.get('popup') === '1') return true;
+    } catch {}
+    return false;
+  })();
+
   if (error) {
-    toast.error("We couldn't find an account with these details. Please try a different login method or contact support.");
-    // Redirect back to login page instead of signup page
+    const message = "We couldn't find an account with these details. Please try a different login method or contact support.";
+    if (isPopupWindow) {
+      sendOAuthErrorToParent(message);
+      setTimeout(() => { try { window.close(); } catch { /* ignore */ } }, 600);
+      return;
+    }
+    toast.error(message);
     navigate({ to: "/login" });
     return;
   }
 
   if (accessToken && refreshToken) {
     try {
+      // If this is a popup window, send tokens to parent and close without navigating here
+      if (isPopupWindow) {
+        sendOAuthSuccessToParent(accessToken, refreshToken);
+        setTimeout(() => { try { window.close(); } catch { /* ignore */ } }, 500);
+        return;
+      }
+
       await setToStorage("accessToken", accessToken);
       await setToStorage("refreshToken", refreshToken);
       await setTokenInStorage(TokenKey.accessToken, accessToken);
@@ -95,8 +187,13 @@ const handleOAuthCallback = async (
       navigate({ to: "/login" });
     }
   } else {
-    toast.error("Missing tokens in redirect URL. Please try logging in again.");
-    // Redirect back to login page instead of signup page
+    const message = "Missing tokens in redirect URL. Please try logging in again.";
+    if (isPopupWindow) {
+      sendOAuthErrorToParent(message);
+      setTimeout(() => { try { window.close(); } catch { /* ignore */ } }, 600);
+      return;
+    }
+    toast.error(message);
     navigate({ to: "/login" });
   }
 };

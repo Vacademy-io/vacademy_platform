@@ -158,8 +158,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ videoUrl, videoId }) =
   }
 
   return (
-    <div className="w-full h-full flex items-center justify-center bg-black">
-      <div className="w-full max-w-4xl aspect-video">
+    <div className="w-full h-full max-w-[100vw] overflow-x-hidden flex items-center justify-center bg-black">
+      <div className="w-full aspect-video max-w-[100vw]">
         <YouTube
           videoId={youtubeId}
           opts={{

@@ -19,7 +19,7 @@ export const NonCollapsibleItem = ({ icon, title, to }: SidebarItemProps) => {
     return (
         <Link
             to={to}
-            className={`flex w-[84%] gap-4 mx-auto cursor-pointer items-center rounded-lg px-3 py-2.5 transition-all duration-300 ease-in-out group relative overflow-hidden border ${
+            className={`flex w-full sm:w-[84%] max-w-full overflow-x-hidden gap-4 mx-auto cursor-pointer items-center rounded-lg px-3 py-2.5 transition-all duration-300 ease-in-out group relative overflow-hidden border ${
                 isActive 
                     ? "bg-gradient-to-r from-primary-50 to-primary-100/80 dark:from-neutral-800 dark:to-neutral-800 text-primary-700 dark:text-neutral-200 border border-primary-200 dark:border-neutral-700" 
                     : "hover:bg-gradient-to-r hover:from-neutral-50 hover:to-primary-50/30 dark:hover:from-neutral-800 dark:hover:to-neutral-700/30 text-neutral-600 dark:text-neutral-300 hover:text-neutral-800 dark:hover:text-neutral-200 hover:border-primary-200/50 dark:hover:border-neutral-600 border border-transparent"

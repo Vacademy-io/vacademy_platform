@@ -61,7 +61,7 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
         List<InstituteStudentDetails> instituteStudentDetails = buildInstituteStudentDetails(
                 instituteId,
                 learnerPackageSessionsEnrollDTO.getPackageSessionIds(),
-                enrollInvite.getLearnerAccessDays(),
+                userPlan.getPaymentPlan().getValidityInDays(),
                 learnerSessionStatus,
                 userPlan);
 

@@ -123,13 +123,24 @@ public class StripeInvoiceEmailBody {
     }
 
     private static String getThemeColorHex(String themeCode) {
-        if (themeCode == null || themeCode.isBlank()) return "#007bff"; // A nice default blue
+        // Return default for null or blank input
+        if (themeCode == null || themeCode.isBlank()) {
+            return "#007bff";
+        }
+
+        // First, check if the input is already a hex code. If so, return it.
+        if (themeCode.startsWith("#")) {
+            return themeCode;
+        }
+
+        // If it's not a hex code, assume it's a color name and use the switch.
         return switch (themeCode.toLowerCase()) {
             case "red" -> "#e74c3c";
             case "purple" -> "#9b59b6";
             case "blue" -> "#3498db";
             case "green" -> "#27ae60";
             case "amber" -> "#f39c12";
+            // The default now handles unrecognized color NAMES
             default -> "#007bff";
         };
     }

@@ -125,6 +125,51 @@ export function LoginForm({
     const accessToken = urlParams.get("accessToken");
     const refreshToken = urlParams.get("refreshToken");
 
+    // If this page is loaded inside an OAuth popup, do NOT complete login here.
+    // Instead, broadcast tokens to the opener and close the popup to avoid duplicate app instances.
+    const isPopupWindow = (() => {
+      try { if (window.opener && !window.opener.closed) return true; } catch {}
+      try { if (window.name && window.name.toLowerCase() === 'oauth_popup') return true; } catch {}
+      try { const q = new URLSearchParams(window.location.search); if (q.get('popup') === '1') return true; } catch {}
+      return false;
+    })();
+
+    if (isPopupWindow && accessToken && refreshToken) {
+      try {
+        // postMessage (may be blocked by COOP)
+        try {
+          if (window.opener && !window.opener.closed) {
+            window.opener.postMessage(
+              { type: 'oauth_success', data: { accessToken, refreshToken } },
+              '*'
+            );
+          }
+        } catch { /* ignore */ }
+
+        // localStorage event for parent listeners
+        try {
+          localStorage.setItem('OAUTH_RESULT', JSON.stringify({
+            type: 'oauth_success',
+            data: { accessToken, refreshToken },
+            ts: Date.now(),
+          }));
+        } catch { /* ignore */ }
+
+        // BroadcastChannel fallback
+        try {
+          if (typeof BroadcastChannel !== 'undefined') {
+            const bc = new BroadcastChannel('OAUTH_CHANNEL');
+            bc.postMessage({ type: 'oauth_success', data: { accessToken, refreshToken } });
+            try { bc.close(); } catch { /* ignore */ }
+          }
+        } catch { /* ignore */ }
+      } finally {
+        // Close popup quickly
+        setTimeout(() => { try { window.close(); } catch { /* ignore */ } }, 300);
+      }
+      return; // Don't proceed with in-popup login
+    }
+
     if (
       isNullOrEmptyOrUndefined(accessToken) ||
       isNullOrEmptyOrUndefined(refreshToken)
@@ -366,12 +411,17 @@ export function LoginForm({
 
   const handleOAuthLogin = (provider: "google" | "github") => {
     try {
-      const stateObj = {
+      const stateObj: Record<string, unknown> = {
         from: `${window.location.origin}/login/oauth/learner`,
         account_type: "login",
         user_type: "learner",
         isModalLogin: false, // Flag to indicate this is a page login
       };
+
+      // Include institute_id if resolved from domain routing
+      if (domainRouting?.instituteId) {
+        stateObj.institute_id = domainRouting.instituteId;
+      }
 
       const base64State = btoa(JSON.stringify(stateObj));
       const loginUrl = `${LOGIN_URL_GOOGLE_GITHUB}/${provider}?state=${encodeURIComponent(

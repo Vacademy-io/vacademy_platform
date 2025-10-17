@@ -17,7 +17,7 @@ import type {
 import "@react-pdf-viewer/core/lib/styles/index.css";
 import "@react-pdf-viewer/default-layout/lib/styles/index.css";
 import "@react-pdf-viewer/page-navigation/lib/styles/index.css";
-import { forwardRef, useImperativeHandle } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 
 export interface PdfViewerComponentRef {
   jumpToPage: (pageIndex: number) => void;
@@ -34,6 +34,8 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
   handlePageChange,
   initialPage = 0
 }, ref) => {
+  // Container ref to control scroll behavior on mobile
+  const containerRef = useRef<HTMLDivElement | null>(null);
   // Create page navigation plugin instance
   const pageNavigationPluginInstance = pageNavigationPlugin();
   const { jumpToPage } = pageNavigationPluginInstance;
@@ -56,7 +58,11 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
   
   const renderToolbar = (
     Toolbar: (props: ToolbarProps) => React.ReactElement
-  ) => <Toolbar>{renderDefaultToolbar(transform)}</Toolbar>;
+  ) => (
+    <div className="sticky top-0 z-10 bg-white">
+      <Toolbar>{renderDefaultToolbar(transform)}</Toolbar>
+    </div>
+  );
   
   const defaultLayoutPluginInstance = defaultLayoutPlugin({
     renderToolbar,
@@ -65,9 +71,54 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
   const { renderDefaultToolbar } =
     defaultLayoutPluginInstance.toolbarPluginInstance;
 
+  // Prevent scroll chaining/bounce on iOS at container edges
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    let startY = 0;
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches && e.touches.length > 0) {
+        startY = e.touches[0].clientY;
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      const scrollTop = el.scrollTop;
+      const scrollHeight = el.scrollHeight;
+      const offsetHeight = el.offsetHeight;
+
+      if (!e.touches || e.touches.length === 0) return;
+      const currentY = e.touches[0].clientY;
+      const isScrollingUp = currentY > startY;
+
+      const isAtTop = scrollTop <= 0;
+      const isAtBottom = scrollTop + offsetHeight >= scrollHeight - 1;
+
+      // If trying to scroll beyond edges, prevent default to stop page scroll/bounce
+      if ((isAtTop && isScrollingUp) || (isAtBottom && !isScrollingUp)) {
+        e.preventDefault();
+      }
+    };
+
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove as EventListener, {
+      passive: false,
+    });
+
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart as EventListener);
+      el.removeEventListener("touchmove", onTouchMove as EventListener);
+    };
+  }, []);
+
   return (
     <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
-      <div className="w-full h-full min-h-[50vh] sm:min-h-[60vh] lg:min-h-[70vh] xl:min-h-[80vh] max-h-[calc(100vh-120px)] sm:max-h-[calc(100vh-140px)] lg:max-h-[calc(100vh-170px)] max-w-full mx-0 px-0 overflow-y-auto overflow-x-hidden overscroll-none custom-scrollbar">
+      <div
+        ref={containerRef}
+        className="w-full h-[calc(100dvh-120px)] sm:h-[calc(100dvh-140px)] lg:h-[calc(100dvh-170px)] max-w-full mx-0 px-0 overflow-y-auto overflow-x-hidden overscroll-none custom-scrollbar"
+        style={{ touchAction: "pan-y", WebkitOverflowScrolling: "touch" }}
+      >
         <Viewer
           fileUrl={pdfUrl}
           onDocumentLoad={handleDocumentLoad}

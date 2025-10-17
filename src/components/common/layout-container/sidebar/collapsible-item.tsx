@@ -22,13 +22,13 @@ export const CollapsibleItem = ({ icon, title, subItems }: SidebarItemProps) => 
 
     return (
         <Collapsible
-            className="group/collapsible"
+            className="group/collapsible max-w-full w-full overflow-x-hidden"
             onMouseEnter={toggleHover}
             onMouseLeave={toggleHover}
         >
             <CollapsibleTrigger
                 className={cn(
-                    "flex w-[84%] gap-4 mx-auto cursor-pointer items-center rounded-lg px-3 py-2.5 transition-all duration-300 ease-in-out group relative overflow-hidden border",
+                    "flex w-full sm:w-[84%] gap-4 mx-auto cursor-pointer items-center rounded-lg px-3 py-2.5 transition-all duration-300 ease-in-out group relative overflow-hidden max-w-full overflow-x-hidden border",
                     routeMatches
                         ? "bg-gradient-to-r from-primary-50 to-primary-100/80 text-primary-700 border border-primary-200"
                         : "hover:bg-gradient-to-r hover:from-neutral-50 hover:to-primary-50/30 dark:hover:from-neutral-800 dark:hover:to-neutral-700/30 text-neutral-600 dark:text-neutral-300 hover:text-neutral-800 dark:hover:text-neutral-200 hover:border-primary-200/50 dark:hover:border-neutral-600 border-transparent"
@@ -96,9 +96,9 @@ export const CollapsibleItem = ({ icon, title, subItems }: SidebarItemProps) => 
                 </div>
             </CollapsibleTrigger>
             
-            <CollapsibleContent className="transition-all duration-300 ease-in-out">
+            <CollapsibleContent className="transition-all duration-300 ease-in-out max-w-full w-full overflow-x-hidden">
                 {isExpanded && (
-                    <SidebarGroup className="flex flex-col mt-2 ml-4 space-y-1 relative">
+                    <SidebarGroup className="flex flex-col mt-2 ml-4 space-y-1 relative max-w-full overflow-x-hidden pr-1">
                         {/* Connection line */}
                         <div className="absolute left-2 top-0 bottom-0 w-px bg-gradient-to-b from-primary-200 via-primary-300/50 to-transparent"></div>
                         
@@ -106,10 +106,10 @@ export const CollapsibleItem = ({ icon, title, subItems }: SidebarItemProps) => 
                             <Link 
                                 to={obj.subItemLink} 
                                 key={key}
-                                className="group/subitem relative"
+                                className="group/subitem relative block max-w-full overflow-x-hidden"
                             >
                                 <div
-                                    className={`cursor-pointer px-3 py-2 rounded-md transition-all duration-300 text-xs relative overflow-hidden border ${
+                                    className={`cursor-pointer px-3 py-2 rounded-md transition-all duration-300 text-xs relative overflow-hidden max-w-full overflow-x-hidden border ${
                                         currentRoute === obj.subItemLink
                                             ? "text-primary-700 bg-gradient-to-r from-primary-50 to-primary-100/60 font-medium border border-primary-200"
                                             : "text-neutral-500 hover:text-neutral-700 hover:bg-gradient-to-r hover:from-neutral-50 hover:to-primary-50/20 font-normal border-transparent hover:border-primary-200/30"

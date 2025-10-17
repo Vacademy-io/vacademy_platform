@@ -320,11 +320,16 @@ export function ModularDynamicLoginContainer({
       sessionStorage.setItem('modal_oauth_data', JSON.stringify(modalOAuthData));
       
       // Create minimal state object
-      const stateObj = {
-        from: `${window.location.origin}/login/oauth/modal-learner`,
+      const stateObj: Record<string, unknown> = {
+        from: `${window.location.origin}/oauth-popup-handler.html?popup=1`,
         account_type: "login",
         user_type: "learner",
       };
+
+      // Include institute_id if available (from URL or props)
+      if (instituteIdFromUrl) {
+        stateObj.institute_id = instituteIdFromUrl;
+      }
 
       const stateJson = JSON.stringify(stateObj);
       const base64State = btoa(stateJson);

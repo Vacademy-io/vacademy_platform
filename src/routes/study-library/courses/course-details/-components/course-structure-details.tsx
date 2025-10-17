@@ -1914,7 +1914,7 @@ export const CourseStructureDetails = ({
                 </div>
                 {/* Drill-down folder UI */}
                 {/* Breadcrumbs */}
-                <div className="flex items-center gap-2 text-sm text-neutral-600 mb-2">
+                <div className="flex flex-wrap items-center gap-1 sm:gap-2 text-xs sm:text-sm text-neutral-600 mb-2">
                     <button type="button" className={`hover:text-primary-600 ${!selectedSubjectId && !selectedModuleId && !selectedChapterId ? "font-semibold text-primary-700" : ""}`} onClick={() => { setSelectedSubjectId(null); setSelectedModuleId(null); setSelectedChapterId(null); }}>Subjects</button>
                     {(selectedSubjectId) && <span className="text-neutral-400">/</span>}
                     {(selectedSubjectId) && (

@@ -241,6 +241,18 @@ const RootComponent = () => {
 
   // Global OAuth completion listener (storage/BroadcastChannel) to redirect parent
   useEffect(() => {
+    // Skip in popup windows to avoid navigating inside the popup
+    const isPopupWindow = (() => {
+      try { if (window.opener && !window.opener.closed) return true; } catch {}
+      try { if (window.name && window.name.toLowerCase() === 'oauth_popup') return true; } catch {}
+      try { const q = new URLSearchParams(window.location.search); if (q.get('popup') === '1') return true; } catch {}
+      return false;
+    })();
+
+    if (isPopupWindow) {
+      return;
+    }
+
     let processed = false;
 
     const redirectWithTokens = (accessToken: string, refreshToken: string) => {

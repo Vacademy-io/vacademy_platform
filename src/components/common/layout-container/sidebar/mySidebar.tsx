@@ -4,7 +4,6 @@ import {
   SidebarContent,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
 import {
@@ -150,8 +149,9 @@ export const MySidebar = ({
   }
 
   return (
-    <Sidebar side="left" collapsible="icon">
-      <SidebarContent className="sidebar-content flex flex-col bg-white dark:bg-neutral-900 border-r border-gray-200 dark:border-neutral-800 py-2 transition-all duration-200 ease-in-out">
+    <div className="max-w-full w-full overflow-x-hidden">
+      <Sidebar side="left" collapsible="icon">
+        <SidebarContent className="sidebar-content flex flex-col bg-white dark:bg-neutral-900 border-r border-gray-200 dark:border-neutral-800 py-2 transition-all duration-200 ease-in-out max-w-full w-full overflow-x-hidden">
         <SidebarHeader
           className={`flex items-center px-3 pb-2 mb-2 border-b border-gray-100 dark:border-neutral-800 transition-all duration-200 ${
             isExpanded
@@ -196,7 +196,7 @@ export const MySidebar = ({
         </SidebarHeader>
 
         <SidebarMenu
-          className={`flex flex-col space-y-1 flex-1 transition-all duration-200 ${
+          className={`flex flex-col space-y-1 flex-1 transition-all duration-200 max-w-full w-full overflow-x-hidden ${
             isExpanded ? "items-stretch" : "items-center"
           }`}
         >
@@ -209,9 +209,9 @@ export const MySidebar = ({
                     : filteredSidebarItems;
 
                 return items.map((obj, key) => (
-                  <SidebarMenuItem
+                  <div
                     key={key}
-                    className="animate-slide-in-left"
+                    className="animate-slide-in-left max-w-full w-full overflow-x-hidden"
                     style={{
                       animationDelay: `${key * 30}ms`,
                     }}
@@ -226,11 +226,12 @@ export const MySidebar = ({
                       title={obj.title}
                       to={(obj.to || "/") as string}
                     />
-                  </SidebarMenuItem>
+                  </div>
                 ));
               })()}
         </SidebarMenu>
       </SidebarContent>
     </Sidebar>
+    </div>
   );
 };

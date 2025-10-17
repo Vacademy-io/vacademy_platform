@@ -330,8 +330,22 @@ const handleDynamicRedirection = async (
       // ignore
     }
 
-    // Close popup after sending message
-    setTimeout(() => window.close(), 500);
+  // Close or redirect after sending message
+  setTimeout(() => {
+    try {
+      // If there is no opener (same-tab flow), redirect this window so the app can complete login
+      if ((!opener || opener.closed) && accessToken && refreshToken) {
+        const next = new URL('/login', window.location.origin);
+        next.searchParams.set('accessToken', accessToken);
+        next.searchParams.set('refreshToken', refreshToken);
+        window.location.replace(next.toString());
+        return;
+      }
+    } catch {
+      // ignore and try to close
+    }
+    try { window.close(); } catch { /* ignore */ }
+  }, 500);
     
   } catch {
     // Error in dynamic redirection

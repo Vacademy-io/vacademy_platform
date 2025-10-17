@@ -89,6 +89,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
         }
     }
 
+    // In QueryServiceImpl.java
+
     private Map<String, Object> getSSIGMByStatusAndSessions(Map<String, Object> params) {
         try {
             List<String> packageSessionIds = (List<String>) params.get("packageSessionIds");
@@ -103,35 +105,54 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
 
             for (Object[] row : rows) {
                 Map<String, Object> mapping = new HashMap<>();
+
                 mapping.put("ssigmId", String.valueOf(row[0]));
                 mapping.put("userId", String.valueOf(row[1]));
-                Date startDate = new Date();
-                Date endDate = (row[2] instanceof Timestamp ts) ? new Date(ts.getTime()) : null;
-                mapping.put("expiryDate", endDate);
+                Date expiryDate = (row[2] instanceof Date d) ? d : null; // Also corrected this for robustness
+                mapping.put("expiryDate", expiryDate);
                 mapping.put("name", String.valueOf(row[3]));
                 mapping.put("mobileNumber", String.valueOf(row[4]));
                 mapping.put("email", String.valueOf(row[5]));
                 mapping.put("username", String.valueOf(row[6]));
                 mapping.put("packageSessionId", String.valueOf(row[7]));
 
-                // ✅ calculate remaining days - prioritize custom field value, fallback to date
-                // calculation
-                long remainingDays = calculateRemainingDays(String.valueOf(row[0]), endDate);
+                // --- CORRECTED LOGIC ---
+
+                // 1. Check for java.util.Date, which covers both Timestamp and Date subclasses.
+                Date enrolledDate = (row[8] instanceof Date d) ? d : null;
+
+                // 2. Fall back to createdAt date if enrolledDate is still null
+                if (enrolledDate == null) {
+                    enrolledDate = (row[9] instanceof Date d) ? d : null;
+                }
+
+                mapping.put("enrolledDate", enrolledDate);
+
+                // 3. Calculate learningDay using the final enrolledDate.
+                long learningDay = 0;
+                if (enrolledDate != null) {
+                    long diffInMillis = System.currentTimeMillis() - enrolledDate.getTime();
+                    learningDay = (diffInMillis / (1000 * 60 * 60 * 24));
+                }
+                mapping.put("learningDay", learningDay + 1);
+
+                // --- END OF CORRECTION ---
+
+                long remainingDays = calculateRemainingDays(String.valueOf(row[0]), expiryDate);
                 mapping.put("remainingDays", remainingDays);
 
                 ssigmList.add(mapping);
             }
 
             return Map.of(
-                    "ssigmList", ssigmList,
-                    "ssigmListCount", ssigmList.size());
+                "ssigmList", ssigmList,
+                "ssigmListCount", ssigmList.size());
 
         } catch (Exception e) {
-            log.error("Error executing get_ssigm_by_status_and_sessions query", e);
+            log.error("Error executing getSSIGMByStatusAndSessions query", e);
             return Map.of("error", e.getMessage());
         }
     }
-
     /**
      * Calculate remaining days prioritizing custom field value, with date-based
      * fallback

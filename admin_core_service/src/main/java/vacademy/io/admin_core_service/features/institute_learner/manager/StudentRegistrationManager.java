@@ -9,6 +9,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.institute.controller.InstituteCertificateController;
 import vacademy.io.admin_core_service.features.institute_learner.constants.StudentConstants;
 import vacademy.io.admin_core_service.features.institute_learner.dto.*;
@@ -18,6 +19,11 @@ import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSe
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.learner.service.LearnerCouponService;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
+import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
+import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionType;
+import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
@@ -46,6 +52,9 @@ public class StudentRegistrationManager {
 
     @Autowired
     private LearnerCouponService learnerCouponService;
+
+    @Autowired
+    private UserPlanService userPlanService;
 
 
     StudentRegistrationManager(InstituteCertificateController instituteCertificateController) {
@@ -327,7 +336,8 @@ public class StudentRegistrationManager {
         String userId,
         String newStatus,
         StudentSessionInstituteGroupMapping invitedPackageSession
-    ) {
+    )
+    {
         Optional<StudentSessionInstituteGroupMapping> existingMappingOpt =
             studentSessionRepository.findTopByPackageSessionIdAndUserIdAndStatusIn(
                 invitedPackageSession.getDestinationPackageSession().getId(),instituteId, userId, List.of(LearnerSessionStatusEnum.ACTIVE.name())
@@ -348,7 +358,7 @@ public class StudentRegistrationManager {
             activePackageSession.setType(invitedPackageSession.getType());
             activePackageSession.setTypeId(invitedPackageSession.getTypeId());
         }
-        activePackageSession.setExpiryDate(invitedPackageSession.getExpiryDate());
+        activePackageSession.setExpiryDate(getExpiryDateBasedOnPaymentPlan(activePackageSession,invitedPackageSession.getUserPlanId()));
         return activePackageSession;
     }
 
@@ -369,11 +379,92 @@ public class StudentRegistrationManager {
         }
     }
 
-    private void markOldMappingDeleted(StudentSessionInstituteGroupMapping mapping) {
-        mapping.setStatus(LearnerSessionStatusEnum.DELETED.name());
-        studentSessionRepository.save(mapping);
+    private Date getExpiryDateBasedOnPaymentPlan(StudentSessionInstituteGroupMapping mapping, String userPlanId) {
+        if (userPlanId == null) return null;
+
+        UserPlan userPlan = userPlanService.findById(userPlanId);
+        if (userPlan == null) return null;
+
+        EnrollInvite enrollInvite = userPlan.getEnrollInvite();
+        PaymentOption paymentOption = userPlan.getPaymentOption();
+        PaymentPlan paymentPlan = userPlan.getPaymentPlan();
+
+        Date today = new Date();
+        Date baseDate;
+
+        // Step 1: Determine base date
+        if (mapping != null && mapping.getExpiryDate() != null) {
+            baseDate = mapping.getExpiryDate().after(today) ? mapping.getExpiryDate() : today;
+        } else {
+            baseDate = today;
+        }
+
+        // Step 2: Determine validity days
+        Integer validityDays = null;
+
+        if (paymentOption != null) {
+            String type = paymentOption.getType();
+
+            if (PaymentOptionType.ONE_TIME.name().equalsIgnoreCase(type) ||
+                PaymentOptionType.SUBSCRIPTION.name().equalsIgnoreCase(type)) {
+
+                validityDays = (paymentPlan != null) ? paymentPlan.getValidityInDays() : null;
+
+            } else if (PaymentOptionType.DONATION.name().equalsIgnoreCase(type)) {
+
+                validityDays = (enrollInvite != null) ? enrollInvite.getLearnerAccessDays() : null;
+
+            } else {
+                validityDays = (enrollInvite != null) ? enrollInvite.getLearnerAccessDays() : null;
+            }
+        }
+
+        // Step 3: Handle unlimited access case
+        if (validityDays == null) {
+            // Unlimited access → expiry date should be null
+            return null;
+        }
+
+        // Step 4: Handle zero or negative validity (no extension)
+        if (validityDays <= 0) {
+            return baseDate;
+        }
+
+        // Step 5: Calculate expiry date
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(baseDate);
+        calendar.add(Calendar.DAY_OF_YEAR, validityDays);
+
+        return calendar.getTime();
     }
 
+
+    private void markOldMappingDeleted(StudentSessionInstituteGroupMapping mapping) {
+        if (mapping == null) return; // safety check
+
+        String userId = mapping.getUserId();
+        String packageSessionId = mapping.getPackageSession() != null ? mapping.getPackageSession().getId() : null;
+        String instituteId = mapping.getInstitute() != null ? mapping.getInstitute().getId() : null;
+        String destinationPackageSessionId = mapping.getDestinationPackageSession() != null
+            ? mapping.getDestinationPackageSession().getId()
+            : null;
+        String deletedStatus = LearnerSessionStatusEnum.DELETED.name();
+
+        // Only call delete if at least userId and status are available
+        if (userId != null) {
+            studentSessionRepository.deleteByUniqueConstraint(
+                userId,
+                destinationPackageSessionId,
+                packageSessionId,
+                instituteId,
+                deletedStatus
+            );
+        }
+
+        // Mark current mapping as deleted
+        mapping.setStatus(deletedStatus);
+        studentSessionRepository.save(mapping);
+    }
 
 
     public List<String> getStudentRoles() {

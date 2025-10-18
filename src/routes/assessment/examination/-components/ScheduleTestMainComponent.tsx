@@ -3,6 +3,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import ScheduleTestTabList from "./ScheduleTestTabList";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { assessmentTypes } from "@/types/assessment";
+import { Assessment } from "@/types/assessment";
 import { fetchAssessmentData } from "../-utils.ts/useFetchAssessment";
 import { AssessmentCard } from "../-components/AssessmentCard";
 import { EmptyAssessment } from "@/svgs";
@@ -19,7 +20,7 @@ export const ScheduleTestMainComponent = ({
     assessmentTypes.LIVE
   );
   const [assessmentData, setAssessmentData] = useState<{
-    [key in assessmentTypes]: any[];
+    [key in assessmentTypes]: Assessment[];
   }>({
     [assessmentTypes.LIVE]: [],
     [assessmentTypes.UPCOMING]: [],
@@ -50,13 +51,6 @@ export const ScheduleTestMainComponent = ({
 
   const observer = useRef<IntersectionObserver | null>(null);
   const pageSize = 5;
-
-  useEffect(() => {
-    setNavHeading(
-      assessment_types === "ASSESSMENT" ? "Assessment" : "Homework"
-    );
-    fetchAllTabsData();
-  }, []);
 
   const fetchAllTabsData = () => {
     Object.values(assessmentTypes).forEach((tab) => {
@@ -108,8 +102,15 @@ export const ScheduleTestMainComponent = ({
         setLoadingMore(false);
       }
     },
-    [loading, loadingMore, hasMorePages]
+    [loading, loadingMore, hasMorePages, assessment_types]
   );
+
+  useEffect(() => {
+    setNavHeading(
+      assessment_types === "ASSESSMENT" ? "Assessment" : "Homework"
+    );
+    fetchAllTabsData();
+  }, [assessment_types, fetchAllTabsData, setNavHeading]);
 
   // const refreshCurrentTab = useCallback(async () => {
   //   setAssessmentData((prevData) => ({
@@ -135,7 +136,7 @@ export const ScheduleTestMainComponent = ({
       });
       if (node) observer.current.observe(node);
     },
-    [loadingMore, selectedTab, page, hasMorePages]
+    [loadingMore, selectedTab, page, hasMorePages, fetchMoreData]
   );
 
   if (loading) {
@@ -143,7 +144,7 @@ export const ScheduleTestMainComponent = ({
   }
 
   return (
-    <div className="items-center gap-4 min-h-full">
+    <div className="items-center gap-3 sm:gap-4 min-h-full px-2 sm:px-0">
       <Tabs
         value={selectedTab}
         onValueChange={(tab) => {
@@ -158,7 +159,7 @@ export const ScheduleTestMainComponent = ({
         <TabsContent
           key={selectedTab}
           value={selectedTab}
-          className="rounded-xl bg-neutral-50 flex flex-col gap-3"
+          className="rounded-xl bg-neutral-50 flex flex-col gap-2 sm:gap-3"
         >
           {assessmentData[selectedTab].length > 0 ? (
             assessmentData[selectedTab].map((assessment, index) => {
@@ -183,12 +184,11 @@ export const ScheduleTestMainComponent = ({
               );
             })
           ) : (
-            <div className="flex h-screen flex-col items-center justify-center">
+            <div className="flex min-h-[40vh] sm:h-[60vh] flex-col items-center justify-center px-4 text-center">
               {/* <img src={EmptyAssessment} alt="No Tests Available" /> */}
               <EmptyAssessment />
               <span className="text-neutral-600">No tests found.</span>
             </div>
-            // <EmptyAssessment />
           )}
           {loading && (
             <div className="text-center text-primary-500 py-4">Loading...</div>

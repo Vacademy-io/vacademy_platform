@@ -212,14 +212,14 @@ export const AssessmentCard = ({
 
   return (
     <>
-      <Card className="w-full p-6 space-y-6" onClick={handleOpen}>
-        <h2 className="text-sm lg:text-base font-semibold">
+      <Card className="w-full p-4 sm:p-6 space-y-4 sm:space-y-6" onClick={handleOpen}>
+        <h2 className="text-base sm:text-sm lg:text-base font-semibold break-words">
           {assessmentInfo.name}
         </h2>
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 sm:gap-4">
           <div>
             {assessment_types == "ASSESSMENT" && (
-              <div className="flex gap-3 pb-3 items-center">
+              <div className="flex gap-2 sm:gap-3 pb-2 sm:pb-3 items-center">
                 <StatusChip
                   playMode={assessmentInfo.play_mode as PlayMode}
                   className={
@@ -229,7 +229,7 @@ export const AssessmentCard = ({
               </div>
             )}
             {assessmentInfo.play_mode !== "PRACTICE" && (
-              <div className="space-y-2 text-xs lg:text-sm text-gray-600">
+              <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm lg:text-sm text-gray-600">
                 {assessmentInfo.play_mode !== "MOCK" && (
                   <>
                     <div>
@@ -293,7 +293,7 @@ export const AssessmentCard = ({
               <div className="w-full md:w-auto">
                 <MyButton
                   buttonType="secondary"
-                  className="w-full max-w-xs md:w-[200px] lg:w-[300px]"
+                  className="w-full sm:max-w-xs md:w-[200px] lg:w-[300px]"
                   onClick={() =>
                     navigate({
                       to: `/assessment/reports/student-report`,

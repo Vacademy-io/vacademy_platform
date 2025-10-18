@@ -1,8 +1,8 @@
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { ChevronRightIcon } from "@radix-ui/react-icons";
+import { ChevronRightIcon, ChevronDownIcon } from "@radix-ui/react-icons";
 import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { truncateString } from "@/lib/reusable/truncateString";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { toTitleCase } from "@/lib/utils";
@@ -28,6 +28,7 @@ import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { Preferences } from "@capacitor/preferences";
 import { BatchForSessionType } from "@/stores/study-library/institute-schema";
 import { getPublicUrl } from "@/services/upload_file";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface ChapterSearchParams {
     courseId: string;
@@ -117,21 +118,33 @@ function Slides() {
             // Priority 3: Default to first slide
             setActiveItem(slidesWithFeedback[0]);
         }
-    }, [slides, slideId, setActiveItem, setItems]);
+    }, [slides, slideId, setActiveItem, setItems, courseId, chapterId]);
 
-    const handleSubjectRoute = () => {
+    const handleSubjectRoute = useCallback(() => {
         navigate({
             to: "/study-library/courses/course-details/subjects/modules",
             search: { courseId, subjectId, moduleId },
         });
-    };
+    }, [navigate, courseId, subjectId, moduleId]);
 
-    const handleModuleRoute = () => {
+    const handleModuleRoute = useCallback(() => {
         navigate({
             to: "/study-library/courses/course-details/subjects/modules/chapters",
             search: { courseId, subjectId, moduleId, chapterId },
         });
-    };
+    }, [navigate, courseId, subjectId, moduleId, chapterId]);
+
+    const gotoSlide = useCallback((targetSlideId: string) => {
+        const targetSlide = slides?.find((s: Slide) => s.id === targetSlideId);
+        if (targetSlide) {
+            setActiveItem(targetSlide);
+            navigate({
+                to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
+                search: { courseId, subjectId, moduleId, chapterId, slideId: targetSlideId, sessionId },
+                replace: true,
+            });
+        }
+    }, [slides, setActiveItem, navigate, courseId, subjectId, moduleId, chapterId, sessionId]);
 
     const [moduleName, setModuleName] = useState("");
     const [chapterName, setChapterName] = useState("");
@@ -265,50 +278,100 @@ function Slides() {
                                 </div>
                             )}
                             {showLearningPath && (
-                                <div
-                                    className="flex flex-wrap items-center gap-0.5 sm:gap-1 text-gray-600"
-                                    id="slides-breadcrumb-row"
-                                >
-                                    <button
-                                        className={`text-xs font-medium hover:text-primary-600 ${
-                                            open ? "block" : "hidden sm:block"
-                                        }`}
-                                        onClick={handleSubjectRoute}
+                                <>
+                                    {/* Mobile: only last node with popover to show full path + slides */}
+                                    <div className="flex items-center sm:hidden" id="slides-breadcrumb-row-mobile">
+                                        <Popover>
+                                            <PopoverTrigger asChild>
+                                                <button className="text-xs font-bold text-primary-600 bg-primary-50 px-2 py-1 rounded-md inline-flex items-center gap-1 truncate max-w-[75%]">
+                                                    <span className="truncate">{toTitleCase(chapterName || "Chapter")}</span>
+                                                    <ChevronDownIcon className="w-3 h-3 text-primary-600" />
+                                                </button>
+                                            </PopoverTrigger>
+                                            <PopoverContent className="w-[90vw] max-w-sm p-3" sideOffset={6} align="start">
+                                                <div className="space-y-3">
+                                                    <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Learning Path</div>
+                                                    <div className="flex items-center gap-1 text-xs">
+                                                        <button className="px-2 py-1 rounded-md bg-gray-50 hover:bg-gray-100 text-gray-700 truncate" onClick={handleSubjectRoute}>
+                                                            {toTitleCase(subjectName || "Subject")}
+                                                        </button>
+                                                        <ChevronRightIcon className="w-3 h-3 text-gray-400" />
+                                                        <button className="px-2 py-1 rounded-md bg-gray-50 hover:bg-gray-100 text-gray-700 truncate" onClick={handleModuleRoute}>
+                                                            {toTitleCase(moduleName || "Module")}
+                                                        </button>
+                                                        <ChevronRightIcon className="w-3 h-3 text-gray-400" />
+                                                        <span className="px-2 py-1 rounded-md bg-primary-50 text-primary-700 font-semibold truncate">
+                                                            {toTitleCase(chapterName || "Chapter")}
+                                                        </span>
+                                                    </div>
+                                                    {slides && slides.length > 0 && (
+                                                        <div className="space-y-2">
+                                                            <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Slides</div>
+                                                            <div className="max-h-64 overflow-auto divide-y divide-gray-100 rounded-md border border-gray-100">
+                                                                {slides.map((s: Slide, idx: number) => (
+                                                                    <button
+                                                                        key={s.id}
+                                                                        className={`w-full text-left px-2 py-2 text-xs flex items-center gap-2 hover:bg-gray-50 ${activeItem?.id === s.id ? "bg-primary-50 text-primary-700" : "text-gray-700"}`}
+                                                                        onClick={() => gotoSlide(s.id)}
+                                                                    >
+                                                                        <span className={`inline-flex items-center justify-center w-5 h-5 rounded-md text-[10px] font-bold ${activeItem?.id === s.id ? "bg-primary-500 text-white" : "bg-gray-100 text-gray-600"}`}>{idx + 1}</span>
+                                                                        <span className="truncate flex-1">{s.title || "Untitled"}</span>
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </PopoverContent>
+                                        </Popover>
+                                    </div>
+
+                                    {/* Desktop/Tablet: full breadcrumb */}
+                                    <div
+                                        className="hidden sm:flex flex-wrap items-center gap-0.5 sm:gap-1 text-gray-600"
+                                        id="slides-breadcrumb-row"
                                     >
-                                        {truncateString(
-                                            toTitleCase(subjectName),
-                                            open
+                                        <button
+                                            className={`text-xs font-medium hover:text-primary-600 ${
+                                                open ? "block" : "hidden sm:block"
+                                            }`}
+                                            onClick={handleSubjectRoute}
+                                        >
+                                            {truncateString(
+                                                toTitleCase(subjectName),
+                                                open
+                                                    ? window.innerWidth < 640
+                                                        ? 20
+                                                        : 15
+                                                    : 8
+                                            )}
+                                        </button>
+                                        <ChevronRightIcon className="w-2 h-2 sm:w-3 sm:h-3 text-gray-400" />
+                                        <button
+                                            className={`text-xs font-medium hover:text-primary-600 ${
+                                                open ? "block" : "hidden sm:block"
+                                            }`}
+                                            onClick={handleModuleRoute}
+                                        >
+                                            {truncateString(
+                                                toTitleCase(moduleName),
+                                                open
+                                                    ? window.innerWidth < 640
+                                                        ? 20
+                                                        : 15
+                                                    : 8
+                                            )}
+                                        </button>
+                                        <ChevronRightIcon className="w-2 h-2 sm:w-3 sm:h-3 text-gray-400" />
+                                        <span className="text-xs font-bold text-primary-600 bg-primary-50 px-1 sm:px-2 py-0.5 rounded-lg">
+                                            {open
                                                 ? window.innerWidth < 640
-                                                    ? 20
-                                                    : 15
-                                                : 8
-                                        )}
-                                    </button>
-                                    <ChevronRightIcon className="w-2 h-2 sm:w-3 sm:h-3 text-gray-400" />
-                                    <button
-                                        className={`text-xs font-medium hover:text-primary-600 ${
-                                            open ? "block" : "hidden sm:block"
-                                        }`}
-                                        onClick={handleModuleRoute}
-                                    >
-                                        {truncateString(
-                                            toTitleCase(moduleName),
-                                            open
-                                                ? window.innerWidth < 640
-                                                    ? 20
-                                                    : 15
-                                                : 8
-                                        )}
-                                    </button>
-                                    <ChevronRightIcon className="w-2 h-2 sm:w-3 sm:h-3 text-gray-400" />
-                                    <span className="text-xs font-bold text-primary-600 bg-primary-50 px-1 sm:px-2 py-0.5 rounded-lg">
-                                        {open
-                                            ? window.innerWidth < 640
-                                                ? toTitleCase(chapterName)
-                                                : truncatedChapterName
-                                            : truncatedChapterName}
-                                    </span>
-                                </div>
+                                                    ? toTitleCase(chapterName)
+                                                    : truncatedChapterName
+                                                : truncatedChapterName}
+                                        </span>
+                                    </div>
+                                </>
                             )}
                         </div>
                     </div>
@@ -476,22 +539,45 @@ function Slides() {
                         )}
                     </div>
                     <div className="min-w-0 flex-1">
-                        {/* Mobile: Stack vertically, Desktop: Single line */}
+                        {/* Mobile: Show only current node, popover reveals full path for selection */}
                         <div className="block sm:hidden">
-                            <h1 className="text-xs font-bold text-gray-900 truncate mb-0.5">
-                                {truncateString(
-                                    toTitleCase(chapterName || "Course Details"),
-                                    25
-                                )}
-                            </h1>
-                            <p className="text-xs text-gray-600 truncate">
-                                {subjectName && moduleName
-                                    ? `${truncateString(
-                                          toTitleCase(subjectName),
-                                          15
-                                      )} • ${truncateString(toTitleCase(moduleName), 15)}`
-                                    : "Learning Path"}
-                            </p>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <button className="flex items-center gap-1 text-xs font-bold text-gray-900 truncate mb-0.5 max-w-full">
+                                        <span className="truncate">
+                                            {truncateString(
+                                                toTitleCase(chapterName || "Course Details"),
+                                                25
+                                            )}
+                                        </span>
+                                        <ChevronDownIcon className="w-3 h-3 text-gray-500 flex-shrink-0" />
+                                    </button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[90vw] max-w-sm p-2" sideOffset={6} align="start">
+                                    <div className="space-y-2">
+                                        <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Learning Path</div>
+                                        <div className="flex items-center gap-1 text-sm">
+                                            <button
+                                                className="px-2 py-1 rounded-md bg-gray-50 hover:bg-gray-100 text-gray-700 truncate"
+                                                onClick={handleSubjectRoute}
+                                            >
+                                                {toTitleCase(subjectName || "Subject")}
+                                            </button>
+                                            <ChevronRightIcon className="w-3 h-3 text-gray-400" />
+                                            <button
+                                                className="px-2 py-1 rounded-md bg-gray-50 hover:bg-gray-100 text-gray-700 truncate"
+                                                onClick={handleModuleRoute}
+                                            >
+                                                {toTitleCase(moduleName || "Module")}
+                                            </button>
+                                            <ChevronRightIcon className="w-3 h-3 text-gray-400" />
+                                            <span className="px-2 py-1 rounded-md bg-primary-50 text-primary-700 font-semibold truncate">
+                                                {toTitleCase(chapterName || "Chapter")}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </PopoverContent>
+                            </Popover>
                         </div>
                         <div className="hidden sm:block">
                             <h1 className="text-sm font-bold text-gray-900 truncate">
@@ -526,7 +612,7 @@ function Slides() {
             </div>
         );
         setNavHeading(heading);
-    }, [setNavHeading, subjectName, moduleName, chapterName, instituteLogoUrl]);
+    }, [setNavHeading, subjectName, moduleName, chapterName, instituteLogoUrl, handleSubjectRoute, handleModuleRoute]);
 
     // Enforce display settings in slides side view
     useEffect(() => {

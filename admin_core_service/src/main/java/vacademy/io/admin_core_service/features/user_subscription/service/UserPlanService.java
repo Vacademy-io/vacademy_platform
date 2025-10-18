@@ -3,7 +3,12 @@ package vacademy.io.admin_core_service.features.user_subscription.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
@@ -11,10 +16,12 @@ import vacademy.io.admin_core_service.features.enroll_invite.service.PackageSess
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerBatchEnrollService;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.UserPlanDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.UserPlanFilterDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.*;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
+import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 
 import java.util.List;
@@ -172,6 +179,26 @@ public class UserPlanService {
                 .status(userPlan.getStatus())
                 .createdAt(userPlan.getCreatedAt())
                 .updatedAt(userPlan.getUpdatedAt())
+                .enrollInvite(userPlan.getEnrollInvite().toEnrollInviteDTO())
+                .paymentPlanDTO((userPlan.getPaymentPlan() != null ? userPlan.getPaymentPlan().mapToPaymentPlanDTO() : null))
+                .paymentOption((userPlan.getPaymentOption() != null ? userPlan.getPaymentOption().mapToPaymentOptionDTO() : null))
+                .paymentLogs((userPlan.getPaymentLogs() != null ? userPlan.getPaymentLogs().stream().map(PaymentLog::mapToDTO).collect(Collectors.toList()) : List.of()))
                 .build();
+    }
+
+    public Page<UserPlanDTO> getUserPlansByUserIdAndInstituteId(int pageNo,int pageSize,UserPlanFilterDTO userPlanFilterDTO) {
+        logger.info("Getting paginated UserPlans for userId={}, instituteId={}", userPlanFilterDTO.getUserId(), userPlanFilterDTO.getInstituteId());
+        Sort thisSort = ListService.createSortObject(userPlanFilterDTO.getSortColumns());
+        Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);
+        List<String>status = userPlanFilterDTO.getStatuses();
+        if(status == null){
+            status = List.of();
+        }
+        Page<UserPlan> userPlansPage = userPlanRepository.findByUserIdAndInstituteIdWithFilters(userPlanFilterDTO.getUserId(), userPlanFilterDTO.getInstituteId(), status, pageable);
+
+        return userPlansPage.map(userPlan -> {
+            UserPlanDTO userPlanDTO = mapToDTO(userPlan);
+            return userPlanDTO;
+        });
     }
 }

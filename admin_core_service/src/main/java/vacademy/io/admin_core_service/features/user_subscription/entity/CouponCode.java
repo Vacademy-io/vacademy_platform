@@ -9,6 +9,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.admin_core_service.features.user_subscription.dto.CouponCodeDTO;
 
 import java.sql.Timestamp;
 import java.util.Date;
@@ -75,4 +76,24 @@ public class CouponCode {
 
     @Column(name = "can_be_added")
     private boolean canBeAdded;
+
+    public CouponCodeDTO toDTO() {
+        return CouponCodeDTO.builder()
+            .id(this.id)
+            .code(this.code)
+            .status(this.status)
+            .sourceType(this.sourceType)
+            .sourceId(this.sourceId)
+            .emailRestricted(this.isEmailRestricted)
+            .allowedEmailIds(this.allowedEmailIds)
+            .tag(this.tag)
+            .generationDate(this.generationDate)
+            .redeemStartDate(this.redeemStartDate)
+            .redeemEndDate(this.redeemEndDate)
+            .usageLimit(this.usageLimit)
+            .createdAt(this.createdAt)
+            .updatedAt(this.updatedAt)
+            .canBeAdded(this.canBeAdded)
+            .build();
+    }
 }

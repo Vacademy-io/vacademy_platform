@@ -123,6 +123,30 @@ public class CreateAnnouncementRequest {
     @Setter
     @AllArgsConstructor
     @NoArgsConstructor
+    public static class EmailConfigRequest {
+        
+        @NotBlank(message = "Subject is required")
+        private String subject;
+        
+        private String template = "announcement_email";
+        
+        private String forceToEmail; // Optional override
+        
+        @NotBlank(message = "From email is required")
+        private String fromEmail;
+        
+        private String fromName; // Optional display name
+        
+        @NotBlank(message = "Email type is required")
+        @Pattern(regexp = "^(marketing|transactional|notifications)$", 
+                 message = "Email type must be one of: marketing, transactional, notifications")
+        private String emailType; // marketing, transactional, notifications
+    }
+    
+    @Getter
+    @Setter
+    @AllArgsConstructor
+    @NoArgsConstructor
     public static class SchedulingRequest {
         
         @NotNull(message = "Schedule type is required")

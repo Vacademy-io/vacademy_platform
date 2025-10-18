@@ -38,15 +38,17 @@ public class EmailService {
     @Value("${app.ses.sender.email}")
     private String from;
 
-    @Autowired
-    private InstituteInternalService internalService;
+    @Value("${ses.configuration.set}")
+    private String sesConfigurationSet;
+
+    private final InstituteInternalService internalService;
+    private final ObjectMapper objectMapper;
 
     @Autowired
-    private ObjectMapper objectMapper;
-
-    @Autowired
-    public EmailService(JavaMailSender mailSender) {
+    public EmailService(JavaMailSender mailSender, InstituteInternalService internalService, ObjectMapper objectMapper) {
         this.mailSender = mailSender;
+        this.internalService = internalService;
+        this.objectMapper = objectMapper;
     }
 
     private JavaMailSenderImpl createCustomMailSender(JsonNode emailSettings) {
@@ -106,11 +108,15 @@ public class EmailService {
             JavaMailSender mailSenderToUse = config.getKey();
             String fromToUse = config.getValue();
 
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setTo(to);
-            message.setFrom(fromToUse);
+            // Use MimeMessage to support SES configuration set header
+            MimeMessage message = new MimeMessage(Session.getInstance(new Properties()));
+            message.setRecipient(Message.RecipientType.TO, new InternetAddress(to));
+            message.setFrom(new InternetAddress(fromToUse));
             message.setSubject(subject);
             message.setText(text);
+            
+            // Add SES configuration set header for event tracking
+            message.setHeader("X-SES-CONFIGURATION-SET", sesConfigurationSet);
 
             mailSenderToUse.send(message);
             logger.info("Email sent successfully to {} using {}", to,
@@ -159,6 +165,9 @@ public class EmailService {
                     message.setRecipient(Message.RecipientType.TO, new InternetAddress(to));
                     message.setFrom(new InternetAddress(fromToUse));
                     message.setSubject(emailSubject);
+                    
+                    // Add SES configuration set header for event tracking
+                    message.setHeader("X-SES-CONFIGURATION-SET", sesConfigurationSet);
 
                     // Add HTML content
                     MimeMultipart multipart = new MimeMultipart();
@@ -266,11 +275,22 @@ public class EmailService {
 
 
     public void sendHtmlEmail(String to, String subject, String service, String body, String instituteId) {
+        sendHtmlEmail(to, subject, service, body, instituteId, null, null);
+    }
+    
+    public void sendHtmlEmail(String to, String subject, String service, String body, String instituteId, 
+                             String customFromEmail, String customFromName) {
         try {
 
             AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId);
             JavaMailSender mailSenderToUse = config.getKey();
             String fromToUse = config.getValue();
+            
+            // Override with custom from email if provided
+            if (customFromEmail != null && !customFromEmail.trim().isEmpty()) {
+                fromToUse = customFromEmail;
+                logger.info("Using custom from email: {} for service: {}", customFromEmail, service);
+            }
 
             String emailSubject = StringUtils.hasText(subject) ? subject : "This is a very important email";
 
@@ -278,8 +298,18 @@ public class EmailService {
                 try {
                     MimeMessage message = new MimeMessage(Session.getInstance(new Properties()));
                     message.setRecipient(Message.RecipientType.TO, new InternetAddress(to));
-                    message.setFrom(new InternetAddress(fromToUse));
+                    
+                    // Set from address with optional display name
+                    if (customFromName != null && !customFromName.trim().isEmpty()) {
+                        message.setFrom(new InternetAddress(fromToUse, customFromName));
+                    } else {
+                        message.setFrom(new InternetAddress(fromToUse));
+                    }
+                    
                     message.setSubject(emailSubject);
+                    
+                    // Add SES configuration set header for event tracking
+                    message.setHeader("X-SES-CONFIGURATION-SET", sesConfigurationSet);
 
                     MimeMultipart multipart = new MimeMultipart();
                     MimeBodyPart htmlPart = new MimeBodyPart();
@@ -323,6 +353,9 @@ public class EmailService {
                     message.setRecipient(Message.RecipientType.TO, new InternetAddress(to));
                     message.setFrom(new InternetAddress(fromToUse));
                     message.setSubject(emailSubject);
+                    
+                    // Add SES configuration set header for event tracking
+                    message.setHeader("X-SES-CONFIGURATION-SET", sesConfigurationSet);
 
                     MimeMultipart multipart = new MimeMultipart();
 

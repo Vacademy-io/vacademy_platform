@@ -76,7 +76,7 @@ public class DoubtService {
         List<String> filteredSourceIds = Optional.ofNullable(sourceIds).orElse(Collections.emptyList());
         List<String> filteredUserIds = Optional.ofNullable(userIds).orElse(Collections.emptyList());
         List<String> filteredStatus = Optional.ofNullable(status).orElse(Collections.emptyList());
-        List<String> filteredBatchIds = batchIds;
+        List<String> filteredBatchIds = (batchIds == null ? Collections.emptyList() : batchIds);
 
         return doubtsRepository.findDoubtsWithFilter(filteredContentPositions,filteredContentTypes,filteredSources,filteredSourceIds,filteredUserIds,filteredStatus,filteredBatchIds,startDate,endDate,pageable);
     }

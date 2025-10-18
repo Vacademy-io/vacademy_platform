@@ -36,7 +36,7 @@ public interface DoubtsRepository extends JpaRepository<Doubts, String> {
           AND (:status IS NULL OR d.status IN :status)
           AND (d.raised_time BETWEEN :startDate AND :endDate)
           AND d.parent_id IS NULL
-          AND (:batchIds IS NULL OR d.package_session_id IN :batchIds)
+          AND (d.package_session_id IN :batchIds)
         """,nativeQuery = true)
     Page<Doubts> findDoubtsWithFilter(@Param("contentPositions") List<String> contentPositions,
                                       @Param("contentTypes") List<String> contentTypes,

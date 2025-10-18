@@ -31,6 +31,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
     TabType,
     tabs,
@@ -165,13 +166,14 @@ export const CourseStructureDetails = ({
         return "";
     }, [formatDuration]);
 
-    // Helper: pastel badge classes by slide type
+    // Helper: neutral badge classes for slide type with inverted text (professional look)
     const getTypeBadgeClasses = (slide: Slide): string => {
-        if (slide.video_slide) return 'bg-violet-50 text-violet-700 border-violet-200';
-        if (slide.document_slide) return 'bg-teal-50 text-teal-700 border-teal-200';
-        if (slide.question_slide) return 'bg-rose-50 text-rose-700 border-rose-200';
-        if (slide.assignment_slide) return 'bg-amber-50 text-amber-700 border-amber-200';
-        return 'bg-neutral-50 text-neutral-700 border-neutral-200';
+        // All types use neutral tones for subdued UI; you can reintroduce brand hues if needed
+        if (slide.video_slide) return 'bg-neutral-700 text-white';
+        if (slide.document_slide) return 'bg-neutral-700 text-white';
+        if (slide.question_slide) return 'bg-neutral-700 text-white';
+        if (slide.assignment_slide) return 'bg-neutral-700 text-white';
+        return 'bg-neutral-600 text-white';
     };
 
     // Helper: calculate chapter progress from slides
@@ -236,6 +238,8 @@ export const CourseStructureDetails = ({
             </span>
         );
     };
+    // (removed) renderSlideSkeletonRow - unused helper
+    
     type LocalTab = { label: string; value: string };
     const [filteredTabs, setFilteredTabs] = useState<LocalTab[]>([]);
 
@@ -326,6 +330,8 @@ export const CourseStructureDetails = ({
     const [subjectModulesMap, setSubjectModulesMap] =
         useState<SubjectModulesMap>({});
     const [slidesMap, setSlidesMap] = useState<Record<string, Slide[]>>({});
+    const [slidesLoadingStatus, setSlidesLoadingStatus] = useState<Record<string, 'idle' | 'loading' | 'loaded' | 'error'>>({});
+    const [isModulesLoading, setIsModulesLoading] = useState<boolean>(false);
     // Drill-down state for Content Structure tab
     const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
     const [selectedModuleId, setSelectedModuleId] = useState<string | null>(null);
@@ -483,16 +489,18 @@ export const CourseStructureDetails = ({
     };
 
     const getSlidesWithChapterId = useCallback(async (chapterId: string) => {
-        // Avoid duplicate fetch
         if (slidesMap[chapterId]) {
+            setSlidesLoadingStatus((prev) => ({ ...prev, [chapterId]: 'loaded' }));
             return;
         }
 
+        setSlidesLoadingStatus((prev) => ({ ...prev, [chapterId]: 'loading' }));
         try {
             const slides = await fetchSlidesByChapterId(chapterId);
             setSlidesMap((prev) => ({ ...prev, [chapterId]: slides }));
+            setSlidesLoadingStatus((prev) => ({ ...prev, [chapterId]: 'loaded' }));
         } catch {
-            // Silent error handling
+            setSlidesLoadingStatus((prev) => ({ ...prev, [chapterId]: 'error' }));
         }
     }, [slidesMap]);
 
@@ -561,6 +569,7 @@ export const CourseStructureDetails = ({
         }
         // Refresh by reloading modules
         try {
+            setIsModulesLoading(true);
             const modulesMap = await fetchModules({
                 subjects: getSubjectDetails(
                     courseData,
@@ -574,9 +583,11 @@ export const CourseStructureDetails = ({
             if (updateModuleStats) {
                 updateModuleStats(modulesMap);
             }
-                } catch {
-                    // Silent error handling
-                }
+        } catch {
+            // Silent error handling
+        } finally {
+            setIsModulesLoading(false);
+        }
     };
 
     const [openSubjects, setOpenSubjects] = useState<Set<string>>(new Set());
@@ -721,6 +732,26 @@ export const CourseStructureDetails = ({
                     </div>
                 </div>
                 <div className="w-full space-y-1.5">
+                    {isModulesLoading && (
+                        <div className="py-2 space-y-2">
+                            {/* Simple outline skeleton */}
+                            <div className="flex items-center gap-2">
+                                <Skeleton className="w-6 h-6 rounded" />
+                                <Skeleton className="h-4 w-40" />
+                            </div>
+                            <div className="ml-8 space-y-2">
+                                {Array.from({ length: 3 }).map((_, i) => (
+                                    <div key={i} className="flex items-center gap-2">
+                                        <Skeleton className="w-5 h-5 rounded" />
+                                        <Skeleton className="h-4 w-32" />
+                                        <div className="ml-auto w-24">
+                                            <Skeleton className="h-2 w-full" />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                     {(() => {
                         // Calculate summary for debugging if needed
                         // const subjects = studyLibraryData || [];
@@ -734,7 +765,7 @@ export const CourseStructureDetails = ({
 
                         return null;
                     })()}
-                    {courseStructure === 5 &&
+                    {!isModulesLoading && courseStructure === 5 &&
                         studyLibraryData?.map(
                             (subject: SubjectType, idx: number) => {
                                 const isSubjectOpen = openSubjects.has(
@@ -1030,16 +1061,30 @@ export const CourseStructureDetails = ({
                                                                                                     ] ??
                                                                                                     [];
                                                                                                 const filteredSlides = filterSlides(slidesForChapter);
-                                                                                                return filteredSlides.length ===
-                                                                                                    0 ? (
-                                                                                                    <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
-                                                                                                        No
-                                                                                                        slides
-                                                                                                        in
-                                                                                                        this
-                                                                                                        chapter.
-                                                                                                    </div>
-                                                                                                ) : (
+                                                                                                const status = slidesLoadingStatus[ch.id] || 'idle';
+                                                                                                if (status === 'loading') {
+                                                                                                    return (
+                                                                                                        <div className="pr-2">
+                                                                                                            {Array.from({ length: 3 }).map((_, i) => (
+                                                                                                                <div key={i} className="flex items-center gap-2 px-2 py-1">
+                                                                                                                    <Skeleton className="w-5 h-5 rounded" />
+                                                                                                                    <Skeleton className="h-4 w-32" />
+                                                                                                                    <div className="ml-auto flex items-center gap-2">
+                                                                                                                        <Skeleton className="h-3 w-16" />
+                                                                                                                    </div>
+                                                                                                                </div>
+                                                                                                            ))}
+                                                                                                        </div>
+                                                                                                    );
+                                                                                                }
+                                                                                                if (status === 'loaded' && filteredSlides.length === 0) {
+                                                                                                    return (
+                                                                                                        <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
+                                                                                                            No Slides
+                                                                                                        </div>
+                                                                                                    );
+                                                                                                }
+                                                                                                return (
                                                                                                     filteredSlides.map(
                                                                                                         (
                                                                                                             slide,
@@ -1080,14 +1125,14 @@ export const CourseStructureDetails = ({
                                                                                                                     {slide.title}
                                                                                                                 </span>
                                                                                                                 {(() => {
-                                                                                                                    const sd = getStatusDetails(slide.percentage_completed || 0);
-                                                                                                                    const badgeClass = sd.badge === 'done'
-                                                                                                                        ? 'bg-green-50 text-green-700 border-green-200'
-                                                                                                                        : sd.badge === 'active'
-                                                                                                                        ? 'bg-primary-50 text-primary-700 border-primary-200'
-                                                                                                                        : 'bg-neutral-50 text-neutral-600 border-neutral-200';
-                                                                                                                    return (
-                                                                                                                        <Badge variant="secondary" className={`ml-2 hidden sm:inline align-middle text-[10px] font-medium border ${badgeClass}`}>
+                                                                                                                   const sd = getStatusDetails(slide.percentage_completed || 0);
+                                                                                                                   const badgeClass = sd.badge === 'done'
+                                                                                                                       ? 'bg-neutral-800 text-white'
+                                                                                                                       : sd.badge === 'active'
+                                                                                                                       ? 'bg-neutral-700 text-white'
+                                                                                                                       : 'bg-neutral-600 text-white';
+                                                                                                                   return (
+                                                                                                                       <Badge variant="secondary" className={`ml-2 hidden sm:inline align-middle text-[10px] font-medium ${badgeClass}`}>
                                                                                                                             {sd.label}
                                                                                                                         </Badge>
                                                                                                                     );
@@ -1101,15 +1146,15 @@ export const CourseStructureDetails = ({
                                                                                                                         
                                                                                                                         return (
                                                                                                                             <>
-                                                                                                                                {typeLabel && (
-                                                                                                                                    <span className={`px-1.5 py-0.5 rounded border ${getTypeBadgeClasses(slide)}`}>
+                                                                                                                               {typeLabel && (
+                                                                                                                                    <Badge variant="secondary" className={`${getTypeBadgeClasses(slide)}`}>
                                                                                                                                         {typeLabel}
-                                                                                                                                    </span>
+                                                                                                                                    </Badge>
                                                                                                                                 )}
                                                                                                                                 {meta && (
-                                                                                                                                    <span className="px-1.5 py-0.5 rounded border bg-neutral-50 text-neutral-600 border-neutral-200">
+                                                                                                                                    <Badge variant="secondary" className="bg-neutral-600 text-white">
                                                                                                                                         {meta}
-                                                                                                                                    </span>
+                                                                                                                                    </Badge>
                                                                                                                                 )}
                                                                                                                                 <div className="w-16">
                                                                                                                                     {renderProgressBar(progress, 'sm')}
@@ -1337,29 +1382,33 @@ export const CourseStructureDetails = ({
                                                                                 <CollapsibleContent>
                                                                                 <div className="space-y-px ml-3 sm:ml-5 border-l border-green-200/50 py-1 pl-2 relative">
                                                                                         <div className="absolute left-0 top-0 w-px h-full bg-green-300/50"></div>
-                                                                                        {(filterSlides(
-                                                                                            slidesMap[
-                                                                                                ch
-                                                                                                    .id
-                                                                                            ] ??
-                                                                                            []
-                                                                                        )).length ===
-                                                                                        0 ? (
-                                                                                            <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
-                                                                                                No
-                                                                                                slides
-                                                                                                in
-                                                                                                this
-                                                                                                chapter.
-                                                                                            </div>
-                                                                                        ) : (
-                                                                                            (filterSlides(
-                                                                                                slidesMap[
-                                                                                                    ch
-                                                                                                        .id
-                                                                                                ] ??
-                                                                                                []
-                                                                                            )).map(
+                                                                                        {(() => {
+                                                                                            const status = slidesLoadingStatus[ch.id] || 'idle';
+                                                                                            const filtered = filterSlides(slidesMap[ch.id] ?? []);
+                                                                                            if (status === 'loading') {
+                                                                                                return (
+                                                                                                    <div className="pr-2">
+                                                                                                        {Array.from({ length: 3 }).map((_, i) => (
+                                                                                                            <div key={i} className="flex items-center gap-2 px-2 py-1">
+                                                                                                                <Skeleton className="w-5 h-5 rounded" />
+                                                                                                                <Skeleton className="h-4 w-32" />
+                                                                                                                <div className="ml-auto flex items-center gap-2">
+                                                                                                                    <Skeleton className="h-3 w-16" />
+                                                                                                                </div>
+                                                                                                            </div>
+                                                                                                        ))}
+                                                                                                    </div>
+                                                                                                );
+                                                                                            }
+                                                                                            if (status === 'loaded' && filtered.length === 0) {
+                                                                                                return (
+                                                                                                    <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
+                                                                                                        No Slides
+                                                                                                    </div>
+                                                                                                );
+                                                                                            }
+                                                                                            return (
+                                                                                                filtered.map(
                                                                                                 (
                                                                                                     slide,
                                                                                                     sIdx
@@ -1413,35 +1462,26 @@ export const CourseStructureDetails = ({
                                                                                                         })()}
                                                                                                         {/* Slide Progress and Meta */}
                                                                                                         <div className="flex items-center gap-1.5 ml-auto shrink-0">
-                                                                                                            {(() => {
-                                                                                                                const progress = slide.percentage_completed || 0;
-                                                                                                                const meta = getSlideMetaText(slide);
-                                                                                                                const typeLabel = getSlideTypeDisplay(slide);
-                                                                                                                
-                                                                                                                return (
-                                                                                                                    <>
-                                                                                                                        {typeLabel && (
-                                                                                                                            <Badge variant="secondary" className={`hidden sm:inline text-[10px] font-medium border ${getTypeBadgeClasses(slide)}`}>
-                                                                                                                                {typeLabel}
-                                                                                                                            </Badge>
-                                                                                                                        )}
-                                                                                                                        {meta && (
-                                                                                                                            <Badge variant="outline" className="hidden sm:inline text-[10px] font-normal bg-neutral-50 text-neutral-600 border-neutral-200">
-                                                                                                                                {meta}
-                                                                                                                            </Badge>
-                                                                                                                        )}
-                                                                                                                        <div className="w-7 sm:w-8 hidden sm:block">
-                                                                                                                            {renderProgressBar(progress, 'sm')}
-                                                                                                                        </div>
-                                                                                                                        <div className={`w-2 h-2 rounded-full ${progress >= 80 ? 'bg-green-500' : progress > 0 ? 'bg-primary-500' : 'bg-neutral-300'}`} />
-                                                                                                                    </>
-                                                                                                                );
-                                                                                                            })()}
+                                                                                                            {getSlideTypeDisplay(slide) && (
+                                                                                                                <Badge variant="secondary" className={`hidden sm:inline text-[10px] font-medium border ${getTypeBadgeClasses(slide)}`}>
+                                                                                                                    {getSlideTypeDisplay(slide)}
+                                                                                                                </Badge>
+                                                                                                            )}
+                                                                                                            {getSlideMetaText(slide) && (
+                                                                                                                <Badge variant="outline" className="hidden sm:inline text-[10px] font-normal bg-neutral-50 text-neutral-600 border-neutral-200">
+                                                                                                                    {getSlideMetaText(slide)}
+                                                                                                                </Badge>
+                                                                                                            )}
+                                                                                                            <div className="w-7 sm:w-8 hidden sm:block">
+                                                                                                                {renderProgressBar(slide.percentage_completed || 0, 'sm')}
+                                                                                                            </div>
+                                                                                                            <div className={`w-2 h-2 rounded-full ${(slide.percentage_completed || 0) >= 80 ? 'bg-green-500' : (slide.percentage_completed || 0) > 0 ? 'bg-primary-500' : 'bg-neutral-300'}`} />
                                                                                                         </div>
                                                                                                     </div>
-                                                                                                )
                                                                                             )
-                                                                                        )}
+                                                                                        )
+                                                                                        )
+                                                                                        })()}
                                                                                     </div>
                                                                                 </CollapsibleContent>
                                                                             </Collapsible>
@@ -1591,29 +1631,33 @@ export const CourseStructureDetails = ({
                                                                                 <CollapsibleContent>
                                                                                     <div className="space-y-px ml-5 border-l border-green-200/50 py-1 pl-2 relative">
                                                                                         <div className="absolute left-0 top-0 w-px h-full bg-green-300/50"></div>
-                                                                                        {(filterSlides(
-                                                                                            slidesMap[
-                                                                                                ch
-                                                                                                    .id
-                                                                                            ] ??
-                                                                                            []
-                                                                                        )).length ===
-                                                                                        0 ? (
-                                                                                            <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
-                                                                                                No
-                                                                                                slides
-                                                                                                in
-                                                                                                this
-                                                                                                chapter.
-                                                                                            </div>
-                                                                                        ) : (
-                                                                                            (filterSlides(
-                                                                                                slidesMap[
-                                                                                                    ch
-                                                                                                        .id
-                                                                                                ] ??
-                                                                                                []
-                                                                                            )).map(
+                                                                                        {(() => {
+                                                                                            const status = slidesLoadingStatus[ch.id] || 'idle';
+                                                                                            const filtered = filterSlides(slidesMap[ch.id] ?? []);
+                                                                                            if (status === 'loading') {
+                                                                                                return (
+                                                                                                    <div className="pr-2">
+                                                                                                        {Array.from({ length: 3 }).map((_, i) => (
+                                                                                                            <div key={i} className="flex items-center gap-2 px-2 py-1">
+                                                                                                                <Skeleton className="w-5 h-5 rounded" />
+                                                                                                                <Skeleton className="h-4 w-32" />
+                                                                                                                <div className="ml-auto flex items-center gap-2">
+                                                                                                                    <Skeleton className="h-3 w-16" />
+                                                                                                                </div>
+                                                                                                            </div>
+                                                                                                        ))}
+                                                                                                    </div>
+                                                                                                );
+                                                                                            }
+                                                                                            if (status === 'loaded' && filtered.length === 0) {
+                                                                                                return (
+                                                                                                    <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
+                                                                                                        No Slides
+                                                                                                    </div>
+                                                                                                );
+                                                                                            }
+                                                                                            return (
+                                                                                                filtered.map(
                                                                                                 (
                                                                                                     slide,
                                                                                                     sIdx
@@ -1667,35 +1711,26 @@ export const CourseStructureDetails = ({
                                                                                                         })()}
                                                                                                         {/* Slide Progress and Meta */}
                                                                                                         <div className="flex items-center gap-1.5 ml-auto shrink-0">
-                                                                                                            {(() => {
-                                                                                                                const progress = slide.percentage_completed || 0;
-                                                                                                                const meta = getSlideMetaText(slide);
-                                                                                                                const typeLabel = getSlideTypeDisplay(slide);
-                                                                                                                
-                                                                                                                return (
-                                                                                                                    <>
-                                                                                                                        {typeLabel && (
-                                                                                                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600 border border-neutral-200 hidden sm:inline">
-                                                                                                                                {typeLabel}
-                                                                                                                            </span>
-                                                                                                                        )}
-                                                                                                                        {meta && (
-                                                                                                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600 border border-neutral-200 hidden sm:inline">
-                                                                                                                                {meta}
-                                                                                                                            </span>
-                                                                                                                        )}
-                                                                                                                        <div className="w-7 sm:w-8 hidden sm:block">
-                                                                                                                            {renderProgressBar(progress, 'sm')}
-                                                                                                                        </div>
-                                                                                                                        <div className={`w-2 h-2 rounded-full ${progress >= 80 ? 'bg-green-500' : progress > 0 ? 'bg-primary-500' : 'bg-neutral-300'}`} />
-                                                                                                                    </>
-                                                                                                                );
-                                                                                                            })()}
+                                                                                                            {getSlideTypeDisplay(slide) && (
+                                                                                                                <Badge variant="secondary" className={`hidden sm:inline text-[10px] font-medium border ${getTypeBadgeClasses(slide)}`}>
+                                                                                                                    {getSlideTypeDisplay(slide)}
+                                                                                                                </Badge>
+                                                                                                            )}
+                                                                                                            {getSlideMetaText(slide) && (
+                                                                                                                <Badge variant="outline" className="hidden sm:inline text-[10px] font-normal bg-neutral-50 text-neutral-600 border-neutral-200">
+                                                                                                                    {getSlideMetaText(slide)}
+                                                                                                                </Badge>
+                                                                                                            )}
+                                                                                                            <div className="w-7 sm:w-8 hidden sm:block">
+                                                                                                                {renderProgressBar(slide.percentage_completed || 0, 'sm')}
+                                                                                                            </div>
+                                                                                                            <div className={`w-2 h-2 rounded-full ${(slide.percentage_completed || 0) >= 80 ? 'bg-green-500' : (slide.percentage_completed || 0) > 0 ? 'bg-primary-500' : 'bg-neutral-300'}`} />
                                                                                                         </div>
                                                                                                     </div>
                                                                                                 )
                                                                                             )
-                                                                                        )}
+                                                                                            )
+                                                                                        })()}
                                                                                     </div>
                                                                                 </CollapsibleContent>
                                                                             </Collapsible>
@@ -1855,32 +1890,22 @@ export const CourseStructureDetails = ({
                                                                                                         })()}
                                                                                                     {/* Slide Progress and Meta */}
                                                                                                     <div className="flex items-center gap-1.5 ml-auto shrink-0">
-                                                                                                        {(() => {
-                                                                                                            const progress = slide.percentage_completed || 0;
-                                                                                                            const meta = getSlideMetaText(slide);
-                                                                                                            const typeLabel = getSlideTypeDisplay(slide);
-                                                                                                            
-                                                                                                            return (
-                                                                                                                <>
-                                                                                                                    {typeLabel && (
-                                                                                                                        <Badge variant="secondary" className={`hidden sm:inline text-[10px] font-medium border ${getTypeBadgeClasses(slide)}`}>
-                                                                                                                            {typeLabel}
-                                                                                                                        </Badge>
-                                                                                                                    )}
-                                                                                                                        {meta && (
-                                                                                                                            <Badge variant="outline" className="hidden sm:inline text-[10px] font-normal bg-neutral-50 text-neutral-600 border-neutral-200">
-                                                                                                                                {meta}
-                                                                                                                            </Badge>
-                                                                                                                        )}
-                                                                                                                    <div className="w-8 hidden sm:block">
-                                                                                                                        {renderProgressBar(progress, 'sm')}
-                                                                                                                    </div>
-                                                                                                                    {/* compact status dot removed for cleaner UI */}
-                                                                                                                    {/* compact status dot removed for cleaner UI */}
-                                                                                                                    {/* compact status dot removed for cleaner UI */}
-                                                                                                                </>
-                                                                                                            );
-                                                                                                        })()}
+                                                                                                        {getSlideTypeDisplay(slide) && (
+                                                                                                            <Badge variant="secondary" className={`hidden sm:inline text-[10px] font-medium border ${getTypeBadgeClasses(slide)}`}>
+                                                                                                                {getSlideTypeDisplay(slide)}
+                                                                                                            </Badge>
+                                                                                                        )}
+                                                                                                        {getSlideMetaText(slide) && (
+                                                                                                            <Badge variant="outline" className="hidden sm:inline text-[10px] font-normal bg-neutral-50 text-neutral-600 border-neutral-200">
+                                                                                                                {getSlideMetaText(slide)}
+                                                                                                            </Badge>
+                                                                                                        )}
+                                                                                                        <div className="w-8 hidden sm:block">
+                                                                                                            {renderProgressBar(slide.percentage_completed || 0, 'sm')}
+                                                                                                        </div>
+                                                                                                        {/* compact status dot removed for cleaner UI */}
+                                                                                                        {/* compact status dot removed for cleaner UI */}
+                                                                                                        {/* compact status dot removed for cleaner UI */}
                                                                                                     </div>
                                                                                                 </div>
                                                                                             )
@@ -1930,7 +1955,7 @@ export const CourseStructureDetails = ({
                     )}
                 </div>
                 {/* Starting depth adapts to courseStructure; if preselected IDs exist, skips to that depth */}
-                {!selectedSubjectId && (
+                {!isModulesLoading && !selectedSubjectId && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         {studyLibraryData?.map((subject) => (
                             <div key={subject.id} className="rounded-md border border-neutral-200 bg-white p-3 sm:p-4 shadow-sm hover:shadow cursor-pointer" onClick={() => { setSelectedSubjectId(subject.id); }}>
@@ -1961,7 +1986,7 @@ export const CourseStructureDetails = ({
                     </div>
                 )}
                 {/* Modules */}
-                {selectedSubjectId && !selectedModuleId && (
+                {!isModulesLoading && selectedSubjectId && !selectedModuleId && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         {(subjectModulesMap[selectedSubjectId] || []).map((m) => (
                             <div key={m.module.id} className="rounded-md border border-neutral-200 bg-white p-3 sm:p-4 shadow-sm hover:shadow cursor-pointer" onClick={() => { setSelectedModuleId(m.module.id); }}>
@@ -1992,7 +2017,7 @@ export const CourseStructureDetails = ({
                     </div>
                 )}
                 {/* Chapters */}
-                {selectedSubjectId && selectedModuleId && !selectedChapterId && (
+                {!isModulesLoading && selectedSubjectId && selectedModuleId && !selectedChapterId && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         {(subjectModulesMap[selectedSubjectId] || [])
                             .filter((m) => m.module.id === selectedModuleId)
@@ -2028,36 +2053,60 @@ export const CourseStructureDetails = ({
                 {/* Slides */}
                 {selectedChapterId && (
                     <div className="space-y-2">
-                        {(slidesMap[selectedChapterId] || []).map((sl, index) => (
-                            <div
-                                key={sl.id}
-                                className={`${getSlideStyling()} flex-col items-start gap-2 p-3`}
-                                onClick={() =>
-                                    isSlideClickable() &&
-                                    handleSlideNavigation(
-                                        selectedSubjectId || "",
-                                        selectedModuleId || "",
-                                        selectedChapterId,
-                                        sl.id
-                                    )
-                                }
-                            >
-                                <div className="flex items-center gap-2 sm:gap-3 w-full">
-                                    <div className="flex items-center gap-2">
-                                        <div className="flex w-6 h-6 items-center justify-center rounded-md text-xs font-bold bg-gray-100 text-gray-500">
-                                            {index + 1}
-                                        </div>
-                                        {getIcon(sl, "4")}
+                        {(() => {
+                            const status = slidesLoadingStatus[selectedChapterId] || 'idle';
+                            if (status === 'loading') {
+                                return (
+                                    <div className="px-2">
+                                        {Array.from({ length: 4 }).map((_, i) => (
+                                            <div key={i} className="flex items-center gap-2 px-2 py-1">
+                                                <Skeleton className="w-5 h-5 rounded" />
+                                                <Skeleton className="h-4 w-32" />
+                                                <div className="ml-auto flex items-center gap-2">
+                                                    <Skeleton className="h-3 w-16" />
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="font-medium text-sm truncate">{sl.title}</div>
-                                        <div className="text-xs text-gray-500 mt-0.5 sm:mt-1">
-                                            {getSlideTypeDisplay(sl)}
+                                );
+                            }
+                            const chapterSlides = slidesMap[selectedChapterId] || [];
+                            if (status === 'loaded' && chapterSlides.length === 0) {
+                                return (
+                                    <div className="text-sm text-neutral-500 italic">No Slides</div>
+                                );
+                            }
+                            return (chapterSlides.map((sl, index) => (
+                                <div
+                                    key={sl.id}
+                                    className={`${getSlideStyling()} flex-col items-start gap-2 p-3`}
+                                    onClick={() =>
+                                        isSlideClickable() &&
+                                        handleSlideNavigation(
+                                            selectedSubjectId || "",
+                                            selectedModuleId || "",
+                                            selectedChapterId,
+                                            sl.id
+                                        )
+                                    }
+                                >
+                                    <div className="flex items-center gap-2 sm:gap-3 w-full">
+                                        <div className="flex items-center gap-2">
+                                            <div className="flex w-6 h-6 items-center justify-center rounded-md text-xs font-bold bg-gray-100 text-gray-500">
+                                                {index + 1}
+                                            </div>
+                                            {getIcon(sl, "4")}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="font-medium text-sm truncate">{sl.title}</div>
+                                            <div className="text-xs text-gray-500 mt-0.5 sm:mt-1">
+                                                {getSlideTypeDisplay(sl)}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
+                            )));
+                        })()}
                     </div>
                 )}
             </div>
@@ -2132,6 +2181,7 @@ export const CourseStructureDetails = ({
             }
 
             handleLoadingChange(true);
+            setIsModulesLoading(true);
 
             try {
                 const subjects = getSubjectDetails(
@@ -2181,6 +2231,7 @@ export const CourseStructureDetails = ({
                 setSubjectModulesMap({});
             } finally {
                 handleLoadingChange(false);
+                setIsModulesLoading(false);
             }
         };
         loadModules();
@@ -2191,6 +2242,7 @@ export const CourseStructureDetails = ({
         if (packageSessionId) {
             const loadModules = async () => {
                 handleLoadingChange(true);
+                setIsModulesLoading(true);
                 try {
                     const modulesMap = await fetchModules({
                         subjects: getSubjectDetails(
@@ -2235,6 +2287,7 @@ export const CourseStructureDetails = ({
                 setSubjectModulesMap({});
             } finally {
                 handleLoadingChange(false);
+                setIsModulesLoading(false);
             }
             };
             loadModules();

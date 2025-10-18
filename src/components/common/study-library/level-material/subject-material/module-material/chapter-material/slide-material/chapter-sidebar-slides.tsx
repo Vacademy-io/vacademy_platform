@@ -127,7 +127,7 @@ export const getStatusDetails = (percentage: number | null | undefined) => {
     switch (status) {
         case "not-started":
             return {
-                label: "Ready",
+                label: "Not Started",
                 description: "Start learning",
                 icon: Circle,
                 color: "text-gray-400",

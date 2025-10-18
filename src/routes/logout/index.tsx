@@ -20,13 +20,15 @@ function RouteComponent() {
     const domainRouting = useDomainRouting();
     const { redirect } = Route.useSearch();
 
+    // Perform logout side-effects once on mount
     useEffect(() => {
-        // Remove naming settings but keep InstituteId
         localStorage.removeItem(NAMING_SETTINGS_KEY);
-        // Deactivate push token for this device on logout
         pushNotificationService.deactivateToken().catch(() => {});
         removeTokensAndLogout();
+    }, []);
 
+    // After logout, navigate once domain routing has resolved (or honor explicit redirect)
+    useEffect(() => {
         // Prefer explicit redirect param if provided
         if (redirect && typeof redirect === "string") {
             if (/^https?:\/\//.test(redirect)) {
@@ -37,9 +39,17 @@ function RouteComponent() {
             return;
         }
 
-        // Fallback to domain routing's resolved redirect path
-        const fallback = domainRouting.redirectPath || "/login";
-        navigate({ to: fallback });
-    }, [navigate, redirect, domainRouting.redirectPath]);
+        // Wait until domain routing finishes resolving to avoid defaulting to /login prematurely
+        if (domainRouting.isLoading) {
+            return;
+        }
+
+        const target = domainRouting.redirectPath || "/login";
+        if (/^https?:\/\//.test(target)) {
+            window.location.assign(target);
+        } else {
+            navigate({ to: target });
+        }
+    }, [redirect, domainRouting.isLoading, domainRouting.redirectPath, navigate]);
     return <div>Loging out ....</div>;
 }

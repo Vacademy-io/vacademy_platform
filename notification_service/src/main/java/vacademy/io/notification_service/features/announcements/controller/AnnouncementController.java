@@ -10,10 +10,12 @@ import org.springframework.web.bind.annotation.*;
 import vacademy.io.notification_service.features.announcements.dto.*;
 import vacademy.io.notification_service.features.announcements.enums.AnnouncementStatus;
 import vacademy.io.notification_service.features.announcements.service.AnnouncementService;
+import vacademy.io.notification_service.features.announcements.service.EmailConfigurationService;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.validation.annotation.Validated;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -25,6 +27,7 @@ import java.util.Map;
 public class AnnouncementController {
 
     private final AnnouncementService announcementService;
+    private final EmailConfigurationService emailConfigurationService;
 
     /**
      * Create a new announcement - Main API for other services
@@ -210,6 +213,98 @@ public class AnnouncementController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Error approving announcement: {}", announcementId, e);
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    /**
+     * Get email configurations for dropdown
+     */
+    @GetMapping("/email-configurations/{instituteId}")
+    public ResponseEntity<List<EmailConfigDTO>> getEmailConfigurations(
+            @PathVariable String instituteId) {
+        try {
+            List<EmailConfigDTO> configurations = emailConfigurationService.getEmailConfigurations(instituteId);
+            return ResponseEntity.ok(configurations);
+        } catch (Exception e) {
+            log.error("Error getting email configurations for institute: {}", instituteId, e);
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    /**
+     * Get email configuration by type
+     */
+    @GetMapping("/email-configurations/{instituteId}/{emailType}")
+    public ResponseEntity<EmailConfigDTO> getEmailConfigurationByType(
+            @PathVariable String instituteId,
+            @PathVariable String emailType) {
+        try {
+            EmailConfigDTO configuration = emailConfigurationService.getEmailConfigurationByType(instituteId, emailType);
+            if (configuration != null) {
+                return ResponseEntity.ok(configuration);
+            } else {
+                return ResponseEntity.notFound().build();
+            }
+        } catch (Exception e) {
+            log.error("Error getting email configuration for institute: {} type: {}", instituteId, emailType, e);
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    /**
+     * Add new email configuration
+     */
+    @PostMapping("/email-configurations/{instituteId}")
+    public ResponseEntity<EmailConfigDTO> addEmailConfiguration(
+            @PathVariable String instituteId,
+            @RequestBody EmailConfigDTO emailConfig) {
+        try {
+            EmailConfigDTO addedConfig = emailConfigurationService.addEmailConfiguration(instituteId, emailConfig);
+            return ResponseEntity.ok(addedConfig);
+        } catch (Exception e) {
+            log.error("Error adding email configuration for institute: {}", instituteId, e);
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    /**
+     * Update existing email configuration
+     */
+    @PutMapping("/email-configurations/{instituteId}/{emailType}")
+    public ResponseEntity<EmailConfigDTO> updateEmailConfiguration(
+            @PathVariable String instituteId,
+            @PathVariable String emailType,
+            @RequestBody EmailConfigDTO emailConfig) {
+        try {
+            EmailConfigDTO updatedConfig = emailConfigurationService.updateEmailConfiguration(instituteId, emailType, emailConfig);
+            if (updatedConfig != null) {
+                return ResponseEntity.ok(updatedConfig);
+            } else {
+                return ResponseEntity.notFound().build();
+            }
+        } catch (Exception e) {
+            log.error("Error updating email configuration for institute: {} type: {}", instituteId, emailType, e);
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    /**
+     * Delete email configuration
+     */
+    @DeleteMapping("/email-configurations/{instituteId}/{emailType}")
+    public ResponseEntity<Void> deleteEmailConfiguration(
+            @PathVariable String instituteId,
+            @PathVariable String emailType) {
+        try {
+            boolean deleted = emailConfigurationService.deleteEmailConfiguration(instituteId, emailType);
+            if (deleted) {
+                return ResponseEntity.noContent().build();
+            } else {
+                return ResponseEntity.notFound().build();
+            }
+        } catch (Exception e) {
+            log.error("Error deleting email configuration for institute: {} type: {}", instituteId, emailType, e);
             return ResponseEntity.badRequest().build();
         }
     }

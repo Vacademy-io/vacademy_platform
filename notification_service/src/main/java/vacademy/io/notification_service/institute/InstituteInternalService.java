@@ -40,5 +40,24 @@ public class InstituteInternalService {
             throw new VacademyException("Failed to parse institute data: " + e.getMessage());
         }
     }
+    
+    public boolean updateInstituteSettings(String instituteId, String updatedSettings) {
+        try {
+            // Create request body with updated settings
+            String requestBody = "{\"setting\":\"" + updatedSettings.replace("\"", "\\\"") + "\"}";
+            
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.PUT.name(),
+                    adminCoreServerBaseUrl,
+                    "/admin-core-service/internal/institute/v1/" + instituteId + "/settings",
+                    requestBody
+            );
+
+            return response.getStatusCode().is2xxSuccessful();
+        } catch (Exception e) {
+            throw new VacademyException("Failed to update institute settings: " + e.getMessage());
+        }
+    }
 }
 

@@ -117,6 +117,9 @@ public class AnnouncementDeliveryService {
         String subject = (String) emailConfig.getOrDefault("subject", announcement.getTitle());
         String template = (String) emailConfig.getOrDefault("template", "announcement_email");
         String forceToEmail = (String) emailConfig.get("force_to_email");
+        String fromEmail = (String) emailConfig.get("fromEmail");
+        String fromName = (String) emailConfig.get("fromName");
+        String emailType = (String) emailConfig.get("emailType");
         
         for (RecipientMessage message : pendingMessages) {
             if (message.getMediumType() != null && message.getMediumType() != MediumType.EMAIL) continue; // skip others
@@ -129,19 +132,20 @@ public class AnnouncementDeliveryService {
                 // Get user email - this would need to be resolved from user service
                 String userEmail = forceToEmail != null && !forceToEmail.isBlank() ? forceToEmail : resolveUserEmail(message.getUserId());
                 if (userEmail != null) {
-                    // Send email using existing service
-                    emailService.sendHtmlEmail(userEmail, subject, "announcement-service", content.getContent(),instituteId);
+                    // Send email using existing service with custom from address
+                    emailService.sendHtmlEmail(userEmail, subject, "announcement-service", content.getContent(), 
+                                             instituteId, fromEmail, fromName);
                     
                     message.setStatus(MessageStatus.DELIVERED);
                     message.setDeliveredAt(LocalDateTime.now());
                     
-                    // Create notification log entry
-                    createNotificationLog(announcement, message, "EMAIL", "SUCCESS", null);
+                    // Create email-specific notification log entry
+                    createEmailNotificationLog(announcement, message, userEmail, "SUCCESS", null);
                     
                 } else {
                     message.setStatus(MessageStatus.FAILED);
                     message.setErrorMessage("User email not found");
-                    createNotificationLog(announcement, message, "EMAIL", "FAILED", "User email not found");
+                    createEmailNotificationLog(announcement, message, "unknown@email.com", "FAILED", "User email not found");
                 }
                 
                 recipientMessageRepository.save(message);
@@ -152,7 +156,7 @@ public class AnnouncementDeliveryService {
                 message.setStatus(MessageStatus.FAILED);
                 message.setErrorMessage(detailed);
                 recipientMessageRepository.save(message);
-                createNotificationLog(announcement, message, "EMAIL", "FAILED", detailed);
+                createEmailNotificationLog(announcement, message, "error@email.com", "FAILED", detailed);
             }
         }
     }
@@ -263,14 +267,28 @@ public class AnnouncementDeliveryService {
                                      String notificationType, String status, String errorMessage) {
         NotificationLog log = new NotificationLog();
         log.setNotificationType(notificationType);
-        log.setChannelId(message.getUserId());
+        log.setChannelId(message.getUserId()); // This will be updated to email address
         log.setBody(announcement.getTitle());
         log.setSource("announcement-service");
         log.setSourceId(announcement.getId());
         log.setUserId(message.getUserId());
         log.setNotificationDate(LocalDateTime.now());
         
-        // You might want to add status and error message fields to NotificationLog entity
+        notificationLogRepository.save(log);
+    }
+    
+    // Enhanced method for email-specific logging
+    private void createEmailNotificationLog(Announcement announcement, RecipientMessage message, 
+                                          String userEmail, String status, String errorMessage) {
+        NotificationLog log = new NotificationLog();
+        log.setNotificationType("EMAIL");
+        log.setChannelId(userEmail); // Use email address as channelId for email tracking
+        log.setBody(announcement.getTitle());
+        log.setSource("announcement-service");
+        log.setSourceId(announcement.getId());
+        log.setUserId(message.getUserId()); // Keep user ID for reference
+        log.setNotificationDate(LocalDateTime.now());
+        
         notificationLogRepository.save(log);
     }
 

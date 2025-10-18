@@ -149,9 +149,8 @@ export const MySidebar = ({
   }
 
   return (
-    <div className="max-w-full w-full overflow-x-hidden">
-      <Sidebar side="left" collapsible="icon">
-        <SidebarContent className="sidebar-content flex flex-col bg-white dark:bg-neutral-900 border-r border-gray-200 dark:border-neutral-800 py-2 transition-all duration-200 ease-in-out max-w-full w-full overflow-x-hidden">
+    <Sidebar side="left" collapsible="icon">
+      <SidebarContent className="sidebar-content flex flex-col bg-white dark:bg-neutral-900 border-r border-gray-200 dark:border-neutral-800 py-2 transition-all duration-200 ease-in-out max-w-full w-full overflow-x-hidden">
         <SidebarHeader
           className={`flex items-center px-3 pb-2 mb-2 border-b border-gray-100 dark:border-neutral-800 transition-all duration-200 ${
             isExpanded
@@ -232,6 +231,5 @@ export const MySidebar = ({
         </SidebarMenu>
       </SidebarContent>
     </Sidebar>
-    </div>
   );
 };

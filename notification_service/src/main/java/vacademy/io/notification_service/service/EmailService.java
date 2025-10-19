@@ -68,7 +68,11 @@ public class EmailService {
         return mailSender;
     }
 
-    private AbstractMap.SimpleEntry<JavaMailSender, String> getMailSenderConfig(String instituteId) {
+    /**
+     * Get mail sender config with specific email type
+     * Falls back to UTILITY_EMAIL if emailType is not provided
+     */
+    private AbstractMap.SimpleEntry<JavaMailSender, String> getMailSenderConfig(String instituteId, String emailType) {
         JavaMailSender mailSenderToUse = mailSender;
         String fromToUse = from;
 
@@ -77,17 +81,46 @@ public class EmailService {
             try {
                 if (institute != null && institute.getSetting() != null) {
                     JsonNode settings = objectMapper.readTree(institute.getSetting());
-                    JsonNode utilityEmailSettings = settings
+                    
+                    // Determine which email type to use - default to UTILITY_EMAIL if not specified
+                    String emailTypeToUse = StringUtils.hasText(emailType) ? emailType : NotificationConstants.UTILITY_EMAIL;
+                    
+                    JsonNode emailSettingsData = settings
                             .path(NotificationConstants.SETTING)
                             .path(NotificationConstants.EMAIL_SETTING)
-                            .path(NotificationConstants.DATA)
-                            .path(NotificationConstants.UTILITY_EMAIL);
+                            .path(NotificationConstants.DATA);
+                    
+                    JsonNode emailConfig = emailSettingsData.path(emailTypeToUse);
 
-                    if (!utilityEmailSettings.isMissingNode()) {
-                        mailSenderToUse = createCustomMailSender(utilityEmailSettings);
-                        fromToUse = utilityEmailSettings.path(NotificationConstants.FROM).asText(from);
-                        logger.info("Using custom SMTP settings for institute: {}", instituteId);
+                    if (!emailConfig.isMissingNode()) {
+                        logger.info("Found email configuration for type: {} in institute: {}", emailTypeToUse, instituteId);
+                        
+                        // Check if SMTP credentials are real or dummy placeholders
+                        String username = emailConfig.path(NotificationConstants.USERNAME).asText("");
+                        String password = emailConfig.path(NotificationConstants.PASSWORD).asText("");
+                        
+                        boolean isDummyCredentials = isDummySMTPCredentials(username, password);
+                        
+                        if (isDummyCredentials) {
+                            logger.info("Dummy SMTP credentials detected in {}, using default SMTP from environment", emailTypeToUse);
+                            // Use default mail sender from Spring but override 'from' address from JSON
+                            mailSenderToUse = mailSender;
+                        } else {
+                            logger.info("Real SMTP credentials found in {}, using custom SMTP configuration", emailTypeToUse);
+                            // Use custom SMTP configuration from JSON
+                            mailSenderToUse = createCustomMailSender(emailConfig);
+                        }
+                        
+                        // Always use the 'from' address from the email type configuration
+                        fromToUse = emailConfig.path(NotificationConstants.FROM).asText(from);
+                        logger.info("Using from address: {} from email type: {}", fromToUse, emailTypeToUse);
+                        
                     } else {
+                        logger.warn("Email type {} not found in settings, trying UTILITY_EMAIL fallback", emailTypeToUse);
+                        // Fallback to UTILITY_EMAIL if specified type not found
+                        if (!emailTypeToUse.equals(NotificationConstants.UTILITY_EMAIL)) {
+                            return getMailSenderConfig(instituteId, NotificationConstants.UTILITY_EMAIL);
+                        }
                         logger.info("No custom SMTP settings found, using default SMTP");
                     }
                 }
@@ -100,6 +133,41 @@ public class EmailService {
         }
 
         return new AbstractMap.SimpleEntry<>(mailSenderToUse, fromToUse);
+    }
+    
+    /**
+     * Legacy method for backward compatibility - uses UTILITY_EMAIL by default
+     */
+    private AbstractMap.SimpleEntry<JavaMailSender, String> getMailSenderConfig(String instituteId) {
+        return getMailSenderConfig(instituteId, null);
+    }
+    
+    /**
+     * Check if SMTP credentials are dummy placeholders
+     */
+    private boolean isDummySMTPCredentials(String username, String password) {
+        if (!StringUtils.hasText(username) || !StringUtils.hasText(password)) {
+            return true;
+        }
+        
+        // List of dummy/placeholder values
+        String[] dummyValues = {
+            "SMTP_USERNAME", "SMTP_PASSWORD",
+            "your_username", "your_password",
+            "username", "password",
+            "placeholder", "dummy",
+            "changeme", "change_me",
+            "example", "test"
+        };
+        
+        for (String dummy : dummyValues) {
+            if (username.equalsIgnoreCase(dummy) || password.equalsIgnoreCase(dummy)) {
+                logger.debug("Detected dummy credential: username={}, password={}", username, password);
+                return true;
+            }
+        }
+        
+        return false;
     }
 
     public void sendEmail(String to, String subject, String text, String instituteId) {
@@ -275,22 +343,36 @@ public class EmailService {
 
 
     public void sendHtmlEmail(String to, String subject, String service, String body, String instituteId) {
-        sendHtmlEmail(to, subject, service, body, instituteId, null, null);
+        sendHtmlEmail(to, subject, service, body, instituteId, null, null, null);
     }
     
     public void sendHtmlEmail(String to, String subject, String service, String body, String instituteId, 
                              String customFromEmail, String customFromName) {
+        sendHtmlEmail(to, subject, service, body, instituteId, customFromEmail, customFromName, null);
+    }
+    
+    public void sendHtmlEmail(String to, String subject, String service, String body, String instituteId, 
+                             String customFromEmail, String customFromName, String emailType) {
         try {
 
-            AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId);
-            JavaMailSender mailSenderToUse = config.getKey();
-            String fromToUse = config.getValue();
+            AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId, emailType);
+            final JavaMailSender finalMailSender = config.getKey();
+            String fromEmail = config.getValue();
             
-            // Override with custom from email if provided
+            logger.info("Sending HTML email to: {} using emailType: {} for service: {}", to, emailType, service);
+            
+            // Determine final from address - custom email takes highest priority
+            final String finalFromEmail;
             if (customFromEmail != null && !customFromEmail.trim().isEmpty()) {
-                fromToUse = customFromEmail;
+                finalFromEmail = customFromEmail;
                 logger.info("Using custom from email: {} for service: {}", customFromEmail, service);
+            } else {
+                finalFromEmail = fromEmail;
+                logger.info("Using from email from config: {} for service: {}", fromEmail, service);
             }
+            
+            // Determine final from name
+            final String finalFromName = (customFromName != null && !customFromName.trim().isEmpty()) ? customFromName : null;
 
             String emailSubject = StringUtils.hasText(subject) ? subject : "This is a very important email";
 
@@ -300,10 +382,10 @@ public class EmailService {
                     message.setRecipient(Message.RecipientType.TO, new InternetAddress(to));
                     
                     // Set from address with optional display name
-                    if (customFromName != null && !customFromName.trim().isEmpty()) {
-                        message.setFrom(new InternetAddress(fromToUse, customFromName));
+                    if (finalFromName != null) {
+                        message.setFrom(new InternetAddress(finalFromEmail, finalFromName));
                     } else {
-                        message.setFrom(new InternetAddress(fromToUse));
+                        message.setFrom(new InternetAddress(finalFromEmail));
                     }
                     
                     message.setSubject(emailSubject);
@@ -317,9 +399,10 @@ public class EmailService {
                     multipart.addBodyPart(htmlPart);
 
                     message.setContent(multipart);
-                    mailSenderToUse.send(message);
+                    finalMailSender.send(message);
 
-                } catch (MessagingException e) {
+                } catch (Exception e) {
+                    logger.error("Failed to send HTML email to: {}", to, e);
                     throw new RuntimeException("Failed to send HTML email", e);
                 }
             });

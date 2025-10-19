@@ -121,6 +121,9 @@ public class AnnouncementDeliveryService {
         String fromName = (String) emailConfig.get("fromName");
         String emailType = (String) emailConfig.get("emailType");
         
+        log.info("Delivering announcement {} via email with type: {}, from: {}, subject: {}", 
+                 announcement.getId(), emailType, fromEmail, subject);
+        
         for (RecipientMessage message : pendingMessages) {
             if (message.getMediumType() != null && message.getMediumType() != MediumType.EMAIL) continue; // skip others
             try {
@@ -132,9 +135,9 @@ public class AnnouncementDeliveryService {
                 // Get user email - this would need to be resolved from user service
                 String userEmail = forceToEmail != null && !forceToEmail.isBlank() ? forceToEmail : resolveUserEmail(message.getUserId());
                 if (userEmail != null) {
-                    // Send email using existing service with custom from address
+                    // Send email using existing service with email type, custom from address, and name
                     emailService.sendHtmlEmail(userEmail, subject, "announcement-service", content.getContent(), 
-                                             instituteId, fromEmail, fromName);
+                                             instituteId, fromEmail, fromName, emailType);
                     
                     message.setStatus(MessageStatus.DELIVERED);
                     message.setDeliveredAt(LocalDateTime.now());

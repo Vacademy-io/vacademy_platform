@@ -20,11 +20,5 @@ public class EmailConfigDTO {
     private String name;
     private String type; // marketing, transactional, notifications
     private String description;
-    
-    /**
-     * Get display text for dropdown
-     */
-    public String getDisplayText() {
-        return String.format("%s (%s)", email, type);
-    }
+    private String displayText; // For frontend dropdown display
 }

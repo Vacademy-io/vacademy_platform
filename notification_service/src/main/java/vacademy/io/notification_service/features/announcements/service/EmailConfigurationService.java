@@ -2,6 +2,7 @@ package vacademy.io.notification_service.features.announcements.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -41,6 +42,7 @@ public class EmailConfigurationService {
             
             // Add default configurations if none found
             if (configurations.isEmpty()) {
+                log.warn("No email configurations found for institute: {}, returning defaults", instituteId);
                 configurations = getDefaultEmailConfigurations();
             }
             
@@ -60,41 +62,176 @@ public class EmailConfigurationService {
         
         try {
             JsonNode settings = objectMapper.readTree(settingsJson);
-            JsonNode emailConfigs = settings
-                .path(NotificationConstants.SETTING)
-                .path(NotificationConstants.EMAIL_SETTING)
-                .path(NotificationConstants.DATA)
-                .path("EMAIL_CONFIGURATIONS");
             
-            if (!emailConfigs.isMissingNode()) {
-                Iterator<String> fieldNames = emailConfigs.fieldNames();
-                while (fieldNames.hasNext()) {
-                    String emailType = fieldNames.next();
-                    JsonNode emailConfig = emailConfigs.path(emailType);
-                    
-                    // Only include enabled configurations
-                    if (emailConfig.path("enabled").asBoolean(true)) {
-                        EmailConfigDTO config = EmailConfigDTO.builder()
-                            .email(emailConfig.path("email").asText())
-                            .name(emailConfig.path("name").asText())
-                            .type(emailType)
-                            .description(emailConfig.path("description").asText())
-                            .build();
-                        configs.add(config);
-                    }
-                }
+            // Navigate to EMAIL_SETTING.data
+            JsonNode emailSettingsData = settings
+                    .path(NotificationConstants.SETTING)
+                    .path(NotificationConstants.EMAIL_SETTING)
+                    .path(NotificationConstants.DATA);
+            
+            if (!emailSettingsData.isMissingNode() && emailSettingsData.isObject()) {
+                log.info("Found EMAIL_SETTING.data, parsing email configurations...");
                 
-                log.info("Loaded {} email configurations for institute", configs.size());
+                // Iterate through all email configurations
+                Iterator<Map.Entry<String, JsonNode>> fields = emailSettingsData.fields();
+                while (fields.hasNext()) {
+                    Map.Entry<String, JsonNode> entry = fields.next();
+                    String emailType = entry.getKey();
+                    JsonNode configNode = entry.getValue();
+                    
+                    // Extract fields from each email configuration
+                    String fromEmail = configNode.path(NotificationConstants.FROM).asText("");
+                    String username = configNode.path(NotificationConstants.USERNAME).asText("");
+                    
+                    // Build EmailConfigDTO
+                    EmailConfigDTO dto = EmailConfigDTO.builder()
+                            .email(fromEmail)
+                            .name(formatEmailTypeName(emailType))
+                            .type(emailType)
+                            .description("Email configuration for " + formatEmailTypeName(emailType))
+                            .displayText(formatEmailTypeName(emailType))
+                            .build();
+                    
+                    configs.add(dto);
+                    log.info("Parsed email config: type={}, from={}", emailType, fromEmail);
+                }
             } else {
-                log.info("No EMAIL_CONFIGURATIONS found in institute settings, using defaults");
-                configs = getDefaultEmailConfigurations();
+                log.warn("EMAIL_SETTING.data not found or not an object in settings JSON");
             }
+            
         } catch (Exception e) {
             log.error("Error parsing institute email settings", e);
-            configs = getDefaultEmailConfigurations();
         }
         
         return configs;
+    }
+    
+    /**
+     * Format email type name for display
+     */
+    private String formatEmailTypeName(String emailType) {
+        if (emailType == null) return "";
+        
+        // Convert DEVELOPER_EMAIL to "Developer Email"
+        String formatted = emailType.replace("_", " ").toLowerCase();
+        
+        // Capitalize first letter of each word
+        StringBuilder result = new StringBuilder();
+        boolean capitalizeNext = true;
+        
+        for (char c : formatted.toCharArray()) {
+            if (Character.isWhitespace(c)) {
+                capitalizeNext = true;
+                result.append(c);
+            } else if (capitalizeNext) {
+                result.append(Character.toUpperCase(c));
+                capitalizeNext = false;
+            } else {
+                result.append(c);
+            }
+        }
+        
+        return result.toString();
+    }
+    
+    /**
+     * Add new email configuration
+     */
+    public EmailConfigDTO addEmailConfiguration(String instituteId, EmailConfigDTO emailConfig, String authToken) {
+        try {
+            log.info("Adding email configuration for institute: {}, type: {}", instituteId, emailConfig.getType());
+            
+            // Validate input
+            if (emailConfig.getEmail() == null || emailConfig.getEmail().isEmpty()) {
+                throw new IllegalArgumentException("Email address is required");
+            }
+            if (emailConfig.getType() == null || emailConfig.getType().isEmpty()) {
+                throw new IllegalArgumentException("Email type is required");
+            }
+            
+            // Get current settings
+            var institute = instituteInternalService.getInstituteByInstituteId(instituteId);
+            if (institute == null) {
+                throw new IllegalArgumentException("Institute not found: " + instituteId);
+            }
+            
+            String currentSettings = institute.getSetting();
+            if (currentSettings == null || currentSettings.trim().isEmpty()) {
+                currentSettings = "{}";
+            }
+            
+            JsonNode settingsNode = objectMapper.readTree(currentSettings);
+            ObjectNode rootNode = (ObjectNode) settingsNode;
+            
+            // Ensure EMAIL_SETTING.data structure exists
+            ensureEmailSettingsDataStructure(rootNode);
+            
+            // Get EMAIL_SETTING.data node
+            ObjectNode emailData = (ObjectNode) rootNode
+                    .path(NotificationConstants.SETTING)
+                    .path(NotificationConstants.EMAIL_SETTING)
+                    .path(NotificationConstants.DATA);
+            
+            // Check if email type already exists
+            if (emailData.has(emailConfig.getType())) {
+                throw new IllegalArgumentException("Email type '" + emailConfig.getType() + "' already exists. Use PUT to update.");
+            }
+            
+            // Create new email configuration node
+            ObjectNode newConfigNode = objectMapper.createObjectNode();
+            newConfigNode.put(NotificationConstants.FROM, emailConfig.getEmail());
+            newConfigNode.put(NotificationConstants.HOST, "smtp.gmail.com");
+            newConfigNode.put(NotificationConstants.PORT, 587);
+            newConfigNode.put(NotificationConstants.USERNAME, "SMTP_USERNAME");
+            newConfigNode.put(NotificationConstants.PASSWORD, "SMTP_PASSWORD");
+            
+            // Add to EMAIL_SETTING.data
+            emailData.set(emailConfig.getType(), newConfigNode);
+            
+            // Convert back to JSON string
+            String updatedSettings = objectMapper.writeValueAsString(rootNode);
+            
+            // Update in database
+            boolean updated = instituteInternalService.updateInstituteSettings(instituteId, updatedSettings, authToken);
+            
+            if (!updated) {
+                log.warn("Failed to persist email configuration to database for institute: {}", instituteId);
+                log.info("Manual update required. Updated settings JSON:\n{}", updatedSettings);
+            } else {
+                log.info("Successfully added email configuration: {} for institute: {}", emailConfig.getType(), instituteId);
+            }
+            
+            return emailConfig;
+            
+        } catch (Exception e) {
+            log.error("Error adding email configuration", e);
+            throw new RuntimeException("Failed to add email configuration: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Ensure EMAIL_SETTING.data structure exists in settings
+     */
+    private void ensureEmailSettingsDataStructure(ObjectNode rootNode) {
+        // Ensure "setting" exists
+        if (!rootNode.has(NotificationConstants.SETTING) || 
+            !(rootNode.get(NotificationConstants.SETTING) instanceof ObjectNode)) {
+            rootNode.set(NotificationConstants.SETTING, objectMapper.createObjectNode());
+        }
+        ObjectNode settingNode = (ObjectNode) rootNode.get(NotificationConstants.SETTING);
+        
+        // Ensure "EMAIL_SETTING" exists
+        if (!settingNode.has(NotificationConstants.EMAIL_SETTING) || 
+            !(settingNode.get(NotificationConstants.EMAIL_SETTING) instanceof ObjectNode)) {
+            settingNode.set(NotificationConstants.EMAIL_SETTING, objectMapper.createObjectNode());
+        }
+        ObjectNode emailSettingNode = (ObjectNode) settingNode.get(NotificationConstants.EMAIL_SETTING);
+        
+        // Ensure "data" exists
+        if (!emailSettingNode.has(NotificationConstants.DATA) || 
+            !(emailSettingNode.get(NotificationConstants.DATA) instanceof ObjectNode)) {
+            emailSettingNode.set(NotificationConstants.DATA, objectMapper.createObjectNode());
+        }
     }
     
     /**
@@ -107,188 +244,29 @@ public class EmailConfigurationService {
         configs.add(EmailConfigDTO.builder()
             .email("info@example.com")
             .name("Marketing Team")
-            .type("marketing")
+            .type("MARKETING_EMAIL")
             .description("Marketing and promotional emails")
+            .displayText("Marketing Email")
             .build());
             
-        // Transactional email
-        configs.add(EmailConfigDTO.builder()
-            .email("yes@example.com")
-            .name("Notifications")
-            .type("transactional")
-            .description("Transactional and system notifications")
-            .build());
-            
-        // Notifications email
+        // Utility email
         configs.add(EmailConfigDTO.builder()
             .email("notifications@example.com")
-            .name("Institute Notifications")
-            .type("notifications")
-            .description("General institute notifications")
+            .name("Notifications")
+            .type("UTILITY_EMAIL")
+            .description("Utility and system notifications")
+            .displayText("Utility Email")
+            .build());
+            
+        // Developer email
+        configs.add(EmailConfigDTO.builder()
+            .email("developer@example.com")
+            .name("Developer")
+            .type("DEVELOPER_EMAIL")
+            .description("Developer and technical notifications")
+            .displayText("Developer Email")
             .build());
             
         return configs;
-    }
-    
-    /**
-     * Get email configuration by specific type
-     */
-    public EmailConfigDTO getEmailConfigurationByType(String instituteId, String emailType) {
-        try {
-            List<EmailConfigDTO> allConfigs = getEmailConfigurations(instituteId);
-            return allConfigs.stream()
-                .filter(config -> emailType.equals(config.getType()))
-                .findFirst()
-                .orElse(null);
-        } catch (Exception e) {
-            log.error("Error getting email configuration by type: {} for institute: {}", emailType, instituteId, e);
-            return null;
-        }
-    }
-    
-    /**
-     * Add new email configuration
-     */
-    public EmailConfigDTO addEmailConfiguration(String instituteId, EmailConfigDTO emailConfig) {
-        try {
-            // Get current institute settings
-            var institute = instituteInternalService.getInstituteByInstituteId(instituteId);
-            if (institute == null) {
-                throw new RuntimeException("Institute not found: " + instituteId);
-            }
-            
-            // Parse current settings
-            JsonNode settings = objectMapper.readTree(institute.getSetting());
-            JsonNode emailConfigs = settings
-                .path(NotificationConstants.SETTING)
-                .path(NotificationConstants.EMAIL_SETTING)
-                .path(NotificationConstants.DATA)
-                .path("EMAIL_CONFIGURATIONS");
-            
-            // Create new configuration node
-            JsonNode newConfig = objectMapper.valueToTree(Map.of(
-                "email", emailConfig.getEmail(),
-                "name", emailConfig.getName(),
-                "description", emailConfig.getDescription(),
-                "enabled", true
-            ));
-            
-            // Add to existing configurations
-            ((com.fasterxml.jackson.databind.node.ObjectNode) emailConfigs).set(emailConfig.getType(), newConfig);
-            
-            // Update institute settings
-            String updatedSettings = objectMapper.writeValueAsString(settings);
-            updateInstituteSettings(instituteId, updatedSettings);
-            
-            log.info("Added email configuration: {} for institute: {}", emailConfig.getType(), instituteId);
-            return emailConfig;
-            
-        } catch (Exception e) {
-            log.error("Error adding email configuration for institute: {}", instituteId, e);
-            throw new RuntimeException("Failed to add email configuration: " + e.getMessage());
-        }
-    }
-    
-    /**
-     * Update existing email configuration
-     */
-    public EmailConfigDTO updateEmailConfiguration(String instituteId, String emailType, EmailConfigDTO emailConfig) {
-        try {
-            // Get current institute settings
-            var institute = instituteInternalService.getInstituteByInstituteId(instituteId);
-            if (institute == null) {
-                throw new RuntimeException("Institute not found: " + instituteId);
-            }
-            
-            // Parse current settings
-            JsonNode settings = objectMapper.readTree(institute.getSetting());
-            JsonNode emailConfigs = settings
-                .path(NotificationConstants.SETTING)
-                .path(NotificationConstants.EMAIL_SETTING)
-                .path(NotificationConstants.DATA)
-                .path("EMAIL_CONFIGURATIONS");
-            
-            // Check if configuration exists
-            if (emailConfigs.path(emailType).isMissingNode()) {
-                return null; // Configuration not found
-            }
-            
-            // Update configuration
-            JsonNode updatedConfig = objectMapper.valueToTree(Map.of(
-                "email", emailConfig.getEmail(),
-                "name", emailConfig.getName(),
-                "description", emailConfig.getDescription(),
-                "enabled", true
-            ));
-            
-            ((com.fasterxml.jackson.databind.node.ObjectNode) emailConfigs).set(emailType, updatedConfig);
-            
-            // Update institute settings
-            String updatedSettings = objectMapper.writeValueAsString(settings);
-            updateInstituteSettings(instituteId, updatedSettings);
-            
-            log.info("Updated email configuration: {} for institute: {}", emailType, instituteId);
-            return emailConfig;
-            
-        } catch (Exception e) {
-            log.error("Error updating email configuration for institute: {} type: {}", instituteId, emailType, e);
-            throw new RuntimeException("Failed to update email configuration: " + e.getMessage());
-        }
-    }
-    
-    /**
-     * Delete email configuration
-     */
-    public boolean deleteEmailConfiguration(String instituteId, String emailType) {
-        try {
-            // Get current institute settings
-            var institute = instituteInternalService.getInstituteByInstituteId(instituteId);
-            if (institute == null) {
-                throw new RuntimeException("Institute not found: " + instituteId);
-            }
-            
-            // Parse current settings
-            JsonNode settings = objectMapper.readTree(institute.getSetting());
-            JsonNode emailConfigs = settings
-                .path(NotificationConstants.SETTING)
-                .path(NotificationConstants.EMAIL_SETTING)
-                .path(NotificationConstants.DATA)
-                .path("EMAIL_CONFIGURATIONS");
-            
-            // Check if configuration exists
-            if (emailConfigs.path(emailType).isMissingNode()) {
-                return false; // Configuration not found
-            }
-            
-            // Remove configuration
-            ((com.fasterxml.jackson.databind.node.ObjectNode) emailConfigs).remove(emailType);
-            
-            // Update institute settings
-            String updatedSettings = objectMapper.writeValueAsString(settings);
-            updateInstituteSettings(instituteId, updatedSettings);
-            
-            log.info("Deleted email configuration: {} for institute: {}", emailType, instituteId);
-            return true;
-            
-        } catch (Exception e) {
-            log.error("Error deleting email configuration for institute: {} type: {}", instituteId, emailType, e);
-            throw new RuntimeException("Failed to delete email configuration: " + e.getMessage());
-        }
-    }
-    
-    /**
-     * Update institute settings via admin-core-service API
-     */
-    private void updateInstituteSettings(String instituteId, String updatedSettings) {
-        try {
-            boolean success = instituteInternalService.updateInstituteSettings(instituteId, updatedSettings);
-            if (!success) {
-                throw new RuntimeException("Failed to update institute settings via admin-core-service");
-            }
-            log.info("Successfully updated institute settings for: {}", instituteId);
-        } catch (Exception e) {
-            log.error("Error updating institute settings for: {}", instituteId, e);
-            throw new RuntimeException("Failed to update institute settings: " + e.getMessage());
-        }
     }
 }

@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.UuidGenerator;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 
@@ -55,18 +56,35 @@ public class InstituteCustomField {
     private String status = "ACTIVE";
 
     public InstituteCustomField(InstituteCustomFieldDTO instituteCustomFieldDTO) {
-        this.id = instituteCustomFieldDTO.getId();
-        this.instituteId = instituteCustomFieldDTO.getInstituteId();
-        this.customFieldId = instituteCustomFieldDTO.getCustomField().getId();
-        this.type = instituteCustomFieldDTO.getType();
-        this.typeId = instituteCustomFieldDTO.getTypeId();
-        this.groupName = instituteCustomFieldDTO.getGroupName();
-        this.individualOrder = instituteCustomFieldDTO.getIndividualOrder();
-        this.groupInternalOrder = instituteCustomFieldDTO.getGroupInternalOrder();
-        if (instituteCustomFieldDTO.getStatus() != null) {
+        if (instituteCustomFieldDTO.getId() != null)
+            this.id = instituteCustomFieldDTO.getId();
+
+        if (StringUtils.hasText(instituteCustomFieldDTO.getInstituteId()))
+            this.instituteId = instituteCustomFieldDTO.getInstituteId();
+
+        if (instituteCustomFieldDTO.getCustomField() != null &&
+                instituteCustomFieldDTO.getCustomField().getId() != null)
+            this.customFieldId = instituteCustomFieldDTO.getCustomField().getId();
+
+        if (StringUtils.hasText(instituteCustomFieldDTO.getType()))
+            this.type = instituteCustomFieldDTO.getType();
+
+        if (StringUtils.hasText(instituteCustomFieldDTO.getTypeId()))
+            this.typeId = instituteCustomFieldDTO.getTypeId();
+
+        if (StringUtils.hasText(instituteCustomFieldDTO.getGroupName()))
+            this.groupName = instituteCustomFieldDTO.getGroupName();
+
+        if (instituteCustomFieldDTO.getIndividualOrder() != null)
+            this.individualOrder = instituteCustomFieldDTO.getIndividualOrder();
+
+        if (instituteCustomFieldDTO.getGroupInternalOrder() != null)
+            this.groupInternalOrder = instituteCustomFieldDTO.getGroupInternalOrder();
+
+        if (StringUtils.hasText(instituteCustomFieldDTO.getStatus()))
             this.status = instituteCustomFieldDTO.getStatus();
-        }else{
+        else if (this.status == null)
             this.status = StatusEnum.ACTIVE.name();
-        }
     }
+
 }

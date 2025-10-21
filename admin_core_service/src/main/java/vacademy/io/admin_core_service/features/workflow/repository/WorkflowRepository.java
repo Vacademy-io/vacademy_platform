@@ -9,4 +9,6 @@ import java.util.List;
 @Repository
 public interface WorkflowRepository extends JpaRepository<Workflow, String> {
 	List<Workflow> findByInstituteIdAndStatus(String instituteId, String status);
+
+	List<Workflow> findByInstituteId(String instituteId);
 }

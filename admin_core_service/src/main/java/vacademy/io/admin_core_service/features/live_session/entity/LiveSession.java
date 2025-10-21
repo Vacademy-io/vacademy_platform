@@ -57,4 +57,11 @@ public class LiveSession {
     private boolean allowPlayPause;
 
     private String timezone;
+
+    @PrePersist
+    public void prePersist() {
+        if (this.accessLevel == null) {
+            this.accessLevel = "private";
+        }
+    }
 }

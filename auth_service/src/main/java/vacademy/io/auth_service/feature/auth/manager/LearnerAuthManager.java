@@ -239,7 +239,7 @@ public class LearnerAuthManager {
         String password = authRequestDTO.getPassword();
 
         Authentication authentication = authRequestDTO.getInstituteId() == null
-                ? authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(userName, password))
+                ? authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(null + "@" +userName, password))
                 : authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(
                         authRequestDTO.getInstituteId() + "@" + userName, password));
 
@@ -333,8 +333,8 @@ public class LearnerAuthManager {
         return EmailOTPRequest.builder()
                 .to(email)
                 .service("auth-service")
-                .subject("Vacademy | OTP Verification")
-                .name("Vacademy User")
+                .subject("OTP Verification")
+                .name("User")
                 .build();
     }
 

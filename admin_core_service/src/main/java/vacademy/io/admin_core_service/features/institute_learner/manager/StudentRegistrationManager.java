@@ -9,6 +9,8 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
+import vacademy.io.admin_core_service.features.institute.controller.InstituteCertificateController;
 import vacademy.io.admin_core_service.features.institute_learner.constants.StudentConstants;
 import vacademy.io.admin_core_service.features.institute_learner.dto.*;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
@@ -17,6 +19,11 @@ import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSe
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.learner.service.LearnerCouponService;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
+import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
+import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionType;
+import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
@@ -26,6 +33,8 @@ import java.util.*;
 
 @Component
 public class StudentRegistrationManager {
+
+    private final InstituteCertificateController instituteCertificateController;
 
     @Autowired
     InternalClientUtils internalClientUtils;
@@ -43,6 +52,14 @@ public class StudentRegistrationManager {
 
     @Autowired
     private LearnerCouponService learnerCouponService;
+
+    @Autowired
+    private UserPlanService userPlanService;
+
+
+    StudentRegistrationManager(InstituteCertificateController instituteCertificateController) {
+        this.instituteCertificateController = instituteCertificateController;
+    }
 
 
     public InstituteStudentDTO addStudentToInstitute(CustomUserDetails user, InstituteStudentDTO instituteStudentDTO, BulkUploadInitRequest bulkUploadInitRequest) {
@@ -73,7 +90,7 @@ public class StudentRegistrationManager {
             return objectMapper.readValue(response.getBody(), UserDTO.class);
 
         } catch (Exception e) {
-            throw new VacademyException(e.getMessage());
+            throw new vacademy.io.common.exceptions.VacademyException(e.getMessage());
         }
     }
 
@@ -84,6 +101,7 @@ public class StudentRegistrationManager {
         instituteStudentDTO.getUserDetails().setUsername(instituteStudentDTO.getUserDetails().getUsername().toLowerCase());
         setEnrollmentNumberIfNull(instituteStudentDTO.getInstituteStudentDetails());
         UserDTO createdUser = createUserFromAuthService(instituteStudentDTO.getUserDetails(), instituteStudentDTO.getInstituteStudentDetails().getInstituteId(), true);
+        instituteStudentDTO.getUserDetails().setId(createdUser.getId());
         return createStudentFromRequest(createdUser, instituteStudentDTO.getStudentExtraDetails());
     }
 
@@ -176,134 +194,276 @@ public class StudentRegistrationManager {
         return instituteStudentRepository.save(student);
     }
 
-    public String linkStudentToInstitute(Student student, InstituteStudentDetails instituteStudentDetails) {
+    public String linkStudentToInstitute(Student student, InstituteStudentDetails details) {
         try {
-            Optional<StudentSessionInstituteGroupMapping> studentSessionInstituteGroupMappingOptional =
-                    studentSessionRepository.findTopByPackageSessionIdAndUserIdAndStatusIn(
-                            instituteStudentDetails.getPackageSessionId(),
-                            instituteStudentDetails.getInstituteId(),
-                            student.getUserId(),
-                            List.of(
-                                    LearnerSessionStatusEnum.ACTIVE.name(),
-                                    LearnerSessionStatusEnum.INVITED.name(),
-                                    LearnerSessionStatusEnum.TERMINATED.name(),
-                                    LearnerSessionStatusEnum.INACTIVE.name()
-                            )
-                    );
+            Optional<StudentSessionInstituteGroupMapping> activeDestinationMapping = getActiveDestinationMapping(student, details);
+            Optional<StudentSessionInstituteGroupMapping> existingMapping = getExistingMapping(student, details);
 
-            if (studentSessionInstituteGroupMappingOptional.isPresent()) {
-                StudentSessionInstituteGroupMapping mapping = studentSessionInstituteGroupMappingOptional.get();
-
-                // Always update enrolledDate to current time
-                mapping.setEnrolledDate(new Date());
-
-                // Conditionally update fields
-                if (instituteStudentDetails.getEnrollmentStatus() != null) {
-                    mapping.setStatus(instituteStudentDetails.getEnrollmentStatus());
-                }
-
-                if (instituteStudentDetails.getEnrollmentId() != null) {
-                    mapping.setInstituteEnrolledNumber(studentSessionInstituteGroupMappingOptional.get().getInstituteEnrolledNumber());
-                }
-
-                mapping.setUserPlanId(instituteStudentDetails.getUserPlanId());
-
-                if (instituteStudentDetails.getAccessDays() != null) {
-                    mapping.setExpiryDate(
-                            makeExpiryDate(
-                                    instituteStudentDetails.getEnrollmentDate(),
-                                    (instituteStudentDetails.getAccessDays())
-                            )
-                    );
-                }
-
-              return  studentSessionRepository.save(mapping).getId();
+            if (existingMapping.isPresent()) {
+                return updateExistingMapping(existingMapping.get(), activeDestinationMapping, details);
             } else {
-                UUID studentSessionId = UUID.randomUUID();
-                studentSessionRepository.addStudentToInstitute(
-                        studentSessionId.toString(),
-                        student.getUserId(),
-                        instituteStudentDetails.getEnrollmentDate() == null ? new Date() : instituteStudentDetails.getEnrollmentDate(),
-                        instituteStudentDetails.getEnrollmentStatus(),
-                        generateEnrollmentId(),
-                        instituteStudentDetails.getGroupId(),
-                        instituteStudentDetails.getInstituteId(),
-                        makeExpiryDate(
-                                instituteStudentDetails.getEnrollmentDate(),
-                                instituteStudentDetails.getAccessDays()
-                        ),
-                        instituteStudentDetails.getPackageSessionId(),
-                        instituteStudentDetails.getDestinationPackageSessionId(),
-                        instituteStudentDetails.getUserPlanId()
-                );
-                return studentSessionId.toString();
+                return createNewMapping(student, activeDestinationMapping, details);
             }
         } catch (Exception e) {
             throw new VacademyException("Failed to link student to institute: " + e.getMessage());
         }
     }
 
-    // to do: There are some issues about expiry days as if making actual active today than his plan or expriry will be based on today
+    private Optional<StudentSessionInstituteGroupMapping> getActiveDestinationMapping(Student student, InstituteStudentDetails details) {
+        if (!StringUtils.hasText(details.getDestinationPackageSessionId())) {
+            return Optional.empty();
+        }
 
-    public String shiftStudentBatch(String destinationPackageSession,StudentSessionInstituteGroupMapping studentSessionInstituteGroupMapping,String newStatus) {
-        try {
-            Optional<StudentSessionInstituteGroupMapping> studentSessionInstituteGroupMappingOptional =
-                    studentSessionRepository.findTopByPackageSessionIdAndUserIdAndStatusIn(
-                            destinationPackageSession,
-                            studentSessionInstituteGroupMapping.getInstitute().getId(),
-                            studentSessionInstituteGroupMapping.getUserId(),
-                            List.of(
-                                    LearnerSessionStatusEnum.ACTIVE.name(),
-                                    LearnerSessionStatusEnum.INVITED.name(),
-                                    LearnerSessionStatusEnum.TERMINATED.name(),
-                                    LearnerSessionStatusEnum.INACTIVE.name()
-                            )
-                    );
+        return studentSessionRepository.findTopByPackageSessionIdAndUserIdAndStatusIn(
+            details.getDestinationPackageSessionId(),
+            details.getInstituteId(),
+            student.getUserId(),
+            List.of(LearnerSessionStatusEnum.ACTIVE.name())
+        );
+    }
 
-            if (studentSessionInstituteGroupMappingOptional.isPresent()) {
-                StudentSessionInstituteGroupMapping mapping = studentSessionInstituteGroupMappingOptional.get();
+    private Optional<StudentSessionInstituteGroupMapping> getExistingMapping(Student student, InstituteStudentDetails details) {
+        return studentSessionRepository.findTopByPackageSessionIdAndUserIdAndStatusIn(
+            details.getPackageSessionId(),
+            details.getInstituteId(),
+            student.getUserId(),
+            List.of(
+                LearnerSessionStatusEnum.ACTIVE.name(),
+                LearnerSessionStatusEnum.INVITED.name(),
+                LearnerSessionStatusEnum.TERMINATED.name(),
+                LearnerSessionStatusEnum.INACTIVE.name()
+            )
+        );
+    }
 
-                // Always update enrolledDate to current time
-                mapping.setEnrolledDate(new Date());
+    private String updateExistingMapping(
+        StudentSessionInstituteGroupMapping mapping,
+        Optional<StudentSessionInstituteGroupMapping> activeDestinationMapping,
+        InstituteStudentDetails details
+    ) {
+        mapping.setEnrolledDate(new Date());
+
+        if (details.getEnrollmentStatus() != null)
+            mapping.setStatus(details.getEnrollmentStatus());
+
+        if (details.getEnrollmentId() != null)
+            mapping.setInstituteEnrolledNumber(details.getEnrollmentId());
+
+        mapping.setUserPlanId(details.getUserPlanId());
+
+        if (details.getAccessDays() != null) {
+            Date baseDate = determineBaseDate(mapping, activeDestinationMapping);
+            mapping.setExpiryDate(makeExpiryDate(baseDate, details.getAccessDays()));
+        }
+
+        return studentSessionRepository.save(mapping).getId();
+    }
+
+    private String createNewMapping(
+        Student student,
+        Optional<StudentSessionInstituteGroupMapping> activeDestinationMapping,
+        InstituteStudentDetails details
+    ) {
+        UUID studentSessionId = UUID.randomUUID();
+        Date baseDate = determineBaseDate(null, activeDestinationMapping);
+
+        studentSessionRepository.addStudentToInstitute(
+            studentSessionId.toString(),
+            student.getUserId(),
+            details.getEnrollmentDate() == null ? new Date() : details.getEnrollmentDate(),
+            details.getEnrollmentStatus(),
+            generateEnrollmentId(),
+            details.getGroupId(),
+            details.getInstituteId(),
+            makeExpiryDate(baseDate, details.getAccessDays()),
+            details.getPackageSessionId(),
+            details.getDestinationPackageSessionId(),
+            details.getUserPlanId()
+        );
+
+        return studentSessionId.toString();
+    }
 
 
-                mapping.setStatus(newStatus);
+    private Date determineBaseDate(
+        StudentSessionInstituteGroupMapping currentMapping,
+        Optional<StudentSessionInstituteGroupMapping> activeDestinationMapping
+    ) {
+        Date now = new Date();
 
-
-                if (studentSessionInstituteGroupMapping.getInstituteEnrolledNumber() != null) {
-                    mapping.setInstituteEnrolledNumber(studentSessionInstituteGroupMapping.getInstituteEnrolledNumber());
-                }
-
-                if (studentSessionInstituteGroupMapping.getExpiryDate() != null) {
-                    mapping.setExpiryDate(
-                            studentSessionInstituteGroupMapping.getExpiryDate()
-                    );
-                }
-                studentSessionInstituteGroupMapping.setStatus(LearnerSessionStatusEnum.DELETED.name());
-                studentSessionRepository.save(studentSessionInstituteGroupMapping);
-                return  studentSessionRepository.save(mapping).getId();
-            } else {
-                UUID studentSessionId = UUID.randomUUID();
-                studentSessionRepository.addStudentToInstitute(
-                        studentSessionId.toString(),
-                        studentSessionInstituteGroupMapping.getUserId(),
-                        new Date(),
-                        newStatus,
-                        studentSessionInstituteGroupMapping.getInstituteEnrolledNumber(),
-                        (studentSessionInstituteGroupMapping.getGroup() != null ? studentSessionInstituteGroupMapping.getGroup().getId() : null),
-                        studentSessionInstituteGroupMapping.getInstitute().getId(),
-                        studentSessionInstituteGroupMapping.getExpiryDate(),
-                        destinationPackageSession,
-                        null,
-                        studentSessionInstituteGroupMapping.getUserPlanId()
-                );
-                studentSessionInstituteGroupMapping.setStatus(LearnerSessionStatusEnum.DELETED.name());
-                studentSessionRepository.save(studentSessionInstituteGroupMapping);
-                return studentSessionId.toString();
+        if (activeDestinationMapping.isPresent()) {
+            Date destExpiry = activeDestinationMapping.get().getExpiryDate();
+            if (destExpiry != null && destExpiry.after(now)) {
+                return destExpiry; // Extend from destination’s expiry
             }
+        }
+
+        if (currentMapping != null &&
+            LearnerSessionStatusEnum.ACTIVE.name().equalsIgnoreCase(currentMapping.getStatus()) &&
+            currentMapping.getExpiryDate() != null) {
+            return currentMapping.getExpiryDate().after(now) ? currentMapping.getExpiryDate() : now;
+        }
+
+        return now;
+    }
+
+
+
+    public String shiftStudentBatch(
+        StudentSessionInstituteGroupMapping invitedPackageSession,
+        String newStatus
+    ) {
+        try {
+            String userId = invitedPackageSession.getUserId();
+            String instituteId = invitedPackageSession.getInstitute().getId();
+
+            StudentSessionInstituteGroupMapping mappingToUse = findOrCreateMapping(
+                instituteId, userId, newStatus, invitedPackageSession
+            );
+
+
+            markOldMappingDeleted(invitedPackageSession);
+
+            return studentSessionRepository.save(mappingToUse).getId();
         } catch (Exception e) {
+            e.printStackTrace();
             throw new VacademyException("Failed to link student to institute: " + e.getMessage());
         }
+    }
+
+    private StudentSessionInstituteGroupMapping findOrCreateMapping(
+        String instituteId,
+        String userId,
+        String newStatus,
+        StudentSessionInstituteGroupMapping invitedPackageSession
+    )
+    {
+        Optional<StudentSessionInstituteGroupMapping> existingMappingOpt =
+            studentSessionRepository.findTopByPackageSessionIdAndUserIdAndStatusIn(
+                invitedPackageSession.getDestinationPackageSession().getId(),instituteId, userId, List.of(LearnerSessionStatusEnum.ACTIVE.name())
+            );
+        StudentSessionInstituteGroupMapping activePackageSession;
+        if (existingMappingOpt.isPresent()) {
+            activePackageSession = existingMappingOpt.get();
+        }
+        else{
+           activePackageSession = new StudentSessionInstituteGroupMapping();
+            activePackageSession.setInstitute(invitedPackageSession.getInstitute());
+            activePackageSession.setUserId(invitedPackageSession.getUserId());
+            activePackageSession.setInstituteEnrolledNumber(invitedPackageSession.getInstituteEnrolledNumber());
+            activePackageSession.setEnrolledDate(new Date());
+            activePackageSession.setStatus(newStatus);
+            activePackageSession.setPackageSession(invitedPackageSession.getDestinationPackageSession());
+            activePackageSession.setUserPlanId(invitedPackageSession.getUserPlanId());
+            activePackageSession.setType(invitedPackageSession.getType());
+            activePackageSession.setTypeId(invitedPackageSession.getTypeId());
+        }
+        activePackageSession.setExpiryDate(getExpiryDateBasedOnPaymentPlan(activePackageSession,invitedPackageSession.getUserPlanId()));
+        return activePackageSession;
+    }
+
+    private void updateMappingFields(
+        StudentSessionInstituteGroupMapping mappingToUse,
+        StudentSessionInstituteGroupMapping sourceMapping,
+        String newStatus
+    ) {
+        mappingToUse.setEnrolledDate(new Date());
+        mappingToUse.setStatus(newStatus);
+
+        if (sourceMapping.getInstituteEnrolledNumber() != null) {
+            mappingToUse.setInstituteEnrolledNumber(sourceMapping.getInstituteEnrolledNumber());
+        }
+
+        if (sourceMapping.getExpiryDate() != null) {
+            mappingToUse.setExpiryDate(sourceMapping.getExpiryDate());
+        }
+    }
+
+    private Date getExpiryDateBasedOnPaymentPlan(StudentSessionInstituteGroupMapping mapping, String userPlanId) {
+        if (userPlanId == null) return null;
+
+        UserPlan userPlan = userPlanService.findById(userPlanId);
+        if (userPlan == null) return null;
+
+        EnrollInvite enrollInvite = userPlan.getEnrollInvite();
+        PaymentOption paymentOption = userPlan.getPaymentOption();
+        PaymentPlan paymentPlan = userPlan.getPaymentPlan();
+
+        Date today = new Date();
+        Date baseDate;
+
+        // Step 1: Determine base date
+        if (mapping != null && mapping.getExpiryDate() != null) {
+            baseDate = mapping.getExpiryDate().after(today) ? mapping.getExpiryDate() : today;
+        } else {
+            baseDate = today;
+        }
+
+        // Step 2: Determine validity days
+        Integer validityDays = null;
+
+        if (paymentOption != null) {
+            String type = paymentOption.getType();
+
+            if (PaymentOptionType.ONE_TIME.name().equalsIgnoreCase(type) ||
+                PaymentOptionType.SUBSCRIPTION.name().equalsIgnoreCase(type)) {
+
+                validityDays = (paymentPlan != null) ? paymentPlan.getValidityInDays() : null;
+
+            } else if (PaymentOptionType.DONATION.name().equalsIgnoreCase(type)) {
+
+                validityDays = (enrollInvite != null) ? enrollInvite.getLearnerAccessDays() : null;
+
+            } else {
+                validityDays = (enrollInvite != null) ? enrollInvite.getLearnerAccessDays() : null;
+            }
+        }
+
+        // Step 3: Handle unlimited access case
+        if (validityDays == null) {
+            // Unlimited access → expiry date should be null
+            return null;
+        }
+
+        // Step 4: Handle zero or negative validity (no extension)
+        if (validityDays <= 0) {
+            return baseDate;
+        }
+
+        // Step 5: Calculate expiry date
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(baseDate);
+        calendar.add(Calendar.DAY_OF_YEAR, validityDays);
+
+        return calendar.getTime();
+    }
+
+
+    private void markOldMappingDeleted(StudentSessionInstituteGroupMapping mapping) {
+        if (mapping == null) return; // safety check
+
+        String userId = mapping.getUserId();
+        String packageSessionId = mapping.getPackageSession() != null ? mapping.getPackageSession().getId() : null;
+        String instituteId = mapping.getInstitute() != null ? mapping.getInstitute().getId() : null;
+        String destinationPackageSessionId = mapping.getDestinationPackageSession() != null
+            ? mapping.getDestinationPackageSession().getId()
+            : null;
+        String deletedStatus = LearnerSessionStatusEnum.DELETED.name();
+
+        // Only call delete if at least userId and status are available
+        if (userId != null) {
+            studentSessionRepository.deleteByUniqueConstraint(
+                userId,
+                destinationPackageSessionId,
+                packageSessionId,
+                instituteId,
+                deletedStatus
+            );
+        }
+
+        // Mark current mapping as deleted
+        mapping.setStatus(deletedStatus);
+        studentSessionRepository.save(mapping);
     }
 
 
@@ -327,7 +487,7 @@ public class StudentRegistrationManager {
     }
 
     private Optional<Student> getExistingStudentByUserNameAndUserId(String username, String userId) {
-        return instituteStudentRepository.findByUserId(userId);
+        return instituteStudentRepository.findTopByUserIdOrderByCreatedAtDesc(userId);
     }
 
     public InstituteStudentDTO updateAsPerConfig(InstituteStudentDTO instituteStudentDTO, BulkUploadInitRequest bulkUploadInitRequest) {

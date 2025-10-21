@@ -92,15 +92,15 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
 
 
     @Query(value = """
-                SELECT ps.id AS packageSessionId, 
-                       CONCAT(l.level_name, ' ', p.package_name) AS batchName, 
+                SELECT ps.id AS packageSessionId,
+                       CONCAT(l.level_name, ' ', p.package_name) AS batchName,
                        COUNT(DISTINCT ssigm.user_id) AS enrolledStudents
                 FROM package_session ps
                 JOIN package p ON ps.package_id = p.id
                 JOIN level l ON ps.level_id = l.id
-                LEFT JOIN student_session_institute_group_mapping ssigm 
+                LEFT JOIN student_session_institute_group_mapping ssigm
                     ON ps.id = ssigm.package_session_id
-                    AND ssigm.institute_id = :instituteId 
+                    AND ssigm.institute_id = :instituteId
                     AND ssigm.status IN (:status)
                 WHERE ps.status != 'DELETED'
                 GROUP BY ps.id, l.level_name, p.package_name
@@ -141,4 +141,30 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
             List<String> destinationPackageSessionIds,
             String userId,
             List<String> status
-    );}
+    );
+
+    Optional<StudentSessionInstituteGroupMapping> findTopByDestinationPackageSessionIdAndInstituteIdAndUserIdAndStatus(
+            String destinationPackageSessionId,
+            String instituteId,
+            String userId,
+            String status
+    );
+
+
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM StudentSessionInstituteGroupMapping s " +
+        "WHERE s.userId = :userId " +
+        "AND s.destinationPackageSession.id = :destinationPackageSessionId " +
+        "AND s.packageSession.id = :packageSessionId " +
+        "AND s.institute.id = :instituteId " +
+        "AND s.status = :status")
+    int deleteByUniqueConstraint(
+        @Param("userId") String userId,
+        @Param("destinationPackageSessionId") String destinationPackageSessionId,
+        @Param("packageSessionId") String packageSessionId,
+        @Param("instituteId") String instituteId,
+        @Param("status") String status
+    );
+
+}

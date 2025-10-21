@@ -35,8 +35,6 @@ public class StudentV2DTO {
     private Date expiryDate;
     private String parentsToMotherMobileNumber;
     private String parentsToMotherEmail;
-
-    // v2 additional fields
     private String password;
     private String paymentStatus;
     private String packageSessionId;
@@ -45,12 +43,16 @@ public class StudentV2DTO {
     private String instituteId;
     private String groupId;
     private String status;
-
-    // New fields for payment information
     private PaymentPlanDTO paymentPlan;
     private PaymentOptionDTO paymentOption;
     private String destinationPackageSessionId;
     private String enrollInviteId;
-    // Custom fields as Map<customFieldId, value>
     private Map<String, String> customFields;
+
+    // ---- ADDED FIELDS ----
+    private Double paymentAmount;
+    private String source;
+    private String type;
+    private String typeId;
+    private String desiredLevelId;
 }

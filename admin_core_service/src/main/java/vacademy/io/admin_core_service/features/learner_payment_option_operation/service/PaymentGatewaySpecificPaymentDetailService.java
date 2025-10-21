@@ -22,7 +22,11 @@ public class PaymentGatewaySpecificPaymentDetailService {
                             .setCustomerId(userInstitutePaymentGatewayMapping.getPaymentGatewayCustomerId());
                 }
                 break;
-
+            case EWAY:
+                if (paymentInitiationRequestDTO.getEwayRequest() != null){
+                    paymentInitiationRequestDTO.getEwayRequest().setCustomerId(userInstitutePaymentGatewayMapping.getPaymentGatewayCustomerId());
+                }
+                break;
             default:
                 throw new IllegalStateException("Unexpected value: " + vendor);
         }
@@ -40,7 +44,12 @@ public class PaymentGatewaySpecificPaymentDetailService {
                         .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
                 }
                 break;
-
+            case EWAY:
+                if (paymentInitiationRequestDTO.getEwayRequest() != null) {
+                    paymentInitiationRequestDTO.getEwayRequest()
+                        .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
+                }
+                break;
             default:
                 throw new IllegalStateException("Unexpected value: " + vendor);
         }

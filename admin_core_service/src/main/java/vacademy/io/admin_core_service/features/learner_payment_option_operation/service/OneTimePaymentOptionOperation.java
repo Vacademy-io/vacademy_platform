@@ -60,7 +60,7 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
         List<InstituteStudentDetails> instituteStudentDetails = buildInstituteStudentDetails(
                 instituteId,
                 learnerPackageSessionsEnrollDTO.getPackageSessionIds(),
-                enrollInvite.getLearnerAccessDays(),
+                userPlan.getPaymentPlan().getValidityInDays(),
                 learnerSessionStatus,
                 userPlan);
 

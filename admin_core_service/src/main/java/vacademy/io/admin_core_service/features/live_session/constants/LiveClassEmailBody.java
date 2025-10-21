@@ -16,7 +16,7 @@ public class LiveClassEmailBody {
                       <table role="presentation" style="width:600px; background:#ffffff; border-radius:10px; overflow:hidden; box-shadow:0 4px 10px rgba(0,0,0,0.1);">
                         <tr>
                           <td style="background:{{THEME_COLOR}}; padding:20px; text-align:center; color:#fff;">
-                            <h1 style="margin:0; font-size:24px;">📢 Live Class Invitation</h1>
+                            <h1 style="margin:0; font-size:24px;">📢 Live Class {{ACTION}}</h1>
                           </td>
                         </tr>
                         <tr>
@@ -29,16 +29,11 @@ public class LiveClassEmailBody {
                             <table role="presentation" style="margin:20px 0; width:100%;">
                                           <tr>
                                             <td style="padding:10px; background:#fff3ec; border:1px solid #ffe0d1; border-radius:6px;">
-                                              <p style="margin:0; font-size:15px;"><strong>📅 Date:</strong> {{DATE}}</p>
-                                              <p style="margin:5px 0 0 0; font-size:15px;"><strong>⏰ Time:</strong> {{TIME}}</p>
-                                              <p style="margin:5px 0 0 0; font-size:15px;"><strong>🌍 Timezone:</strong> {{TIMEZONE}}</p>
+              
+                                              <p style="margin:5px 0 0 0; font-size:15px; text-align:center"> {{ALL_TIMEZONE_TIMES}}</p>
                                             </td>
                                           </tr>
                                         </table>
-
-                            <p style="font-size:16px; line-height:1.6;">
-                              Key takeaways from this session:
-                            </p>
 
                             <div style="text-align:center; margin:30px 0;">
                               <a href="{{LINK}}" target="_blank" 
@@ -98,9 +93,7 @@ public class LiveClassEmailBody {
                             <table role="presentation" style="margin:20px 0; width:100%;">
                               <tr>
                                 <td style="padding:15px; background:#f8d7da; border:1px solid #f5c6cb; border-radius:6px;">
-                                  <p style="margin:0; font-size:15px; color:#721c24;"><strong>📅 Originally Scheduled:</strong> {{DATE}}</p>
-                                  <p style="margin:5px 0 0 0; font-size:15px; color:#721c24;"><strong>⏰ Time:</strong> {{TIME}}</p>
-                                  <p style="margin:5px 0 0 0; font-size:15px; color:#721c24;"><strong>🌍 Timezone:</strong> {{TIMEZONE}}</p>
+                                  <p style="margin:5px 0 0 0; font-size:15px; color:#721c24; text-align:center">{{ALL_TIMEZONE_TIMES}}</p>
                                 </td>
                               </tr>
                             </table>

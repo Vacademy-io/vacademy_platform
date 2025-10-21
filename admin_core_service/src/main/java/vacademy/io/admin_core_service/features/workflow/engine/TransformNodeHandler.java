@@ -24,56 +24,56 @@ public class TransformNodeHandler implements NodeHandler {
 
     @Override
     public Map<String, Object> handle(Map<String, Object> context, String nodeConfigJson,
-            Map<String, NodeTemplate> nodeTemplates, int countProcessed) {
+                                      Map<String, NodeTemplate> nodeTemplates, int countProcessed) {
         log.info("TransformNodeHandler.handle() invoked with context: {}, configJson: {}", context, nodeConfigJson);
 
-        Map<String, Object> changes = new HashMap<>();
+        // Create a mutable copy of the context to apply chained transformations
+        Map<String, Object> localContext = new HashMap<>(context);
 
         try {
             JsonNode config = objectMapper.readTree(nodeConfigJson);
 
-            // Validate input data points
-            JsonNode inputs = config.path("input_data_points");
-            if (inputs.isArray()) {
-                for (JsonNode input : inputs) {
-                    String fieldName = input.path("field_name").asText("");
-                    boolean isRequired = input.path("is_required").asBoolean(true);
-
-                    if (isRequired && !context.containsKey(fieldName)) {
-                        log.error("Required input field '{}' not found in context", fieldName);
-                        return Map.of("error", "Required input field '" + fieldName + "' not found");
-                    }
-                }
-            }
-
             // Process output data points with compute expressions
-            JsonNode outputs = config.path("output_data_points");
+            JsonNode outputs = config.path("outputDataPoints");
             if (outputs.isArray()) {
                 for (JsonNode output : outputs) {
-                    String fieldName = output.path("field_name").asText("");
-                    String creationPolicy = output.path("creation_policy").asText("CREATE");
+                    String fieldName = output.path("fieldName").asText(null);
                     String computeExpr = output.path("compute").asText(null);
 
-                    if (fieldName.isBlank())
+                    if (fieldName == null || fieldName.isBlank()) {
+                        log.warn("Skipping output data point with missing fieldName.");
                         continue;
+                    }
 
                     if (computeExpr != null && !computeExpr.isBlank()) {
-                        // Evaluate compute expression
-                        Object value = spelEvaluator.evaluate(computeExpr, context);
-                        changes.put(fieldName, value);
-                        log.debug("Field '{}' computed via SpEL to value: {}", fieldName, value);
-                    } else if ("CREATE".equals(creationPolicy)) {
-                        log.warn("Output field '{}' marked as CREATE but no compute expression provided", fieldName);
+                        // Evaluate compute expression against the *current* state of the local context
+                        Object value = spelEvaluator.evaluate(computeExpr, localContext);
+
+                        // Update the local context with the new value for the next iteration
+                        localContext.put(fieldName, value);
+                        log.debug("Field '{}' transformed via SpEL. New value has been updated in the local context.", fieldName);
                     }
                 }
             }
 
         } catch (Exception e) {
             log.error("Error while processing TransformNodeHandler config", e);
-            changes.put("error", e.getMessage());
+            // Return an error in the context if something goes wrong
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("error", "TransformNodeHandler failed: " + e.getMessage());
+            return errorResult;
         }
 
-        log.info("Transform changes map prepared: {}", changes);
-        return changes;
+        // Calculate the net changes to return to the workflow engine
+        Map<String, Object> finalChanges = new HashMap<>();
+        for (Map.Entry<String, Object> entry : localContext.entrySet()) {
+            // Add to changes if the key is new or the value has changed
+            if (!context.containsKey(entry.getKey()) || !Objects.equals(context.get(entry.getKey()), entry.getValue())) {
+                finalChanges.put(entry.getKey(), entry.getValue());
+            }
+        }
+
+        log.info("Transform changes map prepared with keys: {}", finalChanges.keySet());
+        return finalChanges;
     }
 }

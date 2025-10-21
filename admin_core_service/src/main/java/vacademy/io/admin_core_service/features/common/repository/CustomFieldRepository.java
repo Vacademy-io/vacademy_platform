@@ -8,6 +8,7 @@ import vacademy.io.admin_core_service.features.common.entity.CustomFields;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface CustomFieldRepository extends JpaRepository<CustomFields, String> {
@@ -84,5 +85,28 @@ public interface CustomFieldRepository extends JpaRepository<CustomFields, Strin
         AND s.status = 'LIVE'
       """, nativeQuery = true)
   List<FlatFieldProjection> getSessionCustomFieldsBySessionId(@Param("sessionId") String sessionId);
+
+  /**
+   * Find custom field by field key
+   */
+  Optional<CustomFields> findByFieldKey(String fieldKey);
+
+  /**
+   * Find custom field by field key and institute ID (through institute custom
+   * field mapping)
+   */
+  @Query(value = """
+      SELECT cf FROM CustomFields cf
+      JOIN InstituteCustomField icf ON cf.id = icf.customFieldId
+      WHERE cf.fieldKey = :fieldKey
+      AND icf.instituteId = :instituteId
+      AND icf.status = 'ACTIVE'
+      """)
+  Optional<CustomFields> findByFieldKeyAndInstituteId(@Param("fieldKey") String fieldKey,
+      @Param("instituteId") String instituteId);
+
+    // In CustomFieldRepository
+    Optional<CustomFields> findTopByFieldKeyAndStatusOrderByCreatedAtDesc(String fieldKey, String status);
+
 
 }

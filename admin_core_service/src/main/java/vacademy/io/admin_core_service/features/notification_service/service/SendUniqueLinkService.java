@@ -138,6 +138,20 @@ public class SendUniqueLinkService {
                 mergedParams.put("session_name", userParams.getOrDefault("sessionName", ""));
             }
             
+            // Referral template variables
+            if (isEmpty(mergedParams.get("referral_link"))) {
+                mergedParams.put("referral_link", userParams.getOrDefault("referralLink", ""));
+            }
+            if (isEmpty(mergedParams.get("invite_code"))) {
+                mergedParams.put("invite_code", userParams.getOrDefault("inviteCode", ""));
+            }
+            if (isEmpty(mergedParams.get("theme_color"))) {
+                mergedParams.put("theme_color", userParams.getOrDefault("themeColor", ""));
+            }
+            if (isEmpty(mergedParams.get("ref_code"))) {
+                mergedParams.put("ref_code", userParams.getOrDefault("refCode", ""));
+            }
+            
             // Add unique_link if not present
             if (isEmpty(mergedParams.get("unique_link"))) {
                 // This will be set later with the actual dashboard URL
@@ -204,9 +218,6 @@ public class SendUniqueLinkService {
         }
     }
 
-    /**
-     * Send email with dynamic template variables using Template entity
-     */
     public void sendUniqueLinkByEmailByEnrollInvite(String instituteId, UserDTO user, String templateId, 
                                                    EnrollInvite enrollInvite, NotificationTemplateVariables templateVars) {
         Institute institute = service.findById(instituteId);
@@ -220,57 +231,6 @@ public class SendUniqueLinkService {
         }
     }
 
-    /**
-     * Legacy method - kept for backward compatibility
-     * @deprecated Use sendUniqueLinkByEmailByEnrollInvite with NotificationTemplateVariables
-     */
-    public void sendUniqueLinkByEmailByEnrollInvite(String instituteId, UserDTO user,String templateType,EnrollInvite enrollInvite){
-        Institute institute=service.findById(instituteId);
-        if(institute!=null){
-            String emailBody = templateReader.getEmailBody(institute.getSetting(),templateType);
-            String programName=enrollInvite.getName();
-            if(emailBody!=null){
-                NotificationDTO notificationDTO=new NotificationDTO();
-                notificationDTO.setNotificationType(CommunicationType.EMAIL.name());
-                notificationDTO.setBody(emailBody);
-                notificationDTO.setSubject("Welcome to "+institute.getInstituteName());
-                NotificationToUserDTO notificationToUserDTO = new NotificationToUserDTO();
-                notificationToUserDTO.setUserId(user.getId());
-                notificationToUserDTO.setChannelId(user.getEmail());
-                String leanerDashBoardUrl=templateReader.getLearnerDashBoardUrl(institute.getSetting());
-                Map<String,String> map=new HashMap<>();
-                map.put("name",user.getFullName());
-                map.put("unique_link",leanerDashBoardUrl+user.getUsername());
-                map.put("program_name", programName);
-                notificationToUserDTO.setPlaceholders(map);
-                notificationDTO.setUsers(List.of(notificationToUserDTO));
-                notificationService.sendEmailToUsers(notificationDTO,instituteId);
-            }
-        }
-    }
-
-    public void sendUniqueLinkByEmail(String instituteId, UserDTO user,String templateType){
-        Institute institute=service.findById(instituteId);
-        if(institute!=null){
-            String emailBody = templateReader.getEmailBody(institute.getSetting(),templateType);
-            if(emailBody!=null){
-                NotificationDTO notificationDTO=new NotificationDTO();
-                notificationDTO.setNotificationType(CommunicationType.EMAIL.name());
-                notificationDTO.setBody(emailBody);
-                notificationDTO.setSubject("Welcome to "+institute.getInstituteName());
-                NotificationToUserDTO notificationToUserDTO = new NotificationToUserDTO();
-                notificationToUserDTO.setUserId(user.getId());
-                notificationToUserDTO.setChannelId(user.getEmail());
-                String leanerDashBoardUrl=templateReader.getLearnerDashBoardUrl(institute.getSetting());
-                Map<String,String> map=new HashMap<>();
-                map.put("name",user.getFullName());
-                map.put("unique_link",leanerDashBoardUrl+user.getUsername());
-                notificationToUserDTO.setPlaceholders(map);
-                notificationDTO.setUsers(List.of(notificationToUserDTO));
-                notificationService.sendEmailToUsers(notificationDTO,instituteId);
-            }
-        }
-    }
     /**
      * Send WhatsApp with dynamic template variables using Template entity
      */
@@ -295,20 +255,6 @@ public class SendUniqueLinkService {
             // Note: You may need to modify templateReader.sendWhatsAppMessage to accept processed content
             templateReader.sendWhatsAppMessage(institute.getSetting(), user, 
                 learnerDashBoardUrl + user.getUsername(), instituteId, templateId);
-        }
-    }
-
-    /**
-     * Legacy method - kept for backward compatibility
-     * @deprecated Use sendUniqueLinkByWhatsApp with NotificationTemplateVariables
-     */
-    @Deprecated
-    public void sendUniqueLinkByWhatsApp(String instituteId,UserDTO user,String templateType){
-        Institute institute=service.findById(instituteId);
-        if(institute!=null) {
-            String leanerDashBoardUrl=templateReader.getLearnerDashBoardUrl(institute.getSetting());
-            if(leanerDashBoardUrl!=null)
-              templateReader.sendWhatsAppMessage(institute.getSetting(),user,leanerDashBoardUrl+ user.getUsername(),instituteId,templateType);
         }
     }
 }

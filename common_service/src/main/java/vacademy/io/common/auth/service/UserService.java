@@ -1,6 +1,5 @@
 package vacademy.io.common.auth.service;
 
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,7 +22,6 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
-
 @Service
 public class UserService {
 
@@ -40,7 +38,8 @@ public class UserService {
         List<User> users = new ArrayList<>();
 
         userRepository.findAllById(userIds).forEach(u -> {
-            if (u != null) users.add(u);
+            if (u != null)
+                users.add(u);
         });
 
         return users;
@@ -58,7 +57,8 @@ public class UserService {
     }
 
     public User updateUser(User user) {
-        if (!StringUtils.hasText(user.getId())) throw new EmployeeNotFoundException("user id is null");
+        if (!StringUtils.hasText(user.getId()))
+            throw new EmployeeNotFoundException("user id is null");
 
         return userRepository.save(user);
     }
@@ -131,7 +131,6 @@ public class UserService {
         return user;
     }
 
-
     public User getUserDetailsByEmail(String email) {
 
         List<User> results = userRepository.findUserDetailsByEmail(email);
@@ -167,7 +166,8 @@ public class UserService {
         }
 
         if (!ifPermissionAndUserExist(userId, permissionId)) {
-            throw new UserWithPermissionNotFoundException("User with Id " + userId + " and Permission Id " + permissionId + " not found");
+            throw new UserWithPermissionNotFoundException(
+                    "User with Id " + userId + " and Permission Id " + permissionId + " not found");
         }
         userRepository.removePermissionFromUser(userId, permissionId);
     }
@@ -200,17 +200,17 @@ public class UserService {
         return userRepository.existsByPermissionId(permissionId);
     }
 
-
     public User createUserFromUserDto(UserDTO userDTO) {
-        Optional<User>optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(userDTO.getEmail());
+        String normalizedEmail = userDTO.getEmail() != null ? userDTO.getEmail().toLowerCase() : null;
+        Optional<User> optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(normalizedEmail);
         if (optionalUser.isPresent()) {
-            User  user = optionalUser.get();
+            User user = optionalUser.get();
             return user;
-        }else{
+        } else {
             User user = new User();
             user.setUsername(userDTO.getUsername());
             user.setPassword(userDTO.getPassword());
-            user.setEmail(userDTO.getEmail());
+            user.setEmail(normalizedEmail);
             user.setFullName(userDTO.getFullName());
             user.setAddressLine(userDTO.getAddressLine());
             user.setCity(userDTO.getCity());
@@ -250,15 +250,21 @@ public class UserService {
     }
 
     public List<UserWithRolesDTO> getUserDetailsByInstituteId(String instituteId, CustomUserDetails user) {
-        return userRepository.findUsersWithRolesByInstituteId(instituteId).stream().map(UserWithRolesDTO::new).collect(Collectors.toList());
+        return userRepository.findUsersWithRolesByInstituteId(instituteId).stream().map(UserWithRolesDTO::new)
+                .collect(Collectors.toList());
     }
 
-    public List<UserWithRolesDTO> getUserDetailsByInstituteId(String instituteId, List<String> roles, CustomUserDetails user) {
-        return userRepository.findUsersWithRolesByInstituteIdAndStatuses(instituteId, roles, List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.DISABLED.name())).stream().map(UserWithRolesDTO::new).collect(Collectors.toList());
+    public List<UserWithRolesDTO> getUserDetailsByInstituteId(String instituteId, List<String> roles,
+            CustomUserDetails user) {
+        return userRepository
+                .findUsersWithRolesByInstituteIdAndStatuses(instituteId, roles,
+                        List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.DISABLED.name()))
+                .stream().map(UserWithRolesDTO::new).collect(Collectors.toList());
     }
 
     public UserCredentials getUserCredentials(String userId, CustomUserDetails user) {
-        User userEntity = userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException("User with Id " + userId + " not found"));
+        User userEntity = userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException("User with Id " + userId + " not found"));
         UserCredentials userCredentials = new UserCredentials();
         userCredentials.setUsername(userEntity.getUsername());
         userCredentials.setPassword(userEntity.getPassword());
@@ -268,40 +274,55 @@ public class UserService {
     public List<UserCredentials> getUsersCredentials(List<String> userIds) {
         Iterable<User> userEntities = userRepository.findAllById(userIds);
         return StreamSupport.stream(userEntities.spliterator(), false)
-                .map(user -> new UserCredentials(user.getUsername(), user.getPassword(), user.getId(),user.getProfilePicFileId()))
+                .map(user -> new UserCredentials(user.getUsername(), user.getPassword(), user.getId(),
+                        user.getProfilePicFileId()))
                 .collect(Collectors.toList());
     }
 
-    public List<UserWithRolesDTO> getUsersByInstituteIdAndStatus(String instituteId, List<String> statuses, List<String> roles, CustomUserDetails userDetails) {
+    public List<UserWithRolesDTO> getUsersByInstituteIdAndStatus(String instituteId, List<String> statuses,
+            List<String> roles, CustomUserDetails userDetails) {
         return userRepository.findUsersByStatusAndInstitute(statuses, roles, instituteId)
                 .stream()
                 .map(UserWithRolesDTO::new).collect(Collectors.toList());
     }
 
     public User getUserById(String userId) {
-        return userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException("User with Id " + userId + " not found"));
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException("User with Id " + userId + " not found"));
     }
 
-    public List<UserWithRolesDTO> getUsersByInstituteIdAndStatus(String instituteId, List<String> statuses, List<String> roles) {
+    public List<UserWithRolesDTO> getUsersByInstituteIdAndStatus(String instituteId, List<String> statuses,
+            List<String> roles) {
         return userRepository.findUsersByStatusAndInstitute(statuses, roles, instituteId)
                 .stream()
                 .map(UserWithRolesDTO::new).collect(Collectors.toList());
     }
 
     public User updateUser(User user, UserDTO userDTO) {
-        if (StringUtils.hasText(userDTO.getUsername())) user.setUsername(userDTO.getUsername());
-        if (StringUtils.hasText(userDTO.getEmail())) user.setEmail(userDTO.getEmail());
-        if (StringUtils.hasText(userDTO.getFullName())) user.setFullName(userDTO.getFullName());
-        if (StringUtils.hasText(userDTO.getAddressLine())) user.setAddressLine(userDTO.getAddressLine());
-        if (StringUtils.hasText(userDTO.getCity())) user.setCity(userDTO.getCity());
-        if (StringUtils.hasText(userDTO.getPinCode())) user.setPinCode(userDTO.getPinCode());
-        if (StringUtils.hasText(userDTO.getMobileNumber())) user.setMobileNumber(userDTO.getMobileNumber());
-        if (userDTO.getDateOfBirth() != null) user.setDateOfBirth(userDTO.getDateOfBirth());
-        if (StringUtils.hasText(userDTO.getGender())) user.setGender(userDTO.getGender());
-        if (StringUtils.hasText(userDTO.getProfilePicFileId())) user.setProfilePicFileId(userDTO.getProfilePicFileId());
+        if (StringUtils.hasText(userDTO.getUsername()))
+            user.setUsername(userDTO.getUsername());
+        if (StringUtils.hasText(userDTO.getEmail()))
+            user.setEmail(userDTO.getEmail().toLowerCase());
+        if (StringUtils.hasText(userDTO.getFullName()))
+            user.setFullName(userDTO.getFullName());
+        if (StringUtils.hasText(userDTO.getAddressLine()))
+            user.setAddressLine(userDTO.getAddressLine());
+        if (StringUtils.hasText(userDTO.getCity()))
+            user.setCity(userDTO.getCity());
+        if (StringUtils.hasText(userDTO.getPinCode()))
+            user.setPinCode(userDTO.getPinCode());
+        if (StringUtils.hasText(userDTO.getMobileNumber()))
+            user.setMobileNumber(userDTO.getMobileNumber());
+        if (userDTO.getDateOfBirth() != null)
+            user.setDateOfBirth(userDTO.getDateOfBirth());
+        if (StringUtils.hasText(userDTO.getGender()))
+            user.setGender(userDTO.getGender());
+        if (StringUtils.hasText(userDTO.getProfilePicFileId()))
+            user.setProfilePicFileId(userDTO.getProfilePicFileId());
 
         // Only set password if it's provided
-        if (StringUtils.hasText(userDTO.getPassword())) user.setPassword(userDTO.getPassword());
+        if (StringUtils.hasText(userDTO.getPassword()))
+            user.setPassword(userDTO.getPassword());
 
         // isRootUser is primitive boolean, so check if change is desired
         user.setRootUser(userDTO.isRootUser());
@@ -313,10 +334,12 @@ public class UserService {
     }
 
     @Transactional
-    public String updateUserDetails(CustomUserDetails customUserDetails, UserTopLevelDto request, String userId, String instituteId) {
-        try{
+    public String updateUserDetails(CustomUserDetails customUserDetails, UserTopLevelDto request, String userId,
+            String instituteId) {
+        try {
             Optional<User> userOptional = userRepository.findById(userId);
-            if(userOptional.isEmpty()) throw new VacademyException("User Not Found");
+            if (userOptional.isEmpty())
+                throw new VacademyException("User Not Found");
 
             updateIfNotNull(request.getEmail(), userOptional.get()::setEmail);
             updateIfNotNull(request.getMobileNumber(), userOptional.get()::setMobileNumber);
@@ -348,20 +371,21 @@ public class UserService {
         });
         userRoleRepository.saveAll(allDeleteRequestUserRoles);
 
-        createOrUpdateUserRole(savedUser, request.getAddUserRoleRequest(),instituteId);
+        createOrUpdateUserRole(savedUser, request.getAddUserRoleRequest(), instituteId);
     }
 
     public void createOrUpdateUserRole(User savedUser, List<String> addUserRoleRequest, String instituteId) {
         List<String> newRoleNames = new ArrayList<>();
         List<UserRole> updateStatusRoles = new ArrayList<>();
 
-        addUserRoleRequest.forEach(roleName->{
-            Optional<UserRole> userRole = userRoleRepository.findFirstByUserIdAndInstituteIdAndRoleNamesAndStatuses(savedUser.getId(), instituteId,List.of(roleName),List.of(UserRoleStatus.ACTIVE.name()));
-            if(userRole.isPresent()){
+        addUserRoleRequest.forEach(roleName -> {
+            Optional<UserRole> userRole = userRoleRepository.findFirstByUserIdAndInstituteIdAndRoleNamesAndStatuses(
+                    savedUser.getId(), instituteId, List.of(roleName), List.of(UserRoleStatus.ACTIVE.name()));
+            if (userRole.isPresent()) {
                 userRole.get().setStatus(UserRoleStatus.ACTIVE.name());
                 updateStatusRoles.add(userRole.get());
-            }
-            else newRoleNames.add(roleName);
+            } else
+                newRoleNames.add(roleName);
         });
 
         userRoleRepository.saveAll(updateStatusRoles);
@@ -371,9 +395,9 @@ public class UserService {
     private void createNewRolesForRoleName(User savedUser, List<String> newRoleNames, String instituteId) {
         List<UserRole> roles = new ArrayList<>();
 
-        newRoleNames.forEach(name->{
+        newRoleNames.forEach(name -> {
             Optional<Role> role = roleRepository.findByName(name);
-            if(role.isPresent()){
+            if (role.isPresent()) {
                 UserRole newRole = new UserRole();
                 newRole.setRole(role.get());
                 newRole.setStatus(UserRoleStatus.ACTIVE.name());
@@ -393,7 +417,8 @@ public class UserService {
         }
     }
 
-    public UserTopLevelDto getUserTopLevelDetails(CustomUserDetails customUserDetails, String userId, String instituteId) {
+    public UserTopLevelDto getUserTopLevelDetails(CustomUserDetails customUserDetails, String userId,
+            String instituteId) {
         Optional<User> userOptional = userRepository.findById(userId);
 
         if (userOptional.isEmpty()) {
@@ -407,7 +432,7 @@ public class UserService {
         List<UserRoleDTO> filteredRoles = userTopLevelDto.getRoles()
                 .stream()
                 .filter(role -> instituteId.equals(role.getInstituteId()))
-                .filter(role-> !role.getStatus().equals(UserRoleStatus.DELETED.name()))
+                .filter(role -> !role.getStatus().equals(UserRoleStatus.DELETED.name()))
                 .toList(); // or .collect(Collectors.toList()) in Java 8
 
         // Set the filtered roles back
@@ -416,8 +441,7 @@ public class UserService {
         return userTopLevelDto;
     }
 
-
-    public UserJwtUpdateDetail getUserJwtUpdateDetail(CustomUserDetails userDetails,String userId) {
+    public UserJwtUpdateDetail getUserJwtUpdateDetail(CustomUserDetails userDetails, String userId) {
         UserJwtUpdateDetail userJwtUpdateDetail = new UserJwtUpdateDetail();
         Optional<User> user = userRepository.findById(userId);
         if (user.isPresent()) {
@@ -433,9 +457,10 @@ public class UserService {
         userRepository.updateLastTokenUpdateTime(userIds);
     }
 
-    public UserDTO updateUserDetails(UserDTO userDTO,String userId) {
-        User user = userRepository.findById(userId).orElseThrow(()->new VacademyException("User Not Found with id "+userId));
-        user = updateUser(user,userDTO);
+    public UserDTO updateUserDetails(UserDTO userDTO, String userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new VacademyException("User Not Found with id " + userId));
+        user = updateUser(user, userDTO);
         return new UserDTO(user);
     }
 }

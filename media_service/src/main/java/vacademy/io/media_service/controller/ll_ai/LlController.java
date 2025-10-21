@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.common.exceptions.VacademyException;
-import vacademy.io.media_service.ai.DeepSeekApiService;
+import vacademy.io.media_service.ai.ExternalAIApiServiceImpl;
 import vacademy.io.media_service.constant.IncidentType;
 import vacademy.io.media_service.constant.LL_AI_Constant;
 import vacademy.io.media_service.controller.question_metadata_extractor.dto.QuestionMetadataExtractorResponse;
@@ -29,7 +29,7 @@ import java.util.Objects;
 public class LlController {
 
     @Autowired
-    DeepSeekApiService deepSeekApiService;
+    ExternalAIApiServiceImpl deepSeekApiService;
 
     @PostMapping("/generate-incident-structure")
     public ResponseEntity<IncidentAIStructureResponse> generateIncidentStructure(@RequestBody Map<String, String> request) throws JsonProcessingException {

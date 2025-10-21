@@ -6,7 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.media_service.ai.DeepSeekConversationService;
-import vacademy.io.media_service.ai.DeepSeekService;
+import vacademy.io.media_service.ai.ExternalAIApiService;
 import vacademy.io.media_service.dto.chat_with_pdf.ChatWithPdfResponse;
 import vacademy.io.media_service.dto.task_status.TaskStatusDto;
 import vacademy.io.media_service.entity.TaskStatus;
@@ -22,7 +22,7 @@ import java.util.List;
 public class ChatAiManager {
 
     @Autowired
-    DeepSeekService deepSeekService;
+    ExternalAIApiService deepSeekService;
 
     @Autowired
     TaskStatusService taskStatusService;

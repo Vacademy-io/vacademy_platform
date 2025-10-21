@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.admin_core_service.features.user_subscription.dto.AppliedCouponDiscountDTO;
 
 import java.time.LocalDateTime;
 import java.util.Date;
@@ -66,4 +67,25 @@ public class AppliedCouponDiscount {
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private LocalDateTime updatedAt;
+
+        public AppliedCouponDiscountDTO mapToDTO() {
+            return AppliedCouponDiscountDTO.builder()
+                .id(this.id)
+                .name(this.name)
+                .discountType(this.discountType)
+                .mediaIds(this.mediaIds)
+                .status(this.status)
+                .validityInDays(this.validityInDays)
+                .discountSource(this.discountSource)
+                .currency(this.currency)
+                .maxDiscountPoint(this.maxDiscountPoint)
+                .discountPoint(this.discountPoint)
+                .maxApplicableTimes(this.maxApplicableTimes)
+                .redeemStartDate(this.redeemStartDate)
+                .redeemEndDate(this.redeemEndDate)
+                .couponCode(this.couponCode != null ? this.couponCode.toDTO() : null) // nested DTO
+                .createdAt(this.createdAt)
+                .updatedAt(this.updatedAt)
+                .build();
+        }
 }

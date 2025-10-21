@@ -146,7 +146,7 @@ public class StudentListManager {
     }
 
     public ResponseEntity<AllStudentV2Response> getLinkedStudentsV2(CustomUserDetails user,
-            StudentListFilter studentListFilter, int pageNo, int pageSize) {
+                                                                    StudentListFilter studentListFilter, int pageNo, int pageSize) {
 
         Pageable pageable = createPageable(studentListFilter, pageNo, pageSize);
         Page<StudentListV2Projection> page = fetchStudentPage(studentListFilter, pageable);
@@ -172,6 +172,11 @@ public class StudentListManager {
                     filter.getStatuses(),
                     filter.getPaymentStatuses(),
                     List.of(StatusEnum.ACTIVE.name()),
+                    filter.getSources(),
+                    filter.getTypes(),
+                    filter.getTypeIds(),
+                    filter.getDestinationPackageSessionIds(),
+                    filter.getLevelIds(),
                     pageable);
         }
 
@@ -184,11 +189,18 @@ public class StudentListManager {
                     filter.getPackageSessionIds(),
                     filter.getPaymentStatuses(),
                     List.of(StatusEnum.ACTIVE.name()),
+                    filter.getSources(),
+                    filter.getTypes(),
+                    filter.getTypeIds(),
+                    filter.getDestinationPackageSessionIds(),
+                    filter.getLevelIds(),
                     pageable);
         }
 
         return null;
     }
+
+
 
     private List<StudentV2DTO> mapProjectionsToDTOs(List<StudentListV2Projection> projections) {
         List<StudentV2DTO> dtos = new ArrayList<>();
@@ -232,6 +244,12 @@ public class StudentListManager {
 
             dto.setDestinationPackageSessionId(p.getDestinationPackageSessionId());
 
+            // ---- ADDED MAPPINGS ----
+            dto.setPaymentAmount(p.getPaymentAmount());
+            dto.setSource(p.getSource());
+            dto.setType(p.getType());
+            dto.setTypeId(p.getTypeId());
+
             PaymentPlan paymentPlan = JsonUtil.fromJson(p.getPaymentPlanJson(), PaymentPlan.class);
             if (paymentPlan != null) {
                 dto.setPaymentPlan(paymentPlan.mapToPaymentPlanDTO());
@@ -242,6 +260,7 @@ public class StudentListManager {
             }
             dto.setCustomFields(parseCustomFields(mapper, p.getCustomFieldsJson()));
             dto.setEnrollInviteId(p.getEnrollInviteId());
+            dto.setDesiredLevelId(p.getDesiredLevelId());
             dtos.add(dto);
         }
 

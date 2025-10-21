@@ -65,7 +65,7 @@ public class LearnerOpenStudyLibraryService {
         try {
             return objectMapper.readValue(
                 rawJson,
-                List.class
+                objectMapper.getTypeFactory().constructCollectionType(List.class, LearnerModuleDTOWithDetails.class)
             );
         } catch (Exception e) {
             throw new VacademyException("Error parsing module JSON response. "+e.getMessage());

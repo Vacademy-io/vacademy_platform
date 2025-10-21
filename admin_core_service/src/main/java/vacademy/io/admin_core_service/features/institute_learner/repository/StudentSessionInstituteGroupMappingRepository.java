@@ -13,25 +13,27 @@ import java.util.Optional;
 public interface StudentSessionInstituteGroupMappingRepository
         extends JpaRepository<StudentSessionInstituteGroupMapping, String> {
 
+    // In your repository interface (e.g., StudentSessionInstituteGroupMappingRepository.java)
+
     @Query(value = """
-    SELECT
-        ssigm.id AS mapping_id,
-        ssigm.user_id AS user_id,
-        ssigm.expiry_date AS expiry_date,
-        s.full_name AS full_name,
-        s.mobile_number AS mobile_number,
-        s.email AS email,
-        s.username AS username,
-        ps.id AS package_session_id
-    FROM student_session_institute_group_mapping ssigm
-    JOIN student s ON s.user_id = ssigm.user_id
-    JOIN package_session ps ON ps.id = ssigm.package_session_id
-    WHERE ssigm.package_session_id IN (:psIds)
-      AND ssigm.status IN (:statuses)
-    """, nativeQuery = true)
+SELECT
+    ssigm.id AS mapping_id,                 -- Index 0
+    ssigm.user_id AS user_id,               -- Index 1
+    ssigm.expiry_date AS expiry_date,       -- Index 2
+    s.full_name AS full_name,               -- Index 3
+    s.mobile_number AS mobile_number,       -- Index 4
+    s.email AS email,                       -- Index 5
+    s.username AS username,                 -- Index 6
+    ssigm.package_session_id,               -- Index 7
+    ssigm.enrolled_date AS enrolled_date    -- Index 8 (<<-- THIS IS THE FIX)
+FROM student_session_institute_group_mapping ssigm
+JOIN student s ON s.user_id = ssigm.user_id
+WHERE ssigm.package_session_id IN (:psIds)
+  AND ssigm.status IN (:statuses)
+""", nativeQuery = true)
     List<Object[]> findMappingsWithStudentContacts(
-            @Param("psIds") List<String> packageSessionIds,
-            @Param("statuses") List<String> statuses
+        @Param("psIds") List<String> packageSessionIds,
+        @Param("statuses") List<String> statuses
     );
 
     @Query(value = """
@@ -42,6 +44,7 @@ public interface StudentSessionInstituteGroupMappingRepository
         s.full_name AS full_name,
         s.mobile_number AS mobile_number,
         s.email AS email,
+        s.region AS region,
         ps.id AS package_session_id
     FROM student_session_institute_group_mapping ssigm
     LEFT JOIN student s ON s.user_id = ssigm.user_id
@@ -109,7 +112,8 @@ public interface StudentSessionInstituteGroupMappingRepository
         s.user_id AS user_id,
         s.full_name AS full_name,
         s.mobile_number AS mobile_number,
-        s.email AS email
+        s.email AS email,
+        s.region AS region
     FROM student s
     WHERE s.user_id IN (:userIds)
     """, nativeQuery = true)

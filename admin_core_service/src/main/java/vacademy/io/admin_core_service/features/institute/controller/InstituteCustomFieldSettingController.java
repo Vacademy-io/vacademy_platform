@@ -10,20 +10,18 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 @RequestMapping("/admin-core-service/institute/v1/custom-field")
 public class InstituteCustomFieldSettingController {
 
-
     private final InstituteSettingManager instituteSettingManager;
 
     public InstituteCustomFieldSettingController(InstituteSettingManager instituteSettingManager) {
         this.instituteSettingManager = instituteSettingManager;
     }
 
-
     @PostMapping("/create-or-update")
-    public ResponseEntity<String> updateCustomFieldSetting(@RequestAttribute("user")CustomUserDetails userDetails,
-                                                           @RequestParam("instituteId") String instituteId,
-                                                           @RequestBody CustomFieldSettingRequest request,
-                                                           @RequestParam(value = "isPresent", required = false) String isPresent){
-        return instituteSettingManager.updateCustomFieldSetting(userDetails, instituteId,request,isPresent);
+    public ResponseEntity<String> updateCustomFieldSetting(@RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody CustomFieldSettingRequest request,
+            @RequestParam(value = "isPresent", required = false) String isPresent) {
+        return instituteSettingManager.updateCustomFieldSetting(userDetails, instituteId, request, isPresent);
 
     }
 }

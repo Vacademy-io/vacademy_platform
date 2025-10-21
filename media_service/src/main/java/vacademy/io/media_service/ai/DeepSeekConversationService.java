@@ -17,7 +17,7 @@ import java.util.Objects;
 public class DeepSeekConversationService {
 
     @Autowired
-    DeepSeekApiService deepSeekApiService;
+    ExternalAIApiServiceImpl deepSeekApiService;
 
     public String getResponseForUserPrompt(String userPrompt, String htmlText, String last5Conversations) {
         String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.CHAT_WITH_PDF);
@@ -25,7 +25,7 @@ public class DeepSeekConversationService {
         Prompt prompt = new PromptTemplate(template).create(Map.of("userPrompt", userPrompt,
                 "last5Conversation", last5Conversations, "htmlText", htmlText));
 
-        DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.0-flash-exp:free", prompt.getContents().trim(), 30000);
+        DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash-preview-09-2025", prompt.getContents().trim(), 30000);
         if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
             throw new VacademyException("Failed To generate Response");
         }

@@ -9,6 +9,7 @@ import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @AllArgsConstructor
 @NoArgsConstructor
@@ -75,4 +76,7 @@ public class UserPlan {
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private LocalDateTime updatedAt;
+
+    @OneToMany(mappedBy = "userPlan", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private List<PaymentLog> paymentLogs;
 }

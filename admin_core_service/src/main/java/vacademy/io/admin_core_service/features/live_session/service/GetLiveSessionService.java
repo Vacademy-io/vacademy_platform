@@ -342,9 +342,12 @@ public class GetLiveSessionService {
                     .map(session -> session.getInstituteId())
                     .orElse(null);
             
-            // Send delete notification before deletion
-            if (instituteId != null) {
-                notificationProcessor.sendDeleteNotification(sessionId, instituteId);
+            // Get all schedule IDs for this session before deletion
+            List<String> scheduleIds = scheduleRepository.findScheduleIdsBySessionId(sessionId, NotificationStatusEnum.DELETED.name());
+            
+            // Send delete notification for all schedules before deletion
+            if (instituteId != null && !scheduleIds.isEmpty()) {
+                notificationProcessor.sendDeleteNotificationForSchedules(scheduleIds, instituteId);
             }
             
             sessionRepository.softDeleteLiveSessionById(sessionId);

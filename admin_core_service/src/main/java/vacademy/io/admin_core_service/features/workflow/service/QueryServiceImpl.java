@@ -89,6 +89,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
         }
     }
 
+    // In QueryServiceImpl.java
+
     private Map<String, Object> getSSIGMByStatusAndSessions(Map<String, Object> params) {
         try {
             List<String> packageSessionIds = (List<String>) params.get("packageSessionIds");
@@ -103,35 +105,54 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
 
             for (Object[] row : rows) {
                 Map<String, Object> mapping = new HashMap<>();
+
                 mapping.put("ssigmId", String.valueOf(row[0]));
                 mapping.put("userId", String.valueOf(row[1]));
-                Date startDate = new Date();
-                Date endDate = (row[2] instanceof Timestamp ts) ? new Date(ts.getTime()) : null;
-                mapping.put("expiryDate", endDate);
+                Date expiryDate = (row[2] instanceof Date d) ? d : null; // Also corrected this for robustness
+                mapping.put("expiryDate", expiryDate);
                 mapping.put("name", String.valueOf(row[3]));
                 mapping.put("mobileNumber", String.valueOf(row[4]));
                 mapping.put("email", String.valueOf(row[5]));
                 mapping.put("username", String.valueOf(row[6]));
                 mapping.put("packageSessionId", String.valueOf(row[7]));
 
-                // ✅ calculate remaining days - prioritize custom field value, fallback to date
-                // calculation
-                long remainingDays = calculateRemainingDays(String.valueOf(row[0]), endDate);
+                // --- CORRECTED LOGIC ---
+
+                // 1. Check for java.util.Date, which covers both Timestamp and Date subclasses.
+                Date enrolledDate = (row[8] instanceof Date d) ? d : null;
+
+                // 2. Fall back to createdAt date if enrolledDate is still null
+                if (enrolledDate == null) {
+                    enrolledDate = (row[9] instanceof Date d) ? d : null;
+                }
+
+                mapping.put("enrolledDate", enrolledDate);
+
+                // 3. Calculate learningDay using the final enrolledDate.
+                long learningDay = 0;
+                if (enrolledDate != null) {
+                    long diffInMillis = System.currentTimeMillis() - enrolledDate.getTime();
+                    learningDay = (diffInMillis / (1000 * 60 * 60 * 24));
+                }
+                mapping.put("learningDay", learningDay + 1);
+
+                // --- END OF CORRECTION ---
+
+                long remainingDays = calculateRemainingDays(String.valueOf(row[0]), expiryDate);
                 mapping.put("remainingDays", remainingDays);
 
                 ssigmList.add(mapping);
             }
 
             return Map.of(
-                    "ssigmList", ssigmList,
-                    "ssigmListCount", ssigmList.size());
+                "ssigmList", ssigmList,
+                "ssigmListCount", ssigmList.size());
 
         } catch (Exception e) {
-            log.error("Error executing get_ssigm_by_status_and_sessions query", e);
+            log.error("Error executing getSSIGMByStatusAndSessions query", e);
             return Map.of("error", e.getMessage());
         }
     }
-
     /**
      * Calculate remaining days prioritizing custom field value, with date-based
      * fallback
@@ -159,18 +180,31 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
 
             // Fallback to date-based calculation
             log.debug("No valid custom field value found for SSIGM {}, using date-based calculation", ssigmId);
-            Date startDate = new Date();
+                Date startDate = new Date();
 
-            if (endDate == null) {
-                return 9999; // No expiry date set
-            } else if (startDate == null) {
-                return 0; // Fallback if startDate missing
-            } else {
-                long diffMillis = endDate.getTime() - startDate.getTime();
+                if (endDate == null) {
+                    return 9999;
+                }
+
+                // Truncate both to midnight
+                Calendar startCal = Calendar.getInstance();
+                startCal.setTime(startDate);
+                startCal.set(Calendar.HOUR_OF_DAY, 0);
+                startCal.set(Calendar.MINUTE, 0);
+                startCal.set(Calendar.SECOND, 0);
+                startCal.set(Calendar.MILLISECOND, 0);
+
+                Calendar endCal = Calendar.getInstance();
+                endCal.setTime(endDate);
+                endCal.set(Calendar.HOUR_OF_DAY, 0);
+                endCal.set(Calendar.MINUTE, 0);
+                endCal.set(Calendar.SECOND, 0);
+                endCal.set(Calendar.MILLISECOND, 0);
+
+                long diffMillis = endCal.getTimeInMillis() - startCal.getTimeInMillis();
                 long remainingDays = (diffMillis / (1000 * 60 * 60 * 24)) + 1; // include today
-                return Math.max(remainingDays, 0);
-            }
 
+                return Math.max(remainingDays, 0);
         } catch (Exception e) {
             log.error("Error calculating remaining days for SSIGM: {}", ssigmId, e);
             // Ultimate fallback
@@ -367,7 +401,6 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             if (sourceId == null || sessionId == null || sessionId.isEmpty()) {
                 return Map.of("error", "Missing required parameters: sourceId and sessionId are required");
             }
-
             log.info("Creating session participant for user: {} in session: {}", sourceId, sessionId);
 
             // Check if participant already exists
@@ -444,6 +477,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             String instituteId = (String) params.get("instituteId");
             String title = (String) params.get("title");
             String status = (String) params.get("status");
+            String timezone = (String) params.get("timezone"); // Added timezone
 
             if (instituteId == null || title == null) {
                 return Map.of("error", "Missing required parameters: instituteId and title are required");
@@ -467,6 +501,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                     .status(status != null ? status : "DRAFT")
                     .startTime(startTime)
                     .lastEntryTime(lastEntryTime)
+                    .timezone(timezone) // Added timezone
                     .accessLevel((String) params.get("accessLevel"))
                     .meetingType((String) params.get("meetingType"))
                     .defaultMeetLink((String) params.get("defaultMeetLink"))
@@ -576,3 +611,6 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
     }
 
 }
+
+
+

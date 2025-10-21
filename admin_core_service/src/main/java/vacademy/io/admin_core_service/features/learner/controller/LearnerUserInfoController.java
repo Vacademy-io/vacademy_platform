@@ -37,6 +37,7 @@ public class LearnerUserInfoController {
         return learnerProfileManager.getLearnerInfo(user, instituteId);
     }
 
+
     @PutMapping("/edit")
     public ResponseEntity<String> editLearnerDetails(@RequestBody LearnerDetailsEditDTO learnerDetailsEditDTO,
                                                      @RequestAttribute("user") CustomUserDetails user) {

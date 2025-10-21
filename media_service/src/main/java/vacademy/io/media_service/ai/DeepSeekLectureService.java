@@ -24,7 +24,7 @@ public class DeepSeekLectureService {
     @Autowired
     TaskStatusService taskStatusService;
     @Autowired
-    private DeepSeekApiService deepSeekApiService;
+    private ExternalAIApiServiceImpl deepSeekApiService;
 
     public String generateLecturePlannerFromPrompt(String userPrompt, String lectureDuration, String language, String methodOfTeaching, TaskStatus taskStatus, String level, Integer attempt) {
         if (attempt >= 3) {
@@ -43,18 +43,18 @@ public class DeepSeekLectureService {
 
             taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
 
-            DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.0-flash-exp:free", prompt.getContents().trim(), 30000);
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash-preview-09-2025", prompt.getContents().trim(), 30000);
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
                 return generateLecturePlannerFromPrompt(userPrompt, lectureDuration, language, methodOfTeaching, taskStatus, level, attempt + 1);
             }
             String resultJson = response.getChoices().get(0).getMessage().getContent();
             String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
 
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), validJson);
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), validJson, "Lecture Planner Generated");
 
             return validJson;
         } catch (Exception e) {
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), e.getMessage());
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), e.getMessage(), e.getMessage());
             throw new VacademyException("Failed to generate: " + e.getMessage());
         }
     }
@@ -76,7 +76,7 @@ public class DeepSeekLectureService {
 
             taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
 
-            DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.0-flash-exp:free", prompt.getContents().trim(), 30000);
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash-preview-09-2025", prompt.getContents().trim(), 30000);
 
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty() || response.getChoices().get(0).getMessage().getContent().isEmpty()) {
                 return generateLectureFeedback(text, convertedAudioResponseString, taskStatus, attempt + 1, audioPace);
@@ -84,11 +84,11 @@ public class DeepSeekLectureService {
             String resultJson = response.getChoices().get(0).getMessage().getContent();
             String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
 
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), validJson);
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), validJson, "Lecture Feedback Generated");
 
             return validJson;
         } catch (Exception e) {
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), e.getMessage());
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), e.getMessage(), e.getMessage());
             throw new VacademyException("Failed to generate: " + e.getMessage());
         }
     }

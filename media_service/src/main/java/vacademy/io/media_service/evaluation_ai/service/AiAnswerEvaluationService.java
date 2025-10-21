@@ -15,7 +15,7 @@ import vacademy.io.common.ai.dto.AiEvaluationQuestionDTO;
 import vacademy.io.common.ai.dto.AiEvaluationSectionDTO;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
-import vacademy.io.media_service.ai.DeepSeekApiService;
+import vacademy.io.media_service.ai.ExternalAIApiServiceImpl;
 import vacademy.io.media_service.dto.DeepSeekResponse;
 import vacademy.io.media_service.entity.TaskStatus;
 import vacademy.io.media_service.entity.TaskStatusEnum;
@@ -44,7 +44,7 @@ public class AiAnswerEvaluationService {
     private final FileService fileService;
     private final FileConversionStatusService fileConversionStatusService;
     private final NewDocConverterService newDocConverterService;
-    private final DeepSeekApiService deepSeekApiService;
+    private final ExternalAIApiServiceImpl deepSeekApiService;
     private final TaskStatusRepository taskStatusRepository;
     private final AssessmentService assessmentService;
     private final AuthService userService;
@@ -223,7 +223,7 @@ public class AiAnswerEvaluationService {
     }
 
     private String getEvaluationFromAI(String prompt) {
-        DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.0-flash-exp:free", prompt, 30000);
+        DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash-preview-09-2025", prompt, 30000);
         return response.getChoices().get(0).getMessage().getContent();
     }
 

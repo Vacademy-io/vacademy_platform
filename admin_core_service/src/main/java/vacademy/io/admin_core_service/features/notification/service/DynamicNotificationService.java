@@ -5,7 +5,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationTemplateVariables;
-import vacademy.io.admin_core_service.features.institute.entity.Template;
 import vacademy.io.admin_core_service.features.notification.entity.NotificationEventConfig;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationEventType;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationSourceType;
@@ -14,6 +13,8 @@ import vacademy.io.admin_core_service.features.notification.repository.Notificat
 import vacademy.io.admin_core_service.features.notification_service.service.SendUniqueLinkService;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
+import vacademy.io.admin_core_service.features.learner.service.LearnerInvitationLinkService;
+import vacademy.io.admin_core_service.features.institute.service.InstituteService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
@@ -30,6 +31,8 @@ public class DynamicNotificationService {
     private final NotificationEventConfigRepository configRepository;
     private final PackageSessionRepository packageSessionRepository;
     private final SendUniqueLinkService sendUniqueLinkService;
+    private final LearnerInvitationLinkService learnerInvitationLinkService;
+    private final InstituteService instituteService;
 
     /**
      * Send dynamic notifications based on event and package session
@@ -72,7 +75,6 @@ public class DynamicNotificationService {
                     packageSession.getLevel() != null ? packageSession.getLevel().getLevelName() : "",
                     packageSession.getSession() != null ? packageSession.getSession().getSessionName() : ""
             );
-
             // 6. Process each configuration
             for (NotificationEventConfig config : configs) {
                 sendNotificationByType(config, instituteId, user, templateVars, enrollInvite);
@@ -145,15 +147,108 @@ public class DynamicNotificationService {
     }
 
     /**
-     * Get institute from ID (you'll need to implement this based on your existing service)
+     * Get institute from ID using the actual InstituteService
      */
     private Institute getInstituteFromId(String instituteId) {
-        // TODO: Implement this method using your existing InstituteService
-        // For now, return a mock object
-        Institute institute = new Institute();
-        institute.setId(instituteId);
-        institute.setInstituteName("Default Institute"); // You'll get this from database
-        return institute;
+        try {
+            return instituteService.findById(instituteId);
+        } catch (Exception e) {
+            log.error("Error fetching institute with ID: {}", instituteId, e);
+            // Return a fallback institute with default values
+            Institute fallbackInstitute = new Institute();
+            fallbackInstitute.setId(instituteId);
+            fallbackInstitute.setInstituteName("Unknown Institute");
+            return fallbackInstitute;
+        }
+    }
+
+    private String getThemeColorFromInstitute(Institute institute) {
+        if (institute == null || institute.getInstituteThemeCode() == null || 
+            institute.getInstituteThemeCode().trim().isEmpty()) {
+            return "#FF9800"; // Default orange color
+        }
+        
+        String themeCode = institute.getInstituteThemeCode().trim();
+        
+        // If theme code is already a hex color, return it
+        if (themeCode.startsWith("#") && themeCode.length() == 7) {
+            return themeCode;
+        }
+        
+        // If theme code is a hex color without #, add it
+        if (themeCode.matches("^[0-9A-Fa-f]{6}$")) {
+            return "#" + themeCode;
+        }
+
+        return "#FF9800"; // Default orange color
+    }
+
+    public void sendReferralInvitationNotification(
+            String instituteId,
+            UserDTO user,
+            EnrollInvite enrollInvite) {
+
+        try {
+            // Find notification configurations for REFERRAL_INVITATION event
+            List<NotificationEventConfig> configs = configRepository.findByEventAndSource(
+                    NotificationEventType.REFERRAL_INVITATION, 
+                    NotificationSourceType.INSTITUTE, 
+                    instituteId);
+
+            // If no institute-specific config found then return
+            if (configs.isEmpty()) {
+                log.info("No referral invitation notification configurations found for institute: {}", instituteId);
+                return;
+            }
+
+            // Get institute details
+            Institute institute = getInstituteFromId(instituteId);
+            
+            // Generate learner invitation response link
+            String invitationLink = learnerInvitationLinkService
+                    .generateLearnerInvitationResponseLink(instituteId, enrollInvite, user.getId());
+            
+            // Get theme color from institute (default to orange if not set)
+            String themeColor = getThemeColorFromInstitute(institute);
+            
+            // Create template variables for referral invitation
+            NotificationTemplateVariables templateVars = NotificationTemplateVariables.builder()
+                    // User details
+                    .userName(user.getUsername())
+                    .userEmail(user.getEmail())
+                    .userMobile(user.getMobileNumber())
+                    .userFullName(user.getFullName())
+                    .refCode(learnerInvitationLinkService.getRefFromUserCoupon(user.getId()))
+                    
+                    // Institute details
+                    .instituteName(institute.getInstituteName())
+                    .instituteId(institute.getId())
+                    
+                    // Enroll invite details
+                    .enrollInviteCode(enrollInvite != null ? enrollInvite.getInviteCode() : "")
+                    .enrollInviteExpiryDate(enrollInvite != null && enrollInvite.getEndDate() != null ?
+                            enrollInvite.getEndDate().toString() : "")
+                    
+                    // Learner invitation response link
+                    .learnerInvitationResponseLink(invitationLink)
+                    
+                    // Referral template variables
+                    .name(user.getFullName() != null ? user.getFullName() : user.getUsername())
+                    .referralLink(invitationLink)
+                    .inviteCode(enrollInvite != null ? enrollInvite.getInviteCode() : "")
+                    .themeColor(themeColor)
+                    .build();
+
+            // Process each configuration
+            for (NotificationEventConfig config : configs) {
+                sendNotificationByType(config, instituteId, user, templateVars, enrollInvite);
+            }
+
+        } catch (Exception e) {
+            log.error("Error sending referral invitation notification for institute: {}", 
+                    instituteId, e);
+            throw new VacademyException("Failed to send referral invitation notification: " + e.getMessage());
+        }
     }
 
     /**

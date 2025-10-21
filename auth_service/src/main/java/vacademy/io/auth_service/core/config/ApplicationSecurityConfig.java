@@ -58,6 +58,7 @@ public class ApplicationSecurityConfig {
             "/auth-service/v1/login-otp",
             "/auth-service/v1/login",
             "/auth-service/open/**",
+            "/auth-service/v1/server-time/**",
             
             // User Resolution APIs for notification service - OPEN for internal communication
             "/auth-service/v1/users/by-role",

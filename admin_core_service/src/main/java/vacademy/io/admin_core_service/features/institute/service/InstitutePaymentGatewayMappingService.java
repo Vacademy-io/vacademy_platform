@@ -37,18 +37,31 @@ public class InstitutePaymentGatewayMappingService {
         }
     }
 
-    public Map<String,Object>getPaymentGatewayOpenDetails(String instituteId,String vendor) {
+    public Map<String,Object> getPaymentGatewayOpenDetails(String instituteId, String vendor) {
         Map<String, Object> paymentGatewaySpecificData = findInstitutePaymentGatewaySpecifData(vendor, instituteId);
         PaymentGateway paymentGateway = PaymentGateway.fromString(vendor);
         switch (paymentGateway) {
             case STRIPE:
                 return stripePaymentGatewayOpenDetails(paymentGatewaySpecificData);
+            case EWAY:
+                return ewayPaymentGatewayOpenDetails(paymentGatewaySpecificData);
             default:
                 throw new IllegalArgumentException("Unsupported payment gateway: " + vendor);
         }
     }
 
-    private Map<String,Object>stripePaymentGatewayOpenDetails(Map<String, Object>paymentGatwwaySpecificData) {
-        return Map.of("publishableKey",paymentGatwwaySpecificData.get("publishableKey"));
+    private Map<String,Object> stripePaymentGatewayOpenDetails(Map<String, Object> paymentGatewaySpecificData) {
+        return Map.of("publishableKey", paymentGatewaySpecificData.get("publishableKey"));
+    }
+
+    private Map<String,Object> ewayPaymentGatewayOpenDetails(Map<String, Object> paymentGatewaySpecificData) {
+        // safe casts to String; will be null if absent
+        String encryptionKey = paymentGatewaySpecificData == null ? null : (String) paymentGatewaySpecificData.get("encryptionKey");
+        String publicKey = paymentGatewaySpecificData == null ? null : (String) paymentGatewaySpecificData.get("publicKey");
+
+        return Map.of(
+            "encryptionKey", encryptionKey,
+            "publicKey", publicKey
+        );
     }
 }

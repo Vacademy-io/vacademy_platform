@@ -105,9 +105,10 @@ public class TaskStatusService {
         return taskStatusRepository.save(taskStatus);
     }
 
-    public void updateTaskStatus(TaskStatus taskStatus, String status, String resultJson) {
+    public void updateTaskStatus(TaskStatus taskStatus, String status, String resultJson, String statusMessage) {
         updateIfNotNull(status, taskStatus::setStatus);
         updateIfNotNull(resultJson, taskStatus::setResultJson);
+        updateIfNotNull(statusMessage, taskStatus::setStatusMessage);
         taskStatusRepository.save(taskStatus);
     }
 

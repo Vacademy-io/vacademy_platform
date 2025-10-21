@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.media.dto.FileDetailsDTO;
-import vacademy.io.media_service.ai.DeepSeekService;
+import vacademy.io.media_service.ai.ExternalAIApiService;
 import vacademy.io.media_service.dto.*;
 import vacademy.io.media_service.entity.TaskStatus;
 import vacademy.io.media_service.enums.TaskInputTypeEnum;
@@ -32,7 +32,7 @@ public class PDFQuestionGeneratorController {
     @Autowired
     HtmlImageConverter htmlImageConverter;
     @Autowired
-    DeepSeekService deepSeekService;
+    ExternalAIApiService deepSeekService;
     @Autowired
     TaskStatusService taskStatusService;
     @Autowired

@@ -108,7 +108,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
 
                 mapping.put("ssigmId", String.valueOf(row[0]));
                 mapping.put("userId", String.valueOf(row[1]));
-                Date expiryDate = (row[2] instanceof Date d) ? d : null; // Also corrected this for robustness
+                Date expiryDate = (row[2] instanceof Date d) ? d : null;
                 mapping.put("expiryDate", expiryDate);
                 mapping.put("name", String.valueOf(row[3]));
                 mapping.put("mobileNumber", String.valueOf(row[4]));
@@ -116,28 +116,31 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 mapping.put("username", String.valueOf(row[6]));
                 mapping.put("packageSessionId", String.valueOf(row[7]));
 
-                // --- CORRECTED LOGIC ---
-
-                // 1. Check for java.util.Date, which covers both Timestamp and Date subclasses.
+                // --- ENROLLED DATE SELECTION ---
                 Date enrolledDate = (row[8] instanceof Date d) ? d : null;
-
-                // 2. Fall back to createdAt date if enrolledDate is still null
                 if (enrolledDate == null) {
                     enrolledDate = (row[9] instanceof Date d) ? d : null;
                 }
-
                 mapping.put("enrolledDate", enrolledDate);
 
-                // 3. Calculate learningDay using the final enrolledDate.
+                // --- EARNING DAY LOGIC ---
                 long learningDay = 0;
                 if (enrolledDate != null) {
-                    long diffInMillis = System.currentTimeMillis() - enrolledDate.getTime();
-                    learningDay = (diffInMillis / (1000 * 60 * 60 * 24));
+                    // Convert enrolled date to midnight (12:00 AM) of that day
+                    Calendar cal = Calendar.getInstance();
+                    cal.setTime(enrolledDate);
+                    cal.set(Calendar.HOUR_OF_DAY, 0);
+                    cal.set(Calendar.MINUTE, 0);
+                    cal.set(Calendar.SECOND, 0);
+                    cal.set(Calendar.MILLISECOND, 0);
+                    Date startOfDay = cal.getTime();
+
+                    long diffInMillis = System.currentTimeMillis() - startOfDay.getTime();
+                    learningDay = (diffInMillis / (1000 * 60 * 60 * 24)) + 1; // Add 1 for inclusive day count
                 }
-                mapping.put("learningDay", learningDay + 1);
+                mapping.put("learningDay", learningDay);
 
-                // --- END OF CORRECTION ---
-
+                // --- REMAINING DAYS ---
                 long remainingDays = calculateRemainingDays(String.valueOf(row[0]), expiryDate);
                 mapping.put("remainingDays", remainingDays);
 
@@ -145,14 +148,15 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             }
 
             return Map.of(
-                "ssigmList", ssigmList,
-                "ssigmListCount", ssigmList.size());
+                    "ssigmList", ssigmList,
+                    "ssigmListCount", ssigmList.size());
 
         } catch (Exception e) {
             log.error("Error executing getSSIGMByStatusAndSessions query", e);
             return Map.of("error", e.getMessage());
         }
     }
+
     /**
      * Calculate remaining days prioritizing custom field value, with date-based
      * fallback

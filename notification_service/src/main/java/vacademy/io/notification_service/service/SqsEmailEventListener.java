@@ -7,7 +7,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.notification_service.dto.SesEventDTO;
-import vacademy.io.notification_service.dto.SqsMessageDTO;
 
 @Service
 public class SqsEmailEventListener {

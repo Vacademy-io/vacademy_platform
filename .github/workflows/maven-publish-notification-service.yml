@@ -72,9 +72,9 @@ jobs:
           SES_EVENTS_SQS_URL: ${{ secrets.SES_EVENTS_SQS_URL }}
           SQS_AWS_ACCESS_KEY: ${{ secrets.SQS_AWS_ACCESS_KEY }}
           SQS_AWS_SECRET_KEY: ${{ secrets.SQS_AWS_SECRET_KEY }}
-          SQS_AWS_REGION: ${{ secrets:SQS_AWS_REGION }}
-          SQS_ENDPOINT: ${{ secrets:SQS_ENDPOINT }}
-          SQS_REGION: ${{ secrets:SQS_REGION }}
+          SQS_AWS_REGION: ${{ secrets.SQS_AWS_REGION }}
+          SQS_ENDPOINT: ${{ secrets.SQS_ENDPOINT }}
+          SQS_REGION: ${{ secrets.SQS_REGION }}
         run: |
           docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg ACCESS_GITHUB_USERNAME=${ACCESS_GITHUB_USERNAME} --build-arg JAVA_TOKEN=${JAVA_TOKEN}
           docker push $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG
@@ -110,15 +110,14 @@ jobs:
             AWS_MAIL_USERNAME=${{ secrets.AWS_MAIL_USERNAME }} \
             AWS_MAIL_PASSWORD=${{ secrets.AWS_MAIL_PASSWORD }} \
             SES_SENDER_EMAIL=${{ secrets.SES_SENDER_EMAIL }} \
-            WHATSAPP_ACCESS_TOKEN=${{ secrets.WHATSAPP_ACCESS_TOKEN }}
-          # Email tracking and AWS placeholders
-            SES_CONFIGURATION_SET: ${{ secrets.SES_CONFIGURATION_SET }}
-            SES_EVENTS_SQS_URL: ${{ secrets.SES_EVENTS_SQS_URL }}
-            SQS_AWS_ACCESS_KEY: ${{ secrets.SQS_AWS_ACCESS_KEY }}
-            SQS_AWS_SECRET_KEY: ${{ secrets.SQS_AWS_SECRET_KEY }}
-            SQS_AWS_REGION: ${{ secrets:SQS_AWS_REGION }}
-            SQS_ENDPOINT: ${{ secrets:SQS_ENDPOINT }}
-            SQS_REGION: ${{ secrets:SQS_REGION }}
+            WHATSAPP_ACCESS_TOKEN=${{ secrets.WHATSAPP_ACCESS_TOKEN }} \
+            SES_CONFIGURATION_SET: ${{ secrets.SES_CONFIGURATION_SET }} \
+            SES_EVENTS_SQS_URL: ${{ secrets.SES_EVENTS_SQS_URL }} \
+            SQS_AWS_ACCESS_KEY: ${{ secrets.SQS_AWS_ACCESS_KEY }} \
+            SQS_AWS_SECRET_KEY: ${{ secrets.SQS_AWS_SECRET_KEY }} \
+            SQS_AWS_REGION: ${{ secrets.SQS_AWS_REGION }} \
+            SQS_ENDPOINT: ${{ secrets.SQS_ENDPOINT }} \
+            SQS_REGION: ${{ secrets.SQS_REGION }} \
 
       - name: Restart deployment
         id: restart-deployment

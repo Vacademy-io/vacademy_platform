@@ -41,10 +41,14 @@ public class CreateAnnouncementRequest {
     @Size(max = 50, message = "Timezone must not exceed 50 characters")
     private String timezone;
     
-    // Recipients
+    // Recipients (Inclusions)
     @NotEmpty(message = "At least one recipient is required")
     @Valid
     private List<RecipientRequest> recipients;
+    
+    // Exclusions (Optional - users to exclude from recipients)
+    @Valid
+    private List<RecipientRequest> exclusions;
     
     // Modes
     @NotEmpty(message = "At least one mode is required")
@@ -117,6 +121,30 @@ public class CreateAnnouncementRequest {
         private String mediumType; // WHATSAPP, PUSH_NOTIFICATION, EMAIL
         
         private Map<String, Object> config;
+    }
+    
+    @Getter
+    @Setter
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class EmailConfigRequest {
+        
+        @NotBlank(message = "Subject is required")
+        private String subject;
+        
+        private String template = "announcement_email";
+        
+        private String forceToEmail; // Optional override
+        
+        @NotBlank(message = "From email is required")
+        private String fromEmail;
+        
+        private String fromName; // Optional display name
+        
+        @NotBlank(message = "Email type is required")
+        @Pattern(regexp = "^(marketing|transactional|notifications)$", 
+                 message = "Email type must be one of: marketing, transactional, notifications")
+        private String emailType; // marketing, transactional, notifications
     }
     
     @Getter

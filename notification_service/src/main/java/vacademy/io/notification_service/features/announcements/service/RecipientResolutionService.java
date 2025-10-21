@@ -26,13 +26,21 @@ public class RecipientResolutionService {
     private final AnnouncementRepository announcementRepository;
 
     /**
-     * Resolves announcement recipients (roles, users, package_sessions) to actual user IDs
-     * Ensures deduplication as mentioned in requirements
+     * Resolves announcement recipients (roles, users, package_sessions, tags) to actual user IDs
+     * Ensures deduplication and handles exclusions (identified by "EXCLUDE:" prefix in recipientId)
      */
     public List<String> resolveRecipientsToUsers(String announcementId) {
         log.info("Resolving recipients for announcement: {}", announcementId);
         
-        List<AnnouncementRecipient> recipients = recipientRepository.findByAnnouncementId(announcementId);
+        // Fetch all recipients and separate inclusions from exclusions based on prefix
+        List<AnnouncementRecipient> allRecipients = recipientRepository.findByAnnouncementId(announcementId);
+        List<AnnouncementRecipient> recipients = allRecipients.stream()
+                .filter(r -> !r.isExclusion())
+                .toList();
+        List<AnnouncementRecipient> exclusions = allRecipients.stream()
+                .filter(AnnouncementRecipient::isExclusion)
+                .toList();
+        
         Announcement announcement = null;
         String announcementInstituteId = null;
         try {
@@ -44,59 +52,88 @@ public class RecipientResolutionService {
         } catch (Exception e) {
             log.warn("Failed to fetch announcement {} while resolving recipients", announcementId, e);
         }
-        Set<String> resolvedUserIds = new HashSet<>(); // Using Set for automatic deduplication
+        
+        // Step 1: Resolve all included recipients
+        Set<String> includedUserIds = resolveRecipientList(recipients, announcementInstituteId, "inclusions");
+        log.info("Resolved {} inclusion recipients to {} unique users", recipients.size(), includedUserIds.size());
+        
+        // Step 2: Resolve all excluded recipients
+        Set<String> excludedUserIds = new HashSet<>();
+        if (!exclusions.isEmpty()) {
+            excludedUserIds = resolveRecipientList(exclusions, announcementInstituteId, "exclusions");
+            log.info("Resolved {} exclusion recipients to {} unique users", exclusions.size(), excludedUserIds.size());
+            
+            // Step 3: Remove excluded users from included users
+            int beforeExclusion = includedUserIds.size();
+            includedUserIds.removeAll(excludedUserIds);
+            int afterExclusion = includedUserIds.size();
+            log.info("Applied exclusions: {} users removed, {} users remaining", 
+                    (beforeExclusion - afterExclusion), afterExclusion);
+        }
+        
+        List<String> finalUserList = new ArrayList<>(includedUserIds);
+        log.info("Final resolved recipients for announcement {}: {} unique users", announcementId, finalUserList.size());
+        
+        return finalUserList;
+    }
+    
+    /**
+     * Helper method to resolve a list of recipients (either inclusions or exclusions)
+     */
+    private Set<String> resolveRecipientList(List<AnnouncementRecipient> recipients, String instituteId, String type) {
+        Set<String> resolvedUserIds = new HashSet<>();
         List<String> tagIdsToResolve = new ArrayList<>();
         
         for (AnnouncementRecipient recipient : recipients) {
+            // Get actual recipient ID (removes "EXCLUDE:" prefix if present)
+            String actualRecipientId = recipient.getActualRecipientId();
+            
             switch (recipient.getRecipientType()) {
                 case USER:
-                    resolvedUserIds.add(recipient.getRecipientId());
-                    log.debug("Added direct user: {}", recipient.getRecipientId());
+                    resolvedUserIds.add(actualRecipientId);
+                    log.debug("[{}] Added direct user: {}", type, actualRecipientId);
                     break;
                     
                 case ROLE:
-                    Set<String> roleUsers = resolveRoleToUsers(recipient.getRecipientId(), announcementInstituteId);
+                    Set<String> roleUsers = resolveRoleToUsers(actualRecipientId, instituteId);
                     resolvedUserIds.addAll(roleUsers);
-                    log.debug("Resolved role {} to {} users", recipient.getRecipientId(), roleUsers.size());
+                    log.debug("[{}] Resolved role {} to {} users", type, actualRecipientId, roleUsers.size());
                     break;
                     
                 case PACKAGE_SESSION:
-                    Set<String> sessionUsers = resolvePackageSessionToUsers(recipient.getRecipientId());
+                    Set<String> sessionUsers = resolvePackageSessionToUsers(actualRecipientId);
                     resolvedUserIds.addAll(sessionUsers);
-                    log.debug("Resolved package session {} to {} users", recipient.getRecipientId(), sessionUsers.size());
+                    log.debug("[{}] Resolved package session {} to {} users", type, actualRecipientId, sessionUsers.size());
                     break;
                 
                 case TAG:
                     // Collect tag IDs to resolve in a single batched call
-                    if (recipient.getRecipientId() != null && !recipient.getRecipientId().isBlank()) {
-                        tagIdsToResolve.add(recipient.getRecipientId());
+                    if (actualRecipientId != null && !actualRecipientId.isBlank()) {
+                        tagIdsToResolve.add(actualRecipientId);
                     }
                     break;
                     
                 default:
-                    log.warn("Unknown recipient type: {}", recipient.getRecipientType());
+                    log.warn("[{}] Unknown recipient type: {}", type, recipient.getRecipientType());
             }
         }
-        // Resolve TAG recipients in one admin-core call (ANY-of tags semantics)
+        
+        // Resolve TAG recipients in one admin-core call
         if (!tagIdsToResolve.isEmpty()) {
-            if (announcementInstituteId == null || announcementInstituteId.isBlank()) {
-                log.warn("Institute ID unavailable while resolving TAG recipients; skipping tag resolution");
+            if (instituteId == null || instituteId.isBlank()) {
+                log.warn("[{}] Institute ID unavailable while resolving TAG recipients; skipping tag resolution", type);
             } else {
                 try {
-                    List<String> tagUserIds = adminCoreServiceClient.getUsersByTags(announcementInstituteId, tagIdsToResolve);
+                    List<String> tagUserIds = adminCoreServiceClient.getUsersByTags(instituteId, tagIdsToResolve);
                     resolvedUserIds.addAll(tagUserIds);
-                    log.debug("Resolved {} users from {} tag(s)", tagUserIds.size(), tagIdsToResolve.size());
+                    log.debug("[{}] Resolved {} users from {} tag(s)", type, tagUserIds.size(), tagIdsToResolve.size());
                 } catch (Exception e) {
-                    log.error("Error resolving users by tags {} for institute {}", tagIdsToResolve, announcementInstituteId, e);
+                    log.error("[{}] Error resolving users by tags {} for institute {}", type, tagIdsToResolve, instituteId, e);
                 }
             }
         }
         
-        List<String> finalUserList = new ArrayList<>(resolvedUserIds);
-        log.info("Resolved {} recipients to {} unique users for announcement: {}", 
-                recipients.size(), finalUserList.size(), announcementId);
-        
-        return finalUserList;
+        return resolvedUserIds;
     }
 
     /**

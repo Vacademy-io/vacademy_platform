@@ -43,7 +43,7 @@ public class WebSecurityConfig {
             "/notification-service/v3/api-docs/**", 
             "/notification-service/swagger-ui/**", 
             "/notification-service/webjars/swagger-ui/**", 
-            "notification-service/v1/**",
+            "/notification-service/v1/**",
             
             // Announcement system APIs - OPEN for internal service communication
             "/notification-service/v1/announcements/**",

@@ -15,7 +15,7 @@ export const ScheduleTestMainComponent = ({
 }: {
   assessment_types: "HOMEWORK" | "ASSESSMENT";
 }) => {
-  const { setNavHeading } = useNavHeadingStore();
+  const setNavHeading = useNavHeadingStore((s) => s.setNavHeading);
   const [selectedTab, setSelectedTab] = useState<assessmentTypes>(
     assessmentTypes.LIVE
   );
@@ -51,12 +51,6 @@ export const ScheduleTestMainComponent = ({
 
   const observer = useRef<IntersectionObserver | null>(null);
   const pageSize = 5;
-
-  const fetchAllTabsData = () => {
-    Object.values(assessmentTypes).forEach((tab) => {
-      fetchMoreData(tab, 0, true);
-    });
-  };
 
   const fetchMoreData = useCallback(
     async (tab: assessmentTypes, pageNum: number, isInitialLoad = false) => {
@@ -105,10 +99,15 @@ export const ScheduleTestMainComponent = ({
     [loading, loadingMore, hasMorePages, assessment_types]
   );
 
+  const fetchAllTabsData = useCallback(() => {
+    Object.values(assessmentTypes).forEach((tab) => {
+      fetchMoreData(tab, 0, true);
+    });
+  }, [fetchMoreData]);
+
   useEffect(() => {
-    setNavHeading(
-      assessment_types === "ASSESSMENT" ? "Assessment" : "Homework"
-    );
+    const nextHeading = assessment_types === "ASSESSMENT" ? "Assessment" : "Homework";
+    setNavHeading(nextHeading);
     fetchAllTabsData();
   }, [assessment_types, fetchAllTabsData, setNavHeading]);
 

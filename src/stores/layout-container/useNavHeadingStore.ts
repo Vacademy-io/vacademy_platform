@@ -8,5 +8,15 @@ interface navHeadingState {
 
 export const useNavHeadingStore = create<navHeadingState>((set) => ({
     navHeading: "",
-    setNavHeading: (newNavHeading) => set({ navHeading: newNavHeading }),
+    setNavHeading: (newNavHeading) =>
+        set((state) => {
+            // Avoid redundant updates when the heading is an identical string
+            if (
+                typeof newNavHeading === "string" &&
+                state.navHeading === newNavHeading
+            ) {
+                return state;
+            }
+            return { navHeading: newNavHeading };
+        }),
 }));

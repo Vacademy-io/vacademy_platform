@@ -2,7 +2,7 @@ import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { List } from "@phosphor-icons/react";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { FiSidebar } from "react-icons/fi";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import useStore from "../sidebar/useSidebar";
 import { Preferences } from "@capacitor/preferences";
 import { getPublicUrl } from "@/services/upload_file";
@@ -39,20 +39,12 @@ export function Navbar() {
         handleFetchUserRoleDetails()
     );
 
-    const [hasTeacherAndStudentRole, setHasTeacherAndStudentRole] =
-        useState(false);
-
-    const roleNames = userRoleDetails?.roles?.map(
-        (role: UserRole) => role.role_name
-    ) || [];
-
-    useEffect(() => {
-        if (userRoleDetails?.roles && roleNames.length > 0) {
-            setHasTeacherAndStudentRole(
-                roleNames.includes("STUDENT") && roleNames.includes("TEACHER")
-            );
-        }
-    }, [userRoleDetails, roleNames]);
+    const hasTeacherAndStudentRole = useMemo(() => {
+        const roles: UserRole[] | undefined = userRoleDetails?.roles;
+        if (!roles || roles.length === 0) return false;
+        const names = roles.map((r) => r.role_name);
+        return names.includes("STUDENT") && names.includes("TEACHER");
+    }, [userRoleDetails?.roles]);
 
     const { navHeading } = useNavHeadingStore();
     const { setInstituteDetails, setSidebarOpen, instituteName, instituteLogoFileUrl, hasCustomSidebar } = useStore();

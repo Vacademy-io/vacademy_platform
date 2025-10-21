@@ -11,11 +11,14 @@ import vacademy.io.notification_service.features.announcements.entity.*;
 import vacademy.io.notification_service.features.announcements.enums.*;
 import vacademy.io.notification_service.features.announcements.exception.*;
 import vacademy.io.notification_service.features.announcements.repository.*;
+import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
+import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 
 import java.util.stream.Collectors;
 
@@ -32,6 +35,7 @@ public class AnnouncementService {
     private final RecipientMessageRepository recipientMessageRepository;
     private final MessageInteractionRepository messageInteractionRepository;
     private final MessageReplyRepository messageReplyRepository;
+    private final NotificationLogRepository notificationLogRepository;
     
     // Mode-specific repositories
     private final AnnouncementSystemAlertRepository systemAlertRepository;
@@ -62,8 +66,15 @@ public class AnnouncementService {
             Announcement announcement = createAnnouncementEntity(request, richTextData.getId());
             announcementRepository.save(announcement);
             
-            // 4. Save recipients
-            saveRecipients(announcement.getId(), request.getRecipients());
+            // 4. Save recipients (inclusions with normal IDs)
+            saveRecipients(announcement.getId(), request.getRecipients(), false);
+            
+            // 4.5. Save exclusions (if provided - with "EXCLUDE:" prefix)
+            if (request.getExclusions() != null && !request.getExclusions().isEmpty()) {
+                saveRecipients(announcement.getId(), request.getExclusions(), true);
+                log.info("Saved {} exclusion recipients for announcement: {}", 
+                        request.getExclusions().size(), announcement.getId());
+            }
             
             // 5. Save modes with specific settings
             saveModes(announcement.getId(), request.getModes());
@@ -279,19 +290,26 @@ public class AnnouncementService {
         return announcement;
     }
 
-    private void saveRecipients(String announcementId, List<CreateAnnouncementRequest.RecipientRequest> recipients) {
+    private void saveRecipients(String announcementId, List<CreateAnnouncementRequest.RecipientRequest> recipients, boolean isExclusion) {
         if (recipients != null && !recipients.isEmpty()) {
             List<AnnouncementRecipient> recipientEntities = recipients.stream()
                     .map(r -> {
                         AnnouncementRecipient recipient = new AnnouncementRecipient();
                         recipient.setAnnouncementId(announcementId);
                         recipient.setRecipientType(RecipientType.valueOf(r.getRecipientType()));
-                        recipient.setRecipientId(r.getRecipientId());
+                        
+                        // For exclusions, prefix the recipientId with "EXCLUDE:"
+                        String recipientId = isExclusion ? "EXCLUDE:" + r.getRecipientId() : r.getRecipientId();
+                        recipient.setRecipientId(recipientId);
                         recipient.setRecipientName(r.getRecipientName());
                         return recipient;
                     })
                     .collect(Collectors.toList());
             recipientRepository.saveAll(recipientEntities);
+            log.debug("Saved {} {} for announcement: {}", 
+                    recipientEntities.size(), 
+                    isExclusion ? "exclusions" : "recipients", 
+                    announcementId);
         }
     }
 
@@ -426,9 +444,12 @@ public class AnnouncementService {
             });
         }
         
-        // Map recipients
-        List<AnnouncementRecipient> recipients = recipientRepository.findByAnnouncementIdAndIsActive(announcement.getId(), true);
-        List<AnnouncementResponse.RecipientResponse> recipientResponses = recipients.stream()
+        // Map recipients and exclusions (filter based on "EXCLUDE:" prefix)
+        List<AnnouncementRecipient> allRecipients = recipientRepository.findByAnnouncementIdAndIsActive(announcement.getId(), true);
+        
+        // Inclusions: recipientId does NOT start with "EXCLUDE:"
+        List<AnnouncementResponse.RecipientResponse> recipientResponses = allRecipients.stream()
+                .filter(r -> !r.isExclusion())
                 .map(recipient -> {
                     AnnouncementResponse.RecipientResponse recipientResponse = new AnnouncementResponse.RecipientResponse();
                     recipientResponse.setId(recipient.getId());
@@ -439,6 +460,21 @@ public class AnnouncementService {
                 })
                 .toList();
         response.setRecipients(recipientResponses);
+        
+        // Exclusions: recipientId starts with "EXCLUDE:"
+        List<AnnouncementResponse.RecipientResponse> exclusionResponses = allRecipients.stream()
+                .filter(AnnouncementRecipient::isExclusion)
+                .map(exclusion -> {
+                    AnnouncementResponse.RecipientResponse exclusionResponse = new AnnouncementResponse.RecipientResponse();
+                    exclusionResponse.setId(exclusion.getId());
+                    exclusionResponse.setRecipientType(exclusion.getRecipientType().name());
+                    // Return actual recipient ID without prefix for API response
+                    exclusionResponse.setRecipientId(exclusion.getActualRecipientId());
+                    exclusionResponse.setRecipientName(exclusion.getRecipientName());
+                    return exclusionResponse;
+                })
+                .toList();
+        response.setExclusions(exclusionResponses);
         
         // Map modes with mode-specific settings
         List<ModeType> modeTypes = getModeTypesForAnnouncement(announcement.getId());
@@ -497,9 +533,113 @@ public class AnnouncementService {
     public AnnouncementResponse.AnnouncementStatsResponse getAnnouncementStats(String announcementId) {
         return computeAnnouncementStats(announcementId);
     }
+    
+    /**
+     * Debug method to inspect email tracking data for an announcement
+     * Returns detailed information about EMAIL logs and EMAIL_EVENT logs
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> debugEmailTracking(String announcementId) {
+        Map<String, Object> debug = new HashMap<>();
+        
+        try {
+            // 1. Find all EMAIL logs for this announcement
+            List<NotificationLog> emailLogs = notificationLogRepository.findBySourceIdAndNotificationType(announcementId, "EMAIL");
+            debug.put("totalEmailsSent", emailLogs.size());
+            
+            // Sample email logs
+            List<Map<String, Object>> emailLogsSample = emailLogs.stream()
+                .limit(5)
+                .map(log -> {
+                    Map<String, Object> logMap = new HashMap<>();
+                    logMap.put("id", log.getId());
+                    logMap.put("channelId", log.getChannelId());
+                    logMap.put("userId", log.getUserId());
+                    logMap.put("notificationDate", log.getNotificationDate());
+                    logMap.put("bodyPreview", log.getBody() != null && log.getBody().length() > 50 
+                        ? log.getBody().substring(0, 50) + "..." 
+                        : log.getBody());
+                    return logMap;
+                })
+                .collect(Collectors.toList());
+            debug.put("emailLogsSample", emailLogsSample);
+            
+            if (emailLogs.isEmpty()) {
+                debug.put("message", "No EMAIL logs found for this announcement");
+                return debug;
+            }
+            
+            // 2. Get all email log IDs
+            List<String> emailLogIds = emailLogs.stream()
+                .map(NotificationLog::getId)
+                .collect(Collectors.toList());
+            
+            // 3. Find all EMAIL_EVENT logs
+            List<NotificationLog> allEvents = notificationLogRepository.findEmailEventsBySourceIds(emailLogIds);
+            debug.put("totalEmailEvents", allEvents.size());
+            
+            // Event breakdown by extracting event types
+            Map<String, Long> eventTypeBreakdown = new HashMap<>();
+            for (NotificationLog event : allEvents) {
+                String eventType = extractEventTypeFromBody(event.getBody());
+                eventTypeBreakdown.put(eventType, eventTypeBreakdown.getOrDefault(eventType, 0L) + 1);
+            }
+            debug.put("eventTypeBreakdown", eventTypeBreakdown);
+            
+            // Sample events with body parsing
+            List<Map<String, Object>> eventsSample = allEvents.stream()
+                .limit(10)
+                .map(log -> {
+                    Map<String, Object> logMap = new HashMap<>();
+                    logMap.put("id", log.getId());
+                    logMap.put("source", log.getSource());
+                    logMap.put("sourceId", log.getSourceId());
+                    logMap.put("channelId", log.getChannelId());
+                    logMap.put("updatedAt", log.getUpdatedAt());
+                    logMap.put("extractedEventType", extractEventTypeFromBody(log.getBody()));
+                    logMap.put("bodyFirstLine", log.getBody() != null && log.getBody().contains("\n")
+                        ? log.getBody().substring(0, log.getBody().indexOf("\n"))
+                        : log.getBody());
+                    return logMap;
+                })
+                .collect(Collectors.toList());
+            debug.put("eventsSample", eventsSample);
+            
+            // 4. Get latest events using native query
+            String[] emailLogIdsArray = emailLogIds.toArray(new String[0]);
+            List<NotificationLog> latestEvents = notificationLogRepository.findLatestEmailEventsBySourceIdsNative(emailLogIdsArray);
+            debug.put("emailsWithLatestEvent", latestEvents.size());
+            debug.put("emailsWithoutEvents", emailLogs.size() - latestEvents.size());
+            
+            // Latest events breakdown
+            Map<String, Long> latestEventTypeBreakdown = new HashMap<>();
+            for (NotificationLog event : latestEvents) {
+                String eventType = extractEventTypeFromBody(event.getBody());
+                latestEventTypeBreakdown.put(eventType, latestEventTypeBreakdown.getOrDefault(eventType, 0L) + 1);
+            }
+            debug.put("latestEventTypeBreakdown", latestEventTypeBreakdown);
+            
+            // 5. Add helpful messages
+            if (allEvents.isEmpty()) {
+                debug.put("warning", "No EMAIL_EVENT logs found. Check if SES events are being received and processed.");
+            }
+            
+            if (eventTypeBreakdown.containsKey("unknown")) {
+                debug.put("warning", "Some events have 'unknown' type. Check event body format in notification_log table.");
+            }
+            
+        } catch (Exception e) {
+            log.error("Error in debugEmailTracking: {}", e.getMessage(), e);
+            debug.put("error", e.getMessage());
+        }
+        
+        return debug;
+    }
 
     private AnnouncementResponse.AnnouncementStatsResponse computeAnnouncementStats(String announcementId) {
         AnnouncementResponse.AnnouncementStatsResponse stats = new AnnouncementResponse.AnnouncementStatsResponse();
+        
+        // Original stats from recipient_messages table
         long totalRecipients = recipientMessageRepository.countByAnnouncementId(announcementId);
         long deliveredCount = recipientMessageRepository.countByAnnouncementIdAndStatus(announcementId, MessageStatus.DELIVERED);
         long failedCount = recipientMessageRepository.countByAnnouncementIdAndStatus(announcementId, MessageStatus.FAILED);
@@ -517,7 +657,131 @@ public class AnnouncementService {
             stats.setDeliveryRate(0.0);
             stats.setReadRate(0.0);
         }
+        
+        // Enhanced SES Email Event Stats from notification_log table
+        try {
+            // 1. Find all original EMAIL logs for this announcement
+            List<NotificationLog> emailLogs = notificationLogRepository.findBySourceIdAndNotificationType(announcementId, "EMAIL");
+            long emailsSent = emailLogs.size();
+            stats.setEmailsSent(emailsSent);
+            
+            if (emailsSent > 0) {
+                // 2. Get all email log IDs to query their events
+                List<String> emailLogIds = emailLogs.stream()
+                        .map(NotificationLog::getId)
+                        .collect(Collectors.toList());
+                
+                // 3. Get latest event for each email using native query (more reliable for duplicates)
+                String[] emailLogIdsArray = emailLogIds.toArray(new String[0]);
+                List<NotificationLog> latestEvents = notificationLogRepository.findLatestEmailEventsBySourceIdsNative(emailLogIdsArray);
+                
+                // 4. Count events by extracting event type from body
+                Map<String, Long> eventCounts = countEventsByType(latestEvents);
+                
+                // Log event breakdown for debugging
+                log.debug("Event counts for announcement {}: {}", announcementId, eventCounts);
+                
+                long emailsSend = eventCounts.getOrDefault("send", 0L);
+                long emailsDelivered = eventCounts.getOrDefault("delivery", 0L);
+                long emailsOpened = eventCounts.getOrDefault("open", 0L);
+                long emailsClicked = eventCounts.getOrDefault("click", 0L);
+                long emailsBounced = eventCounts.getOrDefault("bounce", 0L);
+                long emailsRejected = eventCounts.getOrDefault("reject", 0L);
+                long emailsComplained = eventCounts.getOrDefault("complaint", 0L);
+                long emailsPending = emailsSent - latestEvents.size(); // Emails without any event yet
+                
+                stats.setEmailsSend(emailsSend);
+                stats.setEmailsDelivered(emailsDelivered);
+                stats.setEmailsOpened(emailsOpened);
+                stats.setEmailsClicked(emailsClicked);
+                stats.setEmailsBounced(emailsBounced);
+                stats.setEmailsRejected(emailsRejected);
+                stats.setEmailsComplained(emailsComplained);
+                stats.setEmailsPending(emailsPending);
+                
+                // Calculate enhanced rates
+                stats.setEmailDeliveryRate(emailsSent > 0 ? (double) emailsDelivered / emailsSent * 100 : 0.0);
+                stats.setEmailOpenRate(emailsDelivered > 0 ? (double) emailsOpened / emailsDelivered * 100 : 0.0);
+                stats.setEmailClickRate(emailsDelivered > 0 ? (double) emailsClicked / emailsDelivered * 100 : 0.0);
+                stats.setEmailBounceRate(emailsSent > 0 ? (double) emailsBounced / emailsSent * 100 : 0.0);
+                stats.setEmailRejectRate(emailsSent > 0 ? (double) emailsRejected / emailsSent * 100 : 0.0);
+            } else {
+                // No emails sent yet, set all to 0
+                stats.setEmailsSend(0L);
+                stats.setEmailsDelivered(0L);
+                stats.setEmailsOpened(0L);
+                stats.setEmailsClicked(0L);
+                stats.setEmailsBounced(0L);
+                stats.setEmailsRejected(0L);
+                stats.setEmailsComplained(0L);
+                stats.setEmailsPending(0L);
+                stats.setEmailDeliveryRate(0.0);
+                stats.setEmailOpenRate(0.0);
+                stats.setEmailClickRate(0.0);
+                stats.setEmailBounceRate(0.0);
+                stats.setEmailRejectRate(0.0);
+            }
+        } catch (Exception e) {
+            log.error("Error computing SES email event stats for announcement {}: {}", announcementId, e.getMessage(), e);
+            // Set default values if error occurs
+            stats.setEmailsSent(0L);
+            stats.setEmailsSend(0L);
+            stats.setEmailsDelivered(0L);
+            stats.setEmailsOpened(0L);
+            stats.setEmailsClicked(0L);
+            stats.setEmailsBounced(0L);
+            stats.setEmailsRejected(0L);
+            stats.setEmailsComplained(0L);
+            stats.setEmailsPending(0L);
+            stats.setEmailDeliveryRate(0.0);
+            stats.setEmailOpenRate(0.0);
+            stats.setEmailClickRate(0.0);
+            stats.setEmailBounceRate(0.0);
+            stats.setEmailRejectRate(0.0);
+        }
+        
         return stats;
+    }
+    
+    /**
+     * Helper method to extract event type from notification log body and count occurrences
+     */
+    private Map<String, Long> countEventsByType(List<NotificationLog> events) {
+        Map<String, Long> counts = new HashMap<>();
+        
+        for (NotificationLog event : events) {
+            String eventType = extractEventTypeFromBody(event.getBody());
+            counts.put(eventType, counts.getOrDefault(eventType, 0L) + 1);
+        }
+        
+        return counts;
+    }
+    
+    /**
+     * Extract event type from the notification log body
+     * Body format: "Email Event: DELIVERY\n..." or "Email Event: OPEN\n..." etc.
+     */
+    private String extractEventTypeFromBody(String body) {
+        if (body == null || body.isEmpty()) {
+            return "unknown";
+        }
+        
+        // The body format from EmailEventService.createEventDetailsBody is:
+        // "Email Event: <EVENTTYPE>\n..."
+        try {
+            if (body.startsWith("Email Event: ")) {
+                int endIndex = body.indexOf("\n");
+                if (endIndex > 0) {
+                    return body.substring("Email Event: ".length(), endIndex).trim().toLowerCase();
+                } else {
+                    return body.substring("Email Event: ".length()).trim().toLowerCase();
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Error extracting event type from body: {}", body, e);
+        }
+        
+        return "unknown";
     }
 
     private AnnouncementCalendarItem mapToCalendarItem(Announcement a) {

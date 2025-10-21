@@ -9,7 +9,6 @@ import vacademy.io.notification_service.features.notification_log.repository.Not
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -98,6 +97,15 @@ public class EmailEventService {
                     timestamp = sesEvent.getClick().getTimestamp();
                 }
                 break;
+            case "reject":
+                // Reject event might not have specific timestamp object, use mail timestamp
+                if (sesEvent.getMail() != null) {
+                    timestamp = sesEvent.getMail().getTimestamp();
+                }
+                break;
+            default:
+                log.warn("Unknown SES event type: {}", sesEvent.getEventType());
+                break;
         }
         
         return timestamp != null ? timestamp : LocalDateTime.now().toString();
@@ -148,6 +156,21 @@ public class EmailEventService {
         
         // Add event-specific details
         switch (eventType) {
+            case "send":
+                // Send event - email accepted by SES
+                body.append("Status: Email accepted by SES for sending\n");
+                break;
+            case "reject":
+                // Reject event - email rejected by SES (e.g., invalid recipient, suppression list)
+                body.append("Status: Email rejected by SES\n");
+                // Note: SES reject event structure might vary, add more fields as needed
+                break;
+            case "delivery":
+                if (sesEvent.getDelivery() != null) {
+                    body.append("Processing Time: ").append(sesEvent.getDelivery().getProcessingTimeMillis()).append("ms\n");
+                    body.append("SMTP Response: ").append(sesEvent.getDelivery().getSmtpResponse()).append("\n");
+                }
+                break;
             case "bounce":
                 if (sesEvent.getBounce() != null) {
                     body.append("Bounce Type: ").append(sesEvent.getBounce().getBounceType()).append("\n");
@@ -172,12 +195,6 @@ public class EmailEventService {
                     body.append("Link: ").append(sesEvent.getClick().getLink()).append("\n");
                 }
                 break;
-            case "delivery":
-                if (sesEvent.getDelivery() != null) {
-                    body.append("Processing Time: ").append(sesEvent.getDelivery().getProcessingTimeMillis()).append("ms\n");
-                    body.append("SMTP Response: ").append(sesEvent.getDelivery().getSmtpResponse()).append("\n");
-                }
-                break;
         }
         
         return body.toString();
@@ -187,29 +204,59 @@ public class EmailEventService {
     
     private String findOriginalNotificationLogId(String recipient, String timestamp) {
         try {
-            // Step 1: Look for exact recipient match
-            Optional<NotificationLog> exactMatch = notificationLogRepository
+            // Parse the event timestamp
+            LocalDateTime eventTime;
+            try {
+                eventTime = LocalDateTime.parse(timestamp, DateTimeFormatter.ISO_DATE_TIME);
+            } catch (Exception e) {
+                log.warn("Could not parse timestamp '{}', using current time", timestamp);
+                eventTime = LocalDateTime.now();
+            }
+            
+            // Step 1: Look for EMAIL log for this recipient within a narrow time window
+            // Events typically arrive within 5 minutes of email sending
+            LocalDateTime searchStart = eventTime.minusMinutes(10);
+            LocalDateTime searchEnd = eventTime.plusMinutes(5);
+            
+            Optional<NotificationLog> matchingEmail = notificationLogRepository
+                .findTopByChannelIdAndNotificationTypeAndNotificationDateBeforeOrderByNotificationDateDesc(
+                    recipient, "EMAIL", searchEnd);
+            
+            if (matchingEmail.isPresent()) {
+                NotificationLog emailLog = matchingEmail.get();
+                // Verify the email was sent within reasonable time window
+                if (emailLog.getNotificationDate().isAfter(searchStart)) {
+                    String logId = emailLog.getId();
+                    log.info("Found matching EMAIL log ID: '{}' for recipient: '{}' (sent at: {}, event at: {})", 
+                        logId, recipient, emailLog.getNotificationDate(), eventTime);
+                    return logId;
+                } else {
+                    log.warn("EMAIL log found but outside time window. Email sent: {}, Event: {}, Diff: {} minutes", 
+                        emailLog.getNotificationDate(), eventTime, 
+                        java.time.Duration.between(emailLog.getNotificationDate(), eventTime).toMinutes());
+                }
+            }
+            
+            // Step 2: If no match in time window, try most recent email to this recipient
+            Optional<NotificationLog> recentEmail = notificationLogRepository
                 .findTopByChannelIdAndNotificationTypeOrderByNotificationDateDesc(recipient, "EMAIL");
             
-            if (exactMatch.isPresent()) {
-                String logId = exactMatch.get().getId();
-                log.info("Found exact match EMAIL log ID: '{}' for recipient: '{}'", logId, recipient);
+            if (recentEmail.isPresent()) {
+                NotificationLog emailLog = recentEmail.get();
+                String logId = emailLog.getId();
+                long minutesDiff = java.time.Duration.between(emailLog.getNotificationDate(), eventTime).toMinutes();
+                log.info("Using most recent EMAIL log ID: '{}' for recipient: '{}' (time diff: {} minutes)", 
+                    logId, recipient, minutesDiff);
+                
+                // Warn if time difference is large (might be wrong email)
+                if (Math.abs(minutesDiff) > 60) {
+                    log.warn("Large time difference ({} minutes) between email and event - linkage may be incorrect!", minutesDiff);
+                }
+                
                 return logId;
             }
             
-            // Step 2: If no exact match, look for recent EMAIL logs (within last hour)
-            // Sometimes there might be slight differences in email format
-            LocalDateTime oneHourAgo = LocalDateTime.now().minusHours(1);
-            Optional<NotificationLog> recentEmailLog = notificationLogRepository
-                .findTopByNotificationTypeAndNotificationDateAfterOrderByNotificationDateDesc("EMAIL", oneHourAgo);
-            
-            if (recentEmailLog.isPresent()) {
-                String logId = recentEmailLog.get().getId();
-                log.info("Using recent EMAIL log ID: '{}' (no exact recipient match for '{}')", logId, recipient);
-                return logId;
-            }
-            
-            log.info("No EMAIL log found for recipient: '{}' - using 'SES' as source", recipient);
+            log.warn("No EMAIL log found for recipient: '{}' - using 'SES' as source", recipient);
             return null; // Will result in source = "SES"
             
         } catch (Exception e) {

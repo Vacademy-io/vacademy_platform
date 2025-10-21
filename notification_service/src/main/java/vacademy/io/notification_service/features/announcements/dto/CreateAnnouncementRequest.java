@@ -41,10 +41,14 @@ public class CreateAnnouncementRequest {
     @Size(max = 50, message = "Timezone must not exceed 50 characters")
     private String timezone;
     
-    // Recipients
+    // Recipients (Inclusions)
     @NotEmpty(message = "At least one recipient is required")
     @Valid
     private List<RecipientRequest> recipients;
+    
+    // Exclusions (Optional - users to exclude from recipients)
+    @Valid
+    private List<RecipientRequest> exclusions;
     
     // Modes
     @NotEmpty(message = "At least one mode is required")

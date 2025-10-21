@@ -26,8 +26,11 @@ public class AnnouncementResponse {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     
-    // Recipients
+    // Recipients (Inclusions)
     private List<RecipientResponse> recipients;
+    
+    // Exclusions
+    private List<RecipientResponse> exclusions;
     
     // Modes
     private List<ModeResponse> modes;
@@ -105,11 +108,30 @@ public class AnnouncementResponse {
     @AllArgsConstructor
     @NoArgsConstructor
     public static class AnnouncementStatsResponse {
+        // Original stats
         private Long totalRecipients;
         private Long deliveredCount;
         private Long readCount;
         private Long failedCount;
         private Double deliveryRate;
         private Double readRate;
+        
+        // Enhanced SES Email Event Stats
+        private Long emailsSent;               // Total emails sent
+        private Long emailsSend;               // Emails accepted by SES (SES send event)
+        private Long emailsDelivered;          // Emails successfully delivered (SES delivery event)
+        private Long emailsOpened;             // Emails opened by recipients (SES open event)
+        private Long emailsClicked;            // Emails with links clicked (SES click event)
+        private Long emailsBounced;            // Emails that bounced (SES bounce event)
+        private Long emailsRejected;           // Emails rejected by SES (SES reject event)
+        private Long emailsComplained;         // Emails marked as spam/complaint (SES complaint event)
+        private Long emailsPending;            // Emails sent but no SES event received yet
+        
+        // Enhanced rates
+        private Double emailDeliveryRate;      // (emailsDelivered / emailsSent) * 100
+        private Double emailOpenRate;          // (emailsOpened / emailsDelivered) * 100
+        private Double emailClickRate;         // (emailsClicked / emailsDelivered) * 100
+        private Double emailBounceRate;        // (emailsBounced / emailsSent) * 100
+        private Double emailRejectRate;        // (emailsRejected / emailsSent) * 100
     }
 }

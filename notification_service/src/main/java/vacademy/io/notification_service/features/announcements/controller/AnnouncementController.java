@@ -442,6 +442,19 @@ public class AnnouncementController {
             return ResponseEntity.badRequest().build();
         }
     }
+    
+    /**
+     * Debug endpoint to check email tracking data for an announcement
+     */
+    @GetMapping("/{announcementId}/debug-email-tracking")
+    public ResponseEntity<?> debugEmailTracking(@PathVariable String announcementId) {
+        try {
+            return ResponseEntity.ok(announcementService.debugEmailTracking(announcementId));
+        } catch (Exception e) {
+            log.error("Error debugging email tracking: {}", announcementId, e);
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
 
     /**
      * Test endpoint to check institute settings parsing

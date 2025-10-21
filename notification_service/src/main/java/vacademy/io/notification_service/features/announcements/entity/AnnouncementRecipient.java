@@ -43,4 +43,17 @@ public class AnnouncementRecipient {
     
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
+    
+    // Helper method to check if this is an exclusion (using prefix convention)
+    public boolean isExclusion() {
+        return recipientId != null && recipientId.startsWith("EXCLUDE:");
+    }
+    
+    // Get the actual recipient ID without the exclusion prefix
+    public String getActualRecipientId() {
+        if (isExclusion()) {
+            return recipientId.substring("EXCLUDE:".length());
+        }
+        return recipientId;
+    }
 }

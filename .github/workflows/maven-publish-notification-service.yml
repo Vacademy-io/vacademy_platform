@@ -117,7 +117,7 @@ jobs:
             SQS_AWS_SECRET_KEY: ${{ secrets.SQS_AWS_SECRET_KEY }} \
             SQS_AWS_REGION: ${{ secrets.SQS_AWS_REGION }} \
             SQS_ENDPOINT: ${{ secrets.SQS_ENDPOINT }} \
-            SQS_REGION: ${{ secrets.SQS_REGION }} \
+            SQS_REGION: ${{ secrets.SQS_REGION }} 
 
       - name: Restart deployment
         id: restart-deployment

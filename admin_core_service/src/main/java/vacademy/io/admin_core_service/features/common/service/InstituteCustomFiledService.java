@@ -65,7 +65,7 @@ public class InstituteCustomFiledService {
             }
 
             Optional<InstituteCustomField> optionalInstCF =
-                instituteCustomFieldRepository.findByInstituteIdAndCustomFieldIdAndTypeAndTypeIdAndStatus(
+                instituteCustomFieldRepository.findTopByInstituteIdAndCustomFieldIdAndTypeAndTypeIdAndStatusOrderByCreatedAtDesc(
                     dto.getInstituteId(),
                     cf.getId(),
                     dto.getType(),
@@ -403,7 +403,7 @@ public class InstituteCustomFiledService {
 
     public Optional<InstituteCustomField> getByInstituteIdAndFieldIdAndTypeAndTypeId(String instituteId, String fieldId,
             String type, String typeId) {
-        return instituteCustomFieldRepository.findByInstituteIdAndCustomFieldIdAndTypeAndTypeIdAndStatus(instituteId, fieldId,
+        return instituteCustomFieldRepository.findTopByInstituteIdAndCustomFieldIdAndTypeAndTypeIdAndStatusOrderByCreatedAtDesc(instituteId, fieldId,
                 type, typeId,StatusEnum.ACTIVE.name());
     }
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { AuthPageBranding } from "@/components/common/institute-branding";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -8,6 +8,17 @@ import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { Preferences } from "@capacitor/preferences";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { SessionLoginForm } from "./components/SessionLoginForm";
+import { SessionSelectionDialog } from "./components/SessionSelectionDialog";
+import { useLiveSessions } from "../-hooks/useLiveSessions";
+import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
+import {
+  getActiveSessions,
+  SessionStatus,
+} from "./-helpers/checkSessionStatus";
+import { SessionDetails } from "../-types/types";
+import { SessionStreamingServiceType } from "@/routes/register/live-class/-types/enum";
+import { useMarkAttendance } from "../-hooks/useMarkAttendance";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/study-library/live-class/$username/")({
   component: RouteComponent,
@@ -21,6 +32,141 @@ function RouteComponent() {
   const [authState, setAuthState] = useState<
     "loading" | "authenticated" | "unauthenticated"
   >("loading");
+  const [batchId, setBatchId] = useState<string>("");
+  const [showSessionSelection, setShowSessionSelection] = useState(false);
+  const [activeSessions, setActiveSessions] = useState<
+    Array<{ session: SessionDetails; status: SessionStatus }>
+  >([]);
+
+  // Fetch live sessions data (only when batchId is available)
+  const { data: sessions, isLoading: isSessionsLoading } = useLiveSessions(
+    batchId || null
+  );
+
+  // Mark attendance mutation
+  const { mutateAsync: markAttendance } = useMarkAttendance();
+
+  // Fetch batch ID
+  useEffect(() => {
+    const fetchBatchId = async () => {
+      const id = await getPackageSessionId();
+      console.log("Fetched batchId:", id);
+      setBatchId(id);
+    };
+    if (authState === "authenticated") {
+      fetchBatchId();
+    }
+  }, [authState]);
+
+  // Handle navigation to a specific session
+  const handleNavigateToSession = useCallback(
+    async (session: SessionDetails, isInWaitingRoom: boolean) => {
+      if (isInWaitingRoom) {
+        // Navigate to waiting room (waiting room will handle attendance marking)
+        console.log("Navigating to waiting room for:", session.title);
+        navigate({
+          to: "/study-library/live-class/waiting-room",
+          search: { sessionId: session.schedule_id },
+        });
+      } else {
+        // Mark attendance before joining live session
+        try {
+          console.log("Marking attendance for live session:", session.title);
+          await markAttendance({
+            sessionId: session.session_id,
+            scheduleId: session.schedule_id,
+            userSourceType: "USER",
+            userSourceId: "",
+            details: "Auto-joined live class from username route",
+          });
+
+          // Navigate to live session after marking attendance
+          if (
+            session.session_streaming_service_type ===
+            SessionStreamingServiceType.EMBED
+          ) {
+            navigate({
+              to: "/study-library/live-class/embed",
+              search: { sessionId: session.schedule_id },
+            });
+          } else {
+            window.open(session.meeting_link, "_blank", "noopener,noreferrer");
+            navigate({ to: "/study-library/live-class" });
+          }
+        } catch (error) {
+          console.error("Failed to mark attendance:", error);
+          toast.error("Failed to mark attendance");
+
+          // Still proceed with navigation even if attendance marking fails
+          if (
+            session.session_streaming_service_type ===
+            SessionStreamingServiceType.EMBED
+          ) {
+            navigate({
+              to: "/study-library/live-class/embed",
+              search: { sessionId: session.schedule_id },
+            });
+          } else {
+            window.open(session.meeting_link, "_blank", "noopener,noreferrer");
+            navigate({ to: "/study-library/live-class" });
+          }
+        }
+      }
+    },
+    [navigate, markAttendance]
+  );
+
+  // Check for active sessions and auto-navigate or show selection
+  useEffect(() => {
+    if (
+      authState === "authenticated" &&
+      sessions &&
+      !isSessionsLoading &&
+      batchId
+    ) {
+      console.log("Checking active sessions...");
+      console.log("Live sessions:", sessions?.live_sessions?.length);
+      console.log("Upcoming sessions:", sessions?.upcoming_sessions?.length);
+
+      // Combine live and upcoming sessions
+      const allSessions = [
+        ...(sessions?.live_sessions ?? []),
+        ...(sessions?.upcoming_sessions ?? []),
+      ];
+
+      console.log("Total sessions:", allSessions.length);
+
+      // Get sessions that are currently active (in waiting room or live)
+      const activeSessionsData = getActiveSessions(allSessions);
+
+      console.log("Active sessions found:", activeSessionsData.length);
+      activeSessionsData.forEach(({ session, status }) => {
+        console.log(
+          `- ${session.title}: isInWaitingRoom=${status.isInWaitingRoom}, isLive=${status.isLive}`
+        );
+      });
+
+      if (activeSessionsData.length === 0) {
+        // No active sessions, redirect to live-class page
+        navigate({ to: "/study-library/live-class" });
+      } else if (activeSessionsData.length === 1) {
+        // Exactly one active session, auto-navigate
+        const { session, status } = activeSessionsData[0];
+        handleNavigateToSession(session, status.isInWaitingRoom);
+      } else {
+        // Multiple active sessions, show selection dialog
+        setActiveSessions(activeSessionsData);
+        setShowSessionSelection(true);
+      }
+    }
+  }, [
+    authState,
+    sessions,
+    isSessionsLoading,
+    batchId,
+    navigate,
+    handleNavigateToSession,
+  ]);
 
   // Check authentication status
   useEffect(() => {
@@ -59,23 +205,48 @@ function RouteComponent() {
     if (!domainRouting.isLoading) {
       checkAuth();
     }
-  }, [domainRouting.isLoading]);
-
-  // Redirect authenticated users to live-class
-  useEffect(() => {
-    if (authState === "authenticated") {
-      navigate({ to: "/study-library/live-class" });
-    }
-  }, [authState, navigate]);
+  }, [domainRouting.isLoading, domainRouting]);
 
   const handleLoginSuccess = () => {
-    // After successful login, redirect to live-class
-    navigate({ to: "/study-library/live-class" });
+    // After successful login, set authenticated state
+    setAuthState("authenticated");
   };
 
-  // Show loading while checking auth or domain routing
-  if (domainRouting.isLoading || authState === "loading") {
+  const handleSessionSelect = async (session: SessionDetails) => {
+    const activeSession = activeSessions.find(
+      (s) => s.session.schedule_id === session.schedule_id
+    );
+    if (activeSession) {
+      setShowSessionSelection(false);
+      await handleNavigateToSession(
+        session,
+        activeSession.status.isInWaitingRoom
+      );
+    }
+  };
+
+  // Show loading while checking auth or domain routing or sessions
+  if (
+    domainRouting.isLoading ||
+    authState === "loading" ||
+    (authState === "authenticated" && isSessionsLoading)
+  ) {
     return <DashboardLoader />;
+  }
+
+  // Show session selection dialog if there are multiple active sessions
+  if (authState === "authenticated" && showSessionSelection) {
+    return (
+      <>
+        <DashboardLoader />
+        <SessionSelectionDialog
+          open={showSessionSelection}
+          onOpenChange={setShowSessionSelection}
+          sessions={activeSessions}
+          onSelectSession={handleSessionSelect}
+        />
+      </>
+    );
   }
 
   // Don't render anything if we're redirecting authenticated users

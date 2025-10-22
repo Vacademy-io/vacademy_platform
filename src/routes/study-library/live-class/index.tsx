@@ -53,7 +53,7 @@ function RouteComponent() {
   const { setNavHeading } = useNavHeadingStore();
   const navigate = useNavigate();
   const [batchId, setBatchId] = useState<string>("");
-  const [selectedView, setSelectedView] = useState<string>("calendar");
+  const [selectedView, setSelectedView] = useState<string>("list");
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [dayModalOpen, setDayModalOpen] = useState<boolean>(false);
   const [selectedDayData, setSelectedDayData] = useState<{
@@ -357,8 +357,13 @@ function RouteComponent() {
               )}
             </div>
             <div className="flex items-center gap-1 text-sm text-neutral-600 mb-2">
-              <MapPin size={16} className="text-neutral-500 dark:text-neutral-400" />
-              <span className="capitalize dark:text-neutral-300">{session.subject}</span>
+              <MapPin
+                size={16}
+                className="text-neutral-500 dark:text-neutral-400"
+              />
+              <span className="capitalize dark:text-neutral-300">
+                {session.subject}
+              </span>
             </div>
           </div>
           {isLive && session.meeting_link && (
@@ -380,7 +385,10 @@ function RouteComponent() {
 
         <div className="flex flex-col sm:flex-row gap-4 text-sm">
           <div className="flex items-center gap-2">
-            <Clock size={16} className="text-neutral-500 dark:text-neutral-400" />
+            <Clock
+              size={16}
+              className="text-neutral-500 dark:text-neutral-400"
+            />
             <span className="text-neutral-600 dark:text-neutral-300">
               <span className="font-medium">Starts:</span>{" "}
               {formatDateTime(
@@ -396,7 +404,10 @@ function RouteComponent() {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <Users size={16} className="text-neutral-500 dark:text-neutral-400" />
+            <Users
+              size={16}
+              className="text-neutral-500 dark:text-neutral-400"
+            />
             <span className="text-neutral-600 dark:text-neutral-300">
               <span className="font-medium">Duration:</span>{" "}
               {calculateDuration(session.start_time, session.last_entry_time)}
@@ -681,20 +692,26 @@ function RouteComponent() {
         <div
           key={day}
           className={`h-24 border border-neutral-200 dark:border-neutral-800 p-1 transition-all duration-200 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer ${
-            isToday ? "bg-primary-50/50 border-primary-200 dark:bg-primary-950/30 dark:border-primary-700" : "bg-white dark:bg-neutral-900"
+            isToday
+              ? "bg-primary-50/50 border-primary-200 dark:bg-primary-950/30 dark:border-primary-700"
+              : "bg-white dark:bg-neutral-900"
           } ${sessionCount > 0 ? "hover:shadow-sm" : ""}`}
           onClick={() => handleDayClick(currentDate, sessionsForDay)}
         >
           <div
             className={`text-sm font-medium mb-1 flex items-center justify-between ${
-              isToday ? "text-primary-700 dark:text-primary-300" : "text-neutral-700 dark:text-neutral-200"
+              isToday
+                ? "text-primary-700 dark:text-primary-300"
+                : "text-neutral-700 dark:text-neutral-200"
             }`}
           >
             <span>{day}</span>
             {sessionCount > 0 && (
               <div
                 className={`flex items-center gap-1 ${
-                  hasLive ? "text-red-600 dark:text-red-400" : "text-blue-600 dark:text-blue-400"
+                  hasLive
+                    ? "text-red-600 dark:text-red-400"
+                    : "text-blue-600 dark:text-blue-400"
                 }`}
               >
                 <div
@@ -807,11 +824,15 @@ function RouteComponent() {
         <div className="flex items-center gap-4 mt-4 text-sm">
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded bg-gradient-to-r from-red-500/20 to-red-600/20 border border-red-200 dark:from-red-900/40 dark:to-red-800/40 dark:border-red-900"></div>
-            <span className="text-neutral-600 dark:text-neutral-300">Live Sessions</span>
+            <span className="text-neutral-600 dark:text-neutral-300">
+              Live Sessions
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded bg-blue-100 border border-blue-200 dark:bg-blue-950/40 dark:border-blue-900"></div>
-            <span className="text-neutral-600 dark:text-neutral-300">Upcoming Sessions</span>
+            <span className="text-neutral-600 dark:text-neutral-300">
+              Upcoming Sessions
+            </span>
           </div>
           <div className="text-neutral-500 dark:text-neutral-400 text-xs italic">
             Click on a day to view all classes
@@ -827,7 +848,9 @@ function RouteComponent() {
         <div className="flex items-center justify-center min-h-[200px]">
           <div className="flex flex-col items-center gap-3">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-            <div className="text-neutral-600 dark:text-neutral-300">Loading sessions...</div>
+            <div className="text-neutral-600 dark:text-neutral-300">
+              Loading sessions...
+            </div>
           </div>
         </div>
       </LayoutContainer>
@@ -885,7 +908,10 @@ function RouteComponent() {
 
             <div className="mb-6 p-4 bg-gradient-to-r from-white to-neutral-50/50 dark:from-neutral-900 dark:to-neutral-900/60 border border-neutral-200 dark:border-neutral-800 rounded-lg">
               <div className="flex items-center gap-2 mb-4">
-                <FunnelSimple size={20} className="text-neutral-600 dark:text-neutral-300" />
+                <FunnelSimple
+                  size={20}
+                  className="text-neutral-600 dark:text-neutral-300"
+                />
                 <h3 className="text-lg font-semibold text-neutral-800 dark:text-neutral-100">
                   Filters
                 </h3>

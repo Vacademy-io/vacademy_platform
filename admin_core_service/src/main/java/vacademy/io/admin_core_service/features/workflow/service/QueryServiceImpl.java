@@ -3,6 +3,8 @@ package vacademy.io.admin_core_service.features.workflow.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.workflow.engine.QueryNodeHandler;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
@@ -48,6 +50,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return createSessionParticipent(params);
             case "createLiveSession":
                 return createLiveSession(params);
+            case "checkStudentPaidMembership":
+                return isAlreadyPresentInGivenPackageSession(params);
             default:
                 log.warn("Unknown prebuilt query key: {}", prebuiltKey);
                 return Map.of("error", "Unknown query key: " + prebuiltKey);
@@ -614,6 +618,25 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
         return null;
     }
 
+    private Map<String, Object> isAlreadyPresentInGivenPackageSession(Map<String,Object>params) {
+        // This query finds if an active mapping exists for the user in the specified package.
+        Optional<StudentSessionInstituteGroupMapping> optionalStudentSessionInstituteGroupMapping =
+                ssigmRepo.findByUserIdAndStatusInAndPackageSessionId(
+                        (String) params.get("userId"),
+                        List.of(LearnerStatusEnum.ACTIVE.name()),
+                        (String) params.get("packageSessionId")
+                );
+
+        // If the optional has a value, it means the mapping exists.
+        if (optionalStudentSessionInstituteGroupMapping.isPresent()) {
+            // Return a map indicating the student is already a member.
+            return Map.of("isAlreadyPaidMember", true);
+        } else {
+            // Otherwise, the student is not a member in this package.
+            // Return a map indicating they are not a member.
+            return Map.of("isAlreadyPaidMember", false);
+        }
+    }
 }
 
 

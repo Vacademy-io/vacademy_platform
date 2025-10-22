@@ -66,9 +66,15 @@ public interface InstituteCustomFieldRepository extends JpaRepository<InstituteC
         Optional<InstituteCustomField> findByInstituteIdAndFieldName(@Param("instituteId") String instituteId,
                                                                      @Param("fieldName") String fieldName);
 
-        Optional<InstituteCustomField> findByInstituteIdAndCustomFieldIdAndTypeAndTypeIdAndStatus(String instituteId, String fieldId, String type, String typeId,String status);
+    Optional<InstituteCustomField> findTopByInstituteIdAndCustomFieldIdAndTypeAndTypeIdAndStatusOrderByCreatedAtDesc(
+            String instituteId,
+            String fieldId,
+            String type,
+            String typeId,
+            String status
+    );
 
-        List<InstituteCustomField> findByInstituteIdAndTypeAndTypeIdAndStatusIn(String instituteId, String type, String typeId, List<String> status);
+    List<InstituteCustomField> findByInstituteIdAndTypeAndTypeIdAndStatusIn(String instituteId, String type, String typeId, List<String> status);
 
         List<InstituteCustomField> findByInstituteIdAndCustomFieldIdInAndStatusIn(String instituteId, List<String> list, List<String> status);
 }

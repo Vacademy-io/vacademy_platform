@@ -122,4 +122,15 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
      */
     Optional<NotificationLog> findTopByNotificationTypeAndSourceOrderByUpdatedAtDescCreatedAtDescIdDesc(
             String notificationType, String source);
+    
+    /**
+     * Check for duplicate events - find existing event with same source, type, and sourceId
+     */
+    Optional<NotificationLog> findBySourceAndNotificationTypeAndSourceId(
+            String source, String notificationType, String sourceId);
+    
+    /**
+     * Find all events for a specific source and notification type
+     */
+    List<NotificationLog> findBySourceAndNotificationType(String source, String notificationType);
 }

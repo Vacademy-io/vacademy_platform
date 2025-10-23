@@ -22,9 +22,9 @@ export const LayoutContainer = ({
     return (
         <>
             <MySidebar sidebarComponent={sidebarComponent} />
-            <SidebarInset>
+            <SidebarInset className="overflow-x-hidden w-full">
                 <Navbar />
-                <div className={cn("m-4 md:m-7 max-w-full", className)}>
+                <div className={cn("m-4 md:m-7 max-w-full overflow-x-hidden", className)}>
                     {children}
                 </div>
             </SidebarInset>

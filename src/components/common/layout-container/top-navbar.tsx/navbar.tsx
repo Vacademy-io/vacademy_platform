@@ -113,16 +113,16 @@ export function Navbar() {
         console.warn("Navbar: Error loading user role details, showing fallback UI:", error);
         // Return a simplified navbar without role-dependent features
         return (
-            <div className="navbar sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-14 items-center justify-between bg-white dark:bg-neutral-900 px-4 md:px-5 py-2 transition-all duration-300 shadow-sm">
+            <div className="navbar sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white dark:bg-neutral-900 px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 shadow-sm w-full overflow-x-auto flex-nowrap">
                 <LogoutSidebar />
                 
                 {/* Left Section */}
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 md:gap-4 shrink-0">
                     {showSidebarControls && (
                         <SidebarTrigger>
                             <div
                                 onClick={() => {}}
-                                className="group flex items-center justify-center w-8 h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200"
+                                className="group flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200"
                             >
                                 <FiSidebar
                                     className="w-4 h-4 text-primary-600 dark:text-primary-400 group-hover:text-primary-700 dark:group-hover:text-primary-300 transition-colors duration-200"
@@ -139,16 +139,16 @@ export function Navbar() {
                                 <img
                                     src={instituteLogoFileUrl}
                                     alt={instituteName || "Institute"}
-                                    className="h-10 w-auto max-w-[120px] object-contain border border-primary-200/60 dark:border-neutral-700 rounded-sm"
+                                    className="h-8 md:h-10 w-auto max-w-[120px] object-contain border border-primary-200/60 dark:border-neutral-700 rounded-sm"
                                 />
                             ) : (
-                                <div className="h-8 w-8 rounded-sm bg-primary-200/40 dark:bg-neutral-700/60 flex items-center justify-center text-[12px] font-semibold text-primary-700 dark:text-neutral-200">
+                                <div className="h-7 w-7 md:h-8 md:w-8 rounded-sm bg-primary-200/40 dark:bg-neutral-700/60 flex items-center justify-center text-[11px] md:text-[12px] font-semibold text-primary-700 dark:text-neutral-200">
                                     {(instituteName?.[0] || "I").toUpperCase()}
                                 </div>
                             )}
                         </div>
-                        <div className="h-8 w-px bg-primary-200/50 dark:bg-neutral-700" />
-                        <h1 className="text-lg font-semibold text-primary-900 dark:text-primary-100">
+                        <div className="h-7 md:h-8 w-px bg-primary-200/50 dark:bg-neutral-700" />
+                        <h1 className="text-base md:text-lg font-semibold text-primary-900 dark:text-primary-100 truncate max-w-[60vw] md:max-w-none">
                             {navHeading || "Dashboard"}
                         </h1>
                     </div>
@@ -156,12 +156,12 @@ export function Navbar() {
                 </div>
 
                 {/* Right Section */}
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 md:gap-3 shrink-0">
                     <SystemAlertsBar />
                     <div className="flex items-center gap-2">
                         <div className="h-6 w-px bg-primary-200/50 dark:bg-neutral-700" />
-                        <Student className="w-5 h-5 text-primary-600 dark:text-primary-400" />
-                        <span className="text-sm font-medium text-primary-700 dark:text-primary-300">
+                        <Student className="w-4 h-4 md:w-5 md:h-5 text-primary-600 dark:text-primary-400" />
+                        <span className="text-xs md:text-sm font-medium text-primary-700 dark:text-primary-300">
                             User
                         </span>
                     </div>
@@ -171,16 +171,16 @@ export function Navbar() {
     }
 
     return (
-        <div className="navbar sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-14 items-center justify-between bg-white dark:bg-neutral-900 px-4 md:px-5 py-2 transition-all duration-300 shadow-sm">
+        <div className="navbar sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white dark:bg-neutral-900 px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 shadow-sm w-full overflow-x-auto flex-nowrap">
             <LogoutSidebar />
 
             {/* Left Section */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 md:gap-4 shrink-0">
                 {showSidebarControls && (
                     <SidebarTrigger>
                         <div
                             onClick={() => {}}
-                            className="group flex items-center justify-center w-8 h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200"
+                            className="group flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200"
                         >
                             <FiSidebar className="w-4 h-4 text-primary-600 dark:text-neutral-300 group-hover:text-primary-700 dark:group-hover:text-neutral-200 transition-colors duration-200" />
                         </div>
@@ -195,19 +195,19 @@ export function Navbar() {
                             <img
                                 src={instituteLogoFileUrl}
                                 alt={instituteName || "Institute"}
-                                className="h-10 w-auto max-w-[120px] object-contain dark:border-neutral-700 rounded-sm"
+                                className="h-8 md:h-10 w-auto max-w-[120px] object-contain dark:border-neutral-700 rounded-sm"
                             />
                         ) : (
-                            <div className="h-8 w-8 rounded-sm bg-primary-200/40 dark:bg-neutral-700/60 flex items-center justify-center text-[12px] font-semibold text-primary-700 dark:text-neutral-200">
+                            <div className="h-7 w-7 md:h-8 md:w-8 rounded-sm bg-primary-200/40 dark:bg-neutral-700/60 flex items-center justify-center text-[11px] md:text-[12px] font-semibold text-primary-700 dark:text-neutral-200">
                                 {(instituteName?.[0] || "I").toUpperCase()}
                             </div>
                         )}
                     </div>
-                    <div className="w-px h-8 bg-primary-200/60 dark:bg-neutral-700"></div>
+                    <div className="w-px h-7 md:h-8 bg-primary-200/60 dark:bg-neutral-700"></div>
                     <div className="flex items-center gap-2">
                         <div className="w-1 h-6 bg-primary-600 dark:bg-primary-500 rounded-full shadow-sm"></div>
                         <div className="relative">
-                            <h1 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 leading-tight">
+                            <h1 className="text-sm md:text-base font-semibold text-neutral-900 dark:text-neutral-100 leading-tight truncate max-w-[60vw] md:max-w-none">
                                 {navHeading}
                             </h1>
                             <div className="absolute -bottom-0.5 left-0 right-0 h-px bg-primary-300/50 dark:bg-neutral-700"></div>
@@ -218,7 +218,7 @@ export function Navbar() {
             </div>
 
             {/* Right Section */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 md:gap-3 shrink-0">
                 {/* System Alerts */}
                 <SystemAlertsBar />
 
@@ -227,11 +227,11 @@ export function Navbar() {
                         <TooltipTrigger>
                             <Button
                                 variant="outline"
-                                className="h-10 rounded-full px-3 py-2 flex items-center gap-2"
+                                className="h-8 md:h-10 rounded-full px-2 md:px-3 py-1.5 md:py-2 flex items-center gap-1.5 md:gap-2"
                                 onClick={handleNavigateToAdmin}
                             >
-                                <Student className="h-5 w-5" />
-                                <span className="text-sm font-medium">Switch to Instructor</span>
+                                <Student className="h-4 w-4 md:h-5 md:w-5" />
+                                <span className="hidden sm:inline text-xs md:text-sm font-medium">Switch to Instructor</span>
                             </Button>
                         </TooltipTrigger>
                         <TooltipContent
@@ -246,7 +246,7 @@ export function Navbar() {
 
                 {/* Menu Button (always visible) */}
                 <button
-                    className="group relative flex items-center justify-center w-9 h-9 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-100 dark:hover:bg-neutral-700 hover:border-primary-400 dark:hover:border-neutral-600 transition-all duration-200"
+                    className="group relative flex items-center justify-center w-8 h-8 md:w-9 md:h-9 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-100 dark:hover:bg-neutral-700 hover:border-primary-400 dark:hover:border-neutral-600 transition-all duration-200"
                     onClick={() => {
                         setSidebarOpen();
                     }}

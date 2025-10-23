@@ -90,8 +90,21 @@ public class RecipientResolutionService {
             
             switch (recipient.getRecipientType()) {
                 case USER:
-                    resolvedUserIds.add(actualRecipientId);
-                    log.debug("[{}] Added direct user: {}", type, actualRecipientId);
+                    // Check if it's an email address or user ID
+                    if (actualRecipientId.contains("@")) {
+                        // Resolve email to user ID
+                        User user = authServiceClient.getUserByEmail(actualRecipientId);
+                        if (user != null) {
+                            resolvedUserIds.add(user.getId());
+                            log.debug("[{}] Resolved email {} to user ID: {}", type, actualRecipientId, user.getId());
+                        } else {
+                            log.warn("[{}] Could not resolve email to user ID: {}", type, actualRecipientId);
+                        }
+                    } else {
+                        // It's already a user ID
+                        resolvedUserIds.add(actualRecipientId);
+                        log.debug("[{}] Added direct user ID: {}", type, actualRecipientId);
+                    }
                     break;
                     
                 case ROLE:

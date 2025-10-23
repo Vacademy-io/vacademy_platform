@@ -7,8 +7,10 @@ import vacademy.io.notification_service.dto.SesEventDTO;
 import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 
+import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -40,12 +42,15 @@ public class EmailEventService {
             String originalLogId = findOriginalNotificationLogId(recipient, timestamp);
             log.info("Original log ID found: {} for recipient: {}", originalLogId, recipient);
             
-            // Create notification log entry for the email event
-            NotificationLog eventLog = createEmailEventLog(eventType, messageId, recipient, timestamp, sesEvent, originalLogId);
-            notificationLogRepository.save(eventLog);
+            // Use atomic operation to prevent race conditions
+            if (!createEventAtomically(originalLogId, eventType, messageId, recipient, timestamp, sesEvent)) {
+                log.info("Event already exists or failed to create atomically: {} for source: {} message: {}", 
+                    eventType, originalLogId, messageId);
+                return;
+            }
             
             log.info("Successfully saved SES event to database: {} for message: {} to recipient: {} with source: {}", 
-                eventType, messageId, recipient, eventLog.getSource());
+                eventType, messageId, recipient, originalLogId);
             
         } catch (Exception e) {
             log.error("Error processing SES event: {} - Error: {}", 
@@ -200,7 +205,84 @@ public class EmailEventService {
         return body.toString();
     }
     
-    // All duplicate checking logic completely removed
+    /**
+     * Atomically create an event, preventing race conditions
+     * Uses synchronized method and database-level checking to ensure only one event per type per message
+     */
+    @Transactional
+    public synchronized boolean createEventAtomically(String originalLogId, String eventType, String messageId, 
+                                       String recipient, String timestamp, SesEventDTO sesEvent) {
+        if (originalLogId == null) {
+            return false; // Can't create without original log ID
+        }
+        
+        try {
+            // Double-check pattern: Check again within synchronized method
+            if (isDuplicateEvent(originalLogId, eventType, messageId)) {
+                log.debug("Event already exists (double-check): {} for source: {} message: {}", 
+                    eventType, originalLogId, messageId);
+                return false; // Event already exists
+            }
+            
+            // Create the event log
+            NotificationLog eventLog = createEmailEventLog(eventType, messageId, recipient, timestamp, sesEvent, originalLogId);
+            
+            // Save with transaction
+            notificationLogRepository.save(eventLog);
+            
+            log.info("Successfully created event atomically: {} for source: {} message: {}", 
+                eventType, originalLogId, messageId);
+            return true;
+            
+        } catch (Exception e) {
+            log.error("Error creating event atomically: {} for source: {} message: {}", 
+                eventType, originalLogId, messageId, e);
+            return false;
+        }
+    }
+    
+    /**
+     * Check if an event already exists for the same source, event type, and message ID
+     * Only prevents true duplicates (same event type for same email)
+     */
+    private boolean isDuplicateEvent(String originalLogId, String eventType, String messageId) {
+        if (originalLogId == null) {
+            return false; // Can't check duplicates without original log ID
+        }
+        
+        try {
+            // Find all events for this source (original email log ID)
+            List<NotificationLog> existingEvents = notificationLogRepository
+                .findBySourceAndNotificationType(originalLogId, "EMAIL_EVENT");
+            
+            // Check if we already have this exact event type for this exact message ID
+            for (NotificationLog existingEvent : existingEvents) {
+                String existingBody = existingEvent.getBody();
+                String existingSourceId = existingEvent.getSourceId();
+                
+                if (existingBody != null && 
+                    existingSourceId != null && 
+                    existingSourceId.equals(messageId)) {
+                    
+                    // Check the first line after "Email Event: " for exact match
+                    String[] lines = existingBody.split("\n");
+                    if (lines.length > 0) {
+                        String firstLine = lines[0].trim();
+                        if (firstLine.equals("Email Event: " + eventType.toUpperCase())) {
+                            log.info("Duplicate event found: {} for message {} (existing event ID: {})", 
+                                eventType, messageId, existingEvent.getId());
+                            return true; // True duplicate found
+                        }
+                    }
+                }
+            }
+            
+            return false;
+        } catch (Exception e) {
+            log.error("Error checking for duplicate event: {}", e.getMessage(), e);
+            return false; // Allow processing on error
+        }
+    }
     
     private String findOriginalNotificationLogId(String recipient, String timestamp) {
         try {

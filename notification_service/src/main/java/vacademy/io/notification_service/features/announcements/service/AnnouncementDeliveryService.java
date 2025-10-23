@@ -135,8 +135,11 @@ public class AnnouncementDeliveryService {
                 // Get user email - this would need to be resolved from user service
                 String userEmail = forceToEmail != null && !forceToEmail.isBlank() ? forceToEmail : resolveUserEmail(message.getUserId());
                 if (userEmail != null) {
+                    // Process HTML content with variables (similar to WhatsApp)
+                    String processedContent = processHtmlVariables(content.getContent(), message, announcement);
+                    
                     // Send email using existing service with email type, custom from address, and name
-                    emailService.sendHtmlEmail(userEmail, subject, "announcement-service", content.getContent(), 
+                    emailService.sendHtmlEmail(userEmail, subject, "announcement-service", processedContent, 
                                              instituteId, fromEmail, fromName, emailType);
                     
                     message.setStatus(MessageStatus.DELIVERED);
@@ -441,5 +444,114 @@ public class AnnouncementDeliveryService {
             sb.append(throwable.toString());
         }
         return sb.toString();
+    }
+
+    /**
+     * Process HTML content with variable replacement (similar to WhatsApp)
+     */
+    private String processHtmlVariables(String htmlContent, RecipientMessage message, Announcement announcement) {
+        if (htmlContent == null || htmlContent.isEmpty()) {
+            return htmlContent;
+        }
+        
+        String processedContent = htmlContent;
+        
+        // Replace common variables
+        processedContent = processedContent.replace("{{title}}", 
+            announcement.getTitle() != null ? announcement.getTitle() : "");
+        
+        processedContent = processedContent.replace("{{content}}", 
+            getContentPreview(announcement.getTitle())); // Or use actual content preview
+        
+        processedContent = processedContent.replace("{{created_by}}", 
+            announcement.getCreatedByName() != null ? announcement.getCreatedByName() : 
+            (announcement.getCreatedBy() != null ? announcement.getCreatedBy() : ""));
+        
+        // Resolve user name properly - try to get from user details first
+        String resolvedUserName = resolveUserName(message);
+        
+        processedContent = processedContent.replace("{{user_name}}", resolvedUserName);
+        
+        // Add support for {{name}} as alias for {{user_name}}
+        processedContent = processedContent.replace("{{name}}", resolvedUserName);
+        
+        // Add more variables as needed
+        processedContent = processedContent.replace("{{institute_id}}", 
+            announcement.getInstituteId() != null ? announcement.getInstituteId() : "");
+        
+        processedContent = processedContent.replace("{{announcement_id}}", 
+            announcement.getId() != null ? announcement.getId() : "");
+        
+        // Add user-specific variables (resolve user details)
+        try {
+            User user = resolveUserDetails(message.getUserId());
+            if (user != null) {
+                processedContent = processedContent.replace("{{user_email}}", 
+                    user.getEmail() != null ? user.getEmail() : "");
+                processedContent = processedContent.replace("{{user_phone}}", 
+                    user.getMobileNumber() != null ? user.getMobileNumber() : "");
+                   // Extract first and last name from fullName
+                   String fullName = user.getFullName() != null ? user.getFullName() : "";
+                   String[] nameParts = fullName.split(" ", 2);
+                   String firstName = nameParts.length > 0 ? nameParts[0] : "";
+                   String lastName = nameParts.length > 1 ? nameParts[1] : "";
+                   
+                   processedContent = processedContent.replace("{{user_first_name}}", firstName);
+                   processedContent = processedContent.replace("{{user_last_name}}", lastName);
+                   
+                   // Add support for common aliases
+                   processedContent = processedContent.replace("{{first_name}}", firstName);
+                   processedContent = processedContent.replace("{{last_name}}", lastName);
+                   processedContent = processedContent.replace("{{full_name}}", fullName);
+            }
+        } catch (Exception e) {
+            log.warn("Could not resolve user details for variable replacement: {}", message.getUserId(), e);
+        }
+        
+        return processedContent;
+    }
+
+    /**
+     * Resolve user details for variable replacement
+     */
+    private User resolveUserDetails(String userId) {
+        try {
+            List<User> users = authServiceClient.getUsersByIds(List.of(userId));
+            return users.isEmpty() ? null : users.get(0);
+        } catch (Exception e) {
+            log.error("Error resolving user details for ID: {}", userId, e);
+            return null;
+        }
+    }
+    
+    /**
+     * Resolve user name for variable replacement
+     * Tries multiple sources: message userName, user fullName, user email, userId
+     */
+    private String resolveUserName(RecipientMessage message) {
+        // First try message.getUserName()
+        if (message.getUserName() != null && !message.getUserName().trim().isEmpty()) {
+            return message.getUserName();
+        }
+        
+        // If not available, try to resolve from user details
+        try {
+            User user = resolveUserDetails(message.getUserId());
+            if (user != null) {
+                // Try fullName first
+                if (user.getFullName() != null && !user.getFullName().trim().isEmpty()) {
+                    return user.getFullName();
+                }
+                // Fall back to email
+                if (user.getEmail() != null && !user.getEmail().trim().isEmpty()) {
+                    return user.getEmail();
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not resolve user name for user ID: {}", message.getUserId(), e);
+        }
+        
+        // Final fallback to userId
+        return message.getUserId() != null ? message.getUserId() : "";
     }
 }

@@ -3,7 +3,6 @@ package vacademy.io.notification_service.features.announcements.client;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
 import org.springframework.retry.annotation.Backoff;
@@ -132,5 +131,58 @@ public class AuthServiceClient {
                 (userIds.size() + batchSize - 1) / batchSize);
         
         return allUsers;
+    }
+
+    /**
+     * Get user by email address - for resolving email exclusions to user IDs
+     */
+    @Retryable(value = {RestClientException.class}, maxAttempts = 3, backoff = @Backoff(delay = 1000))
+    public User getUserByEmail(String email) {
+        log.debug("Calling auth service to get user by email: {}", email);
+        
+        if (email == null || email.trim().isEmpty()) {
+            return null;
+        }
+        
+        try {
+            String url = UriComponentsBuilder.fromHttpUrl(authServiceBaseUrl + "/auth-service/open/user-details/by-email")
+                    .queryParam("emailId", email.trim())
+                    .toUriString();
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.POST,
+                    entity,
+                    new ParameterizedTypeReference<Map<String, Object>>() {}
+            );
+
+            Map<String, Object> userData = response.getBody();
+            if (userData == null) {
+                return null;
+            }
+            
+            // Convert Map to User object
+            User user = new User();
+            user.setId((String) userData.get("id"));
+            user.setEmail((String) userData.get("email"));
+            user.setFullName((String) userData.get("full_name"));
+            user.setMobileNumber((String) userData.get("mobile_number"));
+            
+            if (user.getId() != null) {
+                log.debug("Found user with email: {} -> user ID: {}", email, user.getId());
+                return user;
+            } else {
+                log.debug("No user found with email: {}", email);
+                return null;
+            }
+            
+        } catch (Exception e) {
+            log.error("Error calling auth service for user by email: {}", email, e);
+            return null; // Return null on error
+        }
     }
 }

@@ -146,7 +146,7 @@ public class EmailService {
 
             final String emailSubject = StringUtils.hasText(subject)
                     ? subject
-                    : "Your One-Time Password (OTP) for "+instituteName+" Access";
+                    : "Your One-Time Password (OTP) for "+instituteName+" Access | "+otp;
 
             // Build the HTML body for the OTP email
             final String emailBody = createEmailBody(name, otp, instituteTheme, instituteName, instituteUrl,fromToUse);

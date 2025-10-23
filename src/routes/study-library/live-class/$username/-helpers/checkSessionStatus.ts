@@ -2,11 +2,13 @@ import { SessionDetails } from "../../-types/types";
 import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
 
 export interface SessionStatus {
-  isActive: boolean; // Either in waiting room or live
+  isActive: boolean; // Either in waiting room or live (and not ended)
   isInWaitingRoom: boolean;
   isLive: boolean;
+  isEnded: boolean; // Session has ended
   sessionDate: Date;
   waitingRoomStart: Date;
+  sessionEndDate: Date;
 }
 
 /**
@@ -18,12 +20,18 @@ export const getSessionStatus = (session: SessionDetails): SessionStatus => {
   const now = new Date();
   let sessionDate: Date;
   let waitingRoomStart: Date;
+  let sessionEndDate: Date;
 
   if (session.timezone) {
     // Use timezone-aware calculation
     sessionDate = convertSessionTimeToUserTimezone(
       session.meeting_date,
       session.start_time,
+      session.timezone
+    );
+    sessionEndDate = convertSessionTimeToUserTimezone(
+      session.meeting_date,
+      session.last_entry_time,
       session.timezone
     );
     // waiting_room_time is in minutes, convert to milliseconds
@@ -33,22 +41,29 @@ export const getSessionStatus = (session: SessionDetails): SessionStatus => {
   } else {
     // Fallback to original logic
     sessionDate = new Date(`${session.meeting_date}T${session.start_time}`);
+    sessionEndDate = new Date(
+      `${session.meeting_date}T${session.last_entry_time}`
+    );
     // waiting_room_time is in minutes, convert to milliseconds
     waitingRoomStart = new Date(
       sessionDate.getTime() - session.waiting_room_time * 60000
     );
   }
 
-  const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
-  const isLive = now >= sessionDate;
-  const isActive = isInWaitingRoom || isLive;
+  const isEnded = now > sessionEndDate;
+  const isInWaitingRoom =
+    now >= waitingRoomStart && now < sessionDate && !isEnded;
+  const isLive = now >= sessionDate && !isEnded;
+  const isActive = (isInWaitingRoom || isLive) && !isEnded;
 
   return {
     isActive,
     isInWaitingRoom,
     isLive,
+    isEnded,
     sessionDate,
     waitingRoomStart,
+    sessionEndDate,
   };
 };
 

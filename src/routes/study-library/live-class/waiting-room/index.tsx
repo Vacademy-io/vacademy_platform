@@ -58,12 +58,25 @@ function WaitingRoomComponent() {
     const serverTimestamp = getServerTime(serverTimeData);
     const now = new Date(serverTimestamp);
 
-    // Convert session time to user timezone
+    // Convert session start and end times to user timezone
     const sessionStartInUserTimezone = convertSessionTimeToUserTimezone(
       sessionDetails.meetingDate,
       sessionDetails.scheduleStartTime,
       sessionDetails.timezone
     );
+
+    const sessionEndInUserTimezone = convertSessionTimeToUserTimezone(
+      sessionDetails.meetingDate,
+      sessionDetails.scheduleLastEntryTime,
+      sessionDetails.timezone
+    );
+
+    // Check if class has ended
+    if (now > sessionEndInUserTimezone) {
+      toast.error("This class has ended");
+      navigate({ to: "/study-library/live-class" });
+      return;
+    }
 
     // Check if current time is >= session start time
     if (now >= sessionStartInUserTimezone && sessionDetails.defaultMeetLink) {

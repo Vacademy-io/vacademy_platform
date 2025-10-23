@@ -57,7 +57,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
   const [showVerification, setShowVerification] = useState(false);
   const [verificationCountdown, setVerificationCountdown] = useState(59);
   const [verificationNumbers, setVerificationNumbers] = useState<number[]>([]);
-  const [lastVerificationTime, setLastVerificationTime] = useState(0);
+  const [, setLastVerificationTime] = useState(0);
   const [responseTimesArray, setResponseTimesArray] = useState<number[]>([]);
   const [answeredTimeArray, setAnsweredTimeArray] = useState<number[]>([]);
   const verificationTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -77,6 +77,41 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
 
   // Add ref for PDF viewer component
   const pdfViewerRef = useRef<PdfViewerComponentRef>(null);
+
+  // Lock outer page scroll on mobile/Android while PDF is active
+  useEffect(() => {
+    const isMobile = window.matchMedia("(max-width: 768px)").matches;
+    if (!isMobile) return;
+
+    const html = document.documentElement;
+    const originalHtmlOverflow = html.style.overflow;
+    const originalHtmlOverscroll = html.style.getPropertyValue("overscroll-behavior");
+    const originalBodyOverflow = document.body.style.overflow;
+    const originalBodyOverscroll = document.body.style.getPropertyValue("overscroll-behavior");
+    const originalBodyHeight = document.body.style.height;
+
+    html.style.overflow = "hidden";
+    html.style.setProperty("overscroll-behavior", "none");
+    document.body.style.overflow = "hidden";
+    document.body.style.setProperty("overscroll-behavior", "none");
+    document.body.style.height = "100dvh";
+
+    return () => {
+      html.style.overflow = originalHtmlOverflow;
+      if (originalHtmlOverscroll) {
+        html.style.setProperty("overscroll-behavior", originalHtmlOverscroll);
+      } else {
+        html.style.removeProperty("overscroll-behavior");
+      }
+      document.body.style.overflow = originalBodyOverflow;
+      if (originalBodyOverscroll) {
+        document.body.style.setProperty("overscroll-behavior", originalBodyOverscroll);
+      } else {
+        document.body.style.removeProperty("overscroll-behavior");
+      }
+      document.body.style.height = originalBodyHeight;
+    };
+  }, []);
 
   // Load saved verification time from Capacitor preferences
   useEffect(() => {
@@ -98,7 +133,6 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
         if (value) {
           const savedTime = Number.parseInt(value, 10);
           setLastVerificationTime(savedTime);
-          console.log(lastVerificationTime);
         }
       } catch (error) {
         console.error("Error loading saved verification data:", error);
@@ -522,7 +556,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
 
   // Update the return JSX to include a more informative pause dialog
   return (
-    <div className="relative w-full h-full">
+    <div className="relative w-full h-full overflow-hidden">
       {/* Verification overlay */}
       {showVerification && (
         <div className="absolute top-2 left-1/2 transform -translate-x-1/2 w-full max-w-xs z-[10000] animate-in fade-in slide-in-from-top duration-300">

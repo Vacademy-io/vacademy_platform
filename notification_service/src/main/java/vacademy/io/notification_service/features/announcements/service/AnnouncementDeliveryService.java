@@ -146,7 +146,10 @@ public class AnnouncementDeliveryService {
                     message.setDeliveredAt(LocalDateTime.now());
                     
                     // Create email-specific notification log entry
+                    log.info("Creating EMAIL notification log for announcement: {}, user: {}, email: {}", 
+                        announcement.getId(), message.getUserId(), userEmail);
                     createEmailNotificationLog(announcement, message, userEmail, "SUCCESS", null);
+                    log.info("Successfully created EMAIL notification log for announcement: {}", announcement.getId());
                     
                 } else {
                     message.setStatus(MessageStatus.FAILED);
@@ -286,16 +289,27 @@ public class AnnouncementDeliveryService {
     // Enhanced method for email-specific logging
     private void createEmailNotificationLog(Announcement announcement, RecipientMessage message, 
                                           String userEmail, String status, String errorMessage) {
-        NotificationLog log = new NotificationLog();
-        log.setNotificationType("EMAIL");
-        log.setChannelId(userEmail); // Use email address as channelId for email tracking
-        log.setBody(announcement.getTitle());
-        log.setSource("announcement-service");
-        log.setSourceId(announcement.getId());
-        log.setUserId(message.getUserId()); // Keep user ID for reference
-        log.setNotificationDate(LocalDateTime.now());
-        
-        notificationLogRepository.save(log);
+        try {
+            NotificationLog notificationLog = new NotificationLog();
+            notificationLog.setNotificationType("EMAIL");
+            notificationLog.setChannelId(userEmail); // Use email address as channelId for email tracking
+            notificationLog.setBody(announcement.getTitle());
+            notificationLog.setSource("announcement-service");
+            notificationLog.setSourceId(announcement.getId());
+            notificationLog.setUserId(message.getUserId()); // Keep user ID for reference
+            notificationLog.setNotificationDate(LocalDateTime.now());
+            
+            log.info("Saving EMAIL notification log: sourceId={}, channelId={}, userId={}", 
+                notificationLog.getSourceId(), notificationLog.getChannelId(), notificationLog.getUserId());
+            
+            notificationLogRepository.save(notificationLog);
+            
+            log.info("Successfully saved EMAIL notification log with ID: {}", notificationLog.getId());
+        } catch (Exception e) {
+            log.error("Failed to create EMAIL notification log for announcement: {}, user: {}, email: {}", 
+                announcement.getId(), message.getUserId(), userEmail, e);
+            throw e; // Re-throw to be caught by the calling method
+        }
     }
 
     private String resolveUserEmail(String userId) {

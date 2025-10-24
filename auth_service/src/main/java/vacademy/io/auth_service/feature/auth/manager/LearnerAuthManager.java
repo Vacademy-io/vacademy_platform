@@ -3,6 +3,8 @@ package vacademy.io.auth_service.feature.auth.manager;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
@@ -50,6 +52,8 @@ import java.util.*;
 
 @Component
 public class LearnerAuthManager {
+
+    private static final Logger log = LoggerFactory.getLogger(LearnerAuthManager.class);
 
     @Autowired
     UserRepository userRepository;
@@ -110,24 +114,46 @@ public class LearnerAuthManager {
         }
 
         String instituteId = learnerEnrollRequestDTO.getInstituteId();
+        log.debug("registerLearner invoked: instituteId={}, subjectId={}, vendorId={}, hasPackageEnroll={}, userEmailPresent={}",
+                instituteId,
+                learnerEnrollRequestDTO.getSubjectId(),
+                learnerEnrollRequestDTO.getVendorId(),
+                learnerEnrollRequestDTO.getLearnerPackageSessionEnroll() != null,
+                userDTO.getEmail() != null);
         User user;
 
         // Check institute policy if instituteId is provided
         if (instituteId != null && !instituteId.isBlank()) {
             InstituteSignupPolicy signupPolicy = institutePolicyService.fetchSignupPolicy(instituteId);
+            log.debug("Fetched signup policy for instituteId={}: passwordStrategy={}, passwordDelivery={}, usernameStrategy={}, allowLearnersToCreateCourses={}",
+                    instituteId,
+                    signupPolicy != null ? signupPolicy.getPasswordStrategy() : null,
+                    signupPolicy != null ? signupPolicy.getPasswordDelivery() : null,
+                    signupPolicy != null ? signupPolicy.getUserNameStrategy() : null,
+                    signupPolicy != null && signupPolicy.isAllowLearnersToCreateCourses());
             if (signupPolicy != null && signupPolicy.getUserNameStrategy() != null
                     && signupPolicy.getUserNameStrategy().equalsIgnoreCase("email")) {
                 if (userDTO.getEmail() != null) {
+                    log.debug("usernameStrategy=email and email present. Setting username to email");
                     userDTO.setUsername(userDTO.getEmail());
                 }
             }
             boolean deliverPassword = signupPolicy != null
                     && signupPolicy.getPasswordDelivery() != null
                     && !signupPolicy.getPasswordDelivery().equalsIgnoreCase("none");
+            boolean isOauth2Signup = learnerEnrollRequestDTO.getSubjectId() != null && learnerEnrollRequestDTO.getVendorId() != null;
+            log.debug("Resolved deliverPassword={} (policy), isOauth2Signup={}", deliverPassword, isOauth2Signup);
 
             user = authService.createUser(userDTO, instituteId, deliverPassword);
+            log.debug("User createUser completed: userId={}, username={} (may be null if creation failed)",
+                    user != null ? user.getId() : null,
+                    user != null ? user.getUsername() : null);
         } else {
+            log.debug("No instituteId provided. Creating user with notifications enabled by default");
             user = authService.createUser(userDTO, null, true);
+            log.debug("User createUser (no institute) completed: userId={}, username={}",
+                    user != null ? user.getId() : null,
+                    user != null ? user.getUsername() : null);
         }
 
         if (user != null) {
@@ -136,6 +162,8 @@ public class LearnerAuthManager {
         }
 
         if (learnerEnrollRequestDTO.getLearnerPackageSessionEnroll() != null) {
+            log.debug("Proceeding with learner package session enroll via internal API: {}",
+                    AuthConstants.LEARNER_ENROLL_PATH);
             ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                     applicationName, HttpMethod.POST.name(),
                     adminCoreServiceBaseUrl, AuthConstants.LEARNER_ENROLL_PATH,
@@ -148,6 +176,8 @@ public class LearnerAuthManager {
                         "Failed to register learner: " + e.getMessage());
             }
         } else {
+            log.debug("Proceeding with open add-learner via internal API: {}",
+                    AuthConstants.ADD_LEARNER);
             ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                     applicationName, HttpMethod.POST.name(),
                     adminCoreServiceBaseUrl, AuthConstants.ADD_LEARNER,
@@ -155,12 +185,16 @@ public class LearnerAuthManager {
 
             // Response might be null, handle gracefully
             String responseInstituteId = (response != null) ? response.getBody() : null;
+            log.debug("add-learner response body instituteId={}", responseInstituteId);
         }
 
         // Verify email if data is available
         if (learnerEnrollRequestDTO.getSubjectId() != null &&
                 learnerEnrollRequestDTO.getVendorId() != null &&
                 user != null && user.getEmail() != null) {
+            log.debug("Verifying vendor email mapping for subjectId={}, vendorId={}, emailPresent=true",
+                    learnerEnrollRequestDTO.getSubjectId(),
+                    learnerEnrollRequestDTO.getVendorId());
             oAuth2VendorToUserDetailService.verifyEmail(
                     learnerEnrollRequestDTO.getSubjectId(),
                     learnerEnrollRequestDTO.getVendorId(),
@@ -173,11 +207,13 @@ public class LearnerAuthManager {
                 "VACADEMY-WEB"
         );
 
-        return authService.generateJwtTokenForUser(
+        JwtResponseDto jwt = authService.generateJwtTokenForUser(
                 user,
                 refreshToken,
                 (user != null && user.getRoles() != null) ? user.getRoles().stream().toList() : List.of()
         );
+        log.debug("Generated JWT for userId={} (access token omitted)", user != null ? user.getId() : null);
+        return jwt;
     }
 
 

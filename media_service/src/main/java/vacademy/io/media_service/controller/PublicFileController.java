@@ -31,14 +31,11 @@ public class PublicFileController {
 
         String url = fileService.getUrlWithExpiryAndId(fileId, expiryDays);
 
-        String etag = "W/\"" + fileId + ":" + expiryDays + "\"";
         HttpHeaders headers = new HttpHeaders();
-        headers.set("Cache-Control", "public, max-age=3600, stale-while-revalidate=60");
-        headers.setETag(etag);
-
-        if (etag.equals(ifNoneMatch)) {
-            return new ResponseEntity<>(null, headers, HttpStatus.NOT_MODIFIED);
-        }
+        // Prevent caching anywhere to avoid stale pre-signed URLs being reused from disk
+        headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+        headers.setPragma("no-cache");
+        headers.setExpires(0);
 
         return ResponseEntity.ok().headers(headers).body(url);
     }

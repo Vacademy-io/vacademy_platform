@@ -263,11 +263,17 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
             redirectWithTokens(response, redirectUrl, jwtResponseDto);
         } else {
             // Attempt guarded auto-signup for learners only when we have instituteId and email
+            boolean isLearner = "learner".equalsIgnoreCase(userType);
+            boolean hasInstitute = userInfo.instituteId != null && !userInfo.instituteId.isBlank();
+            boolean hasEmail = email != null;
+            log.debug("Auto-signup gating conditions -> isLearner={}, hasInstituteId={}, hasEmail={}, provider={}, subjectId={}",
+                    isLearner, hasInstitute, hasEmail, userInfo.providerId, userInfo.sub);
             if ("learner".equalsIgnoreCase(userType)
                     && userInfo.instituteId != null && !userInfo.instituteId.isBlank()
                     && email != null) {
                 try {
-                    log.info("User not found. Attempting auto-signup for learner as per institute settings. email={} instituteId={}", email, userInfo.instituteId);
+                    log.info("User not found. Attempting auto-signup for learner as per institute settings. email={} instituteId={} provider={} subjectId={}",
+                            email, userInfo.instituteId, userInfo.providerId, userInfo.sub);
                     JwtResponseDto autoSignupJwt = getLearnerOAuth2Manager().createUserAndLogin(
                             userInfo.name,
                             email,

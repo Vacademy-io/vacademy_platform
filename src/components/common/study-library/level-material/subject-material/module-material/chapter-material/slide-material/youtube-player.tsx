@@ -137,6 +137,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [isPseudoFullscreen, setIsPseudoFullscreen] = useState(false);
   const hasAutoPlayAttempted = useRef(false);
+  const [showManualPlayButton, setShowManualPlayButton] = useState(false);
 
   // Playback speed state
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
@@ -1045,6 +1046,25 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     }
   };
 
+  // Handler for manual play button (for iOS/browsers that block autoplay)
+  const handleManualPlay = async () => {
+    if (!player || !playerReady) return;
+
+    const success = await safePlayerOperation(() => {
+      try {
+        player.unMute();
+      } catch (e) {
+        console.warn("unMute failed during manual play", e);
+      }
+      player.playVideo();
+    }, "manualPlay");
+
+    if (success) {
+      setIsPlayed(true);
+      setShowManualPlayButton(false); // Hide the button permanently
+    }
+  };
+
   // Clean up fullscreen controls timeout
   useEffect(() => {
     return () => {
@@ -1076,10 +1096,25 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         }, "autoplay");
 
         if (success) {
-          setIsPlayed(true);
+          // Verify that video actually started playing after a short delay
+          setTimeout(async () => {
+            try {
+              const playerState = await player.getPlayerState();
+              // PlayerState.PLAYING = 1, if not playing, show manual button
+              if (playerState !== 1) {
+                setShowManualPlayButton(true);
+              } else {
+                setIsPlayed(true);
+                setShowManualPlayButton(false);
+              }
+            } catch (error) {
+              console.warn("Error checking player state after autoplay", error);
+              setShowManualPlayButton(true);
+            }
+          }, 1000);
         } else {
-          console.warn("Autoplay failed, resetting hasAutoPlayAttempted");
-          hasAutoPlayAttempted.current = false; // Allow retry if it failed
+          console.warn("Autoplay failed, showing manual play button");
+          setShowManualPlayButton(true);
         }
       }, 500);
 
@@ -1842,6 +1877,25 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
               </div>
               <span className="text-sm font-medium">10s</span>
             </div>
+          </div>
+        )}
+
+        {/* Manual Play Button for iOS/browsers that block autoplay */}
+        {showManualPlayButton && !allowPlayPause && (
+          <div className="absolute inset-0 flex items-center justify-center z-[1001] bg-black/30 backdrop-blur-sm animate-in fade-in duration-500">
+            <button
+              onClick={handleManualPlay}
+              className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 text-white shadow-2xl hover:scale-105 transition-all duration-300 hover:shadow-primary-500/50 active:scale-95"
+              aria-label="Start video"
+            >
+              <div className="p-4 rounded-full bg-white/20 backdrop-blur-sm">
+                <Play size={48} weight="fill" />
+              </div>
+              <span className="text-lg font-semibold">Tap to Start Video</span>
+              <span className="text-sm text-white/80">
+                Video will play automatically
+              </span>
+            </button>
           </div>
         )}
 

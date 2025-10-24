@@ -15,7 +15,11 @@
     "electron:start": "npm run build && electron --inspect=5858 ./",
     "electron:pack": "npm run build && electron-builder build --dir -c ./electron-builder.config.json",
     "electron:make": "npm run build && electron-builder build -c ./electron-builder.config.json",
-    "electron:make-win": "npm run build && electron-builder build --win -c ./electron-builder.config.json"
+    "electron:make-win": "npm run build && electron-builder build --win -c ./electron-builder.config.json",
+    "build:win:ssdc": "./build-windows.sh",
+    "build:win:ssdc:asar": "./build-windows-asar-pnpm.sh",
+    "build:win:ssdc:fast": "./build-windows-fast.sh",
+    "build:win:sevencs": "./build-windows-seven-cs.sh"
   },
   "dependencies": {
     "@capacitor-community/electron": "^5.0.0",
@@ -25,6 +29,8 @@
     "electron-unhandled": "~4.0.1",
     "electron-updater": "^5.3.0",
     "electron-window-state": "^5.0.3",
+    "mime-db": "^1.54.0",
+    "mime-types": "^3.0.1",
     "node-notifier": "^10.0.1",
     "tslib": "^2.8.1"
   },

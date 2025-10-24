@@ -4,7 +4,8 @@
   "directories": {
     "buildResources": "resources"
   },
-  "files": ["assets/**/*", "build/**/*", "capacitor.config.*", "app/**/*"],
+  "files": ["assets/**/*", "build/**/*", "capacitor.config.*", "app/**/*", "node_modules/**/*", "node_modules/.pnpm/**/*", "node_modules/.modules.yaml", "package.json"],
+  "asar": false,
   "publish": {
     "provider": "github",
     "owner": "Vacademy-io",

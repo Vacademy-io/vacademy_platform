@@ -15,6 +15,7 @@
     "package.json"
   ],
   "asar": false,
+  "compression": "store",
   "publish": { 
     "provider": "github",
     "owner": "Vacademy-io",
@@ -22,22 +23,26 @@
     "private": false
   },
   "nsis": {
-    "allowElevation": true,
-    "oneClick": false,
+    "oneClick": true,
     "perMachine": false,
-    "allowToChangeInstallationDirectory": true,
+    "allowToChangeInstallationDirectory": false,
+    "allowElevation": true,
     "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
     "differentialPackage": false,
-    "warningsAsErrors": false,
     "displayLanguageSelector": false,
     "installerHeaderIcon": "assets/ssdc_horizon.ico",
-    "deleteAppDataOnUninstall": false
+    "deleteAppDataOnUninstall": false,
+    "runAfterFinish": true
   },
-  "compression": "store",
   "win": {
     "target": [
-      "nsis:x64",
-      "portable"
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
     ],
     "icon": "assets/ssdc_horizon.ico",
     "signingHashAlgorithms": [
@@ -49,3 +54,4 @@
     "target": "dmg"
   }
 }
+

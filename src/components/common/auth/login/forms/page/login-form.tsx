@@ -346,7 +346,7 @@ export function LoginForm({
             if (instituteId === HOLISTIC_INSTITUTE_ID) {
               setPrimaryColor("holistic");
             } else {
-              setPrimaryColor(details?.institute_theme_code ?? "#E67E22");
+              setPrimaryColor(details?.institute_theme_code ?? import.meta.env.VITE_DEFAULT_THEME_COLOR ?? "#E67E22");
             }
           } catch (error) {
             console.error("Error fetching institute details:", error);

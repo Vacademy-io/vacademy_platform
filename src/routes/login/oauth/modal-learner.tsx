@@ -232,7 +232,7 @@ const handleModalSuccessfulLogin = async (
         // User is enrolled in the specified institute
         const details = await fetchAndStoreInstituteDetails(instituteId, userId);
         if (setPrimaryColor) {
-          setPrimaryColor(details?.institute_theme_code ?? "#E67E22");
+          setPrimaryColor(details?.institute_theme_code ?? import.meta.env.VITE_DEFAULT_THEME_COLOR ?? "#E67E22");
         }
         await fetchAndStoreStudentDetails(instituteId, userId);
 
@@ -251,7 +251,7 @@ const handleModalSuccessfulLogin = async (
       
       const details = await fetchAndStoreInstituteDetails(firstInstituteId, userId);
       if (setPrimaryColor) {
-        setPrimaryColor(details?.institute_theme_code ?? "#E67E22");
+        setPrimaryColor(details?.institute_theme_code ?? import.meta.env.VITE_DEFAULT_THEME_COLOR ?? "#E67E22");
       }
       await fetchAndStoreStudentDetails(firstInstituteId, userId);
 

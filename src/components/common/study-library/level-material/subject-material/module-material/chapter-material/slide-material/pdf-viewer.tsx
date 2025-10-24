@@ -78,38 +78,29 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
   // Add ref for PDF viewer component
   const pdfViewerRef = useRef<PdfViewerComponentRef>(null);
 
-  // Lock outer page scroll on mobile/Android while PDF is active
+  // Prevent page scroll bounce on mobile (but allow PDF container to scroll)
   useEffect(() => {
     const isMobile = window.matchMedia("(max-width: 768px)").matches;
     if (!isMobile) return;
 
     const html = document.documentElement;
-    const originalHtmlOverflow = html.style.overflow;
     const originalHtmlOverscroll = html.style.getPropertyValue("overscroll-behavior");
-    const originalBodyOverflow = document.body.style.overflow;
     const originalBodyOverscroll = document.body.style.getPropertyValue("overscroll-behavior");
-    const originalBodyHeight = document.body.style.height;
 
-    html.style.overflow = "hidden";
     html.style.setProperty("overscroll-behavior", "none");
-    document.body.style.overflow = "hidden";
     document.body.style.setProperty("overscroll-behavior", "none");
-    document.body.style.height = "100dvh";
 
     return () => {
-      html.style.overflow = originalHtmlOverflow;
       if (originalHtmlOverscroll) {
         html.style.setProperty("overscroll-behavior", originalHtmlOverscroll);
       } else {
         html.style.removeProperty("overscroll-behavior");
       }
-      document.body.style.overflow = originalBodyOverflow;
       if (originalBodyOverscroll) {
         document.body.style.setProperty("overscroll-behavior", originalBodyOverscroll);
       } else {
         document.body.style.removeProperty("overscroll-behavior");
       }
-      document.body.style.height = originalBodyHeight;
     };
   }, []);
 
@@ -556,7 +547,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
 
   // Update the return JSX to include a more informative pause dialog
   return (
-    <div className="relative w-full h-full overflow-hidden">
+    <div className="relative w-full h-full">
       {/* Verification overlay */}
       {showVerification && (
         <div className="absolute top-2 left-1/2 transform -translate-x-1/2 w-full max-w-xs z-[10000] animate-in fade-in slide-in-from-top duration-300">

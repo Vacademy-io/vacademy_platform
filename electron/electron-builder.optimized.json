@@ -14,7 +14,11 @@
     "node_modules/.modules.yaml",
     "package.json"
   ],
-  "asar": false,
+  "asar": true,
+  "asarUnpack": [
+    "**/*.node",
+    "**/node_modules/node-notifier/**/*"
+  ],
   "publish": { 
     "provider": "github",
     "owner": "Vacademy-io",
@@ -26,14 +30,8 @@
     "oneClick": false,
     "perMachine": false,
     "allowToChangeInstallationDirectory": true,
-    "createDesktopShortcut": true,
-    "differentialPackage": false,
-    "warningsAsErrors": false,
-    "displayLanguageSelector": false,
-    "installerHeaderIcon": "assets/ssdc_horizon.ico",
-    "deleteAppDataOnUninstall": false
+    "createDesktopShortcut": true
   },
-  "compression": "store",
   "win": {
     "target": [
       "nsis:x64",
@@ -49,3 +47,4 @@
     "target": "dmg"
   }
 }
+

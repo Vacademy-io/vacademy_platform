@@ -77,7 +77,7 @@ export function ForgotPassword() {
             if (parsedInstituteDetails.institute_id === HOLISTIC_INSTITUTE_ID) {
               setPrimaryColor("holistic");
             } else {
-              setPrimaryColor(parsedInstituteDetails.institute_theme_code ?? "#E67E22");
+              setPrimaryColor(parsedInstituteDetails.institute_theme_code ?? import.meta.env.VITE_DEFAULT_THEME_COLOR ?? "#E67E22");
             }
           }
         }

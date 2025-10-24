@@ -103,6 +103,12 @@ public class Step1Service {
             LocalDate endDate = LocalDate.parse(request.getSessionEndDate(), DateTimeFormatter.ISO_DATE);
 
             for (LiveSessionStep1RequestDTO.ScheduleDTO dto : request.getAddedSchedules()) {
+                // If schedule has an ID and exists in DB, treat it as an update instead
+                if (dto.getId() != null && !dto.getId().isEmpty() && scheduleRepository.existsById(dto.getId())) {
+                    updateSingleSchedule(dto, request);
+                    continue;
+                }
+                
                 String dayOfWeek = dto.getDay().toUpperCase();
 
                 LocalDate current = getNextOrSameDay(startDate, dayOfWeek);
@@ -157,20 +163,47 @@ public class Step1Service {
     private void handleUpdatedSchedules(LiveSessionStep1RequestDTO request) {
         if (request.getUpdatedSchedules() != null) {
             for (LiveSessionStep1RequestDTO.ScheduleDTO dto : request.getUpdatedSchedules()) {
-                SessionSchedule schedule = scheduleRepository.findById(dto.getId())
-                        .orElseThrow(() -> new RuntimeException("Schedule not found with id: " + dto.getId()));
-
-                schedule.setRecurrenceKey(dto.getDay().toLowerCase());
-                schedule.setStartTime(Time.valueOf(dto.getStartTime()));
-                schedule.setCustomMeetingLink(dto.getLink() != null ? dto.getLink() : request.getDefaultMeetLink());
-
-                // New Fields
-                schedule.setThumbnailFileId(dto.getThumbnailFileId());
-                schedule.setDailyAttendance(dto.isDailyAttendance());
-
-                scheduleRepository.save(schedule);
+                updateSingleSchedule(dto, request);
             }
         }
+    }
+    
+    private void updateSingleSchedule(LiveSessionStep1RequestDTO.ScheduleDTO dto, LiveSessionStep1RequestDTO request) {
+        SessionSchedule schedule = scheduleRepository.findById(dto.getId())
+                .orElseThrow(() -> new RuntimeException("Schedule not found with id: " + dto.getId()));
+
+        // Update day
+        if (dto.getDay() != null) {
+            schedule.setRecurrenceKey(dto.getDay().toLowerCase());
+        }
+        
+        // Update start time and calculate last entry time based on duration
+        if (dto.getStartTime() != null) {
+            schedule.setStartTime(Time.valueOf(dto.getStartTime()));
+            
+            if (dto.getDuration() != null) {
+                LocalTime parsedStartTime = LocalTime.parse(dto.getStartTime());
+                LocalTime computedLastEntryTime = parsedStartTime.plusMinutes(Long.parseLong(dto.getDuration()));
+                schedule.setLastEntryTime(Time.valueOf(computedLastEntryTime));
+            }
+        }
+        
+        // Update meeting link and link type
+        if (dto.getLink() != null) {
+            schedule.setCustomMeetingLink(dto.getLink());
+            schedule.setLinkType(getLinkTypeFromUrl(dto.getLink()));
+        } else if (request.getDefaultMeetLink() != null) {
+            schedule.setCustomMeetingLink(request.getDefaultMeetLink());
+            schedule.setLinkType(getLinkTypeFromUrl(request.getDefaultMeetLink()));
+        }
+
+        // Update other fields
+        if (dto.getThumbnailFileId() != null) {
+            schedule.setThumbnailFileId(dto.getThumbnailFileId());
+        }
+        schedule.setDailyAttendance(dto.isDailyAttendance());
+
+        scheduleRepository.save(schedule);
     }
 
     public static String getLinkTypeFromUrl(String link) {

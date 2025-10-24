@@ -1,9 +1,10 @@
 import { Preferences } from "@capacitor/preferences";
 import { TokenKey } from "@/constants/auth/tokens";
 import axios from "axios";
-import { isTokenExpired } from "./sessionUtility"; // Utility for JWT expiration checks
+import { isTokenExpired, removeTokensAndLogout } from "./sessionUtility"; // Utility for JWT expiration checks
 import { REFRESH_TOKEN_URL } from "@/constants/urls";
 import { maybeServeFromCache, maybeStoreInCache } from "@/lib/http/clientCache";
+import { toast } from "sonner";
 
 // Helper functions to interact with Capacitor Preferences
 export const getTokenFromStorage = async (
@@ -32,7 +33,6 @@ const refreshTokens = async (refreshToken: string): Promise<void> => {
       refreshToken: newRefreshToken,
       instituteId,
     } = response.data;
-
     // Store the new tokens and institute ID
     await Preferences.set({ key: TokenKey.accessToken, value: accessToken });
     await Preferences.set({
@@ -43,9 +43,10 @@ const refreshTokens = async (refreshToken: string): Promise<void> => {
       await Preferences.set({ key: "instituteId", value: instituteId });
       await Preferences.set({ key: "InstituteId", value: instituteId });
     }
-  } 
-   catch (error) {
+  } catch (error) {
     console.error("[Auth] Failed to refresh tokens:", error);
+    toast.error("Session expired. Please log in again.");
+    removeTokensAndLogout();
   }
 };
 
@@ -62,7 +63,9 @@ const authenticatedAxiosInstance = axios.create({
 authenticatedAxiosInstance.interceptors.request.use(
   async (request) => {
     const requestUrl = String(request.url || "");
-    const isPublicDomainRouting = requestUrl.includes("/public/domain-routing/");
+    const isPublicDomainRouting = requestUrl.includes(
+      "/public/domain-routing/"
+    );
     const isOpenEndpoint = requestUrl.includes("/open/");
 
     // For public/open endpoints, do not attach auth or perform refresh logic
@@ -90,11 +93,14 @@ authenticatedAxiosInstance.interceptors.request.use(
     }
     // Attempt to populate user and package session for Vary-aware caching
     try {
-      const studentDetailsStr = await Preferences.get({ key: "StudentDetails" });
+      const studentDetailsStr = await Preferences.get({
+        key: "StudentDetails",
+      });
       if (studentDetailsStr?.value) {
         const student = JSON.parse(studentDetailsStr.value);
         const userId = student?.user_id || student?.userId;
-        const packageSessionId = student?.package_session_id || student?.packageSessionId;
+        const packageSessionId =
+          student?.package_session_id || student?.packageSessionId;
         if (userId) {
           request.headers["X-User-Id"] = String(userId);
         }
@@ -114,7 +120,7 @@ authenticatedAxiosInstance.interceptors.request.use(
 
     // Check if the access token is expired
     const isExpired = isTokenExpired(accessToken);
-    
+
     if (!isExpired) {
       request.headers.Authorization = `Bearer ${accessToken}`;
       // Serve from client cache for GET when possible
@@ -136,7 +142,6 @@ authenticatedAxiosInstance.interceptors.request.use(
         request = maybeServeFromCache(request);
         return request;
       } catch {
-
         // If token refresh fails, remove tokens and institute ID
         await removeTokensAndInstituteId();
 
@@ -159,10 +164,16 @@ authenticatedAxiosInstance.interceptors.response.use(
   async (error) => {
     // Allow public domain routing errors to pass through without auth side-effects
     const requestUrl = String(error?.config?.url || "");
-    const isPublicDomainRouting = requestUrl.includes("/public/domain-routing/");
+    const isPublicDomainRouting = requestUrl.includes(
+      "/public/domain-routing/"
+    );
 
     // Handle unauthorized errors (401)
-    if (!isPublicDomainRouting && error.response && error.response.status === 401) {
+    if (
+      !isPublicDomainRouting &&
+      error.response &&
+      error.response.status === 401
+    ) {
       // Remove tokens and institute ID
       await removeTokensAndInstituteId();
 
@@ -171,7 +182,11 @@ authenticatedAxiosInstance.interceptors.response.use(
     }
 
     // Handle forbidden errors (403) - might be token issues
-    if (!isPublicDomainRouting && error.response && error.response.status === 403) {
+    if (
+      !isPublicDomainRouting &&
+      error.response &&
+      error.response.status === 403
+    ) {
       // Handle 403 errors silently
     }
 

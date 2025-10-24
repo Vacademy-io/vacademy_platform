@@ -3,6 +3,16 @@ import { renderAsync } from "docx-preview";
 import TurndownService from "turndown";
 import ReactMarkdown from "react-markdown";
 
+// Helper to strip expired query params from public AWS S3 URLs
+// Example: https://...amazonaws.com/.../image.jpg?X-Amz-Algorithm=... -> https://...amazonaws.com/.../image.jpg
+const stripAwsQueryParamsFromUrls = (input: string): string => {
+  const awsSignedUrlRegex = /https?:\/\/[^"'()<>\s]*amazonaws\.com[^"'()<>\s]*\?[^"'()<>\s]*/gi;
+  return input.replace(awsSignedUrlRegex, (matched: string): string => {
+    const qIndex = matched.indexOf("?");
+    return qIndex === -1 ? matched : matched.slice(0, qIndex);
+  });
+};
+
 export interface DocViewerComponentRef {
   jumpToPage: (pageIndex: number) => void;
 }
@@ -109,7 +119,9 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
         if (containsEmbedded) {
           try {
             const parser = new DOMParser();
-            const parsed = parser.parseFromString(stableDocUrl, 'text/html');
+            // Sanitize AWS S3 URLs before parsing as a defensive step
+            const sanitizedHtmlInput = stripAwsQueryParamsFromUrls(stableDocUrl);
+            const parsed = parser.parseFromString(sanitizedHtmlInput, 'text/html');
 
             // Make embeds responsive
             const iframeNodes = Array.from(parsed.getElementsByTagName('iframe'));
@@ -133,24 +145,27 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
               node.replaceWith(wrapper);
             });
 
-            const bodyHtml = parsed.body ? parsed.body.innerHTML : stableDocUrl;
-            setHtmlContent(bodyHtml);
+            const bodyHtml = parsed.body ? parsed.body.innerHTML : sanitizedHtmlInput;
+            // Final pass to ensure any URLs serialized from DOM are clean
+            const sanitizedBodyHtml = stripAwsQueryParamsFromUrls(bodyHtml);
+            setHtmlContent(sanitizedBodyHtml);
             setMarkdownContent("");
           } catch {
             // If parsing fails, fallback to direct assignment
-            setHtmlContent(stableDocUrl);
+            setHtmlContent(stripAwsQueryParamsFromUrls(stableDocUrl));
             setMarkdownContent("");
           }
         } else {
           try {
             // Convert HTML to Markdown using Turndown for better theming
-            const markdown = turndownService.turndown(stableDocUrl);
+            const sanitized = stripAwsQueryParamsFromUrls(stableDocUrl);
+            const markdown = turndownService.turndown(sanitized);
             setMarkdownContent(markdown);
             setHtmlContent("");
           } catch {
             // Fallback to plain text if conversion fails
             const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = stableDocUrl;
+            tempDiv.innerHTML = stripAwsQueryParamsFromUrls(stableDocUrl);
             const fallbackContent = tempDiv.textContent || stableDocUrl;
             setMarkdownContent(fallbackContent);
             setHtmlContent("");
@@ -158,7 +173,8 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
         }
       } else {
         // For DOCX content, fetch and render using docx-preview
-        const response = await fetch(stableDocUrl);
+        const sanitizedUrl = stripAwsQueryParamsFromUrls(stableDocUrl);
+        const response = await fetch(sanitizedUrl);
         
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         

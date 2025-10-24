@@ -192,11 +192,10 @@ const handleModalOAuthCallback = async (
       }, 800);
     } else {
       console.log('[OAuth Popup][DEBUG] Parent window not accessible for generic error, redirecting');
-      // Fallback: redirect to signup page with parameters
-      const signupUrl = new URL(window.location.origin + "/signup");
-      signupUrl.searchParams.set("openModal", "true");
-      signupUrl.searchParams.set("fromOAuth", "true");
-      window.location.href = signupUrl.toString();
+      // Fallback: redirect to login page with parameters
+      const loginUrl = new URL(window.location.origin + "/login");
+      loginUrl.searchParams.set("fromOAuth", "true");
+      window.location.href = loginUrl.toString();
     }
   }
 };

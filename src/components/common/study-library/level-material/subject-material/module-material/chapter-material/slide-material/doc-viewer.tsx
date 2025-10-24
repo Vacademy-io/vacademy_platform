@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { useTrackingStore } from "@/stores/study-library/pdf-tracking-store";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
@@ -10,6 +10,15 @@ import {
     DocViewerComponent,
     DocViewerComponentRef,
 } from "./doc-viewer-component";
+
+// Helper to strip expired query params from public AWS S3 URLs inside strings/HTML
+const stripAwsQueryParamsFromUrls = (input: string): string => {
+    const awsSignedUrlRegex = /https?:\/\/[^"'()<>\s]*amazonaws\.com[^"'()<>\s]*\?[^"'()<>\s]*/gi;
+    return input.replace(awsSignedUrlRegex, (matched: string): string => {
+        const qIndex = matched.indexOf("?");
+        return qIndex === -1 ? matched : matched.slice(0, qIndex);
+    });
+};
 
 interface DocViewerProps {
     docUrl: string;
@@ -79,6 +88,9 @@ export const DocViewer: React.FC<DocViewerProps> = ({
 
     // Add state for tab visibility
     const [isTabHidden, setIsTabHidden] = useState(document.hidden);
+    // Sanitize incoming docUrl once per change (handles both raw HTML and plain URLs)
+    const sanitizedDocUrl = useMemo(() => stripAwsQueryParamsFromUrls(docUrl || ""), [docUrl]);
+
     //const lastVisibilityState = useRef(document.hidden);
 
     // Save verification data
@@ -591,7 +603,7 @@ export const DocViewer: React.FC<DocViewerProps> = ({
 
             <DocViewerComponent
                 ref={docViewerRef}
-                docUrl={docUrl}
+                docUrl={sanitizedDocUrl}
                 handleDocumentLoad={handleDocumentLoad}
                 handlePageChange={handlePageChange}
                 initialPage={currentPage}

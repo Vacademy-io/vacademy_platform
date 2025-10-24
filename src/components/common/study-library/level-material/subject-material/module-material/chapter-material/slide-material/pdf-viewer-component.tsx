@@ -17,7 +17,7 @@ import type {
 import "@react-pdf-viewer/core/lib/styles/index.css";
 import "@react-pdf-viewer/default-layout/lib/styles/index.css";
 import "@react-pdf-viewer/page-navigation/lib/styles/index.css";
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 
 export interface PdfViewerComponentRef {
   jumpToPage: (pageIndex: number) => void;
@@ -36,6 +36,7 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
 }, ref) => {
   // Container ref to control scroll behavior on mobile
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const [containerHeight, setContainerHeight] = useState<string | undefined>(undefined);
   // Create page navigation plugin instance
   const pageNavigationPluginInstance = pageNavigationPlugin();
   const { jumpToPage } = pageNavigationPluginInstance;
@@ -71,10 +72,15 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
   const { renderDefaultToolbar } =
     defaultLayoutPluginInstance.toolbarPluginInstance;
 
-  // Prevent scroll chaining/bounce on iOS at container edges
+  // Prevent scroll chaining/bounce ONLY on iOS at container edges
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+
+    const ua = navigator.userAgent || "";
+    const isIOS = /iPad|iPhone|iPod/.test(ua) ||
+      (navigator.platform === "MacIntel" && (((navigator as Navigator & { maxTouchPoints?: number }).maxTouchPoints ?? 0) > 1));
+    if (!isIOS) return;
 
     let startY = 0;
     const onTouchStart = (e: TouchEvent) => {
@@ -95,16 +101,13 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
       const isAtTop = scrollTop <= 0;
       const isAtBottom = scrollTop + offsetHeight >= scrollHeight - 1;
 
-      // If trying to scroll beyond edges, prevent default to stop page scroll/bounce
       if ((isAtTop && isScrollingUp) || (isAtBottom && !isScrollingUp)) {
         e.preventDefault();
       }
     };
 
     el.addEventListener("touchstart", onTouchStart, { passive: true });
-    el.addEventListener("touchmove", onTouchMove as EventListener, {
-      passive: false,
-    });
+    el.addEventListener("touchmove", onTouchMove as EventListener, { passive: false });
 
     return () => {
       el.removeEventListener("touchstart", onTouchStart as EventListener);
@@ -112,12 +115,41 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
     };
   }, []);
 
+  // Compute dynamic height for mobile browsers (Android/older WebViews)
+  useEffect(() => {
+    const computeHeight = () => {
+      const w = window.innerWidth;
+      // Match previous offsets: base 120px, sm 140px, lg 170px
+      let offset = 120;
+      if (w >= 1024) offset = 170;
+      else if (w >= 640) offset = 140;
+
+      const h = Math.max(0, window.innerHeight - offset);
+      setContainerHeight(`${h}px`);
+    };
+
+    computeHeight();
+    window.addEventListener("resize", computeHeight);
+    window.addEventListener("orientationchange", computeHeight);
+    return () => {
+      window.removeEventListener("resize", computeHeight);
+      window.removeEventListener("orientationchange", computeHeight);
+    };
+  }, []);
+
   return (
     <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
       <div
         ref={containerRef}
-        className="w-full h-[calc(100dvh-120px)] sm:h-[calc(100dvh-140px)] lg:h-[calc(100dvh-170px)] max-w-full mx-0 px-0 overflow-y-auto overflow-x-hidden overscroll-none custom-scrollbar"
-        style={{ touchAction: "pan-y", WebkitOverflowScrolling: "touch" }}
+        className="w-full max-w-full mx-0 px-0 overflow-y-scroll overflow-x-hidden custom-scrollbar"
+        style={{
+          height: containerHeight || "calc(100vh - 120px)",
+          minHeight: containerHeight || "calc(100vh - 120px)",
+          touchAction: "pan-y",
+          WebkitOverflowScrolling: "touch",
+          overscrollBehavior: "contain",
+          position: "relative",
+        }}
       >
         <Viewer
           fileUrl={pdfUrl}

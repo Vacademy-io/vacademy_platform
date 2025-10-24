@@ -1,15 +1,23 @@
 package vacademy.io.admin_core_service.features.institute_learner.manager;
 
 
+
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
+import vacademy.io.admin_core_service.features.enrollment_policy.dto.EnrollmentPolicySettingsDTO;
+import vacademy.io.admin_core_service.features.enrollment_policy.dto.ReenrollmentPolicyDTO;
+import vacademy.io.admin_core_service.features.enrollment_policy.enums.ActiveRepurchaseBehavior;
 import vacademy.io.admin_core_service.features.institute.controller.InstituteCertificateController;
 import vacademy.io.admin_core_service.features.institute_learner.constants.StudentConstants;
 import vacademy.io.admin_core_service.features.institute_learner.dto.*;
@@ -19,6 +27,7 @@ import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSe
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.learner.service.LearnerCouponService;
+import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
@@ -28,9 +37,16 @@ import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.institute.entity.Group;
+import vacademy.io.common.institute.entity.Institute;
+import vacademy.io.common.institute.entity.session.PackageSession;
 
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
+@Slf4j
 @Component
 public class StudentRegistrationManager {
 
@@ -44,6 +60,9 @@ public class StudentRegistrationManager {
 
     @Autowired
     StudentSessionRepository studentSessionRepository;
+
+    @Autowired
+    private PackageSessionRepository packageSessionRepository;
 
     @Value("${auth.server.baseurl}")
     private String authServerBaseUrl;
@@ -194,17 +213,39 @@ public class StudentRegistrationManager {
         return instituteStudentRepository.save(student);
     }
 
+    /**
+     * [REWORKED]
+     * Links a student to a package session, applying re-enrollment and access day policies.
+     */
     public String linkStudentToInstitute(Student student, InstituteStudentDetails details) {
         try {
+            // 1. Fetch the policy for the package session they are trying to join
+            vacademy.io.common.institute.entity.session.PackageSession packageSession = packageSessionRepository.findById(details.getPackageSessionId())
+                    .orElseThrow(() -> new VacademyException("PackageSession not found with id: " + details.getPackageSessionId()));
+
+            EnrollmentPolicySettingsDTO policy = parseEnrollmentPolicy(packageSession.getEnrollmentPolicySettings());
+            if (policy == null) {
+                policy = EnrollmentPolicySettingsDTO.builder().build();
+            }
+
+            // 2. Check for an active mapping in a *different* session (for stacking)
             Optional<StudentSessionInstituteGroupMapping> activeDestinationMapping = getActiveDestinationMapping(student, details);
+
+            // 3. Check for an *existing* mapping in *this* session (for re-enrollment/repurchase)
             Optional<StudentSessionInstituteGroupMapping> existingMapping = getExistingMapping(student, details);
 
             if (existingMapping.isPresent()) {
-                return updateExistingMapping(existingMapping.get(), activeDestinationMapping, details);
+                // Scenario: Re-enrollment (EXPIRED -> ACTIVE) or Repurchase (ACTIVE -> ACTIVE)
+                return updateExistingMapping(existingMapping.get(), activeDestinationMapping, details, policy);
             } else {
-                return createNewMapping(student, activeDestinationMapping, details);
+                // Scenario: New Enrollment
+                return createNewMapping(student, activeDestinationMapping, details, policy);
             }
+        } catch (VacademyException e) {
+            log.error("Policy-based enrollment failed for student {}: {}", student.getUserId(), e.getMessage());
+            throw e; // Re-throw the specific exception
         } catch (Exception e) {
+            log.error("Failed to link student {} to institute {}: {}", student.getUserId(), details.getInstituteId(), e.getMessage(), e);
             throw new VacademyException("Failed to link student to institute: " + e.getMessage());
         }
     }
@@ -215,79 +256,149 @@ public class StudentRegistrationManager {
         }
 
         return studentSessionRepository.findTopByPackageSessionIdAndUserIdAndStatusIn(
-            details.getDestinationPackageSessionId(),
-            details.getInstituteId(),
-            student.getUserId(),
-            List.of(LearnerSessionStatusEnum.ACTIVE.name())
+                details.getDestinationPackageSessionId(),
+                details.getInstituteId(),
+                student.getUserId(),
+                List.of(LearnerSessionStatusEnum.ACTIVE.name()) // Only check for ACTIVE
         );
     }
 
+    /**
+     * [CORRECTED]
+     * Now includes EXPIRED status to correctly handle re-enrollment scenarios.
+     */
     private Optional<StudentSessionInstituteGroupMapping> getExistingMapping(Student student, InstituteStudentDetails details) {
         return studentSessionRepository.findTopByPackageSessionIdAndUserIdAndStatusIn(
-            details.getPackageSessionId(),
-            details.getInstituteId(),
-            student.getUserId(),
-            List.of(
-                LearnerSessionStatusEnum.ACTIVE.name(),
-                LearnerSessionStatusEnum.INVITED.name(),
-                LearnerSessionStatusEnum.TERMINATED.name(),
-                LearnerSessionStatusEnum.INACTIVE.name()
-            )
+                details.getPackageSessionId(),
+                details.getInstituteId(),
+                student.getUserId(),
+                List.of(
+                        LearnerSessionStatusEnum.ACTIVE.name(),
+                        LearnerSessionStatusEnum.INVITED.name(),
+                        LearnerSessionStatusEnum.TERMINATED.name(),
+                        LearnerSessionStatusEnum.INACTIVE.name(),
+                        LearnerSessionStatusEnum.EXPIRED.name() // <-- ADDED
+                )
         );
     }
 
+    /**
+     * [REWORKED]
+     * Handles updates to an existing mapping, applying policy logic for re-enrollment and repurchasing.
+     */
     private String updateExistingMapping(
-        StudentSessionInstituteGroupMapping mapping,
-        Optional<StudentSessionInstituteGroupMapping> activeDestinationMapping,
-        InstituteStudentDetails details
+            StudentSessionInstituteGroupMapping mapping,
+            Optional<StudentSessionInstituteGroupMapping> activeDestinationMapping,
+            InstituteStudentDetails details,
+            EnrollmentPolicySettingsDTO policy
     ) {
-        mapping.setEnrolledDate(new Date());
+        Date now = new Date();
+        LearnerSessionStatusEnum currentStatus = LearnerSessionStatusEnum.valueOf(mapping.getStatus());
 
-        if (details.getEnrollmentStatus() != null)
-            mapping.setStatus(details.getEnrollmentStatus());
+        // --- 1. Re-enrollment Gap Logic (Point 6: Demo Scenario) ---
+        if (currentStatus == LearnerSessionStatusEnum.EXPIRED
+                || currentStatus == LearnerSessionStatusEnum.TERMINATED
+                || currentStatus == LearnerSessionStatusEnum.ACTIVE) {
 
-        if (details.getEnrollmentId() != null)
-            mapping.setInstituteEnrolledNumber(details.getEnrollmentId());
+            ReenrollmentPolicyDTO reenrollPolicy = policy.getReenrollmentPolicy();
+            if (reenrollPolicy != null && !Boolean.TRUE.equals(reenrollPolicy.getAllowReenrollmentAfterExpiry())) {
 
-        mapping.setUserPlanId(details.getUserPlanId());
+                Integer gapDays = reenrollPolicy.getReenrollmentGapInDays();
+                // Base check on expiry date, or last update time if expiry was null
+                Date lastEventDate = mapping.getExpiryDate() != null ? mapping.getExpiryDate() : mapping.getUpdatedAt();
 
-        if (details.getAccessDays() != null) {
-            Date baseDate = determineBaseDate(mapping, activeDestinationMapping);
-            mapping.setExpiryDate(makeExpiryDate(baseDate, details.getAccessDays()));
+                if (gapDays != null && gapDays > 0 && lastEventDate != null) {
+                    Date reEnrollmentAllowedDate = addDaysToDate(lastEventDate, gapDays);
+
+                    if (now.before(reEnrollmentAllowedDate)) {
+                        log.warn("Re-enrollment blocked for user {} on packageSession {}. Gap period active until {}.",
+                                mapping.getUserId(), mapping.getPackageSession().getId(), reEnrollmentAllowedDate);
+
+                        // Convert Date to LocalDate for formatting
+                        LocalDate allowedDate = reEnrollmentAllowedDate.toInstant()
+                                .atZone(ZoneId.systemDefault())
+                                .toLocalDate();
+
+                        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
+                        throw new VacademyException(
+                                "Re-enrollment is not allowed for this course at this time. Please try again after "
+                                        + allowedDate.format(formatter)
+                        );
+                    }
+                }
+            }
         }
+
+        // --- 2. Determine Base Date for Expiry Calculation (Point 5: Repurchase) ---
+        Date baseDate = now;
+        ActiveRepurchaseBehavior behavior = ActiveRepurchaseBehavior.STACK; // Default
+        if (policy.getReenrollmentPolicy() != null && policy.getReenrollmentPolicy().getActiveRepurchaseBehavior() != null) {
+            behavior = policy.getReenrollmentPolicy().getActiveRepurchaseBehavior();
+        }
+
+        if (currentStatus == LearnerSessionStatusEnum.ACTIVE && behavior == ActiveRepurchaseBehavior.STACK) {
+            if (mapping.getExpiryDate() != null && mapping.getExpiryDate().after(now)) {
+                baseDate = mapping.getExpiryDate(); // STACK: Base is current expiry date
+            }
+        }
+        // If OVERWRITE, INACTIVE, EXPIRED, etc., baseDate remains 'now'
+
+        // --- 3. Check Active Destination Mapping (Stacking on other courses) ---
+        if (activeDestinationMapping.isPresent()) {
+            Date destExpiry = activeDestinationMapping.get().getExpiryDate();
+            if (destExpiry != null && destExpiry.after(baseDate)) {
+                baseDate = destExpiry; // Always stack on the *latest* available date
+            }
+        }
+
+        // --- 4. Calculate New Expiry Date ---
+        Date newExpiryDate = calculateNewExpiryDate(baseDate, details.getUserPlanId(), details.getAccessDays());
+
+        // --- 5. Apply Updates ---
+        mapping.setEnrolledDate(now);
+        mapping.setStatus(LearnerSessionStatusEnum.ACTIVE.name()); // Reactivate
+        if (details.getEnrollmentId() != null) {
+            mapping.setInstituteEnrolledNumber(details.getEnrollmentId());
+        }
+        mapping.setUserPlanId(details.getUserPlanId());
+        mapping.setExpiryDate(newExpiryDate);
 
         return studentSessionRepository.save(mapping).getId();
     }
 
+    /**
+     * [REWORKED]
+     * Creates a new mapping, applying policy logic. Uses JPA save() instead of native query.
+     */
     private String createNewMapping(
-        Student student,
-        Optional<StudentSessionInstituteGroupMapping> activeDestinationMapping,
-        InstituteStudentDetails details
+            Student student,
+            Optional<StudentSessionInstituteGroupMapping> activeDestinationMapping,
+            InstituteStudentDetails details,EnrollmentPolicySettingsDTO policySettingsDTO
     ) {
         UUID studentSessionId = UUID.randomUUID();
         Date baseDate = determineBaseDate(null, activeDestinationMapping);
 
         studentSessionRepository.addStudentToInstitute(
-            studentSessionId.toString(),
-            student.getUserId(),
-            details.getEnrollmentDate() == null ? new Date() : details.getEnrollmentDate(),
-            details.getEnrollmentStatus(),
-            generateEnrollmentId(),
-            details.getGroupId(),
-            details.getInstituteId(),
-            makeExpiryDate(baseDate, details.getAccessDays()),
-            details.getPackageSessionId(),
-            details.getDestinationPackageSessionId(),
-            details.getUserPlanId()
+                studentSessionId.toString(),
+                student.getUserId(),
+                details.getEnrollmentDate() == null ? new Date() : details.getEnrollmentDate(),
+                details.getEnrollmentStatus(),
+                generateEnrollmentId(),
+                details.getGroupId(),
+                details.getInstituteId(),
+                makeExpiryDate(baseDate, details.getAccessDays()),
+                details.getPackageSessionId(),
+                details.getDestinationPackageSessionId(),
+                details.getUserPlanId()
         );
 
         return studentSessionId.toString();
     }
 
-
     private Date determineBaseDate(
-        StudentSessionInstituteGroupMapping currentMapping,
-        Optional<StudentSessionInstituteGroupMapping> activeDestinationMapping
+            StudentSessionInstituteGroupMapping currentMapping,
+            Optional<StudentSessionInstituteGroupMapping> activeDestinationMapping
     ) {
         Date now = new Date();
 
@@ -299,8 +410,8 @@ public class StudentRegistrationManager {
         }
 
         if (currentMapping != null &&
-            LearnerSessionStatusEnum.ACTIVE.name().equalsIgnoreCase(currentMapping.getStatus()) &&
-            currentMapping.getExpiryDate() != null) {
+                LearnerSessionStatusEnum.ACTIVE.name().equalsIgnoreCase(currentMapping.getStatus()) &&
+                currentMapping.getExpiryDate() != null) {
             return currentMapping.getExpiryDate().after(now) ? currentMapping.getExpiryDate() : now;
         }
 
@@ -308,17 +419,16 @@ public class StudentRegistrationManager {
     }
 
 
-
     public String shiftStudentBatch(
-        StudentSessionInstituteGroupMapping invitedPackageSession,
-        String newStatus
+            StudentSessionInstituteGroupMapping invitedPackageSession,
+            String newStatus
     ) {
         try {
             String userId = invitedPackageSession.getUserId();
             String instituteId = invitedPackageSession.getInstitute().getId();
 
             StudentSessionInstituteGroupMapping mappingToUse = findOrCreateMapping(
-                instituteId, userId, newStatus, invitedPackageSession
+                    instituteId, userId, newStatus, invitedPackageSession
             );
 
 
@@ -332,22 +442,20 @@ public class StudentRegistrationManager {
     }
 
     private StudentSessionInstituteGroupMapping findOrCreateMapping(
-        String instituteId,
-        String userId,
-        String newStatus,
-        StudentSessionInstituteGroupMapping invitedPackageSession
-    )
-    {
+            String instituteId,
+            String userId,
+            String newStatus,
+            StudentSessionInstituteGroupMapping invitedPackageSession
+    ) {
         Optional<StudentSessionInstituteGroupMapping> existingMappingOpt =
-            studentSessionRepository.findTopByPackageSessionIdAndUserIdAndStatusIn(
-                invitedPackageSession.getDestinationPackageSession().getId(),instituteId, userId, List.of(LearnerSessionStatusEnum.ACTIVE.name())
-            );
+                studentSessionRepository.findTopByPackageSessionIdAndUserIdAndStatusIn(
+                        invitedPackageSession.getDestinationPackageSession().getId(), instituteId, userId, List.of(LearnerSessionStatusEnum.ACTIVE.name())
+                );
         StudentSessionInstituteGroupMapping activePackageSession;
         if (existingMappingOpt.isPresent()) {
             activePackageSession = existingMappingOpt.get();
-        }
-        else{
-           activePackageSession = new StudentSessionInstituteGroupMapping();
+        } else {
+            activePackageSession = new StudentSessionInstituteGroupMapping();
             activePackageSession.setInstitute(invitedPackageSession.getInstitute());
             activePackageSession.setUserId(invitedPackageSession.getUserId());
             activePackageSession.setInstituteEnrolledNumber(invitedPackageSession.getInstituteEnrolledNumber());
@@ -358,14 +466,19 @@ public class StudentRegistrationManager {
             activePackageSession.setType(invitedPackageSession.getType());
             activePackageSession.setTypeId(invitedPackageSession.getTypeId());
         }
-        activePackageSession.setExpiryDate(getExpiryDateBasedOnPaymentPlan(activePackageSession,invitedPackageSession.getUserPlanId()));
+
+        // Use the new helper method
+        Date baseDate = activePackageSession.getExpiryDate() != null && activePackageSession.getExpiryDate().after(new Date())
+                ? activePackageSession.getExpiryDate() : new Date();
+        activePackageSession.setExpiryDate(calculateNewExpiryDate(baseDate, invitedPackageSession.getUserPlanId(), null));
+
         return activePackageSession;
     }
 
     private void updateMappingFields(
-        StudentSessionInstituteGroupMapping mappingToUse,
-        StudentSessionInstituteGroupMapping sourceMapping,
-        String newStatus
+            StudentSessionInstituteGroupMapping mappingToUse,
+            StudentSessionInstituteGroupMapping sourceMapping,
+            String newStatus
     ) {
         mappingToUse.setEnrolledDate(new Date());
         mappingToUse.setStatus(newStatus);
@@ -379,7 +492,61 @@ public class StudentRegistrationManager {
         }
     }
 
-    private Date getExpiryDateBasedOnPaymentPlan(StudentSessionInstituteGroupMapping mapping, String userPlanId) {
+    /**
+     * [NEW HELPER]
+     * Calculates the new expiry date based on V2 (UserPlan) or V1 (legacyAccessDays).
+     * @param baseDate The date to add validity to (either 'now' or a future expiry date).
+     * @param userPlanId The ID of the V2 UserPlan.
+     * @param legacyAccessDays The V1 access days string.
+     * @return A new Date, or null if access is unlimited.
+     */
+    private Date calculateNewExpiryDate(Date baseDate, String userPlanId, String legacyAccessDays) {
+        Integer validityDays = getValidityDaysFromUserPlan(userPlanId);
+
+        if (validityDays == null && StringUtils.hasText(legacyAccessDays)) {
+            // Fallback to V1 logic if no V2 plan is found
+            try {
+                validityDays = Integer.parseInt(legacyAccessDays);
+            } catch (NumberFormatException e) {
+                log.warn("Could not parse legacyAccessDays: {}", legacyAccessDays);
+                validityDays = null;
+            }
+        }
+
+        if (validityDays == null) {
+            // Unlimited access
+            return null;
+        }
+
+        if (validityDays <= 0) {
+            // No extension, just return the base date (e.g., for free plans with 0 days)
+            return baseDate;
+        }
+
+        return addDaysToDate(baseDate, validityDays);
+    }
+
+    /**
+     * [NEW HELPER]
+     * Utility to add days to a date.
+     */
+    private Date addDaysToDate(Date date, int days) {
+        if (date == null) {
+            return null;
+        }
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(date);
+        calendar.add(Calendar.DAY_OF_YEAR, days);
+        return calendar.getTime();
+    }
+
+
+    /**
+     * [REFACTORED]
+     * Renamed from getExpiryDateBasedOnPaymentPlan.
+     * Returns the number of validity days from a UserPlan, or null for unlimited.
+     */
+    private Integer getValidityDaysFromUserPlan(String userPlanId) {
         if (userPlanId == null) return null;
 
         UserPlan userPlan = userPlanService.findById(userPlanId);
@@ -389,24 +556,13 @@ public class StudentRegistrationManager {
         PaymentOption paymentOption = userPlan.getPaymentOption();
         PaymentPlan paymentPlan = userPlan.getPaymentPlan();
 
-        Date today = new Date();
-        Date baseDate;
-
-        // Step 1: Determine base date
-        if (mapping != null && mapping.getExpiryDate() != null) {
-            baseDate = mapping.getExpiryDate().after(today) ? mapping.getExpiryDate() : today;
-        } else {
-            baseDate = today;
-        }
-
-        // Step 2: Determine validity days
         Integer validityDays = null;
 
         if (paymentOption != null) {
             String type = paymentOption.getType();
 
             if (PaymentOptionType.ONE_TIME.name().equalsIgnoreCase(type) ||
-                PaymentOptionType.SUBSCRIPTION.name().equalsIgnoreCase(type)) {
+                    PaymentOptionType.SUBSCRIPTION.name().equalsIgnoreCase(type)) {
 
                 validityDays = (paymentPlan != null) ? paymentPlan.getValidityInDays() : null;
 
@@ -414,28 +570,15 @@ public class StudentRegistrationManager {
 
                 validityDays = (enrollInvite != null) ? enrollInvite.getLearnerAccessDays() : null;
 
-            } else {
+            } else { // Defaults to FREE
                 validityDays = (enrollInvite != null) ? enrollInvite.getLearnerAccessDays() : null;
             }
+        } else if (enrollInvite != null) {
+            // Fallback for cases where paymentOption might be null (e.g., pure free invite)
+            validityDays = enrollInvite.getLearnerAccessDays();
         }
 
-        // Step 3: Handle unlimited access case
-        if (validityDays == null) {
-            // Unlimited access → expiry date should be null
-            return null;
-        }
-
-        // Step 4: Handle zero or negative validity (no extension)
-        if (validityDays <= 0) {
-            return baseDate;
-        }
-
-        // Step 5: Calculate expiry date
-        Calendar calendar = Calendar.getInstance();
-        calendar.setTime(baseDate);
-        calendar.add(Calendar.DAY_OF_YEAR, validityDays);
-
-        return calendar.getTime();
+        return validityDays; // Will be null if unlimited, or an Integer
     }
 
 
@@ -446,18 +589,18 @@ public class StudentRegistrationManager {
         String packageSessionId = mapping.getPackageSession() != null ? mapping.getPackageSession().getId() : null;
         String instituteId = mapping.getInstitute() != null ? mapping.getInstitute().getId() : null;
         String destinationPackageSessionId = mapping.getDestinationPackageSession() != null
-            ? mapping.getDestinationPackageSession().getId()
-            : null;
+                ? mapping.getDestinationPackageSession().getId()
+                : null;
         String deletedStatus = LearnerSessionStatusEnum.DELETED.name();
 
         // Only call delete if at least userId and status are available
         if (userId != null) {
             studentSessionRepository.deleteByUniqueConstraint(
-                userId,
-                destinationPackageSessionId,
-                packageSessionId,
-                instituteId,
-                deletedStatus
+                    userId,
+                    destinationPackageSessionId,
+                    packageSessionId,
+                    instituteId,
+                    deletedStatus
             );
         }
 
@@ -478,10 +621,9 @@ public class StudentRegistrationManager {
             if (enrollmentDate == null || accessDays == null) {
                 return null;
             }
-            Date expiryDate = new Date();
-            expiryDate.setTime(enrollmentDate.getTime() + Long.parseLong(accessDays) * 24 * 60 * 60 * 1000);
-            return expiryDate;
+            return addDaysToDate(enrollmentDate, Integer.parseInt(accessDays));
         } catch (Exception e) {
+            log.warn("Failed to parse and add accessDays: {}", e.getMessage());
         }
         return null;
     }
@@ -548,7 +690,13 @@ public class StudentRegistrationManager {
         return RandomStringUtils.randomNumeric(6);
     }
 
-    public String addStudent(UserDTO userDTO){
+    public String addStudent(UserDTO userDTO) {
         return createStudentFromRequest(userDTO, null).getId();
     }
+
+    private EnrollmentPolicySettingsDTO parseEnrollmentPolicy(String policyJson) {
+        // Use the JsonUtil from the common package as seen in the provided file
+        return JsonUtil.fromJson(policyJson, EnrollmentPolicySettingsDTO.class);
+    }
 }
+

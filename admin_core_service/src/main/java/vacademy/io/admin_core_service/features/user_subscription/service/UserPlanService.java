@@ -201,4 +201,8 @@ public class UserPlanService {
             return userPlanDTO;
         });
     }
+
+    public UserPlan saveUserPlan(UserPlan userPlan){
+        return userPlanRepository.save(userPlan);
+    }
 }

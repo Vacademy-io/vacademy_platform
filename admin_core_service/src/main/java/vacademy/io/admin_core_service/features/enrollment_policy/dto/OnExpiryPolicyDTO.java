@@ -1,0 +1,16 @@
+package vacademy.io.admin_core_service.features.enrollment_policy.dto;
+
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import lombok.Value;
+import lombok.experimental.SuperBuilder;
+import lombok.extern.jackson.Jacksonized;
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
+
+@Value
+@Jacksonized
+@SuperBuilder
+@JsonIgnoreProperties(ignoreUnknown = true)
+public class OnExpiryPolicyDTO {
+    Integer waitingPeriodInDays;
+}

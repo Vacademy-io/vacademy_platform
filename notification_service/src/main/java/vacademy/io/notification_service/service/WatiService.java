@@ -2,6 +2,7 @@ package vacademy.io.notification_service.service;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
@@ -64,7 +65,6 @@ public class WatiService {
         WatiTemplateRequest request = new WatiTemplateRequest();
         request.setTemplateName(templateName);
         request.setBroadcastName(broadcastName != null ? broadcastName : "Notification");
-        request.setLanguageCode(languageCode);
         
         List<WatiReceiver> receivers = new ArrayList<>();
         for (Map.Entry<String, Map<String, String>> entry : uniqueUsers.entrySet()) {
@@ -76,13 +76,24 @@ public class WatiService {
             receiver.setWhatsappNumber(formattedPhone);
             
             List<WatiCustomParam> customParams = params.entrySet().stream()
-                    .sorted(Comparator.comparingInt(e -> {
+                    .sorted((e1, e2) -> {
                         try {
-                            return Integer.parseInt(e.getKey());
-                        } catch (NumberFormatException ex) {
-                            return Integer.MAX_VALUE;
+                            int k1 = Integer.parseInt(e1.getKey());
+                            try {
+                                int k2 = Integer.parseInt(e2.getKey());
+                                return Integer.compare(k1, k2);
+                            } catch (NumberFormatException ex2) {
+                                return 1; // numeric after non-numeric
+                            }
+                        } catch (NumberFormatException ex1) {
+                            try {
+                                Integer.parseInt(e2.getKey());
+                                return -1; // non-numeric before numeric
+                            } catch (NumberFormatException ex2) {
+                                return e1.getKey().compareTo(e2.getKey());
+                            }
                         }
-                    }))
+                    })
                     .map(e -> {
                         WatiCustomParam param = new WatiCustomParam();
                         param.setName(e.getKey());
@@ -123,9 +134,10 @@ public class WatiService {
     
     @Data
     public static class WatiTemplateRequest {
+        @JsonProperty("template_name")
         private String templateName;
+        @JsonProperty("broadcast_name")
         private String broadcastName;
-        private String languageCode;
         private List<WatiReceiver> receivers;
     }
     

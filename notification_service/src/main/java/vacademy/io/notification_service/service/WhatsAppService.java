@@ -171,7 +171,6 @@ public class WhatsAppService {
             
             String apiKey = watiConfig.path(NotificationConstants.API_KEY).asText();
             String apiUrl = watiConfig.path(NotificationConstants.API_URL).asText("https://live-server.wati.io");
-            
             if (apiKey == null || apiKey.isBlank()) {
                 log.error("WATI API key not configured");
                 return bodyParams.stream()

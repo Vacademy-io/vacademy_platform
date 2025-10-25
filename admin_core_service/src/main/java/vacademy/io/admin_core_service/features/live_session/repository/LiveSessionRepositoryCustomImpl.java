@@ -98,38 +98,44 @@ public class LiveSessionRepositoryCustomImpl implements LiveSessionRepositoryCus
             parameters.put("sessionIds", request.getSessionIds());
         }
 
-        // Date range filter with smart defaults
+        // Date range filter with timezone-aware smart defaults
         LocalDate startDate = request.getStartDate();
         LocalDate endDate = request.getEndDate();
 
+        // Check if filtering for LIVE status specifically
+        List<String> statuses = request.getStatuses();
+        boolean isLiveOnly = statuses != null && statuses.size() == 1 && 
+                           statuses.stream().anyMatch(s -> s.equalsIgnoreCase("LIVE"));
+
         // Apply smart date defaults if not provided
         if (startDate == null && endDate == null) {
-            // Determine if we're looking at past or future sessions based on status
-            List<String> statuses = request.getStatuses();
-            if (statuses != null && !statuses.isEmpty()) {
-                boolean hasLive = statuses.stream().anyMatch(s -> s.equalsIgnoreCase("LIVE"));
-                boolean hasDraft = statuses.stream().anyMatch(s -> s.equalsIgnoreCase("DRAFT"));
-                
-                if (hasLive || hasDraft) {
-                    // Upcoming: show next month
-                    startDate = LocalDate.now();
-                    endDate = LocalDate.now().plusMonths(1);
-                }
+            if (isLiveOnly) {
+                // For LIVE status only: get sessions that are ACTUALLY LIVE RIGHT NOW
+                // This matches the behavior of findCurrentlyLiveSessions but can be extended
+                // to check if current time is between start_time and last_entry_time
+                // Uses timezone-aware comparison: meeting_date = CURRENT_DATE in session's timezone
+                conditions.add("ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)");
             } else {
-                // Default behavior: show next month for upcoming sessions
-                startDate = LocalDate.now();
-                endDate = LocalDate.now().plusMonths(1);
+                // For upcoming/draft sessions: show next month using timezone-aware logic
+                // meeting_date >= CURRENT_DATE in session's timezone
+                conditions.add("ss.meeting_date >= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)");
+                
+                // Add end date: 1 month from now
+                LocalDate oneMonthLater = LocalDate.now().plusMonths(1);
+                conditions.add("ss.meeting_date <= :endDate");
+                parameters.put("endDate", java.sql.Date.valueOf(oneMonthLater));
             }
-        }
+        } else {
+            // User provided explicit dates - use them directly
+            if (startDate != null) {
+                conditions.add("ss.meeting_date >= :startDate");
+                parameters.put("startDate", java.sql.Date.valueOf(startDate));
+            }
 
-        if (startDate != null) {
-            conditions.add("ss.meeting_date >= :startDate");
-            parameters.put("startDate", java.sql.Date.valueOf(startDate));
-        }
-
-        if (endDate != null) {
-            conditions.add("ss.meeting_date <= :endDate");
-            parameters.put("endDate", java.sql.Date.valueOf(endDate));
+            if (endDate != null) {
+                conditions.add("ss.meeting_date <= :endDate");
+                parameters.put("endDate", java.sql.Date.valueOf(endDate));
+            }
         }
 
         // Time of day filter

@@ -166,7 +166,16 @@ POST /admin-core-service/get-sessions/search
 
 ## Example Use Cases
 
-### 1. Get All Live Sessions for Today
+### 1. Get Live Sessions Happening Today (Timezone-Aware)
+```json
+{
+  "institute_id": "inst-123",
+  "statuses": ["LIVE"]
+}
+```
+**Note**: Without date filters, this returns sessions scheduled for TODAY based on each session's timezone. The query uses `CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)` to compare dates in the session's timezone.
+
+### 1b. Get Live Sessions for Specific Date
 ```json
 {
   "institute_id": "inst-123",
@@ -175,6 +184,7 @@ POST /admin-core-service/get-sessions/search
   "end_date": "2025-10-25"
 }
 ```
+**Note**: When you provide explicit dates, those dates are used directly without timezone conversion.
 
 ### 2. Get Upcoming Sessions for Next Week
 ```json
@@ -237,9 +247,17 @@ POST /admin-core-service/get-sessions/search
 
 ### When No Filters Are Provided
 - **Statuses**: Shows `LIVE` and `DRAFT` only (excludes `DELETED`)
-- **Date Range**: Shows next 1 month from today
+- **Date Range**: 
+  - If `statuses = ['LIVE']` only: Shows sessions happening **TODAY** (timezone-aware)
+  - Otherwise: Shows next 1 month from today
 - **Pagination**: Page 0, Size 20
 - **Sorting**: By meeting date ascending, then start time ascending
+
+### Timezone Handling
+- **All date/time comparisons are timezone-aware**
+- Uses each session's timezone: `COALESCE(s.timezone, 'Asia/Kolkata')`
+- "Today" means "today in the session's timezone"
+- Example: A session with `timezone = 'America/New_York'` scheduled for "today" is compared against current date in New York time, not server time
 
 ### Deleted Sessions
 - Sessions with `status = 'DELETED'` are never returned
@@ -255,6 +273,7 @@ POST /admin-core-service/get-sessions/search
    - `institute_id, status, meeting_date`
    - `session_id, status`
    - `meeting_date, start_time`
+   - `timezone` (for timezone-aware queries)
 
 2. **Pagination Limits**: Maximum page size is 100 items
 
@@ -262,8 +281,14 @@ POST /admin-core-service/get-sessions/search
    - Uses `DISTINCT` to handle participant joins
    - Dynamic query building only includes conditions for non-null filters
    - Count query is optimized separately from data query
+   - Timezone-aware comparisons use PostgreSQL's `AT TIME ZONE` function
 
 4. **Caching**: Client-side caching enabled for 30 seconds with `PRIVATE` scope
+
+5. **Timezone Performance**:
+   - Timezone conversion happens at database level using `CURRENT_TIMESTAMP AT TIME ZONE`
+   - Each session's timezone is used: `COALESCE(s.timezone, 'Asia/Kolkata')`
+   - Falls back to 'Asia/Kolkata' if session has no timezone set
 
 ## Migration Notes
 

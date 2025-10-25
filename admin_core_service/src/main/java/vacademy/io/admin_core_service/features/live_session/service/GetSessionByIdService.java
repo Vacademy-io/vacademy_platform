@@ -103,6 +103,9 @@ public class GetSessionByIdService {
             dto.setWaitingRoomTime(first.getWaitingRoomTime().toString());
             dto.setThumbnailFileId(first.getThumbnailFileId());
             dto.setBackgroundScoreFileId(first.getBackgroundScoreFileId());
+            dto.setCoverFileId(first.getCoverFileId());
+            dto.setAllowRewind(first.getAllowRewind());
+            dto.setAllowPlayPause(first.getAllowPlayPause());
             dto.setSessionStreamingServiceType(first.getSessionStreamingServiceType());
             dto.setTimezone(first.getTimezone());
         }

@@ -166,14 +166,24 @@ POST /admin-core-service/get-sessions/search
 
 ## Example Use Cases
 
-### 1. Get Live Sessions Happening Today (Timezone-Aware)
+### 1. Get Live Sessions Happening RIGHT NOW (Timezone-Aware)
 ```json
 {
   "institute_id": "inst-123",
   "statuses": ["LIVE"]
 }
 ```
-**Note**: Without date filters, this returns sessions scheduled for TODAY based on each session's timezone. The query uses `CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)` to compare dates in the session's timezone.
+**Note**: Without date filters, this returns sessions that are **LIVE RIGHT NOW**. This means:
+- `meeting_date = TODAY` in session's timezone
+- `current_time >= start_time` (session has started)
+- `current_time <= last_entry_time` (still accepting entries)
+
+The query uses timezone-aware comparisons: `CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata'))` for both date and time checks.
+
+**Example**: If you query at 7:27 PM IST, you'll only get sessions that:
+- Are scheduled for today in their timezone
+- Have already started (start_time <= 19:27 in their timezone)
+- Are still accepting entries (last_entry_time >= 19:27 in their timezone)
 
 ### 1b. Get Live Sessions for Specific Date
 ```json
@@ -257,7 +267,18 @@ POST /admin-core-service/get-sessions/search
 - **All date/time comparisons are timezone-aware**
 - Uses each session's timezone: `COALESCE(s.timezone, 'Asia/Kolkata')`
 - "Today" means "today in the session's timezone"
-- Example: A session with `timezone = 'America/New_York'` scheduled for "today" is compared against current date in New York time, not server time
+- "Current time" means "current time in the session's timezone"
+- Example: A session with `timezone = 'Europe/London'` at 7:27 PM IST:
+  - Converts IST to London time (1:57 PM GMT)
+  - Checks if session is between start_time and last_entry_time in London time
+
+### Live Sessions Time Filtering
+For `statuses: ["LIVE"]` without date filters:
+1. **Date Check**: `meeting_date = CURRENT_DATE` in session's timezone
+2. **Start Time Check**: `current_time >= start_time` in session's timezone
+3. **End Time Check**: `current_time <= last_entry_time` in session's timezone
+
+This ensures you only get sessions that are **actively happening RIGHT NOW**, not all sessions scheduled for today.
 
 ### Deleted Sessions
 - Sessions with `status = 'DELETED'` are never returned
@@ -307,6 +328,18 @@ POST /admin-core-service/get-sessions/search
 4. **Configurable sorting**
 5. **Better performance** with dynamic query building
 6. **Combines filters** (e.g., batch + user + date range)
+7. **Improved LIVE filtering**: Returns sessions that are **actually live RIGHT NOW** (between start_time and last_entry_time), not just scheduled for today
+
+### Important Difference from Old `/live` Endpoint
+The old `GET /live` endpoint returns ALL sessions scheduled for today with status='LIVE', regardless of current time.
+
+The new search API with `statuses: ["LIVE"]` is **more accurate** - it only returns sessions that are:
+- Scheduled for today in their timezone ✅
+- Currently between start_time and last_entry_time ✅
+
+**Example at 7:27 PM IST:**
+- **Old endpoint**: Returns a session at 11:00 AM (already finished) ❌
+- **New endpoint**: Only returns sessions happening between 7:27 PM and their last_entry_time ✅
 
 ## Technical Implementation
 

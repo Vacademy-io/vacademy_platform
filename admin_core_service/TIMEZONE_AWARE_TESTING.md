@@ -16,7 +16,7 @@
 
 ## Test Scenarios
 
-### Scenario 1: Get LIVE Sessions (Should Return Only Today's)
+### Scenario 1: Get LIVE Sessions (Should Return Only Sessions Happening RIGHT NOW)
 
 ```bash
 curl -X POST http://localhost:8072/admin-core-service/get-sessions/search \
@@ -29,19 +29,30 @@ curl -X POST http://localhost:8072/admin-core-service/get-sessions/search \
 ```
 
 **Expected Result:**
-- Returns sessions where `meeting_date = TODAY` in each session's timezone
-- A session with `timezone: "America/New_York"` is evaluated against New York's current date
-- A session with `timezone: "Asia/Kolkata"` is evaluated against Kolkata's current date
+- Returns sessions where:
+  1. `meeting_date = TODAY` in session's timezone
+  2. `current_time >= start_time` in session's timezone (session has started)
+  3. `current_time <= last_entry_time` in session's timezone (still accepting entries)
 - Should NOT return future sessions
+- Should NOT return past sessions that already ended
+
+**Example at 7:27 PM IST:**
+- Session at 11:00 AM - 11:30 AM (London time) → ❌ NOT included (already finished)
+- Session at 7:00 PM - 8:00 PM (IST) → ✅ Included (currently live)
+- Session at 9:00 PM - 10:00 PM (IST) → ❌ NOT included (hasn't started yet)
 
 **What to verify:**
 ```javascript
+const currentTime = new Date();
 response.sessions.forEach(session => {
-  // All sessions should have meeting_date = today in their timezone
   console.log(`Session: ${session.title}`);
   console.log(`Timezone: ${session.timezone}`);
   console.log(`Meeting Date: ${session.meeting_date}`);
-  // meeting_date should be "today" when converted to session.timezone
+  console.log(`Start Time: ${session.start_time}`);
+  console.log(`Last Entry Time: ${session.last_entry_time}`);
+  
+  // Convert current time to session's timezone and verify:
+  // session.start_time <= current_time <= session.last_entry_time
 });
 ```
 
@@ -105,7 +116,7 @@ curl -X GET "http://localhost:8072/admin-core-service/get-sessions/live?institut
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
-**New Endpoint (Should Return Same Results):**
+**New Endpoint:**
 ```bash
 curl -X POST http://localhost:8072/admin-core-service/get-sessions/search \
   -H "Content-Type: application/json" \
@@ -116,8 +127,15 @@ curl -X POST http://localhost:8072/admin-core-service/get-sessions/search \
   }'
 ```
 
-**Verification:**
-Both should return the same sessions (today's LIVE sessions in their respective timezones).
+**Important Difference:**
+- **Old endpoint**: Returns ALL sessions scheduled for today (regardless of time) ❌
+- **New endpoint**: Returns ONLY sessions happening RIGHT NOW (between start_time and last_entry_time) ✅
+
+**Example at 7:27 PM IST:**
+- Old endpoint returns 20 sessions (all scheduled for today)
+- New endpoint returns 3 sessions (only ones happening between 7:27 PM and their last_entry_time)
+
+The new endpoint is MORE ACCURATE!
 
 ---
 
@@ -288,12 +306,15 @@ diff <(echo "$OLD_RESULT") <(echo "$NEW_RESULT")
 
 | Aspect | Old Behavior | New Behavior |
 |--------|-------------|--------------|
-| LIVE status without dates | ❌ Showed next month | ✅ Shows only today (timezone-aware) |
+| LIVE status without dates | ❌ Showed all sessions for today | ✅ Shows only sessions **live RIGHT NOW** |
+| Time filtering | ❌ No time check | ✅ Checks start_time <= current <= last_entry_time |
 | Date comparison | ❌ Server timezone | ✅ Session's timezone |
 | Timezone fallback | ❌ Unclear | ✅ Explicit: `COALESCE(s.timezone, 'Asia/Kolkata')` |
 | Explicit dates | ✅ Direct comparison | ✅ Same (no timezone conversion) |
 | Default status filter | ✅ LIVE & DRAFT | ✅ Same |
 | Pagination | ✅ Working | ✅ Same |
 
-**Key Improvement:** Sessions are now evaluated in their own timezone, not server timezone! 🌍
+**Key Improvements:**
+1. Sessions are evaluated in their own timezone, not server timezone! 🌍
+2. LIVE sessions are filtered by actual time - only shows sessions happening RIGHT NOW! ⏰
 

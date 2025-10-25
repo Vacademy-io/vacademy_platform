@@ -111,10 +111,16 @@ public class LiveSessionRepositoryCustomImpl implements LiveSessionRepositoryCus
         if (startDate == null && endDate == null) {
             if (isLiveOnly) {
                 // For LIVE status only: get sessions that are ACTUALLY LIVE RIGHT NOW
-                // This matches the behavior of findCurrentlyLiveSessions but can be extended
-                // to check if current time is between start_time and last_entry_time
-                // Uses timezone-aware comparison: meeting_date = CURRENT_DATE in session's timezone
+                // This means:
+                // 1. meeting_date = TODAY in session's timezone
+                // 2. current_time >= start_time (session has started)
+                // 3. current_time <= last_entry_time (still accepting entries)
+                // Uses timezone-aware comparison
                 conditions.add("ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)");
+                
+                // Check if current time is between start_time and last_entry_time
+                conditions.add("CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS time) >= ss.start_time");
+                conditions.add("CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS time) <= ss.last_entry_time");
             } else {
                 // For upcoming/draft sessions: show next month using timezone-aware logic
                 // meeting_date >= CURRENT_DATE in session's timezone

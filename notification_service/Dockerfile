@@ -7,10 +7,12 @@ WORKDIR /build
 # Declare the build arguments
 ARG GITHUB_TOKEN
 ARG JAVA_TOKEN
+ARG SENTRY_AUTH_TOKEN
 
 # Set environment variables
 ENV JAVA_TOKEN=$JAVA_TOKEN
 ENV ACCESS_GITHUB_USERNAME=$ACCESS_GITHUB_USERNAME
+ENV SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN
 
 # Copy the Maven settings file
 COPY settings.xml ./

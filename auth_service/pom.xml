@@ -121,6 +121,27 @@
                     <mainClass>vacademy.io.auth_service.AuthServiceApplication</mainClass>
                 </configuration>
             </plugin>
+            <plugin>
+                <groupId>io.sentry</groupId>
+                <artifactId>sentry-maven-plugin</artifactId>
+                <version>0.9.0</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <!-- for showing output of sentry-cli -->
+                    <debugSentryCli>true</debugSentryCli>
+                    <org>vacademy</org>
+                    <project>java-spring-boot</project>
+                    <!-- provide your auth token via SENTRY_AUTH_TOKEN environment variable -->
+                    <authToken>${env.SENTRY_AUTH_TOKEN}</authToken>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>uploadSourceBundle</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
         <finalName>auth_service</finalName>
     </build>

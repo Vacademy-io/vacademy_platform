@@ -27,10 +27,13 @@ jobs:
 
       - name: Build with Maven
         run: mvn -B package --file common_service/pom.xml
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
 
       - name: Publish to GitHub Packages Apache Maven
         run: mvn --batch-mode deploy --file common_service/pom.xml
         env:
           GITHUB_TOKEN: ${{ secrets.JAVA_TOKEN }}
           ACCESS_GITHUB_USERNAME: ${{ secrets.ACCESS_GITHUB_USERNAME }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
 

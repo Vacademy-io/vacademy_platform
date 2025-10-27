@@ -156,7 +156,7 @@ public class InstituteSettingManager {
                     newCustomFieldDto.setGroupName(fieldDto.getGroupName());
                     newCustomFieldDto.setGroupInternalOrder(fieldDto.getGroupInternalOrder());
                     newCustomFieldDto.setIndividualOrder(fieldDto.getIndividualOrder());
-
+                    newCustomFieldDto.setConfig(fieldDto.getConfig());
                     // Use the new method that prevents duplicate keys for the institute
                     CustomFields savedCustomField = instituteCustomFiledService
                             .createOrFindCustomFieldByKey(newCustomFieldDto, institute.getId());
@@ -229,6 +229,10 @@ public class InstituteSettingManager {
 
         if (StringUtils.hasText(fieldDto.getStatus())){
             customField.setStatus(fieldDto.getStatus());
+        }
+
+        if (StringUtils.hasText(fieldDto.getConfig())){
+            customField.setConfig(fieldDto.getConfig());
         }
 
         // Save custom field if it was updated

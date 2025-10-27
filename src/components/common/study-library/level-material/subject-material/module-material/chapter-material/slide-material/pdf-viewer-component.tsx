@@ -119,21 +119,44 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
   useEffect(() => {
     const computeHeight = () => {
       const w = window.innerWidth;
-      // Match previous offsets: base 120px, sm 140px, lg 170px
-      let offset = 120;
-      if (w >= 1024) offset = 170;
-      else if (w >= 640) offset = 140;
-
-      const h = Math.max(0, window.innerHeight - offset);
+      const vh = window.innerHeight;
+      
+      // Calculate offsets based on actual UI elements:
+      // - Header (varies by screen size)
+      // - Mobile bottom nav (only on mobile < 640px)
+      // - Borders and padding
+      let headerHeight = 60; // Compact header on mobile
+      let bottomNavHeight = 0;
+      
+      if (w < 640) {
+        // Mobile: smaller header + bottom nav + safe area
+        headerHeight = 50;
+        bottomNavHeight = 60; // Bottom nav bar height
+      } else if (w < 1024) {
+        // Tablet
+        headerHeight = 70;
+      } else {
+        // Desktop
+        headerHeight = 80;
+      }
+      
+      const totalOffset = headerHeight + bottomNavHeight + 10; // +10 for padding/borders
+      const h = Math.max(300, vh - totalOffset);
       setContainerHeight(`${h}px`);
     };
 
     computeHeight();
     window.addEventListener("resize", computeHeight);
     window.addEventListener("orientationchange", computeHeight);
+    
+    // Also recompute on viewport changes (for Android keyboard, etc)
+    const resizeObserver = new ResizeObserver(computeHeight);
+    resizeObserver.observe(document.body);
+    
     return () => {
       window.removeEventListener("resize", computeHeight);
       window.removeEventListener("orientationchange", computeHeight);
+      resizeObserver.disconnect();
     };
   }, []);
 
@@ -143,8 +166,9 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
         ref={containerRef}
         className="w-full max-w-full mx-0 px-0 overflow-y-scroll overflow-x-hidden custom-scrollbar"
         style={{
-          height: containerHeight || "calc(100vh - 120px)",
-          minHeight: containerHeight || "calc(100vh - 120px)",
+          height: containerHeight || "100%",
+          minHeight: containerHeight || "300px",
+          maxHeight: containerHeight || "100vh",
           touchAction: "pan-y",
           WebkitOverflowScrolling: "touch",
           overscrollBehavior: "contain",

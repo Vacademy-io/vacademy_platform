@@ -66,6 +66,7 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           
         run: |
           docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg ACCESS_GITHUB_USERNAME=${ACCESS_GITHUB_USERNAME} --build-arg JAVA_TOKEN=${JAVA_TOKEN} --build-arg SENTRY_AUTH_TOKEN=${SENTRY_AUTH_TOKEN}
@@ -101,6 +102,7 @@ jobs:
               ADMIN_CORE_SERVICE_DB_URL=${{ secrets.ADMIN_CORE_SERVICE_DB_URL }} \
               GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
               OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }} \
+              SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }} \
               SENTRY_DSN=${{ secrets.SENTRY_DSN }} 
 
       - name: Restart deployment

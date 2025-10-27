@@ -1,5 +1,6 @@
 package vacademy.io.auth_service;
 
+import io.sentry.Sentry;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cache.annotation.EnableCaching;
@@ -14,5 +15,12 @@ import vacademy.io.common.auth.config.SharedConfigurationReference;
 public class AuthServiceApplication {
     public static void main(String[] args) {
         SpringApplication.run(AuthServiceApplication.class, args);
+
+           // Test Sentry integration
+           try {
+            throw new Exception("This is a test exception to verify Sentry integration.");
+        } catch (Exception e) {
+            Sentry.captureException(e);
+        }
     }
 }

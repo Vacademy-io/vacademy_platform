@@ -178,6 +178,8 @@ export function LoginForm({
     }
 
     if (accessToken && refreshToken) {
+      // Show loading screen immediately when processing OAuth tokens
+      setIsSSOLoading(true);
       setTokenInStorage(TokenKey.accessToken, accessToken);
       setTokenInStorage(TokenKey.refreshToken, refreshToken);
       handleSuccessfulLogin(accessToken, redirect);
@@ -193,11 +195,14 @@ export function LoginForm({
       refreshToken: string
     ) => {
       try {
+        // Show loading screen immediately when processing OAuth tokens from popup
+        setIsSSOLoading(true);
         await setTokenInStorage(TokenKey.accessToken, accessToken);
         await setTokenInStorage(TokenKey.refreshToken, refreshToken);
         await handleSuccessfulLogin(accessToken, redirect);
       } catch {
         toast.error("Failed to complete login. Please try again.");
+        setIsSSOLoading(false);
       }
     };
 

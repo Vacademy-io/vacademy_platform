@@ -21,8 +21,8 @@ COPY settings.xml ./
 # Copy the project files
 COPY . .
 
-# Build the project
-RUN mvn -s settings.xml clean install -DskipTests
+# Build the project with SENTRY_AUTH_TOKEN passed as Maven property
+RUN mvn -s settings.xml clean install -DskipTests -Dsentry.authToken=$SENTRY_AUTH_TOKEN
 
 # Stage 2: Package the application into the final image
 FROM amazoncorretto:17-alpine

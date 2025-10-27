@@ -8,7 +8,7 @@ ARG ACCESS_GITHUB_USERNAME
 ARG JAVA_TOKEN
 ARG SENTRY_AUTH_TOKEN
 
-# Set environment variables
+# Set environment variables - SENTRY_AUTH_TOKEN must be available for Maven
 ENV JAVA_TOKEN=$JAVA_TOKEN
 ENV ACCESS_GITHUB_USERNAME=$ACCESS_GITHUB_USERNAME
 ENV SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN
@@ -19,7 +19,8 @@ COPY settings.xml ./
 # Copy the project files
 COPY . .
 
-RUN mvn -s settings.xml clean package -DskipTests
+# Build with SENTRY_AUTH_TOKEN passed as Maven property
+RUN mvn -s settings.xml clean package -DskipTests -Dsentry.authToken=$SENTRY_AUTH_TOKEN
 
 
 # Stage 2: Package the application into the final image

@@ -131,8 +131,8 @@
                     <debugSentryCli>true</debugSentryCli>
                     <org>vacademy</org>
                     <project>java-spring-boot</project>
-                    <!-- provide your auth token via SENTRY_AUTH_TOKEN environment variable -->
-                    <authToken>${env.SENTRY_AUTH_TOKEN}</authToken>
+                    <!-- Auth token passed via Maven property: -Dsentry.authToken -->
+                    <authToken>${sentry.authToken}</authToken>
                 </configuration>
                 <executions>
                     <execution>

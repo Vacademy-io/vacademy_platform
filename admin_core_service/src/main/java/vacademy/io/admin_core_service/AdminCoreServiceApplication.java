@@ -18,12 +18,5 @@ public class AdminCoreServiceApplication {
 
     public static void main(String[] args) {
         SpringApplication.run(AdminCoreServiceApplication.class, args);
-
-        // Test Sentry integration
-        try {
-            throw new Exception("This is a test exception to verify Sentry integration.");
-        } catch (Exception e) {
-            Sentry.captureException(e);
-        }
     }
 }

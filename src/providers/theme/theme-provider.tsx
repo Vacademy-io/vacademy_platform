@@ -14,13 +14,15 @@ type ThemeContextType = {
 };
 
 const ThemeContext = createContext<ThemeContextType>({
-  primaryColor: "neutral",
+  primaryColor: import.meta.env.VITE_DEFAULT_THEME_COLOR ?? "neutral",
   setPrimaryColor: () => {},
   getPrimaryColorCode: () => "#6B7280",
 });
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [primaryColor, setPrimaryColor] = useState("neutral");
+  const [primaryColor, setPrimaryColor] = useState(
+    import.meta.env.VITE_DEFAULT_THEME_COLOR ?? "neutral"
+  );
 
   const getPrimaryColorCode = () => {
     const entry = themeData.themes.find((theme) => theme.code === primaryColor) as

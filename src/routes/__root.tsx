@@ -166,7 +166,7 @@ const RootComponent = () => {
     if (instituteId === HOLISTIC_INSTITUTE_ID) {
       setPrimaryColor("holistic");
     } else {
-      setPrimaryColor(themeCode ?? "primary");
+      setPrimaryColor(themeCode ?? import.meta.env.VITE_DEFAULT_THEME_COLOR ?? "neutral");
     }
   };
 

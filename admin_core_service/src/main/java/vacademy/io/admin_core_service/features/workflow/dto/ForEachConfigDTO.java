@@ -10,7 +10,7 @@ public class ForEachConfigDTO {
     private String on; // For switch operations and nested iterators
     private Map<String, Object> cases; // For switch operations
     private Object defaultCase; // For switch operations
-
+    private String compute;
     // For QUERY operations
     private String prebuiltKey;
     private Map<String, Object> params;

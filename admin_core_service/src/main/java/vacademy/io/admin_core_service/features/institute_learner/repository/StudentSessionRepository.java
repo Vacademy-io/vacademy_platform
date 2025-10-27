@@ -167,4 +167,22 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
         @Param("status") String status
     );
 
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM StudentSessionInstituteGroupMapping s " +
+            "WHERE s.userId = :userId " +
+            "AND s.typeId = :typeId " +
+            "AND s.source = :source " +
+            "AND s.type = :type " +
+            "AND s.packageSession.id = :packageSessionId " +
+            "AND s.institute.id = :instituteId")
+    int deleteByUserTypeSourcePackageInstitute(
+            @Param("userId") String userId,
+            @Param("typeId") String typeId,
+            @Param("source") String source,
+            @Param("type") String type,
+            @Param("packageSessionId") String packageSessionId,
+            @Param("instituteId") String instituteId
+    );
+
 }

@@ -176,4 +176,7 @@ WHERE ssigm.package_session_id IN (:psIds)
     Optional<StudentSessionInstituteGroupMapping> findBySourceAndUserIdAndStatus(
             String source, String userId, String status);
 
+    List<StudentSessionInstituteGroupMapping>findAllByStatus(String status);
+
+    List<StudentSessionInstituteGroupMapping>findByInstitute_IdAndStatus(String instituteId,String status);
 }

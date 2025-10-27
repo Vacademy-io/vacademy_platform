@@ -50,7 +50,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return createSessionParticipent(params);
             case "createLiveSession":
                 return createLiveSession(params);
-            case "checkStudentPaidMembership":
+            case "checkStudentIsPresentInPackageSession":
                 return isAlreadyPresentInGivenPackageSession(params);
             default:
                 log.warn("Unknown prebuilt query key: {}", prebuiltKey);
@@ -630,11 +630,11 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
         // If the optional has a value, it means the mapping exists.
         if (optionalStudentSessionInstituteGroupMapping.isPresent()) {
             // Return a map indicating the student is already a member.
-            return Map.of("isAlreadyPaidMember", true);
+            return Map.of("isAlreadyPresentInPackageSession", true);
         } else {
             // Otherwise, the student is not a member in this package.
             // Return a map indicating they are not a member.
-            return Map.of("isAlreadyPaidMember", false);
+            return Map.of("isAlreadyPresentInPackageSession", false);
         }
     }
 }

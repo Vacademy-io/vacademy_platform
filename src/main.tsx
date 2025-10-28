@@ -32,10 +32,44 @@ initializeAnalytics();
 
 const queryClient = new QueryClient();
 
+// PWA Service Worker Registration
+const registerServiceWorker = async () => {
+  if ('serviceWorker' in navigator && Capacitor.getPlatform() === 'web') {
+    try {
+      const registration = await navigator.serviceWorker.register('/sw.js', {
+        scope: '/'
+      });
+
+      registration.addEventListener('updatefound', () => {
+        const newWorker = registration.installing;
+        if (newWorker) {
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // New version available
+              if (confirm('A new version of SSDC Horizon is available. Reload to update?')) {
+                window.location.reload();
+              }
+            }
+          });
+        }
+      });
+
+      console.log('[PWA] Service worker registered:', registration);
+    } catch (error) {
+      console.error('[PWA] Service worker registration failed:', error);
+    }
+  }
+};
+
 // Notification initialization wrapper
 const NotificationInitializer = ({ children }: { children: React.ReactNode }) => {
   // Initialize push notifications when app starts
   usePushNotifications();
+
+  // Register PWA service worker
+  React.useEffect(() => {
+    registerServiceWorker();
+  }, []);
   
   // Listen for messages forwarded by the service worker
   useEffect(() => {

@@ -271,9 +271,11 @@ const RootComponent = () => {
     const storageHandler = (e: StorageEvent) => {
       if (!e) return;
       if (e.key === 'OAUTH_RESULT' && e.newValue) {
+        let parsed: { isModalLogin?: boolean; type?: string; data?: { accessToken?: string; refreshToken?: string } } | null = null;
         try {
-          const parsed = JSON.parse(e.newValue);
-          if (parsed?.type === 'oauth_success' && parsed?.data) {
+          parsed = JSON.parse(e.newValue);
+          // Only process page-level OAuth (isModalLogin === false), NOT modal OAuth
+          if (parsed?.isModalLogin === false && parsed?.type === 'oauth_success' && parsed?.data) {
             const data: { accessToken?: string; refreshToken?: string } = parsed.data || {};
             const { accessToken, refreshToken } = data;
             if (accessToken && refreshToken) {
@@ -283,7 +285,10 @@ const RootComponent = () => {
         } catch {
           // ignore
         } finally {
-          try { localStorage.removeItem('OAUTH_RESULT'); } catch (err) { void err; }
+          // Clean up if it was a page-level login
+          if (parsed?.isModalLogin === false) {
+            try { localStorage.removeItem('OAUTH_RESULT'); } catch (err) { void err; }
+          }
         }
       }
     };
@@ -295,7 +300,8 @@ const RootComponent = () => {
         bc.onmessage = (ev: MessageEvent) => {
           const msg = ev?.data;
           if (!msg || typeof msg !== 'object') return;
-          if (msg.type === 'oauth_success' && msg.data) {
+          // Only process page-level OAuth (isModalLogin === false), NOT modal OAuth
+          if (msg.isModalLogin === false && msg.type === 'oauth_success' && msg.data) {
             const data: { accessToken?: string; refreshToken?: string } = msg.data || {};
             const { accessToken, refreshToken } = data;
             if (accessToken && refreshToken) {
@@ -313,14 +319,18 @@ const RootComponent = () => {
       const existing = localStorage.getItem('OAUTH_RESULT');
       if (existing) {
         const parsed = JSON.parse(existing);
-        if (parsed?.type === 'oauth_success' && parsed?.data) {
+        // Only process page-level OAuth (isModalLogin === false), NOT modal OAuth
+        if (parsed?.isModalLogin === false && parsed?.type === 'oauth_success' && parsed?.data) {
           const data: { accessToken?: string; refreshToken?: string } = parsed.data || {};
           const { accessToken, refreshToken } = data;
           if (accessToken && refreshToken) {
             redirectWithTokens(accessToken, refreshToken);
           }
         }
-        localStorage.removeItem('OAUTH_RESULT');
+        // Only remove if it was a page-level login
+        if (parsed?.isModalLogin === false) {
+          localStorage.removeItem('OAUTH_RESULT');
+        }
       }
     } catch (err) {
       void err;

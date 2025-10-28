@@ -115,57 +115,103 @@ export function LoginForm({
   };
 
   useEffect(() => {
-    const ssoLoginSuccess = handleSSOLogin();
-    if (ssoLoginSuccess) {
-      setIsSSOLoading(true);
-      return;
-    }
-
+    // CRITICAL: Check for popup FIRST, before anything else
     const urlParams = new URLSearchParams(window.location.search);
     const accessToken = urlParams.get("accessToken");
     const refreshToken = urlParams.get("refreshToken");
-
+    
     // If this page is loaded inside an OAuth popup, do NOT complete login here.
     // Instead, broadcast tokens to the opener and close the popup to avoid duplicate app instances.
     const isPopupWindow = (() => {
-      try { if (window.opener && !window.opener.closed) return true; } catch {}
-      try { if (window.name && window.name.toLowerCase() === 'oauth_popup') return true; } catch {}
-      try { const q = new URLSearchParams(window.location.search); if (q.get('popup') === '1') return true; } catch {}
+      // Check if we have an opener (most reliable way to detect popup)
+      try { 
+        if (window.opener && !window.opener.closed) {
+          console.log('[LoginForm] ✅ Detected popup via window.opener');
+          return true;
+        }
+      } catch (e) {
+        console.log('[LoginForm] ❌ window.opener check failed:', e);
+      }
+      
+      // Check window name
+      try { 
+        if (window.name && window.name.toLowerCase() === 'oauth_popup') {
+          console.log('[LoginForm] ✅ Detected popup via window.name');
+          return true;
+        }
+      } catch {}
+      
+      // Check for popup parameter in URL
+      try { 
+        const q = new URLSearchParams(window.location.search); 
+        if (q.get('popup') === '1') {
+          console.log('[LoginForm] ✅ Detected popup via ?popup=1');
+          return true;
+        }
+      } catch {}
+      
+      console.log('[LoginForm] ❌ Not detected as popup window');
+      console.log('[LoginForm] Debug:', {
+        hasOpener: !!window.opener,
+        windowName: window.name,
+        searchParams: window.location.search
+      });
       return false;
     })();
+    
+    console.log('[LoginForm] 🔍 POPUP DETECTION:', { isPopupWindow, hasTokens: !!(accessToken && refreshToken), accessToken: accessToken?.substring(0, 50) + '...' });
 
     if (isPopupWindow && accessToken && refreshToken) {
+      console.log('[LoginForm] 🚀 POPUP DETECTED WITH TOKENS - CLOSING POPUP');
       try {
         // postMessage (may be blocked by COOP)
         try {
           if (window.opener && !window.opener.closed) {
+            console.log('[LoginForm] 📨 Sending postMessage to opener');
             window.opener.postMessage(
-              { type: 'oauth_success', data: { accessToken, refreshToken } },
+              { type: 'oauth_success', data: { accessToken, refreshToken }, isModalLogin: true },
               '*'
             );
           }
-        } catch { /* ignore */ }
+        } catch (e) { 
+          console.log('[LoginForm] ❌ postMessage failed:', e);
+        }
 
         // localStorage event for parent listeners
         try {
+          console.log('[LoginForm] 💾 Writing to localStorage');
           localStorage.setItem('OAUTH_RESULT', JSON.stringify({
             type: 'oauth_success',
             data: { accessToken, refreshToken },
             ts: Date.now(),
+            isModalLogin: true, // Mark as modal login so __root.tsx ignores it
           }));
-        } catch { /* ignore */ }
+        } catch (e) { 
+          console.log('[LoginForm] ❌ localStorage failed:', e);
+        }
 
         // BroadcastChannel fallback
         try {
           if (typeof BroadcastChannel !== 'undefined') {
+            console.log('[LoginForm] 📡 Broadcasting via BroadcastChannel');
             const bc = new BroadcastChannel('OAUTH_CHANNEL');
-            bc.postMessage({ type: 'oauth_success', data: { accessToken, refreshToken } });
+            bc.postMessage({ type: 'oauth_success', data: { accessToken, refreshToken }, isModalLogin: true });
             try { bc.close(); } catch { /* ignore */ }
           }
-        } catch { /* ignore */ }
+        } catch (e) { 
+          console.log('[LoginForm] ❌ BroadcastChannel failed:', e);
+        }
       } finally {
         // Close popup quickly
-        setTimeout(() => { try { window.close(); } catch { /* ignore */ } }, 300);
+        console.log('[LoginForm] 🔒 Closing popup in 300ms');
+        setTimeout(() => { 
+          try { 
+            console.log('[LoginForm] 👋 Closing now');
+            window.close(); 
+          } catch (e) { 
+            console.log('[LoginForm] ❌ window.close() failed:', e);
+          } 
+        }, 300);
       }
       return; // Don't proceed with in-popup login
     }
@@ -178,6 +224,33 @@ export function LoginForm({
     }
 
     if (accessToken && refreshToken) {
+      // Failsafe: Double-check if this is a popup that somehow got past the first check
+      const hasOpener = (() => {
+        try {
+          return window.opener && !window.opener.closed;
+        } catch {
+          return false;
+        }
+      })();
+      
+      if (hasOpener) {
+        console.log('[LoginForm] FAILSAFE: Detected opener after initial check - closing popup');
+        // Send tokens and close
+        try {
+          window.opener.postMessage({ type: 'oauth_success', data: { accessToken, refreshToken }, isModalLogin: true }, '*');
+        } catch { /* ignore */ }
+        try {
+          localStorage.setItem('OAUTH_RESULT', JSON.stringify({
+            type: 'oauth_success',
+            data: { accessToken, refreshToken },
+            ts: Date.now(),
+            isModalLogin: true,
+          }));
+        } catch { /* ignore */ }
+        setTimeout(() => { try { window.close(); } catch { /* ignore */ } }, 300);
+        return;
+      }
+      
       // Show loading screen immediately when processing OAuth tokens
       setIsSSOLoading(true);
       setTokenInStorage(TokenKey.accessToken, accessToken);

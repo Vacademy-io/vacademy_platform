@@ -56,7 +56,7 @@ function sendOAuthErrorToParent(message: string) {
   try {
     localStorage.setItem(
       'OAUTH_RESULT',
-      JSON.stringify({ type: 'oauth_error', data: { message }, ts: Date.now() })
+      JSON.stringify({ type: 'oauth_error', data: { message }, ts: Date.now(), isModalLogin: true })
     );
   } catch {
     // ignore storage errors
@@ -66,7 +66,7 @@ function sendOAuthErrorToParent(message: string) {
   try {
     if (typeof BroadcastChannel !== 'undefined') {
       const bc = new BroadcastChannel('OAUTH_CHANNEL');
-      bc.postMessage({ type: 'oauth_error', data: { message } });
+      bc.postMessage({ type: 'oauth_error', data: { message }, isModalLogin: true });
       try { bc.close(); } catch { /* ignore */ }
     }
   } catch {
@@ -313,6 +313,7 @@ const handleDynamicRedirection = async (
           type: 'oauth_success',
           data: { accessToken, refreshToken },
           ts: Date.now(),
+          isModalLogin: true,
         }));
       }
     } catch {
@@ -322,7 +323,7 @@ const handleDynamicRedirection = async (
     try {
       if (typeof BroadcastChannel !== 'undefined' && accessToken && refreshToken) {
         const bc = new BroadcastChannel('OAUTH_CHANNEL');
-        bc.postMessage({ type: 'oauth_success', data: { accessToken, refreshToken } });
+        bc.postMessage({ type: 'oauth_success', data: { accessToken, refreshToken }, isModalLogin: true });
         try { bc.close(); } catch { /* ignore */ }
       }
     } catch {

@@ -179,7 +179,8 @@ const handleOAuthCallback = async (
         navigate,
         setPrimaryColor,
         redirectTo,
-        currentUrl
+        currentUrl,
+        isPopupWindow
       );
     } catch {
       toast.error("Failed to store authentication tokens. Please try again.");
@@ -204,7 +205,8 @@ const handleSuccessfulLogin = async (
   navigate: ReturnType<typeof useNavigate>,
   setPrimaryColor?: (color: string) => void,
   redirectTo?: string,
-  currentUrl?: string
+  currentUrl?: string,
+  isPopupWindow?: boolean
 ) => {
   try {
     const decodedData = getTokenDecodedData(accessToken);
@@ -275,7 +277,17 @@ const handleSuccessfulLogin = async (
         setTimeout(() => window.close(), 500);
       }
     } else {
-      // For multiple institutes, use the existing logic
+      // For multiple institutes
+      // If this is a popup, send tokens to parent and close - parent will handle institute selection
+      if (isPopupWindow && window.opener && !window.opener.closed) {
+        // Send tokens to parent for processing
+        sendOAuthSuccessToParent(accessToken, refreshToken);
+        // Close popup after sending tokens
+        setTimeout(() => { try { window.close(); } catch { /* ignore */ } }, 500);
+        return;
+      }
+      
+      // For page-level login, navigate to institute selection
       navigate({
         to: "/institute-selection",
         search: { redirect: "/dashboard/" },

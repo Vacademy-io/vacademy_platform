@@ -20,7 +20,9 @@
     "build:exe:working": "npm run build && npx electron-builder build --win -c ./electron-builder.no-asar.json --publish never",
     "build:exe:installer": "npm run build && npx electron-builder build --win -c ./electron-builder.optimized.json --publish never",
     "build:exe:portable": "npm run build && npx electron-builder build --win -c ./electron-builder.optimized.json --publish never -c.win.target=portable",
-    "build:win:ssdc": "./build-windows.sh",
+    "build:win:production": "./build-windows-production.sh",
+    "build:win:ssdc": "./build-windows-production.sh",
+    "build:win:ssdc:legacy": "./build-windows.sh",
     "build:win:ssdc:asar": "./build-windows-asar-pnpm.sh",
     "build:win:ssdc:fast": "./build-windows-fast.sh",
     "build:win:sevencs": "./build-windows-seven-cs.sh"

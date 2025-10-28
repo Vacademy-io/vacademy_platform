@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
 import React, { StrictMode, useEffect } from "react";
 import ReactDOM from "react-dom/client";
+import { Capacitor } from "@capacitor/core";
 import RootErrorComponent from "./components/core/deafult-error";
 import RootNotFoundComponent from "./components/core/default-not-found";
 import RootPendingComponent from "./components/core/default-pending";
@@ -33,6 +34,8 @@ initializeAnalytics();
 const queryClient = new QueryClient();
 
 // PWA Service Worker Registration
+let hasShownUpdatePrompt = false;
+
 const registerServiceWorker = async () => {
   if ('serviceWorker' in navigator && Capacitor.getPlatform() === 'web') {
     try {
@@ -40,18 +43,29 @@ const registerServiceWorker = async () => {
         scope: '/'
       });
 
+      // Only show update prompt when updatefound event fires (new version detected)
       registration.addEventListener('updatefound', () => {
         const newWorker = registration.installing;
-        if (newWorker) {
-          newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              // New version available
-              if (confirm('A new version of SSDC Horizon is available. Reload to update?')) {
-                window.location.reload();
-              }
-            }
-          });
-        }
+        if (!newWorker) return;
+
+        // Track if this is a legitimate update or just initial registration
+        const isUpdate = navigator.serviceWorker.controller !== null;
+
+        newWorker.addEventListener('statechange', () => {
+          // Only prompt if:
+          // 1. There's already a controller (not first install)
+          // 2. New worker is installed and ready
+          // 3. We haven't shown the prompt yet in this session
+          if (
+            newWorker.state === 'installed' && 
+            isUpdate && 
+            !hasShownUpdatePrompt
+          ) {
+            hasShownUpdatePrompt = true;
+            console.log('[PWA] New version available');
+            window.location.reload();
+          }
+        });
       });
 
       console.log('[PWA] Service worker registered:', registration);

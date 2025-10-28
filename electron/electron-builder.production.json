@@ -1,6 +1,6 @@
 {
-  "appId": "com.sevencs.learner",
-  "productName": "Seven CS Learner",
+  "appId": "com.vacademy.io",
+  "productName": "SSDC Horizon",
   "directories": {
     "buildResources": "resources",
     "output": "dist"
@@ -45,7 +45,7 @@
     "differentialPackage": false,
     "warningsAsErrors": false,
     "displayLanguageSelector": false,
-    "installerHeaderIcon": "assets/seven_cs.ico",
+    "installerHeaderIcon": "assets/ssdc_horizon.ico",
     "deleteAppDataOnUninstall": false,
     "runAfterFinish": true,
     "packElevateHelper": true
@@ -61,13 +61,14 @@
         "arch": ["x64", "ia32"]
       }
     ],
-    "icon": "assets/seven_cs.ico",
+    "icon": "assets/ssdc_horizon.ico",
     "signingHashAlgorithms": ["sha256"],
     "verifyUpdateCodeSignature": false
   },
   "mac": {
     "category": "public.app-category.education",
     "target": "dmg",
-    "icon": "assets/seven_cs.icns"
+    "icon": "assets/ssdc_horizon.icns"
   }
 }
+

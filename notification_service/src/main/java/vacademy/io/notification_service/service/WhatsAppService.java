@@ -128,18 +128,32 @@ public class WhatsAppService {
         JsonNode testConfig = root.path(NotificationConstants.SETTING)
                 .path(NotificationConstants.TEST_PHONE_NUMBER);
 
-        // Ensure path exists and flag is true
-        if (testConfig.isMissingNode() || !testConfig.has(NotificationConstants.FLAG) || !testConfig.path(NotificationConstants.FLAG).asBoolean(false)) {
+        if (testConfig.isMissingNode()) {
             return bodyParams; // no filtering
         }
 
         JsonNode dataNode = testConfig.path(NotificationConstants.DATA);
-        if (dataNode == null || !dataNode.isArray() || dataNode.size() == 0) {
+        boolean flagEnabled = false;
+        JsonNode mobileNumbersNode = null;
+
+        if (dataNode != null && !dataNode.isMissingNode() && dataNode.isObject()) {
+            flagEnabled = dataNode.path(NotificationConstants.FLAG).asBoolean(false);
+            mobileNumbersNode = dataNode.path("mobile_numbers");
+        } else {
+            flagEnabled = testConfig.path(NotificationConstants.FLAG).asBoolean(false);
+            mobileNumbersNode = dataNode;
+        }
+
+        if (!flagEnabled) {
+            return bodyParams; // filtering disabled
+        }
+
+        if (mobileNumbersNode == null || mobileNumbersNode.isMissingNode() || !mobileNumbersNode.isArray() || mobileNumbersNode.size() == 0) {
             return bodyParams; // nothing to filter by
         }
 
         Set<String> allow = new HashSet<>();
-        for (JsonNode node : dataNode) {
+        for (JsonNode node : mobileNumbersNode) {
             String raw = node.asText();
             if (raw != null && !raw.isBlank()) {
                 allow.add(raw.replaceAll("[^0-9]", ""));

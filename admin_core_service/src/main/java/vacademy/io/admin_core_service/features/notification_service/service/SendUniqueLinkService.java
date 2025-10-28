@@ -243,7 +243,7 @@ public class SendUniqueLinkService {
             
             // Merge template parameters with user variables
             Map<String, String> mergedParams = mergeTemplateParameters(template, templateVars);
-            String templateName = template.getName();
+            String templateName = template.getName() != null ? template.getName().trim() : "";
             String languageCode = "en";
             Map<String, String> finalParamMap = new HashMap<>();
             // Use only keys present in dynamic_parameters for the outgoing payload

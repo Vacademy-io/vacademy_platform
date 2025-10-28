@@ -13,7 +13,10 @@ import { ModalUsernameLogin } from "../../forms/modal/ModalUsernamePasswordForm"
 import { LoginSettings } from "@/config/login/defaultLoginSettings";
 import { SignupSettings } from "@/config/signup/defaultSignupSettings";
 import { TokenKey } from "@/constants/auth/tokens";
-import { setTokenInStorage } from "@/lib/auth/sessionUtility";
+import { setTokenInStorage, getTokenDecodedData } from "@/lib/auth/sessionUtility";
+import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
+import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
+import { getStudentDisplaySettings } from "@/services/student-display-settings";
 
 interface ModularDynamicLoginContainerProps {
   instituteId?: string;
@@ -105,8 +108,59 @@ export function ModularDynamicLoginContainer({
     // Helper to finalize login after receiving tokens
     const finalizeLoginWithTokens = async (accessToken: string, refreshToken: string) => {
       try {
+        console.log('[ModularDynamicLoginContainer] 🎯 Finalizing login with tokens from popup');
+        
         await setTokenInStorage(TokenKey.accessToken, accessToken);
         await setTokenInStorage(TokenKey.refreshToken, refreshToken);
+
+        // Decode token to get user and institute information
+        const decodedData = getTokenDecodedData(accessToken);
+        const authorities = decodedData?.authorities;
+        const userId = decodedData?.user;
+        
+        console.log('[ModularDynamicLoginContainer] 📋 Decoded token:', { userId, authorities });
+
+        if (userId && authorities) {
+          const authorityKeys = Object.keys(authorities);
+          
+          if (authorityKeys.length > 0) {
+            // Use the first institute (or the one from sessionStorage if available)
+            let instituteId = authorityKeys[0];
+            
+            // Try to get instituteId from sessionStorage if it was set during OAuth initiation
+            try {
+              const stored = sessionStorage.getItem('modal_oauth_data');
+              if (stored) {
+                const parsed = JSON.parse(stored);
+                if (parsed?.instituteId && authorityKeys.includes(parsed.instituteId)) {
+                  instituteId = parsed.instituteId;
+                }
+              }
+            } catch (e) { void e; }
+            
+            console.log('[ModularDynamicLoginContainer] 🏫 Fetching details for institute:', instituteId);
+            
+            // Fetch institute details
+            const details = await fetchAndStoreInstituteDetails(instituteId, userId);
+            if (setPrimaryColor) {
+              setPrimaryColor(details?.institute_theme_code ?? import.meta.env.VITE_DEFAULT_THEME_COLOR ?? "#E67E22");
+            }
+            
+            // Fetch student details
+            await fetchAndStoreStudentDetails(instituteId, userId);
+            
+            console.log('[ModularDynamicLoginContainer] ✅ Institute and student details fetched successfully');
+            
+            // Fetch student display settings (for post-login redirect and UI customization)
+            try {
+              const displaySettings = await getStudentDisplaySettings(true);
+              console.log('[ModularDynamicLoginContainer] 🎨 Student display settings loaded:', displaySettings);
+            } catch (e) {
+              console.warn('[ModularDynamicLoginContainer] ⚠️ Failed to load student display settings:', e);
+              // Non-critical, continue with login
+            }
+          }
+        }
 
         // Determine redirect target from sessionStorage (set when opening OAuth)
         let redirectTo: string | undefined;
@@ -117,6 +171,8 @@ export function ModularDynamicLoginContainer({
             redirectTo = parsed?.redirectTo;
           }
         } catch (e) { void e; }
+
+        console.log('[ModularDynamicLoginContainer] 🚀 Redirecting to:', redirectTo || '/dashboard');
 
         // Close modal first
         if (onLoginSuccess) {
@@ -132,8 +188,9 @@ export function ModularDynamicLoginContainer({
             window.location.href = target;
           }
         }, 100);
-      } catch {
-        toast.error("Failed to store authentication tokens. Please try again.");
+      } catch (error) {
+        console.error('[ModularDynamicLoginContainer] ❌ Error finalizing login:', error);
+        toast.error("Failed to complete login. Please try again.");
       }
     };
 
@@ -201,17 +258,20 @@ export function ModularDynamicLoginContainer({
       if (e.key === 'OAUTH_RESULT' && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue);
-          if (parsed?.type === 'oauth_success' && parsed?.data) {
+          // Only process if this was a modal login (isModalLogin !== false means it's modal)
+          if (parsed?.isModalLogin !== false && parsed?.type === 'oauth_success' && parsed?.data) {
             const { accessToken, refreshToken } = parsed.data || {};
             if (!processed && accessToken && refreshToken) {
               processed = true;
               await finalizeLoginWithTokens(accessToken, refreshToken);
+              // Clean up after processing modal login
+              localStorage.removeItem('OAUTH_RESULT');
             }
-          } else if (parsed?.type === 'oauth_error') {
+          } else if (parsed?.isModalLogin !== false && parsed?.type === 'oauth_error') {
             toast.error(parsed?.data?.message || 'We could not find a user for the credentials used. Please sign up to create a new account or contact the administrator.');
+            localStorage.removeItem('OAUTH_RESULT');
           }
-          // Clean up stored value
-          localStorage.removeItem('OAUTH_RESULT');
+          // Don't remove localStorage if it's a page-level login - let __root.tsx handle it
         } catch (err) { void err; }
       }
     };
@@ -224,12 +284,14 @@ export function ModularDynamicLoginContainer({
         bc.onmessage = async (ev: MessageEvent) => {
           const msg = ev?.data;
           if (!msg || typeof msg !== 'object') return;
-          if (msg.type === 'oauth_success' && msg.data) {
+          // Only process if this was a modal login
+          if (msg.isModalLogin !== false && msg.type === 'oauth_success' && msg.data) {
             const { accessToken, refreshToken } = msg.data || {};
-            if (accessToken && refreshToken) {
+            if (!processed && accessToken && refreshToken) {
+              processed = true;
               await finalizeLoginWithTokens(accessToken, refreshToken);
             }
-          } else if (msg.type === 'oauth_error') {
+          } else if (msg.isModalLogin !== false && msg.type === 'oauth_error') {
             toast.error(msg?.data?.message || 'We could not find a user for the credentials used. Please sign up to create a new account or contact the administrator.');
           }
         };
@@ -242,16 +304,20 @@ export function ModularDynamicLoginContainer({
         const existing = localStorage.getItem('OAUTH_RESULT');
         if (existing) {
           const parsed = JSON.parse(existing);
-          if (parsed?.type === 'oauth_success' && parsed?.data) {
+          // Only process if this was a modal login (not a page-level login)
+          if (parsed?.isModalLogin !== false && parsed?.type === 'oauth_success' && parsed?.data) {
             const { accessToken, refreshToken } = parsed.data || {};
             if (!processed && accessToken && refreshToken) {
               processed = true;
               finalizeLoginWithTokens(accessToken, refreshToken);
+              // Clean up after processing modal login
+              localStorage.removeItem('OAUTH_RESULT');
             }
-          } else if (parsed?.type === 'oauth_error') {
+          } else if (parsed?.isModalLogin !== false && parsed?.type === 'oauth_error') {
             toast.error(parsed?.data?.message || 'OAuth authentication failed');
+            localStorage.removeItem('OAUTH_RESULT');
           }
-          localStorage.removeItem('OAUTH_RESULT');
+          // Don't remove localStorage if it's a page-level login - let __root.tsx handle it
         }
       } catch (err) { void err; }
     };
@@ -320,8 +386,10 @@ export function ModularDynamicLoginContainer({
       sessionStorage.setItem('modal_oauth_data', JSON.stringify(modalOAuthData));
       
       // Create minimal state object
+      // IMPORTANT: The backend should redirect to /login?accessToken=...&refreshToken=...&popup=1
+      // The &popup=1 parameter is critical for popup detection
       const stateObj: Record<string, unknown> = {
-        from: `${window.location.origin}/oauth-popup-handler.html?popup=1`,
+        from: `${window.location.origin}/login?popup=1`,
         account_type: "login",
         user_type: "learner",
       };

@@ -84,7 +84,19 @@
 
         // Function to send message to parent window (with robust fallbacks)
         function sendToParent(type, data) {
-            const payload = { type, data };
+            // Detect if this is a popup window (modal login) or same-tab flow (page-level login)
+            const isPopupWindow = (function(){
+                try {
+                    if (window.name && window.name.toLowerCase() === 'oauth_popup') return true;
+                } catch(e) {}
+                try {
+                    const q = new URLSearchParams(window.location.search);
+                    if (q.get('popup') === '1') return true;
+                } catch(e) {}
+                return false;
+            })();
+
+            const payload = { type, data, isModalLogin: isPopupWindow };
             let openerMessageAttempted = false;
             let openerMessageFailed = false;
             // Try postMessage to opener (may be blocked by COOP)

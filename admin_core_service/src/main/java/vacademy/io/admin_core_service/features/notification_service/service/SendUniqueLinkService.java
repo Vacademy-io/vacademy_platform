@@ -21,6 +21,8 @@ import java.util.Map;
 import java.lang.reflect.Field;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.notification.dto.WhatsappRequest;
 
 @Component
 public class SendUniqueLinkService {
@@ -241,17 +243,45 @@ public class SendUniqueLinkService {
             
             // Merge template parameters with user variables
             Map<String, String> mergedParams = mergeTemplateParameters(template, templateVars);
-            
-            // Add unique link
-            String learnerDashBoardUrl = templateReader.getLearnerDashBoardUrl(institute.getSetting());
-            if (learnerDashBoardUrl != null) {
-                mergedParams.put("unique_link", learnerDashBoardUrl + user.getUsername());
+            String templateName = template.getName();
+            String languageCode = "en";
+            Map<String, String> finalParamMap = new HashMap<>();
+            // Use only keys present in dynamic_parameters for the outgoing payload
+            Map<String, String> dynamicParams = parseDynamicParameters(template.getDynamicParameters());
+            if (dynamicParams != null && !dynamicParams.isEmpty()) {
+                // language_code override if provided in dynamic params
+                if (dynamicParams.containsKey("language_code") && StringUtils.hasText(dynamicParams.get("language_code"))) {
+                    languageCode = dynamicParams.get("language_code");
+                }
+                for (Map.Entry<String, String> entry : dynamicParams.entrySet()) {
+                    String key = entry.getKey();
+                    if (!StringUtils.hasText(key)) continue;
+                    // Prefer merged (user/event) value, else template default
+                    String value = mergedParams.get(key);
+                    if (!StringUtils.hasText(value)) value = entry.getValue();
+                    finalParamMap.put(key, value != null ? value : "");
+                }
+            } else {
+                finalParamMap.put("name", mergedParams.getOrDefault("name", user.getFullName()));
             }
-            
-            // Send WhatsApp message with processed content
-            // Note: You may need to modify templateReader.sendWhatsAppMessage to accept processed content
-            templateReader.sendWhatsAppMessage(institute.getSetting(), user, 
-                learnerDashBoardUrl + user.getUsername(), instituteId, templateId);
+
+            // Build request for notification-service
+            WhatsappRequest request = new WhatsappRequest();
+            request.setTemplateName(templateName);
+            request.setLanguageCode(languageCode);
+
+            // Sanitize mobile number: remove +, spaces, and non-numeric characters
+            String sanitizedMobile = user.getMobileNumber();
+            if (sanitizedMobile != null) {
+                sanitizedMobile = sanitizedMobile.replaceAll("[^0-9]", "");
+            }
+
+            Map<String, Map<String, String>> singleUser = new HashMap<>();
+            singleUser.put(sanitizedMobile, finalParamMap);
+            request.setUserDetails(List.of(singleUser));
+
+            // Dispatch to notification-service
+            notificationService.sendWhatsappToUsers(request, instituteId);
         }
     }
 }

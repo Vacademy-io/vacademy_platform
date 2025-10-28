@@ -33,57 +33,14 @@ initializeAnalytics();
 
 const queryClient = new QueryClient();
 
-// PWA Service Worker Registration
-let hasShownUpdatePrompt = false;
 
-const registerServiceWorker = async () => {
-  if ('serviceWorker' in navigator && Capacitor.getPlatform() === 'web') {
-    try {
-      const registration = await navigator.serviceWorker.register('/sw.js', {
-        scope: '/'
-      });
-
-      // Only show update prompt when updatefound event fires (new version detected)
-      registration.addEventListener('updatefound', () => {
-        const newWorker = registration.installing;
-        if (!newWorker) return;
-
-        // Track if this is a legitimate update or just initial registration
-        const isUpdate = navigator.serviceWorker.controller !== null;
-
-        newWorker.addEventListener('statechange', () => {
-          // Only prompt if:
-          // 1. There's already a controller (not first install)
-          // 2. New worker is installed and ready
-          // 3. We haven't shown the prompt yet in this session
-          if (
-            newWorker.state === 'installed' && 
-            isUpdate && 
-            !hasShownUpdatePrompt
-          ) {
-            hasShownUpdatePrompt = true;
-            console.log('[PWA] New version available');
-            window.location.reload();
-          }
-        });
-      });
-
-      console.log('[PWA] Service worker registered:', registration);
-    } catch (error) {
-      console.error('[PWA] Service worker registration failed:', error);
-    }
-  }
-};
 
 // Notification initialization wrapper
 const NotificationInitializer = ({ children }: { children: React.ReactNode }) => {
   // Initialize push notifications when app starts
   usePushNotifications();
 
-  // Register PWA service worker
-  React.useEffect(() => {
-    registerServiceWorker();
-  }, []);
+
   
   // Listen for messages forwarded by the service worker
   useEffect(() => {

@@ -36,7 +36,7 @@ self.addEventListener('install', (event) => {
         console.error('[SW] Error caching static files:', error);
       })
   );
-  self.skipWaiting();
+  // Don't auto-skipWaiting - let the user decide when to update
 });
 
 // Activate event - clean up old caches

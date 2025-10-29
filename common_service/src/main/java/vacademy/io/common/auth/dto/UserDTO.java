@@ -32,6 +32,7 @@ public class UserDTO {
     private String password;
     private String profilePicFileId;
     private List<String> roles;
+    private Date lastLoginTime;
 
     public UserDTO(User user) {
         this.id = user.getId();
@@ -46,7 +47,7 @@ public class UserDTO {
         this.gender = user.getGender();
         this.isRootUser = user.isRootUser();
         this.profilePicFileId = user.getProfilePicFileId();
-
+        this.setLastLoginTime(user.getLastLoginTime());
         this.roles = user.getRoles().stream().map((ur) -> ur.getRole().getName()).toList();
     }
 
@@ -64,7 +65,7 @@ public class UserDTO {
         this.isRootUser = user.isRootUser();
         this.profilePicFileId = user.getProfilePicFileId();
         this.region=userDTO.getRegion();
-
+        this.setLastLoginTime(user.getLastLoginTime());
         this.roles = user.getRoles().stream().map((ur) -> ur.getRole().getName()).toList();
 
     }

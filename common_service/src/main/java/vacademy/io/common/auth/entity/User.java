@@ -62,6 +62,10 @@ public class User {
     @Temporal(TemporalType.TIMESTAMP)
     private Date lastTokenUpdateTime;
 
+    @Column(name = "last_login_time")
+    @Temporal(TemporalType.TIMESTAMP)
+    private Date lastLoginTime;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
 

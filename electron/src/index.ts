@@ -46,7 +46,45 @@ if (electronIsDev) {
   // Initialize our app, build windows, and load content.
   await myCapacitorApp.init();
   // Check for updates if we are in a packaged app.
-  autoUpdater.checkForUpdatesAndNotify();
+  if (!electronIsDev) {
+    // Configure auto-updater
+    autoUpdater.autoDownload = false; // Don't auto-download, let user choose
+    autoUpdater.autoInstallOnAppQuit = true;
+    
+    autoUpdater.on('checking-for-update', () => {
+      console.log('Checking for updates...');
+    });
+    
+    autoUpdater.on('update-available', (info) => {
+      console.log('Update available:', info);
+      // You can show a dialog to user here
+    });
+    
+    autoUpdater.on('update-not-available', (info) => {
+      console.log('Update not available.');
+    });
+    
+    autoUpdater.on('error', (err) => {
+      console.log('Error in auto-updater:', err);
+      // This is expected in development builds without published releases
+    });
+    
+    autoUpdater.on('download-progress', (progressObj) => {
+      console.log(`Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}%`);
+    });
+    
+    autoUpdater.on('update-downloaded', (info) => {
+      console.log('Update downloaded');
+      // Notify user that update is ready
+    });
+    
+    // Check for updates (wrapped in try-catch to handle missing app-update.yml gracefully)
+    try {
+      autoUpdater.checkForUpdatesAndNotify();
+    } catch (err) {
+      console.log('Auto-updater not available:', err.message);
+    }
+  }
 })();
 
 // Handle when all of our windows are close (platforms have their own expectations).

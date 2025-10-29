@@ -1,7 +1,7 @@
 {
-  "name": "Vacademy_Learner",
-  "version": "1.0.7",
-  "description": "An Amazing Capacitor App",
+  "name": "SSDC_Horizon",
+  "version": "1.0.8",
+  "description": "The Learning System for SSDC",
   "author": {
     "name": "shreyash jain",
     "email": "shreyash@vidyayatan.com"
@@ -22,6 +22,7 @@
     "build:exe:portable": "npm run build && npx electron-builder build --win -c ./electron-builder.optimized.json --publish never -c.win.target=portable",
     "build:win:production": "node -e \"require('child_process').execSync(process.platform === 'win32' ? 'powershell -ExecutionPolicy Bypass -File ./build-windows-production.ps1' : './build-windows-production.sh', {stdio: 'inherit'})\"",
     "build:win:production:direct": "tsc && electron-rebuild && npx electron-builder build --win -c ./electron-builder.production.json",
+    "build:win:asar": "tsc && electron-rebuild && npx electron-builder build --win -c ./electron-builder.production-asar.json",
     "build:win:ssdc": "node -e \"require('child_process').execSync(process.platform === 'win32' ? 'powershell -ExecutionPolicy Bypass -File ./build-windows-production.ps1' : './build-windows-production.sh', {stdio: 'inherit'})\"",
     "build:win:ssdc:legacy": "./build-windows.sh",
     "build:win:ssdc:asar": "./build-windows-asar-pnpm.sh",

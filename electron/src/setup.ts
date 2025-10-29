@@ -1,4 +1,4 @@
-import type { CapacitorElectronConfig } from '@capacitor-community/electron';
+﻿import type { CapacitorElectronConfig } from '@capacitor-community/electron';
 import {
   CapElectronEventEmitter,
   CapacitorSplashScreen,
@@ -190,8 +190,9 @@ export class ElectronCapacitorApp {
         // Windows doesn't support badge count in the same way
         // but we can update the window title to show unread count
         if (this.MainWindow) {
-          const baseTitle = 'Vacademy Learner';
-          const title = count > 0 ? `${baseTitle} (${count})` : baseTitle;
+          const baseTitle = 'SSDC Horizon';
+          const appVersion = app.getVersion();
+          const title = count > 0 ? `${baseTitle} v${appVersion} (${count})` : `${baseTitle} v${appVersion}`;
           this.MainWindow.setTitle(title);
         }
       }
@@ -231,13 +232,15 @@ export class ElectronCapacitorApp {
       show: false,
       x: this.mainWindowState.x,
       y: this.mainWindowState.y,
-      title: `<span class="math-inline">\{app\.getName\(\)\} v</span>{appVersion}`, // Using app.getName() for the app name
+      title: `SSDC Horizon v${appVersion}`,
       width: this.mainWindowState.width,
       height: this.mainWindowState.height,
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: true,
         devTools: false,
+        webSecurity: false, // Allow cross-origin iframes (for YouTube)
+        allowRunningInsecureContent: false,
         // Use preload to inject the electron varriant overrides for capacitor plugins.
         // preload: join(app.getAppPath(), "node_modules", "@capacitor-community", "electron", "dist", "runtime", "electron-rt.js"),
         preload: preloadPath,
@@ -280,7 +283,8 @@ export class ElectronCapacitorApp {
           }
         }
       });
-      this.TrayIcon.setToolTip(app.getName());
+      // Set tooltip to display name
+      this.TrayIcon.setToolTip('SSDC Horizon');
       this.TrayIcon.setContextMenu(Menu.buildFromTemplate(this.TrayMenuTemplate));
     }
 
@@ -341,13 +345,14 @@ export class ElectronCapacitorApp {
 export function setupContentSecurityPolicy(customScheme: string): void {
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     // !!! WARNING: This CSP is INSECURE and for debugging ONLY !!!
-    const insecureCsp = `default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src *`;
+    const insecureCsp = `default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src *; frame-src * https://www.youtube.com https://www.youtube-nocookie.com`;
 
     callback({
       responseHeaders: {
         ...details.responseHeaders,
         'Content-Security-Policy': [insecureCsp],
         'Cross-Origin-Opener-Policy': ['same-origin-allow-popups'],
+        'Referrer-Policy': ['strict-origin-when-cross-origin'],
       },
     });
   });

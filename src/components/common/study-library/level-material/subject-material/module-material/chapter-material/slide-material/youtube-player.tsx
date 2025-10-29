@@ -945,6 +945,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       start: 0, // Start from the beginning
       end: 0, // End at the natural end of the video
       // autohide: 1, // Hide controls after play begins
+      widget_referrer: window.location.href, // Fix for error 153
     },
   };
 
@@ -996,7 +997,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       console.error("Error getting initial volume", err);
     }
 
-    // Get the iframe element
+      // Get the iframe element
     try {
       const iframe = await event.target.getIframe();
       iframeRef.current = iframe;
@@ -1006,11 +1007,13 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         try {
           iframe.setAttribute(
             "allow",
-            "autoplay; encrypted-media; picture-in-picture; fullscreen"
+            "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
           );
           iframe.setAttribute("allowfullscreen", "true");
+          // Fix for YouTube error 153 on Windows Electron
+          iframe.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
         } catch (e) {
-          console.error("Error setting iframe allow attribute:", e);
+          console.error("Error setting iframe attributes:", e);
         }
         try {
           const iframeDocument =

@@ -53,6 +53,19 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ videoUrl, videoId }) =
       const duration = event.target.getDuration();
       console.log('Video duration:', duration);
       setDuration(duration);
+      
+      // Fix for YouTube error 153 on Windows Electron
+      event.target.getIframe().then((iframe: HTMLIFrameElement) => {
+        if (iframe) {
+          iframe.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
+          iframe.setAttribute(
+            "allow",
+            "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          );
+        }
+      }).catch((err: any) => {
+        console.error('Error setting iframe attributes:', err);
+      });
     } catch (error) {
       console.error('Error in handleReady:', error);
     }
@@ -175,7 +188,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ videoUrl, videoId }) =
               forigin: window.location.origin,
               aoriginsup: 1,
               gporigin: window.location.origin,
-              vf: 1
+              vf: 1,
+              widget_referrer: window.location.href, // Fix for error 153
             },
           }}
           onReady={handleReady}

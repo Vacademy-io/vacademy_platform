@@ -103,7 +103,6 @@ public class WorkflowExecutionJob implements Job {
 
             Map<String, Object> workflowResult = workflowEngineService.run(
                 schedule.getWorkflowId(),
-                schedule.getId(),
                 initialContext);
 
             log.info("Workflow execution completed for schedule: {}. Result: {}",

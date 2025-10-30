@@ -35,6 +35,8 @@ public class SpelEvaluator {
             Expression expr = parser.parseExpression(exprStr);
             return expr.getValue(context);
         } catch (SpelEvaluationException e) {
+            System.out.println(expressionString+contextVars);
+            System.out.println(contextVars);
             e.printStackTrace();
             return null;
         }

@@ -50,7 +50,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return createSessionParticipent(params);
             case "createLiveSession":
                 return createLiveSession(params);
-            case "checkStudentPaidMembership":
+            case "checkStudentIsPresentInPackageSession":
                 return isAlreadyPresentInGivenPackageSession(params);
             default:
                 log.warn("Unknown prebuilt query key: {}", prebuiltKey);

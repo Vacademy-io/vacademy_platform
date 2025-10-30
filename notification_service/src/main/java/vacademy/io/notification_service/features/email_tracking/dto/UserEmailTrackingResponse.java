@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * Response DTO for user-centric email tracking
@@ -58,6 +59,11 @@ public class UserEmailTrackingResponse {
     private EmailTrackingStatus latestStatus;
     
     /**
+     * Full list of tracking events for this email (in chronological order)
+     */
+    private List<EmailTrackingStatus> events;
+    
+    /**
      * Nested class for tracking status details
      */
     @Data
@@ -72,9 +78,19 @@ public class UserEmailTrackingResponse {
         private String eventType;
         
         /**
-         * Timestamp of the latest event
+         * Event timestamp in server local time
          */
         private LocalDateTime eventTimestamp;
+        
+        /**
+         * Event timestamp with timezone offset (ISO 8601, e.g., 2025-01-27T10:30:00+05:30)
+         */
+        private String eventTimestampIso;
+        
+        /**
+         * Server timezone ID used for formatting (e.g., Asia/Kolkata)
+         */
+        private String timezone;
         
         /**
          * Additional event details

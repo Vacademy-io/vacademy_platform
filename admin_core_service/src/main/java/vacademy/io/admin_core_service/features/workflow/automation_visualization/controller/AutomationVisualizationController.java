@@ -24,7 +24,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/admin-core-service/open/v1/automations")
+@RequestMapping("/admin-core-service/v1/automations")
 public class AutomationVisualizationController {
 
     @Autowired

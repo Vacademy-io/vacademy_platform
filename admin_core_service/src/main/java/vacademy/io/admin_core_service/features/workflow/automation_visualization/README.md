@@ -960,5 +960,4 @@ for (int i = nextNodeIds.size() - 1; i >= 0; i--) {
 5.  **📊 Scalability**: The iterator model efficiently processes large lists of users or data.
 6.  **🎯 Personalization**: Use SpEL and `SWITCH` logic to send highly dynamic, personalized content.
 7.  **🔒 Reliability**: Idempotency and deduplication services prevent duplicate executions.
-8.  **📈 Monitoring**: `WorkflowExecution` and logs provide a clear audit trail.
-9.  **📱 Multi-Channel**: Communicate with users via Email and WhatsApp from a single workflow.
+

@@ -33,7 +33,6 @@ public class NotificationService {
     private String notificationServerBaseUrl;
 
     public String sendEmailToUsers(NotificationDTO notificationDTO,String instituteId) {
-        // Removed the redundant 'clientName' parameter, we can use the injected clientName field here
         String url=NotificationConstant.EMAIL_TO_USERS+"?instituteId="+instituteId;
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                 clientName, // Directly use the injected 'clientName'

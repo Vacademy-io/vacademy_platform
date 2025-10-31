@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.hibernate.annotations.UuidGenerator;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.enums.CustomFieldTypeEnum;
 import vacademy.io.admin_core_service.features.common.enums.CustomFieldValueSourceTypeEnum;
 import vacademy.io.admin_core_service.features.common.service.CustomFieldValueService;
@@ -11,6 +12,7 @@ import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteSt
 import vacademy.io.admin_core_service.features.institute_learner.dto.StudentExtraDetails;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.manager.StudentRegistrationManager;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
@@ -20,6 +22,7 @@ import vacademy.io.admin_core_service.features.live_session.dto.GuestRegistratio
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.service.ReferralMappingService;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerExtraDetails;
 import vacademy.io.common.common.dto.CustomFieldValueDTO;
@@ -55,6 +58,9 @@ public class LearnerBatchEnrollService {
         Student student = studentRegistrationManager.createStudentFromRequest(createdUser, mapToStudentExtraDetails(learnerExtraDetails));
         for (InstituteStudentDetails instituteStudentDetail : instituteStudentDetails) {
           String studentSessionId =  studentRegistrationManager.linkStudentToInstitute(student, instituteStudentDetail);
+            if (instituteStudentDetail.getEnrollmentStatus().equalsIgnoreCase(LearnerSessionStatusEnum.ACTIVE.name())){
+                studentRegistrationManager.triggerEnrollmentWorkflow(instituteId,userDTO,List.of(instituteStudentDetail.getPackageSessionId()));
+            }
           customFieldValueService.addCustomFieldValue(customFieldValues, CustomFieldValueSourceTypeEnum.STUDENT_SESSION_INSTITUTE_GROUP_MAPPING.name(), studentSessionId);
             customFieldValueService.addCustomFieldValue(customFieldValues, CustomFieldValueSourceTypeEnum.USER.name(), userDTO.getId());
         }
@@ -90,13 +96,15 @@ public class LearnerBatchEnrollService {
                         packageSessionIds, userId, List.of(fromStatus.name())
                 );
 
+        UserDTO userDTO = authService.getUsersFromAuthServiceByUserIds(List.of(userId)).get(0);
+
         for (StudentSessionInstituteGroupMapping mapping : invitedMappings) {
             if (mapping.getDestinationPackageSession() != null) {
                 String newSessionId = studentRegistrationManager.shiftStudentBatch(
                         mapping,
                         LearnerStatusEnum.ACTIVE.name()
                 );
-
+                studentRegistrationManager.triggerEnrollmentWorkflow(mapping.getInstitute().getId(),userDTO,List.of(mapping.getDestinationPackageSession().getId()));
                 customFieldValueService.shiftCustomField(
                         CustomFieldValueSourceTypeEnum.STUDENT_SESSION_INSTITUTE_GROUP_MAPPING.name(),
                         mapping.getId(),

@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.common.auth.entity.User;
 
+import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 
@@ -119,4 +120,21 @@ public interface UserRepository extends CrudRepository<User, String> {
         void updateLastTokenUpdateTime(@Param("userIds") List<String> userIds);
 
         Optional<User> findFirstByEmailOrderByCreatedAtDesc(String email);
+
+
+    // In your UserRepository.java
+    // In your UserRepository.java
+    @Query("SELECT DISTINCT u FROM User u " +
+        "JOIN u.roles ur " +
+        "JOIN ur.role r " +
+        "WHERE ur.instituteId = :instituteId " +
+        "AND r.name IN :roles " +
+        "AND ur.status IN :statuses " +
+        "AND (u.lastLoginTime IS NULL OR FUNCTION('DATE', u.lastLoginTime) = :targetDate)")
+    List<User> findUsersInactiveOnDate(
+        @Param("instituteId") String instituteId,
+        @Param("roles") List<String> roles,
+        @Param("statuses") List<String> statuses,
+        @Param("targetDate") Date targetDate);
+
 }

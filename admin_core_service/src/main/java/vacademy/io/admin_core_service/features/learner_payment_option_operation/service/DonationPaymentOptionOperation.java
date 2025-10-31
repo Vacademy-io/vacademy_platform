@@ -18,6 +18,7 @@ import vacademy.io.admin_core_service.features.user_subscription.handler.Referra
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
+import vacademy.io.common.auth.dto.learner.LearnerExtraDetails;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.session.PackageSession;
@@ -59,7 +60,7 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
                                                          EnrollInvite enrollInvite,
                                                          PaymentOption paymentOption,
                                                          UserPlan userPlan,
-                                                         Map<String, Object> extraData) {
+                                                         Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
         List<InstituteStudentDetails> instituteStudentDetails = new ArrayList<>();
         if (paymentOption.isRequireApproval()) {
             String status = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();
@@ -101,7 +102,7 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
             }
         }
         UserDTO user = learnerBatchEnrollService.checkAndCreateStudentAndAddToBatch(userDTO, instituteId,
-                instituteStudentDetails, learnerPackageSessionsEnrollDTO.getCustomFieldValues(), extraData);
+                instituteStudentDetails, learnerPackageSessionsEnrollDTO.getCustomFieldValues(), extraData,learnerExtraDetails);
 
         // Process referral request if present - for donation payments, benefits are
         // activated immediately

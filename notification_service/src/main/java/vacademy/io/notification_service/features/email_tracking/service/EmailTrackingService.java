@@ -13,6 +13,8 @@ import vacademy.io.notification_service.features.email_tracking.dto.UserEmailTra
 import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -103,6 +105,8 @@ public class EmailTrackingService {
                 response.setLatestStatus(UserEmailTrackingResponse.EmailTrackingStatus.builder()
                     .eventType("pending")
                     .eventTimestamp(emailLog.getNotificationDate())
+                    .eventTimestampIso(toIsoWithZone(emailLog.getNotificationDate()))
+                    .timezone(ZoneId.systemDefault().getId())
                     .eventDetails("Email sent, awaiting delivery confirmation")
                     .build());
             }
@@ -111,8 +115,35 @@ public class EmailTrackingService {
             response.setLatestStatus(UserEmailTrackingResponse.EmailTrackingStatus.builder()
                 .eventType("unknown")
                 .eventTimestamp(emailLog.getNotificationDate())
+                .eventTimestampIso(toIsoWithZone(emailLog.getNotificationDate()))
+                .timezone(ZoneId.systemDefault().getId())
                 .eventDetails("Unable to fetch tracking status")
                 .build());
+        }
+        
+        // Also fetch full event history for this email to include in the list
+        try {
+            List<String> emailLogIds = new ArrayList<>();
+            emailLogIds.add(emailLog.getId());
+            List<NotificationLog> allEvents = notificationLogRepository.findEmailEventsBySourceIds(emailLogIds);
+            // Sort by updatedAt ascending for chronological order; fallback to createdAt
+            List<NotificationLog> sorted = allEvents.stream()
+                .sorted((a, b) -> {
+                    if (a.getUpdatedAt() != null && b.getUpdatedAt() != null) {
+                        return a.getUpdatedAt().compareTo(b.getUpdatedAt());
+                    }
+                    if (a.getUpdatedAt() != null) return -1;
+                    if (b.getUpdatedAt() != null) return 1;
+                    if (a.getCreatedAt() != null && b.getCreatedAt() != null) {
+                        return a.getCreatedAt().compareTo(b.getCreatedAt());
+                    }
+                    return 0;
+                })
+                .collect(Collectors.toList());
+            response.setEvents(sorted.stream().map(this::parseEventDetails).collect(Collectors.toList()));
+        } catch (Exception e) {
+            log.warn("Error fetching full event list for email {}: {}", emailLog.getId(), e.getMessage());
+            response.setEvents(new ArrayList<>());
         }
         
         return response;
@@ -129,6 +160,8 @@ public class EmailTrackingService {
             UserEmailTrackingResponse.EmailTrackingStatus.builder()
                 .eventType(eventType)
                 .eventTimestamp(eventLog.getUpdatedAt())
+                .eventTimestampIso(toIsoWithZone(eventLog.getUpdatedAt()))
+                .timezone(ZoneId.systemDefault().getId())
                 .eventDetails(body);
         
         // Parse event-specific details based on event type
@@ -159,6 +192,12 @@ public class EmailTrackingService {
         }
         
         return statusBuilder.build();
+    }
+
+    private String toIsoWithZone(java.time.LocalDateTime localDateTime) {
+        if (localDateTime == null) return null;
+        ZonedDateTime zdt = ZonedDateTime.of(localDateTime, ZoneId.systemDefault());
+        return zdt.toOffsetDateTime().toString();
     }
     
     /**

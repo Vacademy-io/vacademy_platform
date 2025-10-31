@@ -8,6 +8,7 @@ import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.notification.dto.WhatsappRequest;
 import vacademy.io.admin_core_service.features.workflow.dto.ForEachConfigDTO;
 import vacademy.io.admin_core_service.features.workflow.dto.IteratorConfigDTO;
+import vacademy.io.admin_core_service.features.workflow.engine.HttpRequestNodeHandler;
 import vacademy.io.admin_core_service.features.workflow.engine.QueryNodeHandler;
 import vacademy.io.admin_core_service.features.workflow.spel.SpelEvaluator;
 
@@ -21,6 +22,7 @@ public class IteratorProcessorStrategy implements DataProcessorStrategy {
     private final ObjectMapper objectMapper;
     private final SpelEvaluator spelEvaluator;
     private final QueryNodeHandler.QueryService queryService;
+    private final HttpRequestNodeHandler httpRequestNodeHandler;
 
     // ThreadLocal context stack for managing nested iteration scopes.
     private final ThreadLocal<Stack<Map<String, Object>>> contextStack = ThreadLocal.withInitial(Stack::new);
@@ -64,6 +66,7 @@ public class IteratorProcessorStrategy implements DataProcessorStrategy {
                 try {
                     Map<String, Object> itemResult = processForEachOperation(iteratorConfig.getForEach(), loopContext, item);
                     processedItems.add(itemResult);
+                    context.putAll(itemResult);
                     log.debug("Processed item in iterator: {} with result: {}", item, itemResult);
                 } finally {
                     // Pop the context for the current iteration.
@@ -109,6 +112,7 @@ public class IteratorProcessorStrategy implements DataProcessorStrategy {
                 case "OBJECT_PARSER" -> parseObject(forEachConfig, loopContext, item);
                 case "SEND_WHATSAPP" -> processSendWhatsAppOperation(forEachConfig, loopContext);
                 case "SWITCH" -> processSwitchOperation(forEachConfig, loopContext, item);
+                case "HTTP_REQUEST" -> processHttpRequestOperation(forEachConfig, loopContext);
                 case "SPEL_EVALUATOR" -> {
                     // Handle SPEL_EVALUATOR by reading from the raw map
                     String evalVarName = (String) forEachConfig.getEval();
@@ -189,7 +193,9 @@ public class IteratorProcessorStrategy implements DataProcessorStrategy {
             log.warn("QUERY operation missing prebuiltKey.");
             return Map.of("status", "error", "error", "missing_prebuilt_key");
         }
-
+        if (prebuiltKey.equalsIgnoreCase("checkStudentIsPresentInPackageSession")){
+            System.out.println("checkStudentIsPresentInPackageSession");
+        }
         Map<String, Object> processedParams = new HashMap<>();
         if (forEachConfig.getParams() != null) {
             forEachConfig.getParams().forEach((key, value) -> {
@@ -430,5 +436,42 @@ public class IteratorProcessorStrategy implements DataProcessorStrategy {
     @Override
     public String getOperationType() {
         return "ITERATOR";
+    }
+
+    /**
+     * Executes a nested HTTP_REQUEST operation.
+     */
+    private Map<String, Object> processHttpRequestOperation(ForEachConfigDTO forEachConfig, Map<String, Object> loopContext) {
+        Object params = forEachConfig.getParams();
+        if (params == null) {
+            log.warn("HTTP_REQUEST operation missing 'params'.");
+            return Map.of("status", "error", "error", "missing_params");
+        }
+
+        try {
+            // The 'params' object *is* the config for the HttpRequestNodeHandler.
+            // We serialize it back to JSON for the handler to consume.
+            String httpConfigJson = objectMapper.writeValueAsString(params);
+
+            // We pass the current loopContext, which contains #ctx and #item.
+            // The HttpRequestNodeHandler will evaluate SpEL expressions within its config
+            // using this context.
+            Map<String, Object> httpResult = httpRequestNodeHandler.handle(
+                    loopContext,
+                    httpConfigJson,
+                    Collections.emptyMap(), // nodeTemplates (not needed for this sub-operation)
+                    0 // countProcessed
+            );
+
+            log.info("Executed nested HTTP_REQUEST for item with result keys: {}", httpResult.keySet());
+
+            // The httpResult contains the changes (e.g., {"enrollmentHttpResponse_...": {...}})
+            // which will be added to the main context by the ActionNodeHandler.
+            return httpResult;
+
+        } catch (Exception e) {
+            log.error("Error executing nested HTTP_REQUEST operation", e);
+            return Map.of("status", "error", "error", e.getMessage());
+        }
     }
 }

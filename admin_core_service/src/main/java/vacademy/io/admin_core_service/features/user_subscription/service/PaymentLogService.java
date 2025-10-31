@@ -91,7 +91,7 @@ public class PaymentLogService {
         log.info("Attempting to update payment log ID={}, setting paymentStatus={}", paymentLogId, paymentStatus);
 
         PaymentLog paymentLog = null;
-        int maxRetries = 3; // We will try a total of 3 times
+        int maxRetries = 10; // We will try a total of 3 times
 
         // --- NEW: Retry Loop ---
         for (int i = 0; i < maxRetries; i++) {

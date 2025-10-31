@@ -76,6 +76,7 @@ jobs:
           SQS_AWS_REGION: ${{ secrets.SQS_AWS_REGION }}
           SQS_ENDPOINT: ${{ secrets.SQS_ENDPOINT }}
           SQS_REGION: ${{ secrets.SQS_REGION }}
+          AWS_SQS_ENABLED: ${{ secrets.AWS_SQS_ENABLED }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
@@ -121,6 +122,7 @@ jobs:
             SQS_AWS_REGION=${{ secrets.SQS_AWS_REGION }} \
             SQS_ENDPOINT=${{ secrets.SQS_ENDPOINT }} \
             SQS_REGION=${{ secrets.SQS_REGION }} \
+            AWS_SQS_ENABLED=${{ secrets.AWS_SQS_ENABLED }} \
             SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
 

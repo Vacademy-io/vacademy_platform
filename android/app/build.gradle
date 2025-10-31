@@ -33,8 +33,8 @@ android {
 		ssdc {
 			dimension "client"
 			applicationId "io.vacademy.student.app"
-			versionCode 18
-			versionName "2.1.0"
+			versionCode 19
+			versionName "2.1.1"
 			// Deep link host for this client
 			manifestPlaceholders.DEEP_LINK_HOST = "learner.vacademy.io"
 		}

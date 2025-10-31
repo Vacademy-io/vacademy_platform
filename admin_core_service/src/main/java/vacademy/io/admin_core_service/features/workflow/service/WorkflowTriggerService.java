@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.workflow.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.workflow.entity.WorkflowTrigger;
@@ -22,6 +23,7 @@ public class WorkflowTriggerService {
     @Autowired
     private WorkflowEngineService workflowEngineService;
 
+    @Async
     public void handleTriggerEvent(List<String>eventNames, String instituteId, Map<String, Object> contextData) {
         try {
             log.info("Trigger received: event='{}', instituteId='{}'", eventNames, instituteId);

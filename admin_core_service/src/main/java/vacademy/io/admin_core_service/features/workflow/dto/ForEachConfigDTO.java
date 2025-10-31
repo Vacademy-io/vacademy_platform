@@ -14,7 +14,6 @@ public class ForEachConfigDTO {
     // For QUERY operations
     private String prebuiltKey;
     private Map<String, Object> params;
-    private String compute;
 
     // For nested ITERATOR operations
     private ForEachConfigDTO forEach; // This allows nested forEach configurations

@@ -53,6 +53,9 @@ public class LearnerBatchEnrollService {
     @Autowired
     private ReferralMappingService referralMappingService;
 
+    @Autowired
+    private AuthService authService;
+
     public UserDTO checkAndCreateStudentAndAddToBatch(UserDTO userDTO, String instituteId, List<InstituteStudentDetails> instituteStudentDetails, List<CustomFieldValueDTO>customFieldValues, Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
         UserDTO createdUser = studentRegistrationManager.createUserFromAuthService(userDTO, instituteId, false);
         Student student = studentRegistrationManager.createStudentFromRequest(createdUser, mapToStudentExtraDetails(learnerExtraDetails));

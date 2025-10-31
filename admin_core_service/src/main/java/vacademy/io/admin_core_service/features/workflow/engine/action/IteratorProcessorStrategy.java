@@ -474,44 +474,4 @@ public class IteratorProcessorStrategy implements DataProcessorStrategy {
             return Map.of("status", "error", "error", e.getMessage());
         }
     }
-
-    private Map<String, Object> processSpelEvaluatorOperation(String evalVarName, String computeExpr, Map<String, Object> loopContext, Object item) {
-        Map<String, Object> result = new HashMap<>();
-
-        if (evalVarName == null || evalVarName.isBlank()) {
-            log.warn("SPEL_EVALUATOR operation missing 'eval' field name");
-            result.put("status", "missing_eval_field");
-            return result;
-        }
-
-        if (computeExpr == null || computeExpr.isBlank()) {
-            log.warn("SPEL_EVALUATOR operation missing 'compute' expression");
-            result.put("status", "missing_compute_expression");
-            return result;
-        }
-
-        if (!(item instanceof Map)) {
-            log.warn("SPEL_EVALUATOR operation requires item to be a Map to store the result");
-            result.put("status", "item_not_map");
-            return result;
-        }
-
-        try {
-            // Evaluate the expression using the full stacked context
-            Object resultValue = evaluateWithStackedContext(computeExpr, loopContext);
-
-            // Store the result directly on the item map
-            ((Map<String, Object>) item).put(evalVarName, resultValue);
-
-            log.debug("SPEL_EVALUATOR computed '{}' and stored value: {}", evalVarName, resultValue);
-            result.put("status", "success");
-            result.put(evalVarName, resultValue);
-        } catch (Exception e) {
-            log.error("Error executing SPEL_EVALUATOR operation", e);
-            result.put("status", "error");
-            result.put("error", e.getMessage());
-        }
-
-        return result;
-    }
 }

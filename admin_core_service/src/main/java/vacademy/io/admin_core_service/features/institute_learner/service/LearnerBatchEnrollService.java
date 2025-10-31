@@ -24,6 +24,7 @@ import vacademy.io.admin_core_service.features.user_subscription.service.Referra
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.auth.dto.learner.LearnerExtraDetails;
 import vacademy.io.common.common.dto.CustomFieldValueDTO;
 
 import java.util.List;
@@ -52,12 +53,9 @@ public class LearnerBatchEnrollService {
     @Autowired
     private ReferralMappingService referralMappingService;
 
-    @Autowired
-    private AuthService authService;
-
-    public UserDTO checkAndCreateStudentAndAddToBatch(UserDTO userDTO, String instituteId, List<InstituteStudentDetails> instituteStudentDetails, List<CustomFieldValueDTO>customFieldValues, Map<String, Object> extraData) {
+    public UserDTO checkAndCreateStudentAndAddToBatch(UserDTO userDTO, String instituteId, List<InstituteStudentDetails> instituteStudentDetails, List<CustomFieldValueDTO>customFieldValues, Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
         UserDTO createdUser = studentRegistrationManager.createUserFromAuthService(userDTO, instituteId, false);
-        Student student = studentRegistrationManager.createStudentFromRequest(createdUser, (extraData.containsKey("studentExtraDetails") ? (StudentExtraDetails) extraData.get("studentExtraDetails") : null));
+        Student student = studentRegistrationManager.createStudentFromRequest(createdUser, mapToStudentExtraDetails(learnerExtraDetails));
         for (InstituteStudentDetails instituteStudentDetail : instituteStudentDetails) {
           String studentSessionId =  studentRegistrationManager.linkStudentToInstitute(student, instituteStudentDetail);
             if (instituteStudentDetail.getEnrollmentStatus().equalsIgnoreCase(LearnerSessionStatusEnum.ACTIVE.name())){
@@ -67,6 +65,21 @@ public class LearnerBatchEnrollService {
             customFieldValueService.addCustomFieldValue(customFieldValues, CustomFieldValueSourceTypeEnum.USER.name(), userDTO.getId());
         }
         return createdUser;
+    }
+
+    private StudentExtraDetails mapToStudentExtraDetails(LearnerExtraDetails learnerExtraDetails){
+        if (learnerExtraDetails == null){
+            return null;
+        }
+        StudentExtraDetails studentExtraDetails = new StudentExtraDetails();
+        studentExtraDetails.setFathersName(learnerExtraDetails.getFathersName());
+        studentExtraDetails.setMothersName(learnerExtraDetails.getMothersName());
+        studentExtraDetails.setParentsMobileNumber(learnerExtraDetails.getParentsMobileNumber());
+        studentExtraDetails.setParentsEmail(learnerExtraDetails.getParentsEmail());
+        studentExtraDetails.setParentsToMotherMobileNumber(learnerExtraDetails.getParentsToMotherMobileNumber());
+        studentExtraDetails.setParentsToMotherEmail(learnerExtraDetails.getParentsToMotherEmail());
+        studentExtraDetails.setLinkedInstituteName(learnerExtraDetails.getLinkedInstituteName());
+        return studentExtraDetails;
     }
 
     public void shiftLearnerFromInvitedToActivePackageSessions(List<String> packageSessionIds, String userId, String enrollInviteId) {

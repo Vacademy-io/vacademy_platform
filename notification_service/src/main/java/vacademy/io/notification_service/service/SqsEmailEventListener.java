@@ -5,10 +5,12 @@ import io.awspring.cloud.sqs.annotation.SqsListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import vacademy.io.notification_service.dto.SesEventDTO;
 
 @Service
+@ConditionalOnProperty(name = "aws.sqs.enabled", havingValue = "true", matchIfMissing = false)
 public class SqsEmailEventListener {
 
     private static final Logger log = LoggerFactory.getLogger(SqsEmailEventListener.class);

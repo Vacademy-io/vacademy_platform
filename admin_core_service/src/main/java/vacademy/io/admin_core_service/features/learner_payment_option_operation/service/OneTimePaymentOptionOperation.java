@@ -14,6 +14,7 @@ import vacademy.io.admin_core_service.features.payments.service.PaymentService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.handler.ReferralBenefitOrchestrator;
+import vacademy.io.common.auth.dto.learner.LearnerExtraDetails;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
@@ -50,7 +51,7 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
                                                          EnrollInvite enrollInvite,
                                                          PaymentOption paymentOption,
                                                          UserPlan userPlan,
-                                                         Map<String, Object> extraData) {
+                                                         Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
         String learnerSessionStatus = null;
         if (paymentOption.isRequireApproval()) {
             learnerSessionStatus = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();
@@ -70,7 +71,7 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
                 instituteId,
                 instituteStudentDetails,
                 learnerPackageSessionsEnrollDTO.getCustomFieldValues(),
-                extraData);
+                extraData,learnerExtraDetails);
 
         PaymentPlan paymentPlan = userPlan.getPaymentPlan();
         if (Objects.isNull(paymentPlan)) {

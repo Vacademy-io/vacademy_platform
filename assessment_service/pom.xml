@@ -22,6 +22,12 @@
             <artifactId>common_service</artifactId>
             <version>0.0.2-SNAPSHOT</version>
         </dependency>
+        <!-- Sentry Spring Boot Integration for Performance Monitoring -->
+        <dependency>
+            <groupId>io.sentry</groupId>
+            <artifactId>sentry-spring-boot-starter-jakarta</artifactId>
+            <version>7.15.0</version>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
@@ -212,6 +218,27 @@
                 <configuration>
                     <mainClass>vacademy.io.assessment_service.AssessmentServiceApplication</mainClass>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>io.sentry</groupId>
+                <artifactId>sentry-maven-plugin</artifactId>
+                <version>0.9.0</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <!-- for showing output of sentry-cli -->
+                    <debugSentryCli>true</debugSentryCli>
+                    <org>vacademy</org>
+                    <project>java-spring-boot</project>
+                    <!-- Auth token passed via Maven property: -Dsentry.authToken -->
+                    <authToken>${sentry.authToken}</authToken>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>uploadSourceBundle</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
         <finalName>assessment_service</finalName>

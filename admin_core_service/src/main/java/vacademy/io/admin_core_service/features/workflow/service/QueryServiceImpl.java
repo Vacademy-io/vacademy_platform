@@ -84,8 +84,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             }
 
             return Map.of(
-                    "ssigm_list", ssigmList,
-                    "mapping_count", ssigmList.size());
+                "ssigm_list", ssigmList,
+                "mapping_count", ssigmList.size());
 
         } catch (Exception e) {
             log.error("Error executing fetch_ssigm_by_package query", e);
@@ -152,8 +152,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             }
 
             return Map.of(
-                    "ssigmList", ssigmList,
-                    "ssigmListCount", ssigmList.size());
+                "ssigmList", ssigmList,
+                "ssigmListCount", ssigmList.size());
 
         } catch (Exception e) {
             log.error("Error executing getSSIGMByStatusAndSessions query", e);
@@ -165,12 +165,12 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
      * Calculate remaining days prioritizing custom field value, with date-based
      * fallback
      */
-     private long calculateRemainingDays(String ssigmId, Date endDate) {
+    private long calculateRemainingDays(String ssigmId, Date endDate) {
         try {
             // First, try to get remaining days from custom field values
             Optional<CustomFieldValues> customFieldValue = customFieldValuesRepository
-                    .findBySourceIdAndFieldKeyAndSourceType(ssigmId, "remaining_days",
-                            "STUDENT_SESSION_INSTITUTE_GROUP_MAPPING");
+                .findBySourceIdAndFieldKeyAndSourceType(ssigmId, "remaining_days",
+                    "STUDENT_SESSION_INSTITUTE_GROUP_MAPPING");
 
             if (customFieldValue.isPresent()) {
                 try {
@@ -182,37 +182,37 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                     }
                 } catch (NumberFormatException e) {
                     log.warn("Invalid remaining_days value in custom field for SSIGM {}: {}", ssigmId,
-                            customFieldValue.get().getValue());
+                        customFieldValue.get().getValue());
                 }
             }
 
             // Fallback to date-based calculation
             log.debug("No valid custom field value found for SSIGM {}, using date-based calculation", ssigmId);
-                Date startDate = new Date();
+            Date startDate = new Date();
 
-                if (endDate == null) {
-                    return 9999;
-                }
+            if (endDate == null) {
+                return 9999;
+            }
 
-                // Truncate both to midnight
-                Calendar startCal = Calendar.getInstance();
-                startCal.setTime(startDate);
-                startCal.set(Calendar.HOUR_OF_DAY, 0);
-                startCal.set(Calendar.MINUTE, 0);
-                startCal.set(Calendar.SECOND, 0);
-                startCal.set(Calendar.MILLISECOND, 0);
+            // Truncate both to midnight
+            Calendar startCal = Calendar.getInstance();
+            startCal.setTime(startDate);
+            startCal.set(Calendar.HOUR_OF_DAY, 0);
+            startCal.set(Calendar.MINUTE, 0);
+            startCal.set(Calendar.SECOND, 0);
+            startCal.set(Calendar.MILLISECOND, 0);
 
-                Calendar endCal = Calendar.getInstance();
-                endCal.setTime(endDate);
-                endCal.set(Calendar.HOUR_OF_DAY, 0);
-                endCal.set(Calendar.MINUTE, 0);
-                endCal.set(Calendar.SECOND, 0);
-                endCal.set(Calendar.MILLISECOND, 0);
+            Calendar endCal = Calendar.getInstance();
+            endCal.setTime(endDate);
+            endCal.set(Calendar.HOUR_OF_DAY, 0);
+            endCal.set(Calendar.MINUTE, 0);
+            endCal.set(Calendar.SECOND, 0);
+            endCal.set(Calendar.MILLISECOND, 0);
 
-                long diffMillis = endCal.getTimeInMillis() - startCal.getTimeInMillis();
-                long remainingDays = (diffMillis / (1000 * 60 * 60 * 24)) + 1; // include today
+            long diffMillis = endCal.getTimeInMillis() - startCal.getTimeInMillis();
+            long remainingDays = (diffMillis / (1000 * 60 * 60 * 24)) + 1; // include today
 
-                return Math.max(remainingDays, 0);
+            return Math.max(remainingDays, 0);
         } catch (Exception e) {
             log.error("Error calculating remaining days for SSIGM: {}", ssigmId, e);
             // Ultimate fallback
@@ -247,7 +247,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             // Try to update custom field value if it exists
             try {
                 Optional<CustomFieldValues> customFieldValue = customFieldValuesRepository
-                        .findBySourceIdAndFieldKeyAndSourceType(ssigmId, "remaining_days", "SSIGM");
+                    .findBySourceIdAndFieldKeyAndSourceType(ssigmId, "remaining_days", "SSIGM");
 
                 if (customFieldValue.isPresent()) {
                     CustomFieldValues cfv = customFieldValue.get();
@@ -256,7 +256,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                     log.debug("Updated remaining_days custom field value for SSIGM {} to {}", ssigmId, remainingDays);
                 } else {
                     log.debug("No custom field found for remaining_days on SSIGM {}, skipping custom field update",
-                            ssigmId);
+                        ssigmId);
                 }
             } catch (Exception e) {
                 log.warn("Failed to update custom field value for SSIGM {}: {}", ssigmId, e.getMessage());
@@ -361,18 +361,18 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
 
             // Create session schedule using only the values from params
             SessionSchedule schedule = SessionSchedule.builder()
-                    .sessionId(sessionId)
-                    .recurrenceType(recurrenceType)
-                    .meetingDate(meetingDate)
-                    .startTime(startTime)
-                    .lastEntryTime(lastEntryTime)
-                    .linkType(linkType)
-                    .customMeetingLink(customMeetingLink)
-                    .customWaitingRoomMediaId(null)
-                    .status(status)
-                    .thumbnailFileId(null)
-                    .dailyAttendance(dailyAttendance != null ? dailyAttendance : false)
-                    .build();
+                .sessionId(sessionId)
+                .recurrenceType(recurrenceType)
+                .meetingDate(meetingDate)
+                .startTime(startTime)
+                .lastEntryTime(lastEntryTime)
+                .linkType(linkType)
+                .customMeetingLink(customMeetingLink)
+                .customWaitingRoomMediaId(null)
+                .status(status)
+                .thumbnailFileId(null)
+                .dailyAttendance(dailyAttendance != null ? dailyAttendance : false)
+                .build();
 
             // Save the schedule
             SessionSchedule savedSchedule = sessionScheduleRepository.save(schedule);
@@ -380,13 +380,13 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             log.info("Successfully created session schedule: {} for session: {}", savedSchedule.getId(), sessionId);
 
             return Map.of(
-                    "SESSION_SCHEDULE", "SUCCEESS");
+                "SESSION_SCHEDULE", "SUCCEESS");
 
         } catch (Exception e) {
             log.error("Error creating session schedule", e);
             return Map.of(
-                    "error", "Failed to create session schedule: " + e.getMessage(),
-                    "success", false);
+                "error", "Failed to create session schedule: " + e.getMessage(),
+                "success", false);
         }
     }
 
@@ -413,55 +413,55 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
 
             // Check if participant already exists
             Optional<LiveSessionParticipants> existingParticipant = liveSessionParticipantRepository
-                    .findBySessionId(sessionId)
-                    .stream()
-                    .filter(p -> sourceType.equals(p.getSourceType()) && sourceId.equals(p.getSourceId()))
-                    .findFirst();
+                .findBySessionId(sessionId)
+                .stream()
+                .filter(p -> sourceType.equals(p.getSourceType()) && sourceId.equals(p.getSourceId()))
+                .findFirst();
 
             if (existingParticipant.isPresent()) {
                 log.info("Participant already exists for user {} in session {}", sourceId, sessionId);
                 LiveSessionParticipants existing = existingParticipant.get();
 
                 return Map.of(
-                        "participant", Map.of(
-                                "id", existing.getId(),
-                                "sourceId", existing.getSourceId(),
-                                "sourceType", existing.getSourceType(),
-                                "sessionId", existing.getSessionId()
-                        ),
-                        "message", "Participant already exists",
-                        "success", true
+                    "participant", Map.of(
+                        "id", existing.getId(),
+                        "sourceId", existing.getSourceId(),
+                        "sourceType", existing.getSourceType(),
+                        "sessionId", existing.getSessionId()
+                    ),
+                    "message", "Participant already exists",
+                    "success", true
                 );
             }
 
             // Create new participant
             LiveSessionParticipants participant = LiveSessionParticipants.builder()
-                    .sessionId(sessionId)
-                    .sourceType(sourceType)
-                    .sourceId(sourceId)
-                    .build();
+                .sessionId(sessionId)
+                .sourceType(sourceType)
+                .sourceId(sourceId)
+                .build();
 
             LiveSessionParticipants savedParticipant = liveSessionParticipantRepository.save(participant);
 
             log.info("Successfully created session participant: {} for user: {} in session: {}",
-                    savedParticipant.getId(), sourceId, sessionId);
+                savedParticipant.getId(), sourceId, sessionId);
 
             return Map.of(
-                    "participant", Map.of(
-                            "id", savedParticipant.getId(),
-                            "sourceId", savedParticipant.getSourceId(),
-                            "sourceType", savedParticipant.getSourceType(),
-                            "sessionId", savedParticipant.getSessionId()
-                    ),
-                    "message", "Participant created successfully",
-                    "success", true
+                "participant", Map.of(
+                    "id", savedParticipant.getId(),
+                    "sourceId", savedParticipant.getSourceId(),
+                    "sourceType", savedParticipant.getSourceType(),
+                    "sessionId", savedParticipant.getSessionId()
+                ),
+                "message", "Participant created successfully",
+                "success", true
             );
 
         } catch (Exception e) {
             log.error("Error creating session participant", e);
             return Map.of(
-                    "error", "Failed to create session participant: " + e.getMessage(),
-                    "success", false
+                "error", "Failed to create session participant: " + e.getMessage(),
+                "success", false
             );
         }
     }
@@ -504,31 +504,31 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
 
             // Create the LiveSession entity
             LiveSession liveSession = LiveSession.builder()
-                    .instituteId(instituteId)
-                    .title(title)
-                    .status(status != null ? status : "DRAFT")
-                    .startTime(startTime)
-                    .lastEntryTime(lastEntryTime)
-                    .timezone(timezone) // Added timezone
-                    .accessLevel((String) params.get("accessLevel"))
-                    .meetingType((String) params.get("meetingType"))
-                    .defaultMeetLink((String) params.get("defaultMeetLink"))
-                    .linkType((String) params.get("linkType"))
-                    .waitingRoomLink((String) params.get("waitingRoomLink"))
-                    .registrationFormLinkForPublicSessions((String) params.get("registrationFormLinkForPublicSessions"))
-                    .createdByUserId((String) params.get("createdByUserId")) // Note: keeping original typo from params
-                    .descriptionHtml((String) params.get("descriptionHtml"))
-                    .notificationEmailMessage((String) params.get("notificationEmailMessage"))
-                    .attendanceEmailMessage((String) params.get("attendanceEmailMessage"))
-                    .coverFileId((String) params.get("coverFileId"))
-                    .subject((String) params.get("subject"))
-                    .waitingRoomTime(waitingRoomTime)
-                    .thumbnailFileId((String) params.get("thumbnailFileId"))
-                    .backgroundScoreFileId((String) params.get("backgroundScoreFileId"))
-                    .allowRewind(allowRewind)
-                    .sessionStreamingServiceType((String) params.get("sessionStreamingServiceType"))
-                    .allowPlayPause(allowPlayPause != null ? allowPlayPause : false)
-                    .build();
+                .instituteId(instituteId)
+                .title(title)
+                .status(status != null ? status : "DRAFT")
+                .startTime(startTime)
+                .lastEntryTime(lastEntryTime)
+                .timezone(timezone) // Added timezone
+                .accessLevel((String) params.get("accessLevel"))
+                .meetingType((String) params.get("meetingType"))
+                .defaultMeetLink((String) params.get("defaultMeetLink"))
+                .linkType((String) params.get("linkType"))
+                .waitingRoomLink((String) params.get("waitingRoomLink"))
+                .registrationFormLinkForPublicSessions((String) params.get("registrationFormLinkForPublicSessions"))
+                .createdByUserId((String) params.get("createdByUserId")) // Note: keeping original typo from params
+                .descriptionHtml((String) params.get("descriptionHtml"))
+                .notificationEmailMessage((String) params.get("notificationEmailMessage"))
+                .attendanceEmailMessage((String) params.get("attendanceEmailMessage"))
+                .coverFileId((String) params.get("coverFileId"))
+                .subject((String) params.get("subject"))
+                .waitingRoomTime(waitingRoomTime)
+                .thumbnailFileId((String) params.get("thumbnailFileId"))
+                .backgroundScoreFileId((String) params.get("backgroundScoreFileId"))
+                .allowRewind(allowRewind)
+                .sessionStreamingServiceType((String) params.get("sessionStreamingServiceType"))
+                .allowPlayPause(allowPlayPause != null ? allowPlayPause : false)
+                .build();
 
             // Save the live session
             LiveSession savedSession = liveSessionRepository.save(liveSession);
@@ -536,20 +536,20 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             log.info("Successfully created live session: {} with title: {}", savedSession.getId(), title);
             params.put("sessionId",savedSession.getId());
             return Map.of(
-                    "success", true,
-                    "sessionId", savedSession.getId(),
-                    "message", "Live session created successfully",
-                    "session", Map.of(
-                            "id", savedSession.getId(),
-                            "title", savedSession.getTitle(),
-                            "status", savedSession.getStatus(),
-                            "instituteId", savedSession.getInstituteId()));
+                "success", true,
+                "sessionId", savedSession.getId(),
+                "message", "Live session created successfully",
+                "session", Map.of(
+                    "id", savedSession.getId(),
+                    "title", savedSession.getTitle(),
+                    "status", savedSession.getStatus(),
+                    "instituteId", savedSession.getInstituteId()));
 
         } catch (Exception e) {
             log.error("Error creating live session", e);
             return Map.of(
-                    "error", "Failed to create live session: " + e.getMessage(),
-                    "success", false);
+                "error", "Failed to create live session: " + e.getMessage(),
+                "success", false);
         }
     }
 
@@ -621,20 +621,20 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
     private Map<String, Object> isAlreadyPresentInGivenPackageSession(Map<String,Object>params) {
         // This query finds if an active mapping exists for the user in the specified package.
         Optional<StudentSessionInstituteGroupMapping> optionalStudentSessionInstituteGroupMapping =
-                ssigmRepo.findByUserIdAndStatusInAndPackageSessionId(
-                        (String) params.get("userId"),
-                        List.of(LearnerStatusEnum.ACTIVE.name()),
-                        (String) params.get("packageSessionId")
-                );
+            ssigmRepo.findByUserIdAndStatusInAndPackageSessionId(
+                (String) params.get("userId"),
+                List.of(LearnerStatusEnum.ACTIVE.name()),
+                (String) params.get("packageSessionId")
+            );
 
         // If the optional has a value, it means the mapping exists.
         if (optionalStudentSessionInstituteGroupMapping.isPresent()) {
             // Return a map indicating the student is already a member.
-            return Map.of("isAlreadyPaidMember", true);
+            return Map.of("isAlreadyPresentInPackageSession", true);
         } else {
             // Otherwise, the student is not a member in this package.
             // Return a map indicating they are not a member.
-            return Map.of("isAlreadyPaidMember", false);
+            return Map.of("isAlreadyPresentInPackageSession", false);
         }
     }
 }

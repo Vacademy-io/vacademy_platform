@@ -10,7 +10,7 @@ import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
 import java.util.List;
 
 @Repository
-public interface LiveSessionRepository extends JpaRepository<LiveSession, String> {
+public interface LiveSessionRepository extends JpaRepository<LiveSession, String>, LiveSessionRepositoryCustom {
 
     public interface LiveSessionListProjection {
         String getSessionId();

@@ -32,18 +32,12 @@ public class FileController {
                                              @RequestParam Integer expiryDays,
                                              @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) throws FileDownloadException {
 
-        String url = fileService.getUrlWithExpiryAndId(fileId, 6);
+        String url = fileService.getUrlWithExpiryAndId(fileId, expiryDays);
 
-        String etag = "W/\"" + fileId + ":" + expiryDays + "\"";
         HttpHeaders headers = new HttpHeaders();
-        // Cache for shorter duration to prevent URL expiry issues
-        // URLs are generated with precise timestamps, so longer caching can cause expiry
-        headers.set("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
-        headers.setETag(etag);
-
-        if (etag.equals(ifNoneMatch)) {
-            return ResponseEntity.status(304).headers(headers).build();
-        }
+        headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+        headers.setPragma("no-cache");
+        headers.setExpires(0);
 
         return ResponseEntity.ok().headers(headers).body(url);
     }
@@ -58,9 +52,9 @@ public class FileController {
         List<FileDetailsDTO> fileDetailsDTO = fileService.getMultipleFileDetailsWithExpiryAndId(fileIds, expiryDays);
 
         HttpHeaders headers = new HttpHeaders();
-        headers.set("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
-        String etag = "W/\"" + fileIds + ":" + expiryDays + "\"";
-        headers.setETag(etag);
+        headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+        headers.setPragma("no-cache");
+        headers.setExpires(0);
         return ResponseEntity.ok().headers(headers).body(fileDetailsDTO);
     }
 

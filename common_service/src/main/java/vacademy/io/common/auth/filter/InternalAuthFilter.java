@@ -27,7 +27,7 @@ public class InternalAuthFilter extends OncePerRequestFilter {
         if (request.getRequestURI().contains("internal")) {
             String clientName = request.getHeader("clientName");
             String clientToken = request.getHeader("Signature");
-            logger.error("Incoming headers: {}"+ request.getHeaderNames());
+          
 
             boolean isValidClient = clientAuthenticationService.validateClient(clientName, clientToken);
             if (isValidClient) {
@@ -38,7 +38,6 @@ public class InternalAuthFilter extends OncePerRequestFilter {
                 response.getWriter().write("Invalid client authentication");
             }
         } else {
-            logger.error("Incoming headers2: {}"+ request.getHeaderNames());
             filterChain.doFilter(request, response);
             return;
         }

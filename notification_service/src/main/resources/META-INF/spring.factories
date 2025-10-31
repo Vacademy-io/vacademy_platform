@@ -1,0 +1,2 @@
+org.springframework.boot.env.EnvironmentPostProcessor=vacademy.io.notification_service.config.SqsAutoConfigurationExcluder
+

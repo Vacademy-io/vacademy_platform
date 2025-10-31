@@ -15,10 +15,9 @@ import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.exceptions.*;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Optional;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
@@ -463,4 +462,22 @@ public class UserService {
         user = updateUser(user, userDTO);
         return new UserDTO(user);
     }
+
+    public List<UserDTO> findUsersOfRolesOfInstitute(List<String> roles, String instituteId, int inactiveDays) {
+        // Calculate target date: current date - inactiveDays
+        LocalDate localTargetDate = LocalDate.now().minusDays(inactiveDays);
+
+        // Convert LocalDate to java.util.Date (for JPA query)
+        Date targetDate = Date.from(localTargetDate.atStartOfDay(ZoneId.systemDefault()).toInstant());
+
+        List<User> users = userRepository.findUsersInactiveOnDate(
+            instituteId,
+            roles,
+            List.of(UserRoleStatus.ACTIVE.name()),
+            targetDate
+        );
+
+        return users.stream().map(UserDTO::new).toList();
+    }
+
 }

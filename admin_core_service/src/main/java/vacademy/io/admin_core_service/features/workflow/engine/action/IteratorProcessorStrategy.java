@@ -227,7 +227,7 @@ public class IteratorProcessorStrategy implements DataProcessorStrategy {
     private Map<String, Object> parseObject(ForEachConfigDTO forEachConfig, Map<String, Object> context, Object itemToUpdate) {
         if (!(itemToUpdate instanceof Map)) {
             log.error("OBJECT_PARSER expected itemToUpdate to be a Map but got: {}",
-                    itemToUpdate != null ? itemToUpdate.getClass().getName() : "null");
+                itemToUpdate != null ? itemToUpdate.getClass().getName() : "null");
             return Map.of("status", "error", "error", "Item to parse is not a Map.");
         }
 
@@ -273,10 +273,10 @@ public class IteratorProcessorStrategy implements DataProcessorStrategy {
     private List<Map<String, Object>> processTemplatesAndCreateRequests(Object templatesObj, Map<String, Object> itemContext) {
         if (templatesObj instanceof Collection<?> templatesCollection) {
             return templatesCollection.stream()
-                    .map(template -> createWhatsAppRequest(template, itemContext))
-                    .filter(Objects::nonNull)
-                    .map(this::convertWhatsappRequestToMap)
-                    .toList();
+                .map(template -> createWhatsAppRequest(template, itemContext))
+                .filter(Objects::nonNull)
+                .map(this::convertWhatsappRequestToMap)
+                .toList();
         } else {
             WhatsappRequest request = createWhatsAppRequest(templatesObj, itemContext);
             return request != null ? List.of(convertWhatsappRequestToMap(request)) : Collections.emptyList();
@@ -344,12 +344,12 @@ public class IteratorProcessorStrategy implements DataProcessorStrategy {
 
     private String extractMobileNumber(Map<String, Object> item) {
         return Arrays.stream(new String[]{"mobileNumber", "mobile_number", "mobile", "phone", "phoneNumber", "phone_number"})
-                .map(item::get)
-                .filter(Objects::nonNull)
-                .map(String::valueOf)
-                .filter(s -> !s.isBlank())
-                .findFirst()
-                .orElse(null);
+            .map(item::get)
+            .filter(Objects::nonNull)
+            .map(String::valueOf)
+            .filter(s -> !s.isBlank())
+            .findFirst()
+            .orElse(null);
     }
 
     /**
@@ -389,6 +389,46 @@ public class IteratorProcessorStrategy implements DataProcessorStrategy {
             result.put(forEachConfig.getEval(), selectedCase);
         }
 
+
+        return result;
+    }
+
+    private Map<String, Object> processSpelEvaluatorOperation(String evalVarName, String computeExpr, Map<String, Object> loopContext, Object item) {
+        Map<String, Object> result = new HashMap<>();
+
+        if (evalVarName == null || evalVarName.isBlank()) {
+            log.warn("SPEL_EVALUATOR operation missing 'eval' field name");
+            result.put("status", "missing_eval_field");
+            return result;
+        }
+
+        if (computeExpr == null || computeExpr.isBlank()) {
+            log.warn("SPEL_EVALUATOR operation missing 'compute' expression");
+            result.put("status", "missing_compute_expression");
+            return result;
+        }
+
+        if (!(item instanceof Map)) {
+            log.warn("SPEL_EVALUATOR operation requires item to be a Map to store the result");
+            result.put("status", "item_not_map");
+            return result;
+        }
+
+        try {
+            // Evaluate the expression using the full stacked context
+            Object resultValue = evaluateWithStackedContext(computeExpr, loopContext);
+
+            // Store the result directly on the item map
+            ((Map<String, Object>) item).put(evalVarName, resultValue);
+
+            log.debug("SPEL_EVALUATOR computed '{}' and stored value: {}", evalVarName, resultValue);
+            result.put("status", "success");
+            result.put(evalVarName, resultValue);
+        } catch (Exception e) {
+            log.error("Error executing SPEL_EVALUATOR operation", e);
+            result.put("status", "error");
+            result.put("error", e.getMessage());
+        }
 
         return result;
     }

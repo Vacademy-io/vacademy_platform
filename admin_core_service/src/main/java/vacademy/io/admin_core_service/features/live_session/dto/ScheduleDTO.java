@@ -39,4 +39,6 @@ public interface ScheduleDTO {
     String getCustomMeetingLink();
     String getCustomWaitingRoomMediaId();
     String getTimezone();
+    Boolean getAllowRewind();
+    Boolean getAllowPlayPause();
 }

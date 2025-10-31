@@ -1,12 +1,15 @@
 package vacademy.io.admin_core_service.features.live_session.controller;
 
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.live_session.dto.GetSessionDetailsBySessionIdResponseDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.GroupedSessionsByDateDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionListDTO;
+import vacademy.io.admin_core_service.features.live_session.dto.SessionSearchRequest;
+import vacademy.io.admin_core_service.features.live_session.dto.SessionSearchResponse;
 import vacademy.io.admin_core_service.features.live_session.service.GetLiveSessionService;
 import vacademy.io.admin_core_service.features.live_session.service.GetSessionByIdService;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -67,5 +70,13 @@ public class GetSessionsListController {
     @ClientCacheable(maxAgeSeconds = 60, scope = CacheScope.PRIVATE)
     ResponseEntity<GetSessionDetailsBySessionIdResponseDTO> getSessionByScheduleId(@RequestParam("scheduleId") String scheduleId , @RequestAttribute("user") CustomUserDetails user){
         return ResponseEntity.ok(getSessionByIdService.getSessionByScheduleId(scheduleId));
+    }
+
+    @PostMapping("/search")
+    @ClientCacheable(maxAgeSeconds = 30, scope = CacheScope.PRIVATE, varyHeaders = {"X-Institute-Id"})
+    ResponseEntity<SessionSearchResponse> searchSessions(
+            @Valid @RequestBody SessionSearchRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(getLiveSessionService.searchSessions(request, user));
     }
 }

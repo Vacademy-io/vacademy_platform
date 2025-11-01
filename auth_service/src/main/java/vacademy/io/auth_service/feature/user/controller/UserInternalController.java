@@ -53,5 +53,15 @@ public class UserInternalController {
         return ResponseEntity.ok(userDetailService.getUserByIdWithPassword(userId));
     }
 
+    @PostMapping("/get-users-of-roles-of-institute")
+    public ResponseEntity<List<UserDTO>> getUsersOfRolesOfInstitute(
+        @RequestBody List<String> roles,
+        @RequestParam("instituteId") String instituteId,
+        @RequestParam(name = "inactivityDays", defaultValue = "7") int inactivityDays) {
+
+        List<UserDTO> users = userService.findUsersOfRolesOfInstitute(roles, instituteId, inactivityDays);
+        return ResponseEntity.ok(users);
+    }
+
 
 }

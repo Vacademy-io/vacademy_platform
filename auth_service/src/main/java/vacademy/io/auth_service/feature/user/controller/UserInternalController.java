@@ -49,7 +49,7 @@ public class UserInternalController {
     }
 
     @PostMapping("/user-by-id-with-password")
-    public ResponseEntity<UserDTO>getUserByIdWithPassword(String userId){
+    public ResponseEntity<UserDTO>getUserByIdWithPassword(@RequestParam String userId){
         return ResponseEntity.ok(userDetailService.getUserByIdWithPassword(userId));
     }
 

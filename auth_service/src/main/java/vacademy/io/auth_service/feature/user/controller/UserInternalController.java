@@ -48,8 +48,8 @@ public class UserInternalController {
         return ResponseEntity.ok(users);
     }
 
-    @PostMapping("/user-by-id-with-password")
-    public ResponseEntity<UserDTO>getUserByIdWithPassword(@RequestParam String userId){
+    @GetMapping("/user-by-id-with-password")
+    public ResponseEntity<UserDTO>getUserByIdWithPassword(String userId){
         return ResponseEntity.ok(userDetailService.getUserByIdWithPassword(userId));
     }
 

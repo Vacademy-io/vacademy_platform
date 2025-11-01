@@ -43,6 +43,8 @@ public class InstitutePaymentGatewayMappingService {
         switch (paymentGateway) {
             case STRIPE:
                 return stripePaymentGatewayOpenDetails(paymentGatewaySpecificData);
+            case RAZORPAY:
+                return razorpayPaymentGatewayOpenDetails(paymentGatewaySpecificData);
             case EWAY:
                 return ewayPaymentGatewayOpenDetails(paymentGatewaySpecificData);
             default:
@@ -52,6 +54,17 @@ public class InstitutePaymentGatewayMappingService {
 
     private Map<String,Object> stripePaymentGatewayOpenDetails(Map<String, Object> paymentGatewaySpecificData) {
         return Map.of("publishableKey", paymentGatewaySpecificData.get("publishableKey"));
+    }
+
+    private Map<String,Object> razorpayPaymentGatewayOpenDetails(Map<String, Object> paymentGatewaySpecificData) {
+        String keyId = null;
+        if (paymentGatewaySpecificData != null) {
+            keyId = (String) paymentGatewaySpecificData.get("apiKey");
+            if (keyId == null) {
+                keyId = (String) paymentGatewaySpecificData.get("keyId");
+            }
+        }
+        return Map.of("keyId", keyId != null ? keyId : "");
     }
 
     private Map<String,Object> ewayPaymentGatewayOpenDetails(Map<String, Object> paymentGatewaySpecificData) {

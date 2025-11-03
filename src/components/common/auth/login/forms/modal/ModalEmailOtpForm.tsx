@@ -45,12 +45,14 @@ type OtpFormValues = { otp: string[] };
 
 interface ModalEmailOtpFormProps {
   onSwitchToUsername?: () => void;
+  onEmailVerificationSuccess?: (email: string) => void;
   type?: string;
   courseId?: string;
-  onSwitchToSignup?: () => void;
+  onSwitchToSignup?: (email?: string, shouldAutoSendOtp?: boolean) => void;
   onLoginSuccess?: () => void;
   showUsernameSwitch?: boolean;
   signupAvailable?: boolean; // Add this prop to check if signup is available
+  instituteId?: string; // Institute ID to pass to backend
 }
 
 export function ModalEmailLogin({
@@ -62,10 +64,12 @@ export function ModalEmailLogin({
     onLoginSuccess,
     showUsernameSwitch = true,
     signupAvailable,
+    instituteId: propInstituteId,
 }: ModalEmailOtpFormProps) {
-    // Extract instituteId from current URL
+    // Extract instituteId from props or current URL
     const urlParams = new URLSearchParams(window.location.search);
-    const instituteId = urlParams.get("instituteId");
+    const urlInstituteId = urlParams.get("instituteId");
+    const instituteId = propInstituteId || urlInstituteId;
     const [isOtpSent, setIsOtpSent] = useState(false);
     const [email, setEmail] = useState("");
     const [timer, setTimer] = useState(0);
@@ -113,7 +117,10 @@ export function ModalEmailLogin({
     });
 
     const sendOtpMutation = useMutation({
-        mutationFn: (emailParam: string) => axios.post(REQUEST_OTP, { email: emailParam }),
+        mutationFn: (emailParam: string) => axios.post(REQUEST_OTP, { 
+            email: emailParam,
+            ...(instituteId && { institute_id: instituteId }) // Include institute_id for proper theming
+        }),
         onMutate: () => {
             setIsLoading(true);
         },
@@ -132,14 +139,17 @@ export function ModalEmailLogin({
             if (errorData?.ex === "User not found!" || errorData?.responseCode === "User not found!") {
                 // User doesn't exist - show signup message only if signup is available
                 if (signupAvailable && onSwitchToSignup) {
+                    // Get the email from the form state
+                    const emailValue = emailForm.getValues().email;
+                    
                     toast.error("Account not found. Please sign up to continue.", {
-                        duration: 5000,
+                        duration: 3000,
                         description: "This email is not registered in our system."
                     });
                     
-                    // Automatically switch to signup after a short delay
+                    // Automatically switch to signup after a short delay with pre-filled email and auto-send OTP
                     setTimeout(() => {
-                        onSwitchToSignup();
+                        onSwitchToSignup(emailValue, true);
                     }, 2000);
                 } else {
                     // Signup not available - show different message
@@ -169,7 +179,10 @@ export function ModalEmailLogin({
 
     const verifyOtpMutation = useMutation({
         mutationFn: (data: { email: string; otp: string }) =>
-            axios.post(LOGIN_OTP, data),
+            axios.post(LOGIN_OTP, {
+                ...data,
+                ...(instituteId && { institute_id: instituteId }) // Include institute_id for consistency
+            }),
         onMutate: () => {
             setIsLoading(true);
         },

@@ -116,7 +116,7 @@ export const LogoutSidebar = ({
               {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (
                 <div className="relative">
                   <img
-                    className="w-24 h-24 rounded-xl object-contain p-2 bg-white dark:bg-neutral-800 border-2 border-neutral-200 dark:border-neutral-700 transition-all duration-300 group-hover:scale-105 group-hover:shadow-lg"
+                    className="w-24 h-24 rounded-xl object-contain p-2 bg-white "
                     src={instituteLogoFileUrl}
                     alt="Institute Logo"
                   />

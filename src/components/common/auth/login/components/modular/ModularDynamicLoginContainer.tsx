@@ -24,7 +24,7 @@ interface ModularDynamicLoginContainerProps {
   signupSettings?: SignupSettings | null;
   type?: string;
   courseId?: string;
-  onSwitchToSignup?: () => void;
+  onSwitchToSignup?: (email?: string, shouldAutoSendOtp?: boolean) => void;
   onSwitchToForgotPassword?: () => void;
   onLoginSuccess?: () => void;
   className?: string;
@@ -617,6 +617,7 @@ export function ModularDynamicLoginContainer({
                   onLoginSuccess={onLoginSuccess}
                   showUsernameSwitch={false} // Disable built-in switching since we handle it in container
                   signupAvailable={isSignupAvailable}
+                  instituteId={instituteId}
                 />
               ) : currentProvider === "usernamePassword" && effectiveSettings.providers.usernamePassword ? (
                 <ModalUsernameLogin
@@ -681,7 +682,7 @@ export function ModularDynamicLoginContainer({
             Don't have an account?{" "}
             <motion.button
               whileHover={{ scale: 1.02 }}
-              onClick={onSwitchToSignup}
+              onClick={() => onSwitchToSignup && onSwitchToSignup()}
               className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
             >
               Sign up here

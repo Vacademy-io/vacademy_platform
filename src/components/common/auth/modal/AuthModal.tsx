@@ -37,6 +37,8 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
     const dialogRef = useRef<HTMLDivElement>(null);
     const [instituteIdFromStorage, setInstituteIdFromStorage] = useState<string | null>(null);
     const lastPrefetchedInstituteIdRef = useRef<string | null>(null);
+    const [prefilledEmail, setPrefilledEmail] = useState<string>("");
+    const [autoSendOtp, setAutoSendOtp] = useState<boolean>(false);
     
     // Use domain routing hook for institute ID resolution
     const domainRouting = useDomainRouting();
@@ -310,7 +312,13 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
         return () => document.removeEventListener('keydown', handleKeyDown);
     }, [isOpen]);
 
-    const handleSwitchToSignup = async () => {
+    const handleSwitchToSignup = async (email?: string, shouldAutoSendOtp: boolean = false) => {
+        // Store prefilled email if provided
+        if (email) {
+            setPrefilledEmail(email);
+            setAutoSendOtp(shouldAutoSendOtp);
+        }
+        
         // Resolve again (cheap if already in Preferences), then prefetch if needed
         try {
             const resolved = await resolveInstituteIdFromLocalOrSubdomain();
@@ -329,6 +337,9 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
     };
 
     const handleSwitchToLogin = () => {
+        // Clear prefilled data when switching back to login
+        setPrefilledEmail("");
+        setAutoSendOtp(false);
         setCurrentMode('login');
     };
 
@@ -358,8 +369,10 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
         setIsVisible(false);
         setTimeout(() => {
             setInternalIsOpen(false);
-            // Reset to login mode when closing
+            // Reset to login mode and clear prefilled data when closing
             setCurrentMode('login');
+            setPrefilledEmail("");
+            setAutoSendOtp(false);
         }, 200);
     };
 
@@ -491,6 +504,8 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
                                     instituteDetails={signupState.selectedInstitute ? { setting: signupState.selectedInstitute.setting } : undefined}
                                     onSignupSuccess={handleSignupSuccess}
                                     onBackToProviders={handleSwitchToLogin}
+                                    initialEmail={prefilledEmail}
+                                    autoSendOtp={autoSendOtp}
                                 />
                              );
                          })()

@@ -47,7 +47,10 @@ class MediumDeliveryTest {
         req.setInstituteId("INST_MEDIUM");
         req.setCreatedBy("CREATOR_MED");
         req.setCreatedByRole("ADMIN");
-        req.setRecipients(List.of(new CreateAnnouncementRequest.RecipientRequest("ROLE", "STUDENT", null)));
+        var recipient = new CreateAnnouncementRequest.RecipientRequest();
+        recipient.setRecipientType("ROLE");
+        recipient.setRecipientId("STUDENT");
+        req.setRecipients(List.of(recipient));
         req.setModes(List.of(new CreateAnnouncementRequest.ModeRequest("SYSTEM_ALERT", Map.of("priority", "HIGH"))));
 
         var email = new CreateAnnouncementRequest.MediumRequest();

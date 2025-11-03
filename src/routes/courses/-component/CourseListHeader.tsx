@@ -159,7 +159,7 @@ const CourseListHeader = ({
           />
           <Button 
             size="sm" 
-            className="text-xs sm:text-sm"
+            className="text-xs text-white sm:text-sm"
             onClick={() => setIsDonationDialogOpen(true)}
           >
             Donate
@@ -206,7 +206,7 @@ const CourseListHeader = ({
             </Button>
             <Button 
               size="sm" 
-              className="text-xs sm:text-sm"
+              className="text-xs text-white sm:text-sm"
               onClick={() => {
                 closeMobileMenu();
                 setIsDonationDialogOpen(true);

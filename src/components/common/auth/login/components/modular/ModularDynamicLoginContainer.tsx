@@ -617,6 +617,7 @@ export function ModularDynamicLoginContainer({
                   onLoginSuccess={onLoginSuccess}
                   showUsernameSwitch={false} // Disable built-in switching since we handle it in container
                   signupAvailable={isSignupAvailable}
+                  instituteId={instituteId}
                 />
               ) : currentProvider === "usernamePassword" && effectiveSettings.providers.usernamePassword ? (
                 <ModalUsernameLogin

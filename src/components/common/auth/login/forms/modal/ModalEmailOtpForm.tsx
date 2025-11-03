@@ -45,12 +45,14 @@ type OtpFormValues = { otp: string[] };
 
 interface ModalEmailOtpFormProps {
   onSwitchToUsername?: () => void;
+  onEmailVerificationSuccess?: (email: string) => void;
   type?: string;
   courseId?: string;
   onSwitchToSignup?: () => void;
   onLoginSuccess?: () => void;
   showUsernameSwitch?: boolean;
   signupAvailable?: boolean; // Add this prop to check if signup is available
+  instituteId?: string; // Institute ID to pass to backend
 }
 
 export function ModalEmailLogin({
@@ -62,10 +64,12 @@ export function ModalEmailLogin({
     onLoginSuccess,
     showUsernameSwitch = true,
     signupAvailable,
+    instituteId: propInstituteId,
 }: ModalEmailOtpFormProps) {
-    // Extract instituteId from current URL
+    // Extract instituteId from props or current URL
     const urlParams = new URLSearchParams(window.location.search);
-    const instituteId = urlParams.get("instituteId");
+    const urlInstituteId = urlParams.get("instituteId");
+    const instituteId = propInstituteId || urlInstituteId;
     const [isOtpSent, setIsOtpSent] = useState(false);
     const [email, setEmail] = useState("");
     const [timer, setTimer] = useState(0);
@@ -113,7 +117,10 @@ export function ModalEmailLogin({
     });
 
     const sendOtpMutation = useMutation({
-        mutationFn: (emailParam: string) => axios.post(REQUEST_OTP, { email: emailParam }),
+        mutationFn: (emailParam: string) => axios.post(REQUEST_OTP, { 
+            email: emailParam,
+            ...(instituteId && { institute_id: instituteId }) // Include institute_id for proper theming
+        }),
         onMutate: () => {
             setIsLoading(true);
         },
@@ -169,7 +176,10 @@ export function ModalEmailLogin({
 
     const verifyOtpMutation = useMutation({
         mutationFn: (data: { email: string; otp: string }) =>
-            axios.post(LOGIN_OTP, data),
+            axios.post(LOGIN_OTP, {
+                ...data,
+                ...(instituteId && { institute_id: instituteId }) // Include institute_id for consistency
+            }),
         onMutate: () => {
             setIsLoading(true);
         },

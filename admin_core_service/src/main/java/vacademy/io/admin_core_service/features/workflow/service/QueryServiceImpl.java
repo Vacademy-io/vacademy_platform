@@ -288,9 +288,6 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
      */
     private Map<String, Object> createSessionSchedule(Map<String, Object> params) {
         try {
-            if (true){
-                return Map.of();
-            }
             String sessionId = (String) params.get("sessionId");
             String recurrenceType = (String) params.get("recurrenceType");
             Object meetingDateObj = params.get("meetingDate");
@@ -405,9 +402,6 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
      */
     private Map<String, Object> createSessionParticipent(Map<String, Object> params) {
         try {
-            if (true){
-                return Map.of();
-            }
             String sourceId = (String) params.get("sourceId");
             String sourceType = (String) params.getOrDefault("sourceType", "USER");
             String sessionId = (String) params.get("sessionId");
@@ -485,9 +479,6 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
      */
     private Map<String, Object> createLiveSession(Map<String, Object> params) {
         try {
-            if (true){
-                return Map.of();
-            }
             log.info("Creating live session with params: {}", params);
 
             // Extract and validate required parameters

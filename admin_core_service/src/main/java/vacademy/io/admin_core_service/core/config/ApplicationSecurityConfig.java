@@ -60,7 +60,9 @@ public class ApplicationSecurityConfig {
             // User Resolution APIs for notification service - OPEN for internal
             // communication
             "/admin-core-service/v1/faculty/by-package-sessions",
-            "/admin-core-service/v1/students/by-package-sessions"
+            "/admin-core-service/v1/students/by-package-sessions",
+            "/admin-core-service/v1/users/by-custom-field-filters",
+            "/admin-core-service/v1/users/by-custom-field-filters/**"
     };
     @Autowired
     JwtAuthFilter jwtAuthFilter;
@@ -75,20 +77,35 @@ public class ApplicationSecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        // Log the security configuration for debugging
+        System.out.println("🔒 Configuring SecurityFilterChain - Custom field filters endpoint should be accessible");
+        
         http
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .authorizeHttpRequests(authz -> authz
+                        // User resolution endpoints for notification service - EXPLICITLY FIRST
+                        // These paths must match EXACTLY as called by notification-service
+                        .requestMatchers("/admin-core-service/v1/users/by-custom-field-filters").permitAll()
+                        .requestMatchers("/admin-core-service/v1/users/by-custom-field-filters/**").permitAll()
+                        .requestMatchers("/admin-core-service/v1/faculty/by-package-sessions").permitAll()
+                        .requestMatchers("/admin-core-service/v1/students/by-package-sessions").permitAll()
                         .requestMatchers(ALLOWED_PATHS).permitAll()
                         .requestMatchers(INTERNAL_PATHS).authenticated()
                         .anyRequest().authenticated())
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .anonymous(anonymous -> anonymous.disable())
+                // Anonymous authentication is enabled by default in Spring Security,
+                // which allows permitAll() to work for unauthenticated requests
                 .authenticationProvider(authenticationProvider())
+                // InternalAuthFilter only checks paths containing "internal", so it won't block our endpoint
                 .addFilterBefore(internalAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                // JwtAuthFilter only processes requests with Authorization header, otherwise passes through
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
-        return http.build();
+        
+        SecurityFilterChain chain = http.build();
+        System.out.println("✅ SecurityFilterChain configured - /admin-core-service/v1/users/by-custom-field-filters should be accessible");
+        return chain;
     }
 
     @Bean

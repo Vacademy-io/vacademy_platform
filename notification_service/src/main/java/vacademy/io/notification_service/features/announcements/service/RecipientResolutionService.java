@@ -4,13 +4,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import vacademy.io.notification_service.features.announcements.client.AdminCoreServiceClient;
-import vacademy.io.notification_service.features.announcements.client.AuthServiceClient;
 import vacademy.io.notification_service.features.announcements.entity.AnnouncementRecipient;
 import vacademy.io.notification_service.features.announcements.enums.RecipientType;
 import vacademy.io.notification_service.features.announcements.repository.AnnouncementRecipientRepository;
 import vacademy.io.notification_service.features.announcements.repository.AnnouncementRepository;
 import vacademy.io.notification_service.features.announcements.entity.Announcement;
-import vacademy.io.common.auth.entity.User;
+import vacademy.io.notification_service.features.announcements.service.resolver.CustomFieldFilterRecipientResolver;
+import vacademy.io.notification_service.features.announcements.service.resolver.RecipientResolver;
+import vacademy.io.notification_service.features.announcements.service.resolver.RecipientResolverRegistry;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -21,9 +22,10 @@ import java.util.stream.Collectors;
 public class RecipientResolutionService {
 
     private final AnnouncementRecipientRepository recipientRepository;
-    private final AuthServiceClient authServiceClient;
     private final AdminCoreServiceClient adminCoreServiceClient;
     private final AnnouncementRepository announcementRepository;
+    private final RecipientResolverRegistry resolverRegistry;
+    private final CustomFieldFilterRecipientResolver customFieldFilterResolver;
 
     /**
      * Resolves announcement recipients (roles, users, package_sessions, tags) to actual user IDs
@@ -79,136 +81,88 @@ public class RecipientResolutionService {
     
     /**
      * Helper method to resolve a list of recipients (either inclusions or exclusions)
+     * Refactored to use resolver pattern following SOLID principles
      */
     private Set<String> resolveRecipientList(List<AnnouncementRecipient> recipients, String instituteId, String type) {
         Set<String> resolvedUserIds = new HashSet<>();
         List<String> tagIdsToResolve = new ArrayList<>();
+        List<AnnouncementRecipient> customFieldFilterRecipients = new ArrayList<>();
         
+        // Group recipients by type for efficient processing
         for (AnnouncementRecipient recipient : recipients) {
-            // Get actual recipient ID (removes "EXCLUDE:" prefix if present)
+            RecipientType recipientType = recipient.getRecipientType();
             String actualRecipientId = recipient.getActualRecipientId();
             
-            switch (recipient.getRecipientType()) {
-                case USER:
-                    // Check if it's an email address or user ID
-                    if (actualRecipientId.contains("@")) {
-                        // Resolve email to user ID
-                        User user = authServiceClient.getUserByEmail(actualRecipientId);
-                        if (user != null) {
-                            resolvedUserIds.add(user.getId());
-                            log.debug("[{}] Resolved email {} to user ID: {}", type, actualRecipientId, user.getId());
-                        } else {
-                            log.warn("[{}] Could not resolve email to user ID: {}", type, actualRecipientId);
-                        }
-                    } else {
-                        // It's already a user ID
-                        resolvedUserIds.add(actualRecipientId);
-                        log.debug("[{}] Added direct user ID: {}", type, actualRecipientId);
-                    }
-                    break;
-                    
-                case ROLE:
-                    Set<String> roleUsers = resolveRoleToUsers(actualRecipientId, instituteId);
-                    resolvedUserIds.addAll(roleUsers);
-                    log.debug("[{}] Resolved role {} to {} users", type, actualRecipientId, roleUsers.size());
-                    break;
-                    
-                case PACKAGE_SESSION:
-                    Set<String> sessionUsers = resolvePackageSessionToUsers(actualRecipientId);
-                    resolvedUserIds.addAll(sessionUsers);
-                    log.debug("[{}] Resolved package session {} to {} users", type, actualRecipientId, sessionUsers.size());
-                    break;
-                
-                case TAG:
-                    // Collect tag IDs to resolve in a single batched call
-                    if (actualRecipientId != null && !actualRecipientId.isBlank()) {
-                        tagIdsToResolve.add(actualRecipientId);
-                    }
-                    break;
-                    
-                default:
-                    log.warn("[{}] Unknown recipient type: {}", type, recipient.getRecipientType());
+            // Handle TAG recipients - batch them for single API call
+            if (recipientType == RecipientType.TAG) {
+                if (actualRecipientId != null && !actualRecipientId.isBlank()) {
+                    tagIdsToResolve.add(actualRecipientId);
+                }
+                continue;
+            }
+            
+            // Handle CUSTOM_FIELD_FILTER recipients - need special handling
+            if (recipientType == RecipientType.CUSTOM_FIELD_FILTER) {
+                customFieldFilterRecipients.add(recipient);
+                continue;
+            }
+            
+            // Use resolver pattern for other types (USER, ROLE, PACKAGE_SESSION)
+            Optional<RecipientResolver> resolverOpt = resolverRegistry.getResolver(recipientType.name());
+            if (resolverOpt.isPresent()) {
+                try {
+                    RecipientResolver resolver = resolverOpt.get();
+                    Set<String> userIds = resolver.resolve(actualRecipientId, instituteId);
+                    resolvedUserIds.addAll(userIds);
+                    log.debug("[{}] Resolved {} {} to {} users", type, recipientType, actualRecipientId, userIds.size());
+                } catch (Exception e) {
+                    log.error("[{}] Error resolving {} recipient {} for institute {}", 
+                            type, recipientType, actualRecipientId, instituteId, e);
+                }
+            } else {
+                log.warn("[{}] No resolver found for recipient type: {}", type, recipientType);
             }
         }
         
-        // Resolve TAG recipients in one admin-core call
+        // Resolve TAG recipients in one batched call (optimized for large datasets)
         if (!tagIdsToResolve.isEmpty()) {
             if (instituteId == null || instituteId.isBlank()) {
                 log.warn("[{}] Institute ID unavailable while resolving TAG recipients; skipping tag resolution", type);
             } else {
                 try {
-                    List<String> tagUserIds = adminCoreServiceClient.getUsersByTags(instituteId, tagIdsToResolve);
-                    resolvedUserIds.addAll(tagUserIds);
-                    log.debug("[{}] Resolved {} users from {} tag(s)", type, tagUserIds.size(), tagIdsToResolve.size());
+                    // Get resolver for TAG type
+                    Optional<RecipientResolver> tagResolverOpt = resolverRegistry.getResolver("TAG");
+                    if (tagResolverOpt.isPresent()) {
+                        // Resolve all tags - the resolver handles pagination internally if needed
+                        for (String tagId : tagIdsToResolve) {
+                            Set<String> tagUserIds = tagResolverOpt.get().resolve(tagId, instituteId);
+                            resolvedUserIds.addAll(tagUserIds);
+                        }
+                        log.debug("[{}] Resolved {} users from {} tag(s)", type, tagIdsToResolve.size(), tagIdsToResolve.size());
+                    }
                 } catch (Exception e) {
                     log.error("[{}] Error resolving users by tags {} for institute {}", type, tagIdsToResolve, instituteId, e);
                 }
             }
         }
         
+        // Resolve CUSTOM_FIELD_FILTER recipients (works for both inclusions and exclusions)
+        for (AnnouncementRecipient recipient : customFieldFilterRecipients) {
+            try {
+                log.debug("[{}] Processing CUSTOM_FIELD_FILTER recipient (ID: {}, Name: {})", 
+                        type, recipient.getRecipientId(), recipient.getRecipientName());
+                Set<String> filterUserIds = customFieldFilterResolver.resolveFromRecipient(recipient, instituteId);
+                resolvedUserIds.addAll(filterUserIds);
+                log.debug("[{}] Resolved CUSTOM_FIELD_FILTER to {} users", type, filterUserIds.size());
+            } catch (Exception e) {
+                log.error("[{}] Error resolving CUSTOM_FIELD_FILTER recipient for institute {}", 
+                        type, instituteId, e);
+            }
+        }
+        
         return resolvedUserIds;
     }
 
-    /**
-     * Resolves a role to list of user IDs by calling auth service
-     */
-    private Set<String> resolveRoleToUsers(String roleId, String fallbackInstituteId) {
-        log.debug("Resolving role: {} to users (fallback institute: {})", roleId, fallbackInstituteId);
-        
-        try {
-            // Prefer institute from Announcement, ignore any suffix in roleId. Still tolerate legacy "role:institute" format.
-            String[] parts = roleId.split(":");
-            String roleName = parts[0];
-            String instituteId = (fallbackInstituteId != null && !fallbackInstituteId.isBlank())
-                    ? fallbackInstituteId
-                    : (parts.length > 1 ? parts[1] : null);
-            if (instituteId == null || instituteId.isBlank()) {
-                log.warn("Institute ID unavailable for role resolution (roleId: {}).", roleId);
-                return new HashSet<>();
-            }
-            
-            List<User> users = authServiceClient.getUsersByRole(instituteId, roleName);
-            Set<String> userIds = users.stream()
-                    .map(User::getId)
-                    .collect(Collectors.toSet());
-            
-            log.debug("Resolved role {} to {} users", roleId, userIds.size());
-            return userIds;
-            
-        } catch (Exception e) {
-            log.error("Error resolving role {} to users", roleId, e);
-            return new HashSet<>();
-        }
-    }
-
-    /**
-     * Resolves a package session to list of user IDs (students + teachers)
-     * Calls admin_core_service to get both students and faculty
-     */
-    private Set<String> resolvePackageSessionToUsers(String packageSessionId) {
-        log.debug("Resolving package session: {} to users", packageSessionId);
-        
-        try {
-            Set<String> userIds = new HashSet<>();
-            
-            // Get students enrolled in the package session
-            List<String> studentIds = adminCoreServiceClient.getStudentsByPackageSessions(List.of(packageSessionId));
-            userIds.addAll(studentIds);
-            log.debug("Found {} students for package session: {}", studentIds.size(), packageSessionId);
-            
-            // Get faculty assigned to the package session
-            List<String> facultyIds = adminCoreServiceClient.getFacultyByPackageSessions(List.of(packageSessionId));
-            userIds.addAll(facultyIds);
-            log.debug("Found {} faculty for package session: {}", facultyIds.size(), packageSessionId);
-            
-            log.debug("Resolved package session {} to {} total users (students + faculty)", packageSessionId, userIds.size());
-            return userIds;
-            
-        } catch (Exception e) {
-            log.error("Error resolving package session {} to users", packageSessionId, e);
-            return new HashSet<>();
-        }
-    }
 
     /**
      * Get recipient summary for an announcement

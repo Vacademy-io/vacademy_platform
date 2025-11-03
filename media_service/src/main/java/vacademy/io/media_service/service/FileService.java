@@ -47,5 +47,5 @@ public interface FileService {
 
     String getPublicBucketUrl(String fileId, Integer expiryDays) throws FileDownloadException;
 
-    String getPublicUrl(String id);
+    String getPublicUrl(String id, String bucketName);
 }

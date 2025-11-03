@@ -24,7 +24,7 @@ public class AdminCoreServiceClient {
 
     private final RestTemplate restTemplate;
 
-    @Value("${admin.core.service.baseurl:http://localhost:8072}")
+    @Value("${admin.core.service.baseurl:http://admin-core-service.vacademy.svc.cluster.local:8072}")
     private String adminCoreServiceBaseUrl;
 
     /**

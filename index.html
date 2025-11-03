@@ -1,8 +1,11 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no"
+    />
     <meta name="theme-color" content="#1f2937" />
     <meta name="description" content="SSDC Horizon Learning Platform" />
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -11,9 +14,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="SSDC Horizon" />
     <script>
-      (function() {
+      (function () {
         try {
-          var branding = localStorage.getItem('TabBranding');
+          var branding = localStorage.getItem("TabBranding");
           if (branding) {
             var parsed = JSON.parse(branding);
             if (parsed.tabText) {
@@ -23,44 +26,68 @@
               var href = parsed.tabIconUrl;
               var links = document.querySelectorAll('link[rel*="icon"]');
               if (links && links.length) {
-                links.forEach(function(lnk){ lnk.setAttribute('href', href); });
+                links.forEach(function (lnk) {
+                  lnk.setAttribute("href", href);
+                });
               } else {
-                var link = document.createElement('link');
-                link.setAttribute('rel', 'icon');
-                link.setAttribute('href', href);
+                var link = document.createElement("link");
+                link.setAttribute("rel", "icon");
+                link.setAttribute("href", href);
                 document.head.appendChild(link);
               }
               var sicon = document.querySelector('link[rel="shortcut icon"]');
               if (!sicon) {
-                sicon = document.createElement('link');
-                sicon.setAttribute('rel', 'shortcut icon');
+                sicon = document.createElement("link");
+                sicon.setAttribute("rel", "shortcut icon");
                 document.head.appendChild(sicon);
               }
-              sicon.setAttribute('href', href);
+              sicon.setAttribute("href", href);
             }
             if (parsed.fontFamily) {
-              var mapFamily = function(f){
+              var mapFamily = function (f) {
                 var key = String(f).toUpperCase();
-                if (key === 'INTER') return 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-                if (key === 'CAIRO') return 'Cairo, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-                if (key === 'PLAYPEN SANS') return 'Playpen Sans, cursive, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-                if (key === 'WORK SANS') return 'Work Sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-                if (key === 'LEXEND') return 'Lexend, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
+                if (key === "INTER")
+                  return 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
+                if (key === "CAIRO")
+                  return 'Cairo, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
+                if (key === "PLAYPEN SANS")
+                  return 'Playpen Sans, cursive, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
+                if (key === "WORK SANS")
+                  return 'Work Sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
+                if (key === "LEXEND")
+                  return 'Lexend, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
                 return f;
               };
               var resolved = mapFamily(parsed.fontFamily);
-              document.documentElement.style.setProperty('--app-font-family', resolved);
+              document.documentElement.style.setProperty(
+                "--app-font-family",
+                resolved
+              );
               document.body.style.fontFamily = resolved;
             }
           }
         } catch (e) {}
       })();
     </script>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700&family=Playpen+Sans:wght@300;400;500;600;700&family=Work+Sans:wght@300;400;500;600;700&family=Lexend:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700&family=Playpen+Sans:wght@300;400;500;600;700&family=Work+Sans:wght@300;400;500;600;700&family=Lexend:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Eway eCrypt Library for Client-Side Encryption -->
+    <!-- Official Documentation: https://eway.io/api-v3/#client-side-encryption -->
+    <script src="https://secure.ewaypayments.com/scripts/eCrypt.min.js"></script>
+
     <title></title>
   </head>
   <body>

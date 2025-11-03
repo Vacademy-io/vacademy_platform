@@ -46,11 +46,18 @@ import {
   EnrollmentData,
   SelectedPayment,
 } from "./-components";
-import { useElements, useStripe, CardElement } from "@stripe/react-stripe-js";
+import {
+  getPaymentVendor,
+  PaymentVendor,
+} from "./-utils/payment-vendor-helper";
 
 // SUBSCRIPTION, FREE, UPFRONT, DONATION
 
-const EnrollByInvite = () => {
+interface EnrollByInviteProps {
+  vendor?: PaymentVendor;
+}
+
+const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
   // Ensure domain resolution runs on this public route to fetch fontFamily/tab branding from /resolve
   useDomainRouting();
   const [paymentType, setPaymentType] = useState<string>("");
@@ -58,10 +65,26 @@ const EnrollByInvite = () => {
   const [paymentCompletionResponse, setPaymentCompletionResponse] =
     useState(null);
   const [donationAmountValid, setDonationAmountValid] = useState(false);
-  const stripe = useStripe();
-  const elements = useElements();
+  const [ewayEncryptedData, setEwayEncryptedData] = useState<{
+    encryptedNumber: string;
+    encryptedCVN: string;
+    cardData: {
+      name: string;
+      expiryMonth: string;
+      expiryYear: string;
+    };
+  } | null>(null);
+  const [stripePaymentProcessor, setStripePaymentProcessor] = useState<
+    | (() => Promise<{
+        success: boolean;
+        paymentMethodId?: string;
+        error?: string;
+      }>)
+    | null
+  >(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const [currentStep, setCurrentStep] = useState(0); // 0: Registration, 1: Payment Selection, 2: Review, 3: Payment Details, 4: Payment Pending, 5: Success
   const [isRegistrationCardVisible, setIsRegistrationCardVisible] =
     useState(false);
@@ -112,6 +135,9 @@ const EnrollByInvite = () => {
   const { data: inviteData, isLoading } = useSuspenseQuery(
     handleGetEnrollInviteData({ instituteId, inviteCode })
   );
+
+  // Determine payment vendor from invite data or prop
+  // const vendor = propVendor || getPaymentVendor(inviteData);
 
   const paymentOptions = getDefaultPlanFromPaymentsData(
     inviteData?.package_session_to_payment_options?.[0]?.payment_option
@@ -327,6 +353,7 @@ const EnrollByInvite = () => {
             JSON.parse(instituteData?.setting)?.setting?.COURSE_SETTING?.data
               ?.permissions?.allowLearnersToCreateCourses || false,
           referRequest: referRequest,
+          paymentVendor: "STRIPE", // Default for FREE payments
         });
         setPaymentCompletionResponse(paymentResponse);
         setCurrentStep(5); // Go directly to success for FREE payments
@@ -340,31 +367,23 @@ const EnrollByInvite = () => {
       return;
     }
 
-    // For paid payments, process through Stripe
-    if (!stripe || !elements) return;
+    // Determine payment vendor
+    const vendor = getPaymentVendor(inviteData);
 
-    setLoading(true); // Start loading
-    setError(null);
+    // For EWAY payments
+    if (vendor === "EWAY") {
+      if (!ewayEncryptedData) {
+        setError("Please complete the payment form");
+        return;
+      }
 
-    const cardElement = elements.getElement(CardElement);
+      setLoading(true);
+      setError(null);
 
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-expect-error
-    const { error, paymentMethod } = await stripe.createPaymentMethod({
-      type: "card",
-      card: cardElement,
-    });
-
-    if (error) {
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-expect-error
-      setError(error.message);
-    } else {
       try {
         const paymentResponse = await handleEnrollLearnerForPayment({
           registrationData: form.getValues(),
           enrollmentData: enrollmentData,
-          paymentMethodId: paymentMethod.id,
           instituteId,
           enrollInviteId: inviteData?.id,
           payment_option_id:
@@ -376,6 +395,8 @@ const EnrollByInvite = () => {
             JSON.parse(instituteData?.setting)?.setting?.COURSE_SETTING?.data
               ?.permissions?.allowLearnersToCreateCourses || false,
           referRequest: referRequest,
+          ewayPaymentData: ewayEncryptedData,
+          paymentVendor: "EWAY",
         });
         setOrderId(paymentResponse?.payment_response?.order_id);
         setPaymentCompletionResponse(paymentResponse);
@@ -394,6 +415,66 @@ const EnrollByInvite = () => {
       } finally {
         setLoading(false);
       }
+      return;
+    }
+
+    if (
+      !stripePaymentProcessor ||
+      typeof stripePaymentProcessor !== "function"
+    ) {
+      setError("Stripe payment is not ready yet. Please wait and try again.");
+      console.error("Stripe payment processor not ready:", {
+        value: stripePaymentProcessor,
+        type: typeof stripePaymentProcessor,
+      });
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    // Process Stripe payment
+    const stripeResult = await stripePaymentProcessor();
+
+    if (!stripeResult.success || !stripeResult.paymentMethodId) {
+      setError(stripeResult.error || "Payment processing failed");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const paymentResponse = await handleEnrollLearnerForPayment({
+        registrationData: form.getValues(),
+        enrollmentData: enrollmentData,
+        paymentMethodId: stripeResult.paymentMethodId,
+        instituteId,
+        enrollInviteId: inviteData?.id,
+        payment_option_id:
+          inviteData?.package_session_to_payment_options[0].payment_option.id,
+        package_session_id:
+          inviteData?.package_session_to_payment_options[0]?.package_session_id,
+        allowLearnersToCreateCourses:
+          JSON.parse(instituteData?.setting)?.setting?.COURSE_SETTING?.data
+            ?.permissions?.allowLearnersToCreateCourses || false,
+        referRequest: referRequest,
+        paymentVendor: "STRIPE",
+      });
+      setOrderId(paymentResponse?.payment_response?.order_id);
+      setPaymentCompletionResponse(paymentResponse);
+      setTimeout(() => {
+        if (
+          paymentResponse?.payment_response?.response_data?.paymentStatus ===
+          "PAID"
+        ) {
+          setCurrentStep(5);
+        } else setCurrentStep(4);
+      }, 100);
+    } catch (err) {
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-expect-error
+      setError(err?.response?.data?.ex);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -568,8 +649,23 @@ const EnrollByInvite = () => {
             refCode={ref || ""}
           />
         );
-      case 3:
-        return <PaymentInfoStep error={error} />;
+      case 3: {
+        const vendor = propVendor || getPaymentVendor(inviteData);
+        return (
+          <PaymentInfoStep
+            error={error}
+            vendor={vendor}
+            amount={enrollmentData.selectedPayment?.amount}
+            currency={enrollmentData.selectedPayment?.currency}
+            onEwayPaymentReady={setEwayEncryptedData}
+            onEwayError={setError}
+            onStripePaymentReady={(processor) => {
+              setStripePaymentProcessor(() => processor);
+            }}
+            isProcessing={loading}
+          />
+        );
+      }
       case 4:
         return (
           <PaymentPendingStep

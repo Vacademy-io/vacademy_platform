@@ -9,7 +9,7 @@ import { CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { SiStripe } from "react-icons/si";
 import { Lock } from "lucide-react";
 import {
-  GET_STRIPE_KEY_URL,
+  GET_PAYMENT_GATEWAY_DETAILS_URL,
   ENROLLMENT_INVITE_URL,
   LIVE_SESSION_REQUEST_OTP,
   LIVE_SESSION_VERIFY_OTP,
@@ -404,7 +404,7 @@ export const EnrollmentPaymentDialog: React.FC<
   const fetchStripeKey = async () => {
     try {
       const data = await cachedGet<Record<string, any>>(
-        `${GET_STRIPE_KEY_URL}?instituteId=${instituteId}&vendor=STRIPE`,
+        `${GET_PAYMENT_GATEWAY_DETAILS_URL}?instituteId=${instituteId}&vendor=STRIPE`,
         {
           method: "GET",
           headers: {

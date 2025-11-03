@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Elements } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
 import { PaymentForm } from "./PaymentForm";
-import { GET_STRIPE_KEY_URL } from "@/constants/urls";
+import { GET_PAYMENT_GATEWAY_DETAILS_URL } from "@/constants/urls";
 import { cachedGet } from "@/lib/http/clientCache";
 import { getCurrencySymbol } from "@/utils/currency";
 
@@ -23,7 +23,7 @@ export const DonationPaymentStep = ({
   instituteId,
   onSuccess,
   onError,
-  onBack
+  onBack,
 }: DonationPaymentStepProps) => {
   const [stripePromise, setStripePromise] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -33,43 +33,46 @@ export const DonationPaymentStep = ({
     const fetchStripeKey = async () => {
       try {
         setLoading(true);
-        const data = await cachedGet<Record<string, any>>(`${GET_STRIPE_KEY_URL}?instituteId=${instituteId}&vendor=STRIPE`, {
-          method: 'GET',
-          headers: {
-            'accept': '*/*'
+        const data = await cachedGet<Record<string, any>>(
+          `${GET_PAYMENT_GATEWAY_DETAILS_URL}?instituteId=${instituteId}&vendor=STRIPE`,
+          {
+            method: "GET",
+            headers: {
+              accept: "*/*",
+            },
           }
-        });
-          
-          let publishableKey: string | undefined;
-          
-          // Check if publishableKey is directly available in the response
-          if (data.publishableKey) {
-            publishableKey = data.publishableKey;
-          } else if (data.config_json) {
-            try {
-              const config = JSON.parse(data.config_json);
-              
-              // Try different possible field names for publishable key
-              publishableKey = config.publishableKey || 
-                              config.publishable_key || 
-                              config.stripe_publishable_key ||
-                              config.stripePublishableKey ||
-                              config.key ||
-                              config.public_key;
-            } catch (error) {
-              // Silent error handling
-            }
+        );
+
+        let publishableKey: string | undefined;
+
+        // Check if publishableKey is directly available in the response
+        if (data.publishableKey) {
+          publishableKey = data.publishableKey;
+        } else if (data.config_json) {
+          try {
+            const config = JSON.parse(data.config_json);
+
+            // Try different possible field names for publishable key
+            publishableKey =
+              config.publishableKey ||
+              config.publishable_key ||
+              config.stripe_publishable_key ||
+              config.stripePublishableKey ||
+              config.key ||
+              config.public_key;
+          } catch (error) {
+            // Silent error handling
           }
-          
-          if (publishableKey) {
-            const stripeInstance = loadStripe(publishableKey);
-            setStripePromise(stripeInstance);
-          } else {
-            onError('Payment gateway not configured');
-          }
-        
+        }
+
+        if (publishableKey) {
+          const stripeInstance = loadStripe(publishableKey);
+          setStripePromise(stripeInstance);
+        } else {
+          onError("Payment gateway not configured");
+        }
       } catch (error) {
-        onError('Failed to load payment gateway');
+        onError("Failed to load payment gateway");
       } finally {
         setLoading(false);
       }
@@ -103,7 +106,10 @@ export const DonationPaymentStep = ({
         </div>
         <div className="flex items-center justify-between text-sm mb-1">
           <span className="text-gray-600">Amount:</span>
-          <span className="font-semibold text-gray-900">{getCurrencySymbol(currency)}{amount}</span>
+          <span className="font-semibold text-gray-900">
+            {getCurrencySymbol(currency)}
+            {amount}
+          </span>
         </div>
         <div className="flex items-center justify-between text-sm mb-1">
           <span className="text-gray-600">Email:</span>
@@ -112,17 +118,17 @@ export const DonationPaymentStep = ({
         <button
           className="text-xs font-medium ml-auto block rounded border border-neutral-300 bg-white text-neutral-600 px-3 py-1 focus:outline-none transition-colors duration-200 hover:bg-blue-50/50 hover:border-blue-300"
           onClick={onBack}
-          style={{ boxShadow: 'none', textDecoration: 'none' }}
+          style={{ boxShadow: "none", textDecoration: "none" }}
         >
           Edit
         </button>
       </div>
-      
+
       <div className="mb-2">
         <div className="flex items-center justify-between mb-1">
           <label className="block text-xs text-gray-600">Card Details</label>
         </div>
-        
+
         <Elements stripe={stripePromise}>
           <PaymentForm
             amount={amount}

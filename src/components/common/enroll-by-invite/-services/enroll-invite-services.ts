@@ -2,7 +2,7 @@ import {
   BASE_URL,
   ENROLL_OPEN_STUDENT_URL,
   ENROLL_USER_INVITE_PAYMENT_URL,
-  GET_STRIPE_KEY_URL,
+  GET_PAYMENT_GATEWAY_DETAILS_URL,
   PEYMENT_LOG_STATUS_URL,
 } from "@/constants/urls";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
@@ -40,22 +40,25 @@ export const handleGetEnrollInviteData = ({
   };
 };
 
-export const getStripeKeyData = async (instituteId: string) => {
+export const getKeyData = async (instituteId: string, vendor: string) => {
   const response = await axios({
     method: "GET",
-    url: GET_STRIPE_KEY_URL,
+    url: GET_PAYMENT_GATEWAY_DETAILS_URL,
     params: {
       instituteId,
-      vendor: "STRIPE",
+      vendor,
     },
   });
   return response?.data;
 };
 
-export const handleGetStripeKeys = (instituteId: string) => {
+export const handlePaymentGatewaykeys = (
+  instituteId: string,
+  vendor: string
+) => {
   return {
-    queryKey: ["GET_ENROLL_INVITE_DETAILS"],
-    queryFn: () => getStripeKeyData(instituteId),
+    queryKey: ["GET_PAYMENT_GATEWAY_KEYS", instituteId, vendor],
+    queryFn: () => getKeyData(instituteId, vendor),
     staleTime: 60 * 60 * 1000,
   };
 };
@@ -92,6 +95,18 @@ interface EnrollLearnerForPaymentProps {
     referral_option_id: string;
   } | null;
   returnUrl?: string;
+  // Eway-specific payment data
+  ewayPaymentData?: {
+    encryptedNumber: string;
+    encryptedCVN: string;
+    cardData: {
+      name: string;
+      expiryMonth: string;
+      expiryYear: string;
+    };
+  };
+  // Payment vendor (STRIPE or EWAY)
+  paymentVendor?: "STRIPE" | "EWAY";
 }
 
 export const handleEnrollLearnerForPayment = async ({
@@ -105,8 +120,9 @@ export const handleEnrollLearnerForPayment = async ({
   allowLearnersToCreateCourses,
   referRequest,
   returnUrl,
+  ewayPaymentData,
+  paymentVendor = "STRIPE",
 }: EnrollLearnerForPaymentProps) => {
-  console.log(registrationData);
   const keysToExclude = ["email", "full_name", "phone_number"];
   let fullName = "";
   let phoneNumber = "";
@@ -119,6 +135,30 @@ export const handleEnrollLearnerForPayment = async ({
   phoneNumber = isNullOrEmptyOrUndefined(registrationData.phone_number?.value)
     ? registrationData.phone?.value || ""
     : registrationData.phone_number.value;
+
+  // Prepare payment request based on vendor
+  const stripe_request =
+    paymentVendor === "STRIPE"
+      ? {
+          payment_method_id: paymentMethodId,
+          card_last4: null,
+          customer_id: null,
+          return_url: returnUrl || "",
+        }
+      : {};
+
+  const eway_request =
+    paymentVendor === "EWAY" && ewayPaymentData
+      ? {
+          customer_id: null,
+          card_name: ewayPaymentData.cardData.name,
+          expiry_month: ewayPaymentData.cardData.expiryMonth,
+          expiry_year: ewayPaymentData.cardData.expiryYear,
+          card_number: ewayPaymentData.encryptedNumber, // Already has "eCrypted:" prefix
+          cvn: ewayPaymentData.encryptedCVN, // Already has "eCrypted:" prefix
+          country_code: "au",
+        }
+      : {};
 
   const convertedData = {
     user: {
@@ -140,7 +180,7 @@ export const handleEnrollLearnerForPayment = async ({
     },
     institute_id: instituteId,
     subject_id: "",
-    vendor_id: "STRIPE",
+    vendor_id: paymentVendor,
     learner_package_session_enroll: {
       package_session_ids: [package_session_id],
       plan_id: enrollmentData.selectedPayment.id,
@@ -149,18 +189,17 @@ export const handleEnrollLearnerForPayment = async ({
       refer_request: referRequest,
       payment_initiation_request: {
         amount: enrollmentData.selectedPayment.amount,
-        currency: enrollmentData.selectedPayment.currency,
+        currency:
+          paymentVendor === "EWAY"
+            ? "aud"
+            : enrollmentData.selectedPayment.currency,
         description: "",
         charge_automatically: true,
         institute_id: instituteId,
-        stripe_request: {
-          payment_method_id: paymentMethodId,
-          card_last4: null,
-          customer_id: null,
-          return_url: returnUrl || "",
-        },
+        stripe_request,
         razorpay_request: {},
         pay_pal_request: {},
+        eway_request,
         include_pending_items: true,
       },
       custom_field_values: Object.entries(registrationData)

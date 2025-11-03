@@ -1,7 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { GraduationCap, RotateCcw } from "lucide-react";
-import { FormProvider, UseFormReturn } from "react-hook-form";
+import { FormProvider, UseFormReturn, useWatch } from "react-hook-form";
 import { FormControl, FormField, FormItem } from "@/components/ui/form";
 import PhoneInputField from "@/components/design-system/phone-input-field";
 import SelectField from "@/components/design-system/select-field";
@@ -11,7 +11,7 @@ import { Calendar, CreditCard, Globe } from "phosphor-react";
 import { getDefaultPlanFromPaymentsData, PaymentPlan } from "../-utils/helper";
 import { SubscriptionPlanSection } from "./subscription-plan-sections";
 import { OneTimePlanSection } from "./onetime-plan-section";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import {
   LIVE_SESSION_REQUEST_OTP,
@@ -25,6 +25,10 @@ import {
   parseDropdownOptions,
 } from "../-utils/custom-field-helpers";
 import { capitalise } from "@/utils/custom-field";
+import {
+  getCountryCode,
+  findCountryFieldKey,
+} from "../-utils/country-code-mapping";
 
 // Course data interface
 export interface FinalCourseData {
@@ -158,17 +162,57 @@ const RegistrationStep = ({
     inviteData?.package_session_to_payment_options?.[0]?.payment_option;
   const selectedPlan = getDefaultPlanFromPaymentsData(planInfo);
 
+  // Find the country field key dynamically (memoized)
+  const countryFieldKey = useMemo(() => {
+    const formValues = form.getValues();
+    return findCountryFieldKey(formValues);
+  }, [form]);
+
+  // Watch all form values to detect country field changes
+  const formValues = useWatch({
+    control: form.control,
+  });
+
+  // Determine the phone country code based on country field value
+  const getPhoneCountryCode = (): string => {
+    if (countryFieldKey && formValues) {
+      const countryField = formValues[countryFieldKey];
+      if (countryField && typeof countryField.value === "string") {
+        return getCountryCode(countryField.value, "au");
+      }
+    }
+    return "au"; // Default to Australia
+  };
+
+  // Helper function to find the email field dynamically
+  const getEmailField = () => {
+    const formValues = form.getValues();
+    // Find the field that has EMAIL render type
+    const emailEntry = Object.entries(formValues).find(([key, value]) => {
+      const renderType =
+        value.render_type || getFieldRenderType(key, value.type || "text");
+      return renderType === FieldRenderType.EMAIL;
+    });
+    return emailEntry
+      ? { key: emailEntry[0], value: emailEntry[1].value }
+      : null;
+  };
+
   // Send OTP for email verification
   const handleSendOTP = async () => {
-    const email = form.getValues("email")?.value;
-    // Email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      toast.error("Please enter a valid email address");
+    const emailField = getEmailField();
+    if (!emailField) {
+      toast.error("Email field not found");
       return;
     }
-    if (!email) {
-      toast.error("Please enter your email address");
+
+    const email = emailField.value;
+    console.log("Sending OTP to email:", email);
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+      toast.error("Please enter a valid email address");
       return;
     }
 
@@ -191,9 +235,9 @@ const RegistrationStep = ({
       );
 
       setOtpSent(true);
-      toast.success("OTP sent to your email");
+      toast.success("Verification code sent to your email");
     } catch (error) {
-      toast.error("Failed to send OTP. Please try again");
+      toast.error("Failed to send verification code. Please try again");
       console.error("Send OTP Error:", error);
     } finally {
       setIsLoadingOtp(false);
@@ -203,11 +247,17 @@ const RegistrationStep = ({
   // Verify OTP
   const handleVerifyOTP = async () => {
     if (!otp.trim()) {
-      toast.error("Please enter the OTP");
+      toast.error("Please enter the verification code");
       return;
     }
 
-    const email = form.getValues("email")?.value;
+    const emailField = getEmailField();
+    if (!emailField) {
+      toast.error("Email field not found");
+      return;
+    }
+
+    const email = emailField.value;
     setIsVerifyingOtp(true);
     try {
       await axios.post(
@@ -231,8 +281,8 @@ const RegistrationStep = ({
       setOtp("");
       toast.success("Email verified successfully");
     } catch (error) {
-      toast.error("Failed to verify OTP. Please try again");
-      console.error("Verify OTP Error:", error);
+      toast.error("Failed to verify email. Please try again");
+      console.error("Verify Email Error:", error);
     } finally {
       setIsVerifyingOtp(false);
     }
@@ -321,6 +371,9 @@ const RegistrationStep = ({
 
                       // Render Phone Input
                       if (renderType === FieldRenderType.PHONE) {
+                        // Get dynamic country code based on country field value
+                        const phoneCountryCode = getPhoneCountryCode();
+
                         return (
                           <FormField
                             key={key}
@@ -334,7 +387,7 @@ const RegistrationStep = ({
                                     placeholder="123 456 7890"
                                     name={`${key}.value`}
                                     control={form.control}
-                                    country="gb"
+                                    country={phoneCountryCode}
                                     required={value.is_mandatory}
                                   />
                                 </FormControl>
@@ -384,7 +437,7 @@ const RegistrationStep = ({
                                         >
                                           {isLoadingOtp
                                             ? "Sending..."
-                                            : "Send OTP"}
+                                            : "Send Verification Code"}
                                         </MyButton>
                                       )}
                                     </div>
@@ -397,7 +450,7 @@ const RegistrationStep = ({
                               <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                                 <MyInput
                                   inputType="text"
-                                  inputPlaceholder="Enter 6-digit OTP"
+                                  inputPlaceholder="Enter 6-digit Code"
                                   input={otp}
                                   onChangeFunction={(e) =>
                                     setOtp(e.target.value)
@@ -417,7 +470,7 @@ const RegistrationStep = ({
                                 >
                                   {isVerifyingOtp
                                     ? "Verifying..."
-                                    : "Verify OTP"}
+                                    : "Verify Email"}
                                 </MyButton>
                               </div>
                             )}
@@ -434,6 +487,7 @@ const RegistrationStep = ({
                       // Render Dropdown
                       if (renderType === FieldRenderType.DROPDOWN) {
                         // Parse dropdown options if not already parsed
+                        console.log("dropdownOptions", value);
                         let dropdownOptions = value.comma_separated_options
                           ? value.comma_separated_options
                           : parseDropdownOptions(value.config || "{}");

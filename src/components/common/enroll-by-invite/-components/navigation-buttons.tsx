@@ -1,6 +1,7 @@
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { MyButton } from "@/components/design-system/button";
 import { SelectedPayment } from "./types";
+import { PaymentVendor } from "../-utils/payment-vendor-helper";
 
 interface NavigationButtonsProps {
   currentStep: number;
@@ -11,6 +12,8 @@ interface NavigationButtonsProps {
   loading: boolean;
   paymentType?: string;
   donationAmountValid?: boolean;
+  paymentVendor?: PaymentVendor;
+  isPaymentDataReady?: boolean; // For Stripe processor or Eway encrypted data
 }
 
 const NavigationButtons = ({
@@ -22,12 +25,29 @@ const NavigationButtons = ({
   loading,
   paymentType,
   donationAmountValid,
+  paymentVendor,
+  isPaymentDataReady = false,
 }: NavigationButtonsProps) => {
   const isNextDisabled = () => {
     if (loading) return true;
+
+    // Step 1: Payment selection
     if (currentStep === 1 && !selectedPayment) return true;
     if (currentStep === 1 && paymentType === "DONATION" && !donationAmountValid)
       return true;
+
+    // Step 3: Payment details - check if payment data is ready based on vendor
+    if (currentStep === 3) {
+      // For Eway: require encrypted data
+      if (paymentVendor === "EWAY" && !isPaymentDataReady) {
+        return true;
+      }
+      // For Stripe: require payment processor
+      if (paymentVendor === "STRIPE" && !isPaymentDataReady) {
+        return true;
+      }
+    }
+
     return false;
   };
 
@@ -60,7 +80,11 @@ const NavigationButtons = ({
         {loading
           ? "Loading"
           : currentStep === 3 || (currentStep === 2 && paymentType === "FREE")
-          ? "Complete Enrollment"
+          ? currentStep === 3 && !isPaymentDataReady
+            ? paymentVendor === "EWAY"
+              ? "Verify Card First"
+              : "Waiting for Payment..."
+            : "Complete Enrollment"
           : "Next"}
         <ArrowRight className="w-4 h-4" />
       </MyButton>

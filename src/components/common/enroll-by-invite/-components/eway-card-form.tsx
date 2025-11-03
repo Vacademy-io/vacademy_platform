@@ -489,7 +489,7 @@ export const EwayCardForm = ({
           ? "Encrypting..."
           : isProcessing
           ? "Processing..."
-          : "Pay Now"}
+          : "Verify Card"}
       </MyButton>
     </form>
   );

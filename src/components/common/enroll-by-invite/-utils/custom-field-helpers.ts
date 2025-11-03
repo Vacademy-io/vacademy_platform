@@ -55,6 +55,10 @@ export const getFieldRenderType = (
 ): FieldRenderType => {
   const lowerKey = fieldKey.toLowerCase();
 
+  // Check for dropdown
+  if (fieldType === "dropdown") {
+    return FieldRenderType.DROPDOWN;
+  }
   // Check for phone fields
   const phoneKeywords = ["phone", "mobile", "contact", "telephone", "cell"];
   if (phoneKeywords.some((keyword) => lowerKey.includes(keyword))) {
@@ -65,11 +69,6 @@ export const getFieldRenderType = (
   const emailKeywords = ["email", "e-mail", "mail"];
   if (emailKeywords.some((keyword) => lowerKey.includes(keyword))) {
     return FieldRenderType.EMAIL;
-  }
-
-  // Check for dropdown
-  if (fieldType === "dropdown") {
-    return FieldRenderType.DROPDOWN;
   }
 
   // Default to text
@@ -92,10 +91,16 @@ export const parseDropdownOptions = (
 
     // Parse JSON string
     const parsed = JSON.parse(config);
-
     // Ensure it's an array
     if (!Array.isArray(parsed)) {
       console.warn("parseDropdownOptions: Config is not an array", parsed);
+      if (typeof parsed === "string") {
+        return parsed.split(",").map((option, index) => ({
+          _id: index + 1,
+          value: option,
+          label: option,
+        }));
+      }
       return [];
     }
 

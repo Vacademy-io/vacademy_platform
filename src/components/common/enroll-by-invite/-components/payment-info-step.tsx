@@ -69,7 +69,7 @@ const EwayCheckoutForm = ({
           💳 Secure Payment
         </h2>
         <p className="text-gray-600 mb-6 text-center">
-          Enter your card details below.--
+          Enter your card details below.
         </p>
         <EwayCardForm
           onPaymentReady={onPaymentReady || (() => {})}

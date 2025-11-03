@@ -7,6 +7,10 @@ import {
 } from "@/constants/urls";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import axios from "axios";
+import {
+  FieldRenderType,
+  getFieldRenderType,
+} from "../-utils/custom-field-helpers";
 
 export const getEnrollInviteData = async ({
   instituteId,
@@ -69,18 +73,20 @@ export interface ReferRequest {
   referral_option_id: string;
 }
 
+interface RegistrationFieldValue {
+  id: string;
+  name: string;
+  value: string;
+  is_mandatory: boolean;
+  type: string;
+  render_type?: FieldRenderType;
+  comma_separated_options?: string[];
+}
+
+type RegistrationDataType = Record<string, RegistrationFieldValue>;
+
 interface EnrollLearnerForPaymentProps {
-  registrationData: Record<
-    string,
-    {
-      id: string;
-      name: string;
-      value: string;
-      is_mandatory: boolean;
-      type: string;
-      comma_separated_options?: string[];
-    }
-  >;
+  registrationData: RegistrationDataType;
   // eslint-disable-next-line
   enrollmentData: any;
   paymentMethodId?: string;
@@ -109,6 +115,105 @@ interface EnrollLearnerForPaymentProps {
   paymentVendor?: "STRIPE" | "EWAY";
 }
 
+/**
+ * Helper function to dynamically find email field from registration data
+ * Searches by FieldRenderType.EMAIL instead of hardcoded key
+ */
+const getEmailField = (registrationData: RegistrationDataType): string => {
+  const emailEntry = Object.entries(registrationData).find(([key, value]) => {
+    const renderType =
+      value.render_type || getFieldRenderType(key, value.type || "text");
+    return renderType === FieldRenderType.EMAIL;
+  });
+  return emailEntry ? emailEntry[1].value : "";
+};
+
+/**
+ * Helper function to dynamically find phone field from registration data
+ * Searches by FieldRenderType.PHONE instead of hardcoded key
+ */
+const getPhoneField = (registrationData: RegistrationDataType): string => {
+  const phoneEntry = Object.entries(registrationData).find(([key, value]) => {
+    const renderType =
+      value.render_type || getFieldRenderType(key, value.type || "text");
+    return renderType === FieldRenderType.PHONE;
+  });
+  return phoneEntry ? phoneEntry[1].value : "";
+};
+
+/**
+ * Helper function to dynamically find full name from registration data
+ * Tries to find a single full_name field first, then combines first_name + last_name
+ * Uses keyword matching instead of hardcoded keys
+ */
+const getFullNameField = (registrationData: RegistrationDataType): string => {
+  // First, try to find a single full name field
+  const fullNameEntry = Object.entries(registrationData).find(([key]) => {
+    const lowerKey = key.toLowerCase();
+    return (
+      lowerKey.includes("full") &&
+      (lowerKey.includes("name") || lowerKey.includes("_name"))
+    );
+  });
+
+  if (fullNameEntry && !isNullOrEmptyOrUndefined(fullNameEntry[1].value)) {
+    return fullNameEntry[1].value;
+  }
+
+  // If no full name field, try to combine first name + last name
+  const firstNameEntry = Object.entries(registrationData).find(([key]) => {
+    const lowerKey = key.toLowerCase();
+    return lowerKey.includes("first") && lowerKey.includes("name");
+  });
+
+  const lastNameEntry = Object.entries(registrationData).find(([key]) => {
+    const lowerKey = key.toLowerCase();
+    return lowerKey.includes("last") && lowerKey.includes("name");
+  });
+
+  const firstName = firstNameEntry ? firstNameEntry[1].value || "" : "";
+  const lastName = lastNameEntry ? lastNameEntry[1].value || "" : "";
+
+  return `${firstName} ${lastName}`.trim();
+};
+
+/**
+ * Helper function to get keys that should be excluded from custom field values
+ * Dynamically identifies email, phone, and name fields
+ */
+const getKeysToExclude = (registrationData: RegistrationDataType): string[] => {
+  const keysToExclude: string[] = [];
+
+  Object.entries(registrationData).forEach(([key, value]) => {
+    const lowerKey = key.toLowerCase();
+    const renderType =
+      value.render_type || getFieldRenderType(key, value.type || "text");
+
+    // Exclude email fields
+    if (renderType === FieldRenderType.EMAIL) {
+      keysToExclude.push(key);
+    }
+
+    // Exclude phone fields
+    if (renderType === FieldRenderType.PHONE) {
+      keysToExclude.push(key);
+    }
+
+    // Exclude name-related fields
+    if (
+      (lowerKey.includes("name") &&
+        (lowerKey.includes("full") ||
+          lowerKey.includes("first") ||
+          lowerKey.includes("last"))) ||
+      lowerKey === "name"
+    ) {
+      keysToExclude.push(key);
+    }
+  });
+
+  return keysToExclude;
+};
+
 export const handleEnrollLearnerForPayment = async ({
   registrationData,
   enrollmentData,
@@ -123,18 +228,18 @@ export const handleEnrollLearnerForPayment = async ({
   ewayPaymentData,
   paymentVendor = "STRIPE",
 }: EnrollLearnerForPaymentProps) => {
-  const keysToExclude = ["email", "full_name", "phone_number"];
-  let fullName = "";
-  let phoneNumber = "";
-  fullName = isNullOrEmptyOrUndefined(registrationData.full_name?.value)
-    ? `${registrationData.first_name?.value || ""} ${
-        registrationData.last_name?.value || ""
-      }`.trim()
-    : registrationData.full_name.value;
+  console.log("registrationData", registrationData);
 
-  phoneNumber = isNullOrEmptyOrUndefined(registrationData.phone_number?.value)
-    ? registrationData.phone?.value || ""
-    : registrationData.phone_number.value;
+  // Dynamically extract email, phone, and full name using helper functions
+  const email = getEmailField(registrationData);
+  const phoneNumber = getPhoneField(registrationData);
+  const fullName = getFullNameField(registrationData);
+
+  // Dynamically identify keys to exclude from custom field values
+  const keysToExclude = getKeysToExclude(registrationData);
+
+  console.log("Extracted values:", { email, phoneNumber, fullName });
+  console.log("Keys to exclude:", keysToExclude);
 
   // Prepare payment request based on vendor
   const stripe_request =
@@ -162,7 +267,7 @@ export const handleEnrollLearnerForPayment = async ({
 
   const convertedData = {
     user: {
-      email: registrationData.email.value,
+      email: email,
       full_name: fullName,
       address_line: "",
       city: "",

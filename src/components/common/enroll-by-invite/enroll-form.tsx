@@ -369,7 +369,6 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
 
     // Determine payment vendor
     const vendor = getPaymentVendor(inviteData);
-
     // For EWAY payments
     if (vendor === "EWAY") {
       if (!ewayEncryptedData) {
@@ -381,6 +380,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
       setError(null);
 
       try {
+        console.log("here");
         const paymentResponse = await handleEnrollLearnerForPayment({
           registrationData: form.getValues(),
           enrollmentData: enrollmentData,
@@ -412,6 +412,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-expect-error
         setError(err?.response?.data?.ex);
+        console.error(err);
       } finally {
         setLoading(false);
       }
@@ -473,6 +474,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // @ts-expect-error
       setError(err?.response?.data?.ex);
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -861,12 +863,44 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
           <div className="mt-3 w-full">
             <div className="h-1.5 w-full rounded-full bg-slate-200 overflow-hidden">
               <div
-                className="h-full bg-primary-600 transition-all duration-300"
+                className="h-full bg-primary-500 transition-all duration-300"
                 style={{
-                  width: `${Math.min(
-                    100,
-                    Math.max(0, Math.round((currentStep / 5) * 100))
-                  )}%`,
+                  width: `${(() => {
+                    // Calculate progress based on current step and payment type
+                    // Steps: 0=Registration, 1=Payment Selection, 2=Review, 3=Payment Details, 4=Pending, 5=Success
+                    const totalSteps = 6; // 0 to 5
+
+                    // For FREE payments, skip payment selection and payment details
+                    if (paymentType === "FREE") {
+                      // Steps are: 0=Registration, 2=Review, 5=Success
+                      const freeSteps = [0, 2, 5];
+                      const currentIndex = freeSteps.indexOf(currentStep);
+                      if (currentIndex === -1) return 0;
+                      return Math.round(
+                        (currentIndex / (freeSteps.length - 1)) * 100
+                      );
+                    }
+
+                    // For single plan (non-donation), skip payment selection
+                    const hasSinglePlan =
+                      paymentType !== "DONATION" &&
+                      (inviteData?.package_session_to_payment_options?.[0]
+                        ?.payment_option?.payment_plans?.length || 0) === 1;
+
+                    if (hasSinglePlan) {
+                      // Steps are: 0=Registration, 2=Review, 3=Payment, 4=Pending, 5=Success
+                      const singlePlanSteps = [0, 2, 3, 4, 5];
+                      const currentIndex = singlePlanSteps.indexOf(currentStep);
+                      if (currentIndex === -1) return 0;
+                      return Math.round(
+                        (currentIndex / (singlePlanSteps.length - 1)) * 100
+                      );
+                    }
+
+                    // For all other payment types (SUBSCRIPTION, DONATION, ONE_TIME with multiple plans)
+                    // All steps are used: 0, 1, 2, 3, 4, 5
+                    return Math.round((currentStep / (totalSteps - 1)) * 100);
+                  })()}%`,
                 }}
               />
             </div>
@@ -892,6 +926,16 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
                   loading={loading}
                   paymentType={paymentType}
                   donationAmountValid={donationAmountValid}
+                  paymentVendor={
+                    currentStep === 3 ? getPaymentVendor(inviteData) : undefined
+                  }
+                  isPaymentDataReady={
+                    currentStep === 3
+                      ? getPaymentVendor(inviteData) === "EWAY"
+                        ? !!ewayEncryptedData
+                        : !!stripePaymentProcessor
+                      : false
+                  }
                 />
               )}
           </div>

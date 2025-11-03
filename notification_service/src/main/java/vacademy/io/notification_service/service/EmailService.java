@@ -33,7 +33,7 @@ public class EmailService {
 
     private static final Logger logger = LoggerFactory.getLogger(EmailService.class);
     private final JavaMailSender mailSender;
-    private final EmailDispatcher emailDispatcher = EmailDispatcher.getInstance();
+    private final EmailDispatcher emailDispatcher;
     @Value("${app.ses.sender.email}")
     private String from;
 
@@ -47,10 +47,12 @@ public class EmailService {
     private final ObjectMapper objectMapper;
 
     @Autowired
-    public EmailService(JavaMailSender mailSender, InstituteInternalService internalService, ObjectMapper objectMapper) {
+    public EmailService(JavaMailSender mailSender, InstituteInternalService internalService, 
+                       ObjectMapper objectMapper, EmailDispatcher emailDispatcher) {
         this.mailSender = mailSender;
         this.internalService = internalService;
         this.objectMapper = objectMapper;
+        this.emailDispatcher = emailDispatcher;
     }
 
     private JavaMailSenderImpl createCustomMailSender(JsonNode emailSettings) {
@@ -65,7 +67,8 @@ public class EmailService {
         props.put("mail.transport.protocol", "smtp");
         props.put("mail.smtp.auth", "true");
         props.put("mail.smtp.starttls.enable", "true"); // This is the key part
-        props.put("mail.debug", "true"); // Optional: for debugging connection issues in logs
+        // Disabled mail.debug to prevent excessive SMTP protocol logs (can flood logs with high-volume email sending)
+        props.put("mail.debug", "false");
         mailSender.setJavaMailProperties(props);
         return mailSender;
     }

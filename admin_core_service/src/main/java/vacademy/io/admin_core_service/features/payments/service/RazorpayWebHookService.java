@@ -142,13 +142,9 @@ public class RazorpayWebHookService {
                 
                 // Extract and save payment method token for recurring payments
                 extractAndSavePaymentMethod(orderId, instituteId, paymentEntity);
-                
-                // Generate Razorpay invoice and store URL (for email receipt)
+
                 generateAndStoreRazorpayInvoice(orderId, instituteId, paymentEntity);
-                
-                // Update payment status (this will trigger email notification)
-                paymentLogService.updatePaymentLog(orderId, PaymentStatusEnum.PAID.name(), instituteId);
-                break;
+                 break;
 
             case "payment.failed":
                 log.warn("Payment failed for orderId: {}", orderId);

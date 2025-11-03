@@ -292,16 +292,40 @@ public class AnnouncementService {
 
     private void saveRecipients(String announcementId, List<CreateAnnouncementRequest.RecipientRequest> recipients, boolean isExclusion) {
         if (recipients != null && !recipients.isEmpty()) {
+            com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
             List<AnnouncementRecipient> recipientEntities = recipients.stream()
                     .map(r -> {
                         AnnouncementRecipient recipient = new AnnouncementRecipient();
                         recipient.setAnnouncementId(announcementId);
                         recipient.setRecipientType(RecipientType.valueOf(r.getRecipientType()));
                         
-                        // For exclusions, prefix the recipientId with "EXCLUDE:"
-                        String recipientId = isExclusion ? "EXCLUDE:" + r.getRecipientId() : r.getRecipientId();
-                        recipient.setRecipientId(recipientId);
-                        recipient.setRecipientName(r.getRecipientName());
+                        // Handle CUSTOM_FIELD_FILTER type - store filters as JSON
+                        if ("CUSTOM_FIELD_FILTER".equals(r.getRecipientType())) {
+                            try {
+                                // Store filters as JSON in recipientName field
+                                if (r.getFilters() == null || r.getFilters().isEmpty()) {
+                                    log.warn("CUSTOM_FIELD_FILTER recipient has no filters provided");
+                                    recipient.setRecipientName("ERROR");
+                                } else {
+                                    String filtersJson = objectMapper.writeValueAsString(r.getFilters());
+                                    log.info("Serialized {} filters to JSON for CUSTOM_FIELD_FILTER: {}", 
+                                            r.getFilters().size(), filtersJson);
+                                    recipient.setRecipientName(filtersJson);
+                                }
+                                // Use a placeholder ID or empty for CUSTOM_FIELD_FILTER
+                                String recipientId = isExclusion ? "EXCLUDE:CUSTOM_FIELD_FILTER" : "CUSTOM_FIELD_FILTER";
+                                recipient.setRecipientId(recipientId);
+                            } catch (Exception e) {
+                                log.error("Error serializing filters for CUSTOM_FIELD_FILTER recipient", e);
+                                recipient.setRecipientId(isExclusion ? "EXCLUDE:CUSTOM_FIELD_FILTER" : "CUSTOM_FIELD_FILTER");
+                                recipient.setRecipientName("ERROR");
+                            }
+                        } else {
+                            // For other types and exclusions, prefix the recipientId with "EXCLUDE:"
+                            String recipientId = isExclusion ? "EXCLUDE:" + r.getRecipientId() : r.getRecipientId();
+                            recipient.setRecipientId(recipientId);
+                            recipient.setRecipientName(r.getRecipientName());
+                        }
                         return recipient;
                     })
                     .collect(Collectors.toList());

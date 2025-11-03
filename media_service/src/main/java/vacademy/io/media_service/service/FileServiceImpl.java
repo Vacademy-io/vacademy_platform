@@ -368,13 +368,14 @@ public class FileServiceImpl implements FileService {
 
     }
 
+    @Override
     public String getPublicUrl(String id) {
         Optional<FileMetadata> fileMetadata = fileMetadataRepository.findById(id);
         if (fileMetadata.isEmpty()) throw new DatabaseException("File Not Found");
 
         String objectKey = fileMetadata.get().getKey().trim();
 
-        // Directly return the public URL (ACLs are not needed)
+        // Directly return the public URL without expiry (for public APIs)
         return "https://" + publicBucket + ".s3.amazonaws.com/" + objectKey;
     }
 

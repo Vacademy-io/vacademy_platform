@@ -20,19 +20,24 @@ public class PublicFileController {
 
     @PostMapping("/get-signed-url")
     public ResponseEntity<PreSignedUrlResponse> uploadFile(@RequestBody PreSignedUrlRequest preSignedUrlRequest) {
-        PreSignedUrlResponse url = fileService.getPublicPreSignedUrl(preSignedUrlRequest.getFileName(), preSignedUrlRequest.getFileType(), preSignedUrlRequest.getSource(), preSignedUrlRequest.getSourceId());
+        PreSignedUrlResponse url = fileService.getPublicPreSignedUrl(preSignedUrlRequest.getFileName(),
+                preSignedUrlRequest.getFileType(), preSignedUrlRequest.getSource(), preSignedUrlRequest.getSourceId());
         return ResponseEntity.ok(url);
     }
 
     @GetMapping("/get-public-url")
     public ResponseEntity<String> getFileUrl(@RequestParam String fileId,
-                                             @RequestParam Integer expiryDays,
-                                             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) throws FileDownloadException {
+            @RequestParam(required = false) Integer expiryDays,
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) throws FileDownloadException {
 
-        String url = fileService.getUrlWithExpiryAndId(fileId, expiryDays);
+        String url;
+
+        // Generate permanent public URL without expiry
+        url = fileService.getPublicUrl(fileId);
 
         HttpHeaders headers = new HttpHeaders();
-        // Prevent caching anywhere to avoid stale pre-signed URLs being reused from disk
+        // Prevent caching anywhere to avoid stale pre-signed URLs being reused from
+        // disk
         headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
         headers.setPragma("no-cache");
         headers.setExpires(0);

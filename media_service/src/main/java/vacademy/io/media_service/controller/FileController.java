@@ -21,18 +21,23 @@ public class FileController {
     private FileService fileService;
 
     @PostMapping("/get-signed-url")
-    public ResponseEntity<PreSignedUrlResponse> uploadFile(@RequestAttribute("user") CustomUserDetails userDetails, @RequestBody PreSignedUrlRequest preSignedUrlRequest) {
-        PreSignedUrlResponse url = fileService.getPreSignedUrl(preSignedUrlRequest.getFileName(), preSignedUrlRequest.getFileType(), preSignedUrlRequest.getSource(), preSignedUrlRequest.getSourceId());
+    public ResponseEntity<PreSignedUrlResponse> uploadFile(@RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestBody PreSignedUrlRequest preSignedUrlRequest) {
+        PreSignedUrlResponse url = fileService.getPreSignedUrl(preSignedUrlRequest.getFileName(),
+                preSignedUrlRequest.getFileType(), preSignedUrlRequest.getSource(), preSignedUrlRequest.getSourceId());
         return ResponseEntity.ok(url);
     }
 
     @GetMapping("/get-public-url")
     public ResponseEntity<String> getFileUrl(@RequestAttribute("user") CustomUserDetails userDetails,
-                                             @RequestParam String fileId,
-                                             @RequestParam Integer expiryDays,
-                                             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) throws FileDownloadException {
+            @RequestParam String fileId,
+            @RequestParam(required = false) Integer expiryDays,
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) throws FileDownloadException {
 
-        String url = fileService.getUrlWithExpiryAndId(fileId, expiryDays);
+        String url;
+
+        // Generate permanent public URL without expiry
+        url = fileService.getPublicUrl(fileId);
 
         HttpHeaders headers = new HttpHeaders();
         headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
@@ -43,12 +48,15 @@ public class FileController {
     }
 
     @PostMapping("/acknowledge")
-    public ResponseEntity<Boolean> acknowledgeUpload(@RequestAttribute("user") CustomUserDetails userDetails, @RequestBody AcknowledgeRequest acknowledgeRequest) {
+    public ResponseEntity<Boolean> acknowledgeUpload(@RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestBody AcknowledgeRequest acknowledgeRequest) {
         return ResponseEntity.ok(fileService.acknowledgeClientUpload(acknowledgeRequest));
     }
 
     @GetMapping("/get-details/ids")
-    public ResponseEntity<List<FileDetailsDTO>> getFileDetailsByIds(@RequestAttribute("user") CustomUserDetails userDetails, @RequestParam String fileIds, @RequestParam Integer expiryDays) throws FileDownloadException {
+    public ResponseEntity<List<FileDetailsDTO>> getFileDetailsByIds(
+            @RequestAttribute("user") CustomUserDetails userDetails, @RequestParam String fileIds,
+            @RequestParam Integer expiryDays) throws FileDownloadException {
         List<FileDetailsDTO> fileDetailsDTO = fileService.getMultipleFileDetailsWithExpiryAndId(fileIds, expiryDays);
 
         HttpHeaders headers = new HttpHeaders();
@@ -59,7 +67,9 @@ public class FileController {
     }
 
     @PostMapping("/acknowledge-get-details")
-    public ResponseEntity<FileDetailsDTO> acknowledgeUploadAndGetDetails(@RequestAttribute("user") CustomUserDetails userDetails, @RequestBody AcknowledgeRequest acknowledgeRequest) {
+    public ResponseEntity<FileDetailsDTO> acknowledgeUploadAndGetDetails(
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestBody AcknowledgeRequest acknowledgeRequest) {
         return ResponseEntity.ok(fileService.acknowledgeClientUploadAndGetPublicUrl(acknowledgeRequest));
     }
 

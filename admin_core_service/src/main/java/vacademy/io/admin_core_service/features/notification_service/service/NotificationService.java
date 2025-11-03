@@ -84,7 +84,6 @@ public class NotificationService {
     public List<Map<String, Boolean>> sendWhatsappToUsers(WhatsappRequest request,String instituteId) {
         // Call notification microservice via HMAC request
         String url=NotificationConstant.SEND_WHATSAPP_TO_USER+"?instituteId="+instituteId;
-        System.out.println(url);
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                 clientName,
                 HttpMethod.POST.name(),

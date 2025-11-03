@@ -465,13 +465,28 @@ public class RazorpayWebHookService {
                 return null;
             }
             
-            String razorpayKeyId = (String) gatewayData.get("keyId");
-            String razorpayKeySecret = (String) gatewayData.get("keySecret");
+            // Try multiple field name variations for compatibility
+            String razorpayKeyId = (String) gatewayData.get("apiKey");
+            if (razorpayKeyId == null) {
+                razorpayKeyId = (String) gatewayData.get("keyId");
+            }
+            
+            // Check for secret in multiple field names (publishableKey, apiSecret, keySecret)
+            String razorpayKeySecret = (String) gatewayData.get("publishableKey");
+            if (razorpayKeySecret == null) {
+                razorpayKeySecret = (String) gatewayData.get("apiSecret");
+            }
+            if (razorpayKeySecret == null) {
+                razorpayKeySecret = (String) gatewayData.get("keySecret");
+            }
             
             if (razorpayKeyId == null || razorpayKeySecret == null) {
-                log.error("Razorpay credentials not found for institute: {}", instituteId);
+                log.error("Razorpay credentials not found for institute: {}. Gateway data keys: {}", 
+                         instituteId, gatewayData != null ? gatewayData.keySet() : "null");
                 return null;
             }
+            
+            log.debug("Retrieved Razorpay credentials for invoice generation. KeyId: {}", razorpayKeyId);
             
             // Build invoice request
             JSONObject invoiceRequest = new JSONObject();

@@ -43,7 +43,10 @@ class ExpandedUserMessagesApiTest {
         req.setInstituteId("INST_U");
         req.setCreatedBy("CREATOR_U");
         req.setCreatedByRole("ADMIN");
-        req.setRecipients(List.of(new CreateAnnouncementRequest.RecipientRequest("ROLE","STUDENT",null)));
+        var recipient = new CreateAnnouncementRequest.RecipientRequest();
+        recipient.setRecipientType("ROLE");
+        recipient.setRecipientId("STUDENT");
+        req.setRecipients(List.of(recipient));
         req.setModes(List.of(new CreateAnnouncementRequest.ModeRequest("SYSTEM_ALERT", Map.of("priority","HIGH"))));
         var medium = new CreateAnnouncementRequest.MediumRequest();
         medium.setMediumType("PUSH_NOTIFICATION");

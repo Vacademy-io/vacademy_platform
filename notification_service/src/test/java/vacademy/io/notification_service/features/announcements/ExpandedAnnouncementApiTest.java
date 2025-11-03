@@ -44,7 +44,10 @@ class ExpandedAnnouncementApiTest {
         req.setCreatedBy("CREATOR_X");
         req.setCreatedByRole("ADMIN");
         req.setTimezone("UTC");
-        req.setRecipients(List.of(new CreateAnnouncementRequest.RecipientRequest("ROLE","STUDENT",null)));
+        var recipient = new CreateAnnouncementRequest.RecipientRequest();
+        recipient.setRecipientType("ROLE");
+        recipient.setRecipientId("STUDENT");
+        req.setRecipients(List.of(recipient));
         req.setModes(List.of(new CreateAnnouncementRequest.ModeRequest("SYSTEM_ALERT", Map.of("priority","MEDIUM"))));
         var medium = new CreateAnnouncementRequest.MediumRequest();
         medium.setMediumType("PUSH_NOTIFICATION");

@@ -37,7 +37,10 @@ class MessageRepliesApiTest {
         req.setInstituteId("INST_R");
         req.setCreatedBy("U_CREATE");
         req.setCreatedByRole("ADMIN");
-        req.setRecipients(List.of(new CreateAnnouncementRequest.RecipientRequest("ROLE","STUDENT",null)));
+        var recipient = new CreateAnnouncementRequest.RecipientRequest();
+        recipient.setRecipientType("ROLE");
+        recipient.setRecipientId("STUDENT");
+        req.setRecipients(List.of(recipient));
         req.setModes(List.of(new CreateAnnouncementRequest.ModeRequest("COMMUNITY", Map.of("communityType","GENERAL"))));
         var medium = new CreateAnnouncementRequest.MediumRequest();
         medium.setMediumType("PUSH_NOTIFICATION");

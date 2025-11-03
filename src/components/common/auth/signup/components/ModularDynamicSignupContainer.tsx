@@ -37,6 +37,8 @@ interface ModularDynamicSignupContainerProps {
   onSignupSuccess?: () => void;
   onBackToProviders?: () => void;
   className?: string;
+  initialEmail?: string; // Pre-filled email from login flow (default: "")
+  autoSendOtp?: boolean; // Auto-trigger OTP send (default: false)
 }
 
 type SignupStep =
@@ -53,11 +55,13 @@ export function ModularDynamicSignupContainer({
   onSignupSuccess,
   onBackToProviders,
   className = "",
+  initialEmail = "", // Default to empty string (no pre-fill)
+  autoSendOtp = false, // Default to false (no auto-send)
 }: ModularDynamicSignupContainerProps) {
   const { setPrimaryColor } = useTheme();
   const { registerUser: registerUserUnified } = useUnifiedRegistration();
   const [currentStep, setCurrentStep] = useState<SignupStep>("providers");
-  const [emailInput, setEmailInput] = useState("");
+  const [emailInput, setEmailInput] = useState(initialEmail); // Pre-fill if provided
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [oauthData, setOAuthData] = useState<any>(null);
@@ -109,6 +113,56 @@ export function ModularDynamicSignupContainer({
       setHasExecutedCallback(false);
     }
   }, [currentStep]);
+
+  // Auto-send OTP when autoSendOtp is true and email is prefilled
+  // This only runs when explicitly triggered from login flow
+  useEffect(() => {
+    // Guard: Only proceed if autoSendOtp is explicitly true AND initialEmail exists
+    if (!autoSendOtp || !initialEmail || !emailInput) {
+      return;
+    }
+
+    // Guard: Only proceed if we're on the providers step (initial load)
+    if (currentStep !== "providers") {
+      return;
+    }
+
+    // Guard: Don't auto-send if already sending
+    if (isSendingOtp) {
+      return;
+    }
+
+    // Trigger OTP send after a short delay to ensure UI is ready
+    const timer = setTimeout(async () => {
+      try {
+        setIsSendingOtp(true);
+        await axios.post(
+          LIVE_SESSION_REQUEST_OTP,
+          {
+            to: emailInput.trim(),
+            subject: "Email Verification",
+            service: "signup",
+            name: "User",
+            otp: "",
+          },
+          {
+            params: { instituteId },
+          }
+        );
+
+        toast.success("OTP sent successfully");
+        setEmailForOtp(emailInput.trim());
+        setSelectedProvider("emailOtp");
+        setCurrentStep("otpVerification");
+      } catch (e) {
+        toast.error("Failed to send OTP", { description: "Please try again" });
+      } finally {
+        setIsSendingOtp(false);
+      }
+    }, 500); // 500ms delay to ensure smooth UI transition
+
+    return () => clearTimeout(timer);
+  }, [autoSendOtp, initialEmail, currentStep, emailInput, isSendingOtp, instituteId]);
 
   // Parse institute settings to check for allowLearnersToCreateCourses
   useEffect(() => {

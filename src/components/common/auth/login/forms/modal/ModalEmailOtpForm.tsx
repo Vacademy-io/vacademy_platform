@@ -48,7 +48,7 @@ interface ModalEmailOtpFormProps {
   onEmailVerificationSuccess?: (email: string) => void;
   type?: string;
   courseId?: string;
-  onSwitchToSignup?: () => void;
+  onSwitchToSignup?: (email?: string, shouldAutoSendOtp?: boolean) => void;
   onLoginSuccess?: () => void;
   showUsernameSwitch?: boolean;
   signupAvailable?: boolean; // Add this prop to check if signup is available
@@ -139,14 +139,17 @@ export function ModalEmailLogin({
             if (errorData?.ex === "User not found!" || errorData?.responseCode === "User not found!") {
                 // User doesn't exist - show signup message only if signup is available
                 if (signupAvailable && onSwitchToSignup) {
+                    // Get the email from the form state
+                    const emailValue = emailForm.getValues().email;
+                    
                     toast.error("Account not found. Please sign up to continue.", {
-                        duration: 5000,
+                        duration: 3000,
                         description: "This email is not registered in our system."
                     });
                     
-                    // Automatically switch to signup after a short delay
+                    // Automatically switch to signup after a short delay with pre-filled email and auto-send OTP
                     setTimeout(() => {
-                        onSwitchToSignup();
+                        onSwitchToSignup(emailValue, true);
                     }, 2000);
                 } else {
                     // Signup not available - show different message

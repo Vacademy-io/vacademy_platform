@@ -145,10 +145,29 @@ public class PaymentLogService {
                     return;
                 }
 
-                PaymentResponseDTO paymentResponseDTO = JsonUtil.fromJson(
-                    JsonUtil.toJson(paymentData.get("response")),
-                    PaymentResponseDTO.class
-                );
+                // Extract the response - handle nested response_data structure
+                Object responseObj = paymentData.get("response");
+                PaymentResponseDTO paymentResponseDTO = null;
+                
+                if (responseObj != null) {
+                    // First try to parse as PaymentResponseDTO (which has response_data nested)
+                    paymentResponseDTO = JsonUtil.fromJson(
+                        JsonUtil.toJson(responseObj),
+                        PaymentResponseDTO.class
+                    );
+                    
+                    // If responseData field is empty but response_data exists, extract it
+                    if (paymentResponseDTO != null && 
+                        (paymentResponseDTO.getResponseData() == null || paymentResponseDTO.getResponseData().isEmpty())) {
+                        
+                        Map<String, Object> responseMap = (Map<String, Object>) responseObj;
+                        if (responseMap.containsKey("response_data")) {
+                            // Use the nested response_data as the responseData
+                            paymentResponseDTO.setResponseData((Map<String, Object>) responseMap.get("response_data"));
+                            log.debug("Extracted nested response_data for payment log ID: {}", paymentLog.getId());
+                        }
+                    }
+                }
 
                 PaymentInitiationRequestDTO paymentInitiationRequestDTO = JsonUtil.fromJson(
                     JsonUtil.toJson(paymentData.get("originalRequest")),
@@ -158,6 +177,15 @@ public class PaymentLogService {
                 if (paymentResponseDTO == null || paymentInitiationRequestDTO == null) {
                     log.error("Could not parse response or original request for payment log ID: {}", paymentLog.getId());
                     return;
+                }
+                
+                // Handle case where email is null in originalRequest - extract from gateway-specific request
+                if (paymentInitiationRequestDTO.getEmail() == null) {
+                    String extractedEmail = extractEmailFromGatewayRequest(paymentInitiationRequestDTO, paymentLog.getId());
+                    if (extractedEmail != null) {
+                        paymentInitiationRequestDTO.setEmail(extractedEmail);
+                        log.debug("Extracted email from payment gateway request: {}", extractedEmail);
+                    }
                 }
 
                 UserDTO userDTO = authService.getUsersFromAuthServiceByUserIds(List.of(paymentLog.getUserId())).get(0);
@@ -180,14 +208,32 @@ public class PaymentLogService {
                 return;
             }
 
-            // Extract the original request and response
+            // Extract the original request
             PaymentInitiationRequestDTO originalRequest = JsonUtil.fromJson(
                     JsonUtil.toJson(paymentData.get("originalRequest")),
                     PaymentInitiationRequestDTO.class);
 
-            PaymentResponseDTO paymentResponseDTO = JsonUtil.fromJson(
-                    JsonUtil.toJson(paymentData.get("response")),
-                    PaymentResponseDTO.class);
+            // Extract the response - handle nested response_data structure
+            Object responseObj = paymentData.get("response");
+            PaymentResponseDTO paymentResponseDTO = null;
+            
+            if (responseObj != null) {
+                paymentResponseDTO = JsonUtil.fromJson(
+                    JsonUtil.toJson(responseObj),
+                    PaymentResponseDTO.class
+                );
+                
+                // If responseData field is empty but response_data exists, extract it
+                if (paymentResponseDTO != null && 
+                    (paymentResponseDTO.getResponseData() == null || paymentResponseDTO.getResponseData().isEmpty())) {
+                    
+                    Map<String, Object> responseMap = (Map<String, Object>) responseObj;
+                    if (responseMap.containsKey("response_data")) {
+                        paymentResponseDTO.setResponseData((Map<String, Object>) responseMap.get("response_data"));
+                        log.debug("Extracted nested response_data for donation payment log ID: {}", paymentLog.getId());
+                    }
+                }
+            }
 
             if (originalRequest == null || paymentResponseDTO == null) {
                 log.error("Could not parse original request or response for payment log ID: {}", paymentLog.getId());
@@ -197,9 +243,16 @@ public class PaymentLogService {
             // Extract email from the original request
             String email = originalRequest.getEmail();
             if (email == null) {
-                email = "donation@institute.com";
-                log.warn("No email found in original request for donation payment log ID: {}, using default email",
-                        paymentLog.getId());
+                // Try to extract from gateway-specific request (works for all gateways)
+                email = extractEmailFromGatewayRequest(originalRequest, paymentLog.getId());
+                
+                if (email != null) {
+                    log.debug("Extracted email from payment gateway request for donation: {}", email);
+                } else {
+                    email = "donation@institute.com";
+                    log.warn("No email found in original request for donation payment log ID: {}, using default email",
+                            paymentLog.getId());
+                }
             }
 
             paymentNotificatonService.sendDonationPaymentConfirmationNotification(
@@ -217,5 +270,75 @@ public class PaymentLogService {
         PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId)
                 .orElseThrow(() -> new RuntimeException("Payment log not found with ID: " + paymentLogId));
         return paymentLog.mapToDTO();
+    }
+
+    /**
+     * Universal helper method to extract email from any payment gateway request object.
+     * Works for Stripe, Razorpay, PayPal, Eway, and any future payment gateways.
+     * 
+     * @param request The payment initiation request
+     * @param paymentLogId The payment log ID (for logging purposes)
+     * @return Extracted email or null if not found
+     */
+    private String extractEmailFromGatewayRequest(PaymentInitiationRequestDTO request, String paymentLogId) {
+        try {
+            // Try Razorpay request
+            if (request.getRazorpayRequest() != null) {
+                Map<String, Object> razorpayRequest = (Map<String, Object>) JsonUtil.fromJson(
+                    JsonUtil.toJson(request.getRazorpayRequest()), 
+                    Map.class);
+                if (razorpayRequest != null && razorpayRequest.get("email") != null) {
+                    return (String) razorpayRequest.get("email");
+                }
+            }
+            
+            // Try Stripe request
+            if (request.getStripeRequest() != null) {
+                Map<String, Object> stripeRequest = (Map<String, Object>) JsonUtil.fromJson(
+                    JsonUtil.toJson(request.getStripeRequest()), 
+                    Map.class);
+                if (stripeRequest != null && stripeRequest.get("email") != null) {
+                    return (String) stripeRequest.get("email");
+                }
+            }
+            
+            // Try PayPal request
+            if (request.getPayPalRequest() != null) {
+                Map<String, Object> paypalRequest = (Map<String, Object>) JsonUtil.fromJson(
+                    JsonUtil.toJson(request.getPayPalRequest()), 
+                    Map.class);
+                if (paypalRequest != null && paypalRequest.get("email") != null) {
+                    return (String) paypalRequest.get("email");
+                }
+            }
+            
+            // Try Eway request
+            if (request.getEwayRequest() != null) {
+                Map<String, Object> ewayRequest = (Map<String, Object>) JsonUtil.fromJson(
+                    JsonUtil.toJson(request.getEwayRequest()), 
+                    Map.class);
+                if (ewayRequest != null && ewayRequest.get("email") != null) {
+                    return (String) ewayRequest.get("email");
+                }
+            }
+            
+            // Try Manual request
+            if (request.getManualRequest() != null) {
+                Map<String, Object> manualRequest = (Map<String, Object>) JsonUtil.fromJson(
+                    JsonUtil.toJson(request.getManualRequest()), 
+                    Map.class);
+                if (manualRequest != null && manualRequest.get("email") != null) {
+                    return (String) manualRequest.get("email");
+                }
+            }
+            
+            log.debug("No email found in any payment gateway request for payment log ID: {}", paymentLogId);
+            return null;
+            
+        } catch (Exception e) {
+            log.warn("Error extracting email from payment gateway request for payment log ID: {}: {}", 
+                    paymentLogId, e.getMessage());
+            return null;
+        }
     }
 }

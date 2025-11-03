@@ -99,7 +99,8 @@ public class LearnerBatchEnrollService {
                         packageSessionIds, userId, List.of(fromStatus.name())
                 );
 
-        UserDTO userDTO = authService.getUsersFromAuthServiceByUserIds(List.of(userId)).get(0);
+        UserDTO userDTO = authService.getUsersFromAuthServiceWithPasswordByUserId(userId);
+
 
         for (StudentSessionInstituteGroupMapping mapping : invitedMappings) {
             if (mapping.getDestinationPackageSession() != null) {

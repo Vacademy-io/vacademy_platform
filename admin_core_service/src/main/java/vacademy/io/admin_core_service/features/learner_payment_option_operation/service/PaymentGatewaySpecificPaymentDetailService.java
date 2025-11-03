@@ -22,6 +22,12 @@ public class PaymentGatewaySpecificPaymentDetailService {
                             .setCustomerId(userInstitutePaymentGatewayMapping.getPaymentGatewayCustomerId());
                 }
                 break;
+            case RAZORPAY:
+                if (paymentInitiationRequestDTO.getRazorpayRequest() != null) {
+                    paymentInitiationRequestDTO.getRazorpayRequest()
+                            .setCustomerId(userInstitutePaymentGatewayMapping.getPaymentGatewayCustomerId());
+                }
+                break;
             case EWAY:
                 if (paymentInitiationRequestDTO.getEwayRequest() != null){
                     paymentInitiationRequestDTO.getEwayRequest().setCustomerId(userInstitutePaymentGatewayMapping.getPaymentGatewayCustomerId());
@@ -41,6 +47,12 @@ public class PaymentGatewaySpecificPaymentDetailService {
             case STRIPE:
                 if (paymentInitiationRequestDTO.getStripeRequest() != null) {
                     paymentInitiationRequestDTO.getStripeRequest()
+                        .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
+                }
+                break;
+            case RAZORPAY:
+                if (paymentInitiationRequestDTO.getRazorpayRequest() != null) {
+                    paymentInitiationRequestDTO.getRazorpayRequest()
                         .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
                 }
                 break;

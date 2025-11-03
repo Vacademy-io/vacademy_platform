@@ -47,7 +47,9 @@ public class UserController {
                                                            @RequestParam(name = "isNotify", required = false, defaultValue = "true") boolean isNotify) {
         try {
             User user = authService.createUser(userDTO, instituteId, isNotify);
-            return ResponseEntity.ok(new UserDTO(user,userDTO));
+            UserDTO res = new UserDTO(user,userDTO);
+            res.setPassword(user.getPassword());
+            return ResponseEntity.ok(res);
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());
         }

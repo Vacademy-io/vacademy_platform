@@ -184,6 +184,13 @@
             <artifactId>spring-retry</artifactId>
         </dependency>
 
+        <!-- JSON library for Razorpay Invoice API -->
+        <dependency>
+            <groupId>org.json</groupId>
+            <artifactId>json</artifactId>
+            <version>20231013</version>
+        </dependency>
+
     </dependencies>
 
     <dependencyManagement>

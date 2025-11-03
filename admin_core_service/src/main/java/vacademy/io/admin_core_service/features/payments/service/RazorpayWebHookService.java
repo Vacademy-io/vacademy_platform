@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.institute.service.InstitutePaymentGatewayMappingService;
 import vacademy.io.admin_core_service.features.payments.enums.WebHookStatus;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
@@ -14,10 +15,18 @@ import vacademy.io.admin_core_service.features.user_subscription.service.Payment
 import vacademy.io.admin_core_service.features.user_subscription.service.UserInstitutePaymentGatewayMappingService;
 import vacademy.io.common.payment.enums.PaymentGateway;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
@@ -134,7 +143,10 @@ public class RazorpayWebHookService {
                 // Extract and save payment method token for recurring payments
                 extractAndSavePaymentMethod(orderId, instituteId, paymentEntity);
                 
-                // Update payment status
+                // Generate Razorpay invoice and store URL (for email receipt)
+                generateAndStoreRazorpayInvoice(orderId, instituteId, paymentEntity);
+                
+                // Update payment status (this will trigger email notification)
                 paymentLogService.updatePaymentLog(orderId, PaymentStatusEnum.PAID.name(), instituteId);
                 break;
 
@@ -154,6 +166,9 @@ public class RazorpayWebHookService {
                 
                 // Extract and save payment method token for recurring payments
                 extractAndSavePaymentMethod(orderId, instituteId, paymentEntity);
+                
+                // Generate Razorpay invoice and store URL (for email receipt)
+                generateAndStoreRazorpayInvoice(orderId, instituteId, paymentEntity);
                 
                 paymentLogService.updatePaymentLog(orderId, PaymentStatusEnum.PAID.name(), instituteId);
                 break;
@@ -394,6 +409,216 @@ public class RazorpayWebHookService {
         } catch (Exception e) {
             log.error("Error retrieving userId from payment_log for orderId: {}", orderId, e);
             return null;
+        }
+    }
+
+    private void generateAndStoreRazorpayInvoice(String orderId, String instituteId, JsonNode paymentEntity) {
+        try {
+            log.info("Generating Razorpay invoice for orderId: {}", orderId);
+            
+            // Step 1: Generate invoice via Razorpay API
+            String invoiceUrl = generateRazorpayInvoice(orderId, instituteId, paymentEntity);
+            
+            if (invoiceUrl == null) {
+                log.warn("Failed to generate Razorpay invoice for orderId: {}. " +
+                        "Email will be sent without receipt URL.", orderId);
+                return;
+            }
+            
+            // Step 2: Store invoice URL in payment_specific_data
+            storeInvoiceUrl(orderId, invoiceUrl);
+            
+            log.info("Successfully generated and stored Razorpay invoice URL for orderId: {}", orderId);
+            
+        } catch (Exception e) {
+            // Don't fail the webhook if invoice generation fails
+            // Payment is already successful, invoice is just for user convenience
+            log.error("Error generating/storing Razorpay invoice for orderId: {}. " +
+                     "Payment confirmation will continue without receipt URL.", orderId, e);
+        }
+    }
+
+
+    private String generateRazorpayInvoice(String orderId, String instituteId, JsonNode paymentEntity) {
+        try {
+            // Extract payment details from webhook
+            String paymentId = paymentEntity.has("id") ? paymentEntity.get("id").asText() : null;
+            long amount = paymentEntity.has("amount") ? paymentEntity.get("amount").asLong() : 0;
+            String currency = paymentEntity.has("currency") ? paymentEntity.get("currency").asText() : "INR";
+            String customerId = paymentEntity.has("customer_id") ? paymentEntity.get("customer_id").asText() : null;
+            String email = paymentEntity.has("email") ? paymentEntity.get("email").asText() : null;
+            String contact = paymentEntity.has("contact") ? paymentEntity.get("contact").asText() : null;
+            
+            // Validate required fields
+            if (paymentId == null || amount == 0) {
+                log.error("Missing required payment details for invoice generation. PaymentId: {}, Amount: {}", 
+                         paymentId, amount);
+                return null;
+            }
+            
+            // Get Razorpay credentials
+            Map<String, Object> gatewayData = institutePaymentGatewayMappingService
+                    .findInstitutePaymentGatewaySpecifData(PaymentGateway.RAZORPAY.name(), instituteId);
+            
+            if (gatewayData == null) {
+                log.error("Razorpay gateway data not found for institute: {}", instituteId);
+                return null;
+            }
+            
+            // Try multiple field name variations for compatibility
+            String razorpayKeyId = (String) gatewayData.get("apiKey");
+            if (razorpayKeyId == null) {
+                razorpayKeyId = (String) gatewayData.get("keyId");
+            }
+            
+            // Check for secret in multiple field names (publishableKey, apiSecret, keySecret)
+            String razorpayKeySecret = (String) gatewayData.get("publishableKey");
+            if (razorpayKeySecret == null) {
+                razorpayKeySecret = (String) gatewayData.get("apiSecret");
+            }
+            if (razorpayKeySecret == null) {
+                razorpayKeySecret = (String) gatewayData.get("keySecret");
+            }
+            
+            if (razorpayKeyId == null || razorpayKeySecret == null) {
+                log.error("Razorpay credentials not found for institute: {}. Gateway data keys: {}", 
+                         instituteId, gatewayData != null ? gatewayData.keySet() : "null");
+                return null;
+            }
+            
+            log.debug("Retrieved Razorpay credentials for invoice generation. KeyId: {}", razorpayKeyId);
+            
+            // Build invoice request
+            JSONObject invoiceRequest = new JSONObject();
+            invoiceRequest.put("type", "invoice");
+            invoiceRequest.put("description", "Payment Receipt - Course Enrollment");
+            invoiceRequest.put("currency", currency);
+            
+            // Add customer ID if available
+            if (customerId != null) {
+                invoiceRequest.put("customer_id", customerId);
+            } else {
+                // Create customer inline if no customer_id
+                JSONObject customer = new JSONObject();
+                if (email != null) customer.put("email", email);
+                if (contact != null) customer.put("contact", contact);
+                customer.put("name", email != null ? email.split("@")[0] : "Customer");
+                invoiceRequest.put("customer", customer);
+            }
+            
+            // Add line items
+            JSONArray lineItems = new JSONArray();
+            JSONObject lineItem = new JSONObject();
+            lineItem.put("name", "Course Enrollment Payment");
+            lineItem.put("description", "Payment ID: " + paymentId);
+            lineItem.put("amount", amount);
+            lineItem.put("currency", currency);
+            lineItem.put("quantity", 1);
+            lineItems.put(lineItem);
+            invoiceRequest.put("line_items", lineItems);
+            
+            // Don't send Razorpay's email/SMS (we'll send our own)
+            invoiceRequest.put("email_notify", 0);
+            invoiceRequest.put("sms_notify", 0);
+            
+            // Add reference to payment
+            JSONObject notes = new JSONObject();
+            notes.put("payment_id", paymentId);
+            notes.put("order_id", orderId);
+            invoiceRequest.put("notes", notes);
+            
+            log.debug("Razorpay invoice request: {}", invoiceRequest.toString());
+            
+            // Make API call to Razorpay
+            String invoiceApiUrl = "https://api.razorpay.com/v1/invoices";
+            String authString = razorpayKeyId + ":" + razorpayKeySecret;
+            String encodedAuth = Base64.getEncoder().encodeToString(authString.getBytes(StandardCharsets.UTF_8));
+            
+            HttpClient client = HttpClient.newHttpClient();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(invoiceApiUrl))
+                    .header("Authorization", "Basic " + encodedAuth)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(invoiceRequest.toString()))
+                    .build();
+            
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            
+            if (response.statusCode() == 200 || response.statusCode() == 201) {
+                JSONObject invoiceResponse = new JSONObject(response.body());
+                
+                // Extract invoice URLs
+                String shortUrl = invoiceResponse.has("short_url") ? invoiceResponse.getString("short_url") : null;
+                String invoiceId = invoiceResponse.has("id") ? invoiceResponse.getString("id") : null;
+                
+                log.info("Razorpay invoice created successfully. Invoice ID: {}, URL: {}", invoiceId, shortUrl);
+                
+                return shortUrl;
+            } else {
+                log.error("Failed to generate Razorpay invoice. Status: {}, Response: {}", 
+                         response.statusCode(), response.body());
+                return null;
+            }
+            
+        } catch (Exception e) {
+            log.error("Error calling Razorpay Invoice API for orderId: {}", orderId, e);
+            return null;
+        }
+    }
+
+    private void storeInvoiceUrl(String orderId, String invoiceUrl) {
+        if (invoiceUrl == null) {
+            log.warn("No invoice URL to store for orderId: {}", orderId);
+            return;
+        }
+        
+        try {
+            // Get existing payment log
+            Optional<PaymentLog> paymentLogOptional = paymentLogRepository.findById(orderId);
+            if (!paymentLogOptional.isPresent()) {
+                log.error("Payment log not found for orderId: {}", orderId);
+                return;
+            }
+            
+            PaymentLog paymentLog = paymentLogOptional.get();
+            
+            // Parse existing payment_specific_data
+            Map<String, Object> paymentData = JsonUtil.fromJson(
+                paymentLog.getPaymentSpecificData(), 
+                Map.class
+            );
+            
+            if (paymentData == null) {
+                paymentData = new HashMap<>();
+            }
+            
+            // Navigate to response.response_data (create if doesn't exist)
+            Map<String, Object> response = (Map<String, Object>) paymentData.get("response");
+            if (response == null) {
+                response = new HashMap<>();
+                paymentData.put("response", response);
+            }
+            
+            Map<String, Object> responseData = (Map<String, Object>) response.get("response_data");
+            if (responseData == null) {
+                responseData = new HashMap<>();
+                response.put("response_data", responseData);
+            }
+            
+            // Add invoice URL (same field name as Stripe uses for consistency)
+            responseData.put("receiptUrl", invoiceUrl);
+            responseData.put("invoiceUrl", invoiceUrl);  // Keep both for flexibility
+            
+            log.debug("Storing invoice URL in payment_specific_data: {}", invoiceUrl);
+            
+            // Save back to database
+            paymentLog.setPaymentSpecificData(JsonUtil.toJson(paymentData));
+            paymentLogRepository.save(paymentLog);
+            
+            log.info("Invoice URL stored successfully for orderId: {}", orderId);
+            
+        } catch (Exception e) {
+            log.error("Error storing invoice URL in payment_specific_data for orderId: {}", orderId, e);
         }
     }
 }

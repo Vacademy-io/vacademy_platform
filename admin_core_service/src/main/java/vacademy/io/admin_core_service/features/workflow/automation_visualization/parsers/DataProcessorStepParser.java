@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.workflow.automation_visualization.parsers;
 
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.workflow.automation_visualization.dto.AutomationDiagramDTO;
 import vacademy.io.admin_core_service.features.workflow.automation_visualization.service.AutomationParserService;
@@ -10,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 @Component
+@Order(3)
 public class DataProcessorStepParser implements StepParser {
 
     @Override
@@ -26,7 +28,8 @@ public class DataProcessorStepParser implements StepParser {
 
         if ("SWITCH".equals(operation)) {
             String switchOn = AutomationParserService.cleanSpel((String) forEach.get("on"));
-            String description = "For each item in '" + on + "', a decision is made based on the value of '" + switchOn + "'.";
+            String description = "For each item in '" + on + "', a decision is made based on the value of '" + switchOn
+                    + "'.";
             return AutomationDiagramDTO.Node.builder()
                     .id(nodeId)
                     .title("Decision: On " + AutomationParserService.humanizeIdentifier(switchOn))
@@ -40,16 +43,17 @@ public class DataProcessorStepParser implements StepParser {
         String description = "Iterates over the '" + on + "' list to process each item.";
         if ("QUERY".equals(operation)) {
             String key = (String) forEach.get("prebuiltKey");
-            title = "Loop and " + AutomationParserService.TERMINOLOGY_MAP.getOrDefault(key, AutomationParserService.humanizeIdentifier(key));
+            title = "Loop and " + AutomationParserService.TERMINOLOGY_MAP.getOrDefault(key,
+                    AutomationParserService.humanizeIdentifier(key));
         } else if ("ITERATOR".equals(operation)) {
             // Handle nested iterators
             Map<String, Object> innerForEach = (Map<String, Object>) forEach.get("forEach");
             String innerOn = AutomationParserService.cleanSpel((String) forEach.get("on"));
             String innerKey = (String) innerForEach.get("prebuiltKey");
-            title = "Nested Loop: " + AutomationParserService.TERMINOLOGY_MAP.getOrDefault(innerKey, AutomationParserService.humanizeIdentifier(innerKey));
+            title = "Nested Loop: " + AutomationParserService.TERMINOLOGY_MAP.getOrDefault(innerKey,
+                    AutomationParserService.humanizeIdentifier(innerKey));
             description = "For each item in '" + on + "', loop through '" + innerOn + "' and perform the action.";
         }
-
 
         return AutomationDiagramDTO.Node.builder()
                 .id(nodeId)
@@ -60,25 +64,28 @@ public class DataProcessorStepParser implements StepParser {
     }
 
     /**
-     * This method is now robust and handles different value types in the 'cases' map.
+     * This method is now robust and handles different value types in the 'cases'
+     * map.
      */
     private Map<String, Object> extractLogicDetails(Map<String, Object> forEach) {
         Map<String, Object> details = new LinkedHashMap<>();
         String eval = (String) forEach.get("eval");
-        if (eval == null) return details;
+        if (eval == null)
+            return details;
 
         List<Map<String, String>> rules = new ArrayList<>();
         Map<String, Object> cases = (Map<String, Object>) forEach.get("cases");
 
-        if (cases == null) return details;
+        if (cases == null)
+            return details;
 
         cases.forEach((key, value) -> {
             Map<String, String> rule = new LinkedHashMap<>();
             rule.put("condition", "If value is '" + key + "'");
 
-            if (value instanceof List && !((List)value).isEmpty() && ((List)value).get(0) instanceof Map) {
+            if (value instanceof List && !((List) value).isEmpty() && ((List) value).get(0) instanceof Map) {
                 // This handles the rich email/template case
-                Map<String, String> action = (Map<String, String>) ((List)value).get(0);
+                Map<String, String> action = (Map<String, String>) ((List) value).get(0);
                 if (action.containsKey("subject")) {
                     rule.put("Subject", action.get("subject").replaceAll("'", ""));
                 }

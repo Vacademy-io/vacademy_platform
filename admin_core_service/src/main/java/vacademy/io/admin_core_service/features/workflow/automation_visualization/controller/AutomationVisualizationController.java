@@ -41,7 +41,7 @@ public class AutomationVisualizationController {
 
     @GetMapping("/{workflowId}/diagram")
     public ResponseEntity<AutomationDiagramDTO> getWorkflowDiagram(@PathVariable String workflowId) {
-        try{
+        try {
             // Step 1: Find the workflow by its string ID (e.g., "wf_demo_morning_001")
             Optional<Workflow> workflowOptional = workflowRepository.findById(workflowId);
             if (workflowOptional.isEmpty()) {
@@ -50,9 +50,11 @@ public class AutomationVisualizationController {
             Workflow workflow = workflowOptional.get();
 
             // Step 2: Fetch all node mappings for this workflow, ordered by their sequence.
-            List<WorkflowNodeMapping> nodeMappings = workflowNodeMappingRepository.findByWorkflowIdOrderByNodeOrderAsc(workflow.getId());
+            List<WorkflowNodeMapping> nodeMappings = workflowNodeMappingRepository
+                    .findByWorkflowIdOrderByNodeOrderAsc(workflow.getId());
             if (nodeMappings.isEmpty()) {
-                return ResponseEntity.ok(AutomationDiagramDTO.builder().nodes(Collections.emptyList()).edges(Collections.emptyList()).build());
+                return ResponseEntity.ok(AutomationDiagramDTO.builder().nodes(Collections.emptyList())
+                        .edges(Collections.emptyList()).build());
             }
 
             // Step 3: Efficiently fetch all required NodeTemplates in a single query.
@@ -63,15 +65,17 @@ public class AutomationVisualizationController {
             Map<String, String> templateIdToConfigMap = nodeTemplateRepository.findAllById(templateIds).stream()
                     .collect(Collectors.toMap(NodeTemplate::getId, NodeTemplate::getConfigJson));
 
-            // Step 4: Create the final map of [nodeId -> configJson] for the parser.
+            // Step 4: Create the final map of [unique nodeId -> configJson] for the parser.
             // Using LinkedHashMap preserves the execution order.
+            // IMPORTANT: We use the WorkflowNodeMapping ID as the key to ensure each node
+            // instance is unique
+            // even if the same template is used multiple times in the workflow.
             Map<String, String> nodeTemplates = nodeMappings.stream()
                     .collect(Collectors.toMap(
-                            WorkflowNodeMapping::getNodeTemplateId,
+                            WorkflowNodeMapping::getId, // Use mapping ID for uniqueness
                             mapping -> templateIdToConfigMap.get(mapping.getNodeTemplateId()),
-                            (u, v) -> u, // In case of duplicates, keep the first one
-                            LinkedHashMap::new
-                    ));
+                            (u, v) -> u, // In case of duplicates (shouldn't happen), keep the first one
+                            LinkedHashMap::new));
 
             try {
                 // Step 5: Pass the dynamically constructed map to the parser.
@@ -81,7 +85,7 @@ public class AutomationVisualizationController {
                 e.printStackTrace();
                 return ResponseEntity.internalServerError().build();
             }
-        }catch (Exception e){
+        } catch (Exception e) {
             e.printStackTrace();
             throw e;
         }

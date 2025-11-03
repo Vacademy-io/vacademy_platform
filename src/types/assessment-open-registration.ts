@@ -30,6 +30,7 @@ export interface AssessmentCustomFieldOpenRegistration {
   field_key: string;
   field_order: number;
   comma_separated_options: string;
+  config: string;
   status: string;
   is_mandatory: boolean;
   field_type: string;

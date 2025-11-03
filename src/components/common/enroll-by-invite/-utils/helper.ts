@@ -41,6 +41,7 @@ interface ConvertedCustomField {
   field_key: string;
   field_order: number;
   comma_separated_options: string;
+  config: string;
   status: string;
   is_mandatory: boolean;
   field_type: string;
@@ -193,9 +194,8 @@ export function convertInviteCustomFields(
       field_key: field.fieldKey,
       field_order: field.formOrder,
       comma_separated_options:
-        field.fieldType === "dropdown"
-          ? JSON.parse(field.config)?.coommaSepartedOptions
-          : "",
+        field.fieldType === "dropdown" ? field.config : "",
+      config: field.config || "{}",
       status: "ACTIVE",
       is_mandatory: field.isMandatory,
       field_type: field.fieldType,

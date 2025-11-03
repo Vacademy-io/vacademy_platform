@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { VscError } from "react-icons/vsc";
 import { FormInputProps } from "./utils/types/input-types";
 import { InputErrorProps } from "./utils/types/input-types";
-import { Label } from "../ui/label";
+import { FormLabel } from "../ui/form";
 
 const inputSizeVariants = {
   large: "h-10 py-2 px-3 text-subtitle",
@@ -48,12 +48,12 @@ export const MyInput = ({
     <div className="flex flex-col gap-1">
       <div className="flex flex-col gap-1">
         {label && (
-          <Label className={`${labelStyle} text-subtitle font-regular`}>
+          <FormLabel className={`${labelStyle}`}>
             {label}
             {required && (
               <span className="text-subtitle text-danger-600">*</span>
             )}
-          </Label>
+          </FormLabel>
         )}
         <div className="relative">
           <Input

@@ -18,6 +18,13 @@ import {
   LIVE_SESSION_VERIFY_OTP,
 } from "@/constants/urls";
 import axios from "axios";
+import {
+  FieldRenderType,
+  getInputType,
+  getFieldRenderType,
+  parseDropdownOptions,
+} from "../-utils/custom-field-helpers";
+import { capitalise } from "@/utils/custom-field";
 
 // Course data interface
 export interface FinalCourseData {
@@ -42,7 +49,13 @@ export interface FormFieldValue {
   value: string;
   is_mandatory: boolean;
   type: string;
-  comma_separated_options?: string[];
+  render_type?: FieldRenderType; // Add render type to determine how to display the field
+  comma_separated_options?: Array<{
+    _id: number;
+    value: string;
+    label: string;
+  }>;
+  config?: string;
 }
 
 // Form values interface
@@ -300,106 +313,182 @@ const RegistrationStep = ({
               <FormProvider {...form}>
                 <form className="w-full flex flex-col gap-4 mt-4 max-h-full overflow-auto">
                   {Object.entries(form.getValues()).map(
-                    ([key, value]: [string, FormFieldValue]) =>
-                      key === "phone_number" ? (
-                        <FormField
-                          key={key}
-                          control={form.control}
-                          name={`${key}.value`}
-                          render={() => (
-                            <FormItem>
-                              <FormControl>
-                                <PhoneInputField
-                                  label="Phone Number"
-                                  placeholder="123 456 7890"
-                                  name={`${key}.value`}
-                                  control={form.control}
-                                  country="gb"
-                                  required
-                                />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
-                      ) : key === "email" ? (
-                        <div key={key} className="space-y-3">
+                    ([key, value]: [string, FormFieldValue]) => {
+                      // Compute render type dynamically based on field key and type
+                      const renderType = value.render_type
+                        ? value.render_type
+                        : getFieldRenderType(key, value.type || "text");
+
+                      // Render Phone Input
+                      if (renderType === FieldRenderType.PHONE) {
+                        return (
                           <FormField
+                            key={key}
                             control={form.control}
                             name={`${key}.value`}
-                            render={({ field }) => (
+                            render={() => (
                               <FormItem>
                                 <FormControl>
-                                  <div className="flex flex-col gap-2">
-                                    <MyInput
-                                      inputType="email"
-                                      inputPlaceholder={value.name}
-                                      input={field.value}
-                                      onChangeFunction={(e) => {
-                                        field.onChange(e);
-                                        // Reset verification state when email changes
-                                        if (isEmailVerified || otpSent) {
-                                          setIsEmailVerified(false);
-                                          setOtpSent(false);
-                                          setOtp("");
-                                        }
-                                      }}
-                                      required={value.is_mandatory}
-                                      size="large"
-                                      label={value.name}
-                                      className="w-full"
-                                      disabled={isEmailVerified}
-                                    />
-                                    {!otpSent && !isEmailVerified && (
-                                      <MyButton
-                                        type="button"
-                                        buttonType="secondary"
-                                        onClick={handleSendOTP}
-                                        disable={isLoadingOtp || !field.value}
-                                        className="self-start"
-                                      >
-                                        {isLoadingOtp
-                                          ? "Sending..."
-                                          : "Send OTP"}
-                                      </MyButton>
-                                    )}
-                                  </div>
+                                  <PhoneInputField
+                                    label={capitalise(value.name)}
+                                    placeholder="123 456 7890"
+                                    name={`${key}.value`}
+                                    control={form.control}
+                                    country="gb"
+                                    required={value.is_mandatory}
+                                  />
                                 </FormControl>
                               </FormItem>
                             )}
                           />
+                        );
+                      }
 
-                          {otpSent && !isEmailVerified && (
-                            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                              <MyInput
-                                inputType="text"
-                                inputPlaceholder="Enter 6-digit OTP"
-                                input={otp}
-                                onChangeFunction={(e) => setOtp(e.target.value)}
-                                required={true}
-                                size="large"
-                                label="OTP Code"
-                                className="w-full"
-                                maxLength={6}
-                              />
-                              <MyButton
-                                type="button"
-                                buttonType="primary"
-                                onClick={handleVerifyOTP}
-                                disable={isVerifyingOtp || !otp.trim()}
-                                className="w-full sm:w-auto sm:whitespace-nowrap self-end"
-                              >
-                                {isVerifyingOtp ? "Verifying..." : "Verify OTP"}
-                              </MyButton>
-                            </div>
-                          )}
+                      // Render Email with OTP verification
+                      if (renderType === FieldRenderType.EMAIL) {
+                        return (
+                          <div key={key} className="space-y-3">
+                            <FormField
+                              control={form.control}
+                              name={`${key}.value`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormControl>
+                                    <div className="flex flex-col gap-2">
+                                      <MyInput
+                                        inputType="email"
+                                        inputPlaceholder={value.name}
+                                        input={field.value}
+                                        onChangeFunction={(e) => {
+                                          field.onChange(e);
+                                          // Reset verification state when email changes
+                                          if (isEmailVerified || otpSent) {
+                                            setIsEmailVerified(false);
+                                            setOtpSent(false);
+                                            setOtp("");
+                                          }
+                                        }}
+                                        required={value.is_mandatory}
+                                        size="large"
+                                        label={capitalise(value.name)}
+                                        className="w-full"
+                                        disabled={isEmailVerified}
+                                      />
+                                      {!otpSent && !isEmailVerified && (
+                                        <MyButton
+                                          type="button"
+                                          buttonType="secondary"
+                                          onClick={handleSendOTP}
+                                          disable={isLoadingOtp || !field.value}
+                                          className="self-start"
+                                        >
+                                          {isLoadingOtp
+                                            ? "Sending..."
+                                            : "Send OTP"}
+                                        </MyButton>
+                                      )}
+                                    </div>
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
 
-                          {isEmailVerified && (
-                            <p className="text-xs text-green-600 flex items-center gap-1">
-                              <span>✓</span> Email verified successfully
-                            </p>
-                          )}
-                        </div>
-                      ) : (
+                            {otpSent && !isEmailVerified && (
+                              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                                <MyInput
+                                  inputType="text"
+                                  inputPlaceholder="Enter 6-digit OTP"
+                                  input={otp}
+                                  onChangeFunction={(e) =>
+                                    setOtp(e.target.value)
+                                  }
+                                  required={true}
+                                  size="large"
+                                  label="OTP Code"
+                                  className="w-full"
+                                  maxLength={6}
+                                />
+                                <MyButton
+                                  type="button"
+                                  buttonType="primary"
+                                  onClick={handleVerifyOTP}
+                                  disable={isVerifyingOtp || !otp.trim()}
+                                  className="w-full sm:w-auto sm:whitespace-nowrap self-end"
+                                >
+                                  {isVerifyingOtp
+                                    ? "Verifying..."
+                                    : "Verify OTP"}
+                                </MyButton>
+                              </div>
+                            )}
+
+                            {isEmailVerified && (
+                              <p className="text-xs text-green-600 flex items-center gap-1">
+                                <span>✓</span> Email verified successfully
+                              </p>
+                            )}
+                          </div>
+                        );
+                      }
+
+                      // Render Dropdown
+                      if (renderType === FieldRenderType.DROPDOWN) {
+                        // Parse dropdown options if not already parsed
+                        let dropdownOptions = value.comma_separated_options
+                          ? value.comma_separated_options
+                          : parseDropdownOptions(value.config || "{}");
+
+                        // If dropdownOptions is empty, try to get from comma_separated_options as string array
+                        if (
+                          dropdownOptions.length === 0 &&
+                          value.comma_separated_options
+                        ) {
+                          // Check if comma_separated_options is an array of strings
+                          if (Array.isArray(value.comma_separated_options)) {
+                            dropdownOptions = (
+                              value.comma_separated_options as unknown[]
+                            ).map((option: unknown, index: number) => {
+                              if (typeof option === "string") {
+                                return {
+                                  _id: index,
+                                  value: option,
+                                  label: option,
+                                };
+                              }
+                              return option as {
+                                _id: number;
+                                value: string;
+                                label: string;
+                              };
+                            });
+                          }
+                        }
+
+                        return (
+                          <FormField
+                            key={key}
+                            control={form.control}
+                            name={`${key}.value`}
+                            render={() => (
+                              <FormItem>
+                                <FormControl>
+                                  <SelectField
+                                    label={capitalise(value.name)}
+                                    name={`${key}.value`}
+                                    options={dropdownOptions}
+                                    control={form.control}
+                                    required={value.is_mandatory}
+                                    className="!w-full"
+                                  />
+                                </FormControl>
+                              </FormItem>
+                            )}
+                          />
+                        );
+                      }
+
+                      // Render Text Input (default)
+                      return (
                         <FormField
                           key={key}
                           control={form.control}
@@ -407,40 +496,25 @@ const RegistrationStep = ({
                           render={({ field }) => (
                             <FormItem>
                               <FormControl>
-                                {value.type === "dropdown" ? (
-                                  <SelectField
-                                    label={value.name}
-                                    name={`${key}.value`}
-                                    options={
-                                      value.comma_separated_options?.map(
-                                        (option: string, index: number) => ({
-                                          value: option,
-                                          label: option,
-                                          _id: index,
-                                        })
-                                      ) || []
-                                    }
-                                    control={form.control}
-                                    required={value.is_mandatory}
-                                    className="!w-full"
-                                  />
-                                ) : (
-                                  <MyInput
-                                    inputType="text"
-                                    inputPlaceholder={value.name}
-                                    input={field.value}
-                                    onChangeFunction={field.onChange}
-                                    required={value.is_mandatory}
-                                    size="large"
-                                    label={value.name}
-                                    className="!max-w-full !w-full"
-                                  />
-                                )}
+                                <MyInput
+                                  inputType={getInputType(
+                                    value.type,
+                                    renderType
+                                  )}
+                                  inputPlaceholder={value.name}
+                                  input={field.value}
+                                  onChangeFunction={field.onChange}
+                                  required={value.is_mandatory}
+                                  size="large"
+                                  label={capitalise(value.name)}
+                                  className="!max-w-full !w-full"
+                                />
                               </FormControl>
                             </FormItem>
                           )}
                         />
-                      )
+                      );
+                    }
                   )}
                   <div className="flex items-center justify-center flex-col gap-3 sm:gap-4">
                     <MyButton

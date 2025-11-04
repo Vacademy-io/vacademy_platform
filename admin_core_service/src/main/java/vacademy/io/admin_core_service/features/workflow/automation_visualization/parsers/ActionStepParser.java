@@ -1,14 +1,17 @@
 package vacademy.io.admin_core_service.features.workflow.automation_visualization.parsers;
 
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.workflow.automation_visualization.dto.AutomationDiagramDTO;
 import java.util.Map;
 
 @Component
+@Order(5)
 public class ActionStepParser implements StepParser {
     @Override
     public boolean canParse(Map<String, Object> nodeData) {
-        return nodeData.containsKey("forEach") && "SEND_EMAIL".equals(((Map<String,Object>)nodeData.get("forEach")).get("operation"));
+        return nodeData.containsKey("forEach")
+                && "SEND_EMAIL".equals(((Map<String, Object>) nodeData.get("forEach")).get("operation"));
     }
 
     @Override

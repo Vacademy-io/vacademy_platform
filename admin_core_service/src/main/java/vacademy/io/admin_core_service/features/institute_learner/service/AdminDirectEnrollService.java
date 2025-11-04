@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.institute_learner.service;
 
 import jakarta.transaction.Transactional;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -10,6 +11,8 @@ import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite
 import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInviteService;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDetails;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
+import vacademy.io.admin_core_service.features.notification.enums.NotificationEventType;
+import vacademy.io.admin_core_service.features.notification.service.DynamicNotificationService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
@@ -23,7 +26,6 @@ import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollRequestDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
-import vacademy.io.common.auth.service.UserService;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.payment.dto.ManualPaymentDTO;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
@@ -34,6 +36,7 @@ import java.util.*;
 
 @Service
 @Transactional
+@Slf4j
 public class AdminDirectEnrollService {
 
     @Autowired
@@ -57,6 +60,9 @@ public class AdminDirectEnrollService {
     @Autowired
     private AuthService authService;
 
+    @Autowired
+    private DynamicNotificationService dynamicNotificationService;
+
     @Transactional
     public LearnerEnrollResponseDTO adminEnrollLearner(LearnerEnrollRequestDTO request) {
         UserDTO user = createUserOrGetExistingUser(request.getUser(),request.getInstituteId());
@@ -71,6 +77,13 @@ public class AdminDirectEnrollService {
         if (enrollDTO.getPlanId() != null) {
             paymentPlan = paymentPlanService.findById(enrollDTO.getPlanId()).orElse(null);
         }
+		sendNotificationsForEnrollment(
+				instituteId,
+				user,
+				paymentOption,
+				enrollInvite,
+				enrollDTO.getPackageSessionIds().get(0)
+		);
         UserPlan userPlan = userPlanService.createUserPlan(
                 user.getId(),
                 paymentPlan,
@@ -100,7 +113,8 @@ public class AdminDirectEnrollService {
                 instituteId,
                 instituteStudentDetails,
                 enrollDTO.getCustomFieldValues(),
-                Map.of());
+                Map.of(),
+                request.getLearnerExtraDetails());
 
         handleManualPaymentIfAny(enrollDTO.getPaymentInitiationRequest(), createdUser, userPlan, paymentPlan,
                 enrollInvite);
@@ -109,6 +123,37 @@ public class AdminDirectEnrollService {
         response.setUser(createdUser);
         return response;
     }
+
+	private void sendNotificationsForEnrollment(
+			String instituteId,
+			UserDTO user,
+			PaymentOption paymentOption,
+			EnrollInvite enrollInvite,
+			String packageSessionId) {
+
+		try {
+			dynamicNotificationService.sendDynamicNotification(
+					NotificationEventType.LEARNER_ENROLL,
+					packageSessionId,
+					instituteId,
+					user,
+					paymentOption,
+					enrollInvite
+			);
+		} catch (Exception e) {
+			log.error("Error sending dynamic notification for admin enroll", e);
+		}
+
+		try {
+			dynamicNotificationService.sendReferralInvitationNotification(
+					instituteId,
+					user,
+					enrollInvite
+			);
+		} catch (Exception e) {
+			log.error("Error sending referral invitation notification for admin enroll", e);
+		}
+	}
 
     private void validate(LearnerPackageSessionsEnrollDTO enrollDTO, UserDTO user, String instituteId) {
         if (enrollDTO == null || user == null || !StringUtils.hasText(instituteId)) {

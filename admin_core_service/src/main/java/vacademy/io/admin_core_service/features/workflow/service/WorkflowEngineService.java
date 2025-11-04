@@ -29,7 +29,7 @@ public class WorkflowEngineService {
     private final SpelEvaluator spelEvaluator;
     private final ObjectMapper objectMapper;
 
-    public Map<String, Object> run(String workflowId, String scheduleRunId, Map<String, Object> seedContext) {
+    public Map<String, Object> run(String workflowId, Map<String, Object> seedContext) {
         try {
             Workflow wf = workflowRepository.findById(workflowId).orElseThrow();
             List<WorkflowNodeMapping> mappings = mappingRepository.findByWorkflowIdOrderByNodeOrderAsc(workflowId);
@@ -48,7 +48,6 @@ public class WorkflowEngineService {
                 ctx.putAll(seedContext);
             }
             ctx.put("workflowId", workflowId);
-            ctx.put("scheduleRunId", scheduleRunId);
             ctx.put("instituteId", wf.getInstituteId());
 
             // Index by node ID for routing convenience

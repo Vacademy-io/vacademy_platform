@@ -95,4 +95,7 @@ public interface TemplateRepository extends JpaRepository<Template, String> {
 
     // Count templates by institute ID, status, and template category
     long countByInstituteIdAndStatusAndTemplateCategory(String instituteId, String status, String templateCategory);
+
+    Optional<Template> findByInstituteIdAndNameAndType(String instituteId, String name, String type);
+
 }

@@ -33,7 +33,6 @@ public class NotificationService {
     private String notificationServerBaseUrl;
 
     public String sendEmailToUsers(NotificationDTO notificationDTO,String instituteId) {
-        // Removed the redundant 'clientName' parameter, we can use the injected clientName field here
         String url=NotificationConstant.EMAIL_TO_USERS+"?instituteId="+instituteId;
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                 clientName, // Directly use the injected 'clientName'
@@ -85,7 +84,6 @@ public class NotificationService {
     public List<Map<String, Boolean>> sendWhatsappToUsers(WhatsappRequest request,String instituteId) {
         // Call notification microservice via HMAC request
         String url=NotificationConstant.SEND_WHATSAPP_TO_USER+"?instituteId="+instituteId;
-        System.out.println(url);
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                 clientName,
                 HttpMethod.POST.name(),

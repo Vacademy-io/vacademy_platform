@@ -4,5 +4,6 @@ public enum RecipientType {
     ROLE,
     USER,
     PACKAGE_SESSION,
-    TAG
+    TAG,
+    CUSTOM_FIELD_FILTER
 }

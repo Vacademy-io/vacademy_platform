@@ -113,5 +113,27 @@ public class AuthService {
         }
     }
 
+    public UserDTO getUsersFromAuthServiceWithPasswordByUserId(String userId) {
+        if (userId == null) {
+            return null;
+        }
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                clientName,
+                HttpMethod.GET.name(),
+                authServerBaseUrl,
+                AuthServiceRoutes.GET_USER_BY_ID_WITH_PASSWORD+"?userId="+userId,
+                null
+            );
+
+            return objectMapper.readValue(response.getBody(), new TypeReference<UserDTO>() {
+            });
+        } catch (Exception e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
+
+
 
 }

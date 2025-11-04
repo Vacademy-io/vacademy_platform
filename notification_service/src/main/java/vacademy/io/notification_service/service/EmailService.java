@@ -15,7 +15,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.stereotype.Service;
@@ -34,21 +33,26 @@ public class EmailService {
 
     private static final Logger logger = LoggerFactory.getLogger(EmailService.class);
     private final JavaMailSender mailSender;
-    private final EmailDispatcher emailDispatcher = EmailDispatcher.getInstance();
+    private final EmailDispatcher emailDispatcher;
     @Value("${app.ses.sender.email}")
     private String from;
 
     @Value("${ses.configuration.set}")
     private String sesConfigurationSet;
 
+    @Value("${aws.sqs.enabled}")
+    private boolean awsSqsEnabled;
+
     private final InstituteInternalService internalService;
     private final ObjectMapper objectMapper;
 
     @Autowired
-    public EmailService(JavaMailSender mailSender, InstituteInternalService internalService, ObjectMapper objectMapper) {
+    public EmailService(JavaMailSender mailSender, InstituteInternalService internalService, 
+                       ObjectMapper objectMapper, EmailDispatcher emailDispatcher) {
         this.mailSender = mailSender;
         this.internalService = internalService;
         this.objectMapper = objectMapper;
+        this.emailDispatcher = emailDispatcher;
     }
 
     private JavaMailSenderImpl createCustomMailSender(JsonNode emailSettings) {
@@ -63,7 +67,8 @@ public class EmailService {
         props.put("mail.transport.protocol", "smtp");
         props.put("mail.smtp.auth", "true");
         props.put("mail.smtp.starttls.enable", "true"); // This is the key part
-        props.put("mail.debug", "true"); // Optional: for debugging connection issues in logs
+        // Disabled mail.debug to prevent excessive SMTP protocol logs (can flood logs with high-volume email sending)
+        props.put("mail.debug", "false");
         mailSender.setJavaMailProperties(props);
         return mailSender;
     }
@@ -183,8 +188,10 @@ public class EmailService {
             message.setSubject(subject);
             message.setText(text);
             
-            // Add SES configuration set header for event tracking
-            message.setHeader("X-SES-CONFIGURATION-SET", sesConfigurationSet);
+            // Add SES configuration set header for event tracking (only if SQS is enabled)
+            if (awsSqsEnabled) {
+                message.setHeader("X-SES-CONFIGURATION-SET", sesConfigurationSet);
+            }
 
             mailSenderToUse.send(message);
             logger.info("Email sent successfully to {} using {}", to,
@@ -234,8 +241,10 @@ public class EmailService {
                     message.setFrom(new InternetAddress(fromToUse));
                     message.setSubject(emailSubject);
                     
-                    // Add SES configuration set header for event tracking
-                    message.setHeader("X-SES-CONFIGURATION-SET", sesConfigurationSet);
+                    // Add SES configuration set header for event tracking (only if SQS is enabled)
+                    if (awsSqsEnabled) {
+                        message.setHeader("X-SES-CONFIGURATION-SET", sesConfigurationSet);
+                    }
 
                     // Add HTML content
                     MimeMultipart multipart = new MimeMultipart();
@@ -390,8 +399,10 @@ public class EmailService {
                     
                     message.setSubject(emailSubject);
                     
-                    // Add SES configuration set header for event tracking
-                    message.setHeader("X-SES-CONFIGURATION-SET", sesConfigurationSet);
+                    // Add SES configuration set header for event tracking (only if SQS is enabled)
+                    if (awsSqsEnabled) {
+                        message.setHeader("X-SES-CONFIGURATION-SET", sesConfigurationSet);
+                    }
 
                     MimeMultipart multipart = new MimeMultipart();
                     MimeBodyPart htmlPart = new MimeBodyPart();
@@ -437,8 +448,10 @@ public class EmailService {
                     message.setFrom(new InternetAddress(fromToUse));
                     message.setSubject(emailSubject);
                     
-                    // Add SES configuration set header for event tracking
-                    message.setHeader("X-SES-CONFIGURATION-SET", sesConfigurationSet);
+                    // Add SES configuration set header for event tracking (only if SQS is enabled)
+                    if (awsSqsEnabled) {
+                        message.setHeader("X-SES-CONFIGURATION-SET", sesConfigurationSet);
+                    }
 
                     MimeMultipart multipart = new MimeMultipart();
 

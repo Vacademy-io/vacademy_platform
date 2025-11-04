@@ -84,8 +84,7 @@ public class LearnerEnrollRequestService {
             enrollInvite,
             paymentOption,
             userPlan
-        );
-        
+        );        
         // Send enrollment notifications ONLY for FREE enrollments (status = ACTIVE)
         // For PAID enrollments, notifications will be sent after webhook confirms payment
         if (UserPlanStatusEnum.ACTIVE.name().equals(userPlan.getStatus())) {
@@ -112,12 +111,12 @@ public class LearnerEnrollRequestService {
         return response;
     }
     private void sendDynamicNotificationForEnrollment(
-            String instituteId, 
-            UserDTO user, 
-            PaymentOption paymentOption, 
+            String instituteId,
+            UserDTO user,
+            PaymentOption paymentOption,
             EnrollInvite enrollInvite,
             String packageSessionId) {
-        
+
         try {
             dynamicNotificationService.sendDynamicNotification(
                     NotificationEventType.LEARNER_ENROLL,
@@ -133,10 +132,10 @@ public class LearnerEnrollRequestService {
     }
 
     private void sendReferralInvitationEmail(
-            String instituteId, 
-            UserDTO user, 
+            String instituteId,
+            UserDTO user,
             EnrollInvite enrollInvite) {
-        
+
         try {
             dynamicNotificationService.sendReferralInvitationNotification(
                     instituteId,
@@ -208,7 +207,8 @@ public class LearnerEnrollRequestService {
             enrollInvite,
             paymentOption,
             userPlan,
-            Map.of() // optional extra data
+            Map.of() ,// optional extra data,
+            learnerEnrollRequestDTO.getLearnerExtraDetails()
         );
     }
 

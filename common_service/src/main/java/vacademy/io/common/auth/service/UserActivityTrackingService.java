@@ -104,6 +104,7 @@ public class UserActivityTrackingService {
         } catch (Exception e) {
             log.error("Error creating or updating session", e);
         }
+        return null;
     }
 
     /**

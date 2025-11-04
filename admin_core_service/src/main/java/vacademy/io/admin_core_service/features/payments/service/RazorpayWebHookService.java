@@ -139,12 +139,12 @@ public class RazorpayWebHookService {
         switch (eventType) {
             case "payment.captured":
                 log.info("Payment captured for orderId: {}", orderId);
-                
+
                 // Extract and save payment method token for recurring payments
                 extractAndSavePaymentMethod(orderId, instituteId, paymentEntity);
 
                 generateAndStoreRazorpayInvoice(orderId, instituteId, paymentEntity);
-                 break;
+                break;
 
             case "payment.failed":
                 log.warn("Payment failed for orderId: {}", orderId);
@@ -159,13 +159,11 @@ public class RazorpayWebHookService {
 
             case "order.paid":
                 log.info("Order fully paid for orderId: {}", orderId);
-                
-                // Extract and save payment method token for recurring payments
+
                 extractAndSavePaymentMethod(orderId, instituteId, paymentEntity);
-                
-                // Generate Razorpay invoice and store URL (for email receipt)
+
                 generateAndStoreRazorpayInvoice(orderId, instituteId, paymentEntity);
-                
+
                 paymentLogService.updatePaymentLog(orderId, PaymentStatusEnum.PAID.name(), instituteId);
                 break;
 

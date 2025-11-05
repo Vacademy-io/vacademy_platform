@@ -111,8 +111,14 @@ interface EnrollLearnerForPaymentProps {
       expiryYear: string;
     };
   };
-  // Payment vendor (STRIPE or EWAY)
-  paymentVendor?: "STRIPE" | "EWAY";
+  // Razorpay-specific payment data
+  razorpayPaymentData?: {
+    razorpay_payment_id: string;
+    razorpay_order_id: string;
+    razorpay_signature: string;
+  };
+  // Payment vendor (STRIPE, EWAY, or RAZORPAY)
+  paymentVendor?: "STRIPE" | "EWAY" | "RAZORPAY";
 }
 
 /**
@@ -226,10 +232,9 @@ export const handleEnrollLearnerForPayment = async ({
   referRequest,
   returnUrl,
   ewayPaymentData,
+  razorpayPaymentData,
   paymentVendor = "STRIPE",
 }: EnrollLearnerForPaymentProps) => {
-  console.log("registrationData", registrationData);
-
   // Dynamically extract email, phone, and full name using helper functions
   const email = getEmailField(registrationData);
   const phoneNumber = getPhoneField(registrationData);
@@ -237,9 +242,6 @@ export const handleEnrollLearnerForPayment = async ({
 
   // Dynamically identify keys to exclude from custom field values
   const keysToExclude = getKeysToExclude(registrationData);
-
-  console.log("Extracted values:", { email, phoneNumber, fullName });
-  console.log("Keys to exclude:", keysToExclude);
 
   // Prepare payment request based on vendor
   const stripe_request =
@@ -263,6 +265,26 @@ export const handleEnrollLearnerForPayment = async ({
           cvn: ewayPaymentData.encryptedCVN, // Already has "eCrypted:" prefix
           country_code: "au",
         }
+      : {};
+
+  // For Razorpay: First call sends empty request to create order,
+  // Second call (after payment) includes payment_id, order_id, signature
+  const razorpay_request =
+    paymentVendor === "RAZORPAY"
+      ? razorpayPaymentData
+        ? {
+            customer_id: null,
+            contact: phoneNumber,
+            email: email,
+            razorpay_payment_id: razorpayPaymentData.razorpay_payment_id,
+            razorpay_order_id: razorpayPaymentData.razorpay_order_id,
+            razorpay_signature: razorpayPaymentData.razorpay_signature,
+          }
+        : {
+            customer_id: null,
+            contact: phoneNumber,
+            email: email,
+          }
       : {};
 
   const convertedData = {
@@ -293,6 +315,7 @@ export const handleEnrollLearnerForPayment = async ({
       enroll_invite_id: enrollInviteId,
       refer_request: referRequest,
       payment_initiation_request: {
+        vendor: paymentVendor,
         amount: enrollmentData.selectedPayment.amount,
         currency:
           paymentVendor === "EWAY"
@@ -302,7 +325,7 @@ export const handleEnrollLearnerForPayment = async ({
         charge_automatically: true,
         institute_id: instituteId,
         stripe_request,
-        razorpay_request: {},
+        razorpay_request,
         pay_pal_request: {},
         eway_request,
         include_pending_items: true,

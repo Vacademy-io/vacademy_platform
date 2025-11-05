@@ -1,6 +1,10 @@
 import { lazy, Suspense, useMemo } from "react";
 import { PaymentVendor } from "../-utils/payment-vendor-helper";
 import EwayCardForm from "./eway-card-form";
+import {
+  RazorpayCheckoutForm,
+  RazorpayCheckoutFormRef,
+} from "./razorpay-checkout-form";
 import { Elements } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
 import { Route } from "@/routes/learner-invitation-response";
@@ -36,7 +40,21 @@ interface PaymentInfoStepProps {
       error?: string;
     }>
   ) => void;
+  onRazorpayPaymentReady?: (paymentData: {
+    razorpay_payment_id: string;
+    razorpay_order_id: string;
+    razorpay_signature: string;
+  }) => void;
+  onRazorpayError?: (error: string) => void;
   isProcessing?: boolean;
+  // Additional details for Razorpay
+  userName?: string;
+  userEmail?: string;
+  userContact?: string;
+  courseName?: string;
+  courseDescription?: string;
+  // Ref to Razorpay component for programmatic control
+  razorpayRef?: React.RefObject<RazorpayCheckoutFormRef>;
 }
 
 /**
@@ -102,10 +120,20 @@ const EwayCheckoutForm = ({
 const PaymentInfoStep = ({
   error,
   vendor = "STRIPE",
+  amount,
+  currency,
   onEwayPaymentReady,
   onEwayError,
   onStripePaymentReady,
+  onRazorpayPaymentReady,
+  onRazorpayError,
   isProcessing,
+  userName,
+  userEmail,
+  userContact,
+  courseName,
+  courseDescription,
+  razorpayRef,
 }: PaymentInfoStepProps) => {
   const { instituteId } = Route.useSearch();
 
@@ -228,7 +256,23 @@ const PaymentInfoStep = ({
         />
       )}
 
-      {vendor !== "STRIPE" && vendor !== "EWAY" && (
+      {vendor === "RAZORPAY" && (
+        <RazorpayCheckoutForm
+          ref={razorpayRef}
+          error={error}
+          amount={amount || 0}
+          currency={currency || "INR"}
+          onPaymentReady={onRazorpayPaymentReady}
+          onError={onRazorpayError}
+          userName={userName}
+          userEmail={userEmail}
+          userContact={userContact}
+          courseName={courseName}
+          courseDescription={courseDescription}
+        />
+      )}
+
+      {vendor !== "STRIPE" && vendor !== "EWAY" && vendor !== "RAZORPAY" && (
         <div className="w-full max-w-md mx-auto">
           <div className="bg-yellow-50 border border-yellow-200 rounded-md p-6 text-center">
             <h2 className="text-xl font-bold text-yellow-800 mb-2">

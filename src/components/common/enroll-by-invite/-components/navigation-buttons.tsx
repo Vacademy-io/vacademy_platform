@@ -46,6 +46,8 @@ const NavigationButtons = ({
       if (paymentVendor === "STRIPE" && !isPaymentDataReady) {
         return true;
       }
+      // For Razorpay: button is always enabled (order created on click)
+      // Payment happens after button click, not before
     }
 
     return false;

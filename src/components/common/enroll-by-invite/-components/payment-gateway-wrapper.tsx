@@ -6,6 +6,7 @@ import { handlePaymentGatewaykeys } from "../-services/enroll-invite-services";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { PaymentVendor } from "../-utils/payment-vendor-helper";
 import { EwayProvider } from "../-contexts/eway-context";
+import { RazorpayProvider } from "../-contexts/razorpay-context";
 
 interface PaymentGatewayWrapperProps {
   vendor: PaymentVendor;
@@ -51,9 +52,11 @@ export const PaymentGatewayWrapper = ({
       );
 
     case "RAZORPAY":
-      // TODO: Implement Razorpay wrapper
-      console.warn("Razorpay integration not yet implemented");
-      return <>{children}</>;
+      return (
+        <RazorpayPaymentWrapper instituteId={instituteId}>
+          {children}
+        </RazorpayPaymentWrapper>
+      );
 
     case "PAYPAL":
       // TODO: Implement PayPal wrapper
@@ -126,5 +129,25 @@ const EwayPaymentWrapper = ({
     >
       {children}
     </EwayProvider>
+  );
+};
+
+/**
+ * Razorpay Payment Wrapper
+ * Loads Razorpay keys and provides Razorpay context to children
+ */
+const RazorpayPaymentWrapper = ({
+  instituteId,
+  children,
+}: {
+  instituteId: string;
+  children: ReactNode;
+}) => {
+  const { data: razorpayKeys } = useSuspenseQuery(
+    handlePaymentGatewaykeys(instituteId, "RAZORPAY")
+  );
+
+  return (
+    <RazorpayProvider keyId={razorpayKeys?.keyId}>{children}</RazorpayProvider>
   );
 };

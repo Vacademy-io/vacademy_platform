@@ -11,7 +11,7 @@ import {
 } from "./-services/enroll-invite-services";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { GraduationCap } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   convertInviteCustomFields,
   getDefaultPlanFromPaymentsData,
@@ -25,6 +25,7 @@ import { AssessmentCustomFieldOpenRegistration } from "@/types/assessment-open-r
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { MyButton } from "@/components/design-system/button";
+import { RazorpayCheckoutFormRef } from "./-components/razorpay-checkout-form";
 import {
   ModernCard,
   ModernCardHeader,
@@ -82,6 +83,12 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
       }>)
     | null
   >(null);
+  const [razorpayPaymentData, setRazorpayPaymentData] = useState<{
+    razorpay_payment_id: string;
+    razorpay_order_id: string;
+    razorpay_signature: string;
+  } | null>(null);
+  const razorpayRef = useRef<RazorpayCheckoutFormRef>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -380,7 +387,6 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
       setError(null);
 
       try {
-        console.log("here");
         const paymentResponse = await handleEnrollLearnerForPayment({
           registrationData: form.getValues(),
           enrollmentData: enrollmentData,
@@ -414,6 +420,71 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         setError(err?.response?.data?.ex);
         console.error(err);
       } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // For RAZORPAY payments
+    if (vendor === "RAZORPAY") {
+      setLoading(true);
+      setError(null);
+
+      try {
+        // Step 1: Call enrollment API to create order (without payment data)
+        const paymentResponse = await handleEnrollLearnerForPayment({
+          registrationData: form.getValues(),
+          enrollmentData: enrollmentData,
+          instituteId,
+          enrollInviteId: inviteData?.id,
+          payment_option_id:
+            inviteData?.package_session_to_payment_options[0].payment_option.id,
+          package_session_id:
+            inviteData?.package_session_to_payment_options[0]
+              ?.package_session_id,
+          allowLearnersToCreateCourses:
+            JSON.parse(instituteData?.setting)?.setting?.COURSE_SETTING?.data
+              ?.permissions?.allowLearnersToCreateCourses || false,
+          referRequest: referRequest,
+          razorpayPaymentData: razorpayPaymentData || undefined, // Will be undefined on first call
+          paymentVendor: "RAZORPAY",
+        });
+
+        // Step 2: Extract order details from response
+        const orderDetails = paymentResponse?.payment_response?.response_data;
+
+        if (
+          !orderDetails ||
+          !orderDetails.razorpayKeyId ||
+          !orderDetails.razorpayOrderId
+        ) {
+          throw new Error("Failed to create Razorpay order");
+        }
+
+        // Store order ID for later use
+        setOrderId(paymentResponse?.payment_response?.order_id);
+        setPaymentCompletionResponse(paymentResponse);
+
+        // Step 3: Open Razorpay payment modal
+        if (razorpayRef.current) {
+          razorpayRef.current.openPayment({
+            razorpayKeyId: orderDetails.razorpayKeyId,
+            razorpayOrderId: orderDetails.razorpayOrderId,
+            amount: orderDetails.amount,
+            currency: orderDetails.currency || "INR",
+            contact: orderDetails.contact || "",
+            email: orderDetails.email || "",
+          });
+        } else {
+          throw new Error("Razorpay component not ready");
+        }
+
+        setLoading(false);
+      } catch (err) {
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-expect-error
+        setError(err?.response?.data?.ex || "Failed to initiate payment");
+        console.error("Razorpay enrollment error:", err);
         setLoading(false);
       }
       return;
@@ -479,6 +550,69 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
       setLoading(false);
     }
   };
+
+  // Complete enrollment after Razorpay payment is successful
+  useEffect(() => {
+    const vendor = propVendor || getPaymentVendor(inviteData);
+
+    if (
+      vendor === "RAZORPAY" &&
+      razorpayPaymentData &&
+      !loading &&
+      currentStep === 3
+    ) {
+      // Call API again with payment details to complete the enrollment
+      const completeRazorpayEnrollment = async () => {
+        setLoading(true);
+        setError(null);
+
+        try {
+          const paymentResponse = await handleEnrollLearnerForPayment({
+            registrationData: form.getValues(),
+            enrollmentData: enrollmentData,
+            instituteId,
+            enrollInviteId: inviteData?.id,
+            payment_option_id:
+              inviteData?.package_session_to_payment_options[0].payment_option
+                .id,
+            package_session_id:
+              inviteData?.package_session_to_payment_options[0]
+                ?.package_session_id,
+            allowLearnersToCreateCourses:
+              JSON.parse(instituteData?.setting)?.setting?.COURSE_SETTING?.data
+                ?.permissions?.allowLearnersToCreateCourses || false,
+            referRequest: referRequest,
+            razorpayPaymentData: razorpayPaymentData, // Now includes payment details
+            paymentVendor: "RAZORPAY",
+          });
+
+          setPaymentCompletionResponse(paymentResponse);
+
+          // Check payment status and navigate accordingly
+          setTimeout(() => {
+            if (
+              paymentResponse?.payment_response?.response_data
+                ?.paymentStatus === "PAID"
+            ) {
+              setCurrentStep(5);
+            } else {
+              setCurrentStep(4);
+            }
+          }, 100);
+        } catch (err) {
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-expect-error
+          setError(err?.response?.data?.ex || "Failed to complete enrollment");
+          console.error("Razorpay completion error:", err);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      completeRazorpayEnrollment();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [razorpayPaymentData]);
 
   useEffect(() => {
     const loadCourseData = async () => {
@@ -569,6 +703,48 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
     loadCourseData();
   }, [inviteData]);
 
+  // Helper function to get user details from registration data
+  const getUserDetails = () => {
+    const registrationData = form.getValues();
+
+    // Find email field
+    const emailEntry = Object.entries(registrationData).find(([key]) => {
+      const lowerKey = key.toLowerCase();
+      return (
+        lowerKey.includes("email") ||
+        lowerKey.includes("mail") ||
+        lowerKey.includes("mailid")
+      );
+    });
+
+    // Find phone/contact field
+    const phoneEntry = Object.entries(registrationData).find(([key]) => {
+      const lowerKey = key.toLowerCase();
+      return (
+        lowerKey.includes("phone") ||
+        lowerKey.includes("mobile") ||
+        lowerKey.includes("contact") ||
+        lowerKey.includes("tel")
+      );
+    });
+
+    // Find name field
+    const nameEntry = Object.entries(registrationData).find(([key]) => {
+      const lowerKey = key.toLowerCase();
+      return (
+        lowerKey.includes("name") ||
+        lowerKey.includes("full_name") ||
+        lowerKey.includes("fullname")
+      );
+    });
+
+    return {
+      email: emailEntry ? String(emailEntry[1]?.value || "") : "",
+      contact: phoneEntry ? String(phoneEntry[1]?.value || "") : "",
+      name: nameEntry ? String(nameEntry[1]?.value || "") : "",
+    };
+  };
+
   const renderCurrentStep = () => {
     switch (currentStep) {
       case 0:
@@ -653,18 +829,38 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         );
       case 3: {
         const vendor = propVendor || getPaymentVendor(inviteData);
+        const userDetails = getUserDetails();
         return (
           <PaymentInfoStep
             error={error}
             vendor={vendor}
-            amount={enrollmentData.selectedPayment?.amount}
+            amount={
+              enrollmentData.selectedPayment?.actual_price ||
+              enrollmentData.selectedPayment?.amount
+            }
             currency={enrollmentData.selectedPayment?.currency}
             onEwayPaymentReady={setEwayEncryptedData}
             onEwayError={setError}
             onStripePaymentReady={(processor) => {
               setStripePaymentProcessor(() => processor);
             }}
+            onRazorpayPaymentReady={setRazorpayPaymentData}
+            onRazorpayError={setError}
             isProcessing={loading}
+            userName={userDetails.name}
+            userEmail={userDetails.email}
+            userContact={userDetails.contact}
+            courseName={
+              courseData.aboutCourse ||
+              enrollmentData.selectedPayment?.name ||
+              "Course Enrollment"
+            }
+            courseDescription={
+              courseData.description ||
+              enrollmentData.selectedPayment?.description ||
+              "Payment for course enrollment"
+            }
+            razorpayRef={razorpayRef}
           />
         );
       }
@@ -933,7 +1129,11 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
                     currentStep === 3
                       ? getPaymentVendor(inviteData) === "EWAY"
                         ? !!ewayEncryptedData
-                        : !!stripePaymentProcessor
+                        : getPaymentVendor(inviteData) === "STRIPE"
+                        ? !!stripePaymentProcessor
+                        : getPaymentVendor(inviteData) === "RAZORPAY"
+                        ? !!razorpayPaymentData
+                        : false
                       : false
                   }
                 />

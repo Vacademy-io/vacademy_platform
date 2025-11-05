@@ -102,7 +102,7 @@ public class GetSessionByIdService {
             dto.setJoinLink(first.getRegistrationFormLinkForPublicSessions());
             dto.setRecurrenceType(first.getRecurrenceType());
             dto.setAccessType(first.getAccessLevel());
-            dto.setWaitingRoomTime(first.getWaitingRoomTime().toString());
+            dto.setWaitingRoomTime(first.getWaitingRoomTime() != null ? first.getWaitingRoomTime().toString() : null);
             dto.setThumbnailFileId(first.getThumbnailFileId());
             dto.setBackgroundScoreFileId(first.getBackgroundScoreFileId());
             dto.setCoverFileId(first.getCoverFileId());

@@ -74,6 +74,8 @@ public class GetSessionByIdService {
                 item.setStartTime(schedule.getScheduleStartTime().toString());
                 item.setDuration(String.valueOf(durationMinutes)); // or durationMinutes if preferred
                 item.setLink(schedule.getCustomMeetingLink());
+                item.setMeetingDate(schedule.getMeetingDate());
+                item.setTimezone(schedule.getTimezone());
                 addedSchedules.add(item);
             }
         }

@@ -61,7 +61,7 @@ public class CustomFields {
     private Boolean isHidden = false;
 
     public CustomFields(CustomFieldDTO customFieldDTO) {
-        if (customFieldDTO.getId() != null)
+        if (StringUtils.hasText(customFieldDTO.getId()))
             this.id = customFieldDTO.getId();
 
         if (StringUtils.hasText(customFieldDTO.getFieldKey()))

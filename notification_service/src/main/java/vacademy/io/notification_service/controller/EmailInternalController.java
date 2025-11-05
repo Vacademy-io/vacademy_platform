@@ -36,4 +36,13 @@ public class EmailInternalController {
     public ResponseEntity<Boolean> sendEmailsToUsers(@RequestBody List<AttachmentNotificationDTO> emailToUsersDTOs,@RequestParam(name = "instituteId" , required = false)String instituteId) {
         return ResponseEntity.ok(notificationService.sendAttachmentNotification(emailToUsersDTOs,instituteId));
     }
+
+    @PostMapping("/send-email-to-users/multiple")
+    public ResponseEntity<String> sendEmailsToUsersMultiple(@RequestBody List<NotificationDTO> emailToUsersDTO,@RequestParam(name = "instituteId" , required = false)String instituteId) {
+        for (NotificationDTO notificationDTO:emailToUsersDTO){
+            notificationService.sendNotification(notificationDTO,instituteId);
+        }
+        return ResponseEntity.ok("done!!!");
+    }
+
 }

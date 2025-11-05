@@ -147,6 +147,12 @@ public class Step1Service {
             
             // Step 5: Process each day pattern in the request
             for (LiveSessionStep1RequestDTO.ScheduleDTO dto : request.getAddedSchedules()) {
+                // If schedule has an ID and exists in DB, treat it as a single schedule update
+                if (dto.getId() != null && !dto.getId().isEmpty() && scheduleRepository.existsById(dto.getId())) {
+                    updateSingleSchedule(dto, request);
+                    continue; // Skip pattern-based update logic for this DTO
+                }
+                
                 String dayOfWeek = dto.getDay().toUpperCase();
                 
                 // Get existing schedules for this day (including past ones for reference)
@@ -155,7 +161,7 @@ public class Step1Service {
                         .sorted((a, b) -> toLocalDate(a.getMeetingDate()).compareTo(toLocalDate(b.getMeetingDate())))
                         .toList();
                 
-                // Step 5a: UPDATE existing future schedules for this day with new properties
+                // Step 5a: UPDATE existing future schedules for this day with new properties (pattern-based)
                 List<SessionSchedule> futureSchedulesForDay = existingSchedulesForDay.stream()
                         .filter(s -> toLocalDate(s.getMeetingDate()).isAfter(today))
                         .toList();
@@ -253,10 +259,10 @@ public class Step1Service {
                     }
                 }
             }
-        } else {
-            // No recurring schedules - handle as single schedule update
-            handleUpdatedSchedules(request);
         }
+        
+        // Always process updated_schedules if present (independent of added_schedules)
+        handleUpdatedSchedules(request);
     }
     
     /**

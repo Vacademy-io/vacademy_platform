@@ -36,7 +36,7 @@ public class AnnouncementController {
     @PostMapping
     public ResponseEntity<AnnouncementResponse> createAnnouncement(@Valid @RequestBody CreateAnnouncementRequest request) {
         log.info("Creating announcement: {} for institute: {}", request.getTitle(), request.getInstituteId());
-        
+
         try {
             AnnouncementResponse response = announcementService.createAnnouncement(request);
             return ResponseEntity.ok(response);
@@ -70,18 +70,18 @@ public class AnnouncementController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String status) {
-        
+
         try {
             Pageable pageable = PageRequest.of(page, size);
             Page<AnnouncementResponse> response;
-            
+
             if (status != null) {
                 AnnouncementStatus announcementStatus = AnnouncementStatus.valueOf(status.toUpperCase());
                 response = announcementService.getAnnouncementsByInstituteAndStatus(instituteId, announcementStatus, pageable);
             } else {
                 response = announcementService.getAnnouncementsByInstitute(instituteId, pageable);
             }
-            
+
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Error getting announcements for institute: {}", instituteId, e);
@@ -159,11 +159,11 @@ public class AnnouncementController {
     public ResponseEntity<AnnouncementResponse> updateAnnouncementStatus(
             @PathVariable String announcementId,
             @RequestBody Map<String, String> statusUpdate) {
-        
+
         try {
             String statusValue = statusUpdate.get("status");
             AnnouncementStatus status = AnnouncementStatus.valueOf(statusValue.toUpperCase());
-            
+
             AnnouncementResponse response = announcementService.updateAnnouncementStatus(announcementId, status);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -248,7 +248,7 @@ public class AnnouncementController {
     //                 "message", "The institute with this ID does not exist in the database"
     //             ));
     //         }
-    //         
+    //
     //         return ResponseEntity.ok(Map.of(
     //             "instituteId", instituteId,
     //             "instituteName", institute.getInstituteName(),
@@ -319,7 +319,7 @@ public class AnnouncementController {
         try {
             log.info("Received request to add email configuration for institute: {}, config: {}", instituteId, emailConfig);
             log.info("Auth token provided: {}", authToken != null ? "Yes" : "No");
-            
+
             // Validate required fields
             if (emailConfig.getEmail() == null || emailConfig.getEmail().trim().isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Email is required"));
@@ -330,13 +330,13 @@ public class AnnouncementController {
             if (emailConfig.getName() == null || emailConfig.getName().trim().isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Name is required"));
             }
-            
+
             // Extract Bearer token if present
             String token = null;
             if (authToken != null && authToken.startsWith("Bearer ")) {
                 token = authToken.substring(7);
             }
-            
+
             EmailConfigDTO addedConfig = emailConfigurationService.addEmailConfiguration(instituteId, emailConfig, token);
             return ResponseEntity.ok(addedConfig);
         } catch (Exception e) {
@@ -361,7 +361,7 @@ public class AnnouncementController {
     //         if (authToken != null && authToken.startsWith("Bearer ")) {
     //             token = authToken.substring(7);
     //         }
-    //         
+    //
     //         EmailConfigDTO updatedConfig = emailConfigurationService.updateEmailConfiguration(instituteId, emailType, emailConfig, token);
     //         if (updatedConfig != null) {
     //             return ResponseEntity.ok(updatedConfig);
@@ -389,7 +389,7 @@ public class AnnouncementController {
     //         if (authToken != null && authToken.startsWith("Bearer ")) {
     //             token = authToken.substring(7);
     //         }
-    //         
+    //
     //         boolean deleted = emailConfigurationService.deleteEmailConfiguration(instituteId, emailType, token);
     //         if (deleted) {
     //             return ResponseEntity.noContent().build();
@@ -447,7 +447,7 @@ public class AnnouncementController {
             return ResponseEntity.badRequest().build();
         }
     }
-    
+
     /**
      * Debug endpoint to check email tracking data for an announcement
      */
@@ -469,7 +469,7 @@ public class AnnouncementController {
         try {
             // Use the existing getEmailConfigurations method to test parsing
             List<EmailConfigDTO> configs = emailConfigurationService.getEmailConfigurations(instituteId);
-            
+
             return ResponseEntity.ok(Map.of(
                 "instituteId", instituteId,
                 "emailConfigurationsCount", configs.size(),
@@ -491,13 +491,13 @@ public class AnnouncementController {
             @RequestHeader(value = "Authorization", required = false) String authToken) {
         try {
             log.info("Restoring default email configurations for institute: {}", instituteId);
-            
+
             // Extract Bearer token
             String token = null;
             if (authToken != null && authToken.startsWith("Bearer ")) {
                 token = authToken.substring(7);
             }
-            
+
             // Add common email configurations
             List<EmailConfigDTO> defaultConfigs = List.of(
                 EmailConfigDTO.builder()
@@ -519,7 +519,7 @@ public class AnnouncementController {
                     .description("General information emails")
                     .build()
             );
-            
+
             List<EmailConfigDTO> addedConfigs = new ArrayList<>();
             for (EmailConfigDTO config : defaultConfigs) {
                 try {
@@ -529,16 +529,29 @@ public class AnnouncementController {
                     log.warn("Failed to add default config {}: {}", config.getType(), e.getMessage());
                 }
             }
-            
+
             return ResponseEntity.ok(Map.of(
                 "message", "Default email configurations restored",
                 "addedConfigurations", addedConfigs,
                 "totalAdded", addedConfigs.size()
             ));
-            
+
         } catch (Exception e) {
             log.error("Error restoring default email configurations for institute: {}", instituteId, e);
             return ResponseEntity.badRequest().body(Map.of("error", "Failed to restore defaults: " + e.getMessage()));
         }
+    }
+
+    @PostMapping("/multiple")
+    public ResponseEntity<String> createAnnouncements(@Valid @RequestBody List<CreateAnnouncementRequest> requests) {
+
+        for(CreateAnnouncementRequest request:requests){
+            try {
+                AnnouncementResponse response = announcementService.createAnnouncement(request);
+            } catch (Exception e) {
+                log.error("Error creating announcement", e);
+            }
+        }
+        return ResponseEntity.ok("");
     }
 }

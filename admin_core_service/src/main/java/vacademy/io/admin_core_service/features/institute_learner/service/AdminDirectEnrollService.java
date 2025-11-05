@@ -202,6 +202,6 @@ public class AdminDirectEnrollService {
     }
 
     private UserDTO createUserOrGetExistingUser(UserDTO user,String instituteId) {
-        return authService.createUserFromAuthService(user,instituteId,false);
+        return authService.createUserFromAuthService(user,instituteId,true);
     }
 }

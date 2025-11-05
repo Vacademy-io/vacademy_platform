@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.auth_service.core.util.CsvUtil;
 import vacademy.io.auth_service.feature.user.service.UserDetailService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.entity.User;
@@ -26,13 +27,15 @@ public class UserInternalController {
 
     @PostMapping("/create-or-get-existing-by-id")
     @Transactional
-    public ResponseEntity<UserDTO> createUserOrGetExisting(@RequestBody UserDTO userDTO, @RequestParam(name = "instituteId", required = false) String instituteId) {
+    public ResponseEntity<UserDTO> createUserOrGetExisting(@RequestBody UserDTO userDTO,
+            @RequestParam(name = "instituteId", required = false) String instituteId) {
         try {
             User user = null;
             if (!StringUtils.hasText(userDTO.getId())) {
                 user = userService.createUserFromUserDto(userDTO);
             } else {
-                user = userService.getOptionalUserById(userDTO.getId()).orElse(userService.createUserFromUserDto(userDTO));
+                user = userService.getOptionalUserById(userDTO.getId())
+                        .orElse(userService.createUserFromUserDto(userDTO));
             }
             userService.addUserRoles(instituteId, userDTO.getRoles(), user, UserRoleStatus.ACTIVE.name());
             return ResponseEntity.ok(new UserDTO(user));
@@ -41,7 +44,6 @@ public class UserInternalController {
         }
     }
 
-
     @PostMapping("/user-details-list")
     public ResponseEntity<List<UserDTO>> getUserDetailsByIds(@RequestBody List<String> userIds) {
         List<UserDTO> users = userService.getUserDetailsByIds(userIds);
@@ -49,19 +51,29 @@ public class UserInternalController {
     }
 
     @GetMapping("/user-by-id-with-password")
-    public ResponseEntity<UserDTO>getUserByIdWithPassword(String userId){
+    public ResponseEntity<UserDTO> getUserByIdWithPassword(String userId) {
         return ResponseEntity.ok(userDetailService.getUserByIdWithPassword(userId));
     }
 
     @PostMapping("/get-users-of-roles-of-institute")
     public ResponseEntity<List<UserDTO>> getUsersOfRolesOfInstitute(
-        @RequestBody List<String> roles,
-        @RequestParam("instituteId") String instituteId,
-        @RequestParam(name = "inactivityDays", defaultValue = "7") int inactivityDays) {
+            @RequestBody List<String> roles,
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam(name = "inactivityDays", defaultValue = "7") int inactivityDays) {
 
         List<UserDTO> users = userService.findUsersOfRolesOfInstitute(roles, instituteId, inactivityDays);
         return ResponseEntity.ok(users);
     }
 
+    @PostMapping("/get-users-inactive-for-days-or-more-csv")
+    public ResponseEntity<byte[]> getUsersInactiveForDaysOrMoreCsv(
+            @RequestBody List<String> roles,
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam(name = "inactivityDays", defaultValue = "7") int inactivityDays,
+            @RequestParam(name = "sortDirection", defaultValue = "ASC") String sortDirection) {
+
+        List<UserDTO> users = userService.findUsersInactiveForDaysOrMore(roles, instituteId, inactivityDays);
+        return CsvUtil.convertUserListToCsv(users, "inactive_users.csv");
+    }
 
 }

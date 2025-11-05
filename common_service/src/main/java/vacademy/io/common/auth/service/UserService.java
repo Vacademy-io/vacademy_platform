@@ -464,19 +464,24 @@ public class UserService {
     }
 
     public List<UserDTO> findUsersOfRolesOfInstitute(List<String> roles, String instituteId, int inactiveDays) {
-        // Calculate target date: current date - inactiveDays
         LocalDate localTargetDate = LocalDate.now().minusDays(inactiveDays);
-
-        // Convert LocalDate to java.util.Date (for JPA query)
         Date targetDate = Date.from(localTargetDate.atStartOfDay(ZoneId.systemDefault()).toInstant());
-
         List<User> users = userRepository.findUsersInactiveOnDate(
-            instituteId,
-            roles,
-            List.of(UserRoleStatus.ACTIVE.name()),
-            targetDate
-        );
+                instituteId,
+                roles,
+                List.of(UserRoleStatus.ACTIVE.name()),
+                targetDate);
+        return users.stream().map(UserDTO::new).toList();
+    }
 
+    public List<UserDTO> findUsersInactiveForDaysOrMore(List<String> roles, String instituteId, int inactiveDays) {
+        LocalDate localTargetDate = LocalDate.now().minusDays(inactiveDays);
+        Date targetDate = Date.from(localTargetDate.atStartOfDay(ZoneId.systemDefault()).toInstant());
+        List<User> users = userRepository.findUsersInactiveForDaysOrMore(
+                instituteId,
+                roles,
+                List.of(UserRoleStatus.ACTIVE.name()),
+                targetDate);
         return users.stream().map(UserDTO::new).toList();
     }
 

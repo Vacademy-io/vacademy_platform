@@ -39,7 +39,9 @@ function GuestEmbedComponent() {
       sessionDetails.linkType === LinkType.YOUTUBE ||
       sessionDetails.linkType === LinkType.YOUTUBE_RECORDED
     ) {
-      const videoId = extractYouTubeVideoId(sessionDetails.defaultMeetLink);
+      const videoId = extractYouTubeVideoId(
+        sessionDetails.customMeetingLink ?? sessionDetails.defaultMeetLink
+      );
       if (!videoId) {
         return (
           <div className="p-4 border border-red-200 rounded-lg bg-red-50 text-red-700">

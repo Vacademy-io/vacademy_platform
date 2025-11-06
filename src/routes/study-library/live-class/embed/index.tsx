@@ -91,7 +91,9 @@ function EmbedComponent() {
       sessionDetails.linkType === LinkType.YOUTUBE ||
       sessionDetails.linkType === LinkType.YOUTUBE_RECORDED
     ) {
-      const videoId = extractYouTubeVideoId(sessionDetails.defaultMeetLink);
+      const videoId = extractYouTubeVideoId(
+        sessionDetails.customMeetingLink ?? sessionDetails.defaultMeetLink
+      );
 
       // Handle case where video ID extraction fails
       if (!videoId) {

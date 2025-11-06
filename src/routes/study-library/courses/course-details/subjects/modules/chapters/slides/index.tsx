@@ -492,12 +492,12 @@ function Slides() {
                                             <div
                                                 className="h-full bg-primary-500 rounded-full"
                                                 style={{
-                                                    width: `${calculateOverallCompletion(slides)}%`,
+                                                    width: `${Math.min(calculateOverallCompletion(slides), 100)}%`,
                                                 }}
                                             />
                                         </div>
                                         <span className="text-xs font-bold text-primary-600 min-w-[30px]">
-                                            {calculateOverallCompletion(slides)}
+                                            {Math.min(calculateOverallCompletion(slides), 100)}
                                             %
                                         </span>
                                     </div>

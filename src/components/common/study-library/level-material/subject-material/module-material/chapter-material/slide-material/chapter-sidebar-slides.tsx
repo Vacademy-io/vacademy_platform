@@ -25,9 +25,11 @@ import {
 } from "@/components/ui/tooltip";
 import { BookOpen, Code, Gamepad2 } from "lucide-react";
 import { useDoubtSidebarStore } from "@/stores/study-library/doubt-sidebar-store";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { getPublicUrl } from "@/services/upload_file";
+import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
+import { useQueryClient } from "@tanstack/react-query";
 
 // Helper function to get responsive truncation length - kept for tooltip usage
 // const getResponsiveTruncationLength = () => {
@@ -46,12 +48,13 @@ export const calculateOverallCompletion = (slides: Slide[]): number => {
 
     const totalSlides = slides.length;
     const totalCompletion = slides.reduce((sum, slide) => {
-        // Treat null/undefined percentage_completed as 0
-        const percentage = slide.percentage_completed ?? 0;
+        // Treat null/undefined percentage_completed as 0, and cap each slide at 100%
+        const percentage = Math.min(slide.percentage_completed ?? 0, 100);
         return sum + percentage;
     }, 0);
 
-    return Math.round(totalCompletion / totalSlides);
+    // Cap the overall result at 100%
+    return Math.min(Math.round(totalCompletion / totalSlides), 100);
 };
 
 // Helper function to get slide status
@@ -766,13 +769,21 @@ export const ChapterSidebarSlides = () => {
                         slide={slide}
                         index={index}
                         isActive={slide.id === activeItem?.id}
-                        onClick={() => {
+                        onClick={async () => {
+                            // ✅ Immediate UI update for smooth transition
                             setActiveItem(slide);
+                            
+                            // ✅ Get sessionId (required for quiz functionality)
+                            const currentSearch = router.state.location.search as Record<string, string>;
+                            const sessionId = currentSearch.sessionId || await getPackageSessionId();
+                            
+                            // ✅ Navigate with all required parameters
                             router.navigate({
                                 to: router.state.location.pathname,
                                 search: {
-                                    ...router.state.location.search,
+                                    ...currentSearch,
                                     slideId: slide.id,
+                                    sessionId: sessionId || '',
                                 },
                                 replace: true,
                             });

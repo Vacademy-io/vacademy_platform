@@ -55,11 +55,17 @@ function renderCommaSeparated(elements: React.ReactNode[]) {
   );
 }
 
-const getOptionHtml = (q: Question, idOrValue: string | number) => {
+const getOptionHtml = (q: Question, idOrValue: string | number | undefined) => {
+  // ✅ Handle undefined/null values
+  if (idOrValue === undefined || idOrValue === null || idOrValue === '') {
+    return "No answer selected";
+  }
+  
   if (q.options && q.options.length > 0 && typeof idOrValue === 'string') {
     const opt = q.options.find(o => o.id === idOrValue);
     if (opt) return opt.text.content;
   }
+  
   return String(idOrValue);
 };
 
@@ -210,7 +216,10 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
                 <div className="flex-1">
                   <div className="mb-1 text-xs font-semibold text-blue-800 flex items-center"><UserIcon />Your Answer</div>
                   <div className="w-full rounded-lg bg-blue-50 border border-blue-200 p-3 flex flex-col gap-2">
-                    {isMCQ && userAnswerWithIndex
+                    {/* ✅ Check if userAnswer exists before rendering */}
+                    {!userAnswer || (Array.isArray(userAnswer) && userAnswer.length === 0) ? (
+                      <span className="text-gray-500 italic text-sm">No answer selected</span>
+                    ) : isMCQ && userAnswerWithIndex
                       ? userAnswerWithIndex.map(({ id, idx }) => (
                           <span key={id as string} className="text-blue-900 text-sm flex items-center">
                             <span className="font-bold mr-1">{getOptionLabel(idx)}</span>

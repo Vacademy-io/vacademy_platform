@@ -455,7 +455,8 @@ export const CourseStructureDetails = ({
             // Default: Navigate directly to slide (for all non-donation types or when payment type is not loaded)
             console.log('Navigating directly to slide (default behavior)', { 
                 paymentType, 
-                reason: paymentType ? 'non-donation type' : 'payment type not loaded' 
+                reason: paymentType ? 'non-donation type' : 'payment type not loaded',
+                packageSessionId
             });
             navigateTo(
                 `/study-library/courses/course-details/subjects/modules/chapters/slides`,
@@ -465,6 +466,7 @@ export const CourseStructureDetails = ({
                     moduleId,
                     chapterId,
                     slideId,
+                    sessionId: packageSessionId || '',
                 }
             );
         }
@@ -2489,6 +2491,9 @@ export const CourseStructureDetails = ({
                     targetSlideDetails={targetSlideDetails}
                     onSlideAccessSuccess={(courseId, subjectId, moduleId, chapterId, slideId) => {
                         // Navigate to slides after successful donation or skip
+                        console.log('🎁 [DonationDialog] Navigating to slide after donation:', { 
+                            packageSessionId 
+                        });
                         navigateTo(
                             `/study-library/courses/course-details/subjects/modules/chapters/slides`,
                             {
@@ -2497,6 +2502,7 @@ export const CourseStructureDetails = ({
                                 moduleId,
                                 chapterId,
                                 slideId,
+                                sessionId: packageSessionId || '',
                             }
                         );
                         setDonationDialogOpen(false);

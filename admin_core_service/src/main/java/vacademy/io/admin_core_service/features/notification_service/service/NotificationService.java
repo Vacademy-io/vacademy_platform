@@ -66,8 +66,7 @@ public class NotificationService {
         }
     }
 
-    public Boolean sendAttachmentEmail(List<AttachmentNotificationDTO> attachmentNotificationDTOs) {
-
+    public Boolean sendAttachmentEmail(List<AttachmentNotificationDTO> attachmentNotificationDTOs,String instituteId) {
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(), notificationServerBaseUrl, NotificationConstant.SEND_ATTACHMENT_EMAIL, attachmentNotificationDTOs);
 
         ObjectMapper objectMapper = new ObjectMapper();
@@ -82,7 +81,6 @@ public class NotificationService {
     }
 
     public List<Map<String, Boolean>> sendWhatsappToUsers(WhatsappRequest request,String instituteId) {
-        // Call notification microservice via HMAC request
         String url=NotificationConstant.SEND_WHATSAPP_TO_USER+"?instituteId="+instituteId;
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                 clientName,
@@ -102,5 +100,29 @@ public class NotificationService {
         } catch (JsonProcessingException e) {
             throw new VacademyException("Error parsing WhatsApp send response: " + e.getMessage());
         }
+    }
+
+    public String sendEmailToUsersMultiple(List<NotificationDTO> notificationDTOs,String instituteId) {
+        String url=NotificationConstant.EMAIL_TO_USERS_MULTIPLE+"?instituteId="+instituteId;
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+            clientName, // Directly use the injected 'clientName'
+            HttpMethod.POST.name(),
+            notificationServerBaseUrl,
+            url,
+            notificationDTOs
+        );
+        return response.getBody();
+    }
+
+    public String sendWhatsappToUsers(List<WhatsappRequest> requests,String instituteId) {
+        String url=NotificationConstant.SEND_WHATSAPP_TO_USER_MULTIPLE+"?instituteId="+instituteId;
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+            clientName,
+            HttpMethod.POST.name(),
+            notificationServerBaseUrl,
+            url,
+            requests
+        );
+        return response.getBody();
     }
 }

@@ -5,5 +5,6 @@ public class NotificationConstant {
     public static final String SEND_HTML_EMAIL = "/notification-service/internal/common/v1/send-html-email";
     public static final String SEND_ATTACHMENT_EMAIL = "/notification-service/internal/common/v1/send-attachment-notification";
     public static final String SEND_WHATSAPP_TO_USER="/notification-service/whatsapp/v1/send-template-whatsapp";
-
+    public static final String EMAIL_TO_USERS_MULTIPLE = "/notification-service/internal/common/v1/send-email-to-users/multiple";
+    public static final String SEND_WHATSAPP_TO_USER_MULTIPLE="/notification-service/whatsapp/v1/send-template-whatsapp/multiple";
 }

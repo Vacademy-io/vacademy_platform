@@ -16,6 +16,6 @@ public class TestController {
 
     @GetMapping
     public void test(){
-        workflowEngineService.run("wf_eveing", Map.of());
+        workflowEngineService.run("wf-test", Map.of());
     }
 }

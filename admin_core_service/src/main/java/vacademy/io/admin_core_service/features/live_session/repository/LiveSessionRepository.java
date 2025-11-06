@@ -61,11 +61,11 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         COALESCE(ss.custom_meeting_link, s.default_meet_link) AS meetingLink,
         s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions,
         s.allow_play_pause AS allowPlayPause,
-        s.timezone AS timezone
+        COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone
     FROM live_session s
     JOIN session_schedules ss ON s.id = ss.session_id
     WHERE s.status = 'LIVE'
-      AND ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)
+      AND ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)
       AND s.institute_id = :instituteId
       AND ss.status != 'DELETED'
 """, nativeQuery = true)
@@ -86,14 +86,14 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         COALESCE(ss.custom_meeting_link, s.default_meet_link) AS meetingLink,
         s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions,
         s.allow_play_pause AS allowPlayPause,
-        s.timezone AS timezone
+        COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone
     FROM live_session s
     JOIN session_schedules ss ON s.id = ss.session_id
     WHERE s.status = 'LIVE'
     AND (
-            ss.meeting_date > CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)
-                    OR (ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date) 
-                        AND CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS time) < ss.start_time)
+            ss.meeting_date > CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)
+                    OR (ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date) 
+                        AND CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS time) < ss.start_time)
           )
     AND s.institute_id = :instituteId
     AND ss.status != 'DELETED'
@@ -115,14 +115,14 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         COALESCE(ss.custom_meeting_link, s.default_meet_link) AS meetingLink,
         s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions,
         s.allow_play_pause AS allowPlayPause,
-        s.timezone AS timezone
+        COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone
     FROM live_session s
     JOIN session_schedules ss ON s.id = ss.session_id
     WHERE s.status = 'LIVE'
       AND (
-            ss.meeting_date < CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)
-            OR (ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date) 
-                AND CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS time) > ss.last_entry_time)
+            ss.meeting_date < CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)
+            OR (ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date) 
+                AND CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS time) > ss.last_entry_time)
           )
       AND s.institute_id = :instituteId
       AND ss.status != 'DELETED'
@@ -144,7 +144,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         COALESCE(ss.custom_meeting_link, s.default_meet_link) AS meetingLink,
         s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions,
         s.allow_play_pause AS allowPlayPause,
-        s.timezone AS timezone
+        COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone
     FROM live_session s
     JOIN session_schedules ss ON s.id = ss.session_id
     WHERE s.status = 'DRAFT'
@@ -170,7 +170,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
             s.subject AS subject,
             s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions,
             s.allow_play_pause AS allowPlayPause,
-            s.timezone AS timezone,
+            COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone,
             CASE
                 WHEN ss.custom_meeting_link IS NOT NULL AND ss.custom_meeting_link <> '' THEN ss.custom_meeting_link
                 ELSE s.default_meet_link
@@ -180,7 +180,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         JOIN live_session_participants lsp ON lsp.session_id = s.id
         WHERE lsp.source_type = 'BATCH'
           AND lsp.source_id = :batchId
-          AND ss.meeting_date >= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)
+          AND ss.meeting_date >= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)
           AND s.status IN ('DRAFT', 'LIVE')
           AND ss.status != 'DELETED'
         ORDER BY ss.meeting_date, ss.start_time
@@ -204,7 +204,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
             s.subject AS subject,
             s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions,
             s.allow_play_pause AS allowPlayPause,
-            s.timezone AS timezone,
+            COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone,
             CASE
                 WHEN ss.custom_meeting_link IS NOT NULL AND ss.custom_meeting_link <> '' THEN ss.custom_meeting_link
                 ELSE s.default_meet_link
@@ -214,7 +214,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         JOIN live_session_participants lsp ON lsp.session_id = s.id
         WHERE lsp.source_type = 'USER'
           AND lsp.source_id = :userId
-          AND ss.meeting_date >= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)
+          AND ss.meeting_date >= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)
           AND s.status IN ('DRAFT', 'LIVE')
           AND ss.status != 'DELETED'
         ORDER BY ss.meeting_date, ss.start_time

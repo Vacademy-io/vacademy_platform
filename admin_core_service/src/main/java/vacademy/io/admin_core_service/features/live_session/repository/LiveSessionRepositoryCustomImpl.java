@@ -49,7 +49,7 @@ public class LiveSessionRepositoryCustomImpl implements LiveSessionRepositoryCus
                 s.subject AS subject,
                 s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions,
                 s.allow_play_pause AS allowPlayPause,
-                s.timezone AS timezone,
+                COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone,
                 CASE
                     WHEN ss.custom_meeting_link IS NOT NULL AND ss.custom_meeting_link <> '' THEN ss.custom_meeting_link
                     ELSE s.default_meet_link
@@ -116,15 +116,15 @@ public class LiveSessionRepositoryCustomImpl implements LiveSessionRepositoryCus
                 // 2. current_time >= start_time (session has started)
                 // 3. current_time <= last_entry_time (still accepting entries)
                 // Uses timezone-aware comparison
-                conditions.add("ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)");
+                conditions.add("ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)");
                 
                 // Check if current time is between start_time and last_entry_time
-                conditions.add("CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS time) >= ss.start_time");
-                conditions.add("CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS time) <= ss.last_entry_time");
+                conditions.add("CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS time) >= ss.start_time");
+                conditions.add("CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS time) <= ss.last_entry_time");
             } else {
                 // For upcoming/draft sessions: show next month using timezone-aware logic
                 // meeting_date >= CURRENT_DATE in session's timezone
-                conditions.add("ss.meeting_date >= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS date)");
+                conditions.add("ss.meeting_date >= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)");
                 
                 // Add end date: 1 month from now
                 LocalDate oneMonthLater = LocalDate.now().plusMonths(1);

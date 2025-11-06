@@ -2,7 +2,6 @@ package vacademy.io.admin_core_service.features.workflow.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.workflow.entity.WorkflowSchedule;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowScheduleRepository;
@@ -18,9 +17,6 @@ public class WorkflowScheduleService {
 
     private final WorkflowScheduleRepository workflowScheduleRepository;
 
-    /**
-     * Get all active workflow schedules
-     */
     public List<WorkflowSchedule> getActiveSchedules() {
         try {
             return workflowScheduleRepository.findByStatusIgnoreCase("ACTIVE");
@@ -30,9 +26,6 @@ public class WorkflowScheduleService {
         }
     }
 
-    /**
-     * Get schedules that are due for execution
-     */
     public List<WorkflowSchedule> getDueSchedules() {
         try {
             return workflowScheduleRepository.findDueSchedules(LocalDateTime.now());
@@ -42,9 +35,6 @@ public class WorkflowScheduleService {
         }
     }
 
-    /**
-     * Get workflow schedule by ID
-     */
     public Optional<WorkflowSchedule> getScheduleById(String id) {
         try {
             return workflowScheduleRepository.findById(id);
@@ -54,9 +44,6 @@ public class WorkflowScheduleService {
         }
     }
 
-    /**
-     * Create a new workflow schedule
-     */
     public WorkflowSchedule createSchedule(WorkflowSchedule schedule) {
         try {
             schedule.setCreatedAt(LocalDateTime.now());
@@ -71,9 +58,6 @@ public class WorkflowScheduleService {
         }
     }
 
-    /**
-     * Update an existing workflow schedule
-     */
     public WorkflowSchedule updateSchedule(String id, WorkflowSchedule scheduleDetails) {
         try {
             Optional<WorkflowSchedule> existingSchedule = workflowScheduleRepository.findById(id);
@@ -83,7 +67,6 @@ public class WorkflowScheduleService {
 
             WorkflowSchedule existing = existingSchedule.get();
 
-            // Update all fields from the provided schedule details
             existing.setWorkflowId(scheduleDetails.getWorkflowId());
             existing.setScheduleType(scheduleDetails.getScheduleType());
             existing.setCronExpression(scheduleDetails.getCronExpression());
@@ -94,11 +77,9 @@ public class WorkflowScheduleService {
             existing.setEndDate(scheduleDetails.getEndDate());
             existing.setStatus(scheduleDetails.getStatus());
 
-            // Update execution timing fields
             existing.setLastRunAt(scheduleDetails.getLastRunAt());
             existing.setNextRunAt(scheduleDetails.getNextRunAt());
 
-            // Always update the updated_at timestamp
             existing.setUpdatedAt(LocalDateTime.now());
 
             WorkflowSchedule updatedSchedule = workflowScheduleRepository.save(existing);
@@ -111,9 +92,6 @@ public class WorkflowScheduleService {
         }
     }
 
-    /**
-     * Deactivate a workflow schedule
-     */
     public void deactivateSchedule(String id) {
         try {
             Optional<WorkflowSchedule> schedule = workflowScheduleRepository.findById(id);
@@ -130,9 +108,6 @@ public class WorkflowScheduleService {
         }
     }
 
-    /**
-     * Update the next execution time for a schedule
-     */
     public void updateNextExecutionTime(String id, LocalDateTime nextExecutionTime) {
         try {
             Optional<WorkflowSchedule> schedule = workflowScheduleRepository.findById(id);
@@ -149,9 +124,6 @@ public class WorkflowScheduleService {
         }
     }
 
-    /**
-     * Get all workflow schedules (for admin purposes)
-     */
     public List<WorkflowSchedule> getAllSchedules() {
         try {
             return workflowScheduleRepository.findAll();
@@ -161,9 +133,6 @@ public class WorkflowScheduleService {
         }
     }
 
-    /**
-     * Get schedules by status
-     */
     public List<WorkflowSchedule> getSchedulesByStatus(String status) {
         try {
             return workflowScheduleRepository.findByStatusIgnoreCase(status);
@@ -173,9 +142,6 @@ public class WorkflowScheduleService {
         }
     }
 
-    /**
-     * Get schedules by workflow ID
-     */
     public List<WorkflowSchedule> getSchedulesByWorkflowId(String workflowId) {
         try {
             return workflowScheduleRepository.findByWorkflowId(workflowId);
@@ -185,9 +151,6 @@ public class WorkflowScheduleService {
         }
     }
 
-    /**
-     * Get schedules by schedule type
-     */
     public List<WorkflowSchedule> getSchedulesByType(String scheduleType) {
         try {
             return workflowScheduleRepository.findByScheduleType(scheduleType);

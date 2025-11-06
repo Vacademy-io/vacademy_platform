@@ -24,19 +24,21 @@ public class SqsEmailEventListener {
     @SqsListener("vacademy-ses-events")
     public void handleSesEvent(String message) {
         try {
-            log.info("Received SQS message for SES events: {}", message);
+            // Reduced logging: Changed from INFO to DEBUG to prevent log flooding
+            // With 50 emails/second, this would generate 50+ log lines per second
+            log.debug("Received SQS message for SES events");
             
             // Parse the message directly as SES event (no SNS wrapper)
             SesEventDTO sesEvent = objectMapper.readValue(message, SesEventDTO.class);
             
-            log.info("Processing SES event: {} for message ID: {}", 
+            log.debug("Processing SES event: {} for message ID: {}", 
                 sesEvent.getEventType(), 
                 sesEvent.getMail() != null ? sesEvent.getMail().getMessageId() : "unknown");
             
             // Process the email event
             emailEventService.processEmailEvent(sesEvent);
             
-            log.info("Successfully processed SES event: {}", sesEvent.getEventType());
+            log.debug("Successfully processed SES event: {}", sesEvent.getEventType());
             
         } catch (Exception e) {
             log.error("Error processing SQS message for SES events: {}", e.getMessage(), e);

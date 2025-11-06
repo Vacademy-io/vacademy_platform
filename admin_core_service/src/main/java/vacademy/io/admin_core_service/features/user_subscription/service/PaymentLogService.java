@@ -155,6 +155,7 @@ public class PaymentLogService {
                         JsonUtil.toJson(responseObj),
                         PaymentResponseDTO.class
                     );
+                    paymentResponseDTO.getResponseData().put("paymentStatus",paymentStatus);
                     
                     // If responseData field is empty but response_data exists, extract it
                     if (paymentResponseDTO != null && 

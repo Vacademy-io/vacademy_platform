@@ -47,6 +47,8 @@ public class GetSessionByIdResponseDTO {
         private String startTime;
         private String duration;
         private String link;
+        private LocalDate meetingDate;
+        private String timezone;
     }
 
     @Getter

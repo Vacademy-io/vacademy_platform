@@ -60,7 +60,9 @@ public class ApplicationSecurityConfig {
             // User Resolution APIs for notification service - OPEN for internal
             // communication
             "/admin-core-service/v1/faculty/by-package-sessions",
-            "/admin-core-service/v1/students/by-package-sessions"
+            "/admin-core-service/v1/students/by-package-sessions",
+            "/admin-core-service/v1/users/by-custom-field-filters",
+            "/admin-core-service/v1/users/by-custom-field-filters/**"
     };
     @Autowired
     JwtAuthFilter jwtAuthFilter;

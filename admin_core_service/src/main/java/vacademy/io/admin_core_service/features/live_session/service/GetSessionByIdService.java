@@ -74,6 +74,8 @@ public class GetSessionByIdService {
                 item.setStartTime(schedule.getScheduleStartTime().toString());
                 item.setDuration(String.valueOf(durationMinutes)); // or durationMinutes if preferred
                 item.setLink(schedule.getCustomMeetingLink());
+                item.setMeetingDate(schedule.getMeetingDate());
+                item.setTimezone(schedule.getTimezone());
                 addedSchedules.add(item);
             }
         }
@@ -100,7 +102,7 @@ public class GetSessionByIdService {
             dto.setJoinLink(first.getRegistrationFormLinkForPublicSessions());
             dto.setRecurrenceType(first.getRecurrenceType());
             dto.setAccessType(first.getAccessLevel());
-            dto.setWaitingRoomTime(first.getWaitingRoomTime().toString());
+            dto.setWaitingRoomTime(first.getWaitingRoomTime() != null ? first.getWaitingRoomTime().toString() : null);
             dto.setThumbnailFileId(first.getThumbnailFileId());
             dto.setBackgroundScoreFileId(first.getBackgroundScoreFileId());
             dto.setCoverFileId(first.getCoverFileId());

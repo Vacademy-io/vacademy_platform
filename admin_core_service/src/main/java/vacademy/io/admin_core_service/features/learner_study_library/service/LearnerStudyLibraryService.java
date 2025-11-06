@@ -49,14 +49,7 @@ public class LearnerStudyLibraryService {
     private final InstituteSettingService instituteSettingService;
     private final MediaService mediaService;
 
-    public List<CourseDTOWithDetails> getLearnerStudyLibraryInitDetails(String instituteId, String packageSessionId, CustomUserDetails user) {
-        validateInputs(instituteId, user.getUserId());
 
-        return packageRepository.findDistinctPackagesByUserIdAndInstituteId(user.getUserId(), instituteId)
-                .stream()
-                .map(packageEntity -> studyLibraryService.buildCourseDTOWithDetails(packageEntity, instituteId))
-                .toList();
-    }
 
     private void validateInputs(String instituteId, String userId) {
         if (Objects.isNull(instituteId)) {

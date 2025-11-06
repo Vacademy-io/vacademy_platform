@@ -46,4 +46,6 @@ public interface FileService {
     PreSignedUrlResponse getPublicPreSignedUrl(String fileName, String fileType, String source, String sourceId);
 
     String getPublicBucketUrl(String fileId, Integer expiryDays) throws FileDownloadException;
+
+    String getPublicUrl(String id, String bucketName);
 }

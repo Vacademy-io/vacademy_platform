@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.institute.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.institute.dto.InstituteDashboardResponse;
 import vacademy.io.admin_core_service.features.institute.manager.InstituteInitManager;
@@ -29,6 +30,7 @@ public class UserInstituteController {
     }
 
     @GetMapping("/details/{instituteId}")
+    @Cacheable(value = "userInstituteDetails", key = "#instituteId")
     public ResponseEntity<InstituteInfoDTO> getInstituteDetails(@PathVariable String instituteId) {
 
         InstituteInfoDTO instituteInfoDTO = instituteInitManager.getInstituteDetails(instituteId);
@@ -43,6 +45,7 @@ public class UserInstituteController {
     }
 
     @GetMapping("/get-dashboard")
+    @Cacheable(value = "instituteDashboard", key = "#user.id + ':' + #instituteId")
     public ResponseEntity<InstituteDashboardResponse> getInstituteDashboard(@RequestAttribute(name = "user") CustomUserDetails user,
                                                                             @RequestParam("instituteId") String instituteId) {
         return instituteService.getInstituteDashboardDetail(user, instituteId);

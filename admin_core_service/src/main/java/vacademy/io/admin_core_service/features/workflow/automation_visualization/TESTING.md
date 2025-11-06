@@ -161,3 +161,4 @@ Key log lines to look for:
 -   `AutomationParserService.parse()` - Shows parsing progress
 -   `StepParserRegistry.getParser()` - Shows which parser was selected
 -   Parser class names - Shows which parser handled each node
+

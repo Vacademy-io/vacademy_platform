@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle } from "lucide-react";
 import { MyInput } from "@/components/design-system/input";
 import { MyButton } from "@/components/design-system/button";
@@ -13,7 +13,8 @@ import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import confetti from "canvas-confetti";
 import katex from "katex";
 import "katex/dist/katex.css";
-import { useSlidesRefresh } from "@/hooks/study-library/useSlidesRefresh";
+import { useQueryClient } from "@tanstack/react-query";
+import type { Slide } from "@/hooks/study-library/use-slides";
 
 interface Option {
   id: string;
@@ -64,7 +65,27 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
   const [showIncorrectNotice, setShowIncorrectNotice] = useState(false);
 
   const submitQuizMutation = useSubmitQuizSlideActivityLog();
-  const { refreshSlides } = useSlidesRefresh();
+  const queryClient = useQueryClient();
+
+  // ✅ Helper: Restore 100% for ALL completed quizzes from localStorage
+  const restoreLocalStorageCompletions = useCallback((chapterId: string) => {
+    queryClient.setQueryData<Slide[]>(["slides", chapterId], (oldSlides) => {
+      if (!oldSlides) return oldSlides;
+      
+      return oldSlides.map((slide) => {
+        // Check if this slide has completed answers in localStorage
+        const storageKey = `quiz_answers_${slide.id}_${chapterId}`;
+        const hasStoredAnswers = localStorage.getItem(storageKey);
+        
+        // If quiz is completed, ensure 100%
+        if (hasStoredAnswers && slide.source_type === 'QUIZ') {
+          return { ...slide, percentage_completed: 100 };
+        }
+        
+        return slide;
+      });
+    });
+  }, [queryClient]);
 
   // Helpers: decode HTML entities and render KaTeX spans
   const decodeHtml = (input: string): string => {
@@ -114,6 +135,51 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
         setCelebrateOnQuizComplete(true);
       });
   }, []);
+
+  // ✅ Load answers from localStorage on mount AND when slide changes
+  useEffect(() => {
+    const { slideId, chapterId } = getUrlParams();
+    console.log("🔄 [QuizViewer] useEffect triggered - checking slide:", { slideId, chapterId });
+    
+    if (!slideId || !chapterId) {
+      console.log("⚠️ [QuizViewer] Missing slideId or chapterId");
+      return;
+    }
+
+    // ✅ STEP 1: Restore 100% for ALL completed quizzes using helper function
+    console.log("🔄 [QuizViewer] Restoring all localStorage completions...");
+    restoreLocalStorageCompletions(chapterId);
+    console.log("✅ [QuizViewer] All completed quizzes restored to 100%");
+
+    // ✅ STEP 2: Check if CURRENT slide has stored answers
+    const storageKey = `quiz_answers_${slideId}_${chapterId}`;
+    const storedAnswers = localStorage.getItem(storageKey);
+    console.log("🔍 [QuizViewer] Checking for stored answers:", { 
+      storageKey, 
+      found: !!storedAnswers,
+      slideId,
+      chapterId
+    });
+
+    // If we have stored answers for CURRENT slide, show review
+    if (storedAnswers) {
+      console.log("✅ [QuizViewer] Found stored answers for current slide - showing Quiz Review");
+      try {
+        const parsedAnswers = JSON.parse(storedAnswers);
+        console.log("✅ [QuizViewer] Parsed answers from localStorage:", parsedAnswers);
+        setAnswers(parsedAnswers);
+        setShowReview(true);
+      } catch (e) {
+        console.error("❌ [QuizViewer] Failed to parse stored answers:", e);
+      }
+    } else {
+      console.log("ℹ️ [QuizViewer] No stored answers - quiz not completed yet, resetting state");
+      // ✅ Reset state when navigating to a different quiz that hasn't been completed
+      setAnswers({});
+      setShowReview(false);
+      setCurrent(0);
+    }
+  }, [queryClient, questions, restoreLocalStorageCompletions]);
 
   // Helper to get URL params
   const getUrlParams = () => {
@@ -231,8 +297,24 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
     );
   }
 
-  if (showReview) {
-    return <QuizReview questions={questions} userAnswers={answers} onRestart={() => { setShowReview(false); setCurrent(0); setAnswers({}); }} />;
+  // ✅ Only show review if we have answers (prevents "undefined" on first click)
+  if (showReview && Object.keys(answers).length > 0) {
+    return <QuizReview 
+      questions={questions} 
+      userAnswers={answers} 
+      onRestart={() => { 
+        // ✅ Clear localStorage when retaking quiz
+        const { slideId, chapterId } = getUrlParams();
+        const storageKey = `quiz_answers_${slideId}_${chapterId}`;
+        localStorage.removeItem(storageKey);
+        console.log("🗑️ [QuizViewer] Cleared localStorage for quiz retake:", storageKey);
+        
+        // Reset quiz state
+        setShowReview(false); 
+        setCurrent(0); 
+        setAnswers({}); 
+      }} 
+    />;
   }
 
 
@@ -344,13 +426,75 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
         toast.success("Quiz submitted successfully!", {
           className: "text-center"
         });
-        try {
-          console.log("🔄 [QuizViewer] Refreshing slides after quiz submission...");
-          await refreshSlides();
-          console.log("✅ [QuizViewer] Slides refreshed");
-        } catch (e) {
-          console.warn("⚠️ [QuizViewer] Slides refresh failed", e);
-        }
+        
+        // ✅ STEP 1: Save answers to localStorage for persistence across refreshes
+        const storageKey = `quiz_answers_${slideId}_${chapterId}`;
+        localStorage.setItem(storageKey, JSON.stringify(answers));
+        console.log("💾 [QuizViewer] Saved answers to localStorage:", storageKey);
+        
+        // ✅ STEP 2: Optimistic UI update - instantly show 100% in sidebar
+        queryClient.setQueryData<Slide[]>(["slides", chapterId], (oldSlides) => {
+          if (!oldSlides) return oldSlides;
+          console.log("🎯 [QuizViewer] Setting optimistic 100% for slideId:", slideId);
+          return oldSlides.map((slide) =>
+            slide.id === slideId
+              ? { ...slide, percentage_completed: 100 }
+              : slide
+          );
+        });
+        console.log("✅ [QuizViewer] Optimistic 100% set in React Query cache");
+        
+        // ✅ STEP 3: Background refresh (delayed to avoid overwriting optimistic update)
+        setTimeout(async () => {
+          try {
+            console.log("🔄 [QuizViewer] Background (3s): Updating course structure...");
+            
+            // Invalidate and refetch modules query - this updates course structure
+            await queryClient.invalidateQueries({
+              predicate: (query) => {
+                const queryKey = query.queryKey;
+                return Array.isArray(queryKey) && queryKey[0] === "GET_MODULES_WITH_CHAPTERS";
+              },
+            });
+            
+            await queryClient.refetchQueries({
+              predicate: (query) => {
+                const queryKey = query.queryKey;
+                return Array.isArray(queryKey) && queryKey[0] === "GET_MODULES_WITH_CHAPTERS";
+              },
+            });
+            
+            console.log("✅ [QuizViewer] Course structure updated successfully");
+            
+            // ✅ STEP 4: After another delay, sync slides with server data
+            setTimeout(async () => {
+              try {
+                console.log("🔄 [QuizViewer] Background (8s): Syncing slides with server...");
+                
+                // Now it's safe to refetch slides from server
+                await queryClient.invalidateQueries({
+                  queryKey: ["slides", chapterId],
+                });
+                
+                await queryClient.refetchQueries({
+                  queryKey: ["slides", chapterId],
+                });
+                
+                console.log("✅ [QuizViewer] Slides synced with server data");
+                
+                // ✅ CRITICAL: After refetch, restore localStorage completions again
+                console.log("🔄 [QuizViewer] Re-applying localStorage completions after server sync...");
+                restoreLocalStorageCompletions(chapterId);
+                console.log("✅ [QuizViewer] localStorage completions restored after server sync");
+              } catch (e) {
+                console.error("❌ [QuizViewer] Slides sync error:", e);
+              }
+            }, 3000); // Wait additional 5 seconds for slides sync (total 8s)
+            
+          } catch (e) {
+            console.error("❌ [QuizViewer] Background refresh error:", e);
+          }
+        }, 2000); // Wait 3 seconds before updating course structure
         if (celebrateOnQuizComplete) {
           try {
             // Confetti: multi-wave, spread across screen with streamers and bursts

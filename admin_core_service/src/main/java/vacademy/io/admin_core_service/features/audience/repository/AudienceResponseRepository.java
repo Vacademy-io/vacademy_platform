@@ -118,5 +118,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
      * Count leads by source type
      */
     Long countByAudienceIdAndSourceType(String audienceId, String sourceType);
+
+    /**
+     * Check if a user has already submitted a response for this audience
+     */
+    boolean existsByAudienceIdAndUserId(String audienceId, String userId);
 }
 

@@ -53,8 +53,8 @@ import LocalStorageUtils from "@/utils/localstorage";
 
 import { fetchPaymentOptions } from "@/routes/courses/-services/payment-options-api";
 import { CourseHeader } from "./course-header";
-import { CertificateDialog } from "./certificate-dialog";
 import { CertificateCompletionBanner } from "./certificate-completion-banner.tsx";
+import { CertificateDialog } from "./certificate-dialog";
 import { CourseEnrollment } from "./course-enrollment";
 import { CourseContentSections } from "./course-content-sections";
 import { CourseSidebar } from "./course-sidebar";
@@ -415,8 +415,7 @@ export const CourseDetailsPage = () => {
   const [instituteId, setInstituteId] = useState<string | null>(null);
   const [certificateUrl, setCertificateUrl] = useState<string | null>(null);
   const [showConfetti, setShowConfetti] = useState<boolean>(false);
-  const [certificateDialogOpen, setCertificateDialogOpen] =
-    useState<boolean>(false);
+  const [certificateDialogOpen, setCertificateDialogOpen] = useState<boolean>(false);
   const [completionPercentage, setCompletionPercentage] = useState<number>(0);
   const [certificateThreshold, setCertificateThreshold] = useState<number>(80);
 
@@ -542,6 +541,64 @@ export const CourseDetailsPage = () => {
           searchParams.courseId || ""
         );
         setPackageSessionIdForCurrentLevel(packageSessionId);
+
+        if (import.meta.env.MODE !== "production") {
+          console.info("[CourseDetailsPage] mapping result", {
+            selectedSession,
+            selectedLevel,
+            courseId: searchParams.courseId,
+            packageSessionIdForCurrentLevel: packageSessionId,
+          });
+        }
+
+        // Fallback mapping: when exact session+level mapping is missing, try to select a batch for this course
+        if (!packageSessionId) {
+          const batches = (response.data.batches_for_sessions || []) as Array<{
+            id?: string;
+            level?: { id?: string };
+            session?: { id?: string };
+            package_dto?: { id?: string };
+            read_time_in_minutes?: number;
+          }>;
+
+          // Prefer same course + same session
+          const byCourseAndSession = batches.find(
+            (b) =>
+              b.package_dto?.id === (searchParams.courseId || "") &&
+              b.session?.id === selectedSession
+          );
+          // Else, any batch for the same course
+          const byCourseOnly = batches.find(
+            (b) => b.package_dto?.id === (searchParams.courseId || "")
+          );
+
+          const chosen = byCourseAndSession || byCourseOnly;
+
+          if (chosen?.id) {
+            setPackageSessionIdForCurrentLevel(chosen.id);
+            // Align UI selection to a valid mapping to avoid empty outline
+            if (chosen.session?.id && chosen.session.id !== selectedSession) {
+              setSelectedSession(chosen.session.id);
+            }
+            if (chosen.level?.id && chosen.level.id !== selectedLevel) {
+              setSelectedLevel(chosen.level.id);
+            }
+
+            if (import.meta.env.MODE !== "production") {
+              console.info("[CourseDetailsPage] fallback mapping applied", {
+                chosenPackageSessionId: chosen.id,
+                chosenSession: chosen.session?.id,
+                chosenLevel: chosen.level?.id,
+                strategy: byCourseAndSession ? "course+session" : "course-only",
+              });
+            }
+          } else if (import.meta.env.MODE !== "production") {
+            console.info("[CourseDetailsPage] fallback mapping not found for course", {
+              courseId: searchParams.courseId,
+              batchesCount: batches.length,
+            });
+          }
+        }
 
         // NEW: Extract backend read_time_in_minutes from matching batch
         const matchingBatch = response.data.batches_for_sessions?.find(
@@ -827,7 +884,6 @@ export const CourseDetailsPage = () => {
             }
             setShowConfetti(true);
             setTimeout(() => setShowConfetti(false), 3000);
-            // Show professional modal after confetti
             setTimeout(() => setCertificateDialogOpen(true), 3200);
             toast.success("Certificate generated successfully!", {
               description: "You can now view your certificate.",
@@ -996,22 +1052,42 @@ export const CourseDetailsPage = () => {
 
         setLevelOptions(newLevelOptions);
         const { value } = await Preferences.get({ key: "sessionList" });
-        let course: any;
+        let course: { level?: { id?: string } } | undefined;
         if (value) {
           try {
             const parsedData = JSON.parse(value);
             if (Array.isArray(parsedData) && parsedData.length > 0) {
-              course = parsedData[0];
+              course = parsedData[0] as { level?: { id?: string } };
             }
           } catch {
             console.error("Error parsing sessionList from preferences");
           }
         }
-        // Select the first level when session changes
+        // Select a valid level when session changes
         if (newLevelOptions.length > 0 && newLevelOptions[0]?.value) {
-          setSelectedLevel(course?.level?.id);
+          const preferred = course?.level?.id;
+          const exists = preferred
+            ? newLevelOptions.some((l) => l.value === preferred)
+            : false;
+          const choosingLevelId = exists
+            ? (preferred as string)
+            : newLevelOptions[0].value;
+          setSelectedLevel(choosingLevelId);
+          if (import.meta.env.MODE !== "production") {
+            console.info("[CourseDetailsPage] handleSessionChange", {
+              selectedSession: sessionId,
+              newLevelOptions: newLevelOptions.map((l) => l.value),
+              choosingLevelId,
+            });
+          }
         } else {
           setSelectedLevel("");
+          if (import.meta.env.MODE !== "production") {
+            console.info("[CourseDetailsPage] handleSessionChange - no levels", {
+              selectedSession: sessionId,
+              newLevelOptionsCount: newLevelOptions.length,
+            });
+          }
         }
       }
     },
@@ -1021,6 +1097,9 @@ export const CourseDetailsPage = () => {
   // Handle level change - clear expanded items and reset state
   const handleLevelChange = (levelId: string) => {
     setSelectedLevel(levelId);
+    if (import.meta.env.MODE !== "production") {
+      console.info("[CourseDetailsPage] handleLevelChange", { levelId });
+    }
   };
 
   // Set initial session and its levels - auto-select if only one option
@@ -1032,8 +1111,25 @@ export const CourseDetailsPage = () => {
     ) {
       const initialSessionId = sessionOptions[0].value;
       handleSessionChange(initialSessionId);
+      if (import.meta.env.MODE !== "production") {
+        console.info("[CourseDetailsPage] auto-select session", {
+          initialSessionId,
+          sessionOptions: sessionOptions.map((s) => s.value),
+        });
+      }
     }
   }, [sessionOptions, selectedSession, selectedLevel, handleSessionChange]);
+
+  // Trace selection state changes
+  useEffect(() => {
+    if (import.meta.env.MODE !== "production") {
+      console.info("[CourseDetailsPage] selection state", {
+        selectedSession,
+        selectedLevel,
+        packageSessionIdForCurrentLevel,
+      });
+    }
+  }, [selectedSession, selectedLevel, packageSessionIdForCurrentLevel]);
 
   useEffect(() => {
     const loadCourseData = async () => {

@@ -515,9 +515,23 @@ export const CourseStructureDetails = ({
             }) => {
                 // Ensure packageSessionId is available for all course depths
                 if (!packageSessionId) {
+                    if (import.meta.env.MODE !== "production") {
+                        console.info("[CourseStructureDetails] missing packageSessionId", {
+                            selectedSession,
+                            selectedLevel,
+                        });
+                    }
                     throw new Error(
                         "Package session ID is required for fetching modules"
                     );
+                }
+
+                if (import.meta.env.MODE !== "production") {
+                    console.info("[CourseStructureDetails] fetching modules", {
+                        packageSessionId,
+                        courseStructure,
+                        subjectIds: currentSubjects?.map((s) => s.id),
+                    });
                 }
 
                 const results = await Promise.all(
@@ -541,6 +555,20 @@ export const CourseStructureDetails = ({
                                 subject.id,
                                 packageSessionId
                             );
+                            // Fallback: if private returns empty, try public once (for ALL tab/unenrolled visibility)
+                            if (Array.isArray(res) && res.length === 0) {
+                                try {
+                                    const alt = await fetchModulesWithChaptersPublic(
+                                        subject.id,
+                                        packageSessionId
+                                    );
+                                    if (Array.isArray(alt) && alt.length > 0) {
+                                        res = alt;
+                                    }
+                                } catch {
+                                    // ignore
+                                }
+                            }
                         }
                         return { subjectId: subject.id, modules: res };
                     })
@@ -550,6 +578,13 @@ export const CourseStructureDetails = ({
                 results.forEach(({ subjectId, modules }) => {
                     modulesMap[subjectId] = modules;
                 });
+
+                if (import.meta.env.MODE !== "production") {
+                    console.info("[CourseStructureDetails] modules fetched", {
+                        packageSessionId,
+                        counts: results.map((r) => ({ subjectId: r.subjectId, modules: Array.isArray(r.modules) ? r.modules.length : 0 })),
+                    });
+                }
 
                 return modulesMap;
             },

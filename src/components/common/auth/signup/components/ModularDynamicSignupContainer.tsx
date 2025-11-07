@@ -93,6 +93,7 @@ export function ModularDynamicSignupContainer({
     passwordDelivery: "none",
   };
 
+
   // Handle success step callback execution
   useEffect(() => {
     if (currentStep === "success" && onSignupSuccess && !hasExecutedCallback) {

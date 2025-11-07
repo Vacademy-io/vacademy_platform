@@ -246,6 +246,14 @@ export function getIdByLevelAndSession(
     levelId: string,
     courseId: string
 ) {
+    if (import.meta.env.MODE !== "production") {
+        try {
+            console.info("[getIdByLevelAndSession] inputs", { sessionId, levelId, courseId, total: data?.length || 0 });
+        } catch {
+            // noop
+        }
+    }
+
     const match = data?.find(
         (item) =>
             item.level?.id === levelId &&
@@ -253,7 +261,32 @@ export function getIdByLevelAndSession(
             item.package_dto?.id === courseId
     );
 
-    console.log("match", match);
+    if (import.meta.env.MODE !== "production") {
+        try {
+            if (!match) {
+                const debug = (data || []).slice(0, 10).map((item) => ({
+                    id: item.id,
+                    levelIdCandidate: item.level?.id,
+                    sessionIdCandidate: item.session?.id,
+                    courseIdCandidate: item.package_dto?.id,
+                    levelMatch: item.level?.id === levelId,
+                    sessionMatch: item.session?.id === sessionId,
+                    courseMatch: item.package_dto?.id === courseId,
+                }));
+                const counts = {
+                    sameCourse: (data || []).filter((i) => i.package_dto?.id === courseId).length,
+                    sameSession: (data || []).filter((i) => i.session?.id === sessionId).length,
+                    sameLevel: (data || []).filter((i) => i.level?.id === levelId).length,
+                };
+                console.info("[getIdByLevelAndSession] no exact match", { counts, sample: debug });
+            } else {
+                console.info("[getIdByLevelAndSession] match", { id: match.id });
+            }
+        } catch {
+            // noop
+        }
+    }
+
     return match?.id || "";
 }
 

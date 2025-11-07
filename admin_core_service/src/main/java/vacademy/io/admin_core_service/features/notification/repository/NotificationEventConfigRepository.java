@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.notification.enums.NotificationSo
 import vacademy.io.admin_core_service.features.notification.enums.NotificationTemplateType;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface NotificationEventConfigRepository extends JpaRepository<NotificationEventConfig, String> {
@@ -67,5 +68,15 @@ public interface NotificationEventConfigRepository extends JpaRepository<Notific
             @Param("eventName") NotificationEventType eventName,
             @Param("sourceType") NotificationSourceType sourceType,
             @Param("sourceId") String sourceId
+    );
+
+    /**
+     * Get the most recent active config for an event, source and template type (single result)
+     */
+    Optional<NotificationEventConfig> findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeAndIsActiveTrueOrderByUpdatedAtDesc(
+            NotificationEventType eventName,
+            NotificationSourceType sourceType,
+            String sourceId,
+            NotificationTemplateType templateType
     );
 }

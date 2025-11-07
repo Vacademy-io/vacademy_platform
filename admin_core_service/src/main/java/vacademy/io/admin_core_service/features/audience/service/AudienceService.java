@@ -145,11 +145,11 @@ public class AudienceService {
         if (StringUtils.hasText(audienceDTO.getCampaignType())) {
             audience.setCampaignType(audienceDTO.getCampaignType());
         }
-        if (audienceDTO.getStartDate() != null) {
-            audience.setStartDate(audienceDTO.getStartDate());
+        if (audienceDTO.getStartDateLocal() != null) {
+            audience.setStartDate(audienceDTO.getStartDateLocal());
         }
-        if (audienceDTO.getEndDate() != null) {
-            audience.setEndDate(audienceDTO.getEndDate());
+        if (audienceDTO.getEndDateLocal() != null) {
+            audience.setEndDate(audienceDTO.getEndDateLocal());
         }
 
         Audience updated = audienceRepository.save(audience);
@@ -192,8 +192,8 @@ public class AudienceService {
                 .campaignType(audience.getCampaignType())
                 .description(audience.getDescription())
                 .campaignObjective(audience.getCampaignObjective())
-                .startDate(audience.getStartDate())
-                .endDate(audience.getEndDate())
+                .startDateLocal(audience.getStartDate())
+                .endDateLocal(audience.getEndDate())
                 .status(audience.getStatus())
                 .jsonWebMetadata(audience.getJsonWebMetadata())
                 .createdByUserId(audience.getCreatedByUserId())
@@ -216,8 +216,8 @@ public class AudienceService {
                 filterDTO.getStatus(),
                 filterDTO.getCampaignType(),
                 filterDTO.getCampaignName(),
-                filterDTO.getStartDateFrom(),
-                filterDTO.getStartDateTo(),
+                filterDTO.getStartDateFromLocal(),
+                filterDTO.getStartDateToLocal(),
                 pageable
         );
 
@@ -228,8 +228,8 @@ public class AudienceService {
                 .campaignType(audience.getCampaignType())
                 .description(audience.getDescription())
                 .campaignObjective(audience.getCampaignObjective())
-                .startDate(audience.getStartDate())
-                .endDate(audience.getEndDate())
+                .startDateLocal(audience.getStartDate())
+                .endDateLocal(audience.getEndDate())
                 .status(audience.getStatus())
                 .jsonWebMetadata(audience.getJsonWebMetadata())
                 .createdByUserId(audience.getCreatedByUserId())
@@ -347,9 +347,8 @@ public class AudienceService {
                 filterDTO.getAudienceId(),
                 filterDTO.getSourceType(),
                 filterDTO.getSourceId(),
-                filterDTO.getSubmittedFrom(),
-                filterDTO.getSubmittedTo(),
-                filterDTO.getConverted(),
+                filterDTO.getSubmittedFromLocal(),
+                filterDTO.getSubmittedToLocal(),
                 pageable
         );
         // Batch fetch UserDTOs for all userIds in this page
@@ -375,7 +374,7 @@ public class AudienceService {
                     .user(StringUtils.hasText(response.getUserId()) ? userIdToUser.get(response.getUserId()) : null)
                     .sourceType(response.getSourceType())
                     .sourceId(response.getSourceId())
-                    .submittedAt(response.getSubmittedAt())
+                    .submittedAtLocal(response.getSubmittedAt())
                     .customFieldValues(customFieldValues)
                     .build();
         });
@@ -400,7 +399,7 @@ public class AudienceService {
                 .userId(response.getUserId())
                 .sourceType(response.getSourceType())
                 .sourceId(response.getSourceId())
-                .submittedAt(response.getSubmittedAt())
+                .submittedAtLocal(response.getSubmittedAt())
                 .customFieldValues(customFieldValues)
                 .build();
     }

@@ -27,8 +27,8 @@ public class AudienceDTO {
     private String campaignType; // Comma-separated: "WEBSITE,GOOGLE_ADS,FACEBOOK_ADS"
     private String description;
     private String campaignObjective; // LEAD_GENERATION, EVENT_REGISTRATION, etc.
-    private Timestamp startDate;
-    private Timestamp endDate;
+    private Timestamp startDateLocal;
+    private Timestamp endDateLocal;
     private String status; // ACTIVE, PAUSED, COMPLETED, ARCHIVED
     private String jsonWebMetadata;
     private String createdByUserId;

@@ -25,8 +25,8 @@ public class AudienceResponseDTO {
     private String userId;
     private String sourceType; // WEBSITE, GOOGLE_ADS, FACEBOOK_ADS, etc.
     private String sourceId;
-    private Timestamp submittedAt;
-    private Timestamp createdAt;
+    private Timestamp submittedAtLocal;
+    private Timestamp createdAtLocal;
 
     // Custom field values submitted by the lead
     // Key: customFieldId, Value: submitted value

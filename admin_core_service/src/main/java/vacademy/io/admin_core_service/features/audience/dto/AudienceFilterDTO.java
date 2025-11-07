@@ -23,10 +23,10 @@ public class AudienceFilterDTO {
     private String campaignName;
     private String status; // ACTIVE, PAUSED, COMPLETED, ARCHIVED
     private String campaignType; // WEBSITE, GOOGLE_ADS, etc.
-    private Timestamp startDateFrom;
-    private Timestamp startDateTo;
-    private Timestamp endDateFrom;
-    private Timestamp endDateTo;
+    private Timestamp startDateFromLocal;
+    private Timestamp startDateToLocal;
+    private Timestamp endDateFromLocal;
+    private Timestamp endDateToLocal;
     
     // Pagination
     private Integer page;

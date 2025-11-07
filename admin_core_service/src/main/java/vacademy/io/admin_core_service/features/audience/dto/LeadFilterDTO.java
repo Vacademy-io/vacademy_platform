@@ -22,9 +22,8 @@ public class LeadFilterDTO {
     private String audienceId;
     private String sourceType; // WEBSITE, GOOGLE_ADS, etc.
     private String sourceId;
-    private Timestamp submittedFrom;
-    private Timestamp submittedTo;
-    private Boolean converted; // true = has user_id, false = user_id is null
+    private Timestamp submittedFromLocal;
+    private Timestamp submittedToLocal;
     
     // Pagination
     private Integer page;

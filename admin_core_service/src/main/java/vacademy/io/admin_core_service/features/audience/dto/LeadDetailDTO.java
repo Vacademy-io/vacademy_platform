@@ -27,7 +27,7 @@ public class LeadDetailDTO {
     private String userId;
     private String sourceType;
     private String sourceId;
-    private Timestamp submittedAt;
+    private Timestamp submittedAtLocal;
     
     // Optional hydrated user details (batch fetched)
     private UserDTO user;

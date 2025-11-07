@@ -70,8 +70,8 @@ public class Audience {
         this.campaignType = dto.getCampaignType();
         this.description = dto.getDescription();
         this.campaignObjective = dto.getCampaignObjective();
-        this.startDate = dto.getStartDate();
-        this.endDate = dto.getEndDate();
+        this.startDate = dto.getStartDateLocal();
+        this.endDate = dto.getEndDateLocal();
         this.status = dto.getStatus();
         this.jsonWebMetadata = dto.getJsonWebMetadata();
         this.createdByUserId = dto.getCreatedByUserId();

@@ -31,7 +31,7 @@ public class QuartzConfig {
                 .forJob(workflowExecutionJobDetail())
                 .withIdentity("workflowExecutionTrigger", "workflowGroup")
                 .withDescription("Trigger for workflow execution job")
-                .withSchedule(CronScheduleBuilder.cronSchedule("0 0/10 * * * ?")) // Every 30 minutes
+                .withSchedule(CronScheduleBuilder.cronSchedule("0 0/15 * * * ?")) // Every 30 minutes
                 .build();
     }
 }

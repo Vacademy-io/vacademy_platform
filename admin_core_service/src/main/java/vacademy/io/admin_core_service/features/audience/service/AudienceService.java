@@ -272,6 +272,12 @@ public class AudienceService {
                 final String instituteIdForNotification = instituteId;
                 final String audienceInstituteId = audience.getInstituteId();
 
+                // Duplicate submission guard: same audience + same user
+                if (StringUtils.hasText(userId) &&
+                        audienceResponseRepository.existsByAudienceIdAndUserId(requestDTO.getAudienceId(), userId)) {
+                    return "You have already submitted your response for this campaign";
+                }
+
                 // Fetch the most recent EMAIL template config for this institute and event
                 notificationEventConfigRepository
                         .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeAndIsActiveTrueOrderByUpdatedAtDesc(
@@ -324,8 +330,7 @@ public class AudienceService {
             }
         } catch (Exception e) {
             logger.error("Error creating user in auth_service: {}", e.getMessage());
-            // Continue without user_id if auth_service fails
-            // Lead data will still be saved, just without user_id
+
         }
         return "Error in submitting the response";
 

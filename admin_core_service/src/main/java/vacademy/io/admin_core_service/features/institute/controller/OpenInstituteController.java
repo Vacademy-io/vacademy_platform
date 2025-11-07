@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.institute.controller;
 
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.institute.dto.InstituteSearchProjection;
@@ -30,6 +31,7 @@ public class OpenInstituteController {
 
     @GetMapping("/details/{instituteId}")
     @ClientCacheable(maxAgeSeconds = 600, scope = CacheScope.PUBLIC)
+    @Cacheable(value = "openInstituteDetails", key = "#instituteId")
     public ResponseEntity<InstituteInfoDTO> getInstituteDetails(@PathVariable String instituteId) {
 
         InstituteInfoDTO instituteInfoDTO = instituteInitManager.getPublicInstituteDetails(instituteId);
@@ -38,6 +40,7 @@ public class OpenInstituteController {
 
     @GetMapping("/get/subdomain-or-id")
     @ClientCacheable(maxAgeSeconds = 600, scope = CacheScope.PUBLIC)
+    @Cacheable(value = "openInstituteIdOrSubdomain", key = "(#instituteId != null ? 'id:' + #instituteId : '') + (#subdomain != null ? 'sub:' + #subdomain : '')")
     public ResponseEntity<String> getSubdomainForInstitute(@RequestParam(value = "instituteId", required = false) String instituteId,
                                                            @RequestParam(value = "subdomain", required = false) String subdomain) {
 

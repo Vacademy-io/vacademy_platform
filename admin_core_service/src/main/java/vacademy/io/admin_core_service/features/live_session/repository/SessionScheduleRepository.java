@@ -96,7 +96,7 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
         ss.daily_attendance AS dailyAttendance,           -- NEW
         s.allow_rewind AS allowRewind,
         s.allow_play_pause AS allowPlayPause,
-        s.timezone AS timezone
+        COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone
     FROM live_session s
     LEFT JOIN session_schedules ss ON s.id = ss.session_id
     WHERE s.id = :sessionId
@@ -139,7 +139,7 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
             ss.thumbnail_file_id AS scheduleThumbnailFileId,  -- NEW
             ss.daily_attendance AS dailyAttendance,           -- NEW
             s.allow_play_pause As allowPlayPause,
-            s.timezone AS timezone
+            COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone
         FROM session_schedules ss
         JOIN live_session s ON ss.session_id = s.id
         WHERE ss.id = :scheduleId
@@ -156,16 +156,16 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
           AND (
               -- Future schedules (meeting date + start time > current time in session timezone)
               CAST((ss.meeting_date + ss.start_time) AS TIMESTAMP)
-              > CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS TIMESTAMP)
+              > CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS TIMESTAMP)
               OR
               -- Current/active schedules (started but still accepting entries)
               (
                   CAST((ss.meeting_date + ss.start_time) AS TIMESTAMP)
-                  <= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS TIMESTAMP)
+                  <= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS TIMESTAMP)
                   AND (
                       ss.last_entry_time IS NULL 
                       OR CAST((ss.meeting_date + ss.last_entry_time) AS TIMESTAMP)
-                      >= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(s.timezone, 'Asia/Kolkata')) AS TIMESTAMP)
+                      >= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS TIMESTAMP)
                   )
               )
           )

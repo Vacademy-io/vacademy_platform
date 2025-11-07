@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.learner.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.institute_learner.dto.StudentDTO;
 import vacademy.io.admin_core_service.features.learner.dto.LearnerBatchDetail;
@@ -32,6 +33,7 @@ public class LearnerUserInfoController {
 
     @GetMapping("/details")
     @ClientCacheable(maxAgeSeconds = 300, scope = CacheScope.PRIVATE, varyHeaders = {"X-Institute-Id", "X-User-Id"})
+    @Cacheable(value = "learnerInfo", key = "#user.id + ':' + #instituteId")
     public ResponseEntity<List<StudentDTO>> getLearnerInfo(@RequestAttribute("user") CustomUserDetails user, @RequestParam("instituteId") String instituteId) {
 
         return learnerProfileManager.getLearnerInfo(user, instituteId);

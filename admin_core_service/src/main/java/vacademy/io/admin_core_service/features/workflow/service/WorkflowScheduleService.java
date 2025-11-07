@@ -6,7 +6,7 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.workflow.entity.WorkflowSchedule;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowScheduleRepository;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -28,7 +28,8 @@ public class WorkflowScheduleService {
 
     public List<WorkflowSchedule> getDueSchedules() {
         try {
-            return workflowScheduleRepository.findDueSchedules(LocalDateTime.now());
+            // Use Instant.now() to get the current moment in UTC.
+            return workflowScheduleRepository.findDueSchedules(Instant.now());
         } catch (Exception e) {
             log.error("Error retrieving due workflow schedules", e);
             return List.of();
@@ -46,9 +47,10 @@ public class WorkflowScheduleService {
 
     public WorkflowSchedule createSchedule(WorkflowSchedule schedule) {
         try {
-            schedule.setCreatedAt(LocalDateTime.now());
-            schedule.setUpdatedAt(LocalDateTime.now());
+            schedule.setCreatedAt(Instant.now());
+            schedule.setUpdatedAt(Instant.now());
             schedule.setStatus("ACTIVE");
+
             WorkflowSchedule savedSchedule = workflowScheduleRepository.save(schedule);
             log.info("Created workflow schedule: {}", savedSchedule.getId());
             return savedSchedule;
@@ -76,87 +78,17 @@ public class WorkflowScheduleService {
             existing.setStartDate(scheduleDetails.getStartDate());
             existing.setEndDate(scheduleDetails.getEndDate());
             existing.setStatus(scheduleDetails.getStatus());
-
             existing.setLastRunAt(scheduleDetails.getLastRunAt());
             existing.setNextRunAt(scheduleDetails.getNextRunAt());
-
-            existing.setUpdatedAt(LocalDateTime.now());
+            existing.setUpdatedAt(Instant.now());
 
             WorkflowSchedule updatedSchedule = workflowScheduleRepository.save(existing);
             log.info("Updated workflow schedule: {} - lastRunAt: {}, nextRunAt: {}",
-                    updatedSchedule.getId(), updatedSchedule.getLastRunAt(), updatedSchedule.getNextRunAt());
+                updatedSchedule.getId(), updatedSchedule.getLastRunAt(), updatedSchedule.getNextRunAt());
             return updatedSchedule;
         } catch (Exception e) {
             log.error("Error updating workflow schedule: {}", id, e);
             throw new RuntimeException("Failed to update workflow schedule", e);
-        }
-    }
-
-    public void deactivateSchedule(String id) {
-        try {
-            Optional<WorkflowSchedule> schedule = workflowScheduleRepository.findById(id);
-            if (schedule.isPresent()) {
-                WorkflowSchedule existing = schedule.get();
-                existing.setStatus("INACTIVE");
-                existing.setUpdatedAt(LocalDateTime.now());
-                workflowScheduleRepository.save(existing);
-                log.info("Deactivated workflow schedule: {}", id);
-            }
-        } catch (Exception e) {
-            log.error("Error deactivating workflow schedule: {}", id, e);
-            throw new RuntimeException("Failed to deactivate workflow schedule", e);
-        }
-    }
-
-    public void updateNextExecutionTime(String id, LocalDateTime nextExecutionTime) {
-        try {
-            Optional<WorkflowSchedule> schedule = workflowScheduleRepository.findById(id);
-            if (schedule.isPresent()) {
-                WorkflowSchedule existing = schedule.get();
-                existing.setNextRunAt(nextExecutionTime);
-                existing.setLastRunAt(LocalDateTime.now());
-                existing.setUpdatedAt(LocalDateTime.now());
-                workflowScheduleRepository.save(existing);
-                log.debug("Updated next execution time for schedule: {} to {}", id, nextExecutionTime);
-            }
-        } catch (Exception e) {
-            log.error("Error updating next execution time for schedule: {}", id, e);
-        }
-    }
-
-    public List<WorkflowSchedule> getAllSchedules() {
-        try {
-            return workflowScheduleRepository.findAll();
-        } catch (Exception e) {
-            log.error("Error retrieving all workflow schedules", e);
-            return List.of();
-        }
-    }
-
-    public List<WorkflowSchedule> getSchedulesByStatus(String status) {
-        try {
-            return workflowScheduleRepository.findByStatusIgnoreCase(status);
-        } catch (Exception e) {
-            log.error("Error retrieving schedules by status: {}", status, e);
-            return List.of();
-        }
-    }
-
-    public List<WorkflowSchedule> getSchedulesByWorkflowId(String workflowId) {
-        try {
-            return workflowScheduleRepository.findByWorkflowId(workflowId);
-        } catch (Exception e) {
-            log.error("Error retrieving schedules by workflow ID: {}", workflowId, e);
-            return List.of();
-        }
-    }
-
-    public List<WorkflowSchedule> getSchedulesByType(String scheduleType) {
-        try {
-            return workflowScheduleRepository.findByScheduleType(scheduleType);
-        } catch (Exception e) {
-            log.error("Error retrieving schedules by type: {}", scheduleType, e);
-            return List.of();
         }
     }
 }

@@ -7,7 +7,7 @@ import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowExecutionStatus;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Entity
 @Table(name = "workflow_execution")
@@ -24,11 +24,18 @@ public class WorkflowExecution {
     private String id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "workflow_id", nullable = false, foreignKey = @ForeignKey(name = "fk_workflow_execution_workflow"))
+    @JoinColumn(
+        name = "workflow_id",
+        nullable = false,
+        foreignKey = @ForeignKey(name = "fk_workflow_execution_workflow")
+    )
     private Workflow workflow;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "workflow_schedule_id", foreignKey = @ForeignKey(name = "fk_workflow_execution_schedule"))
+    @JoinColumn(
+        name = "workflow_schedule_id",
+        foreignKey = @ForeignKey(name = "fk_workflow_execution_schedule")
+    )
     private WorkflowSchedule workflowSchedule;
 
     @Column(name = "idempotency_key", nullable = false, unique = true)
@@ -42,16 +49,16 @@ public class WorkflowExecution {
     private String errorMessage;
 
     @Column(name = "started_at", nullable = false)
-    private LocalDateTime startedAt;
+    private Instant startedAt;
 
     @Column(name = "completed_at")
-    private LocalDateTime completedAt;
+    private Instant completedAt;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt;
+    private Instant updatedAt;
 }

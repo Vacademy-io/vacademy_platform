@@ -2,20 +2,24 @@ package vacademy.io.admin_core_service.features.workflow.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import vacademy.io.admin_core_service.features.workflow.dto.PagedWorkflowsResponseDTO;
 import vacademy.io.admin_core_service.features.workflow.dto.WorkflowResponseDTO;
-import vacademy.io.admin_core_service.features.workflow.dto.WorkflowWithScheduleRowDTO;
+import vacademy.io.admin_core_service.features.workflow.dto.WorkflowScheduleResponseDTO;
+import vacademy.io.admin_core_service.features.workflow.dto.WorkflowWithScheduleProjection;
 import vacademy.io.admin_core_service.features.workflow.dto.WorkflowWithSchedulesFilterDTO;
+import vacademy.io.admin_core_service.features.workflow.dto.PagedWorkflowsResponseDTO;
+import vacademy.io.admin_core_service.features.workflow.dto.WorkflowWithScheduleRowDTO;
 import vacademy.io.admin_core_service.features.workflow.entity.Workflow;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowRepository;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Map;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 
 @Slf4j
 @Service
@@ -28,13 +32,14 @@ public class WorkflowService {
         try {
             List<Workflow> workflows = workflowRepository.findByInstituteIdAndStatus(instituteId, "ACTIVE");
             return workflows.stream()
-                    .map(WorkflowResponseDTO::fromEntity)
-                    .collect(Collectors.toList());
+                .map(WorkflowResponseDTO::fromEntity)
+                .toList();
         } catch (Exception e) {
             log.error("Error fetching active workflows for institute: {}", instituteId, e);
             throw new VacademyException("Failed to fetch active workflows");
         }
     }
+
 
     public PagedWorkflowsResponseDTO getWorkflowsWithSchedulesPaged(WorkflowWithSchedulesFilterDTO filter,
                                                                     int pageNo,
@@ -48,9 +53,11 @@ public class WorkflowService {
 
             List<String> wfStatuses;
             List<String> schStatuses;
+            List<String> trigStatuses;
             if (StringUtils.hasText(searchPattern)) {
                 wfStatuses = null;
                 schStatuses = null;
+                trigStatuses = null;
             } else {
                 wfStatuses = filter.getWorkflowStatuses() == null || filter.getWorkflowStatuses().isEmpty()
                     ? null
@@ -59,12 +66,16 @@ public class WorkflowService {
                     || filter.getScheduleStatuses().isEmpty()
                     ? null
                     : filter.getScheduleStatuses().stream().map(String::toUpperCase).toList();
+                trigStatuses = filter.getTriggerStatuses() == null
+                    || filter.getTriggerStatuses().isEmpty()
+                    ? null
+                    : filter.getTriggerStatuses().stream().map(String::toUpperCase).toList();
             }
 
             Pageable pageable = PageRequest.of(pageNo, pageSize);
 
             var page = workflowRepository.findWorkflowsWithSchedulesPage(
-                filter.getInstituteId(), wfStatuses, schStatuses, searchPattern, pageable);
+                filter.getInstituteId(), wfStatuses, schStatuses, trigStatuses, searchPattern, pageable);
 
             List<WorkflowWithScheduleRowDTO> content = page.getContent().stream()
                 .map(row -> WorkflowWithScheduleRowDTO.builder()
@@ -90,6 +101,12 @@ public class WorkflowService {
                     .nextRunAt(row.getNextRunAt())
                     .scheduleCreatedAt(row.getScheduleCreatedAt())
                     .scheduleUpdatedAt(row.getScheduleUpdatedAt())
+                    .triggerId(row.getTriggerId())
+                    .triggerEventName(row.getTriggerEventName())
+                    .triggerDescription(row.getTriggerDescription())
+                    .triggerStatus(row.getTriggerStatus())
+                    .triggerCreatedAt(row.getTriggerCreatedAt())
+                    .triggerUpdatedAt(row.getTriggerUpdatedAt())
                     .build())
                 .toList();
 

@@ -50,4 +50,17 @@ public interface WorkflowWithScheduleProjection {
     LocalDateTime getScheduleCreatedAt();
 
     LocalDateTime getScheduleUpdatedAt();
+
+    // Trigger fields (nullable)
+    String getTriggerId();
+
+    String getTriggerEventName();
+
+    String getTriggerDescription();
+
+    String getTriggerStatus();
+
+    LocalDateTime getTriggerCreatedAt();
+
+    LocalDateTime getTriggerUpdatedAt();
 }

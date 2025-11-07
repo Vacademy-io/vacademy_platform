@@ -60,4 +60,16 @@ public class WorkflowWithScheduleRowDTO {
     private LocalDateTime scheduleCreatedAt;
 
     private LocalDateTime scheduleUpdatedAt;
+
+    private String triggerId;
+
+    private String triggerEventName;
+
+    private String triggerDescription;
+
+    private String triggerStatus;
+
+    private LocalDateTime triggerCreatedAt;
+
+    private LocalDateTime triggerUpdatedAt;
 }

@@ -11,6 +11,8 @@ import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.workflow.dto.*;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowExecutionRepository;
 
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -50,10 +52,16 @@ public class WorkflowExecutionService {
 
         Pageable pageable = createPageable(pageNo, pageSize, filter.getSortColumns());
 
+        Instant startInstant = filter.getStartDate();
+
+        Instant endInstant = filter.getEndDate();
+
         Page<WorkflowExecutionProjection> executionPage = workflowExecutionRepository.findWorkflowExecutionsWithFilters(
                 filter.getInstituteId(),
                 filter.getWorkflowIds(),
                 filter.getStatuses(),
+                startInstant,
+                endInstant,
                 pageable);
 
         List<WorkflowExecutionResponseDTO> content = executionPage.getContent().stream()

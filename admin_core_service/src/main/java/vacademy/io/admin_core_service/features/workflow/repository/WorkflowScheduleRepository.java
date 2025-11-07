@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.workflow.dto.WorkflowScheduleProjection;
 import vacademy.io.admin_core_service.features.workflow.entity.WorkflowSchedule;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -24,7 +25,7 @@ public interface WorkflowScheduleRepository extends JpaRepository<WorkflowSchedu
      * Find schedules that are due for execution (next_run_at <= current time)
      */
     @Query("SELECT ws FROM WorkflowSchedule ws WHERE ws.status = 'ACTIVE' AND ws.nextRunAt <= :currentTime")
-    List<WorkflowSchedule> findDueSchedules(@Param("currentTime") LocalDateTime currentTime);
+    List<WorkflowSchedule> findDueSchedules(@Param("currentTime") Instant currentTime);
 
     /**
      * Find schedules by workflow ID

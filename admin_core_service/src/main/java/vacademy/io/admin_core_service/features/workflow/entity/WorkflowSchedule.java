@@ -3,7 +3,7 @@ package vacademy.io.admin_core_service.features.workflow.entity;
 import lombok.Data;
 import lombok.Setter;
 import jakarta.persistence.*;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Map;
 
 @Entity
@@ -34,27 +34,26 @@ public class WorkflowSchedule {
     private String timezone;
 
     @Column(name = "start_date")
-    private LocalDateTime startDate;
+    private Instant startDate;
 
     @Column(name = "end_date")
-    private LocalDateTime endDate;
+    private Instant endDate;
 
     @Column(name = "status")
     private String status; // ACTIVE, INACTIVE, etc.
 
     @Column(name = "last_run_at")
-    private LocalDateTime lastRunAt;
+    private Instant lastRunAt;
 
     @Column(name = "next_run_at")
-    private LocalDateTime nextRunAt;
+    private Instant nextRunAt;
 
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
+    @Column(name = "created_at", updatable = false)
+    private Instant createdAt;
 
     @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
+    private Instant updatedAt;
 
-    // Transient field for initial context (not stored in DB)
     @Transient
     private Map<String, Object> initialContext;
 
@@ -69,22 +68,23 @@ public class WorkflowSchedule {
     }
 
     // Helper method to get next execution time
-    public LocalDateTime getNextExecutionTime() {
+    public Instant getNextExecutionTime() {
         return nextRunAt;
     }
 
     // Helper method to set next execution time
-    public void setNextExecutionTime(LocalDateTime nextExecutionTime) {
+    public void setNextExecutionTime(Instant nextExecutionTime) {
         this.nextRunAt = nextExecutionTime;
     }
 
     // Helper method to get last execution time
-    public LocalDateTime getLastExecutionTime() {
+    public Instant getLastExecutionTime() {
         return lastRunAt;
     }
 
     // Helper method to set last execution time
-    public void setLastExecutionTime(LocalDateTime lastExecutionTime) {
+    public void setLastExecutionTime(Instant lastExecutionTime) {
         this.lastRunAt = lastExecutionTime;
     }
 }
+

@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowExecutionStatus;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -19,4 +21,8 @@ public class WorkflowExecutionFilterDTO {
     private List<WorkflowExecutionStatus> statuses;
 
     private Map<String, String> sortColumns;
+
+    private Instant startDate;
+
+    private Instant endDate;
 }

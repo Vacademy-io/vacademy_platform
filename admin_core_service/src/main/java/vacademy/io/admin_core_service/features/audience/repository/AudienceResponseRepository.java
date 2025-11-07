@@ -60,11 +60,6 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
           AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
           AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
           AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
-          AND (
-               CAST(:converted AS boolean) IS NULL OR 
-               (CAST(:converted AS boolean) = TRUE AND ar.user_id IS NOT NULL) OR
-               (CAST(:converted AS boolean) = FALSE AND ar.user_id IS NULL)
-              )
         ORDER BY ar.submitted_at DESC
     """,
     countQuery = """
@@ -74,10 +69,6 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
           AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
           AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
           AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
-          AND (
-               (CAST(:converted AS boolean) = TRUE AND ar.user_id IS NOT NULL) OR
-               (CAST(:converted AS boolean) = FALSE AND ar.user_id IS NULL)
-              )
     """,
     nativeQuery = true)
     Page<AudienceResponse> findLeadsWithFilters(

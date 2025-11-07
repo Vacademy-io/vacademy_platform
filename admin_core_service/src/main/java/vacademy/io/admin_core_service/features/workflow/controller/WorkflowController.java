@@ -4,9 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import vacademy.io.admin_core_service.features.workflow.dto.PagedWorkflowScheduleResponseDTO;
-import vacademy.io.admin_core_service.features.workflow.dto.WorkflowResponseDTO;
-import vacademy.io.admin_core_service.features.workflow.dto.WorkflowScheduleFilterDTO;
+import vacademy.io.admin_core_service.features.workflow.dto.*;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowScheduleQueryService;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowService;
 import vacademy.io.common.auth.config.PageConstants;
@@ -47,6 +45,17 @@ public class WorkflowController {
         log.info("Retrieved {} workflow schedules out of {} total",
                 response.getContent().size(), response.getTotalElements());
 
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/institute/workflows-with-schedules/list")
+    public ResponseEntity<PagedWorkflowsResponseDTO> getWorkflowsWithSchedules(
+        @RequestBody WorkflowWithSchedulesFilterDTO filter,
+        @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
+        @RequestParam(value = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE, required = false) int pageSize) {
+
+        PagedWorkflowsResponseDTO response = workflowService.getWorkflowsWithSchedulesPaged(filter, pageNo,
+            pageSize);
         return ResponseEntity.ok(response);
     }
 }

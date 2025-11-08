@@ -9,6 +9,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.notification.constants.NotificationConstant;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
 import vacademy.io.admin_core_service.features.notification.dto.WhatsappRequest;
@@ -35,11 +36,11 @@ public class NotificationService {
     public String sendEmailToUsers(NotificationDTO notificationDTO,String instituteId) {
         String url=NotificationConstant.EMAIL_TO_USERS+"?instituteId="+instituteId;
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
-                clientName, // Directly use the injected 'clientName'
-                HttpMethod.POST.name(),
-                notificationServerBaseUrl,
-                url,
-                notificationDTO
+            clientName, // Directly use the injected 'clientName'
+            HttpMethod.POST.name(),
+            notificationServerBaseUrl,
+            url,
+            notificationDTO
         );
         return response.getBody();
     }
@@ -83,19 +84,19 @@ public class NotificationService {
     public List<Map<String, Boolean>> sendWhatsappToUsers(WhatsappRequest request,String instituteId) {
         String url=NotificationConstant.SEND_WHATSAPP_TO_USER+"?instituteId="+instituteId;
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
-                clientName,
-                HttpMethod.POST.name(),
-                notificationServerBaseUrl,
-                url,
-                request
+            clientName,
+            HttpMethod.POST.name(),
+            notificationServerBaseUrl,
+            url,
+            request
         );
 
         ObjectMapper objectMapper = new ObjectMapper();
         try {
             // Parse the response body into the expected return type
             return objectMapper.readValue(
-                    response.getBody(),
-                    new TypeReference<List<Map<String, Boolean>>>() {}
+                response.getBody(),
+                new TypeReference<List<Map<String, Boolean>>>() {}
             );
         } catch (JsonProcessingException e) {
             throw new VacademyException("Error parsing WhatsApp send response: " + e.getMessage());
@@ -115,6 +116,7 @@ public class NotificationService {
     }
 
     public String sendWhatsappToUsers(List<WhatsappRequest> requests,String instituteId) {
+        System.out.println(JsonUtil.toJson(requests));
         String url=NotificationConstant.SEND_WHATSAPP_TO_USER_MULTIPLE+"?instituteId="+instituteId;
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
             clientName,

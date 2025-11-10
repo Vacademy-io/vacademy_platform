@@ -5,5 +5,6 @@ public enum RecipientType {
     USER,
     PACKAGE_SESSION,
     TAG,
-    CUSTOM_FIELD_FILTER
+    CUSTOM_FIELD_FILTER,
+    AUDIENCE  // Campaign-based recipient (leads converted to users)
 }

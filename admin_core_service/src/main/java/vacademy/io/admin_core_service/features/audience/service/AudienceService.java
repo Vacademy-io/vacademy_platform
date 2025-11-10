@@ -69,6 +69,27 @@ public class AudienceService {
     @Autowired
     private SendUniqueLinkService sendUniqueLinkService;
 
+    public List<String> getConvertedUserIdsByCampaign(String audienceId, String instituteId) {
+        logger.info("Getting converted user IDs for campaign: {} (institute: {})", audienceId, instituteId);
+        
+        // Validate audience exists and belongs to institute (security check)
+        audienceRepository.findByIdAndInstituteId(audienceId, instituteId)
+                .orElseThrow(() -> new VacademyException("Campaign not found or doesn't belong to institute: " + audienceId));
+        
+        // Fetch all converted leads (user_id IS NOT NULL)
+        List<AudienceResponse> convertedLeads = audienceResponseRepository.findConvertedLeads(audienceId);
+        
+        // Extract user IDs
+        List<String> userIds = convertedLeads.stream()
+                .map(AudienceResponse::getUserId)
+                .filter(userId -> userId != null && !userId.isBlank())
+                .distinct()
+                .collect(Collectors.toList());
+        
+        logger.info("Found {} converted users for campaign: {}", userIds.size(), audienceId);
+        return userIds;
+    }
+
     /**
      * Create a new audience campaign with custom fields
      * Pattern: Same as EnrollInviteService.createEnrollInvite()

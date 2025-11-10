@@ -9,6 +9,7 @@ import vacademy.io.admin_core_service.features.audience.service.AudienceService;
 import vacademy.io.common.auth.config.PageConstants;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -95,6 +96,15 @@ public class AudienceController {
     public ResponseEntity<LeadDetailDTO> getLeadById(@PathVariable String responseId) {
         LeadDetailDTO lead = audienceService.getLeadById(responseId);
         return ResponseEntity.ok(lead);
+    }
+
+    @GetMapping("/campaign/{instituteId}/{audienceId}/users")
+    public ResponseEntity<List<String>> getConvertedUsersByCampaign(
+            @PathVariable String instituteId,
+            @PathVariable String audienceId) {
+
+        List<String> userIds = audienceService.getConvertedUserIdsByCampaign(audienceId, instituteId);
+        return ResponseEntity.ok(userIds);
     }
 }
 

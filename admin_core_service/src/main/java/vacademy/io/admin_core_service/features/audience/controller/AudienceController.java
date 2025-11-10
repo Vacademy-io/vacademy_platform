@@ -97,14 +97,5 @@ public class AudienceController {
         LeadDetailDTO lead = audienceService.getLeadById(responseId);
         return ResponseEntity.ok(lead);
     }
-
-    @GetMapping("/campaign/{instituteId}/{audienceId}/users")
-    public ResponseEntity<List<String>> getConvertedUsersByCampaign(
-            @PathVariable String instituteId,
-            @PathVariable String audienceId) {
-
-        List<String> userIds = audienceService.getConvertedUserIdsByCampaign(audienceId, instituteId);
-        return ResponseEntity.ok(userIds);
-    }
 }
 

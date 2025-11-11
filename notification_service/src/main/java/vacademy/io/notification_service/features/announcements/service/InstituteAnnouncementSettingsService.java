@@ -171,6 +171,69 @@ public class InstituteAnnouncementSettingsService {
     }
 
     /**
+     * Determine if email tracking is enabled for an institute. Defaults to true when not configured.
+     */
+    public boolean isEmailTrackingEnabled(String instituteId) {
+        if (instituteId == null || instituteId.trim().isEmpty()) {
+            return true;
+        }
+
+        try {
+            Optional<InstituteAnnouncementSettings> settingsOpt = settingsRepository.findByInstituteId(instituteId);
+            if (settingsOpt.isEmpty()) {
+                return true; // fall back to default behaviour
+            }
+
+            Map<String, Object> settingsMap = settingsOpt.get().getSettings();
+            Boolean rawFlag = extractEmailTrackingFlag(settingsMap);
+            if (rawFlag != null) {
+                return rawFlag;
+            }
+
+            // Fallback to DTO mapping in case of complex nested structures
+            InstituteAnnouncementSettingsResponse response = mapToResponse(settingsOpt.get());
+            if (response.getSettings() != null && response.getSettings().getGeneral() != null) {
+                Boolean dtoFlag = response.getSettings().getGeneral().getEmailTrackingEnabled();
+                if (dtoFlag != null) {
+                    return dtoFlag;
+                }
+            }
+
+        } catch (Exception e) {
+            log.warn("Failed to resolve email tracking preference for institute {}. Defaulting to true. Error: {}",
+                    instituteId, e.getMessage());
+        }
+
+        return true;
+    }
+
+    private Boolean extractEmailTrackingFlag(Map<String, Object> settingsMap) {
+        if (settingsMap == null) {
+            return null;
+        }
+
+        Object generalObj = settingsMap.get("general");
+        if (!(generalObj instanceof Map<?, ?> generalMap)) {
+            return null;
+        }
+
+        Object flag = generalMap.get("email_tracking_enabled");
+        if (flag == null) {
+            flag = generalMap.get("emailTrackingEnabled");
+        }
+
+        if (flag instanceof Boolean booleanFlag) {
+            return booleanFlag;
+        }
+
+        if (flag instanceof String stringFlag) {
+            return Boolean.parseBoolean(stringFlag);
+        }
+
+        return null;
+    }
+
+    /**
      * Get default settings for an institute
      */
     private InstituteAnnouncementSettingsResponse createDefaultSettingsResponse(String instituteId) {
@@ -250,6 +313,7 @@ public class InstituteAnnouncementSettingsService {
         general.setMaxAnnouncementsPerDay(10);
         general.setDefaultTimezone("Asia/Kolkata");
         general.setRetentionDays(365);
+        general.setEmailTrackingEnabled(true);
         defaultSettings.setGeneral(general);
         
         response.setSettings(defaultSettings);

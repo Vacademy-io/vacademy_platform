@@ -8,6 +8,8 @@ import org.springframework.http.*;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -184,5 +186,65 @@ public class AuthServiceClient {
             log.error("Error calling auth service for user by email: {}", email, e);
             return null; // Return null on error
         }
+    }
+
+    /**
+     * Resolve a user by username (case-insensitive). Returns null when unavailable.
+     */
+    @Retryable(value = {RestClientException.class}, maxAttempts = 3, backoff = @Backoff(delay = 1000))
+    public User getUserByUsername(String username, String instituteId) {
+        if (!StringUtils.hasText(username) || !StringUtils.hasText(instituteId)) {
+            return null;
+        }
+
+        String trimmedUsername = username.trim();
+        String trimmedInstituteId = instituteId.trim();
+
+        String[] portals = {"ADMIN", "LEARNER"};
+        for (String portal : portals) {
+            try {
+                String url = UriComponentsBuilder
+                        .fromHttpUrl(authServiceBaseUrl + "/auth-service/open/user-details/by-username")
+                        .queryParam("username", trimmedUsername)
+                        .queryParam("portal", portal)
+                        .queryParam("instituteId", trimmedInstituteId)
+                        .toUriString();
+
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+                HttpEntity<String> entity = new HttpEntity<>(headers);
+
+                ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                        url,
+                        HttpMethod.GET,
+                        entity,
+                        new ParameterizedTypeReference<Map<String, Object>>() {}
+                );
+
+                Map<String, Object> userData = response.getBody();
+                if (userData == null || userData.get("id") == null) {
+                    continue;
+                }
+
+                User user = new User();
+                user.setId((String) userData.get("id"));
+                user.setUsername((String) userData.get("username"));
+                user.setEmail((String) userData.get("email"));
+                user.setMobileNumber((String) userData.get("mobile_number"));
+
+                log.debug("Resolved username {} for institute {} using portal {} -> user ID {}",
+                        trimmedUsername, trimmedInstituteId, portal, user.getId());
+                return user;
+
+            } catch (HttpClientErrorException.NotFound notFound) {
+                log.debug("Username {} not found in portal {} for institute {}", trimmedUsername, portal, trimmedInstituteId);
+            } catch (RestClientException e) {
+                log.warn("Error resolving username {} in portal {} for institute {}: {}",
+                        trimmedUsername, portal, trimmedInstituteId, e.getMessage());
+            }
+        }
+
+        log.warn("Unable to resolve user for username {} in institute {}", trimmedUsername, trimmedInstituteId);
+        return null;
     }
 }

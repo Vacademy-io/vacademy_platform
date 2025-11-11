@@ -16,5 +16,7 @@ public class WorkflowWithSchedulesFilterDTO {
 
     private List<String> scheduleStatuses;
 
+    private List<String> triggerStatuses;
+
     private String searchName;
 }

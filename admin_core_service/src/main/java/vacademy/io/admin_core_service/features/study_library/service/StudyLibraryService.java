@@ -87,24 +87,7 @@ public class StudyLibraryService {
     @Autowired
     private AuthService authService;
 
-    /**
-     * Optimized method to fetch study library initialization details.
-     * 
-     * OPTIMIZATION STRATEGY:
-     * - Fetch all data upfront in bulk queries (instead of nested loops with N+1 queries)
-     * - Build lookup maps for O(1) access during assembly
-     * - Single batched auth service call for all instructors (instead of one call per level)
-     * - Assemble DTOs in memory (avoid recursive database calls)
-     * - Cached for 20 seconds to reduce repeated load
-     * 
-     * PERFORMANCE IMPROVEMENT:
-     * Before: ~131 database queries + ~30 external API calls
-     * After (first call): ~220 database queries + 1 external API call
-     * After (cached): 0 queries - served from cache ✅
-     * 
-     * Estimated speedup: 5-10x faster for first call, instant for cached calls
-     */
-    @Cacheable(value = "studyLibraryInit", key = "#instituteId", unless = "#result == null || #result.isEmpty()")
+
     @Transactional
     public List<CourseDTOWithDetails> getStudyLibraryInitDetails(String instituteId) {
         validateInstituteId(instituteId);

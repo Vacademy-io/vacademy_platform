@@ -1,8 +1,10 @@
 package vacademy.io.admin_core_service.features.user_subscription.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
@@ -20,18 +22,13 @@ import java.util.List;
 import java.util.Optional;
 
 @Service
+@RequiredArgsConstructor
 public class ReferralOptionService {
-    @Autowired
-    private ReferralOptionRepository referralOptionRepository;
 
-    @Autowired
-    private CouponCodeRepository couponCodeRepository;
-
-    @Autowired
-    private StudentSessionInstituteGroupMappingRepository studentSessionMappingRepository;
-
-    @Autowired
-    private ObjectMapper objectMapper;
+    private final ReferralOptionRepository referralOptionRepository;
+    private final CouponCodeRepository couponCodeRepository;
+    private final StudentSessionInstituteGroupMappingRepository studentSessionMappingRepository;
+    private final ObjectMapper objectMapper;
 
     public String addReferralOption(ReferralOptionDTO referralOptionDTO) {
         ReferralOption referralOption = new ReferralOption(referralOptionDTO);
@@ -40,7 +37,7 @@ public class ReferralOptionService {
     }
 
     public String deleteReferralOptions(List<String> referralOptionIds) {
-        List<ReferralOption>referralOptions = referralOptionRepository.findAllById(referralOptionIds);
+        List<ReferralOption> referralOptions = referralOptionRepository.findAllById(referralOptionIds);
         for (ReferralOption referralOption : referralOptions) {
             referralOption.setStatus(StatusEnum.DELETED.name());
         }
@@ -49,24 +46,55 @@ public class ReferralOptionService {
     }
 
     public List<ReferralOptionDTO> getReferralOptions(String source, String sourceId) {
-        List<ReferralOption>referralOptions = referralOptionRepository.findBySourceAndSourceIdAndStatusIn(source,sourceId,List.of(StatusEnum.ACTIVE.name()));
+        List<ReferralOption> referralOptions = referralOptionRepository.findBySourceAndSourceIdAndStatusIn(source,
+                sourceId, List.of(StatusEnum.ACTIVE.name()));
         return referralOptions.stream().map(ReferralOption::toReferralOptionDTO).toList();
     }
 
+    public String updateReferralOption(String referralOptionId, ReferralOptionDTO referralOptionDTO) {
+        ReferralOption referralOption = referralOptionRepository.findById(referralOptionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Referral option not found"));
 
-    public Optional<ReferralOption> getReferralOptionBySourceAndSourceIdAndTag(String source, String sourceId, String tag) {
-        return referralOptionRepository.findFirstBySourceAndSourceIdAndTagAndStatusInOrderByCreatedAtDesc(source, sourceId, tag,List.of(StatusEnum.ACTIVE.name()));
+        if (referralOptionDTO.getName() != null) {
+            referralOption.setName(referralOptionDTO.getName());
+        }
+        if (referralOptionDTO.getSource() != null) {
+            referralOption.setSource(referralOptionDTO.getSource());
+        }
+        if (referralOptionDTO.getSourceId() != null) {
+            referralOption.setSourceId(referralOptionDTO.getSourceId());
+        }
+        if (referralOptionDTO.getStatus() != null) {
+            referralOption.setStatus(referralOptionDTO.getStatus());
+        }
+
+        referralOption.setReferrerDiscountJson(referralOptionDTO.getReferrerDiscountJson());
+        referralOption.setRefereeDiscountJson(referralOptionDTO.getRefereeDiscountJson());
+        referralOption.setReferrerVestingDays(referralOptionDTO.getReferrerVestingDays());
+        referralOption.setDescription(referralOptionDTO.getDescription());
+        referralOption.setTag(referralOptionDTO.getTag());
+        referralOption.setSettingJson(referralOptionDTO.getSettingJson());
+
+        referralOptionRepository.save(referralOption);
+        return "Referral option updated successfully";
     }
 
-    public Optional<ReferralOption> findById(String id){
+    public Optional<ReferralOption> getReferralOptionBySourceAndSourceIdAndTag(String source, String sourceId,
+            String tag) {
+        return referralOptionRepository.findFirstBySourceAndSourceIdAndTagAndStatusInOrderByCreatedAtDesc(source,
+                sourceId, tag, List.of(StatusEnum.ACTIVE.name()));
+    }
+
+    public Optional<ReferralOption> findById(String id) {
         return referralOptionRepository.findById(id);
     }
 
-    ///  to do:: here we need to vefiy wtheter that coupon code belongs to same isutute for that package session
+    // NOTE: verify whether the coupon code belongs to the same institute for that
+    // package session
     public CouponVerificationResponseDTO verifyCouponCode(
-        String couponCode,
-        String referralOptionId,
-        CouponVerificationRequestDTO request) {
+            String couponCode,
+            String referralOptionId,
+            CouponVerificationRequestDTO request) {
         try {
             CouponCode coupon = validateCouponCode(couponCode);
             if (coupon == null) {
@@ -105,10 +133,12 @@ public class ReferralOptionService {
 
     private CouponCode validateCouponCode(String couponCode) {
         Optional<CouponCode> couponCodeOpt = couponCodeRepository.findByCode(couponCode);
-        if (couponCodeOpt.isEmpty()) return null;
+        if (couponCodeOpt.isEmpty())
+            return null;
 
         CouponCode coupon = couponCodeOpt.get();
-        if (!CouponCodeSource.USER.name().equals(coupon.getSourceType())) return null;
+        if (!CouponCodeSource.USER.name().equals(coupon.getSourceType()))
+            return null;
 
         return coupon;
     }
@@ -135,26 +165,25 @@ public class ReferralOptionService {
 
     private boolean hasActiveSession(String learnerId, List<String> packageSessionIds) {
         return studentSessionMappingRepository
-            .existsByUserIdAndStatusInAndPackageSessionIdIn(
-                learnerId,
-                List.of(LearnerStatusEnum.ACTIVE.name()),
-                packageSessionIds
-            );
+                .existsByUserIdAndStatusInAndPackageSessionIdIn(
+                        learnerId,
+                        List.of(LearnerStatusEnum.ACTIVE.name()),
+                        packageSessionIds);
     }
 
     private CouponVerificationResponseDTO buildSuccessResponse(CouponCode coupon, String message) {
         return CouponVerificationResponseDTO.builder()
-            .verified(true)
-            .sourceType(coupon.getSourceType())
-            .sourceId(coupon.getSourceId())
-            .message(message)
-            .build();
+                .verified(true)
+                .sourceType(coupon.getSourceType())
+                .sourceId(coupon.getSourceId())
+                .message(message)
+                .build();
     }
 
     private CouponVerificationResponseDTO buildFailureResponse(String message) {
         return CouponVerificationResponseDTO.builder()
-            .verified(false)
-            .message(message)
-            .build();
+                .verified(false)
+                .message(message)
+                .build();
     }
 }

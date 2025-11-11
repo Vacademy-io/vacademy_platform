@@ -114,7 +114,7 @@ public class AdminDirectEnrollService {
                 instituteStudentDetails,
                 enrollDTO.getCustomFieldValues(),
                 Map.of(),
-                request.getLearnerExtraDetails());
+                request.getLearnerExtraDetails(),enrollInvite);
 
         handleManualPaymentIfAny(enrollDTO.getPaymentInitiationRequest(), createdUser, userPlan, paymentPlan,
                 enrollInvite);

@@ -87,7 +87,7 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
                         null,
                         enrollInvite.getLearnerAccessDays() != null ? enrollInvite.getLearnerAccessDays().toString()
                                 : null,
-                        packageSessionId, userPlan.getId());
+                        packageSessionId, userPlan.getId(),null,null);
                 instituteStudentDetails.add(detail);
             }
         } else {
@@ -97,12 +97,12 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
             for (String packageSessionId : packageSessionIds) {
                 InstituteStudentDetails instituteStudentDetail = new InstituteStudentDetails(instituteId,
                         packageSessionId, null, status, new Date(), null,
-                        (accessDays != null ? accessDays.toString() : null), null, userPlan.getId());
+                        (accessDays != null ? accessDays.toString() : null), null, userPlan.getId(),null,null);
                 instituteStudentDetails.add(instituteStudentDetail);
             }
         }
         UserDTO user = learnerBatchEnrollService.checkAndCreateStudentAndAddToBatch(userDTO, instituteId,
-                instituteStudentDetails, learnerPackageSessionsEnrollDTO.getCustomFieldValues(), extraData,learnerExtraDetails);
+                instituteStudentDetails, learnerPackageSessionsEnrollDTO.getCustomFieldValues(), extraData,learnerExtraDetails,enrollInvite);
 
         // Process referral request if present - for donation payments, benefits are
         // activated immediately

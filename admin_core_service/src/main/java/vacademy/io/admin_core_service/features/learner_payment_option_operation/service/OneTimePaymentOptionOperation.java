@@ -71,7 +71,7 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
                 instituteId,
                 instituteStudentDetails,
                 learnerPackageSessionsEnrollDTO.getCustomFieldValues(),
-                extraData,learnerExtraDetails);
+                extraData,learnerExtraDetails,enrollInvite);
 
         PaymentPlan paymentPlan = userPlan.getPaymentPlan();
         if (Objects.isNull(paymentPlan)) {
@@ -142,7 +142,7 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
                     null,
                     accessDays != null ? accessDays.toString() : null,
                     packageSessionId,
-                    userPlan.getId());
+                    userPlan.getId(),null,null);
             detailsList.add(detail);
         }
         return detailsList;

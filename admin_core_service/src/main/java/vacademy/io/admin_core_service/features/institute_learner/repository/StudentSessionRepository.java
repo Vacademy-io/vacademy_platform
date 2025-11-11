@@ -20,21 +20,23 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
     @Transactional
     @Modifying
     @Query(value = "INSERT INTO student_session_institute_group_mapping " +
-            "(id, user_id, enrolled_date, status, institute_enrollment_number, group_id, institute_id, expiry_date, package_session_id, destination_package_session_id, user_plan_id) " +
-            "VALUES (:id, :userId, :enrolledDate, :status, :instituteEnrolledNumber, :groupId, :instituteId, :expiryDate, :packageSessionId, :destinationPackageSessionId, :userPlanId)",
-            nativeQuery = true)
+        "(id, user_id, enrolled_date, status, institute_enrollment_number, group_id, institute_id, expiry_date, package_session_id, destination_package_session_id, user_plan_id, sub_org_id, comma_separated_org_roles) " +
+        "VALUES (:id, :userId, :enrolledDate, :status, :instituteEnrolledNumber, :groupId, :instituteId, :expiryDate, :packageSessionId, :destinationPackageSessionId, :userPlanId, :subOrgId, :commaSeparatedOrgRoles)",
+        nativeQuery = true)
     void addStudentToInstitute(
-            @Param("id") String id,
-            @Param("userId") String userId,
-            @Param("enrolledDate") Date enrolledDate,
-            @Param("status") String status,
-            @Param("instituteEnrolledNumber") String instituteEnrolledNumber,
-            @Param("groupId") String groupId,
-            @Param("instituteId") String instituteId,
-            @Param("expiryDate") Date expiryDate,
-            @Param("packageSessionId") String packageSessionId,
-            @Param("destinationPackageSessionId") String destinationPackageSessionId,
-            @Param("userPlanId") String userPlanId
+        @Param("id") String id,
+        @Param("userId") String userId,
+        @Param("enrolledDate") Date enrolledDate,
+        @Param("status") String status,
+        @Param("instituteEnrolledNumber") String instituteEnrolledNumber,
+        @Param("groupId") String groupId,
+        @Param("instituteId") String instituteId,
+        @Param("expiryDate") Date expiryDate,
+        @Param("packageSessionId") String packageSessionId,
+        @Param("destinationPackageSessionId") String destinationPackageSessionId,
+        @Param("userPlanId") String userPlanId,
+        @Param("subOrgId") String subOrgId,
+        @Param("commaSeparatedOrgRoles") String commaSeparatedOrgRoles
     );
 
     @Modifying

@@ -71,6 +71,9 @@ public class EnrollInvite {
     @Column(name = "is_bundled")
     private Boolean isBundled;
 
+    @Column(name = "setting_json", columnDefinition = "TEXT")
+    private String settingJson;
+
     public EnrollInvite(EnrollInviteDTO enrollInviteDTO) {
         this.id = enrollInviteDTO.getId();
         this.name = enrollInviteDTO.getName();
@@ -86,6 +89,7 @@ public class EnrollInvite {
         this.learnerAccessDays = enrollInviteDTO.getLearnerAccessDays();
         this.webPageMetaDataJson = enrollInviteDTO.getWebPageMetaDataJson();
         this.isBundled = enrollInviteDTO.getIsBundled();
+        this.settingJson = enrollInviteDTO.getSettingJson();
     }
 
     public EnrollInviteDTO toEnrollInviteDTO() {
@@ -104,6 +108,7 @@ public class EnrollInvite {
         enrollInviteDTO.setLearnerAccessDays(learnerAccessDays);
         enrollInviteDTO.setWebPageMetaDataJson(webPageMetaDataJson);
         enrollInviteDTO.setIsBundled(isBundled);
+        enrollInviteDTO.setSettingJson(settingJson);
         return enrollInviteDTO;
     }
 }

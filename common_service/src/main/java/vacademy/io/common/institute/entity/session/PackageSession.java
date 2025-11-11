@@ -54,4 +54,7 @@ public class PackageSession {
     @ManyToOne
     private Group group;
 
+    @Column(name = "is_org_associated")
+    private Boolean isOrgAssociated;
+
 }

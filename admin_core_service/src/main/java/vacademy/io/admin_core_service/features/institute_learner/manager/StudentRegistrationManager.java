@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.institute.controller.InstituteCertificateController;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute_learner.constants.StudentConstants;
 import vacademy.io.admin_core_service.features.institute_learner.dto.*;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
@@ -61,6 +62,8 @@ public class StudentRegistrationManager {
     @Autowired
     private WorkflowTriggerService workflowTriggerService;
 
+    @Autowired
+    private InstituteRepository instituteRepository;
 
     StudentRegistrationManager(InstituteCertificateController instituteCertificateController) {
         this.instituteCertificateController = instituteCertificateController;
@@ -252,7 +255,6 @@ public class StudentRegistrationManager {
         Optional<StudentSessionInstituteGroupMapping> activeDestinationMapping,
         InstituteStudentDetails details
     ) {
-        mapping.setEnrolledDate(new Date());
 
         if (details.getEnrollmentStatus() != null)
             mapping.setStatus(details.getEnrollmentStatus());
@@ -266,7 +268,12 @@ public class StudentRegistrationManager {
             Date baseDate = determineBaseDate(mapping, activeDestinationMapping);
             mapping.setExpiryDate(makeExpiryDate(baseDate, details.getAccessDays()));
         }
-
+        if (activeDestinationMapping.isPresent() && activeDestinationMapping.get().getSubOrg() == null && StringUtils.hasText(details.getSubOrgId())){
+            mapping.setSubOrg(instituteRepository.findById(details.getSubOrgId()).orElseThrow(()-> new VacademyException("Sub Org not found")));
+        }
+        if (activeDestinationMapping.isPresent() && activeDestinationMapping.get().getSubOrg() == null && StringUtils.hasText(details.getCommaSeparatedOrgRoles())){
+            mapping.setCommaSeparatedOrgRoles(details.getCommaSeparatedOrgRoles());
+        }
         return studentSessionRepository.save(mapping).getId();
     }
 
@@ -289,7 +296,9 @@ public class StudentRegistrationManager {
             makeExpiryDate(baseDate, details.getAccessDays()),
             details.getPackageSessionId(),
             details.getDestinationPackageSessionId(),
-            details.getUserPlanId()
+            details.getUserPlanId(),
+            details.getSubOrgId(),
+            details.getCommaSeparatedOrgRoles()
         );
 
         return studentSessionId.toString();
@@ -368,6 +377,12 @@ public class StudentRegistrationManager {
             activePackageSession.setUserPlanId(invitedPackageSession.getUserPlanId());
             activePackageSession.setType(invitedPackageSession.getType());
             activePackageSession.setTypeId(invitedPackageSession.getTypeId());
+        }
+        if (invitedPackageSession.getSubOrg() != null){
+            activePackageSession.setSubOrg(invitedPackageSession.getSubOrg());
+        }
+        if (StringUtils.hasText(invitedPackageSession.getCommaSeparatedOrgRoles())){
+            activePackageSession.setCommaSeparatedOrgRoles(invitedPackageSession.getCommaSeparatedOrgRoles());
         }
         activePackageSession.setExpiryDate(getExpiryDateBasedOnPaymentPlan(activePackageSession,invitedPackageSession.getUserPlanId()));
         return activePackageSession;

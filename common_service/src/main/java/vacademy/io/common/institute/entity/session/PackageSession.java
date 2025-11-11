@@ -56,5 +56,4 @@ public class PackageSession {
 
     @Column(name = "is_org_associated")
     private Boolean isOrgAssociated;
-
 }

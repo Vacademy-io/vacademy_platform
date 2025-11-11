@@ -133,22 +133,78 @@ const handleModalOAuthCallback = async (
   }
 
   if (error) {
-    // Check if we have signup data (user exists but needs to signup)
+    // Check if we have signup data (user doesn't exist but we have OAuth profile)
     const signupData = urlParams.get("signupData");
     const emailVerified = urlParams.get("emailVerified");
 
-    if (signupData && emailVerified === "true") {
-      // User exists but needs to signup - this is not an error, it's a signup flow
+    if (signupData) {
+      // User doesn't exist but we have OAuth data - this is a signup scenario
+      console.log('[modal-learner] 📝 SignupData present - switching to signup flow');
+      
+      // Decode signupData
+      let decodedSignupData = null;
+      try {
+        decodedSignupData = JSON.parse(atob(signupData));
+      } catch (e) {
+        console.log('[modal-learner] ❌ Failed to decode signupData:', e);
+      }
+      
+      // Send signup_needed message to parent
+      const signupPayload = {
+        signupData: decodedSignupData,
+        state: state,
+        emailVerified: emailVerified === 'true'
+      };
+      
+      // Try postMessage (may be blocked by COOP)
+      try {
+        if (window.opener && !window.opener.closed) {
+          console.log('[modal-learner] 📨 Sending signup_needed postMessage to opener');
+          window.opener.postMessage({
+            action: 'oauth_complete',
+            success: false,
+            needsSignup: true,
+            signupData: signupPayload,
+          }, '*');
+        }
+      } catch (e) {
+        console.log('[modal-learner] ❌ Signup postMessage failed:', e);
+      }
+      
+      // localStorage for storage event listeners
+      try {
+        console.log('[modal-learner] 💾 Writing signup_needed to localStorage');
+        localStorage.setItem('OAUTH_RESULT', JSON.stringify({ 
+          type: 'oauth_signup_needed', 
+          data: signupPayload, 
+          ts: Date.now(), 
+          isModalLogin: true 
+        }));
+      } catch (e) {
+        console.log('[modal-learner] ❌ localStorage signup write failed:', e);
+      }
+      
+      // BroadcastChannel fallback
+      try {
+        if (typeof BroadcastChannel !== 'undefined') {
+          console.log('[modal-learner] 📡 Broadcasting signup_needed via BroadcastChannel');
+          const bc = new BroadcastChannel('OAUTH_CHANNEL');
+          bc.postMessage({ 
+            type: 'oauth_signup_needed', 
+            data: signupPayload, 
+            isModalLogin: true 
+          });
+          try { bc.close(); } catch { /* ignore */ }
+        }
+      } catch (e) {
+        console.log('[modal-learner] ❌ BroadcastChannel signup failed:', e);
+      }
     } else {
-      // Genuine error - user doesn't exist
+      // No signupData - genuine error
+      const errorMessage = "We could not find a user for the credentials used. Please sign up to create a new account or contact the administrator.";
+      sendOAuthErrorToParent(errorMessage);
     }
 
-    // For modal login, send clear error message to parent tab via multiple channels
-    const errorMessage = (signupData && emailVerified === "true")
-      ? "We could not find a user for the credentials used. Please sign up to create a new account or contact the administrator."
-      : "We could not find a user for the credentials used. Please sign up to create a new account or contact the administrator.";
-
-    sendOAuthErrorToParent(errorMessage);
     // Close this popup after sending messages
     setTimeout(() => {
       try { window.close(); } catch { /* ignore */ }

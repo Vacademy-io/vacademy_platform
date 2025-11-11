@@ -216,6 +216,140 @@ export function LoginForm({
       return; // Don't proceed with in-popup login
     }
 
+    // Handle OAuth error case in popup mode (when user doesn't exist)
+    if (isPopupWindow) {
+      const error = urlParams.get("error");
+      const signupData = urlParams.get("signupData");
+      const emailVerified = urlParams.get("emailVerified");
+      const state = urlParams.get("state");
+      
+      if (error === 'true') {
+        console.log('[LoginForm] 🚫 POPUP DETECTED WITH ERROR - OAuth login failed');
+        
+        // Check if this is a signup scenario (user doesn't exist but we have OAuth data)
+        if (signupData) {
+          console.log('[LoginForm] 📝 SignupData present - switching to signup flow');
+          
+          // Decode signupData
+          let decodedSignupData = null;
+          try {
+            decodedSignupData = JSON.parse(atob(signupData));
+          } catch (e) {
+            console.log('[LoginForm] ❌ Failed to decode signupData:', e);
+          }
+          
+          // Send signup_needed message to parent
+          const signupPayload = {
+            signupData: decodedSignupData,
+            state: state,
+            emailVerified: emailVerified === 'true'
+          };
+          
+          try {
+            if (window.opener && !window.opener.closed) {
+              console.log('[LoginForm] 📨 Sending signup_needed postMessage to opener');
+              window.opener.postMessage({
+                action: 'oauth_complete',
+                success: false,
+                needsSignup: true,
+                signupData: signupPayload,
+              }, '*');
+            }
+          } catch (e) {
+            console.log('[LoginForm] ❌ Signup postMessage failed:', e);
+          }
+          
+          // localStorage for storage event listeners
+          try {
+            console.log('[LoginForm] 💾 Writing signup_needed to localStorage');
+            localStorage.setItem('OAUTH_RESULT', JSON.stringify({ 
+              type: 'oauth_signup_needed', 
+              data: signupPayload, 
+              ts: Date.now(), 
+              isModalLogin: true 
+            }));
+          } catch (e) {
+            console.log('[LoginForm] ❌ localStorage signup write failed:', e);
+          }
+          
+          // BroadcastChannel fallback
+          try {
+            if (typeof BroadcastChannel !== 'undefined') {
+              console.log('[LoginForm] 📡 Broadcasting signup_needed via BroadcastChannel');
+              const bc = new BroadcastChannel('OAUTH_CHANNEL');
+              bc.postMessage({ 
+                type: 'oauth_signup_needed', 
+                data: signupPayload, 
+                isModalLogin: true 
+              });
+              try { bc.close(); } catch { /* ignore */ }
+            }
+          } catch (e) {
+            console.log('[LoginForm] ❌ BroadcastChannel signup failed:', e);
+          }
+        } else {
+          // No signupData - genuine error
+          const errorMessage = "We could not find a user for the credentials used. Please sign up to create a new account or contact the administrator.";
+          
+          // Send error via multiple channels (same as modal-learner.tsx)
+          try {
+            if (window.opener && !window.opener.closed) {
+              console.log('[LoginForm] 📨 Sending error postMessage to opener');
+              window.opener.postMessage({
+                action: 'oauth_complete',
+                success: false,
+                error: errorMessage,
+              }, '*');
+            }
+          } catch (e) {
+            console.log('[LoginForm] ❌ Error postMessage failed:', e);
+          }
+          
+          // localStorage for storage event listeners
+          try {
+            console.log('[LoginForm] 💾 Writing error to localStorage');
+            localStorage.setItem('OAUTH_RESULT', JSON.stringify({ 
+              type: 'oauth_error', 
+              data: { message: errorMessage }, 
+              ts: Date.now(), 
+              isModalLogin: true 
+            }));
+          } catch (e) {
+            console.log('[LoginForm] ❌ localStorage error write failed:', e);
+          }
+          
+          // BroadcastChannel fallback
+          try {
+            if (typeof BroadcastChannel !== 'undefined') {
+              console.log('[LoginForm] 📡 Broadcasting error via BroadcastChannel');
+              const bc = new BroadcastChannel('OAUTH_CHANNEL');
+              bc.postMessage({ 
+                type: 'oauth_error', 
+                data: { message: errorMessage }, 
+                isModalLogin: true 
+              });
+              try { bc.close(); } catch { /* ignore */ }
+            }
+          } catch (e) {
+            console.log('[LoginForm] ❌ BroadcastChannel error failed:', e);
+          }
+        }
+        
+        // Close popup after short delay
+        console.log('[LoginForm] 🔒 Closing popup in 800ms');
+        setTimeout(() => {
+          try { 
+            console.log('[LoginForm] 👋 Closing popup now');
+            window.close(); 
+          } catch (e) {
+            console.log('[LoginForm] ❌ window.close() failed:', e);
+          }
+        }, 800);
+        
+        return; // Don't proceed with rendering login form
+      }
+    }
+
     if (
       isNullOrEmptyOrUndefined(accessToken) ||
       isNullOrEmptyOrUndefined(refreshToken)

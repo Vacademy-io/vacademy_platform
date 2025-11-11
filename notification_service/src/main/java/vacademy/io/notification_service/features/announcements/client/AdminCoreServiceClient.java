@@ -12,6 +12,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -23,9 +27,13 @@ import java.util.Map;
 public class AdminCoreServiceClient {
 
     private final RestTemplate restTemplate;
+    private final InternalClientUtils internalClientUtils;
 
     @Value("${admin.core.service.baseurl:http://admin-core-service.vacademy.svc.cluster.local:8072}")
     private String adminCoreServiceBaseUrl;
+
+    @Value("${spring.application.name:notification_service}")
+    private String clientName;
 
     /**
      * Get faculty user IDs by package sessions - with caching and retry
@@ -264,6 +272,63 @@ public class AdminCoreServiceClient {
             } else {
                 log.error("Error calling admin-core service for users by custom field filters", e);
             }
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Get converted user IDs for a campaign/audience
+     * Used to resolve AUDIENCE recipient type in announcements
+     * 
+     * @param audienceId Campaign/audience ID
+     * @param instituteId Institute ID for security validation
+     * @return List of user IDs who were converted from this campaign
+     */
+    @Retryable(value = {RestClientException.class}, maxAttempts = 3, backoff = @Backoff(delay = 1000))
+    public List<String> getConvertedUsersByCampaign(String audienceId, String instituteId) {
+        log.debug("Calling admin-core service to get converted users for campaign: {} (institute: {})",
+                audienceId, instituteId);
+
+        if (audienceId == null || audienceId.isBlank() || instituteId == null || instituteId.isBlank()) {
+            log.warn("Campaign ID or Institute ID is missing");
+            return new ArrayList<>();
+        }
+
+        try {
+            String route = "/admin-core-service/internal/campaign/" + instituteId + "/" + audienceId + "/users";
+
+            log.debug("Calling INTERNAL URL: {}{}", adminCoreServiceBaseUrl, route);
+
+            // Use InternalClientUtils to automatically add clientName and Signature headers
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.GET.name(),
+                    adminCoreServiceBaseUrl,
+                    route,
+                    null
+            );
+
+            // Parse JSON body to List<String>
+            List<String> userIds;
+            String body = response.getBody();
+            if (body == null || body.isBlank()) {
+                userIds = new ArrayList<>();
+            } else {
+                ObjectMapper mapper = new ObjectMapper();
+                userIds = mapper.readValue(body, new TypeReference<List<String>>() {});
+            }
+
+            if (userIds == null) {
+                userIds = new ArrayList<>();
+            }
+
+            log.info("Found {} converted users for campaign {} (institute: {})",
+                    userIds.size(), audienceId, instituteId);
+            return userIds;
+
+        } catch (Exception e) {
+            log.error("Error calling admin-core service for converted users by campaign {} (institute: {})",
+                    audienceId, instituteId, e);
             return new ArrayList<>();
         }
     }

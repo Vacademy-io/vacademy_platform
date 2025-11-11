@@ -202,6 +202,9 @@ public class InstituteAnnouncementSettingsRequest {
         
         @JsonProperty("retention_days")
         private Integer retentionDays = 365;
+
+        @JsonProperty("email_tracking_enabled")
+        private Boolean emailTrackingEnabled = true;
     }
     
     @Data

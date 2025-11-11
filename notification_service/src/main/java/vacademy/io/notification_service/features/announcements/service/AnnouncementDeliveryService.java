@@ -5,11 +5,19 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+import vacademy.io.notification_service.constants.NotificationConstants;
 import vacademy.io.notification_service.features.announcements.client.AuthServiceClient;
-import vacademy.io.notification_service.features.announcements.entity.*;
+import vacademy.io.notification_service.features.announcements.entity.Announcement;
+import vacademy.io.notification_service.features.announcements.entity.AnnouncementMedium;
+import vacademy.io.notification_service.features.announcements.entity.RecipientMessage;
+import vacademy.io.notification_service.features.announcements.entity.RichTextData;
 import vacademy.io.notification_service.features.announcements.enums.MediumType;
 import vacademy.io.notification_service.features.announcements.enums.MessageStatus;
-import vacademy.io.notification_service.features.announcements.repository.*;
+import vacademy.io.notification_service.features.announcements.repository.AnnouncementMediumRepository;
+import vacademy.io.notification_service.features.announcements.repository.AnnouncementRepository;
+import vacademy.io.notification_service.features.announcements.repository.RecipientMessageRepository;
+import vacademy.io.notification_service.features.announcements.repository.RichTextDataRepository;
 import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 import vacademy.io.notification_service.service.EmailService;
@@ -21,6 +29,7 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -37,6 +46,7 @@ public class AnnouncementDeliveryService {
     private final EmailService emailService;
     private final WhatsAppService whatsAppService;
     private final PushNotificationService pushNotificationService;
+    private final UserAnnouncementPreferenceService userAnnouncementPreferenceService;
     
     // Service clients for user resolution
     private final AuthServiceClient authServiceClient;
@@ -115,14 +125,13 @@ public class AnnouncementDeliveryService {
         
         Map<String, Object> emailConfig = medium.getMediumConfig();
         String subject = (String) emailConfig.getOrDefault("subject", announcement.getTitle());
-        String template = (String) emailConfig.getOrDefault("template", "announcement_email");
         String forceToEmail = (String) emailConfig.get("force_to_email");
         String fromEmail = (String) emailConfig.get("fromEmail");
         String fromName = (String) emailConfig.get("fromName");
-        String emailType = (String) emailConfig.get("emailType");
+        String resolvedEmailType = determineEmailType((String) emailConfig.get("emailType"));
         
         log.info("Delivering announcement {} via email with type: {}, from: {}, subject: {}", 
-                 announcement.getId(), emailType, fromEmail, subject);
+                 announcement.getId(), resolvedEmailType, fromEmail, subject);
         
         // Batch resolve user emails for efficiency (scalable for 0.15M+ users)
         List<String> userIds = pendingMessages.stream()
@@ -150,12 +159,8 @@ public class AnnouncementDeliveryService {
         for (RecipientMessage message : pendingMessages) {
             if (message.getMediumType() != null && message.getMediumType() != MediumType.EMAIL) continue; // skip others
             try {
-                // Update message status
                 message.setMediumType(MediumType.EMAIL);
-                message.setStatus(MessageStatus.SENT);
-                message.setSentAt(LocalDateTime.now());
                 
-                // Get user email from batch-resolved map
                 String userEmail = forceToEmail != null && !forceToEmail.isBlank() 
                     ? forceToEmail 
                     : (userEmailMap.containsKey(message.getUserId()) 
@@ -163,12 +168,31 @@ public class AnnouncementDeliveryService {
                         : null);
                 
                 if (userEmail != null) {
+                String resolvedUsername = resolveUsername(message, userEmailMap);
+                String fromForPreference = determineFromAddress(fromEmail, announcement.getInstituteId(), resolvedEmailType);
+                    if (fromForPreference != null &&
+                            userAnnouncementPreferenceService.isEmailSenderUnsubscribed(
+                                    message.getUserId(), announcement.getInstituteId(), resolvedEmailType, fromForPreference)) {
+                        failedCount++;
+                        message.setStatus(MessageStatus.FAILED);
+                        message.setErrorMessage("User unsubscribed from emails sent from " + fromForPreference + " (" + resolvedEmailType + ")");
+                        recipientMessageRepository.save(message);
+                        createEmailNotificationLog(announcement, message, userEmail, "FAILED", message.getErrorMessage());
+                        log.info("Skipping email delivery to user {} (message {}) due to unsubscribe preference on {} ({})",
+                                resolvedUsername, message.getId(), fromForPreference, resolvedEmailType);
+                        continue;
+                    }
+
+                    // Update message status now that we're sending
+                    message.setStatus(MessageStatus.SENT);
+                    message.setSentAt(LocalDateTime.now());
+                    
                     // Process HTML content with variables (similar to WhatsApp)
                     String processedContent = processHtmlVariables(content.getContent(), message, announcement);
                     
                     // Send email using existing service with email type, custom from address, and name
                     emailService.sendHtmlEmail(userEmail, subject, "announcement-service", processedContent, 
-                                             instituteId, fromEmail, fromName, emailType);
+                                             instituteId, fromEmail, fromName, resolvedEmailType);
                     
                     message.setStatus(MessageStatus.DELIVERED);
                     message.setDeliveredAt(LocalDateTime.now());
@@ -249,7 +273,18 @@ public class AnnouncementDeliveryService {
         for (RecipientMessage message : pendingMessages) {
             if (message.getMediumType() != null && message.getMediumType() != MediumType.WHATSAPP) continue; // skip others
             try {
-                // Update message status
+                String resolvedUsername = resolveUsernameById(message.getUserId());
+                if (userAnnouncementPreferenceService.isWhatsAppUnsubscribed(message.getUserId(), announcement.getInstituteId())) {
+                    message.setMediumType(MediumType.WHATSAPP);
+                    message.setStatus(MessageStatus.FAILED);
+                    message.setErrorMessage("User unsubscribed from WhatsApp notifications");
+                    recipientMessageRepository.save(message);
+                    createNotificationLog(announcement, message, "WHATSAPP", "FAILED", message.getErrorMessage());
+                    log.info("Skipping WhatsApp delivery to user {} (message {}) due to unsubscribe preference",
+                            resolvedUsername, message.getId());
+                    continue;
+                }
+
                 message.setMediumType(MediumType.WHATSAPP);
                 message.setStatus(MessageStatus.SENT);
                 message.setSentAt(LocalDateTime.now());
@@ -372,44 +407,16 @@ public class AnnouncementDeliveryService {
         }
     }
 
-    private String resolveUserEmail(String userId) {
-        log.debug("Resolving email for user: {}", userId);
-        
-        try {
-            List<User> users = authServiceClient.getUsersByIds(List.of(userId));
-            if (!users.isEmpty()) {
-                User user = users.get(0);
-                String email = user.getEmail();
-                log.debug("Resolved email for user {}: {}", userId, email != null ? "***@***.***" : "null");
-                return email;
-            } else {
-                log.warn("No user found with ID: {}", userId);
-                return null;
-            }
-        } catch (Exception e) {
-            log.error("Error resolving email for user: {}", userId, e);
-            return null;
-        }
-    }
-
     private String resolveUserPhone(String userId) {
         log.debug("Resolving phone for user: {}", userId);
-        
-        try {
-            List<User> users = authServiceClient.getUsersByIds(List.of(userId));
-            if (!users.isEmpty()) {
-                User user = users.get(0);
-                String phone = user.getMobileNumber();
-                log.debug("Resolved phone for user {}: {}", userId, phone != null ? "***-***-****" : "null");
-                return phone;
-            } else {
-                log.warn("No user found with ID: {}", userId);
-                return null;
-            }
-        } catch (Exception e) {
-            log.error("Error resolving phone for user: {}", userId, e);
-            return null;
+        User user = fetchUser(userId);
+        if (user != null) {
+            String phone = user.getMobileNumber();
+            log.debug("Resolved phone for user {}: {}", userId, phone != null ? "***-***-****" : "null");
+            return phone;
         }
+        log.warn("No user found with ID: {}", userId);
+        return null;
     }
 
     /**
@@ -435,6 +442,71 @@ public class AnnouncementDeliveryService {
         }
         
         return userMap;
+    }
+
+    private String resolveUsername(RecipientMessage message, Map<String, User> userCache) {
+        if (message == null) {
+            return null;
+        }
+        User cached = userCache != null ? userCache.get(message.getUserId()) : null;
+        if (cached != null && StringUtils.hasText(cached.getUsername())) {
+            return cached.getUsername();
+        }
+        return resolveUsernameById(message.getUserId());
+    }
+
+    private String resolveUsernameById(String userId) {
+        User user = fetchUser(userId);
+        if (user != null && StringUtils.hasText(user.getUsername())) {
+            return user.getUsername();
+        }
+        return null;
+    }
+
+    private String determineFromAddress(String customFromEmail, String instituteId, String emailType) {
+        if (StringUtils.hasText(customFromEmail)) {
+            return customFromEmail;
+        }
+        List<EmailService.EmailSenderInfo> senders = emailService.listInstituteEmailSenders(instituteId);
+        String normalizedType = emailType != null ? emailType.trim().toUpperCase() : null;
+
+        if (StringUtils.hasText(normalizedType)) {
+            Optional<String> matched = senders.stream()
+                    .filter(info -> normalizedType.equalsIgnoreCase(info.getEmailType()))
+                    .map(EmailService.EmailSenderInfo::getFromAddress)
+                    .filter(StringUtils::hasText)
+                    .map(String::trim)
+                    .findFirst();
+            if (matched.isPresent()) {
+                return matched.get();
+            }
+        }
+
+        return senders.stream()
+                .map(EmailService.EmailSenderInfo::getFromAddress)
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private String determineEmailType(String configuredType) {
+        if (StringUtils.hasText(configuredType)) {
+            return configuredType.trim();
+        }
+        return NotificationConstants.UTILITY_EMAIL;
+    }
+
+    private User fetchUser(String userId) {
+        try {
+            List<User> users = authServiceClient.getUsersByIds(List.of(userId));
+            if (!users.isEmpty()) {
+                return users.get(0);
+            }
+        } catch (Exception e) {
+            log.warn("Unable to resolve user {}: {}", userId, e.getMessage());
+        }
+        return null;
     }
 
     private Map<String, String> prepareDynamicValues(Map<String, String> template, RecipientMessage message, 

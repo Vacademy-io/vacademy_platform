@@ -20,7 +20,7 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
 
 
     // Get all package sessions of an institute_id and of a session_id
-    @Query(value = "SELECT ps.id, ps.level_id, ps.session_id, ps.start_time, ps.updated_at, ps.created_at, ps.status, ps.package_id, ps.group_id " +
+    @Query(value = "SELECT ps.id, ps.level_id, ps.session_id, ps.start_time, ps.updated_at, ps.created_at, ps.status, ps.package_id, ps.group_id, ps.is_org_associated " +
             "FROM package_session ps " +
             "JOIN package p ON ps.package_id = p.id " +
             "JOIN package_institute pi ON p.id = pi.package_id " +
@@ -32,7 +32,7 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
 
 
 
-    @Query(value = "SELECT ps.id, ps.level_id, ps.session_id, ps.start_time, ps.updated_at, ps.created_at, ps.status, ps.package_id " +
+    @Query(value = "SELECT ps.id, ps.level_id, ps.session_id, ps.start_time, ps.updated_at, ps.created_at, ps.status, ps.package_id, ps.group_id, ps.is_org_associated " +
             "FROM package_session ps " +
             "JOIN package p ON ps.package_id = p.id " +
             "JOIN package_institute pi ON p.id = pi.package_id " +
@@ -172,7 +172,7 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
     Optional<PackageSession> findByPackageEntityIdAndSessionIdAndLevelId(String packageId, String sessionId, String levelId);
 
     @Query(value = """
-    SELECT ps.id, ps.level_id, ps.session_id, ps.start_time, ps.updated_at, ps.created_at, ps.status, ps.package_id, ps.group_id
+    SELECT ps.id, ps.level_id, ps.session_id, ps.start_time, ps.updated_at, ps.created_at, ps.status, ps.package_id, ps.group_id, ps.is_org_associated
     FROM package_session ps
     WHERE ps.id IN (:packageSessionIds)
     """, nativeQuery = true)

@@ -72,7 +72,7 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
                 instituteId,
                 instituteStudentDetails,
                 learnerPackageSessionsEnrollDTO.getCustomFieldValues(),
-                extraData,learnerExtraDetails);
+                extraData,learnerExtraDetails,enrollInvite);
 
         PaymentPlan paymentPlan = userPlan.getPaymentPlan();
         if (Objects.isNull(paymentPlan)) {
@@ -140,7 +140,7 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
                     null,
                     accessDays != null ? accessDays.toString() : null,
                     packageSessionId,
-                    userPlan.getId());
+                    userPlan.getId(),null,null);
             detailsList.add(detail);
         }
         return detailsList;

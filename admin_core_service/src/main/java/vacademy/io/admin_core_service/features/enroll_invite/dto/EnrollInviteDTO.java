@@ -27,4 +27,5 @@ public class EnrollInviteDTO {
     private Boolean isBundled;
     private List<InstituteCustomFieldDTO> instituteCustomFields;
     private List<PackageSessionToPaymentOptionDTO> packageSessionToPaymentOptions;
+    private String settingJson;
 }

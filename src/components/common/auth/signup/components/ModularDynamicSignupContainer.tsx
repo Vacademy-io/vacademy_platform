@@ -76,6 +76,7 @@ export function ModularDynamicSignupContainer({
     | { type: "alreadyEnrolled" | "oauthError" | "network" | "validation"; message: string }
     | null
   >(null);
+  const [oauthDataProcessed, setOauthDataProcessed] = useState(false);
 
   // Use backend settings if available, otherwise fall back to defaults
   const effectiveSettings = settings || {
@@ -93,6 +94,56 @@ export function ModularDynamicSignupContainer({
     passwordDelivery: "none",
   };
 
+  // Check for OAuth signup data from login flow on mount
+  useEffect(() => {
+    if (oauthDataProcessed) return;
+    
+    const checkOAuthSignupData = () => {
+      try {
+        const storedData = sessionStorage.getItem('oauth_signup_data');
+        if (storedData) {
+          console.log('[Signup] Found OAuth signup data from login flow');
+          const parsedData = JSON.parse(storedData);
+          setOauthDataProcessed(true);
+          // Store in state to be processed
+          setOAuthData(parsedData);
+          // Determine next step based on OAuth data
+          const { signupData } = parsedData;
+          if (signupData?.provider === "github" && !signupData?.email) {
+            // GitHub with private email - ask for email
+            setSelectedProvider("oauth");
+            setCurrentStep("emailInput");
+          } else if (signupData?.email) {
+            // Has email - check if credentials needed
+            setSelectedProvider("oauth");
+            const needsUsername =
+              effectiveSettings.usernameStrategy === "manual" ||
+              effectiveSettings.usernameStrategy === " ";
+            const needsPassword =
+              effectiveSettings.passwordStrategy === "manual" ||
+              effectiveSettings.passwordStrategy === " ";
+            
+            if (needsUsername || needsPassword) {
+              setEmailForOtp(signupData.email);
+              setFullNameForOtp(signupData.name || "");
+              setCurrentStep("credentials");
+            } else {
+              // Direct registration - will be handled by handleOAuthSuccess
+              setEmailForOtp(signupData.email);
+              setFullNameForOtp(signupData.name || "");
+              setCurrentStep("credentials");
+            }
+          }
+          // Clean up
+          sessionStorage.removeItem('oauth_signup_data');
+        }
+      } catch (e) {
+        console.error('[Signup] Failed to process OAuth signup data:', e);
+      }
+    };
+    
+    checkOAuthSignupData();
+  }, [oauthDataProcessed, effectiveSettings.usernameStrategy, effectiveSettings.passwordStrategy]);
 
   // Handle success step callback execution
   useEffect(() => {

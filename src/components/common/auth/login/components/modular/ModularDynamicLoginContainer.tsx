@@ -224,6 +224,21 @@ export function ModularDynamicLoginContainer({
               }
             }, 100);
           }
+        } else if (data.needsSignup && data.signupData) {
+          // User doesn't exist but we have OAuth data - switch to signup
+          console.log('[OAuth Parent] User needs signup, switching to signup flow with OAuth data');
+          if (onSwitchToSignup) {
+            // Pass the OAuth data to signup (will be handled by the parent component)
+            onSwitchToSignup(data.signupData?.signupData?.email || '', false);
+            // Store OAuth data for signup to consume
+            try {
+              sessionStorage.setItem('oauth_signup_data', JSON.stringify(data.signupData));
+            } catch (e) {
+              console.error('[OAuth Parent] Failed to store signup data:', e);
+            }
+          } else {
+            toast.info("Please sign up to continue");
+          }
         } else if (data.error) {
           toast.error(data.error || "OAuth login failed. Please try again.", {
             duration: 5000,
@@ -239,6 +254,19 @@ export function ModularDynamicLoginContainer({
         if (!processed && payload?.accessToken && payload?.refreshToken) {
           processed = true;
           await finalizeLoginWithTokens(payload.accessToken, payload.refreshToken);
+        }
+      } else if (data && data.type === 'oauth_signup_needed' && data.data) {
+        // User doesn't exist but we have OAuth data - switch to signup
+        console.log('[OAuth Parent] User needs signup (standard path), switching to signup flow');
+        if (onSwitchToSignup) {
+          onSwitchToSignup(data.data?.signupData?.email || '', false);
+          try {
+            sessionStorage.setItem('oauth_signup_data', JSON.stringify(data.data));
+          } catch (e) {
+            console.error('[OAuth Parent] Failed to store signup data:', e);
+          }
+        } else {
+          toast.info("Please sign up to continue");
         }
       } else if (data && data.type === 'oauth_error') {
         toast.error(data?.data?.message || "We could not find a user for the credentials used. Please sign up to create a new account or contact the administrator.");
@@ -267,6 +295,19 @@ export function ModularDynamicLoginContainer({
               // Clean up after processing modal login
               localStorage.removeItem('OAUTH_RESULT');
             }
+          } else if (parsed?.isModalLogin !== false && parsed?.type === 'oauth_signup_needed' && parsed?.data) {
+            console.log('[OAuth Parent] User needs signup (storage), switching to signup flow');
+            if (onSwitchToSignup) {
+              onSwitchToSignup(parsed.data?.signupData?.email || '', false);
+              try {
+                sessionStorage.setItem('oauth_signup_data', JSON.stringify(parsed.data));
+              } catch (e) {
+                console.error('[OAuth Parent] Failed to store signup data:', e);
+              }
+            } else {
+              toast.info("Please sign up to continue");
+            }
+            localStorage.removeItem('OAUTH_RESULT');
           } else if (parsed?.isModalLogin !== false && parsed?.type === 'oauth_error') {
             toast.error(parsed?.data?.message || 'We could not find a user for the credentials used. Please sign up to create a new account or contact the administrator.');
             localStorage.removeItem('OAUTH_RESULT');
@@ -291,6 +332,18 @@ export function ModularDynamicLoginContainer({
               processed = true;
               await finalizeLoginWithTokens(accessToken, refreshToken);
             }
+          } else if (msg.isModalLogin !== false && msg.type === 'oauth_signup_needed' && msg.data) {
+            console.log('[OAuth Parent] User needs signup (broadcast), switching to signup flow');
+            if (onSwitchToSignup) {
+              onSwitchToSignup(msg.data?.signupData?.email || '', false);
+              try {
+                sessionStorage.setItem('oauth_signup_data', JSON.stringify(msg.data));
+              } catch (e) {
+                console.error('[OAuth Parent] Failed to store signup data:', e);
+              }
+            } else {
+              toast.info("Please sign up to continue");
+            }
           } else if (msg.isModalLogin !== false && msg.type === 'oauth_error') {
             toast.error(msg?.data?.message || 'We could not find a user for the credentials used. Please sign up to create a new account or contact the administrator.');
           }
@@ -313,6 +366,19 @@ export function ModularDynamicLoginContainer({
               // Clean up after processing modal login
               localStorage.removeItem('OAUTH_RESULT');
             }
+          } else if (parsed?.isModalLogin !== false && parsed?.type === 'oauth_signup_needed' && parsed?.data) {
+            console.log('[OAuth Parent] User needs signup (checkLocal), switching to signup flow');
+            if (onSwitchToSignup) {
+              onSwitchToSignup(parsed.data?.signupData?.email || '', false);
+              try {
+                sessionStorage.setItem('oauth_signup_data', JSON.stringify(parsed.data));
+              } catch (e) {
+                console.error('[OAuth Parent] Failed to store signup data:', e);
+              }
+            } else {
+              toast.info("Please sign up to continue");
+            }
+            localStorage.removeItem('OAUTH_RESULT');
           } else if (parsed?.isModalLogin !== false && parsed?.type === 'oauth_error') {
             toast.error(parsed?.data?.message || 'OAuth authentication failed');
             localStorage.removeItem('OAUTH_RESULT');

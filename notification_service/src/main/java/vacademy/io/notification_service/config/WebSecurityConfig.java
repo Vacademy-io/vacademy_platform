@@ -53,7 +53,7 @@ public class WebSecurityConfig {
             "/notification-service/v1/institute-settings/**",
             // SSE streaming endpoints
             "/notification-service/v1/sse/**",
-            "notification-service/public/**"
+            "/notification-service/public/**"
     };
 
     @Autowired

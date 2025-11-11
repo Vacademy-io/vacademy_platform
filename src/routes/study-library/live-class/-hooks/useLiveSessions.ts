@@ -39,21 +39,6 @@ const fetchLiveAndUpcomingSessions = async (
       isSessionUpcomingTimezoneAware
     );
 
-    // Simple debug logging
-    console.log("Current time:", new Date().toISOString());
-    console.log("Live sessions:", live_sessions.length);
-    console.log("Upcoming sessions:", upcoming_sessions.length);
-
-    allSessions.forEach((session, index) => {
-      console.log(
-        `Session ${index + 1}: ${session.title} - ${
-          session.timezone
-        } - Live: ${isSessionLiveTimezoneAware(
-          session
-        )} - Upcoming: ${isSessionUpcomingTimezoneAware(session)}`
-      );
-    });
-
     // Sort upcoming sessions by date and time
     upcoming_sessions.sort((a, b) => {
       const dateA = new Date(`${a.meeting_date}T${a.start_time}`);
@@ -65,7 +50,6 @@ const fetchLiveAndUpcomingSessions = async (
       live_sessions,
       upcoming_sessions,
     };
-    console.log("live", transformedData);
 
     return transformedData;
   } catch (error) {

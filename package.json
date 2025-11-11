@@ -90,6 +90,7 @@
     "@react-pdf-viewer/thumbnail": "^3.12.0",
     "@react-pdf-viewer/toolbar": "^3.12.0",
     "@react-pdf-viewer/zoom": "^3.12.0",
+    "@sentry/react": "^10.24.0",
     "@stripe/react-stripe-js": "^3.9.0",
     "@stripe/stripe-js": "^7.8.0",
     "@tabler/icons-react": "^3.35.0",

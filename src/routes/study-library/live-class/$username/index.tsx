@@ -19,6 +19,7 @@ import { SessionDetails } from "../-types/types";
 import { SessionStreamingServiceType } from "@/routes/register/live-class/-types/enum";
 import { useMarkAttendance } from "../-hooks/useMarkAttendance";
 import { toast } from "sonner";
+import * as Sentry from "@sentry/react";
 
 export const Route = createFileRoute("/study-library/live-class/$username/")({
   component: RouteComponent,
@@ -124,39 +125,36 @@ function RouteComponent() {
       !isSessionsLoading &&
       batchId
     ) {
-      console.log("Checking active sessions...");
-      console.log("Live sessions:", sessions?.live_sessions?.length);
-      console.log("Upcoming sessions:", sessions?.upcoming_sessions?.length);
-
       // Combine live and upcoming sessions
       const allSessions = [
         ...(sessions?.live_sessions ?? []),
         ...(sessions?.upcoming_sessions ?? []),
       ];
 
-      console.log("Total sessions:", allSessions.length);
-
       // Get sessions that are currently active (in waiting room or live)
       const activeSessionsData = getActiveSessions(allSessions);
-
-      console.log("Active sessions found:", activeSessionsData.length);
-      activeSessionsData.forEach(({ session, status }) => {
-        console.log(
-          `- ${session.title}: isInWaitingRoom=${status.isInWaitingRoom}, isLive=${status.isLive}`
+      try {
+        if (activeSessionsData.length === 0) {
+          // No active sessions, redirect to live-class page
+          Sentry.logger.info(
+            Sentry.logger
+              .fmt`No active live sessions found for user: '${username}'. Redirecting to live-class page.`
+          );
+          navigate({ to: "/study-library/live-class" });
+        } else if (activeSessionsData.length === 1) {
+          // Exactly one active session, auto-navigate
+          const { session, status } = activeSessionsData[0];
+          handleNavigateToSession(session, status.isInWaitingRoom);
+        } else {
+          // Multiple active sessions, show selection dialog
+          setActiveSessions(activeSessionsData);
+          setShowSessionSelection(true);
+        }
+      } catch (err) {
+        console.error(
+          `Error processing active sessions for user: ${username}`,
+          err
         );
-      });
-
-      if (activeSessionsData.length === 0) {
-        // No active sessions, redirect to live-class page
-        navigate({ to: "/study-library/live-class" });
-      } else if (activeSessionsData.length === 1) {
-        // Exactly one active session, auto-navigate
-        const { session, status } = activeSessionsData[0];
-        handleNavigateToSession(session, status.isInWaitingRoom);
-      } else {
-        // Multiple active sessions, show selection dialog
-        setActiveSessions(activeSessionsData);
-        setShowSessionSelection(true);
       }
     }
   }, [
@@ -187,16 +185,25 @@ function RouteComponent() {
         );
 
         if (hasToken && hasStudentDetails && hasInstituteDetails) {
-          console.log("user is authenticated");
+          Sentry.logger.info(
+            Sentry.logger
+              .fmt`User with username: '${username}' is authenticated.`
+          );
           setAuthState("authenticated");
         } else {
-          // User is not authenticated, show login form
-          console.log("user is not authenticated");
-          console.log("Domain routing state:", domainRouting);
+          Sentry.logger.info(
+            Sentry.logger
+              .fmt`User with username: ${username} is not authenticated.`
+          );
           setAuthState("unauthenticated");
         }
       } catch (error) {
         console.error("Error checking authentication:", error);
+        Sentry.logger.error(
+          Sentry.logger
+            .fmt`User: '${username}' encountered an error during authentication check.`,
+          { error }
+        );
         setAuthState("unauthenticated");
       }
     };

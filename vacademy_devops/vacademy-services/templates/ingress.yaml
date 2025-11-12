@@ -61,6 +61,13 @@ spec:
                 name: notification-service
                 port:
                   number: {{ .Values.services.notification_service.port }}
+          - path: /ai-service
+            pathType: Prefix
+            backend:
+              service:
+                name: ai-service
+                port:
+                  number: {{ .Values.services.ai_service.port }}
           - path: /login/oauth2
             pathType: Prefix
             backend:

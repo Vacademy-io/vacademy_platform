@@ -2,22 +2,16 @@ package vacademy.io.auth_service.feature.auth.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import vacademy.io.common.auth.entity.User;
-import vacademy.io.common.auth.entity.UserRole;
+import vacademy.io.auth_service.feature.auth.service.UserDetailsCacheService;
 import vacademy.io.common.auth.model.CustomUserDetails;
-import vacademy.io.common.auth.repository.UserRepository;
-import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.auth.service.UserActivityTrackingService;
 
 import jakarta.servlet.http.HttpServletRequest;
-import java.util.List;
-import java.util.Optional;
 
 
 @RestController
@@ -26,13 +20,10 @@ public class AuthInternalController {
 
 
     @Autowired
-    UserRepository userRepository;
-
-    @Autowired
-    UserRoleRepository userRoleRepository;
-
-    @Autowired
     UserActivityTrackingService userActivityTrackingService;
+
+    @Autowired
+    UserDetailsCacheService userDetailsCacheService;
 
     @GetMapping("/user")
     public ResponseEntity<CustomUserDetails> getUserDetails(@RequestParam String userName,
@@ -54,15 +45,7 @@ public class AuthInternalController {
             usernameWithoutInstitute = stringUsernameSplit[1];
         }
 
-        Optional<User> user = userRepository.findByUsername(usernameWithoutInstitute);
-
-        if (user.isEmpty()) {
-            throw new UsernameNotFoundException("could not found user..!!");
-        }
-
-        List<UserRole> userRoles = userRoleRepository.findByUser(user.get());
-        CustomUserDetails customUserDetails = new CustomUserDetails(user.get(), instituteId, userRoles);
-        customUserDetails.setPassword(null);
+        CustomUserDetails customUserDetails = userDetailsCacheService.getCustomUserDetails(usernameWithoutInstitute, instituteId);
 
         // Track user activity asynchronously
         long responseTime = System.currentTimeMillis() - startTime;
@@ -70,7 +53,7 @@ public class AuthInternalController {
         String userAgent = request.getHeader("User-Agent");
 
         userActivityTrackingService.logUserActivity(
-                user.get().getId(),
+                customUserDetails.getUserId(),
                 instituteId,
                 serviceName != null ? serviceName : "auth-service",
                 "/auth-service/v1/internal/user",
@@ -85,7 +68,7 @@ public class AuthInternalController {
         // Create or update session if session token is provided
         if (sessionToken != null && instituteId != null) {
             userActivityTrackingService.createOrUpdateSession(
-                    user.get().getId(),
+                    customUserDetails.getUserId(),
                     instituteId,
                     sessionToken,
                     ipAddress,

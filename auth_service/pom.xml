@@ -22,6 +22,16 @@
             <artifactId>common_service</artifactId>
             <version>0.0.2-SNAPSHOT</version>
         </dependency>
+        <!-- Spring Cache starter -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-cache</artifactId>
+        </dependency>
+        <!-- Caffeine cache for in-memory caching with TTL -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
         <!-- Sentry Spring Boot Integration for Performance Monitoring -->
         <dependency>
             <groupId>io.sentry</groupId>

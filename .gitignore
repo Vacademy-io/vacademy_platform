@@ -102,3 +102,17 @@ docker-compose.override.yml
 *.log
 .vscode/
 .idea/
+
+# AI Service (Python)
+ai_service/__pycache__/
+ai_service/.venv/
+ai_service/venv/
+ai_service/.pytest_cache/
+ai_service/.mypy_cache/
+ai_service/.ruff_cache/
+ai_service/.coverage
+ai_service/.coverage.*
+ai_service/.python-version
+ai_service/.env
+ai_service/.env.*
+!ai_service/env.stage.example

@@ -1,22 +1,11 @@
-from fastapi import FastAPI, Response, status
-
-app = FastAPI(
-    title="AI Service",
-    description="Vacademy AI Service",
-    version="0.1.0",
-    docs_url="/ai-service/docs",
-    redoc_url=None,
-    openapi_url="/ai-service/openapi.json",
-)
+from fastapi import FastAPI
+from ai_service.app.app_factory import create_app
+from ai_service.app.config import get_settings
 
 
-@app.get("/ai-service/health")
-def health() -> dict:
-    return {"status": "ok"}
+app: FastAPI = create_app()
 
-
-@app.get("/ai-service/hello")
+# Compatibility route kept at the same path
+@app.get(f"{get_settings().api_base_path}/hello")
 def hello_world() -> dict:
     return {"message": "hello world"}
-
-

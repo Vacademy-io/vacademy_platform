@@ -5,6 +5,8 @@ WORKDIR /app
 # Prevents Python from writing .pyc files and buffering stdout/err
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ARG APP_ENV=stage
+ENV APP_ENV=${APP_ENV}
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

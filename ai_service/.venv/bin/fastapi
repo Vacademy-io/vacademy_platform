@@ -1,4 +1,4 @@
-#!/Users/shreyashjain/code_repos/vacademy_platform/ai_service/.venv/bin/python
+#!/Users/shreyashjain/code_repos/vacademy_platform/ai_service/.venv/bin/python3.14
 import sys
 from fastapi.cli import main
 if __name__ == '__main__':

@@ -238,7 +238,9 @@ public class AudienceService {
                 filterDTO.getCampaignType(),
                 filterDTO.getCampaignName(),
                 filterDTO.getStartDateFromLocal(),
+                filterDTO.getStartDateFromLocal() != null,
                 filterDTO.getStartDateToLocal(),
+                filterDTO.getStartDateToLocal() != null,
                 pageable
         );
 

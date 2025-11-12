@@ -1,5 +1,5 @@
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { PullToRefreshWrapper } from "@/components/design-system/pull-to-refresh";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toTitleCase } from "@/lib/utils";
@@ -547,24 +547,38 @@ export const CourseStructureDetails = ({
     }
   };
 
-  const getSlidesWithChapterId = useCallback(
-    async (chapterId: string) => {
-      if (slidesMap[chapterId]) {
-        setSlidesLoadingStatus((prev) => ({ ...prev, [chapterId]: "loaded" }));
-        return;
-      }
+  // Track in-flight requests to prevent duplicate API calls
+  const slidesRequestsRef = useRef<Set<string>>(new Set());
 
-      setSlidesLoadingStatus((prev) => ({ ...prev, [chapterId]: "loading" }));
-      try {
-        const slides = await fetchSlidesByChapterId(chapterId);
-        setSlidesMap((prev) => ({ ...prev, [chapterId]: slides }));
-        setSlidesLoadingStatus((prev) => ({ ...prev, [chapterId]: "loaded" }));
-      } catch {
-        setSlidesLoadingStatus((prev) => ({ ...prev, [chapterId]: "error" }));
+  const getSlidesWithChapterId = useCallback(async (chapterId: string) => {
+    // Check if already loaded or currently loading
+    setSlidesLoadingStatus((prevStatus) => {
+      if (
+        prevStatus[chapterId] === "loaded" ||
+        prevStatus[chapterId] === "loading"
+      ) {
+        return prevStatus; // Already handled
       }
-    },
-    [slidesMap]
-  );
+      return { ...prevStatus, [chapterId]: "loading" };
+    });
+
+    // Prevent duplicate concurrent requests
+    if (slidesRequestsRef.current.has(chapterId)) {
+      return;
+    }
+
+    slidesRequestsRef.current.add(chapterId);
+
+    try {
+      const slides = await fetchSlidesByChapterId(chapterId);
+      setSlidesMap((prev) => ({ ...prev, [chapterId]: slides }));
+      setSlidesLoadingStatus((prev) => ({ ...prev, [chapterId]: "loaded" }));
+    } catch {
+      setSlidesLoadingStatus((prev) => ({ ...prev, [chapterId]: "error" }));
+    } finally {
+      slidesRequestsRef.current.delete(chapterId);
+    }
+  }, []);
 
   const useModulesMutation = () => {
     return useMutation({
@@ -575,58 +589,32 @@ export const CourseStructureDetails = ({
       }) => {
         // Ensure packageSessionId is available for all course depths
         if (!packageSessionId) {
-          console.info("[CourseStructureDetails] missing packageSessionId", {
-            selectedSession,
-            selectedLevel,
-          });
-
           throw new Error(
             "Package session ID is required for fetching modules"
           );
         }
 
-        console.info("[CourseStructureDetails] fetching modules", {
-          packageSessionId,
-          courseStructure,
-          subjectIds: currentSubjects?.map((s) => s.id),
-        });
-
         const results = await Promise.all(
           currentSubjects?.map(async (subject) => {
             // For depth 5 courses, try using the public endpoint first
             let res;
-            if (courseStructure === 5) {
+
+            res = await fetchModulesWithChapters(subject.id, packageSessionId);
+            // Fallback: if private returns empty, try public once (for ALL tab/unenrolled visibility)
+            if (Array.isArray(res) && res.length === 0) {
               try {
-                res = await fetchModulesWithChaptersPublic(
+                const alt = await fetchModulesWithChaptersPublic(
                   subject.id,
                   packageSessionId
                 );
-              } catch {
-                res = await fetchModulesWithChapters(
-                  subject.id,
-                  packageSessionId
-                );
-              }
-            } else {
-              res = await fetchModulesWithChapters(
-                subject.id,
-                packageSessionId
-              );
-              // Fallback: if private returns empty, try public once (for ALL tab/unenrolled visibility)
-              if (Array.isArray(res) && res.length === 0) {
-                try {
-                  const alt = await fetchModulesWithChaptersPublic(
-                    subject.id,
-                    packageSessionId
-                  );
-                  if (Array.isArray(alt) && alt.length > 0) {
-                    res = alt;
-                  }
-                } catch {
-                  // ignore
+                if (Array.isArray(alt) && alt.length > 0) {
+                  res = alt;
                 }
+              } catch {
+                // ignore
               }
             }
+
             return { subjectId: subject.id, modules: res };
           })
         );
@@ -634,14 +622,6 @@ export const CourseStructureDetails = ({
         const modulesMap: SubjectModulesMap = {};
         results.forEach(({ subjectId, modules }) => {
           modulesMap[subjectId] = modules;
-        });
-
-        console.info("[CourseStructureDetails] modules fetched", {
-          packageSessionId,
-          counts: results.map((r) => ({
-            subjectId: r.subjectId,
-            modules: Array.isArray(r.modules) ? r.modules.length : 0,
-          })),
         });
 
         return modulesMap;
@@ -740,8 +720,8 @@ export const CourseStructureDetails = ({
         allModuleIds.add(mod.module.id);
         mod.chapters.forEach((ch) => {
           allChapterIds.add(ch.id);
-          // Load slides for each chapter
-          getSlidesWithChapterId(ch.id);
+          // ✅ REMOVED: Don't load slides on expand all
+          // Slides will be loaded lazily when each chapter is opened
         });
       });
     });
@@ -878,7 +858,6 @@ export const CourseStructureDetails = ({
               const isSubjectOpen = openSubjects.has(subject.id);
               const baseIndent = "pl-[calc(18px+0.5rem+18px+0.5rem)]";
               const subjectContentIndent = `${baseIndent} pl-[1.5rem]`;
-              console.log("studyLibraryData render", { subject, idx });
               return (
                 <Collapsible
                   key={subject.id}
@@ -2336,71 +2315,6 @@ export const CourseStructureDetails = ({
     ),
   };
 
-  // Removed institute-based override so settings decide visible tabs exclusively
-
-  useEffect(() => {
-    const loadModules = async () => {
-      // Debug logging
-
-      // Ensure packageSessionId is available before making API calls
-      if (!packageSessionId) {
-        return;
-      }
-
-      handleLoadingChange(true);
-      setIsModulesLoading(true);
-
-      try {
-        const subjects = getSubjectDetails(
-          courseData,
-          selectedSession,
-          selectedLevel
-        );
-
-        const modulesMap = await fetchModules({
-          subjects: subjects,
-        });
-
-        setSubjectModulesMap(modulesMap);
-
-        // Auto-expand all sections by default
-        const allSubjectIds = new Set<string>(
-          getSubjectDetails(courseData, selectedSession, selectedLevel).map(
-            (s: SubjectType) => s.id
-          )
-        );
-        const allModuleIds = new Set<string>();
-        const allChapterIds = new Set<string>();
-
-        Object.values(modulesMap).forEach((modules) => {
-          modules.forEach((mod) => {
-            allModuleIds.add(mod.module.id);
-            mod.chapters.forEach((ch) => {
-              allChapterIds.add(ch.id);
-              // Load slides for each chapter (same as expandAll function)
-              getSlidesWithChapterId(ch.id);
-            });
-          });
-        });
-
-        setOpenSubjects(allSubjectIds);
-        setOpenModules(allModuleIds);
-        setOpenChapters(allChapterIds);
-
-        // Update module stats for parent component
-        if (updateModuleStats) {
-          updateModuleStats(modulesMap);
-        }
-      } catch {
-        setSubjectModulesMap({});
-      } finally {
-        handleLoadingChange(false);
-        setIsModulesLoading(false);
-      }
-    };
-    loadModules();
-  }, [packageSessionId, fetchModules, handleLoadingChange]);
-
   // Trigger module loading when session or level changes
   useEffect(() => {
     if (packageSessionId) {
@@ -2417,7 +2331,7 @@ export const CourseStructureDetails = ({
           });
           setSubjectModulesMap(modulesMap);
 
-          // Auto-expand all sections by default
+          // Auto-expand all sections by default (but don't load slides yet)
           const allSubjectIds = new Set<string>(
             getSubjectDetails(courseData, selectedSession, selectedLevel).map(
               (s: SubjectType) => s.id
@@ -2431,8 +2345,6 @@ export const CourseStructureDetails = ({
               allModuleIds.add(mod.module.id);
               mod.chapters.forEach((ch) => {
                 allChapterIds.add(ch.id);
-                // Load slides for each chapter (same as expandAll function)
-                getSlidesWithChapterId(ch.id);
               });
             });
           });

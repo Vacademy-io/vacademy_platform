@@ -778,7 +778,7 @@ export const CourseStructureDetails = ({
             <Steps size={18} className="text-primary-600 shrink-0" />
             <span className="text-sm font-medium text-neutral-700 truncate">
               {getTerminology(ContentTerms.Course, SystemTerms.Course)}{" "}
-              Structure---
+              Structure
             </span>
           </div>
           <div className="flex items-center gap-2 ml-auto w-full md:w-auto">

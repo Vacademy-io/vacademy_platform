@@ -78,7 +78,7 @@ const CourseListHeader = ({
   ];
 
   return (
-    <nav className="min-h-[70px] sm:min-h-[80px] bg-white py-3 sm:py-4 px-3 sm:px-4 lg:px-10 flex flex-col lg:flex-row justify-between items-center shadow-sm relative">
+    <nav className="min-h-[70px] sticky top-0 z-50 sm:min-h-[70px] bg-white py-1 sm:py-4 px-3 sm:px-4 lg:px-10 flex flex-col lg:flex-row justify-between items-center shadow-sm relative">
       {/* Logo Section */}
       <div className="flex items-center justify-between w-full lg:w-auto mb-3 sm:mb-4 lg:mb-0">
         <div className="flex items-center relative h-6 sm:h-8 lg:h-10 w-16 sm:w-20 lg:w-24">
@@ -133,7 +133,7 @@ const CourseListHeader = ({
       </div>
 
       {/* Desktop Navigation */}
-      <div className="hidden lg:flex lg:flex-row items-center gap-6 lg:gap-8">
+      <div className="hidden lg:flex lg:flex-row items-center gap-4 lg:gap-8">
         <ul className="flex items-center gap-4 lg:gap-6 text-gray-800">
           {navigationItems.map((item) => (
             <li key={item.href}>
@@ -146,7 +146,7 @@ const CourseListHeader = ({
             </li>
           ))}
         </ul>
-        <div className="flex gap-2 lg:gap-3">
+        <div className="flex gap-2 h-full lg:gap-3">
           <AuthModal
             ref={authModalRef}
             type={type}

@@ -31,6 +31,7 @@ def create_app() -> FastAPI:
     # Routers
     app.include_router(health_router, prefix=settings.api_base_path, tags=["health"])
 
+
     return app
 
 

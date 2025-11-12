@@ -53,11 +53,12 @@ public interface AudienceRepository extends JpaRepository<Audience, String> {
         SELECT a FROM Audience a
         WHERE a.instituteId = :instituteId
           AND (:status IS NULL OR a.status = :status)
-          AND (:campaignType IS NULL OR a.campaignType LIKE %:campaignType%)
-          AND (:searchName IS NULL OR :searchName = '' OR 
+          AND (COALESCE(:campaignType, '') = '' OR
+               LOWER(a.campaignType) LIKE LOWER(CONCAT('%', :campaignType, '%')))
+          AND (COALESCE(:searchName, '') = '' OR
                LOWER(a.campaignName) LIKE LOWER(CONCAT('%', :searchName, '%')))
-          AND (:startDateFrom IS NULL OR a.startDate >= :startDateFrom)
-          AND (:startDateTo IS NULL OR a.startDate <= :startDateTo)
+          AND (:startDateFromProvided = false OR a.startDate IS NULL OR a.startDate >= :startDateFrom)
+          AND (:startDateToProvided = false OR a.startDate IS NULL OR a.startDate <= :startDateTo)
         ORDER BY a.createdAt DESC
     """)
     Page<Audience> findAudiencesWithFilters(
@@ -66,7 +67,9 @@ public interface AudienceRepository extends JpaRepository<Audience, String> {
             @Param("campaignType") String campaignType,
             @Param("searchName") String searchName,
             @Param("startDateFrom") Timestamp startDateFrom,
+            @Param("startDateFromProvided") boolean startDateFromProvided,
             @Param("startDateTo") Timestamp startDateTo,
+            @Param("startDateToProvided") boolean startDateToProvided,
             Pageable pageable
     );
 

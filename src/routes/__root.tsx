@@ -49,6 +49,7 @@ const PUBLIC_ROUTES = [
   "/logout",
   "/courses", // Course catalog should be public
   "/courses/course-details", // Course details should be public for browsing
+  "/un", // Public unsubscribe links
 ];
 
 const isAuthenticated = async () => {

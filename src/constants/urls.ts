@@ -135,6 +135,7 @@ export const GET_BATCH_LIST = `${BASE_URL}/admin-core-service/batch/v1/batches-b
 // Push notifications
 export const PUSH_REGISTER_URL = `${BASE_URL}/notification-service/push-notifications/register`;
 export const PUSH_DEACTIVATE_URL = `${BASE_URL}/notification-service/push-notifications/deactivate`;
+export const USER_ANNOUNCEMENT_PREFERENCES_BASE_URL = `${BASE_URL}/notification-service/public/v1/user-announcement-preferences`;
 
 // Enrollment API URLs
 export const ENROLLMENT_PAYMENT_GATEWAY_DETAILS = `${BASE_URL}/admin-core-service/open/v1/institute/payment-setting/payment-gateway-details`;

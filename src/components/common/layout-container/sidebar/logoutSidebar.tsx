@@ -21,6 +21,9 @@ import { Preferences } from "@capacitor/preferences";
 import { Student } from "@/types/user/user-detail";
 import { getPublicUrl } from "@/services/upload_file";
 import { User } from "lucide-react";
+import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { useNavigate } from "@tanstack/react-router";
+import { navigateByHomeIcon } from "@/utils/home-icon-click";
 
 export const LogoutSidebar = ({
   sidebarComponent,
@@ -29,6 +32,8 @@ export const LogoutSidebar = ({
 }) => {
   const { instituteLogoFileUrl, sideBarOpen, setSidebarOpen } =
     useStore();
+  const { homeIconClickRoute } = useDomainRouting();
+  const navigate = useNavigate();
   const { theme, setTheme } = useModeTheme();
   const { permissions } = useStudentPermissions();
   const isDark = theme === "dark";
@@ -114,7 +119,13 @@ export const LogoutSidebar = ({
           <div className="flex items-center justify-center">
             <div className="relative group">
               {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (
-                <div className="relative">
+                <div
+                  className="relative cursor-pointer"
+                  onClick={() => navigateByHomeIcon(homeIconClickRoute, navigate)}
+                  role="button"
+                  aria-label="Go to home"
+                  title="Home"
+                >
                   <img
                     className="w-24 h-24 rounded-xl object-contain p-2 bg-white "
                     src={instituteLogoFileUrl}

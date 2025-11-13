@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import Footer from "./Footer.tsx";
 import CoursesPage from "./CoursesPage.tsx";
 import { useCatalogStore } from "../-store/catalogStore.ts";
 import axios from "axios";
@@ -311,7 +310,6 @@ const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }
                 }}
                 instituteId={instituteId}
             />
-            <Footer />
         </div>
     );
 };

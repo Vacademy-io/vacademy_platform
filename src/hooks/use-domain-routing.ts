@@ -18,6 +18,7 @@ export interface DomainRoutingState {
   instituteName: string | null;
   instituteLogoFileId: string | null;
   instituteThemeCode: string | null;
+  homeIconClickRoute: string | null;
   redirectPath: string;
   error: string | null;
 }
@@ -37,6 +38,7 @@ export const useDomainRouting = () => {
     instituteName: null,
     instituteLogoFileId: null,
     instituteThemeCode: null,
+    homeIconClickRoute: null,
     redirectPath: "/login",
     error: null,
   });
@@ -82,6 +84,7 @@ export const useDomainRouting = () => {
           typeof data.allowSignup === "boolean" ? data.allowSignup : null,
         tabText: data.tabText || null,
         tabIconFileId: data.tabIconFileId || null,
+        homeIconClickRoute: data.homeIconClickRoute || null,
         allowGoogleAuth:
           typeof data.allowGoogleAuth === "boolean"
             ? data.allowGoogleAuth
@@ -202,6 +205,7 @@ export const useDomainRouting = () => {
           instituteName: apiResult.instituteName,
           instituteLogoFileId: apiResult.instituteLogoFileId,
           instituteThemeCode: apiResult.instituteThemeCode,
+          homeIconClickRoute: apiResult.homeIconClickRoute || null,
           redirectPath: apiResult.redirect || "/login",
           error: null,
         };
@@ -225,6 +229,7 @@ export const useDomainRouting = () => {
           instituteName: null,
           instituteLogoFileId: null,
           instituteThemeCode: null,
+          homeIconClickRoute: null,
           redirectPath: "/login",
           error: null,
         };
@@ -243,6 +248,7 @@ export const useDomainRouting = () => {
         instituteName: null,
         instituteLogoFileId: null,
         instituteThemeCode: null,
+        homeIconClickRoute: null,
         // Stay on page for invitation route; otherwise fall back to /login
         redirectPath: isInvitationRoute ? "" : "/login",
         error: null,
@@ -266,6 +272,7 @@ export const useDomainRouting = () => {
             instituteName: null,
             instituteLogoFileId: null,
             instituteThemeCode: null,
+            homeIconClickRoute: null,
             redirectPath: "/login",
             error: null,
           };
@@ -287,6 +294,7 @@ export const useDomainRouting = () => {
         instituteName: null,
         instituteLogoFileId: null,
         instituteThemeCode: null,
+        homeIconClickRoute: null,
         // Stay on page for invitation route; otherwise fall back to /login
         redirectPath: isInvitationRoute ? "" : "/login",
         error: error instanceof Error ? error.message : "Unknown error",

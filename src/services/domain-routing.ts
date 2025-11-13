@@ -20,7 +20,6 @@ export interface DomainRoutingResponse {
   // Optional tab branding
   tabText?: string | null;
   tabIconFileId?: string | null;
-  homeIconClickRoute?: string | null;
   // Login provider toggles
   allowGoogleAuth?: boolean | null;
   allowGithubAuth?: boolean | null;

@@ -27,8 +27,6 @@ import type {
   subItemsType,
 } from "../../../../types/layout-container-types";
 import { useStudentPermissions } from "@/hooks/use-student-permissions";
-import { useDomainRouting } from "@/hooks/use-domain-routing";
-import { navigateByHomeIcon } from "@/utils/home-icon-click";
 
 // Local letter-based icon factory for tabs without predefined icons
 const createLetterIcon = (letter: string) =>
@@ -51,7 +49,6 @@ export const MySidebar = ({
   const navigate = useNavigate();
   const { state }: SidebarStateType = useSidebar();
   const { sideBarState, instituteName, instituteLogoFileUrl } = useStore();
-  const { homeIconClickRoute } = useDomainRouting();
   const { permissions } = useStudentPermissions();
   const [filteredSidebarItems, setFilteredSidebarItems] = useState<
     SidebarItemsType[]
@@ -161,13 +158,7 @@ export const MySidebar = ({
               : "flex-col gap-1 justify-center"
           }`}
         >
-          <div
-            className="relative cursor-pointer"
-            onClick={() => navigateByHomeIcon(homeIconClickRoute, navigate)}
-            role="button"
-            aria-label="Go to home"
-            title="Home"
-          >
+          <div className="relative">
             {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (
               <img
                 className={`object-contain shadow-sm border border-gray-200 transition-all duration-200 ${

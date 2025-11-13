@@ -29,8 +29,6 @@ import { Preferences } from "@capacitor/preferences";
 import { BatchForSessionType } from "@/stores/study-library/institute-schema";
 import { getPublicUrl } from "@/services/upload_file";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { useDomainRouting } from "@/hooks/use-domain-routing";
-import { navigateByHomeIcon } from "@/utils/home-icon-click";
 
 interface ChapterSearchParams {
     courseId: string;
@@ -61,7 +59,6 @@ function Slides() {
 
     const { open } = useSidebar();
     const navigate = useNavigate();
-    const { homeIconClickRoute } = useDomainRouting();
     const { setItems, setActiveItem, activeItem } = useContentStore();
     const { slides } = useSlides(chapterId || "");
     const { studyLibraryData } = useStudyLibraryStore();
@@ -384,13 +381,7 @@ function Slides() {
                 <div
                     className={`absolute ${showLearningPath ? "top-[70px] sm:top-[85px]" : "top-[10px] sm:top-[12px]"} left-0 right-0 z-20 flex items-center space-x-1 sm:space-x-2 p-2 sm:p-3 md:p-4 border-b border-gray-100 bg-gray-50`}
                 >
-                    <div
-                        className="p-1 sm:p-1.5 bg-primary-100 rounded-lg flex items-center justify-center min-w-[28px] min-h-[28px] sm:min-w-[32px] sm:min-h-[32px] cursor-pointer"
-                        onClick={() => navigateByHomeIcon(homeIconClickRoute, navigate)}
-                        role="button"
-                        aria-label="Go to home"
-                        title="Home"
-                    >
+                    <div className="p-1 sm:p-1.5 bg-primary-100 rounded-lg flex items-center justify-center min-w-[28px] min-h-[28px] sm:min-w-[32px] sm:min-h-[32px]">
                         {instituteLogoUrl ? (
                             <img
                                 src={instituteLogoUrl}
@@ -531,13 +522,7 @@ function Slides() {
                     <CaretLeft className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
                 </button>
                 <div className="flex items-center space-x-1 sm:space-x-2 min-w-0 flex-1">
-                    <div
-                        className="p-0.5 sm:p-1 bg-primary-50 rounded-lg flex-shrink-0 flex items-center justify-center min-w-[32px] min-h-[32px] sm:min-w-[40px] sm:min-h-[40px] cursor-pointer"
-                        onClick={() => navigateByHomeIcon(homeIconClickRoute, navigate)}
-                        role="button"
-                        aria-label="Go to home"
-                        title="Home"
-                    >
+                    <div className="p-0.5 sm:p-1 bg-primary-50 rounded-lg flex-shrink-0 flex items-center justify-center min-w-[32px] min-h-[32px] sm:min-w-[40px] sm:min-h-[40px]">
                         {instituteLogoUrl ? (
                             <img
                                 src={instituteLogoUrl}

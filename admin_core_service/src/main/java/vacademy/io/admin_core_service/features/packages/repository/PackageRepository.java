@@ -2614,4 +2614,62 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("paymentOptionStatus") List<String> paymentOptionStatus,
             @Param("paymentPlanStatus") List<String> paymentPlanStatus,
             Pageable pageable);
+
+    @Query(value = """
+        SELECT
+            SUM(COALESCE(ps_read_time.total_read_time_minutes, 0))
+        FROM package_session ps
+        LEFT JOIN (
+            SELECT
+                cpsm.package_session_id,
+                SUM(
+                    CASE
+                        WHEN s.source_type = 'VIDEO' THEN ROUND(COALESCE(vs.published_video_length, 0) / 60000.0, 2)
+                        WHEN s.source_type = 'DOCUMENT' THEN
+                            CASE
+                                WHEN ds.type = 'PDF' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 3, 120)
+                                WHEN ds.type = 'PRESENTATION' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 2, 60)
+                                ELSE 10
+                            END
+                        WHEN s.source_type = 'QUESTION' THEN 5
+                        WHEN s.source_type = 'ASSIGNMENT' THEN COALESCE(aqc.question_count, 0) * 3
+                        WHEN s.source_type = 'QUIZ' THEN COALESCE(qqc.question_count, 0) * 2
+                        ELSE 0
+                    END
+                ) AS total_read_time_minutes
+            FROM slide s
+            LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
+            LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
+            LEFT JOIN (
+                SELECT assignment_slide_id AS slide_id, COUNT(*) AS question_count
+                FROM assignment_slide_question
+                WHERE status IN (:assignmentQuestionStatusList)
+                GROUP BY assignment_slide_id
+            ) aqc ON aqc.slide_id = s.source_id AND s.source_type = 'ASSIGNMENT'
+            LEFT JOIN (
+                SELECT quiz_slide_id AS slide_id, COUNT(*) AS question_count
+                FROM quiz_slide_question
+                WHERE status IN (:questionStatusList)
+                GROUP BY quiz_slide_id
+            ) qqc ON qqc.slide_id = s.source_id AND s.source_type = 'QUIZ'
+            JOIN chapter_to_slides cs ON cs.slide_id = s.id
+            JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = cs.chapter_id
+            WHERE
+                s.status IN (:slideStatusList)
+                AND cs.status IN (:slideStatusList)
+                AND cpsm.status IN (:chapterPackageStatusList)
+            GROUP BY cpsm.package_session_id
+        ) ps_read_time ON ps.id = ps_read_time.package_session_id
+        WHERE
+            ps.package_id = :packageId
+            AND ps.status IN (:packageSessionStatus)
+    """, nativeQuery = true)
+    Long sumReadTimeInMinutesForPackage(
+            @Param("packageId") String packageId,
+            @Param("packageSessionStatus") List<String> packageSessionStatus,
+            @Param("assignmentQuestionStatusList") List<String> assignmentQuestionStatusList,
+            @Param("questionStatusList") List<String> questionStatusList,
+            @Param("slideStatusList") List<String> slideStatusList,
+            @Param("chapterPackageStatusList") List<String> chapterPackageStatusList
+    );
 }

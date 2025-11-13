@@ -416,7 +416,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
           chapterId,
           moduleId,
           subjectId,
-          packageSessionId,
+          packageSessionId: packageSessionId,
           userId,
           requestPayload: payload,
         });

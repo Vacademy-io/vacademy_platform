@@ -1,20 +1,29 @@
-import { initializeApp } from 'firebase/app';
-import { getMessaging, getToken, onMessage, type Messaging, type MessagePayload } from 'firebase/messaging';
-import { getAnalytics, type Analytics } from 'firebase/analytics';
-import { Capacitor } from '@capacitor/core';
+import { initializeApp } from "firebase/app";
+import {
+  getMessaging,
+  getToken,
+  onMessage,
+  type Messaging,
+  type MessagePayload,
+} from "firebase/messaging";
+import { getAnalytics, type Analytics } from "firebase/analytics";
+import { Capacitor } from "@capacitor/core";
 
 type EnvMap = { [key: string]: string | undefined };
 const ENV: EnvMap = (import.meta as unknown as { env: EnvMap }).env || {};
 
 // Your Firebase configuration (env-driven with sensible defaults)
 const firebaseConfig = {
-  apiKey: ENV.VITE_FIREBASE_API_KEY || "AIzaSyA-HYoXjokDTbPbrd5QT7Poe395TlmvHXw",
+  apiKey:
+    ENV.VITE_FIREBASE_API_KEY || "AIzaSyA-HYoXjokDTbPbrd5QT7Poe395TlmvHXw",
   authDomain: ENV.VITE_FIREBASE_AUTH_DOMAIN || "vacademy-app.firebaseapp.com",
   projectId: ENV.VITE_FIREBASE_PROJECT_ID || "vacademy-app",
-  storageBucket: ENV.VITE_FIREBASE_STORAGE_BUCKET || "vacademy-app.firebasestorage.app",
+  storageBucket:
+    ENV.VITE_FIREBASE_STORAGE_BUCKET || "vacademy-app.firebasestorage.app",
   messagingSenderId: ENV.VITE_FIREBASE_MESSAGING_SENDER_ID || "117550803134",
-  appId: ENV.VITE_FIREBASE_APP_ID || "1:117550803134:web:38c7763a12ef4f43bdd6ef",
-  measurementId: ENV.VITE_FIREBASE_MEASUREMENT_ID || "G-CNY0GNB6Y4"
+  appId:
+    ENV.VITE_FIREBASE_APP_ID || "1:117550803134:web:38c7763a12ef4f43bdd6ef",
+  measurementId: ENV.VITE_FIREBASE_MEASUREMENT_ID || "G-CNY0GNB6Y4",
 };
 
 // Initialize Firebase
@@ -22,11 +31,11 @@ const app = initializeApp(firebaseConfig);
 
 // Initialize Firebase Analytics (only for web)
 let analytics: Analytics | null = null;
-if (Capacitor.getPlatform() === 'web') {
+if (Capacitor.getPlatform() === "web") {
   try {
     analytics = getAnalytics(app);
   } catch (error) {
-    console.error('Error initializing Firebase analytics:', error);
+    console.error("Error initializing Firebase analytics:", error);
   }
 }
 
@@ -34,11 +43,11 @@ if (Capacitor.getPlatform() === 'web') {
 let messaging: Messaging | null = null;
 
 // Only initialize messaging for web platform
-if (Capacitor.getPlatform() === 'web') {
+if (Capacitor.getPlatform() === "web") {
   try {
     messaging = getMessaging(app);
   } catch (error) {
-    console.error('Error initializing Firebase messaging:', error);
+    console.error("Error initializing Firebase messaging:", error);
   }
 }
 
@@ -50,11 +59,13 @@ export const FIREBASE_MESSAGING_SENDER_ID = firebaseConfig.messagingSenderId;
 // VAPID key for web push notifications
 // Get this from Firebase Console > Project Settings > Cloud Messaging > Web configuration > Web push certificates
 // Generate a new key pair and copy the key here
-export const VAPID_KEY = ENV.VITE_FIREBASE_VAPID_KEY || "BCeQVrW8MTGLjYifcNnFDmP8dTYJQaGjCiZWY-N0wCbHkNwIM5udkr8l2WlIG7YeZx4b2sqe9tl0qaHNIOxb8a8";
+export const VAPID_KEY =
+  ENV.VITE_FIREBASE_VAPID_KEY ||
+  "BCeQVrW8MTGLjYifcNnFDmP8dTYJQaGjCiZWY-N0wCbHkNwIM5udkr8l2WlIG7YeZx4b2sqe9tl0qaHNIOxb8a8";
 
 // Get FCM token for web
 export const getFirebaseToken = async (): Promise<string | null> => {
-  if (!messaging || Capacitor.getPlatform() !== 'web') {
+  if (!messaging || Capacitor.getPlatform() !== "web") {
     return null;
   }
 
@@ -62,24 +73,32 @@ export const getFirebaseToken = async (): Promise<string | null> => {
   const currentPermission = Notification.permission;
 
   // If already denied, do not attempt to retrieve token
-  if (currentPermission === 'denied') {
-    console.warn('Push Notifications are blocked by the user. Token retrieval skipped.');
+  if (currentPermission === "denied") {
+    console.warn(
+      "Push Notifications are blocked by the user. Token retrieval skipped."
+    );
     return null;
   }
 
   // If permission is default (not yet asked), you may trigger a request here
   // but leave it to calling code; just return null
-  if (currentPermission === 'default') {
-    console.info('Push Notification permission is not granted yet. Token retrieval deferred.');
+  if (currentPermission === "default") {
+    console.info(
+      "Push Notification permission is not granted yet. Token retrieval deferred."
+    );
     return null;
   }
 
   try {
     // Prefer the explicitly-registered service worker for reliability in dev (Vite) and prod
-    let serviceWorkerRegistration: ServiceWorkerRegistration | undefined = undefined;
-    if ('serviceWorker' in navigator) {
+    let serviceWorkerRegistration: ServiceWorkerRegistration | undefined =
+      undefined;
+    if ("serviceWorker" in navigator) {
       try {
-        serviceWorkerRegistration = await navigator.serviceWorker.getRegistration('/firebase-messaging-sw.js') || undefined;
+        serviceWorkerRegistration =
+          (await navigator.serviceWorker.getRegistration(
+            "/firebase-messaging-sw.js"
+          )) || undefined;
       } catch {
         // no-op
       }
@@ -87,23 +106,25 @@ export const getFirebaseToken = async (): Promise<string | null> => {
 
     const token = await getToken(messaging, {
       vapidKey: VAPID_KEY,
-      serviceWorkerRegistration
+      serviceWorkerRegistration,
     });
-    
+
     if (token) {
       return token;
     } else {
       return null;
     }
   } catch (error) {
-    console.error('An error occurred while retrieving token:', error);
+    console.warn("An error occurred while retrieving token:", error);
     return null;
   }
 };
 
 // Listen for foreground messages (web only)
-export const onFirebaseMessage = (callback: (payload: MessagePayload) => void) => {
-  if (!messaging || Capacitor.getPlatform() !== 'web') {
+export const onFirebaseMessage = (
+  callback: (payload: MessagePayload) => void
+) => {
+  if (!messaging || Capacitor.getPlatform() !== "web") {
     return () => {};
   }
 
@@ -114,14 +135,16 @@ export const onFirebaseMessage = (callback: (payload: MessagePayload) => void) =
 
 // Service Worker registration for web push
 export const registerServiceWorker = async () => {
-  if (Capacitor.getPlatform() !== 'web' || !('serviceWorker' in navigator)) {
+  if (Capacitor.getPlatform() !== "web" || !("serviceWorker" in navigator)) {
     return;
   }
 
   try {
-    const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    const registration = await navigator.serviceWorker.register(
+      "/firebase-messaging-sw.js"
+    );
     return registration;
   } catch (error) {
-    console.error('Service Worker registration failed:', error);
+    console.error("Service Worker registration failed:", error);
   }
-}; 
+};

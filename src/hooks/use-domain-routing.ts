@@ -320,6 +320,7 @@ export const useDomainRouting = () => {
         "/privacy-policy",
         "/terms-and-conditions",
         "/learner-invitation-response",
+        "/un",
       ];
       const isOnPublicRoute = publicRoutes.some((route) =>
         currentPath.startsWith(route)
@@ -371,6 +372,7 @@ export const useDomainRouting = () => {
         "/privacy-policy",
         "/terms-and-conditions",
         "/learner-invitation-response",
+        "/un",
       ];
       const isOnPublicRoute = publicRoutes.some((route) =>
         currentPath.startsWith(route)
@@ -410,6 +412,7 @@ export const useDomainRouting = () => {
         !currentPathForRedirect.startsWith('/delete-user') &&
         !currentPathForRedirect.startsWith('/change-password') &&
         !currentPathForRedirect.startsWith('/logout') &&
+        !currentPathForRedirect.startsWith('/un') &&
         !currentPathForRedirect.startsWith('/courses') &&
         !currentPathForRedirect.startsWith('/assessment') &&
         !currentPathForRedirect.startsWith('/dashboard') &&

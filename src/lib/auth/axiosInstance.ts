@@ -5,6 +5,7 @@ import { isTokenExpired, removeTokensAndLogout } from "./sessionUtility"; // Uti
 import { REFRESH_TOKEN_URL } from "@/constants/urls";
 import { maybeServeFromCache, maybeStoreInCache } from "@/lib/http/clientCache";
 import { toast } from "sonner";
+import * as Sentry from "@sentry/react";
 
 // Helper functions to interact with Capacitor Preferences
 export const getTokenFromStorage = async (
@@ -23,6 +24,7 @@ const removeTokensAndInstituteId = async () => {
   await Preferences.remove({ key: TokenKey.refreshToken });
   await Preferences.remove({ key: "instituteId" });
   await Preferences.remove({ key: "InstituteId" });
+  Sentry.logger.info("[Auth] Removed tokens and institute ID from storage.");
 };
 
 const refreshTokens = async (refreshToken: string): Promise<void> => {
@@ -141,7 +143,12 @@ authenticatedAxiosInstance.interceptors.request.use(
         // Serve from client cache for GET when possible
         request = maybeServeFromCache(request);
         return request;
-      } catch {
+      } catch (err) {
+        Sentry.logger.warn(
+          Sentry.logger
+            .fmt`[Auth] Token refresh failed for request to '${requestUrl}'`,
+          { error: err }
+        );
         // If token refresh fails, remove tokens and institute ID
         await removeTokensAndInstituteId();
 

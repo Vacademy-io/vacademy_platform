@@ -91,6 +91,11 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
   const [openModules, setOpenModules] = useState<Set<string>>(new Set());
   const [openChapters, setOpenChapters] = useState<Set<string>>(new Set());
 
+  // Helper function to check if a name is "default"
+  const isDefaultName = (name: string | undefined | null): boolean => {
+    return name ? name.toLowerCase() === 'default' : false;
+  };
+
   // Function to get slide icon and color based on slide type
   const getSlideIcon = (slide: Slide) => {
     // Check for video slides first
@@ -319,88 +324,6 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
           console.log("1. CourseId not found in API response");
           console.log("2. PackageSessionId not found in the course sessions");
           console.log("3. No subjects in the session levels");
-          console.log("[CourseStructureDetails] Available course IDs:", packageSessionData.map((c: any) => c.course?.id));
-          console.log("[CourseStructureDetails] Creating fallback structure...");
-          
-          // Try to get any subject from any course as fallback
-          let fallbackSubjectId = null;
-          let fallbackSubjectName = "Course Content";
-          
-          if (Array.isArray(packageSessionData)) {
-            for (const courseData of packageSessionData) {
-              if (courseData.sessions && Array.isArray(courseData.sessions)) {
-                for (const session of courseData.sessions) {
-                  if (session.level_with_details && Array.isArray(session.level_with_details)) {
-                    for (const level of session.level_with_details) {
-                      if (level.subjects && Array.isArray(level.subjects) && level.subjects.length > 0) {
-                        fallbackSubjectId = level.subjects[0].id;
-                        fallbackSubjectName = level.subjects[0].subject_name || "Course Content";
-                        console.log("[CourseStructureDetails] Using fallback subjectId:", fallbackSubjectId, "name:", fallbackSubjectName);
-                        break;
-                      }
-                    }
-                    if (fallbackSubjectId) break;
-                  }
-                }
-                if (fallbackSubjectId) break;
-              }
-            }
-          }
-          
-          // Create a fallback structure to ensure something is displayed
-          const fallbackSubject: SubjectType = {
-            id: fallbackSubjectId || "fallback-subject",
-            subject_name: fallbackSubjectName,
-            subject_order: 0,
-            description: "Course modules and chapters",
-          };
-          setStudyLibraryData([fallbackSubject]);
-          
-          // Try to fetch modules with the fallback subjectId
-          if (fallbackSubjectId) {
-            console.log("[CourseStructureDetails] Attempting fallback: fetching modules with fallback subjectId:", fallbackSubjectId);
-            try {
-              const fallbackModules = await fetchModules(fallbackSubjectId);
-              console.log("[CourseStructureDetails] Fallback modules received:", fallbackModules.length);
-              
-              const modulesWithChapters: ModuleWithChapters[] = [];
-              for (const moduleItem of fallbackModules) {
-                console.log("[CourseStructureDetails] Processing fallback module item:", moduleItem);
-                console.log("[CourseStructureDetails] Fallback module item keys:", Object.keys(moduleItem || {}));
-                console.log("[CourseStructureDetails] Fallback module item.module:", moduleItem.module);
-                console.log("[CourseStructureDetails] Fallback module item.chapters:", moduleItem.chapters);
-                
-                // The API response has structure: { module: {...}, chapters: [...] }
-                const moduleData = moduleItem.module;
-                const chapters = moduleItem.chapters || [];
-                
-                console.log("[CourseStructureDetails] Fallback module data:", moduleData);
-                console.log("[CourseStructureDetails] Fallback module name:", moduleData?.module_name);
-                console.log("[CourseStructureDetails] Fallback chapters from module:", chapters.length);
-                
-                // Fetch slides for each chapter
-                const chaptersWithSlides = [];
-                for (const chapter of chapters) {
-                  console.log("[CourseStructureDetails] Processing fallback chapter:", chapter.id, chapter.chapter_name);
-                  const slides = await fetchSlidesForChapter(chapter.id);
-                  
-                  chaptersWithSlides.push({
-                    ...chapter,
-                    slides: slides || []
-                  });
-                }
-                
-                modulesWithChapters.push({
-                  module: moduleData, // Use the actual module data, not the wrapper
-                  chapters: chaptersWithSlides
-                });
-              }
-              
-              modulesMap[fallbackSubjectId] = modulesWithChapters;
-            } catch (error) {
-              console.error("[CourseStructureDetails] Fallback also failed:", error);
-            }
-          }
         } else {
           console.log("[CourseStructureDetails] Processing", subjects.length, "subjects");
           for (const subject of subjects) {
@@ -475,23 +398,54 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
 
         // Step 3: Set up open states based on course depth
         if (courseDepth === 2) {
-          // Depth 2: Only show slides
-          console.log("[CourseStructureDetails] Depth 2: Will show only slides");
-          // Preload slides for all chapters since we only show slides
-          const allChapterIds = new Set<string>();
+          // Depth 2: Only show slides - preload ALL slides immediately
+          console.log("[CourseStructureDetails] Depth 2: Preloading all slides");
+          const newSlidesMap: Record<string, Slide[]> = {};
+          const slideLoadPromises: Promise<void>[] = [];
+          
           Object.values(modulesMap).forEach((modules) => {
             modules.forEach((mod) => {
               mod.chapters.forEach((ch) => {
-                allChapterIds.add(ch.id);
-                getSlidesWithChapterId(ch.id);
+                console.log(`[CourseStructureDetails] Depth 2: Fetching slides for chapter ${ch.id}`);
+                // Fetch slides directly and store in newSlidesMap
+                const slidePromise = fetchSlidesForChapter(ch.id).then((slides) => {
+                  newSlidesMap[ch.id] = slides;
+                  console.log(`[CourseStructureDetails] Depth 2: Loaded ${slides.length} slides for chapter ${ch.id}`);
+                });
+                slideLoadPromises.push(slidePromise);
               });
             });
           });
-          // Keep collapsed by default for all depths
-          console.log("[CourseStructureDetails] Depth 2: Will show chapters and slides (collapsed by default)");
+          
+          // Wait for all slides to load before updating state
+          await Promise.all(slideLoadPromises);
+          console.log("[CourseStructureDetails] Depth 2: All slides loaded");
+          console.log("[CourseStructureDetails] Depth 2: newSlidesMap keys:", Object.keys(newSlidesMap));
+          console.log("[CourseStructureDetails] Depth 2: newSlidesMap data:", newSlidesMap);
+          setSlidesMap(newSlidesMap);
+          console.log("[CourseStructureDetails] Depth 2: State updated");
         } else if (courseDepth === 3) {
-          // Depth 3: Show chapters and slides
-          console.log("[CourseStructureDetails] Depth 3: Will show chapters and slides (collapsed by default)");
+          // Depth 3: Show chapters and slides - preload slides same as depth 2
+          console.log("[CourseStructureDetails] Depth 3: Preloading all slides");
+          const newSlidesMap: Record<string, Slide[]> = {};
+          const slideLoadPromises: Promise<void>[] = [];
+          
+          Object.values(modulesMap).forEach((modules) => {
+            modules.forEach((mod) => {
+              mod.chapters.forEach((ch) => {
+                console.log(`[CourseStructureDetails] Depth 3: Fetching slides for chapter ${ch.id}`);
+                const slidePromise = fetchSlidesForChapter(ch.id).then((slides) => {
+                  newSlidesMap[ch.id] = slides;
+                  console.log(`[CourseStructureDetails] Depth 3: Loaded ${slides.length} slides for chapter ${ch.id}`);
+                });
+                slideLoadPromises.push(slidePromise);
+              });
+            });
+          });
+          
+          await Promise.all(slideLoadPromises);
+          console.log("[CourseStructureDetails] Depth 3: All slides loaded, updating state");
+          setSlidesMap(newSlidesMap);
         } else if (courseDepth === 4) {
           // Depth 4: Show modules, chapters, slides
           console.log("[CourseStructureDetails] Depth 4: Will show modules, chapters, slides (collapsed by default)");
@@ -584,7 +538,14 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
 
   const renderChapters = (module: ModuleWithChapters) => {
     const chapters = module.chapters || [];
-    if (chapters.length === 0) {
+    
+    // Depth 5: Filter out "default" chapters (this function is used by depth 5's renderModules)
+    const filteredChapters = chapters.filter(
+      (chapter) => !isDefaultName(chapter.chapter_name)
+    );
+    console.log(`[CourseStructureDetails] [DEPTH-5] Module has ${chapters.length} chapters, ${filteredChapters.length} after filtering`);
+    
+    if (filteredChapters.length === 0) {
       return (
         <div className="text-sm text-gray-500 italic">
           No chapters available for this module.
@@ -594,7 +555,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
 
     return (
       <div className="space-y-2">
-        {chapters.map((chapter, index) => (
+        {filteredChapters.map((chapter, index) => (
           <Collapsible
             key={`${chapter.id}-${index}`}
             open={openChapters.has(chapter.id)}
@@ -670,12 +631,19 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
 
   const renderModules = (subjectId: string) => {
     const modules = subjectModulesMap[subjectId] || [];
-    console.log(`[CourseStructureDetails] renderModules for subject ${subjectId}:`, modules);
-    if (modules.length === 0) return null;
+    console.log(`[CourseStructureDetails] [DEPTH-5] renderModules for subject ${subjectId}:`, modules);
+    
+    // Depth 5: Filter out "default" modules
+    const filteredModules = modules.filter(
+      (moduleWithChapters) => !isDefaultName(moduleWithChapters.module?.module_name)
+    );
+    console.log(`[CourseStructureDetails] [DEPTH-5] Subject has ${modules.length} modules, ${filteredModules.length} after filtering`);
+    
+    if (filteredModules.length === 0) return null;
 
     return (
       <div className="space-y-2">
-        {modules.map((moduleWithChapters, index) => (
+        {filteredModules.map((moduleWithChapters, index) => (
           <Collapsible
             key={`${moduleWithChapters.module?.id}-${index}`}
             open={openModules.has(moduleWithChapters.module?.id)}
@@ -711,186 +679,363 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
     );
   };
 
-  // Render slides only for depth 2
+  // Render slides only for depth 2 (skip "default" chapters - show slides directly)
   const renderSlidesForDepth2 = () => {
-    const allSlides: Slide[] = [];
+    const result: JSX.Element[] = [];
     
-    console.log("[CourseStructureDetails] renderSlidesForDepth2 - Processing modules and chapters");
+    console.log("[CourseStructureDetails] [DEPTH-2] renderSlidesForDepth2 - START");
+    console.log("[CourseStructureDetails] [DEPTH-2] subjectModulesMap keys:", Object.keys(subjectModulesMap));
+    console.log("[CourseStructureDetails] [DEPTH-2] slidesMap keys:", Object.keys(slidesMap));
+    console.log("[CourseStructureDetails] [DEPTH-2] slidesMap full data:", slidesMap);
+    
     Object.values(subjectModulesMap).forEach((modules, subjectIndex) => {
-      console.log(`[CourseStructureDetails] Subject ${subjectIndex}:`, modules.length, "modules");
+      console.log(`[CourseStructureDetails] [DEPTH-2] Subject ${subjectIndex}:`, modules.length, "modules");
       modules.forEach((moduleWithChapters, moduleIndex) => {
-        console.log(`[CourseStructureDetails] Module ${moduleIndex}:`, moduleWithChapters.chapters.length, "chapters");
+        console.log(`[CourseStructureDetails] [DEPTH-2] Module ${moduleIndex}:`, moduleWithChapters.chapters.length, "chapters");
+        
         moduleWithChapters.chapters.forEach((chapter, chapterIndex) => {
-          console.log(`[CourseStructureDetails] Chapter ${chapterIndex}:`, chapter.chapter_name, "ID:", chapter.id);
-          if (slidesMap[chapter.id]) {
-            console.log(`[CourseStructureDetails] Found ${slidesMap[chapter.id].length} slides for chapter ${chapter.id}`);
-            allSlides.push(...slidesMap[chapter.id]);
+          const isChapterDefault = isDefaultName(chapter.chapter_name);
+          console.log(`[CourseStructureDetails] [DEPTH-2] Chapter "${chapter.chapter_name}" (ID: ${chapter.id}) - isDefault: ${isChapterDefault}`);
+
+          if (!isChapterDefault) {
+            // Chapter is not default, show it with slides
+            result.push(
+              <Collapsible
+                key={`${chapter.id}-${chapterIndex}`}
+                open={openChapters.has(chapter.id)}
+                onOpenChange={() => toggleChapter(chapter.id)}
+              >
+                <CollapsibleTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start p-2 h-auto text-left border border-gray-200 rounded-lg overflow-hidden"
+                  >
+                    <FileText size={16} className="mr-2 text-green-500 flex-shrink-0" />
+                    <span className="text-sm font-medium break-words truncate flex-1 min-w-0">{chapter.chapter_name || 'Unnamed Chapter'}</span>
+                    <div className="flex-shrink-0 ml-2">
+                      {openChapters.has(chapter.id) ? (
+                        <CaretDown size={16} />
+                      ) : (
+                        <CaretRight size={16} />
+                      )}
+                    </div>
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="ml-4 mt-2">
+                  {renderSlides(chapter.id)}
+                </CollapsibleContent>
+              </Collapsible>
+            );
           } else {
-            console.log(`[CourseStructureDetails] No slides found for chapter ${chapter.id}`);
+            // Chapter is "default", render slides directly
+            const slides = slidesMap[chapter.id] || [];
+            console.log(`[CourseStructureDetails] [DEPTH-2] Rendering ${slides.length} slides directly for default chapter ${chapter.id}`);
+            console.log(`[CourseStructureDetails] [DEPTH-2] Slides for chapter ${chapter.id}:`, slides);
+            
+            if (slides.length === 0) {
+              console.warn(`[CourseStructureDetails] [DEPTH-2] No slides found in slidesMap for chapter ${chapter.id}, this might be loading issue`);
+            }
+            
+            slides.forEach((slide, slideIndex) => {
+              const { Icon, color, label } = getSlideIcon(slide);
+              result.push(
+                <div
+                  key={`${slide.id}-${slideIndex}`}
+                  className="flex items-center gap-2 p-2 border border-gray-200 rounded-lg hover:bg-gray-50 overflow-hidden"
+                >
+                  <Icon size={16} className={`flex-shrink-0 ${color}`} />
+                  <div className="flex-1 min-w-0 overflow-hidden">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-sm font-medium break-words truncate">{slide.title}</span>
+                      <span className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0">({label})</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            });
           }
         });
       });
     });
 
-    console.log("[CourseStructureDetails] Total slides collected for depth 2:", allSlides.length);
+    console.log("[CourseStructureDetails] [DEPTH-2] Total items rendered:", result.length);
 
-    if (allSlides.length === 0) {
+    if (result.length === 0) {
+      console.log("[CourseStructureDetails] [DEPTH-2] No items to render! Checking data:");
+      console.log("[CourseStructureDetails] [DEPTH-2] - Subjects:", Object.keys(subjectModulesMap).length);
+      console.log("[CourseStructureDetails] [DEPTH-2] - SlidesMap has data:", Object.keys(slidesMap).length > 0);
       return (
         <div className="text-sm text-gray-500 italic">
-          No slides available for this course.
+          Loading course content...
         </div>
       );
     }
 
-    return (
-      <div className="space-y-2">
-        {allSlides.map((slide, index) => {
-          const { Icon, color, label } = getSlideIcon(slide);
-          return (
-            <div
-              key={`${slide.id}-${index}`}
-              className="flex items-center gap-2 p-2 border border-gray-200 rounded-lg hover:bg-gray-50 overflow-hidden"
-            >
-              <Icon size={16} className={`flex-shrink-0 ${color}`} />
-              <div className="flex-1 min-w-0 overflow-hidden">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-sm font-medium break-words truncate">{slide.title}</span>
-                  <span className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0">({label})</span>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
+    return <div className="space-y-2">{result}</div>;
   };
 
-  // Render all chapters for depth 3
+  // Render all chapters for depth 3 (skip "default" labels, show content directly)
   const renderAllChaptersForDepth3 = () => {
-    const allChapters: Chapter[] = [];
+    const result: JSX.Element[] = [];
     
+    console.log("[CourseStructureDetails] [DEPTH-3] Collecting chapters");
     Object.values(subjectModulesMap).forEach((modules) => {
       modules.forEach((moduleWithChapters) => {
-        allChapters.push(...moduleWithChapters.chapters);
+        const chapters = moduleWithChapters.chapters || [];
+        
+        chapters.forEach((chapter, chapterIndex) => {
+          const isChapterDefault = isDefaultName(chapter.chapter_name);
+          console.log(`[CourseStructureDetails] [DEPTH-3] Chapter "${chapter.chapter_name}" - isDefault: ${isChapterDefault}`);
+
+          if (!isChapterDefault) {
+            // Chapter is not default, show it
+            result.push(
+              <Collapsible
+                key={`${chapter.id}-${chapterIndex}`}
+                open={openChapters.has(chapter.id)}
+                onOpenChange={() => toggleChapter(chapter.id)}
+              >
+                <CollapsibleTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start p-2 h-auto text-left border border-gray-200 rounded-lg overflow-hidden"
+                  >
+                    <FileText size={16} className="mr-2 text-green-500 flex-shrink-0" />
+                    <span className="text-sm font-medium break-words truncate flex-1 min-w-0">{chapter.chapter_name || 'Unnamed Chapter'}</span>
+                    <div className="flex-shrink-0 ml-2">
+                      {openChapters.has(chapter.id) ? (
+                        <CaretDown size={16} />
+                      ) : (
+                        <CaretRight size={16} />
+                      )}
+                    </div>
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="ml-4 mt-2">
+                  {renderSlides(chapter.id)}
+                </CollapsibleContent>
+              </Collapsible>
+            );
+          } else {
+            // Chapter is "default", render slides directly from chapter.slides
+            const slides = (chapter as any).slides || [];
+            console.log(`[CourseStructureDetails] [DEPTH-3] Rendering ${slides.length} slides directly for default chapter`);
+            
+            slides.forEach((slide: Slide, slideIndex: number) => {
+              const { Icon, color, label } = getSlideIcon(slide);
+              result.push(
+                <div
+                  key={`${slide.id}-${slideIndex}`}
+                  className="flex items-center gap-2 p-2 border border-gray-200 rounded-lg hover:bg-gray-50 overflow-hidden"
+                >
+                  <Icon size={16} className={`flex-shrink-0 ${color}`} />
+                  <div className="flex-1 min-w-0 overflow-hidden">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-sm font-medium break-words truncate">{slide.title}</span>
+                      <span className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0">({label})</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            });
+          }
+        });
       });
     });
 
-    if (allChapters.length === 0) {
+    if (result.length === 0) {
       return (
         <div className="text-sm text-gray-500 italic">
-          No chapters available for this course.
+          No content available for this course.
         </div>
       );
     }
 
-    return (
-      <div className="space-y-2">
-        {allChapters.map((chapter, index) => (
-          <Collapsible
-            key={`${chapter.id}-${index}`}
-            open={openChapters.has(chapter.id)}
-            onOpenChange={() => toggleChapter(chapter.id)}
-          >
-            <CollapsibleTrigger asChild>
-              <Button
-                variant="ghost"
-                className="w-full justify-start p-2 h-auto text-left border border-gray-200 rounded-lg overflow-hidden"
-              >
-                <FileText size={16} className="mr-2 text-green-500 flex-shrink-0" />
-                <span className="text-sm font-medium break-words truncate flex-1 min-w-0">{chapter.chapter_name || 'Unnamed Chapter'}</span>
-                <div className="flex-shrink-0 ml-2">
-                  {openChapters.has(chapter.id) ? (
-                    <CaretDown size={16} />
-                  ) : (
-                    <CaretRight size={16} />
-                  )}
-                </div>
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="ml-4 mt-2">
-              {renderSlides(chapter.id)}
-            </CollapsibleContent>
-          </Collapsible>
-        ))}
-      </div>
-    );
+    return <div className="space-y-2">{result}</div>;
   };
 
-  // Render all modules for depth 4
+  // Render all modules for depth 4 (skip "default" labels, show content directly)
   const renderModulesForDepth4 = () => {
-    const allModules: ModuleWithChapters[] = [];
+    const result: JSX.Element[] = [];
     
-    console.log("[CourseStructureDetails] renderModulesForDepth4 - subjectModulesMap:", subjectModulesMap);
+    console.log("[CourseStructureDetails] [DEPTH-4] renderModulesForDepth4 - subjectModulesMap:", subjectModulesMap);
+    
     Object.values(subjectModulesMap).forEach((modules) => {
-      allModules.push(...modules);
-    });
-    console.log("[CourseStructureDetails] renderModulesForDepth4 - allModules:", allModules);
+      modules.forEach((moduleWithChapters, moduleIndex) => {
+        const isModuleDefault = isDefaultName(moduleWithChapters.module?.module_name);
+        console.log(`[CourseStructureDetails] [DEPTH-4] Module "${moduleWithChapters.module?.module_name}" - isDefault: ${isModuleDefault}`);
 
-    if (allModules.length === 0) {
+        if (!isModuleDefault) {
+          // Module is not default, show it with chapters
+          result.push(
+            <Collapsible
+              key={`${moduleWithChapters.module?.id}-${moduleIndex}`}
+              open={openModules.has(moduleWithChapters.module?.id)}
+              onOpenChange={() => toggleModule(moduleWithChapters.module?.id)}
+            >
+              <CollapsibleTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start p-2 h-auto text-left border border-gray-200 rounded-lg overflow-hidden"
+                >
+                  <Folder size={16} className="mr-2 text-blue-500 flex-shrink-0" />
+                  <span className="text-sm font-medium break-words truncate flex-1 min-w-0">{moduleWithChapters.module?.module_name || 'Unnamed Module'}</span>
+                  <div className="flex-shrink-0 ml-2">
+                    {openModules.has(moduleWithChapters.module?.id) ? (
+                      <CaretDown size={16} />
+                    ) : (
+                      <CaretRight size={16} />
+                    )}
+                  </div>
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="ml-4 mt-2">
+                {moduleWithChapters.module?.description && moduleWithChapters.module.description.trim() !== '' && (
+                  <div className="p-2 bg-gray-50 rounded text-sm text-gray-600 mb-2">
+                    {moduleWithChapters.module.description}
+                  </div>
+                )}
+                {/* Depth 4: Filter chapters within modules */}
+                {(() => {
+                  const filteredChapters = moduleWithChapters.chapters.filter(
+                    (chapter) => !isDefaultName(chapter.chapter_name)
+                  );
+                  if (filteredChapters.length === 0) {
+                    return (
+                      <div className="text-sm text-gray-500 italic">
+                        No chapters available for this module.
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="space-y-2">
+                      {filteredChapters.map((chapter, index) => (
+                        <Collapsible
+                          key={`${chapter.id}-${index}`}
+                          open={openChapters.has(chapter.id)}
+                          onOpenChange={() => toggleChapter(chapter.id)}
+                        >
+                          <CollapsibleTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              className="w-full justify-start p-2 h-auto text-left border border-gray-200 rounded-lg overflow-hidden"
+                            >
+                              <FileText size={16} className="mr-2 text-green-500 flex-shrink-0" />
+                              <span className="text-sm font-medium break-words truncate flex-1 min-w-0">{chapter.chapter_name || 'Unnamed Chapter'}</span>
+                              <div className="flex-shrink-0 ml-2">
+                                {openChapters.has(chapter.id) ? (
+                                  <CaretDown size={16} />
+                                ) : (
+                                  <CaretRight size={16} />
+                                )}
+                              </div>
+                            </Button>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent className="ml-4 mt-2">
+                            {renderSlides(chapter.id)}
+                          </CollapsibleContent>
+                        </Collapsible>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </CollapsibleContent>
+            </Collapsible>
+          );
+        } else {
+          // Module is "default", render chapters directly
+          const chapters = moduleWithChapters.chapters || [];
+          chapters.forEach((chapter, chapterIndex) => {
+            const isChapterDefault = isDefaultName(chapter.chapter_name);
+            console.log(`[CourseStructureDetails] [DEPTH-4] Chapter "${chapter.chapter_name}" - isDefault: ${isChapterDefault}`);
+
+            if (!isChapterDefault) {
+              // Chapter is not default, show it
+              result.push(
+                <Collapsible
+                  key={`${chapter.id}-${chapterIndex}`}
+                  open={openChapters.has(chapter.id)}
+                  onOpenChange={() => toggleChapter(chapter.id)}
+                >
+                  <CollapsibleTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start p-2 h-auto text-left border border-gray-200 rounded-lg overflow-hidden"
+                    >
+                      <FileText size={16} className="mr-2 text-green-500 flex-shrink-0" />
+                      <span className="text-sm font-medium break-words truncate flex-1 min-w-0">{chapter.chapter_name || 'Unnamed Chapter'}</span>
+                      <div className="flex-shrink-0 ml-2">
+                        {openChapters.has(chapter.id) ? (
+                          <CaretDown size={16} />
+                        ) : (
+                          <CaretRight size={16} />
+                        )}
+                      </div>
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="ml-4 mt-2">
+                    {renderSlides(chapter.id)}
+                  </CollapsibleContent>
+                </Collapsible>
+              );
+            } else {
+              // Chapter is "default", render slides directly from chapter.slides
+              const slides = (chapter as any).slides || [];
+              console.log(`[CourseStructureDetails] [DEPTH-4] Rendering ${slides.length} slides directly for default chapter`);
+              
+              slides.forEach((slide: Slide, slideIndex: number) => {
+                const { Icon, color, label } = getSlideIcon(slide);
+                result.push(
+                  <div
+                    key={`${slide.id}-${slideIndex}`}
+                    className="flex items-center gap-2 p-2 border border-gray-200 rounded-lg hover:bg-gray-50 overflow-hidden"
+                  >
+                    <Icon size={16} className={`flex-shrink-0 ${color}`} />
+                    <div className="flex-1 min-w-0 overflow-hidden">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-sm font-medium break-words truncate">{slide.title}</span>
+                        <span className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0">({label})</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              });
+            }
+          });
+        }
+      });
+    });
+
+    if (result.length === 0) {
       return (
         <div className="text-sm text-gray-500 italic">
-          No modules available for this course.
+          No content available for this course.
         </div>
       );
     }
 
-    return (
-      <div className="space-y-2">
-        {allModules.map((moduleWithChapters, index) => (
-          <Collapsible
-            key={`${moduleWithChapters.module?.id}-${index}`}
-            open={openModules.has(moduleWithChapters.module?.id)}
-            onOpenChange={() => toggleModule(moduleWithChapters.module?.id)}
-          >
-            <CollapsibleTrigger asChild>
-              <Button
-                variant="ghost"
-                className="w-full justify-start p-2 h-auto text-left border border-gray-200 rounded-lg overflow-hidden"
-              >
-                <Folder size={16} className="mr-2 text-blue-500 flex-shrink-0" />
-                <span className="text-sm font-medium break-words truncate flex-1 min-w-0">{moduleWithChapters.module?.module_name || 'Unnamed Module'}</span>
-                <div className="flex-shrink-0 ml-2">
-                  {openModules.has(moduleWithChapters.module?.id) ? (
-                    <CaretDown size={16} />
-                  ) : (
-                    <CaretRight size={16} />
-                  )}
-                </div>
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="ml-4 mt-2">
-              {moduleWithChapters.module?.description && moduleWithChapters.module.description.trim() !== '' && (
-                <div className="p-2 bg-gray-50 rounded text-sm text-gray-600 mb-2">
-                  {moduleWithChapters.module.description}
-                </div>
-              )}
-              {renderChapters(moduleWithChapters)}
-            </CollapsibleContent>
-          </Collapsible>
-        ))}
-      </div>
-    );
+    return <div className="space-y-2">{result}</div>;
   };
 
-  // Render all subjects for depth 5
+  // Render all subjects for depth 5 (skip "default" labels, show content directly)
   const renderSubjectsForDepth5 = () => {
-    console.log("[CourseStructureDetails] Rendering subjects for depth 5 - studyLibraryData:", studyLibraryData);
-    console.log("[CourseStructureDetails] Subjects count:", studyLibraryData.length);
-    console.log("[CourseStructureDetails] Subject names:", studyLibraryData.map(s => s.subject_name));
+    console.log("[CourseStructureDetails] [DEPTH-5] Rendering subjects for depth 5 - studyLibraryData:", studyLibraryData);
+    console.log("[CourseStructureDetails] [DEPTH-5] Subjects count:", studyLibraryData.length);
+    console.log("[CourseStructureDetails] [DEPTH-5] Subject names:", studyLibraryData.map(s => s.subject_name));
     
-    if (studyLibraryData.length === 0) {
-      return (
-        <div className="text-sm text-gray-500 italic">
-          No subjects available for this course.
-        </div>
-      );
-    }
+    const result: JSX.Element[] = [];
 
-    return (
-      <div className="space-y-2">
-        {studyLibraryData.map((subject, index) => (
+    studyLibraryData.forEach((subject, subjectIndex) => {
+      const modules = subjectModulesMap[subject.id] || [];
+      const isSubjectDefault = isDefaultName(subject.subject_name);
+      
+      console.log(`[CourseStructureDetails] [DEPTH-5] Subject "${subject.subject_name}" - isDefault: ${isSubjectDefault}, modules: ${modules.length}`);
+
+      // If subject is not default, show it with its modules
+      if (!isSubjectDefault) {
+        result.push(
           <Collapsible
-            key={`${subject.id}-${index}`}
+            key={`${subject.id}-${subjectIndex}`}
             open={openSubjects.has(subject.id)}
             onOpenChange={() => toggleSubject(subject.id)}
           >
@@ -917,9 +1062,122 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
               {renderModules(subject.id)}
             </CollapsibleContent>
           </Collapsible>
-        ))}
-      </div>
-    );
+        );
+      } else {
+        // Subject is "default", so render modules directly without subject wrapper
+        modules.forEach((moduleWithChapters, moduleIndex) => {
+          const isModuleDefault = isDefaultName(moduleWithChapters.module?.module_name);
+          console.log(`[CourseStructureDetails] [DEPTH-5] Module "${moduleWithChapters.module?.module_name}" - isDefault: ${isModuleDefault}`);
+
+          if (!isModuleDefault) {
+            // Module is not default, show it
+            result.push(
+              <Collapsible
+                key={`${moduleWithChapters.module?.id}-${moduleIndex}`}
+                open={openModules.has(moduleWithChapters.module?.id)}
+                onOpenChange={() => toggleOpenState(moduleWithChapters.module?.id, setOpenModules)}
+              >
+                <CollapsibleTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start p-2 h-auto text-left border border-gray-200 rounded-lg overflow-hidden"
+                  >
+                    <Folder size={16} className="mr-2 text-orange-500 flex-shrink-0" />
+                    <span className="text-sm font-medium break-words truncate flex-1 min-w-0">{moduleWithChapters.module?.module_name || 'Unnamed Module'}</span>
+                    <div className="flex-shrink-0 ml-2">
+                      {openModules.has(moduleWithChapters.module?.id) ? (
+                        <CaretDown size={16} />
+                      ) : (
+                        <CaretRight size={16} />
+                      )}
+                    </div>
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="ml-4 mt-2">
+                  {moduleWithChapters.module?.description && moduleWithChapters.module.description.trim() !== '' && (
+                    <div className="p-2 bg-gray-50 rounded text-sm text-gray-600 mb-2">
+                      {moduleWithChapters.module.description}
+                    </div>
+                  )}
+                  {renderChapters(moduleWithChapters)}
+                </CollapsibleContent>
+              </Collapsible>
+            );
+          } else {
+            // Module is "default", render chapters directly
+            const chapters = moduleWithChapters.chapters || [];
+            chapters.forEach((chapter, chapterIndex) => {
+              const isChapterDefault = isDefaultName(chapter.chapter_name);
+              console.log(`[CourseStructureDetails] [DEPTH-5] Chapter "${chapter.chapter_name}" - isDefault: ${isChapterDefault}`);
+
+              if (!isChapterDefault) {
+                // Chapter is not default, show it
+                result.push(
+                  <Collapsible
+                    key={`${chapter.id}-${chapterIndex}`}
+                    open={openChapters.has(chapter.id)}
+                    onOpenChange={() => toggleChapter(chapter.id)}
+                  >
+                    <CollapsibleTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="w-full justify-start p-2 h-auto text-left border border-gray-200 rounded-lg overflow-hidden"
+                      >
+                        <FileText size={16} className="mr-2 text-green-500 flex-shrink-0" />
+                        <span className="text-sm font-medium break-words truncate flex-1 min-w-0">{chapter.chapter_name || 'Unnamed Chapter'}</span>
+                        <div className="flex-shrink-0 ml-2">
+                          {openChapters.has(chapter.id) ? (
+                            <CaretDown size={16} />
+                          ) : (
+                            <CaretRight size={16} />
+                          )}
+                        </div>
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="ml-4 mt-2">
+                      {renderSlides(chapter.id)}
+                    </CollapsibleContent>
+                  </Collapsible>
+                );
+              } else {
+                // Chapter is "default", render slides directly from chapter.slides
+                const slides = (chapter as any).slides || [];
+                console.log(`[CourseStructureDetails] [DEPTH-5] Rendering ${slides.length} slides directly for default chapter`);
+                console.log(`[CourseStructureDetails] [DEPTH-5] Chapter object:`, chapter);
+                
+                slides.forEach((slide: Slide, slideIndex: number) => {
+                  const { Icon, color, label } = getSlideIcon(slide);
+                  result.push(
+                    <div
+                      key={`${slide.id}-${slideIndex}`}
+                      className="flex items-center gap-2 p-2 border border-gray-200 rounded-lg hover:bg-gray-50 overflow-hidden"
+                    >
+                      <Icon size={16} className={`flex-shrink-0 ${color}`} />
+                      <div className="flex-1 min-w-0 overflow-hidden">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-sm font-medium break-words truncate">{slide.title}</span>
+                          <span className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0">({label})</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                });
+              }
+            });
+          }
+        });
+      }
+    });
+
+    if (result.length === 0) {
+      return (
+        <div className="text-sm text-gray-500 italic">
+          No content available for this course.
+        </div>
+      );
+    }
+
+    return <div className="space-y-2">{result}</div>;
   };
 
 
@@ -995,7 +1253,6 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
             </div>
           )}
 
-          {console.log("[CourseStructureDetails] Course depth check - courseDepth:", courseDepth, "type:", typeof courseDepth, "equals 5:", courseDepth === 5)}
           {courseDepth === 5 && (
             <div className="space-y-2">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Course Content (Full Structure)</h3>

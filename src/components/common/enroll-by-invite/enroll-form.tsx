@@ -11,7 +11,7 @@ import {
 } from "./-services/enroll-invite-services";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { GraduationCap } from "lucide-react";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import {
   convertInviteCustomFields,
   getDefaultPlanFromPaymentsData,
@@ -51,12 +51,29 @@ import {
   getPaymentVendor,
   PaymentVendor,
 } from "./-utils/payment-vendor-helper";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CourseStructureDetails as CatalogCourseStructureDetails } from "@/routes/$tagName/-components/CourseStructureDetails";
 
 // SUBSCRIPTION, FREE, UPFRONT, DONATION
 
 interface EnrollByInviteProps {
   vendor?: PaymentVendor;
 }
+
+type BundledSessionMeta = {
+  packageSessionId: string;
+  paymentOptionName?: string;
+};
+
+type InvitePackageSession =
+  | {
+      package_session_id?: string;
+      payment_option?: {
+        name?: string;
+      } | null;
+    }
+  | null
+  | undefined;
 
 const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
   // Ensure domain resolution runs on this public route to fetch fontFamily/tab branding from /resolve
@@ -91,6 +108,9 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
   const razorpayRef = useRef<RazorpayCheckoutFormRef>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activePackageSessionId, setActivePackageSessionId] = useState<
+    string | null
+  >(null);
 
   const [currentStep, setCurrentStep] = useState(0); // 0: Registration, 1: Payment Selection, 2: Review, 3: Payment Details, 4: Payment Pending, 5: Success
   const [isRegistrationCardVisible, setIsRegistrationCardVisible] =
@@ -219,6 +239,77 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
   });
 
   form.watch();
+
+  const isBundledInvite = Boolean(inviteData?.is_bundled);
+
+  const bundledPackageSessions = useMemo<BundledSessionMeta[]>(() => {
+    const sessions =
+      (inviteData?.package_session_to_payment_options as
+        | InvitePackageSession[]
+        | undefined) ?? [];
+    const seen = new Set<string>();
+
+    return sessions.reduce<BundledSessionMeta[]>((acc, current) => {
+      const packageSessionId = current?.package_session_id;
+      if (!packageSessionId || seen.has(packageSessionId)) {
+        return acc;
+      }
+      seen.add(packageSessionId);
+
+      acc.push({
+        packageSessionId,
+        paymentOptionName: current?.payment_option?.name ?? undefined,
+      });
+
+      return acc;
+    }, []);
+  }, [inviteData?.package_session_to_payment_options]);
+
+  // Check if right section (CourseInfoCard) has meaningful data beyond just the course name
+  const hasRightSectionContent = useMemo(() => {
+    return (
+      (courseData.description && courseData.description.trim() !== "") ||
+      (courseData.aboutCourse && courseData.aboutCourse.trim() !== "") ||
+      (courseData.learningOutcome &&
+        courseData.learningOutcome.trim() !== "") ||
+      (courseData.tags && courseData.tags.length > 0)
+    );
+  }, [
+    courseData.description,
+    courseData.aboutCourse,
+    courseData.learningOutcome,
+    courseData.tags,
+  ]);
+
+  useEffect(() => {
+    if (bundledPackageSessions.length > 0) {
+      setActivePackageSessionId(bundledPackageSessions[0]?.packageSessionId);
+    } else {
+      setActivePackageSessionId(null);
+    }
+  }, [bundledPackageSessions]);
+
+  const resolvePackageSessionLabel = (
+    packageSessionId: string,
+    fallbackIndex: number
+  ) => {
+    const details = getDetailsFromPackageSessionId({ packageSessionId });
+    const courseName = details?.package_dto?.package_name;
+    const levelName = details?.level?.level_name;
+    const sessionName = details?.session?.session_name;
+
+    if (courseName && levelName) {
+      return `${courseName} · ${levelName}`;
+    }
+
+    if (courseName && sessionName) {
+      return `${courseName} · ${sessionName}`;
+    }
+
+    return (
+      courseName || levelName || sessionName || `Course ${fallbackIndex + 1}`
+    );
+  };
 
   function onSubmit(values: FormValues) {
     setEnrollmentData((prev) => ({
@@ -353,9 +444,10 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
           enrollInviteId: inviteData?.id,
           payment_option_id:
             inviteData?.package_session_to_payment_options[0].payment_option.id,
-          package_session_id:
-            inviteData?.package_session_to_payment_options[0]
-              ?.package_session_id,
+          package_session_ids:
+            inviteData?.package_session_to_payment_options.map(
+              (ps: { package_session_id: string }) => ps?.package_session_id
+            ) || [""],
           allowLearnersToCreateCourses:
             JSON.parse(instituteData?.setting)?.setting?.COURSE_SETTING?.data
               ?.permissions?.allowLearnersToCreateCourses || false,
@@ -990,218 +1082,375 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
     void loadPolicyLinks();
   }, [instituteId]);
 
-  // Set up Intersection Observer to detect when registration card is visible
-  useEffect(() => {
-    const registrationCard = document.getElementById("registration-card");
-    if (!registrationCard) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          setIsRegistrationCardVisible(entry.isIntersecting);
-        });
-      },
-      {
-        threshold: 0.1, // Trigger when 10% of the element is visible
-        rootMargin: "-50px 0px", // Add some margin to trigger earlier
-      }
-    );
-
-    observer.observe(registrationCard);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [currentStep]); // Re-run when step changes to ensure the element exists
-
   if (isLoading || isInstituteLoading) return <DashboardLoader />;
 
+  // Helper to extract YouTube video ID from URL
+  const getYouTubeVideoId = (url: string): string | null => {
+    if (!url) return null;
+    const regExp =
+      /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+    const match = url.match(regExp);
+    return match && match[2].length === 11 ? match[2] : null;
+  };
+
   return (
-    <div
-      className={`w-full h-auto bg-gradient-to-br from-slate-50 to-blue-50 py-8 px-4 sm:px-6 lg:px-8 pb-24`}
-    >
-      <div className="md:max-w-[80%] mx-auto space-y-8">
-        {/* Branded Header */}
-        <ModernCard
-          variant="glass"
-          padding="md"
-          rounded="lg"
-          className="border border-white/30 bg-white/80 backdrop-blur-md"
-        >
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <InstituteBrandingComponent
-              branding={{
-                instituteId: instituteId || null,
-                instituteName:
-                  instituteData?.institute_name ?? instituteData?.name ?? null,
-                instituteLogoFileId:
-                  instituteData?.institute_logo_file_id ?? null,
-                instituteThemeCode:
-                  (instituteData?.institute_theme_code as string) ||
-                  (instituteData?.theme as string) ||
-                  null,
-              }}
-              size="small"
-              showName={true}
-              className="justify-start"
-            />
-
-            <div className="text-center md:text-right w-full md:w-auto">
-              <ModernCardHeader className="p-0">
-                <ModernCardTitle size="md" className="truncate max-w-[40ch]">
-                  {courseData.course}
-                </ModernCardTitle>
-              </ModernCardHeader>
-            </div>
-          </div>
-
-          {/* Progress Bar (no text) */}
-          <div className="mt-3 w-full">
-            <div className="h-1.5 w-full rounded-full bg-slate-200 overflow-hidden">
-              <div
-                className="h-full bg-primary-500 transition-all duration-300"
-                style={{
-                  width: `${(() => {
-                    // Calculate progress based on current step and payment type
-                    // Steps: 0=Registration, 1=Payment Selection, 2=Review, 3=Payment Details, 4=Pending, 5=Success
-                    const totalSteps = 6; // 0 to 5
-
-                    // For FREE payments, skip payment selection and payment details
-                    if (paymentType === "FREE") {
-                      // Steps are: 0=Registration, 2=Review, 5=Success
-                      const freeSteps = [0, 2, 5];
-                      const currentIndex = freeSteps.indexOf(currentStep);
-                      if (currentIndex === -1) return 0;
-                      return Math.round(
-                        (currentIndex / (freeSteps.length - 1)) * 100
-                      );
-                    }
-
-                    // For single plan (non-donation), skip payment selection
-                    const hasSinglePlan =
-                      paymentType !== "DONATION" &&
-                      (inviteData?.package_session_to_payment_options?.[0]
-                        ?.payment_option?.payment_plans?.length || 0) === 1;
-
-                    if (hasSinglePlan) {
-                      // Steps are: 0=Registration, 2=Review, 3=Payment, 4=Pending, 5=Success
-                      const singlePlanSteps = [0, 2, 3, 4, 5];
-                      const currentIndex = singlePlanSteps.indexOf(currentStep);
-                      if (currentIndex === -1) return 0;
-                      return Math.round(
-                        (currentIndex / (singlePlanSteps.length - 1)) * 100
-                      );
-                    }
-
-                    // For all other payment types (SUBSCRIPTION, DONATION, ONE_TIME with multiple plans)
-                    // All steps are used: 0, 1, 2, 3, 4, 5
-                    return Math.round((currentStep / (totalSteps - 1)) * 100);
-                  })()}%`,
+    <div className={`w-full h-auto bg-gradient-to-br from-slate-50 to-blue-50`}>
+      {/* Navbar Header - Only show institute logo if includeInstituteLogo is true */}
+      {courseData.includeInstituteLogo && (
+        <nav className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-6">
+            <div className="flex items-center justify-start h-18 sm:h-16 py-3 p-3 sm:py-4">
+              <InstituteBrandingComponent
+                branding={{
+                  instituteId: instituteId || null,
+                  instituteName:
+                    instituteData?.institute_name ??
+                    instituteData?.name ??
+                    null,
+                  instituteLogoFileId:
+                    instituteData?.institute_logo_file_id ?? null,
+                  instituteThemeCode:
+                    (instituteData?.institute_theme_code as string) ||
+                    (instituteData?.theme as string) ||
+                    null,
                 }}
+                size="medium"
+                showName={true}
+                className="!flex-row !items-center !gap-3 sm:!gap-4"
               />
             </div>
           </div>
-        </ModernCard>
+        </nav>
+      )}
 
-        {/* Main Grid Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left: Step Content */}
-          <div className="lg:col-span-2 space-y-6">
-            {renderCurrentStep()}
+      {/* Hero Section with Banner and Course Media */}
+      <div
+        className="relative w-full bg-cover bg-center flex items-center"
+        style={{
+          backgroundImage: courseData.courseBanner
+            ? `linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url(${courseData.courseBanner})`
+            : "linear-gradient(to right, #667eea 0%, #764ba2 100%)",
+          minHeight: "500px",
+        }}
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 w-full">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+            {/* Left Side: Course Info and Enroll Button */}
+            <div
+              className={`text-white flex flex-col ${
+                courseData.description
+                  ? "justify-start"
+                  : "justify-center items-start"
+              }`}
+            >
+              <h1 className="text-4xl md:text-5xl font-bold leading-tight">
+                {inviteData?.name || courseData.course}
+              </h1>
 
-            {/* Navigation Buttons - Show for steps 1-3, but skip step 1 for FREE payments */}
-            {currentStep > 0 &&
-              currentStep < 4 &&
-              !(currentStep === 1 && paymentType === "FREE") && (
-                <NavigationButtons
-                  currentStep={currentStep}
-                  selectedPayment={enrollmentData.selectedPayment}
-                  onPrevious={handlePrevious}
-                  onNext={handleNext}
-                  onSubmitEnrollment={handleSubmitEnrollment}
-                  loading={loading}
-                  paymentType={paymentType}
-                  donationAmountValid={donationAmountValid}
-                  paymentVendor={
-                    currentStep === 3 ? getPaymentVendor(inviteData) : undefined
-                  }
-                  isPaymentDataReady={
-                    currentStep === 3
-                      ? getPaymentVendor(inviteData) === "EWAY"
-                        ? !!ewayEncryptedData
-                        : getPaymentVendor(inviteData) === "STRIPE"
-                        ? !!stripePaymentProcessor
-                        : getPaymentVendor(inviteData) === "RAZORPAY"
-                        ? !!razorpayPaymentData
-                        : false
-                      : false
-                  }
+              {courseData.description && (
+                <div
+                  className="text-lg text-gray-100 leading-relaxed mt-6 flex-grow"
+                  dangerouslySetInnerHTML={{ __html: courseData.description }}
                 />
               )}
-          </div>
 
-          {/* Right: Course Info Sidebar */}
-          <div className="lg:col-span-1 space-y-6 lg:sticky lg:top-6 self-start">
-            <CourseInfoCard
-              courseData={{ ...courseData, instituteLogo: "" }}
-              levelName={
-                getDetailsFromPackageSessionId({
-                  packageSessionId:
-                    inviteData.package_session_to_payment_options[0]
-                      .package_session_id,
-                })?.level.level_name || "-"
-              }
-            />
-          </div>
-        </div>
+              {/* Enroll Button */}
+              {currentStep === 0 && (
+                <div className={courseData.description ? "mt-8" : "mt-6"}>
+                  <MyButton
+                    type="button"
+                    buttonType="secondary"
+                    scale="large"
+                    layoutVariant="default"
+                    onClick={() => {
+                      const registrationCard =
+                        document.getElementById("registration-card");
+                      if (registrationCard) {
+                        registrationCard.scrollIntoView({
+                          behavior: "smooth",
+                          block: "start",
+                        });
+                      }
+                    }}
+                    className="text-white font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
+                  >
+                    <GraduationCap className="w-5 h-5 mr-2" />
+                    Enroll Now
+                  </MyButton>
+                </div>
+              )}
+            </div>
 
-        {/* Policy Links */}
-        <div className="flex items-center justify-center gap-4 text-sm text-gray-600">
-          <a
-            href={privacyPolicyUrl || "/privacy-policy"}
-            target={privacyPolicyUrl ? "_blank" : undefined}
-            rel={privacyPolicyUrl ? "noopener noreferrer" : undefined}
-            className="hover:underline"
-          >
-            Privacy Policy
-          </a>
-          <span className="text-gray-300">•</span>
-          <a
-            href={termsAndConditionUrl || "/terms-and-conditions"}
-            target={termsAndConditionUrl ? "_blank" : undefined}
-            rel={termsAndConditionUrl ? "noopener noreferrer" : undefined}
-            className="hover:underline"
-          >
-            Terms & Conditions
-          </a>
+            {/* Right Side: Course Media (YouTube Video) */}
+            {courseData.courseMedia &&
+              courseData.courseMediaId?.type === "youtube" && (
+                <div className="w-full">
+                  <div
+                    className="relative rounded-lg overflow-hidden shadow-2xl"
+                    style={{ paddingBottom: "56.25%" }}
+                  >
+                    <iframe
+                      className="absolute top-0 left-0 w-full h-full"
+                      src={`https://www.youtube.com/embed/${getYouTubeVideoId(
+                        courseData.courseMediaId.id
+                      )}`}
+                      title={courseData.course}
+                      frameBorder="0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  </div>
+                </div>
+              )}
+          </div>
         </div>
       </div>
 
-      {/* Fixed bottom container with border - Only show in registration step and when registration card is not visible */}
-      {currentStep === 0 && !isRegistrationCardVisible && (
-        <div className="flex items-center justify-center py-4 fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-50">
-          <MyButton
-            type="button"
-            buttonType="secondary"
-            scale="large"
-            layoutVariant="default"
-            onClick={() => {
-              const registrationCard =
-                document.getElementById("registration-card");
-              if (registrationCard) {
-                registrationCard.scrollIntoView({
-                  behavior: "smooth",
-                  block: "start",
-                });
-              }
-            }}
-            className="text-white font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
+      {/* Main Content Area */}
+      <div className="py-8 px-4 sm:px-6 lg:px-8">
+        <div className="w-11/12 mx-auto space-y-8">
+          {/* Main Grid Layout - Full width if no right section content */}
+          <div
+            className={`grid grid-cols-1 ${
+              hasRightSectionContent ? "lg:grid-cols-3" : ""
+            } gap-8`}
           >
-            <GraduationCap className="w-5 h-5 mr-2" />
-            Enroll Now
-          </MyButton>
+            {/* Left: Course Structure Preview & Step Content (Subscription Model) */}
+            <div
+              className={`${
+                hasRightSectionContent ? "lg:col-span-2" : "w-full"
+              } space-y-4 sm:space-y-6`}
+            >
+              {/* Course Structure Section - Above Subscription - Only show on step 0 */}
+
+              {/* Subscription/Registration Form */}
+              {renderCurrentStep()}
+
+              {currentStep === 0 &&
+                isBundledInvite &&
+                bundledPackageSessions.length > 0 && (
+                  <ModernCard
+                    variant="glass"
+                    padding="lg"
+                    rounded="lg"
+                    className="border border-white/40 bg-white/90 backdrop-blur-md shadow-lg"
+                  >
+                    <ModernCardHeader className="p-0 mb-2 ">
+                      <ModernCardTitle
+                        size="md"
+                        className="text-neutral-800 text-xl sm:text-2xl"
+                      >
+                        Course Structure Preview
+                      </ModernCardTitle>
+                    </ModernCardHeader>
+                    {/* <p className="text-xs sm:text-sm text-neutral-500 mb-3 sm:mb-4">
+                  Review what&apos;s included in each bundled course before you enroll.
+                </p> */}
+
+                    {bundledPackageSessions.length > 1 ? (
+                      <Tabs
+                        value={
+                          activePackageSessionId ??
+                          bundledPackageSessions[0]?.packageSessionId
+                        }
+                        onValueChange={setActivePackageSessionId}
+                      >
+                        <div className="bg-neutral-100/70 rounded-lg p-3 mb-4">
+                          {/* <h3 className="text-sm font-semibold text-neutral-700 mb-3 px-1">
+                        Select a Course:
+                      </h3> */}
+                          <TabsList className="flex flex-wrap w-full gap-2 bg-transparent p-0 h-auto">
+                            {bundledPackageSessions.map((session, index) => (
+                              <TabsTrigger
+                                key={session.packageSessionId}
+                                value={session.packageSessionId}
+                                className="flex-1 min-w-[calc(50%-0.25rem)] sm:min-w-[calc(50%-0.5rem)] md:min-w-[calc(33.333%-0.5rem)] border-1 border-gray-300 rounded-md px-2 sm:px-3 py-2 sm:py-2.5 text-xs sm:text-sm font-medium text-neutral-700 bg-white transition-all duration-200 cursor-pointer hover:bg-primary-50 hover:border-primary-400 data-[state=active]:bg-gray-400 data-[state=active]:text-white data-[state=active]:border-gray-700 data-[state=active]:shadow-md"
+                              >
+                                {resolvePackageSessionLabel(
+                                  session.packageSessionId,
+                                  index
+                                )}
+                              </TabsTrigger>
+                            ))}
+                          </TabsList>
+                        </div>
+
+                        {bundledPackageSessions.map((session) => (
+                          <TabsContent
+                            key={session.packageSessionId}
+                            value={session.packageSessionId}
+                            className="focus-visible:outline-none focus-visible:ring-0"
+                          >
+                            {activePackageSessionId ===
+                            session.packageSessionId ? (
+                              (() => {
+                                const sessionDetails =
+                                  getDetailsFromPackageSessionId({
+                                    packageSessionId: session.packageSessionId,
+                                  });
+                                const previewCourseId =
+                                  sessionDetails?.package_dto?.id ?? "";
+                                const previewLevelId =
+                                  sessionDetails?.level?.id ?? undefined;
+
+                                if (!previewCourseId) {
+                                  return (
+                                    <div className="rounded-lg border border-dashed border-neutral-200 p-3 sm:p-4 text-xs text-neutral-500">
+                                      Course structure will appear once the
+                                      institute shares the full course catalog.
+                                    </div>
+                                  );
+                                }
+
+                                return (
+                                  <div className="rounded-lg border border-neutral-100 bg-white/70 p-2 sm:p-3">
+                                    <CatalogCourseStructureDetails
+                                      key={session.packageSessionId}
+                                      courseDepth={5}
+                                      courseId={previewCourseId}
+                                      instituteId={instituteId ?? ""}
+                                      packageSessionId={
+                                        session.packageSessionId
+                                      }
+                                      levelId={previewLevelId}
+                                    />
+                                  </div>
+                                );
+                              })()
+                            ) : (
+                              <div className="rounded-lg border border-dashed border-neutral-200 p-3 sm:p-4 text-xs text-neutral-500">
+                                Select a course above to preview its structure.
+                              </div>
+                            )}
+                          </TabsContent>
+                        ))}
+                      </Tabs>
+                    ) : (
+                      <div>
+                        {(() => {
+                          const singleSessionId =
+                            bundledPackageSessions[0]?.packageSessionId ?? "";
+                          if (!singleSessionId) {
+                            return (
+                              <div className="rounded-lg border border-dashed border-neutral-200 p-3 sm:p-4 text-xs text-neutral-500">
+                                Course structure preview will appear shortly.
+                              </div>
+                            );
+                          }
+                          const sessionDetails = getDetailsFromPackageSessionId(
+                            {
+                              packageSessionId: singleSessionId,
+                            }
+                          );
+                          const previewCourseId =
+                            sessionDetails?.package_dto?.id ?? "";
+                          const previewLevelId =
+                            sessionDetails?.level?.id ?? undefined;
+
+                          if (!previewCourseId) {
+                            return (
+                              <div className="rounded-lg border border-dashed border-neutral-200 p-3 sm:p-4 text-xs text-neutral-500">
+                                Course structure will appear once the institute
+                                shares the full course catalog.
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div className="rounded-lg border border-neutral-100 bg-white/70 p-2 sm:p-3">
+                              <CatalogCourseStructureDetails
+                                courseDepth={5}
+                                courseId={previewCourseId}
+                                instituteId={instituteId ?? ""}
+                                packageSessionId={singleSessionId}
+                                levelId={previewLevelId}
+                              />
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
+                  </ModernCard>
+                )}
+
+              {/* Navigation Buttons - Show for steps 1-3, but skip step 1 for FREE payments */}
+              {currentStep > 0 &&
+                currentStep < 4 &&
+                !(currentStep === 1 && paymentType === "FREE") && (
+                  <NavigationButtons
+                    currentStep={currentStep}
+                    selectedPayment={enrollmentData.selectedPayment}
+                    onPrevious={handlePrevious}
+                    onNext={handleNext}
+                    onSubmitEnrollment={handleSubmitEnrollment}
+                    loading={loading}
+                    paymentType={paymentType}
+                    donationAmountValid={donationAmountValid}
+                    paymentVendor={
+                      currentStep === 3
+                        ? getPaymentVendor(inviteData)
+                        : undefined
+                    }
+                    isPaymentDataReady={
+                      currentStep === 3
+                        ? getPaymentVendor(inviteData) === "EWAY"
+                          ? !!ewayEncryptedData
+                          : getPaymentVendor(inviteData) === "STRIPE"
+                          ? !!stripePaymentProcessor
+                          : getPaymentVendor(inviteData) === "RAZORPAY"
+                          ? !!razorpayPaymentData
+                          : false
+                        : false
+                    }
+                  />
+                )}
+            </div>
+
+            {/* Right: Course Info Sidebar - Only show if there's meaningful content */}
+            {hasRightSectionContent && (
+              <div className="lg:col-span-1 space-y-6 lg:sticky lg:top-6 self-start">
+                <CourseInfoCard
+                  courseData={{
+                    ...courseData,
+                    instituteLogo: "",
+                    course: inviteData?.name || courseData.course,
+                  }}
+                  levelName={
+                    getDetailsFromPackageSessionId({
+                      packageSessionId:
+                        activePackageSessionId ??
+                        inviteData?.package_session_to_payment_options?.[0]
+                          ?.package_session_id ??
+                        "",
+                    })?.level?.level_name || "-"
+                  }
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Policy Links */}
+          <div className="flex items-center justify-center gap-4 text-sm text-gray-600 pb-8">
+            <a
+              href={privacyPolicyUrl || "/privacy-policy"}
+              target={privacyPolicyUrl ? "_blank" : undefined}
+              rel={privacyPolicyUrl ? "noopener noreferrer" : undefined}
+              className="hover:underline"
+            >
+              Privacy Policy
+            </a>
+            <span className="text-gray-300">•</span>
+            <a
+              href={termsAndConditionUrl || "/terms-and-conditions"}
+              target={termsAndConditionUrl ? "_blank" : undefined}
+              rel={termsAndConditionUrl ? "noopener noreferrer" : undefined}
+              className="hover:underline"
+            >
+              Terms & Conditions
+            </a>
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };

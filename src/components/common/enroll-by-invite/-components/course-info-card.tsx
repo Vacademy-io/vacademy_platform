@@ -29,31 +29,9 @@ interface CourseInfoCardProps {
   levelName: string;
 }
 
-// Utility to extract YouTube video ID
-const extractYouTubeVideoId = (url: string): string | null => {
-  const regExp =
-    /^.*(?:youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=|live\/)([^#&?]*).*/;
-  const match = url.match(regExp);
-  return match && match[1] && match[1].length === 11 ? match[1] : null;
-};
-
 const CourseInfoCard = ({ courseData, levelName }: CourseInfoCardProps) => {
   return (
     <Card className="overflow-hidden shadow-lg border bg-white w-full">
-      {/* Banner Image - full cover with rounded corners; no top logo duplication */}
-      <div className="p-6 rounded-md !pb-0">
-        {courseData.courseBanner ? (
-          <div className="rounded-xl relative w-full overflow-hidden aspect-video">
-            <img
-              src={courseData.courseBanner}
-              alt="Course Banner"
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-          </div>
-        ) : (
-          <div className="rounded-xl relative w-full overflow-hidden aspect-video bg-gradient-to-br from-slate-200 to-slate-100" />
-        )}
-      </div>
       <CardContent className="p-5 sm:p-6">
         {/* Course Name */}
         <div className="flex items-start gap-2 sm:gap-3 mb-4">
@@ -124,16 +102,6 @@ const CourseInfoCard = ({ courseData, levelName }: CourseInfoCardProps) => {
           </div>
         )}
 
-        {courseData.coursePreview && (
-          <div className="flex justify-center items-center pt-8 rounded-lg">
-            <img
-              src={courseData.coursePreview}
-              alt="Course Preview Image"
-              className="w-fit"
-            />
-          </div>
-        )}
-
         <Separator className="my-8" />
 
         {/* About the Course Section */}
@@ -153,56 +121,6 @@ const CourseInfoCard = ({ courseData, levelName }: CourseInfoCardProps) => {
             />
           </div>
         )}
-
-        {/* Right side - Video Player - More Compact */}
-        {courseData?.courseMediaId?.id &&
-          (courseData?.courseMediaId?.type === "youtube" ? (
-            <div className={`shrink-0 overflow-hidden rounded-lg shadow-lg`}>
-              <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-lg bg-black">
-                <iframe
-                  width="100%"
-                  height="100%"
-                  src={`https://www.youtube.com/embed/${extractYouTubeVideoId(
-                    courseData?.courseMediaId?.id || ""
-                  )}`}
-                  title="YouTube video player"
-                  frameBorder="0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                  className="size-full object-contain"
-                />
-              </div>
-            </div>
-          ) : courseData?.courseMediaId?.type === "video" ? (
-            <div className={`shrink-0 overflow-hidden rounded-lg shadow-lg`}>
-              <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
-                <video
-                  src={courseData?.courseMedia}
-                  controls
-                  controlsList="nodownload noremoteplayback"
-                  disablePictureInPicture
-                  disableRemotePlayback
-                  className="size-full object-contain"
-                  onError={(e) => {
-                    e.currentTarget.style.display = "none";
-                    e.currentTarget.parentElement?.classList.add("bg-black");
-                  }}
-                >
-                  Your browser does not support the video tag.
-                </video>
-              </div>
-            </div>
-          ) : (
-            <div className={`shrink-0 overflow-hidden rounded-lg shadow-lg`}>
-              <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
-                <img
-                  src={courseData?.courseMedia}
-                  alt="Course Banner"
-                  className="size-full object-contain"
-                />
-              </div>
-            </div>
-          ))}
       </CardContent>
     </Card>
   );

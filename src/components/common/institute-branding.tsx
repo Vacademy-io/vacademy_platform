@@ -47,15 +47,15 @@ export const InstituteBrandingComponent: React.FC<InstituteBrandingProps> = ({
   }, [branding.instituteLogoFileId]);
 
   const sizeClasses = {
-    small: "w-16 h-16",
-    medium: "w-20 h-20",
-    large: "w-24 h-24",
+    small: "w-10 h-10 sm:w-12 sm:h-12",
+    medium: "w-12 h-12 sm:w-14 sm:h-14",
+    large: "w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16",
   };
 
   const textSizes = {
     small: "text-sm",
     medium: "text-base",
-    large: "text-lg",
+    large: "text-lg font-semibold",
   };
 
   const getInstituteDisplayName = (instituteName: string | null): string => {
@@ -74,7 +74,7 @@ export const InstituteBrandingComponent: React.FC<InstituteBrandingProps> = ({
         initial={{ scale: 0.8 }}
         animate={{ scale: 1 }}
         transition={{ duration: 0.3, delay: 0.1 }}
-        className={`relative ${sizeClasses[size]} flex-shrink-0`}
+        className={`relative ${sizeClasses[size]} flex-shrink-0 my-2`}
       >
         {isLoading ? (
           <div className={`${sizeClasses[size]} bg-gray-200 rounded-lg animate-pulse`} />

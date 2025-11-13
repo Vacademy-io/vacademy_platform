@@ -93,7 +93,7 @@ interface EnrollLearnerForPaymentProps {
   instituteId: string;
   enrollInviteId: string;
   payment_option_id: string;
-  package_session_id: string;
+  package_session_ids: string[];
   allowLearnersToCreateCourses: boolean;
   referRequest: {
     referrer_user_id: string;
@@ -227,7 +227,7 @@ export const handleEnrollLearnerForPayment = async ({
   instituteId,
   enrollInviteId,
   payment_option_id,
-  package_session_id,
+  package_session_ids,
   allowLearnersToCreateCourses,
   referRequest,
   returnUrl,
@@ -242,7 +242,7 @@ export const handleEnrollLearnerForPayment = async ({
 
   // Dynamically identify keys to exclude from custom field values
   const keysToExclude = getKeysToExclude(registrationData);
-
+  console.log("package_session_ids", package_session_ids);
   // Prepare payment request based on vendor
   const stripe_request =
     paymentVendor === "STRIPE"
@@ -309,7 +309,7 @@ export const handleEnrollLearnerForPayment = async ({
     subject_id: "",
     vendor_id: paymentVendor,
     learner_package_session_enroll: {
-      package_session_ids: [package_session_id],
+      package_session_ids: package_session_ids,
       plan_id: enrollmentData.selectedPayment.id,
       payment_option_id: payment_option_id,
       enroll_invite_id: enrollInviteId,

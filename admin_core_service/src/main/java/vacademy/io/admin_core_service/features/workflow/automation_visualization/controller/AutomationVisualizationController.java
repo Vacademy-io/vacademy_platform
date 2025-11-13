@@ -72,7 +72,7 @@ public class AutomationVisualizationController {
             // even if the same template is used multiple times in the workflow.
             Map<String, String> nodeTemplates = nodeMappings.stream()
                     .collect(Collectors.toMap(
-                            WorkflowNodeMapping::getId, // Use mapping ID for uniqueness
+                            WorkflowNodeMapping::getNodeTemplateId, // Use mapping ID for uniqueness
                             mapping -> templateIdToConfigMap.get(mapping.getNodeTemplateId()),
                             (u, v) -> u, // In case of duplicates (shouldn't happen), keep the first one
                             LinkedHashMap::new));

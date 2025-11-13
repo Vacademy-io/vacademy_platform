@@ -25,8 +25,6 @@ public class AudienceFilterDTO {
     private String campaignType; // WEBSITE, GOOGLE_ADS, etc.
     private Timestamp startDateFromLocal;
     private Timestamp startDateToLocal;
-    private Timestamp endDateFromLocal;
-    private Timestamp endDateToLocal;
     
     // Pagination
     private Integer page;

@@ -70,16 +70,26 @@ public class LiveSessionNotificationProcessor {
             scheduleNotificationRepository.save(sn);
         }
 
-        // 2) Send only those strictly within [now, now+15m]
+        // 2) Send only those strictly within [now, now+5m]
         List<ScheduleNotification> due = scheduleNotificationRepository.findPendingBetween(now.minusMinutes(2), windowEnd);
         if (due.isEmpty()) return;
 
         for (ScheduleNotification sn : due) {
+            String idempotencyKey = buildIdempotencyKey(sn);
             try {
+                int claimed = scheduleNotificationRepository.claimWithIdempotencyKey(
+                        sn.getId(),
+                        idempotencyKey,
+                        NotificationStatusEnum.PENDING.name()
+                );
+
+                if (claimed == 0) {
+                    continue;
+                }
+
                 Optional<LiveSession> sessionOpt = liveSessionRepository.findById(sn.getSessionId());
                 if (sessionOpt.isEmpty()) {
-                    sn.setStatus(NotificationStatusEnum.DISABLED.name());
-                    scheduleNotificationRepository.save(sn);
+                    scheduleNotificationRepository.updateStatus(sn.getId(), NotificationStatusEnum.DISABLED.name());
                     continue;
                 }
                 LiveSession session = sessionOpt.get();
@@ -87,8 +97,7 @@ public class LiveSessionNotificationProcessor {
                 // Get all participants (both BATCH and USER types)
                 List<LiveSessionParticipants> participants = liveSessionParticipantRepository.findBySessionId(sn.getSessionId());
                 if (participants == null || participants.isEmpty()) {
-                    sn.setStatus(NotificationStatusEnum.SENT.name());
-                    scheduleNotificationRepository.save(sn);
+                    scheduleNotificationRepository.updateStatus(sn.getId(), NotificationStatusEnum.SENT.name());
                     continue;
                 }
 
@@ -111,13 +120,17 @@ public class LiveSessionNotificationProcessor {
                         }
                 }
 
-                sn.setStatus(NotificationStatusEnum.SENT.name());
-                scheduleNotificationRepository.save(sn);
+                scheduleNotificationRepository.updateStatus(sn.getId(), NotificationStatusEnum.SENT.name());
             } catch (Exception ex) {
-                // Skip failure tracking per requirements; keep PENDING to retry next run
+                scheduleNotificationRepository.releaseClaim(sn.getId(), NotificationStatusEnum.PENDING.name());
                 System.out.println("Skip failure tracking per requirements; keep PENDING to retry next run"+ex);
             }
         }
+    }
+
+    private String buildIdempotencyKey(ScheduleNotification notification) {
+        String schedulePart = notification.getScheduleId() != null ? notification.getScheduleId() : "NO_SCHEDULE";
+        return schedulePart + ":" + notification.getId();
     }
 
     private List<String> getBatchIdsForSession(String sessionId) {

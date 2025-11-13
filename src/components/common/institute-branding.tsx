@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { getPublicUrl } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/excalidrawUtils";
-import { useDomainRouting } from "@/hooks/use-domain-routing";
-import { useNavigate } from "@tanstack/react-router";
-import { navigateByHomeIcon } from "@/utils/home-icon-click";
 
 export interface InstituteBranding {
   instituteId: string | null;
@@ -25,8 +22,6 @@ export const InstituteBrandingComponent: React.FC<InstituteBrandingProps> = ({
   showName = true,
   className = "",
 }) => {
-  const { homeIconClickRoute } = useDomainRouting();
-  const navigate = useNavigate();
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -79,11 +74,7 @@ export const InstituteBrandingComponent: React.FC<InstituteBrandingProps> = ({
         initial={{ scale: 0.8 }}
         animate={{ scale: 1 }}
         transition={{ duration: 0.3, delay: 0.1 }}
-        className={`relative ${sizeClasses[size]} flex-shrink-0 cursor-pointer`}
-        onClick={() => navigateByHomeIcon(homeIconClickRoute, navigate)}
-        role="button"
-        aria-label="Go to home"
-        title="Home"
+        className={`relative ${sizeClasses[size]} flex-shrink-0 my-2`}
       >
         {isLoading ? (
           <div className={`${sizeClasses[size]} bg-gray-200 rounded-lg animate-pulse`} />

@@ -8,6 +8,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
@@ -29,6 +31,7 @@ import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.Locale;
 
 @Service
 public class UserPlanService {
@@ -136,33 +139,34 @@ public class UserPlanService {
         userPlanRepository.save(userPlan);
 
         logger.info("UserPlan status updated to ACTIVE and saved. ID={}", userPlan.getId());
-        
+
         // Send enrollment notifications after successful PAID enrollment
         sendEnrollmentNotificationsAfterPayment(userPlan, enrollInvite, packageSessionIds);
     }
-    private void sendEnrollmentNotificationsAfterPayment(UserPlan userPlan, EnrollInvite enrollInvite, 
-                                                         List<String> packageSessionIds) {
+
+    private void sendEnrollmentNotificationsAfterPayment(UserPlan userPlan, EnrollInvite enrollInvite,
+            List<String> packageSessionIds) {
         try {
             logger.info("Sending enrollment notifications for PAID enrollment. UserPlan ID: {}", userPlan.getId());
-            
+
             // Get user details
             UserDTO userDTO = authService.getUsersFromAuthServiceByUserIds(List.of(userPlan.getUserId())).get(0);
-            
+
             // Get institute ID from enroll invite
             String instituteId = enrollInvite.getInstituteId();
-            
+
             // Get payment option
             PaymentOption paymentOption = userPlan.getPaymentOption();
-            
+
             // Get first package session ID for notification
             String firstPackageSessionId = packageSessionIds.isEmpty() ? null : packageSessionIds.get(0);
-            
+
             if (firstPackageSessionId == null) {
-                logger.warn("No package session ID found for UserPlan ID: {}. Skipping enrollment notification.", 
+                logger.warn("No package session ID found for UserPlan ID: {}. Skipping enrollment notification.",
                         userPlan.getId());
                 return;
             }
-            
+
             // Send dynamic enrollment notification
             dynamicNotificationService.sendDynamicNotification(
                     NotificationEventType.LEARNER_ENROLL,
@@ -170,21 +174,19 @@ public class UserPlanService {
                     instituteId,
                     userDTO,
                     paymentOption,
-                    enrollInvite
-            );
+                    enrollInvite);
             logger.info("Enrollment notification sent successfully for user: {}", userDTO.getId());
-            
+
             // Send referral invitation email
             dynamicNotificationService.sendReferralInvitationNotification(
                     instituteId,
                     userDTO,
-                    enrollInvite
-            );
+                    enrollInvite);
             logger.info("Referral invitation sent successfully for user: {}", userDTO.getId());
-            
+
         } catch (Exception e) {
             logger.error("Error sending enrollment notifications after payment for UserPlan ID: {}. " +
-                        "Enrollment is complete but notification failed.", userPlan.getId(), e);
+                    "Enrollment is complete but notification failed.", userPlan.getId(), e);
             // Don't throw exception - enrollment is complete, notification is secondary
         }
     }
@@ -240,25 +242,58 @@ public class UserPlanService {
                 .createdAt(userPlan.getCreatedAt())
                 .updatedAt(userPlan.getUpdatedAt())
                 .enrollInvite(userPlan.getEnrollInvite().toEnrollInviteDTO())
-                .paymentPlanDTO((userPlan.getPaymentPlan() != null ? userPlan.getPaymentPlan().mapToPaymentPlanDTO() : null))
-                .paymentOption((userPlan.getPaymentOption() != null ? userPlan.getPaymentOption().mapToPaymentOptionDTO() : null))
-                .paymentLogs((userPlan.getPaymentLogs() != null ? userPlan.getPaymentLogs().stream().map(PaymentLog::mapToDTO).collect(Collectors.toList()) : List.of()))
+                .paymentPlanDTO(
+                        (userPlan.getPaymentPlan() != null ? userPlan.getPaymentPlan().mapToPaymentPlanDTO() : null))
+                .paymentOption(
+                        (userPlan.getPaymentOption() != null ? userPlan.getPaymentOption().mapToPaymentOptionDTO()
+                                : null))
+                .paymentLogs((userPlan.getPaymentLogs() != null
+                        ? userPlan.getPaymentLogs().stream().map(PaymentLog::mapToDTO).collect(Collectors.toList())
+                        : List.of()))
                 .build();
     }
 
-    public Page<UserPlanDTO> getUserPlansByUserIdAndInstituteId(int pageNo,int pageSize,UserPlanFilterDTO userPlanFilterDTO) {
-        logger.info("Getting paginated UserPlans for userId={}, instituteId={}", userPlanFilterDTO.getUserId(), userPlanFilterDTO.getInstituteId());
+    public Page<UserPlanDTO> getUserPlansByUserIdAndInstituteId(int pageNo, int pageSize,
+            UserPlanFilterDTO userPlanFilterDTO) {
+        logger.info("Getting paginated UserPlans for userId={}, instituteId={}", userPlanFilterDTO.getUserId(),
+                userPlanFilterDTO.getInstituteId());
         Sort thisSort = ListService.createSortObject(userPlanFilterDTO.getSortColumns());
         Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);
-        List<String>status = userPlanFilterDTO.getStatuses();
-        if(status == null){
+        List<String> status = userPlanFilterDTO.getStatuses();
+        if (status == null) {
             status = List.of();
         }
-        Page<UserPlan> userPlansPage = userPlanRepository.findByUserIdAndInstituteIdWithFilters(userPlanFilterDTO.getUserId(), userPlanFilterDTO.getInstituteId(), status, pageable);
+        Page<UserPlan> userPlansPage = userPlanRepository.findByUserIdAndInstituteIdWithFilters(
+                userPlanFilterDTO.getUserId(), userPlanFilterDTO.getInstituteId(), status, pageable);
 
         return userPlansPage.map(userPlan -> {
             UserPlanDTO userPlanDTO = mapToDTO(userPlan);
             return userPlanDTO;
         });
+    }
+
+    public void updateUserPlanStatuses(List<String> userPlanIds, String status) {
+        if (CollectionUtils.isEmpty(userPlanIds)) {
+            throw new IllegalArgumentException("User plan ids must not be empty.");
+        }
+
+        if (!StringUtils.hasText(status)) {
+            throw new IllegalArgumentException("Status must not be empty.");
+        }
+
+        String normalizedStatus;
+        try {
+            normalizedStatus = UserPlanStatusEnum.valueOf(status.trim().toUpperCase(Locale.ROOT)).name();
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException("Invalid user plan status: " + status);
+        }
+
+        List<UserPlan> userPlans = userPlanRepository.findAllById(userPlanIds);
+        if (CollectionUtils.isEmpty(userPlans)) {
+            throw new IllegalArgumentException("No user plans found for provided ids.");
+        }
+
+        userPlans.forEach(plan -> plan.setStatus(normalizedStatus));
+        userPlanRepository.saveAll(userPlans);
     }
 }

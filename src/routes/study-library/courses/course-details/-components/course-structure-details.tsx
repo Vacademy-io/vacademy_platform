@@ -732,7 +732,7 @@ export const CourseStructureDetails = ({
   };
 
   const collapseAll = () => {
-    setOpenSubjects(new Set());
+    // setOpenSubjects(new Set());
     setOpenModules(new Set());
     setOpenChapters(new Set());
   };
@@ -839,19 +839,7 @@ export const CourseStructureDetails = ({
               </div>
             </div>
           )}
-          {(() => {
-            // Calculate summary for debugging if needed
-            // const subjects = studyLibraryData || [];
-            // const summary = subjects.map((subject) => {
-            //     const modules = subjectModulesMap[subject.id] || [];
-            //     const chapters = modules.flatMap((m) => m.chapters || []);
-            //     const slidesCounts = chapters.map((ch) => (slidesMap[ch.id] || []).length);
-            //     const totalSlides = slidesCounts.reduce((a, b) => a + b, 0);
-            //     return { subjectId: subject.id, modules: modules.length, chapters: chapters.length, totalSlides };
-            // });
 
-            return null;
-          })()}
           {!isModulesLoading &&
             courseStructure === 5 &&
             studyLibraryData?.map((subject: SubjectType, idx: number) => {
@@ -2331,27 +2319,36 @@ export const CourseStructureDetails = ({
           });
           setSubjectModulesMap(modulesMap);
 
-          // Auto-expand all sections by default (but don't load slides yet)
-          const allSubjectIds = new Set<string>(
-            getSubjectDetails(courseData, selectedSession, selectedLevel).map(
-              (s: SubjectType) => s.id
-            )
+          // Auto-expand only the first item in each level
+          const subjects = getSubjectDetails(
+            courseData,
+            selectedSession,
+            selectedLevel
           );
-          const allModuleIds = new Set<string>();
-          const allChapterIds = new Set<string>();
+          const firstSubjectId = subjects[0]?.id;
 
-          Object.values(modulesMap).forEach((modules) => {
-            modules.forEach((mod) => {
-              allModuleIds.add(mod.module.id);
-              mod.chapters.forEach((ch) => {
-                allChapterIds.add(ch.id);
-              });
-            });
-          });
+          if (firstSubjectId) {
+            const firstSubjectModules = modulesMap[firstSubjectId] || [];
+            const firstModuleId = firstSubjectModules[0]?.module.id;
+            const firstChapterId = firstSubjectModules[0]?.chapters[0]?.id;
 
-          setOpenSubjects(allSubjectIds);
-          setOpenModules(allModuleIds);
-          setOpenChapters(allChapterIds);
+            const openSubjectsSet = new Set<string>([firstSubjectId]);
+            const openModulesSet = new Set<string>();
+            const openChaptersSet = new Set<string>();
+
+            if (firstModuleId) {
+              openModulesSet.add(firstModuleId);
+            }
+            if (firstChapterId) {
+              openChaptersSet.add(firstChapterId);
+              // Automatically load slides for the first opened chapter
+              getSlidesWithChapterId(firstChapterId);
+            }
+
+            setOpenSubjects(openSubjectsSet);
+            setOpenModules(openModulesSet);
+            setOpenChapters(openChaptersSet);
+          }
 
           // Update module stats for parent component
           if (updateModuleStats) {

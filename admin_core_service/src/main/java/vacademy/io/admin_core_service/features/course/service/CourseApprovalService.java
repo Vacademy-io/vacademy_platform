@@ -1453,14 +1453,10 @@ public class CourseApprovalService {
 
     /**
      * Find all package-institute linkages for a specific package
+     * Optimized: Uses direct database query instead of loading all linkages and filtering in memory
      */
     private List<PackageInstitute> findPackageInstituteLinkagesByPackageId(String packageId) {
-        // Use a more efficient approach - we can filter from all linkages or use the existing repository method
-        // For now, using the existing findAll and filter approach, but this could be optimized with a custom query
-        return packageInstituteRepository.findAll()
-                .stream()
-                .filter(pi -> pi.getPackageEntity().getId().equals(packageId))
-                .collect(Collectors.toList());
+        return packageInstituteRepository.findByPackageId(packageId);
     }
 
     // Inner class for course approval history

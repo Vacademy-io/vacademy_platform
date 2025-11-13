@@ -76,12 +76,19 @@ public class LearnerAssessmentAttemptStartManager {
     public List<SectionDto> createSectionDtoList(Assessment assessment) {
         List<SectionDto> sectionDtos = new ArrayList<>();
         var allQuestions = createQuestionAssessmentSectionMappingList(assessment);
-        assessment.getSections().stream().filter(section -> !DELETED.name().equals(section.getStatus())).forEach(section -> {
-            SectionDto sectionDto = new SectionDto(section);
-            sectionDto.fillQuestions(allQuestions.stream().filter(questionAssessmentSectionMapping -> section.getId().equals(questionAssessmentSectionMapping.getSectionId())).collect(Collectors.toList()));
-            sectionDtos.add(sectionDto);
-        });
-        return sectionDtos;
+        
+        // Optimize: Use map and collect instead of forEach with side effects
+        return assessment.getSections().stream()
+                .filter(section -> !DELETED.name().equals(section.getStatus()))
+                .map(section -> {
+                    SectionDto sectionDto = new SectionDto(section);
+                    List<AssessmentQuestionPreviewDto> sectionQuestions = allQuestions.stream()
+                            .filter(questionAssessmentSectionMapping -> section.getId().equals(questionAssessmentSectionMapping.getSectionId()))
+                            .collect(Collectors.toList());
+                    sectionDto.fillQuestions(sectionQuestions);
+                    return sectionDto;
+                })
+                .collect(Collectors.toList());
     }
 
     private void verifyAssessmentStart(Assessment assessment) {

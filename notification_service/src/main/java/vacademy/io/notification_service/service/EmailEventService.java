@@ -224,10 +224,12 @@ public class EmailEventService {
     
     /**
      * Atomically create an event, preventing race conditions
-     * Uses synchronized method and database-level checking to ensure only one event per type per message
+     * Uses database transaction with unique constraint check to ensure only one event per type per message
+     * Note: Removed synchronized keyword to improve concurrency - relying on database constraints and
+     * transaction isolation instead. This allows multiple threads to process different events simultaneously.
      */
     @Transactional
-    public synchronized boolean createEventAtomically(String originalLogId, String eventType, String messageId, 
+    public boolean createEventAtomically(String originalLogId, String eventType, String messageId, 
                                        String recipient, String timestamp, SesEventDTO sesEvent) {
         if (originalLogId == null) {
             log.warn("Cannot create event - originalLogId is null for event: {} message: {}", eventType, messageId);

@@ -27,7 +27,7 @@ public class Chapter {
     private Integer chapterOrder;
 
 
-    @ManyToMany(fetch = FetchType.EAGER)
+    @ManyToMany(fetch = FetchType.LAZY)
     @JsonIgnore
     @JoinTable(
             name = "chapter_topic_mapping",

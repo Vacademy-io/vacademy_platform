@@ -6,6 +6,8 @@ interface InstituteDetails {
   institute_name: string;
   institute_logo_file_id: string | null;
   id: string;
+  home_icon_click_route?: string | null;
+  homeIconClickRoute?: string | null;
 }
 
 const getInstituteDetails = async () => {
@@ -20,6 +22,8 @@ const getInstituteDetails = async () => {
   return {
     ...details,
     logoUrl,
+    homeIconClickRoute:
+      details.homeIconClickRoute ?? details.home_icon_click_route ?? null,
   };
 };
 

@@ -22,6 +22,11 @@ export const HeaderComponent: React.FC<HeaderProps & {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [mobileMenuRef, setMobileMenuRef] = useState<HTMLDivElement | null>(null);
   const [hamburgerButtonRef, setHamburgerButtonRef] = useState<HTMLButtonElement | null>(null);
+  const handleInstituteLogoClick = () => {
+    if (domainRouting.homeIconClickRoute) {
+      window.location.href = domainRouting.homeIconClickRoute;
+    }
+  };
 
   // Load institute logo
   useEffect(() => {
@@ -152,9 +157,10 @@ export const HeaderComponent: React.FC<HeaderProps & {
           <div className="flex items-center space-x-3 sm:space-x-4">
             {instituteLogoUrl && (
               <img
-                className="h-12 w-12 sm:h-14 sm:w-14 rounded-full object-cover"
                 src={instituteLogoUrl}
                 alt="Institute Logo"
+                onClick={domainRouting.homeIconClickRoute ? handleInstituteLogoClick : undefined}
+                className={`h-12 w-12 sm:h-14 sm:w-14 rounded-full object-cover${domainRouting.homeIconClickRoute ? " cursor-pointer" : ""}`}
                 onError={(e) => {
                   e.currentTarget.style.display = "none";
                 }}

@@ -27,8 +27,14 @@ export const LogoutSidebar = ({
 }: {
   sidebarComponent?: React.ReactNode;
 }) => {
-  const { instituteLogoFileUrl, sideBarOpen, setSidebarOpen } =
+  const { instituteLogoFileUrl, sideBarOpen, setSidebarOpen, homeIconClickRoute } =
     useStore();
+  const handleInstituteLogoClick = () => {
+    if (homeIconClickRoute) {
+      window.location.href = homeIconClickRoute;
+    }
+  };
+
   const { theme, setTheme } = useModeTheme();
   const { permissions } = useStudentPermissions();
   const isDark = theme === "dark";
@@ -116,14 +122,18 @@ export const LogoutSidebar = ({
               {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (
                 <div className="relative">
                   <img
-                    className="w-24 h-24 rounded-xl object-contain p-2 bg-white "
                     src={instituteLogoFileUrl}
                     alt="Institute Logo"
+                    onClick={homeIconClickRoute ? handleInstituteLogoClick : undefined}
+                    className={`w-24 h-24 rounded-xl object-contain p-2 bg-white ${homeIconClickRoute ? "cursor-pointer" : ""}`}
                   />
                   <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                 </div>
               ) : (
-                <div className="w-16 h-16 bg-gradient-to-br from-primary-50 to-primary-100 dark:from-primary-800 dark:to-primary-900 border-2 border-primary-200 dark:border-primary-700 rounded-xl flex items-center justify-center transition-all duration-300 group-hover:scale-105 group-hover:shadow-lg">
+                <div
+                  className={`w-16 h-16 bg-gradient-to-br from-primary-50 to-primary-100 dark:from-primary-800 dark:to-primary-900 border-2 border-primary-200 dark:border-primary-700 rounded-xl flex items-center justify-center transition-all duration-300 group-hover:scale-105 group-hover:shadow-lg${homeIconClickRoute ? " cursor-pointer" : ""}`}
+                  onClick={homeIconClickRoute ? handleInstituteLogoClick : undefined}
+                >
                   <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-600 rounded-lg shadow-sm"></div>
                 </div>
               )}

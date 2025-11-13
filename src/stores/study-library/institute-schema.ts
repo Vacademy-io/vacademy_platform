@@ -64,6 +64,8 @@ export const InstituteSchema = z.object({
     website_url: z.string().url(),
     institute_logo_file_id: z.string().nullable(),
     institute_theme_code: z.string(),
+    home_icon_click_route: z.string().nullable().optional(),
+    homeIconClickRoute: z.string().nullable().optional(),
     language: z.string().nullable(),
     description: z.string().nullable(),
     type: InstituteTypeSchema,

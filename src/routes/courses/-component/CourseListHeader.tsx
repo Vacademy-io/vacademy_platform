@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { AuthModal, AuthModalRef } from "@/components/common/auth/modal/AuthModal";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { Button } from "@/components/ui/button";
 import { CoursesDonationDialog } from "./CoursesDonationDialog";
+import { useDomainRouting } from "@/hooks/use-domain-routing";
 
 const CourseListHeader = ({
   fileId,
@@ -26,6 +27,7 @@ const CourseListHeader = ({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDonationDialogOpen, setIsDonationDialogOpen] = useState(false);
   const authModalRef = useRef<AuthModalRef | null>(null);
+  const { homeIconClickRoute } = useDomainRouting();
 
   useEffect(() => {
     setLogoLoading(true);
@@ -65,6 +67,12 @@ const CourseListHeader = ({
     setIsMobileMenuOpen(false);
   };
 
+  const handleLogoClick = useCallback(() => {
+    if (homeIconClickRoute) {
+      window.location.href = homeIconClickRoute;
+    }
+  }, [homeIconClickRoute]);
+
   const navigationItems = [
     { href: "https://www-stg.codecircle.org", label: "Home" },
     { href: "https://www-stg.codecircle.org/about.html", label: "About" },
@@ -94,9 +102,10 @@ const CourseListHeader = ({
             <img
               src={imgUrl}
               alt={`logo`}
+              onClick={homeIconClickRoute ? handleLogoClick : undefined}
               className={`h-full w-full object-contain rounded-md ${
                 logoLoading ? "opacity-0" : "opacity-100"
-              }`}
+              }${homeIconClickRoute ? " cursor-pointer" : ""}`}
             />
           )}
         </div>

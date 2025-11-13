@@ -8,12 +8,14 @@ interface StoreState {
   sideBarOpen: boolean;
   instituteName: string;
   instituteLogoFileUrl: string;
+  homeIconClickRoute: string | null;
   hasCustomSidebar: boolean;
   setSidebarOpen: () => void;
   setSideBarState: (sidebarstate: sideBarStateType) => void;
   setInstituteDetails: (
     instituteName?: string,
-    instituteLogoFileUrl?: string
+    instituteLogoFileUrl?: string,
+    homeIconClickRoute?: string | null
   ) => void;
   setHasCustomSidebar: (value: boolean) => void;
 }
@@ -23,18 +25,24 @@ const useStore = create<StoreState>((set) => ({
   sideBarOpen: false,
   instituteName: "",
   instituteLogoFileUrl: "",
+  homeIconClickRoute: null,
   hasCustomSidebar: false,
   setSidebarOpen: () => set((state) => ({ sideBarOpen: !state.sideBarOpen })),
   setSideBarState: (sidebarstate) => set({ sideBarState: sidebarstate }),
   setHasCustomSidebar: (value: boolean) => set({ hasCustomSidebar: value }),
 
-  setInstituteDetails: async (name?: string, logoUrl?: string) => {
+  setInstituteDetails: async (
+    name?: string,
+    logoUrl?: string,
+    homeIconClickRoute?: string | null
+  ) => {
     try {
       // If explicit values are provided, set them directly
       if (typeof name === 'string') {
         set({
           instituteName: name,
           instituteLogoFileUrl: logoUrl ?? "",
+          homeIconClickRoute: homeIconClickRoute ?? null,
         });
         return;
       }
@@ -56,6 +64,10 @@ const useStore = create<StoreState>((set) => ({
         set({
           instituteName: InstituteDetails.institute_name,
           instituteLogoFileUrl: url,
+          homeIconClickRoute:
+            InstituteDetails.home_icon_click_route ??
+            InstituteDetails.homeIconClickRoute ??
+            null,
         });
       }
     } catch (error) {

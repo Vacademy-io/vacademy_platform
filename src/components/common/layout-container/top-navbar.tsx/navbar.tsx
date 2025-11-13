@@ -47,7 +47,7 @@ export function Navbar() {
     }, [userRoleDetails?.roles]);
 
     const { navHeading } = useNavHeadingStore();
-    const { setInstituteDetails, setSidebarOpen, instituteName, instituteLogoFileUrl, hasCustomSidebar } = useStore();
+    const { setInstituteDetails, setSidebarOpen, instituteName, instituteLogoFileUrl, hasCustomSidebar, homeIconClickRoute } = useStore();
 
     const handleNavigateToAdmin = () => {
         const accessToken = getTokenFromCookie(TokenKey.accessToken);
@@ -72,7 +72,11 @@ export function Navbar() {
                       )
                     : "";
 
-                setInstituteDetails(InstituteDetails.institute_name, url);
+                setInstituteDetails(
+                    InstituteDetails.institute_name,
+                    url,
+                    InstituteDetails.home_icon_click_route ?? InstituteDetails.homeIconClickRoute ?? null
+                );
             }
         } catch (error) {
             console.error("Error fetching institute details:", error);
@@ -92,7 +96,13 @@ export function Navbar() {
                     const url = instituteDetails.institute_logo_file_id
                         ? await getPublicUrl(instituteDetails.institute_logo_file_id)
                         : "";
-                    setInstituteDetails(instituteDetails.institute_name, url);
+                    setInstituteDetails(
+                        instituteDetails.institute_name,
+                        url,
+                        (instituteDetails as { home_icon_click_route?: string | null; homeIconClickRoute?: string | null })?.home_icon_click_route ??
+                            (instituteDetails as { home_icon_click_route?: string | null; homeIconClickRoute?: string | null })?.homeIconClickRoute ??
+                            null
+                    );
                 } catch (e) {
                     console.warn("Navbar: failed to derive public logo url", e);
                 }
@@ -105,6 +115,12 @@ export function Navbar() {
             .catch(() => setShowSidebarControls(true));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [instituteDetails]);
+
+    const handleInstituteLogoClick = () => {
+        if (homeIconClickRoute) {
+            window.location.href = homeIconClickRoute;
+        }
+    };
 
     if (isLoading) return <DashboardLoader />;
 
@@ -139,10 +155,14 @@ export function Navbar() {
                                 <img
                                     src={instituteLogoFileUrl}
                                     alt={instituteName || "Institute"}
-                                    className="h-8 md:h-10 w-auto max-w-[120px] object-contain border border-primary-200/60 dark:border-neutral-700 rounded-sm"
+                                    onClick={homeIconClickRoute ? handleInstituteLogoClick : undefined}
+                                    className={`h-8 md:h-10 w-auto max-w-[120px] object-contain border border-primary-200/60 dark:border-neutral-700 rounded-sm${homeIconClickRoute ? " cursor-pointer" : ""}`}
                                 />
                             ) : (
-                                <div className="h-7 w-7 md:h-8 md:w-8 rounded-sm bg-primary-200/40 dark:bg-neutral-700/60 flex items-center justify-center text-[11px] md:text-[12px] font-semibold text-primary-700 dark:text-neutral-200">
+                                <div
+                                    className={`h-7 w-7 md:h-8 md:w-8 rounded-sm bg-primary-200/40 dark:bg-neutral-700/60 flex items-center justify-center text-[11px] md:text-[12px] font-semibold text-primary-700 dark:text-neutral-200${homeIconClickRoute ? " cursor-pointer" : ""}`}
+                                    onClick={homeIconClickRoute ? handleInstituteLogoClick : undefined}
+                                >
                                     {(instituteName?.[0] || "I").toUpperCase()}
                                 </div>
                             )}
@@ -195,10 +215,14 @@ export function Navbar() {
                             <img
                                 src={instituteLogoFileUrl}
                                 alt={instituteName || "Institute"}
-                                className="h-8 md:h-10 w-auto max-w-[120px] object-contain dark:border-neutral-700 rounded-sm"
+                                onClick={homeIconClickRoute ? handleInstituteLogoClick : undefined}
+                                className={`h-8 md:h-10 w-auto max-w-[120px] object-contain dark:border-neutral-700 rounded-sm${homeIconClickRoute ? " cursor-pointer" : ""}`}
                             />
                         ) : (
-                            <div className="h-7 w-7 md:h-8 md:w-8 rounded-sm bg-primary-200/40 dark:bg-neutral-700/60 flex items-center justify-center text-[11px] md:text-[12px] font-semibold text-primary-700 dark:text-neutral-200">
+                            <div
+                                className={`h-7 w-7 md:h-8 md:w-8 rounded-sm bg-primary-200/40 dark:bg-neutral-700/60 flex items-center justify-center text-[11px] md:text-[12px] font-semibold text-primary-700 dark:text-neutral-200${homeIconClickRoute ? " cursor-pointer" : ""}`}
+                                onClick={homeIconClickRoute ? handleInstituteLogoClick : undefined}
+                            >
                                 {(instituteName?.[0] || "I").toUpperCase()}
                             </div>
                         )}

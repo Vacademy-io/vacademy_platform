@@ -30,6 +30,11 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
   const [processedImages, setProcessedImages] = useState<Array<{ source: string; caption: string }>>([]);
   const [showLeadForm, setShowLeadForm] = useState(false);
   const sliderRef = useRef<HTMLDivElement>(null);
+  const handleInstituteLogoClick = () => {
+    if (domainRouting.homeIconClickRoute) {
+      window.location.href = domainRouting.homeIconClickRoute;
+    }
+  };
 
   // Load institute logo
   useEffect(() => {
@@ -220,7 +225,8 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
             src={instituteLogoUrl}
             alt={domainRouting.instituteName || "Institute Logo"}
             style={{ height: introPage.logo?.height || "80px" }}
-            className="object-contain"
+            className={`object-contain${domainRouting.homeIconClickRoute ? " cursor-pointer" : ""}`}
+            onClick={domainRouting.homeIconClickRoute ? handleInstituteLogoClick : undefined}
             onError={(e) => {
               e.currentTarget.style.display = "none";
             }}

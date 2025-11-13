@@ -2,7 +2,7 @@ import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore
 import { useEffect, useState, useCallback } from "react";
 import { PullToRefreshWrapper } from "@/components/design-system/pull-to-refresh";
 import { fetchStudyLibraryDetails } from "@/services/study-library/getStudyLibraryDetails";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { toTitleCase } from "@/lib/utils";
 import {
   CaretDown,
@@ -26,16 +26,13 @@ import {
   Slide,
 } from "@/hooks/study-library/use-slides-public";
 import { Button } from "@/components/ui/button";
-import {
-  TabType,
-  catalogTabs,
-} from "@/components/common/study-library/level-material/subject-material/-constants/constant";
+import { TabType } from "@/components/common/study-library/level-material/subject-material/-constants/constant";
 import { getIcon } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/chapter-sidebar-slides";
 import { getSubjectDetails } from "../-utils/helper";
 import { CourseDetailsFormValues } from "./course-details-schema";
-import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
-  import { getPublicUrlWithoutLogin } from "@/services/upload_file";
+import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 
 export interface Chapter {
   id: string;
@@ -100,12 +97,15 @@ export const CourseStructureDetails = ({
   const [isLoading, setIsLoading] = useState(false);
 
   // Memoized callback for loading state changes
-  const handleLoadingChange = useCallback((loading: boolean) => {
-    setIsLoading(loading);
-    if (onModulesLoadingChange) {
-      onModulesLoadingChange(loading);
-    }
-  }, [onModulesLoadingChange]);
+  const handleLoadingChange = useCallback(
+    (loading: boolean) => {
+      setIsLoading(loading);
+      if (onModulesLoadingChange) {
+        onModulesLoadingChange(loading);
+      }
+    },
+    [onModulesLoadingChange]
+  );
 
   // Update loading state for parent component
   useEffect(() => {
@@ -238,32 +238,36 @@ export const CourseStructureDetails = ({
         });
         setSubjectModulesMap(modulesMap);
 
-        // Auto-expand all sections by default
-        const allSubjectIds = new Set<string>(
-          getSubjectDetails(courseData, selectedSession, selectedLevel).map(
-            (s: SubjectType) => s.id
-          )
+        // Auto-expand only the first item in each level
+        const subjects = getSubjectDetails(
+          courseData,
+          selectedSession,
+          selectedLevel
         );
-        const allModuleIds = new Set<string>();
-        const allChapterIds = new Set<string>();
+        const firstSubjectId = subjects[0]?.id;
 
-        // allModuleIds: ${allModuleIds.size}
-        // allChapterIds: ${allChapterIds.size}
+        if (firstSubjectId) {
+          const firstSubjectModules = modulesMap[firstSubjectId] || [];
+          const firstModuleId = firstSubjectModules[0]?.module.id;
+          const firstChapterId = firstSubjectModules[0]?.chapters[0]?.id;
 
-        Object.values(modulesMap).forEach((modules) => {
-          modules.forEach((mod) => {
-            allModuleIds.add(mod.module.id);
-            mod.chapters.forEach((ch) => {
-              allChapterIds.add(ch.id);
-              // Load slides for each chapter
-              getSlidesWithChapterId(ch.id);
-            });
-          });
-        });
+          const openSubjectsSet = new Set<string>([firstSubjectId]);
+          const openModulesSet = new Set<string>();
+          const openChaptersSet = new Set<string>();
 
-        setOpenSubjects(allSubjectIds);
-        setOpenModules(allModuleIds);
-        setOpenChapters(allChapterIds);
+          if (firstModuleId) {
+            openModulesSet.add(firstModuleId);
+          }
+          if (firstChapterId) {
+            openChaptersSet.add(firstChapterId);
+            // Automatically load slides for the first opened chapter
+            getSlidesWithChapterId(firstChapterId);
+          }
+
+          setOpenSubjects(openSubjectsSet);
+          setOpenModules(openModulesSet);
+          setOpenChapters(openChaptersSet);
+        }
       } catch (error) {
         console.error("Failed to fetch modules:", error);
         setSubjectModulesMap({});
@@ -292,7 +296,10 @@ export const CourseStructureDetails = ({
               // [thumb] subject url fetched - key: ${key}
               if (url) updates[key] = url;
             } catch (err) {
-              console.debug("prefetchThumbnails: subject thumbnail fetch failed", err);
+              console.debug(
+                "prefetchThumbnails: subject thumbnail fetch failed",
+                err
+              );
             }
           }
         }
@@ -307,8 +314,9 @@ export const CourseStructureDetails = ({
           for (const mod of mods ?? []) {
             // Module thumbnail
             const moduleKey = `module:${mod.module.id}`;
-            const moduleFileId = (mod.module as { thumbnail_id?: string | null })
-              .thumbnail_id ?? undefined;
+            const moduleFileId =
+              (mod.module as { thumbnail_id?: string | null }).thumbnail_id ??
+              undefined;
             // [thumb] module candidate - key: ${moduleKey}, hasUrl: ${Boolean(thumbUrlById[moduleKey])}
             if (moduleFileId && !thumbUrlById[moduleKey]) {
               updates[moduleKey] = updates[moduleKey] || ""; // mark to fetch
@@ -333,8 +341,9 @@ export const CourseStructureDetails = ({
         Object.values(subjectModulesMap).forEach((mods) => {
           for (const mod of mods ?? []) {
             const moduleKey = `module:${mod.module.id}`;
-            const moduleFileId = (mod.module as { thumbnail_id?: string | null })
-              .thumbnail_id ?? undefined;
+            const moduleFileId =
+              (mod.module as { thumbnail_id?: string | null }).thumbnail_id ??
+              undefined;
             if (moduleFileId && !thumbUrlById[moduleKey]) {
               fetchPairs.push({ key: moduleKey, fileId: moduleFileId });
             }
@@ -364,7 +373,10 @@ export const CourseStructureDetails = ({
               // [thumb] fetched - key: ${key}
               return { key, url } as const;
             } catch (err) {
-              console.debug("prefetchThumbnails: module/chapter thumbnail fetch failed", err);
+              console.debug(
+                "prefetchThumbnails: module/chapter thumbnail fetch failed",
+                err
+              );
               return { key, url: "" } as const;
             }
           })
@@ -376,7 +388,6 @@ export const CourseStructureDetails = ({
         }
 
         if (Object.keys(finalUpdates).length > 0) {
-          console.log("[thumb] applying", finalUpdates);
           setThumbUrlById((prev) => ({ ...prev, ...finalUpdates }));
         }
       } catch (err) {
@@ -436,7 +447,7 @@ export const CourseStructureDetails = ({
               ) : (
                 <>
                   <Folder size={14} className="mr-1.5" />
-                  Collapse All
+                  Expand All
                 </>
               )}
             </Button>
@@ -477,18 +488,20 @@ export const CourseStructureDetails = ({
                           <Folder size={12} />
                         )}
                       </div>
-                       {thumbUrlById[`subject:${subject.id}`] && (
-                         <img
-                           src={thumbUrlById[`subject:${subject.id}`]}
-                           alt=""
-                           className="w-6 h-6 rounded-sm object-cover border border-neutral-200"
-                           onLoad={() => {/* Image loaded successfully */}}
-                                                        onError={(e) => {
-                               e.currentTarget.style.display = 'none';
-                             }}
-                         />
-                       )}
-                    
+                      {thumbUrlById[`subject:${subject.id}`] && (
+                        <img
+                          src={thumbUrlById[`subject:${subject.id}`]}
+                          alt=""
+                          className="w-6 h-6 rounded-sm object-cover border border-neutral-200"
+                          onLoad={() => {
+                            /* Image loaded successfully */
+                          }}
+                          onError={(e) => {
+                            e.currentTarget.style.display = "none";
+                          }}
+                        />
+                      )}
+
                       <span
                         className="truncate font-medium group-hover:text-primary-700 transition-colors"
                         title={toTitleCase(subject.subject_name)}
@@ -530,17 +543,29 @@ export const CourseStructureDetails = ({
                                   </div>
                                   {thumbUrlById[`module:${mod.module.id}`] && (
                                     <img
-                                      src={thumbUrlById[`module:${mod.module.id}`]}
+                                      src={
+                                        thumbUrlById[`module:${mod.module.id}`]
+                                      }
                                       alt=""
                                       className="w-5 h-5 rounded-sm object-cover border border-neutral-200"
-                                      onLoad={() => console.log('[thumb] module img load', { id: mod.module.id })}
+                                      onLoad={() =>
+                                        console.log("[thumb] module img load", {
+                                          id: mod.module.id,
+                                        })
+                                      }
                                       onError={(e) => {
-                                        console.warn('[thumb] module img error', { id: mod.module.id, src: e.currentTarget.src });
-                                        e.currentTarget.style.display = 'none';
+                                        console.warn(
+                                          "[thumb] module img error",
+                                          {
+                                            id: mod.module.id,
+                                            src: e.currentTarget.src,
+                                          }
+                                        );
+                                        e.currentTarget.style.display = "none";
                                       }}
                                     />
                                   )}
-                                 
+
                                   <span
                                     className="truncate group-hover:text-blue-700 transition-colors"
                                     title={toTitleCase(mod.module.module_name)}
@@ -555,13 +580,17 @@ export const CourseStructureDetails = ({
                                 <div className="space-y-1 border-l-2 border-blue-200/60 pl-3 relative">
                                   <div className="absolute left-0 top-0 w-0.5 h-full bg-blue-300/60"></div>
                                   {mod.chapters.map((ch, chIdx) => {
-                                    const isChapterOpen = openChapters.has(ch.id);
+                                    const isChapterOpen = openChapters.has(
+                                      ch.id
+                                    );
                                     const chapterContentIndent = `pl-[calc(16px+0.5rem+16px+0.5rem+1.5rem+1.5rem)]`;
                                     return (
                                       <Collapsible
                                         key={ch.id}
                                         open={isChapterOpen}
-                                        onOpenChange={() => toggleChapter(ch.id)}
+                                        onOpenChange={() =>
+                                          toggleChapter(ch.id)
+                                        }
                                       >
                                         <CollapsibleTrigger className="group flex w-full items-center rounded px-2 py-1 text-left text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-indigo-50/70 hover:border-indigo-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-1">
                                           <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -579,22 +608,42 @@ export const CourseStructureDetails = ({
                                             <div className="flex items-center justify-center w-4 h-4 rounded bg-indigo-600 text-white">
                                               <PresentationChart size={10} />
                                             </div>
-                                            {thumbUrlById[`chapter:${ch.id}`] && (
+                                            {thumbUrlById[
+                                              `chapter:${ch.id}`
+                                            ] && (
                                               <img
-                                                src={thumbUrlById[`chapter:${ch.id}`]}
+                                                src={
+                                                  thumbUrlById[
+                                                    `chapter:${ch.id}`
+                                                  ]
+                                                }
                                                 alt=""
                                                 className="w-4 h-4 rounded-sm object-cover border border-neutral-200"
-                                                onLoad={() => console.log('[thumb] chapter img load', { id: ch.id })}
+                                                onLoad={() =>
+                                                  console.log(
+                                                    "[thumb] chapter img load",
+                                                    { id: ch.id }
+                                                  )
+                                                }
                                                 onError={(e) => {
-                                                  console.warn('[thumb] chapter img error', { id: ch.id, src: e.currentTarget.src });
-                                                  e.currentTarget.style.display = 'none';
+                                                  console.warn(
+                                                    "[thumb] chapter img error",
+                                                    {
+                                                      id: ch.id,
+                                                      src: e.currentTarget.src,
+                                                    }
+                                                  );
+                                                  e.currentTarget.style.display =
+                                                    "none";
                                                 }}
                                               />
                                             )}
-                                          
+
                                             <span
                                               className="truncate group-hover:text-indigo-700 transition-colors"
-                                              title={toTitleCase(ch.chapter_name)}
+                                              title={toTitleCase(
+                                                ch.chapter_name
+                                              )}
                                             >
                                               {toTitleCase(ch.chapter_name)}
                                             </span>
@@ -605,23 +654,27 @@ export const CourseStructureDetails = ({
                                         >
                                           <div className="space-y-1 border-l-2 border-gradient-to-b from-indigo-200/60 to-neutral-200/40 pl-3 relative">
                                             <div className="absolute left-0 top-0 w-0.5 h-full bg-indigo-300/80"></div>
-                                            {slidesMap[ch.id]?.map((slide, slideIdx) => (
-                                              <div
-                                                key={slide.id}
-                                                className="group/item flex items-center gap-2 px-2 py-1.5 rounded text-sm text-neutral-600 hover:bg-purple-50/70 hover:border-purple-200/60 border border-transparent transition-all duration-200 hover:shadow-sm"
-                                              >
-                                                <div className="flex items-center justify-center w-4 h-4 rounded bg-gradient-to-br from-purple-500 to-purple-600 text-white">
-                                                  {getIcon(slide, "4")}
-                                                </div>
-                                           
-                                                <span
-                                                  className="truncate group-hover/item:text-purple-700 transition-colors"
-                                                  title={toTitleCase(slide.title)}
+                                            {slidesMap[ch.id]?.map(
+                                              (slide, slideIdx) => (
+                                                <div
+                                                  key={slide.id}
+                                                  className="group/item flex items-center gap-2 px-2 py-1.5 rounded text-sm text-neutral-600 hover:bg-purple-50/70 hover:border-purple-200/60 border border-transparent transition-all duration-200 hover:shadow-sm"
                                                 >
-                                                  {toTitleCase(slide.title)}
-                                                </span>
-                                              </div>
-                                            ))}
+                                                  <div className="flex items-center justify-center w-4 h-4 rounded bg-gradient-to-br from-purple-500 to-purple-600 text-white">
+                                                    {getIcon(slide, "4")}
+                                                  </div>
+
+                                                  <span
+                                                    className="truncate group-hover/item:text-purple-700 transition-colors"
+                                                    title={toTitleCase(
+                                                      slide.title
+                                                    )}
+                                                  >
+                                                    {toTitleCase(slide.title)}
+                                                  </span>
+                                                </div>
+                                              )
+                                            )}
                                           </div>
                                         </CollapsibleContent>
                                       </Collapsible>
@@ -677,13 +730,14 @@ export const CourseStructureDetails = ({
                                   </div>
                                   {thumbUrlById[`module:${mod.module.id}`] && (
                                     <img
-                                      src={thumbUrlById[`module:${mod.module.id}`]}
+                                      src={
+                                        thumbUrlById[`module:${mod.module.id}`]
+                                      }
                                       alt=""
                                       className="w-5 h-5 rounded-sm object-cover border border-neutral-200"
                                     />
                                   )}
-                                  
-                                  
+
                                   <span
                                     className="truncate group-hover:text-blue-700 transition-colors"
                                     title={mod.module.module_name}
@@ -728,14 +782,20 @@ export const CourseStructureDetails = ({
                                             <div className="flex items-center justify-center w-4 h-4 rounded bg-green-600 text-white">
                                               <PresentationChart size={10} />
                                             </div>
-                                            {thumbUrlById[`chapter:${ch.id}`] && (
+                                            {thumbUrlById[
+                                              `chapter:${ch.id}`
+                                            ] && (
                                               <img
-                                                src={thumbUrlById[`chapter:${ch.id}`]}
+                                                src={
+                                                  thumbUrlById[
+                                                    `chapter:${ch.id}`
+                                                  ]
+                                                }
                                                 alt=""
                                                 className="w-4 h-4 rounded-sm object-cover border border-neutral-200"
                                               />
                                             )}
-                                          \
+                                            \
                                             <span
                                               className="truncate group-hover:text-green-700 transition-colors text-xs"
                                               title={toTitleCase(
@@ -761,7 +821,6 @@ export const CourseStructureDetails = ({
                                                     key={slide.id}
                                                     className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-amber-50/60 hover:border-amber-200/40 border border-transparent transition-all duration-200"
                                                   >
-                                                  
                                                     <div className="shrink-0 group-hover:scale-110 transition-transform">
                                                       {getIcon(slide, "3")}
                                                     </div>
@@ -840,8 +899,7 @@ export const CourseStructureDetails = ({
                                           <div className="flex items-center justify-center w-4 h-4 rounded bg-green-600 text-white">
                                             <PresentationChart size={10} />
                                           </div>
-                                          
-                                    
+
                                           <span
                                             className="truncate group-hover:text-green-700 transition-colors text-xs"
                                             title={toTitleCase(ch.chapter_name)}
@@ -865,7 +923,6 @@ export const CourseStructureDetails = ({
                                                   key={slide.id}
                                                   className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-amber-50/60 hover:border-amber-200/40 border border-transparent transition-all duration-200"
                                                 >
-                                               
                                                   <div className="shrink-0 group-hover:scale-110 transition-transform">
                                                     {getIcon(slide, "3")}
                                                   </div>
@@ -942,7 +999,6 @@ export const CourseStructureDetails = ({
                                                   key={slide.id}
                                                   className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 rounded hover:bg-amber-50/60 hover:border-amber-200/40 border border-transparent transition-all duration-200"
                                                 >
-                                               
                                                   <div className="shrink-0 group-hover:scale-110 transition-transform">
                                                     {getIcon(slide, "3")}
                                                   </div>
@@ -973,7 +1029,7 @@ export const CourseStructureDetails = ({
             })}
         </div>
       </div>
-    )
+    ),
   };
 
   return (
@@ -984,7 +1040,6 @@ export const CourseStructureDetails = ({
           onValueChange={handleTabChange}
           className="w-full overflow-scroll"
         >
-        
           <TabsContent
             key={selectedTab}
             value={selectedTab}

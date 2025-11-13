@@ -467,13 +467,6 @@ export const CourseStructureDetails = ({
     chapterId: string,
     slideId: string
   ) => {
-    console.log("Slide navigation clicked:", {
-      paymentType,
-      isEnrolledInCourse,
-      selectedTab,
-      userHasDonated,
-    });
-
     // Allow navigation if user is enrolled in the course OR if it's PROGRESS/COMPLETED tabs
     if (
       isEnrolledInCourse ||
@@ -489,9 +482,6 @@ export const CourseStructureDetails = ({
       ) {
         // For donation type, check donation status
         if (userHasDonated === false) {
-          console.log(
-            "Donation type detected and user not donated, showing donation dialog"
-          );
           // Show donation dialog for slide access
           setTargetSlideDetails({
             courseId: searchParams.courseId || "",
@@ -506,11 +496,7 @@ export const CourseStructureDetails = ({
       }
 
       // Default: Navigate directly to slide (for all non-donation types or when payment type is not loaded)
-      console.log("Navigating directly to slide (default behavior)", {
-        paymentType,
-        reason: paymentType ? "non-donation type" : "payment type not loaded",
-        packageSessionId,
-      });
+
       navigateTo(
         `/study-library/courses/course-details/subjects/modules/chapters/slides`,
         {
@@ -732,7 +718,7 @@ export const CourseStructureDetails = ({
   };
 
   const collapseAll = () => {
-    // setOpenSubjects(new Set());
+    setOpenSubjects(new Set());
     setOpenModules(new Set());
     setOpenChapters(new Set());
   };
@@ -2582,12 +2568,6 @@ export const CourseStructureDetails = ({
             slideId
           ) => {
             // Navigate to slides after successful donation or skip
-            console.log(
-              "🎁 [DonationDialog] Navigating to slide after donation:",
-              {
-                packageSessionId,
-              }
-            );
             navigateTo(
               `/study-library/courses/course-details/subjects/modules/chapters/slides`,
               {

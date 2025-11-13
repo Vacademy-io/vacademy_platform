@@ -2,6 +2,8 @@ package vacademy.io.admin_core_service.features.workflow.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.workflow.entity.WorkflowSchedule;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowScheduleRepository;
@@ -16,9 +18,24 @@ import java.util.Optional;
 public class WorkflowScheduleService {
 
     private final WorkflowScheduleRepository workflowScheduleRepository;
+    private final Environment environment;
+
+    private boolean isDevEnv() {
+        String[] activeProfiles = environment.getActiveProfiles();
+        for (String profile : activeProfiles) {
+            if ("dev".equalsIgnoreCase(profile)) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     public List<WorkflowSchedule> getActiveSchedules() {
         try {
+            if (isDevEnv()) {
+                log.info("Skipping active schedule retrieval in dev environment.");
+                return List.of();
+            }
             return workflowScheduleRepository.findByStatusIgnoreCase("ACTIVE");
         } catch (Exception e) {
             log.error("Error retrieving active workflow schedules", e);
@@ -28,7 +45,10 @@ public class WorkflowScheduleService {
 
     public List<WorkflowSchedule> getDueSchedules() {
         try {
-            // Use Instant.now() to get the current moment in UTC.
+            if (isDevEnv()) {
+                log.info("Skipping due schedule retrieval in dev environment.");
+                return List.of();
+            }
             return workflowScheduleRepository.findDueSchedules(Instant.now());
         } catch (Exception e) {
             log.error("Error retrieving due workflow schedules", e);
@@ -84,7 +104,7 @@ public class WorkflowScheduleService {
 
             WorkflowSchedule updatedSchedule = workflowScheduleRepository.save(existing);
             log.info("Updated workflow schedule: {} - lastRunAt: {}, nextRunAt: {}",
-                updatedSchedule.getId(), updatedSchedule.getLastRunAt(), updatedSchedule.getNextRunAt());
+                    updatedSchedule.getId(), updatedSchedule.getLastRunAt(), updatedSchedule.getNextRunAt());
             return updatedSchedule;
         } catch (Exception e) {
             log.error("Error updating workflow schedule: {}", id, e);

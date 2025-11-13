@@ -736,27 +736,6 @@ export function ModularDynamicLoginContainer({
         </motion.div>
       )}
 
-      {/* Signup Link - Only show if signup is available */}
-      {isSignupAvailable && onSwitchToSignup && (
-        <motion.div
-          initial={{ y: 10, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 1.2 }}
-          className="text-center mt-6"
-        >
-          <p className="text-lg text-gray-600">
-            Don't have an account?{" "}
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              onClick={() => onSwitchToSignup && onSwitchToSignup()}
-              className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
-            >
-              Sign up here
-            </motion.button>
-          </p>
-        </motion.div>
-      )}
-
       {/* Security Notice */}
       {/* Security message removed as requested */}
       {/* <motion.div

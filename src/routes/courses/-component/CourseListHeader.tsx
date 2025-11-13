@@ -5,6 +5,9 @@ import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { Button } from "@/components/ui/button";
 import { CoursesDonationDialog } from "./CoursesDonationDialog";
+import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { useNavigate } from "@tanstack/react-router";
+import { navigateByHomeIcon } from "@/utils/home-icon-click";
 
 const CourseListHeader = ({
   fileId,
@@ -26,6 +29,8 @@ const CourseListHeader = ({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDonationDialogOpen, setIsDonationDialogOpen] = useState(false);
   const authModalRef = useRef<AuthModalRef | null>(null);
+  const { homeIconClickRoute } = useDomainRouting();
+  const navigate = useNavigate();
 
   useEffect(() => {
     setLogoLoading(true);
@@ -81,7 +86,13 @@ const CourseListHeader = ({
     <nav className="min-h-[70px] sm:min-h-[80px] bg-white py-3 sm:py-4 px-3 sm:px-4 lg:px-10 flex flex-col lg:flex-row justify-between items-center shadow-sm relative">
       {/* Logo Section */}
       <div className="flex items-center justify-between w-full lg:w-auto mb-3 sm:mb-4 lg:mb-0">
-        <div className="flex items-center relative h-6 sm:h-8 lg:h-10 w-16 sm:w-20 lg:w-24">
+        <div
+          className="flex items-center relative h-6 sm:h-8 lg:h-10 w-16 sm:w-20 lg:w-24 cursor-pointer"
+          onClick={() => navigateByHomeIcon(homeIconClickRoute, navigate)}
+          role="button"
+          aria-label="Go to home"
+          title="Home"
+        >
           {logoLoading && (
             <div
               className="absolute inset-0 bg-gray-200 flex items-center justify-center text-gray-400 text-xs"

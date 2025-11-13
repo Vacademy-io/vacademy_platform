@@ -4,17 +4,12 @@ import { HeaderProps } from "../../-types/course-catalogue-types";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { useState, useEffect } from "react";
+import { navigateByHomeIcon } from "@/utils/home-icon-click";
 
 export const HeaderComponent: React.FC<HeaderProps & { 
   navigation?: Array<{ label: string; route: string }>;
   authLinks?: Array<{ label: string; route: string }>;
-}> = ({
-  logoUrl,
-  menus,
-  actionButton,
-  navigation = [],
-  authLinks = [],
-}) => {
+}> = ({ navigation = [], authLinks = [] }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const domainRouting = useDomainRouting();
@@ -149,7 +144,13 @@ export const HeaderComponent: React.FC<HeaderProps & {
       <div className="w-full px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-20">
           {/* Institute Logo and Name */}
-          <div className="flex items-center space-x-3 sm:space-x-4">
+          <div
+            className="flex items-center space-x-3 sm:space-x-4 cursor-pointer"
+            onClick={() => navigateByHomeIcon(domainRouting.homeIconClickRoute, navigate)}
+            role="button"
+            aria-label="Go to home"
+            title="Home"
+          >
             {instituteLogoUrl && (
               <img
                 className="h-12 w-12 sm:h-14 sm:w-14 rounded-full object-cover"

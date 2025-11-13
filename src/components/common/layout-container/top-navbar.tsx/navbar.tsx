@@ -22,6 +22,9 @@ import { getTokenFromCookie } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { SystemAlertsBar } from "@/components/announcements";
 import { handleGetPublicInstituteDetails } from "../services/navbar-services";
+import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { useNavigate } from "@tanstack/react-router";
+import { navigateByHomeIcon } from "@/utils/home-icon-click";
 
 interface UserRole {
     id: string;
@@ -32,6 +35,8 @@ interface UserRole {
 }
 
 export function Navbar() {
+    const navigate = useNavigate();
+    const { homeIconClickRoute } = useDomainRouting();
     const { data: instituteDetails } = useSuspenseQuery(
         handleGetPublicInstituteDetails()
     );
@@ -134,7 +139,13 @@ export function Navbar() {
                     {!((showSidebarControls && (isMobile ? openMobile : true)) || hasCustomSidebar) && (
                     <div className="flex items-center gap-3">
                         {/* Institute brand */}
-                        <div className="flex items-center gap-2">
+                        <div
+                            className="flex items-center gap-2 cursor-pointer"
+                            onClick={() => navigateByHomeIcon(homeIconClickRoute, navigate)}
+                            role="button"
+                            aria-label="Go to home"
+                            title="Home"
+                        >
                             {instituteLogoFileUrl ? (
                                 <img
                                     src={instituteLogoFileUrl}
@@ -143,7 +154,7 @@ export function Navbar() {
                                 />
                             ) : (
                                 <div className="h-7 w-7 md:h-8 md:w-8 rounded-sm bg-primary-200/40 dark:bg-neutral-700/60 flex items-center justify-center text-[11px] md:text-[12px] font-semibold text-primary-700 dark:text-neutral-200">
-                                    {(instituteName?.[0] || "I").toUpperCase()}
+                                    {(instituteName?.[0] || "").toUpperCase()}
                                 </div>
                             )}
                         </div>
@@ -190,7 +201,13 @@ export function Navbar() {
                 {!((showSidebarControls && (isMobile ? openMobile : true)) || hasCustomSidebar) && (
                 <div className="flex items-center gap-3">
                     {/* Institute brand */}
-                    <div className="flex items-center gap-2">
+                    <div
+                        className="flex items-center gap-2 cursor-pointer"
+                        onClick={() => navigateByHomeIcon(homeIconClickRoute, navigate)}
+                        role="button"
+                        aria-label="Go to home"
+                        title="Home"
+                    >
                         {instituteLogoFileUrl ? (
                             <img
                                 src={instituteLogoFileUrl}

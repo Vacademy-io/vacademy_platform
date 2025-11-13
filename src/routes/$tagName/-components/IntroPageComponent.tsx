@@ -3,6 +3,8 @@ import { IntroPage } from '../-types/course-catalogue-types';
 import { ChevronLeftIcon, ChevronRightIcon, X } from 'lucide-react';
 import { useDomainRouting } from '@/hooks/use-domain-routing';
 import { getPublicUrlWithoutLogin } from '@/services/upload_file';
+import { useNavigate } from '@tanstack/react-router';
+import { navigateByHomeIcon } from '@/utils/home-icon-click';
 
 interface IntroPageComponentProps {
   introPage: IntroPage;
@@ -24,6 +26,7 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
   instituteId,
 }) => {
   const domainRouting = useDomainRouting();
+  const navigate = useNavigate();
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isScrolling, setIsScrolling] = useState(false);
   const [instituteLogoUrl, setInstituteLogoUrl] = useState<string | null>(null);
@@ -215,7 +218,12 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
           introPage.logo?.alignment === 'left' ? 'self-start pl-4' : 
           introPage.logo?.alignment === 'right' ? 'self-end pr-4' : 
           'self-center'
-        }`}>
+        } cursor-pointer`}
+          onClick={() => navigateByHomeIcon(domainRouting.homeIconClickRoute, navigate)}
+          role="button"
+          aria-label="Go to home"
+          title="Home"
+        >
           <img
             src={instituteLogoUrl}
             alt={domainRouting.instituteName || "Institute Logo"}

@@ -25,6 +25,8 @@ public class DomainRoutingAdminService {
                 .redirect(request.getRedirect() == null ? null : request.getRedirect().trim())
                 .privacyPolicyUrl(request.getPrivacyPolicyUrl() == null ? null : request.getPrivacyPolicyUrl().trim())
                 .afterLoginRoute(request.getAfterLoginRoute() == null ? null : request.getAfterLoginRoute().trim())
+                .adminPortalAfterLogoutRoute(request.getAdminPortalAfterLogoutRoute() == null ? null : request.getAdminPortalAfterLogoutRoute().trim())
+                .homeIconClickRoute(request.getHomeIconClickRoute() == null ? null : request.getHomeIconClickRoute().trim())
                 .termsAndConditionUrl(request.getTermsAndConditionUrl() == null ? null : request.getTermsAndConditionUrl().trim())
                 .theme(request.getTheme() == null ? null : request.getTheme().trim())
                 .tabText(request.getTabText() == null ? null : request.getTabText().trim())
@@ -51,6 +53,8 @@ public class DomainRoutingAdminService {
             existing.setRole(request.getRole().trim());
             existing.setInstituteId(request.getInstituteId().trim());
             existing.setAfterLoginRoute(request.getAfterLoginRoute() == null ? null : request.getAfterLoginRoute().trim());
+            existing.setAdminPortalAfterLogoutRoute(request.getAdminPortalAfterLogoutRoute() == null ? null : request.getAdminPortalAfterLogoutRoute().trim());
+            existing.setHomeIconClickRoute(request.getHomeIconClickRoute() == null ? null : request.getHomeIconClickRoute().trim());
             existing.setRedirect(request.getRedirect() == null ? null : request.getRedirect().trim());
             existing.setPrivacyPolicyUrl(request.getPrivacyPolicyUrl() == null ? null : request.getPrivacyPolicyUrl().trim());
             existing.setTermsAndConditionUrl(request.getTermsAndConditionUrl() == null ? null : request.getTermsAndConditionUrl().trim());

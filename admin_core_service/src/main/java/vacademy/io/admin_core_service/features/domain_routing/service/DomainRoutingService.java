@@ -44,6 +44,8 @@ public class DomainRoutingService {
                 .redirect(mapping.getRedirect())
                 .privacyPolicyUrl(mapping.getPrivacyPolicyUrl())
                 .afterLoginRoute(mapping.getAfterLoginRoute())
+                .adminPortalAfterLogoutRoute(mapping.getAdminPortalAfterLogoutRoute())
+                .homeIconClickRoute(mapping.getHomeIconClickRoute())
                 .termsAndConditionUrl(mapping.getTermsAndConditionUrl())
                 .theme(mapping.getTheme())
                 .tabText(mapping.getTabText())

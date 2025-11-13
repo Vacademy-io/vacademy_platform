@@ -7,6 +7,7 @@ export interface InstituteBranding {
   instituteName: string | null;
   instituteLogoFileId: string | null;
   instituteThemeCode: string | null;
+  homeIconClickRoute?: string | null;
 }
 
 interface InstituteBrandingProps {
@@ -24,6 +25,12 @@ export const InstituteBrandingComponent: React.FC<InstituteBrandingProps> = ({
 }) => {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const isClickable = Boolean(branding.homeIconClickRoute);
+
+  const handleLogoClick = () => {
+    if (!branding.homeIconClickRoute) return;
+    window.location.href = branding.homeIconClickRoute;
+  };
 
   useEffect(() => {
     const loadLogo = async () => {
@@ -74,7 +81,8 @@ export const InstituteBrandingComponent: React.FC<InstituteBrandingProps> = ({
         initial={{ scale: 0.8 }}
         animate={{ scale: 1 }}
         transition={{ duration: 0.3, delay: 0.1 }}
-        className={`relative ${sizeClasses[size]} flex-shrink-0 my-2`}
+        className={`relative ${sizeClasses[size]} flex-shrink-0 my-2${isClickable ? " cursor-pointer" : ""}`}
+        onClick={isClickable ? handleLogoClick : undefined}
       >
         {isLoading ? (
           <div className={`${sizeClasses[size]} bg-gray-200 rounded-lg animate-pulse`} />

@@ -77,7 +77,7 @@ type InvitePackageSession =
 
 const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
   // Ensure domain resolution runs on this public route to fetch fontFamily/tab branding from /resolve
-  useDomainRouting();
+  const domainRouting = useDomainRouting();
   const [paymentType, setPaymentType] = useState<string>("");
   const [orderId, setOrderId] = useState<string>("");
   const [paymentCompletionResponse, setPaymentCompletionResponse] =
@@ -1113,6 +1113,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
                     (instituteData?.institute_theme_code as string) ||
                     (instituteData?.theme as string) ||
                     null,
+                  homeIconClickRoute: domainRouting.homeIconClickRoute ?? null,
                 }}
                 size="medium"
                 showName={true}

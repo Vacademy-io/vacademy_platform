@@ -1,5 +1,4 @@
 import { Preferences } from "@capacitor/preferences";
-import { toast } from "sonner"; // Assuming you're using sonner for toasts
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { INSTITUTE_DETAIL } from "@/constants/urls";
 import { NAMING_SETTINGS_KEY } from "@/types/naming-settings";
@@ -17,6 +16,8 @@ export interface InstituteDetails {
   website_url: string;
   institute_logo_file_id: string | null;
   institute_theme_code: string;
+  home_icon_click_route?: string | null;
+  homeIconClickRoute?: string | null;
   sub_modules: Array<{
     module: string;
     sub_module: string;

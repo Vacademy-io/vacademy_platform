@@ -48,7 +48,13 @@ export const MySidebar = ({
 }) => {
   const navigate = useNavigate();
   const { state }: SidebarStateType = useSidebar();
-  const { sideBarState, instituteName, instituteLogoFileUrl } = useStore();
+  const { sideBarState, instituteName, instituteLogoFileUrl, homeIconClickRoute } = useStore();
+  const handleInstituteLogoClick = () => {
+    if (homeIconClickRoute) {
+      window.location.href = homeIconClickRoute;
+    }
+  };
+
   const { permissions } = useStudentPermissions();
   const [filteredSidebarItems, setFilteredSidebarItems] = useState<
     SidebarItemsType[]
@@ -161,17 +167,19 @@ export const MySidebar = ({
           <div className="relative">
             {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (
               <img
-                className={`object-contain shadow-sm border border-gray-200 transition-all duration-200 ${
-                  isExpanded ? "w-16 h-10 rounded-md" : "w-12 h-8 rounded-md"
-                }`}
                 src={instituteLogoFileUrl}
                 alt="Logo"
+                onClick={homeIconClickRoute ? handleInstituteLogoClick : undefined}
+                className={`object-contain shadow-sm border border-gray-200 transition-all duration-200 ${
+                  isExpanded ? "w-16 h-10 rounded-md" : "w-12 h-8 rounded-md"
+                }${homeIconClickRoute ? " cursor-pointer" : ""}`}
               />
             ) : (
               <div
                 className={`bg-primary-50 border border-primary-200 rounded-md flex items-center justify-center transition-all duration-200 ${
                   isExpanded ? "w-16 h-10" : "w-12 h-8"
-                }`}
+                }${homeIconClickRoute ? " cursor-pointer" : ""}`}
+                onClick={homeIconClickRoute ? handleInstituteLogoClick : undefined}
               >
                 <div
                   className={`bg-primary-500 rounded-sm ${

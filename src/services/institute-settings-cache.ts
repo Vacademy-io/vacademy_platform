@@ -58,8 +58,17 @@ export class InstituteSettingsCache {
             id: instituteId,
             name: fullInstituteDetails.institute_name || 'Unknown Institute',
             logo_file_id: fullInstituteDetails.institute_logo_file_id,
+            institute_logo_file_id: fullInstituteDetails.institute_logo_file_id,
             institute_theme_code: fullInstituteDetails.institute_theme_code,
-            institute_settings_json: fullInstituteDetails.setting
+            institute_settings_json: fullInstituteDetails.setting,
+            home_icon_click_route:
+              fullInstituteDetails.home_icon_click_route ??
+              fullInstituteDetails.homeIconClickRoute ??
+              null,
+            homeIconClickRoute:
+              fullInstituteDetails.homeIconClickRoute ??
+              fullInstituteDetails.home_icon_click_route ??
+              null,
           })
         });
         

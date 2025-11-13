@@ -20,6 +20,7 @@ export interface DomainRoutingState {
   instituteThemeCode: string | null;
   redirectPath: string;
   error: string | null;
+  homeIconClickRoute: string | null;
 }
 
 // Global state to prevent multiple simultaneous domain routing calls
@@ -39,6 +40,7 @@ export const useDomainRouting = () => {
     instituteThemeCode: null,
     redirectPath: "/login",
     error: null,
+    homeIconClickRoute: null,
   });
 
   const applyInstituteTheme = (themeCode: string | null) => {
@@ -66,7 +68,10 @@ export const useDomainRouting = () => {
           id: data.instituteId,
           name: data.instituteName,
           logo_file_id: data.instituteLogoFileId,
+          institute_logo_file_id: data.instituteLogoFileId,
           institute_theme_code: data.instituteThemeCode,
+          home_icon_click_route: data.homeIconClickRoute ?? null,
+          homeIconClickRoute: data.homeIconClickRoute ?? null,
         }),
       });
 
@@ -204,6 +209,7 @@ export const useDomainRouting = () => {
           instituteThemeCode: apiResult.instituteThemeCode,
           redirectPath: apiResult.redirect || "/login",
           error: null,
+          homeIconClickRoute: apiResult.homeIconClickRoute ?? null,
         };
         
         // Cache the result globally
@@ -227,6 +233,7 @@ export const useDomainRouting = () => {
           instituteThemeCode: null,
           redirectPath: "/login",
           error: null,
+          homeIconClickRoute: null,
         };
         
         globalDomainRoutingState = newState;
@@ -246,6 +253,7 @@ export const useDomainRouting = () => {
         // Stay on page for invitation route; otherwise fall back to /login
         redirectPath: isInvitationRoute ? "" : "/login",
         error: null,
+        homeIconClickRoute: null,
       };
       
       globalDomainRoutingState = newState;
@@ -268,6 +276,7 @@ export const useDomainRouting = () => {
             instituteThemeCode: null,
             redirectPath: "/login",
             error: null,
+            homeIconClickRoute: null,
           };
           
           globalDomainRoutingState = newState;
@@ -290,6 +299,7 @@ export const useDomainRouting = () => {
         // Stay on page for invitation route; otherwise fall back to /login
         redirectPath: isInvitationRoute ? "" : "/login",
         error: error instanceof Error ? error.message : "Unknown error",
+        homeIconClickRoute: null,
       };
       
       globalDomainRoutingState = newState;

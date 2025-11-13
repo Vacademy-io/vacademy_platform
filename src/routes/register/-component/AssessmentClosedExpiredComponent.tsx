@@ -21,7 +21,8 @@ const AssessmentClosedExpiredComponent = ({
     instituteId: instituteDetails?.id || null,
     instituteName: instituteDetails?.institute_name || null,
     instituteLogoFileId: instituteDetails?.institute_logo_file_id || null,
-    instituteThemeCode: null
+    instituteThemeCode: null,
+    homeIconClickRoute: instituteDetails?.homeIconClickRoute ?? null,
   };
 
   return (

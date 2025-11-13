@@ -122,6 +122,8 @@ export const DonationDialog: React.FC<DonationDialogProps> = ({
               instituteName: details.institute_name,
               instituteLogoFileId: details.institute_logo_file_id,
               instituteThemeCode: details.institute_theme_code,
+              homeIconClickRoute:
+                details.homeIconClickRoute ?? details.home_icon_click_route ?? null,
             });
           } else {
             // Set fallback branding
@@ -130,6 +132,7 @@ export const DonationDialog: React.FC<DonationDialogProps> = ({
               instituteName: null,
               instituteLogoFileId: null,
               instituteThemeCode: null,
+              homeIconClickRoute: null,
             });
           }
         } catch (error) {
@@ -140,6 +143,7 @@ export const DonationDialog: React.FC<DonationDialogProps> = ({
             instituteName: null,
             instituteLogoFileId: null,
             instituteThemeCode: null,
+            homeIconClickRoute: null,
           });
         } finally {
           setBrandingLoading(false);

@@ -12,6 +12,7 @@ export const DonationHeader = ({ step }: DonationHeaderProps) => {
     instituteName,
     instituteLogoFileId,
     instituteThemeCode,
+    homeIconClickRoute,
   } = useDomainRouting();
 
   return (
@@ -23,6 +24,7 @@ export const DonationHeader = ({ step }: DonationHeaderProps) => {
             instituteName,
             instituteLogoFileId,
             instituteThemeCode,
+            homeIconClickRoute,
           }}
           size="small"
           showName={false}

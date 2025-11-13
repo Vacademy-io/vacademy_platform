@@ -152,7 +152,13 @@ function Slides() {
     const [courseName, setCourseName] = useState("");
     const [levelName, setLevelName] = useState("");
     const [instituteLogoUrl, setInstituteLogoUrl] = useState<string>("");
+    const [homeIconClickRoute, setHomeIconClickRoute] = useState<string | null>(null);
     const truncatedChapterName = truncateString(chapterName || "", 12);
+    const handleInstituteLogoClick = useCallback(() => {
+        if (homeIconClickRoute) {
+            window.location.href = homeIconClickRoute;
+        }
+    }, [homeIconClickRoute]);
 
     useEffect(() => {
         setModuleName(getModuleName(moduleId, modulesWithChaptersData));
@@ -170,6 +176,12 @@ function Slides() {
                 const instituteData = await Preferences.get({ key: "InstituteDetails" });
                 if (instituteData.value) {
                     const institute = JSON.parse(instituteData.value);
+                    
+                    setHomeIconClickRoute(
+                        institute.home_icon_click_route ??
+                        institute.homeIconClickRoute ??
+                        null
+                    );
                     
                     // Get institute logo
                     if (institute.institute_logo_file_id) {
@@ -386,7 +398,8 @@ function Slides() {
                             <img
                                 src={instituteLogoUrl}
                                 alt="Institute Logo"
-                                className="max-w-full max-h-full object-contain"
+                                onClick={homeIconClickRoute ? handleInstituteLogoClick : undefined}
+                                className={`max-w-full max-h-full object-contain${homeIconClickRoute ? " cursor-pointer" : ""}`}
                                 style={{ width: 'auto', height: 'auto', maxWidth: '24px', maxHeight: '24px' }}
                             />
                         ) : (
@@ -527,7 +540,8 @@ function Slides() {
                             <img
                                 src={instituteLogoUrl}
                                 alt="Institute Logo"
-                                className="max-w-full max-h-full object-contain"
+                                onClick={homeIconClickRoute ? handleInstituteLogoClick : undefined}
+                                className={`max-w-full max-h-full object-contain${homeIconClickRoute ? " cursor-pointer" : ""}`}
                                 style={{ width: 'auto', height: 'auto', maxWidth: '28px', maxHeight: '28px' }}
                             />
                         ) : (

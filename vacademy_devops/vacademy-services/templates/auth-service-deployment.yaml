@@ -10,8 +10,8 @@ spec:
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: {{ .Values.rollingUpdate.maxSurge }}
-      maxUnavailable: {{ .Values.rollingUpdate.maxUnavailable }}
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       app: auth-service

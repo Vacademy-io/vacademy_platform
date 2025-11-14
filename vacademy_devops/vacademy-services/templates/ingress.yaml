@@ -9,6 +9,9 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-read-timeout: "1800"
     cert-manager.io/cluster-issuer: vacademy-stage-letsencrypt-prod-cert-issuer
     certmanager.k8s.io/acme-challenge-type: http01
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/session-cookie-name: "session_affinity_route"
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "120"
 spec:
   ingressClassName: nginx
   tls:

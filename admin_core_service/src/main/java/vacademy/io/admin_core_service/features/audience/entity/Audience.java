@@ -51,6 +51,12 @@ public class Audience {
     @Column(name = "json_web_metadata", columnDefinition = "TEXT")
     private String jsonWebMetadata; // For webhook URLs, configuration, etc.
 
+    @Column(name = "to_notify", columnDefinition = "TEXT")
+    private String toNotify; // Comma-separated emails for additional notification recipients
+
+    @Column(name = "send_respondent_email")
+    private Boolean sendRespondentEmail; // Whether to send email to the respondent
+
     @Column(name = "created_by_user_id")
     private String createdByUserId;
 
@@ -74,6 +80,8 @@ public class Audience {
         this.endDate = dto.getEndDateLocal();
         this.status = dto.getStatus();
         this.jsonWebMetadata = dto.getJsonWebMetadata();
+        this.toNotify = dto.getToNotify();
+        this.sendRespondentEmail = dto.getSendRespondentEmail();
         this.createdByUserId = dto.getCreatedByUserId();
     }
 }

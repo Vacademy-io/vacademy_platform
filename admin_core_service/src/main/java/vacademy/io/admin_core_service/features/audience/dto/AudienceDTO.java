@@ -31,6 +31,8 @@ public class AudienceDTO {
     private Timestamp endDateLocal;
     private String status; // ACTIVE, PAUSED, COMPLETED, ARCHIVED
     private String jsonWebMetadata;
+    private String toNotify; // Comma-separated emails for additional notification recipients
+    private Boolean sendRespondentEmail; // Whether to send email to the respondent
     private String createdByUserId;
 
     // Custom fields for the form

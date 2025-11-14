@@ -30,7 +30,10 @@ import vacademy.io.admin_core_service.features.notification.enums.NotificationTe
 import vacademy.io.admin_core_service.features.notification.repository.NotificationEventConfigRepository;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationTemplateVariables;
 import vacademy.io.admin_core_service.features.notification_service.service.SendUniqueLinkService;
+import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
+import vacademy.io.admin_core_service.features.common.entity.CustomFields;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.notification.dto.GenericEmailRequest;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.*;
@@ -68,6 +71,9 @@ public class AudienceService {
 
     @Autowired
     private SendUniqueLinkService sendUniqueLinkService;
+
+    @Autowired
+    private NotificationService notificationService;
 
     public List<String> getConvertedUserIdsByCampaign(String audienceId, String instituteId) {
         logger.info("Getting converted user IDs for campaign: {} (institute: {})", audienceId, instituteId);
@@ -217,6 +223,8 @@ public class AudienceService {
                 .endDateLocal(audience.getEndDate())
                 .status(audience.getStatus())
                 .jsonWebMetadata(audience.getJsonWebMetadata())
+                .toNotify(audience.getToNotify())
+                .sendRespondentEmail(audience.getSendRespondentEmail())
                 .createdByUserId(audience.getCreatedByUserId())
                 .instituteCustomFields(customFields)
                 .build();
@@ -255,6 +263,8 @@ public class AudienceService {
                 .endDateLocal(audience.getEndDate())
                 .status(audience.getStatus())
                 .jsonWebMetadata(audience.getJsonWebMetadata())
+                .toNotify(audience.getToNotify())
+                .sendRespondentEmail(audience.getSendRespondentEmail())
                 .createdByUserId(audience.getCreatedByUserId())
                 .build());
     }
@@ -301,32 +311,6 @@ public class AudienceService {
                     return "You have already submitted your response for this campaign";
                 }
 
-                // Fetch the most recent EMAIL template config for this institute and event
-                notificationEventConfigRepository
-                        .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeAndIsActiveTrueOrderByUpdatedAtDesc(
-                                NotificationEventType.AUDIENCE_FORM_SUBMISSION,
-                                NotificationSourceType.INSTITUTE,
-                                instituteIdForNotification,
-                                NotificationTemplateType.EMAIL
-                        )
-                        .ifPresent(config -> {
-                            // Prepare dynamic variables (minimal user/institute info)
-                            NotificationTemplateVariables templateVars = NotificationTemplateVariables.builder()
-                                    .userFullName(userForNotification.getFullName())
-                                    .userEmail(userForNotification.getEmail())
-                                    .instituteId(audienceInstituteId)
-                                    .build();
-                            // Send email using template with dynamic parameters
-                            sendUniqueLinkService.sendUniqueLinkByEmailByEnrollInvite(
-                                    instituteIdForNotification,
-                                    userForNotification,
-                                    config.getTemplateId(),
-                                    null,
-                                    templateVars
-                            );
-                        });
-                logger.info("User created/fetched from auth_service: {}", userId);
-
                 // 2. Create audience response with user_id
                 AudienceResponse response = AudienceResponse.builder()
                         .audienceId(requestDTO.getAudienceId())
@@ -346,6 +330,110 @@ public class AudienceService {
                             requestDTO.getCustomFieldValues(),
                             audience.getInstituteId()
                     );
+                }
+
+                // 4. Build custom field map for email
+                Map<String, String> customFieldsForEmail = buildCustomFieldMapForEmail(savedResponse.getId());
+
+                // 5. Send notification to respondent (if enabled)
+                if (audience.getSendRespondentEmail() == null || audience.getSendRespondentEmail()) {
+                    logger.info("Sending notification to respondent: {}", userForNotification.getEmail());
+                    
+                    // Fetch the most recent EMAIL template config for this institute and event
+                    Optional<NotificationEventConfig> configOpt = notificationEventConfigRepository
+                            .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeAndIsActiveTrueOrderByUpdatedAtDesc(
+                                    NotificationEventType.AUDIENCE_FORM_SUBMISSION,
+                                    NotificationSourceType.INSTITUTE,
+                                    instituteIdForNotification,
+                                    NotificationTemplateType.EMAIL
+                            );
+
+                    if (configOpt.isPresent()) {
+                        // Get current time with timezone
+                        java.time.ZonedDateTime now = java.time.ZonedDateTime.now();
+                        java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("MMM dd, yyyy hh:mm a z");
+                        String submissionTime = now.format(formatter);
+                        
+                        // Send email using template with dynamic parameters
+                        NotificationTemplateVariables templateVars = NotificationTemplateVariables.builder()
+                                .userFullName(userForNotification.getFullName())
+                                .userEmail(userForNotification.getEmail())
+                                .instituteId(audienceInstituteId)
+                                .campaignName(audience.getCampaignName())
+                                .customFields(customFieldsForEmail)
+                                .submissionTime(submissionTime)
+                                .build();
+
+                        sendUniqueLinkService.sendUniqueLinkByEmailByEnrollInvite(
+                                instituteIdForNotification,
+                                userForNotification,
+                                configOpt.get().getTemplateId(),
+                                null,
+                                templateVars
+                        );
+                        logger.info("Sent templated email to respondent: {}", userForNotification.getEmail());
+                    } else {
+                        // Send default plain email
+                        String defaultEmailBody = buildDefaultEmailBody(
+                                audience.getCampaignName(),
+                                userForNotification.getFullName(),
+                                userForNotification.getEmail(),
+                                customFieldsForEmail
+                        );
+                        
+                        logger.info("No template found, sending default email to: {}", userForNotification.getEmail());
+                        logger.info("Default email body: {}", defaultEmailBody);
+                        
+                        // Send default HTML email
+                        GenericEmailRequest emailRequest = new GenericEmailRequest();
+                        emailRequest.setTo(userForNotification.getEmail());
+                        emailRequest.setSubject("Form Submission Confirmation - " + audience.getCampaignName());
+                        emailRequest.setBody(defaultEmailBody);
+                        
+                        try {
+                            notificationService.sendGenericHtmlMail(emailRequest, instituteIdForNotification);
+                            logger.info("Sent default email to respondent: {}", userForNotification.getEmail());
+                        } catch (Exception ex) {
+                            logger.error("Failed to send default email to {}: {}", userForNotification.getEmail(), ex.getMessage());
+                        }
+                    }
+                }
+
+                // 6. Send notifications to additional recipients (to_notify)
+                if (StringUtils.hasText(audience.getToNotify())) {
+                    String[] additionalEmails = audience.getToNotify().split(",");
+                    logger.info("Sending notifications to {} additional recipients", additionalEmails.length);
+
+                    for (String email : additionalEmails) {
+                        String trimmedEmail = email.trim();
+                        if (!StringUtils.hasText(trimmedEmail)) {
+                            continue;
+                        }
+
+                        logger.info("Sending notification to additional recipient: {}", trimmedEmail);
+                            String adminEmailBody = buildAdminNotificationBody(
+                                    audience.getCampaignName(),
+                                    userForNotification.getFullName(),
+                                    userForNotification.getEmail(),
+                                    customFieldsForEmail
+                            );
+
+                            logger.info("No template found, sending default admin notification to: {}", trimmedEmail);
+                            logger.info("Default admin email body: {}", adminEmailBody);
+                            
+                            // Send default HTML email for admin
+                            GenericEmailRequest adminEmailRequest = new GenericEmailRequest();
+                            adminEmailRequest.setTo(trimmedEmail);
+                            adminEmailRequest.setSubject("New Lead Submitted - " + audience.getCampaignName());
+                            adminEmailRequest.setBody(adminEmailBody);
+                            
+                            try {
+                                notificationService.sendGenericHtmlMail(adminEmailRequest, instituteIdForNotification);
+                                logger.info("Sent default admin notification to: {}", trimmedEmail);
+                            } catch (Exception ex) {
+                                logger.error("Failed to send admin notification to {}: {}", trimmedEmail, ex.getMessage());
+                            }
+                    }
                 }
 
                 return savedResponse.getId();
@@ -488,6 +576,259 @@ public class AudienceService {
                         CustomFieldValues::getValue,
                         (v1, v2) -> v2 // In case of duplicate keys, take the latest
                 ));
+    }
+
+    /**
+     * Build a map of custom field names to values for email template
+     * Format: {field_name -> value}
+     * Example: {"Phone Number" -> "1234567890", "Company Name" -> "Acme Corp"}
+     */
+    private Map<String, String> buildCustomFieldMapForEmail(String responseId) {
+        // 1. Fetch saved custom field values for this response
+        List<CustomFieldValues> savedValues = customFieldValuesRepository
+                .findBySourceTypeAndSourceId("AUDIENCE_RESPONSE", responseId);
+
+        if (CollectionUtils.isEmpty(savedValues)) {
+            return Collections.emptyMap();
+        }
+
+        // 2. Extract custom_field_ids
+        Set<String> customFieldIds = savedValues.stream()
+                .map(CustomFieldValues::getCustomFieldId)
+                .collect(Collectors.toSet());
+
+        // 3. Fetch custom field definitions to get field_name (readable labels)
+        List<CustomFields> fieldDefinitions = customFieldRepository.findAllById(customFieldIds);
+
+        Map<String, String> fieldIdToName = fieldDefinitions.stream()
+                .collect(Collectors.toMap(
+                        CustomFields::getId,
+                        CustomFields::getFieldName,
+                        (a, b) -> a // In case of duplicates, take first
+                ));
+
+        // 4. Build the final map: field_name -> value
+        Map<String, String> result = new HashMap<>();
+        for (CustomFieldValues cfv : savedValues) {
+            String fieldName = fieldIdToName.get(cfv.getCustomFieldId());
+            if (StringUtils.hasText(fieldName) && StringUtils.hasText(cfv.getValue())) {
+                result.put(fieldName, cfv.getValue());
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Build default email body with custom fields - HTML formatted
+     */
+    private String buildDefaultEmailBody(String campaignName, String userName, String userEmail, 
+                                        Map<String, String> customFields) {
+        StringBuilder emailBody = new StringBuilder();
+        
+        // Get current time with timezone
+        java.time.ZonedDateTime now = java.time.ZonedDateTime.now();
+        java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("MMM dd, yyyy hh:mm a z");
+        String submissionTime = now.format(formatter);
+        
+        // HTML Email Template
+        emailBody.append("<!DOCTYPE html>");
+        emailBody.append("<html lang='en'>");
+        emailBody.append("<head>");
+        emailBody.append("<meta charset='UTF-8'>");
+        emailBody.append("<meta name='viewport' content='width=device-width, initial-scale=1.0'>");
+        emailBody.append("<style>");
+        emailBody.append("body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f5f5; margin: 0; padding: 0; }");
+        emailBody.append(".container { max-width: 600px; margin: 30px auto; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }");
+        emailBody.append(".header { background-color: #4a4a4a; color: white; padding: 30px 20px; text-align: center; }");
+        emailBody.append(".header h1 { margin: 0; font-size: 24px; font-weight: 600; }");
+        emailBody.append(".content { padding: 30px 20px; }");
+        emailBody.append(".success-icon { text-align: center; margin-bottom: 20px; font-size: 48px; }");
+        emailBody.append(".message { color: #333; font-size: 16px; line-height: 1.6; margin-bottom: 25px; text-align: center; }");
+        emailBody.append(".info-section { background-color: #f9f9f9; border-left: 4px solid #4a4a4a; padding: 15px 20px; margin: 20px 0; border-radius: 4px; }");
+        emailBody.append(".info-section h3 { color: #4a4a4a; margin: 0 0 15px 0; font-size: 16px; font-weight: 600; }");
+        emailBody.append(".info-item { display: flex; padding: 8px 0; border-bottom: 1px solid #e9ecef; }");
+        emailBody.append(".info-item:last-child { border-bottom: none; }");
+        emailBody.append(".info-label { font-weight: 600; color: #495057; min-width: 120px; }");
+        emailBody.append(".info-value { color: #6c757d; flex: 1; }");
+        emailBody.append(".footer { background-color: #f9f9f9; padding: 20px; text-align: center; color: #6c757d; font-size: 14px; }");
+        emailBody.append(".footer p { margin: 5px 0; }");
+        emailBody.append("</style>");
+        emailBody.append("</head>");
+        emailBody.append("<body>");
+        emailBody.append("<div class='container'>");
+        
+        // Header
+        emailBody.append("<div class='header'>");
+        emailBody.append("<h1>Form Submission Confirmation</h1>");
+        emailBody.append("</div>");
+        
+        // Content
+        emailBody.append("<div class='content'>");
+        emailBody.append("<div class='success-icon'>✅</div>");
+        emailBody.append("<div class='message'>");
+        emailBody.append("Thank you for submitting the form for <strong>").append(campaignName).append("</strong>.<br>");
+        emailBody.append("We have received your information and will get back to you soon.");
+        emailBody.append("</div>");
+        
+        // User Info Section
+        emailBody.append("<div class='info-section'>");
+        emailBody.append("<h3>Your Information</h3>");
+        if (StringUtils.hasText(userName)) {
+            emailBody.append("<div class='info-item'>");
+            emailBody.append("<span class='info-label'>Name:</span>");
+            emailBody.append("<span class='info-value'>").append(userName).append("</span>");
+            emailBody.append("</div>");
+        }
+        if (StringUtils.hasText(userEmail)) {
+            emailBody.append("<div class='info-item'>");
+            emailBody.append("<span class='info-label'>Email:</span>");
+            emailBody.append("<span class='info-value'>").append(userEmail).append("</span>");
+            emailBody.append("</div>");
+        }
+        emailBody.append("<div class='info-item'>");
+        emailBody.append("<span class='info-label'>Submitted:</span>");
+        emailBody.append("<span class='info-value'>").append(submissionTime).append("</span>");
+        emailBody.append("</div>");
+        emailBody.append("</div>");
+        
+        // Custom Fields Section
+        if (!CollectionUtils.isEmpty(customFields)) {
+            emailBody.append("<div class='info-section'>");
+            emailBody.append("<h3>Submitted Information</h3>");
+            for (Map.Entry<String, String> entry : customFields.entrySet()) {
+                emailBody.append("<div class='info-item'>");
+                emailBody.append("<span class='info-label'>").append(entry.getKey()).append(":</span>");
+                emailBody.append("<span class='info-value'>").append(entry.getValue()).append("</span>");
+                emailBody.append("</div>");
+            }
+            emailBody.append("</div>");
+        }
+        
+        emailBody.append("</div>");
+        
+        // Footer
+        emailBody.append("<div class='footer'>");
+        emailBody.append("<p>This is an automated message. Please do not reply to this email.</p>");
+        emailBody.append("<p>&copy; 2025 All rights reserved.</p>");
+        emailBody.append("</div>");
+        
+        emailBody.append("</div>");
+        emailBody.append("</body>");
+        emailBody.append("</html>");
+        
+        return emailBody.toString();
+    }
+
+    /**
+     * Build notification email body for admin recipients (to_notify) - HTML formatted
+     */
+    private String buildAdminNotificationBody(String campaignName, String userName, String userEmail,
+                                             Map<String, String> customFields) {
+        StringBuilder emailBody = new StringBuilder();
+        
+        // Get current time with timezone
+        java.time.ZonedDateTime now = java.time.ZonedDateTime.now();
+        java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("MMM dd, yyyy hh:mm a z");
+        String submissionTime = now.format(formatter);
+        
+        // HTML Email Template for Admin
+        emailBody.append("<!DOCTYPE html>");
+        emailBody.append("<html lang='en'>");
+        emailBody.append("<head>");
+        emailBody.append("<meta charset='UTF-8'>");
+        emailBody.append("<meta name='viewport' content='width=device-width, initial-scale=1.0'>");
+        emailBody.append("<style>");
+        emailBody.append("body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f5f5; margin: 0; padding: 0; }");
+        emailBody.append(".container { max-width: 600px; margin: 30px auto; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }");
+        emailBody.append(".header { background-color: #2c3e50; color: white; padding: 30px 20px; text-align: center; }");
+        emailBody.append(".header h1 { margin: 0; font-size: 24px; font-weight: 600; }");
+        emailBody.append(".badge { background-color: rgba(255,255,255,0.2); padding: 5px 15px; border-radius: 20px; display: inline-block; margin-top: 10px; font-size: 14px; }");
+        emailBody.append(".content { padding: 30px 20px; }");
+        emailBody.append(".alert-icon { text-align: center; margin-bottom: 20px; font-size: 48px; }");
+        emailBody.append(".message { color: #333; font-size: 16px; line-height: 1.6; margin-bottom: 25px; text-align: center; }");
+        emailBody.append(".campaign-name { color: #2c3e50; font-weight: 600; font-size: 18px; }");
+        emailBody.append(".info-section { background-color: #f9f9f9; border-left: 4px solid #2c3e50; padding: 15px 20px; margin: 20px 0; border-radius: 4px; }");
+        emailBody.append(".info-section h3 { color: #2c3e50; margin: 0 0 15px 0; font-size: 16px; font-weight: 600; }");
+        emailBody.append(".info-item { display: flex; padding: 8px 0; border-bottom: 1px solid #e9ecef; }");
+        emailBody.append(".info-item:last-child { border-bottom: none; }");
+        emailBody.append(".info-label { font-weight: 600; color: #495057; min-width: 140px; }");
+        emailBody.append(".info-value { color: #6c757d; flex: 1; word-break: break-word; }");
+        emailBody.append(".action-section { background-color: #e8e8e8; padding: 20px; margin: 25px 0; border-radius: 8px; text-align: center; border-left: 4px solid #2c3e50; }");
+        emailBody.append(".action-section p { color: #2c3e50; margin: 0; font-size: 14px; font-weight: 600; }");
+        emailBody.append(".footer { background-color: #f9f9f9; padding: 20px; text-align: center; color: #6c757d; font-size: 14px; }");
+        emailBody.append(".footer p { margin: 5px 0; }");
+        emailBody.append("</style>");
+        emailBody.append("</head>");
+        emailBody.append("<body>");
+        emailBody.append("<div class='container'>");
+        
+        // Header
+        emailBody.append("<div class='header'>");
+        emailBody.append("<h1>🔔 New Lead Notification</h1>");
+        emailBody.append("<div class='badge'>Admin Alert</div>");
+        emailBody.append("</div>");
+        
+        // Content
+        emailBody.append("<div class='content'>");
+        emailBody.append("<div class='alert-icon'>🎯</div>");
+        emailBody.append("<div class='message'>");
+        emailBody.append("A new lead has been submitted for campaign:<br>");
+        emailBody.append("<span class='campaign-name'>").append(campaignName).append("</span>");
+        emailBody.append("</div>");
+        
+        // Lead Details Section
+        emailBody.append("<div class='info-section'>");
+        emailBody.append("<h3>Lead Details</h3>");
+        if (StringUtils.hasText(userName)) {
+            emailBody.append("<div class='info-item'>");
+            emailBody.append("<span class='info-label'>Name:</span>");
+            emailBody.append("<span class='info-value'>").append(userName).append("</span>");
+            emailBody.append("</div>");
+        }
+        if (StringUtils.hasText(userEmail)) {
+            emailBody.append("<div class='info-item'>");
+            emailBody.append("<span class='info-label'>Email:</span>");
+            emailBody.append("<span class='info-value'>").append(userEmail).append("</span>");
+            emailBody.append("</div>");
+        }
+        emailBody.append("<div class='info-item'>");
+        emailBody.append("<span class='info-label'>Submitted:</span>");
+        emailBody.append("<span class='info-value'>").append(submissionTime).append("</span>");
+        emailBody.append("</div>");
+        emailBody.append("</div>");
+        
+        // Additional Information Section
+        if (!CollectionUtils.isEmpty(customFields)) {
+            emailBody.append("<div class='info-section'>");
+            emailBody.append("<h3>Additional Information</h3>");
+            for (Map.Entry<String, String> entry : customFields.entrySet()) {
+                emailBody.append("<div class='info-item'>");
+                emailBody.append("<span class='info-label'>").append(entry.getKey()).append(":</span>");
+                emailBody.append("<span class='info-value'>").append(entry.getValue()).append("</span>");
+                emailBody.append("</div>");
+            }
+            emailBody.append("</div>");
+        }
+        
+        // Action Section
+        emailBody.append("<div class='action-section'>");
+        emailBody.append("<p>💡 <strong>Action Required:</strong> Follow up with this lead as soon as possible to maximize conversion.</p>");
+        emailBody.append("</div>");
+        
+        emailBody.append("</div>");
+        
+        // Footer
+        emailBody.append("<div class='footer'>");
+        emailBody.append("<p>This is an automated notification from your lead management system.</p>");
+        emailBody.append("<p>&copy; 2025 All rights reserved.</p>");
+        emailBody.append("</div>");
+        
+        emailBody.append("</div>");
+        emailBody.append("</body>");
+        emailBody.append("</html>");
+        
+        return emailBody.toString();
     }
 }
 

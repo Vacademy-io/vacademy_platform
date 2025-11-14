@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import FilterPanel from "./FilterPanel.tsx";
 import SearchAndSortBar from "./SearchAndSortBar.tsx";
 import CourseCard from "./CourseCards.tsx";
@@ -54,6 +54,10 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
     const fallbackTags: string = "";
 
     const scrollRef = useRef<HTMLDivElement | null>(null);
+    const filterPanelRef = useRef<HTMLDivElement | null>(null);
+    const [isSticky, setIsSticky] = useState(false);
+    const [filterPanelWidth, setFilterPanelWidth] = useState(0);
+    const [filterPanelLeft, setFilterPanelLeft] = useState(0);
 
     // Smooth scroll on page change and dev log
     useEffect(() => {
@@ -85,6 +89,55 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
         }
     };
 
+    // Sticky filter panel logic
+    useEffect(() => {
+        if (!showFilters || !filterPanelRef.current) return;
+
+        const handleScroll = () => {
+            if (!filterPanelRef.current) return;
+            
+            const rect = filterPanelRef.current.getBoundingClientRect();
+            const scrollTop = window.scrollY || document.documentElement.scrollTop;
+            
+            // Check if we're on desktop (lg breakpoint is 1024px)
+            if (window.innerWidth < 1024) {
+                setIsSticky(false);
+                return;
+            }
+
+            // Navbar is approximately 80px, start sticking when scrolled past initial position
+            if (scrollTop > 150) {
+                if (!isSticky) {
+                    setFilterPanelWidth(rect.width);
+                    setFilterPanelLeft(rect.left);
+                    setIsSticky(true);
+                }
+            } else {
+                setIsSticky(false);
+            }
+        };
+
+        const handleResize = () => {
+            if (filterPanelRef.current && !isSticky) {
+                const rect = filterPanelRef.current.getBoundingClientRect();
+                setFilterPanelWidth(rect.width);
+                setFilterPanelLeft(rect.left);
+            }
+        };
+
+        // Initial calculation
+        handleResize();
+        handleScroll();
+
+        window.addEventListener('scroll', handleScroll, { passive: true });
+        window.addEventListener('resize', handleResize);
+
+        return () => {
+            window.removeEventListener('scroll', handleScroll);
+            window.removeEventListener('resize', handleResize);
+        };
+    }, [showFilters, isSticky]);
+
     // Convert thumbnail_file_id to URLs with individual loading (more reliable)
     useEffect(() => {
         const convertThumbnailsToUrls = async () => {
@@ -111,15 +164,36 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
     return (
         <div
             ref={scrollRef}
-            className="min-h-screen"
+            className="w-full"
         >
             <div
-                className={`flex flex-col lg:flex-row ${showFilters ? "gap-4 lg:gap-6" : ""} mx-auto`}
+                className={`flex flex-col lg:flex-row lg:items-start ${showFilters ? "gap-4 lg:gap-6" : ""} mx-auto relative`}
             >
                 {/* Sidebar - Only show if showFilters is true */}
                 {showFilters && (
-                    <div className="w-full lg:w-80 lg:flex-shrink-0 order-1">
-                        <FilterPanel
+                    <>
+                        {/* Spacer to maintain layout when filter panel becomes fixed */}
+                        {isSticky && (
+                            <div 
+                                className="hidden lg:block flex-shrink-0"
+                                style={{ width: '20rem' }}
+                            />
+                        )}
+                        <aside 
+                            ref={filterPanelRef}
+                            className="w-full flex-shrink-0"
+                            style={{
+                                position: isSticky ? 'fixed' : 'static',
+                                top: isSticky ? '5rem' : 'auto',
+                                left: isSticky ? `${filterPanelLeft}px` : 'auto',
+                                width: isSticky ? `${filterPanelWidth}px` : '100%',
+                                maxWidth: '20rem',
+                                maxHeight: isSticky ? 'calc(100vh - 6rem)' : 'none',
+                                overflowY: isSticky ? 'auto' : 'visible',
+                                zIndex: isSticky ? 10 : 'auto'
+                            }}
+                        >
+                            <FilterPanel
                             selectedLevels={selectedLevels}
                             onLevelChange={(id) =>
                                 toggleItem(
@@ -143,11 +217,12 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                             clearAllFilters={clearAllFilters}
                             onApplyFilters={onApplyFilters}
                         />
-                    </div>
+                        </aside>
+                    </>
                 )}
 
                 {/* Main Content Area */}
-                <div className="flex-1 min-w-0 order-2">
+                <div className="flex-1 min-w-0">
                     <SearchAndSortBar
                         searchTerm={searchTerm}
                         onSearchChange={onSearchChange}

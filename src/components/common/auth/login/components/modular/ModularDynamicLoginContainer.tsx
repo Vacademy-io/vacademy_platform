@@ -17,6 +17,7 @@ import { setTokenInStorage, getTokenDecodedData } from "@/lib/auth/sessionUtilit
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
+import ClipLoader from "react-spinners/ClipLoader";
 
 interface ModularDynamicLoginContainerProps {
   instituteId?: string;
@@ -90,6 +91,9 @@ export function ModularDynamicLoginContainer({
     return initial;
   });
 
+  // State to track OAuth processing (after popup closes, before redirect)
+  const [isOAuthProcessing, setIsOAuthProcessing] = useState(false);
+
   // Always show at least one provider, even if only one is enabled
   // (selection UI currently always shown via enabled providers list)
 
@@ -109,6 +113,9 @@ export function ModularDynamicLoginContainer({
     const finalizeLoginWithTokens = async (accessToken: string, refreshToken: string) => {
       try {
         console.log('[ModularDynamicLoginContainer] 🎯 Finalizing login with tokens from popup');
+        
+        // Show loading state immediately
+        setIsOAuthProcessing(true);
         
         await setTokenInStorage(TokenKey.accessToken, accessToken);
         await setTokenInStorage(TokenKey.refreshToken, refreshToken);
@@ -190,6 +197,7 @@ export function ModularDynamicLoginContainer({
         }, 100);
       } catch (error) {
         console.error('[ModularDynamicLoginContainer] ❌ Error finalizing login:', error);
+        setIsOAuthProcessing(false);
         toast.error("Failed to complete login. Please try again.");
       }
     };
@@ -585,6 +593,46 @@ export function ModularDynamicLoginContainer({
     } catch (err) { void err; }
     navigate({ to: "/privacy-policy" });
   };
+
+  // Show loading overlay when processing OAuth
+  if (isOAuthProcessing) {
+    return (
+      <div className={`${className}`}>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="min-h-[400px] flex items-center justify-center py-12 px-6"
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.3 }}
+            className="text-center space-y-4"
+          >
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{
+                duration: 1.5,
+                repeat: Infinity,
+                ease: "linear",
+              }}
+              className="inline-block"
+            >
+              <ClipLoader size={36} color="#374151" />
+            </motion.div>
+            <div className="space-y-2">
+              <h3 className="text-base font-medium text-gray-900">
+                Signing you in
+              </h3>
+              <p className="text-sm text-gray-500">
+                Please wait...
+              </p>
+            </div>
+          </motion.div>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className={`space-y-6 ${className}`}>

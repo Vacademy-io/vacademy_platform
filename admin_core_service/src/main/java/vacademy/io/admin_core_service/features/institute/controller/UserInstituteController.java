@@ -30,9 +30,7 @@ public class UserInstituteController {
     }
 
     @GetMapping("/details/{instituteId}")
-    @Cacheable(value = "userInstituteDetails", key = "#instituteId")
     public ResponseEntity<InstituteInfoDTO> getInstituteDetails(@PathVariable String instituteId) {
-
         InstituteInfoDTO instituteInfoDTO = instituteInitManager.getInstituteDetails(instituteId);
         return ResponseEntity.ok(instituteInfoDTO);
     }

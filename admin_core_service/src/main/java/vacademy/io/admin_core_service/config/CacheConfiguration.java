@@ -54,10 +54,7 @@ public class CacheConfiguration {
                 "openInstituteIdOrSubdomain",
                 caffeineCache2mBuilder().build()
         );
-        CaffeineCache userInstituteDetails = new CaffeineCache(
-                "userInstituteDetails",
-                caffeineCache2mBuilder().build()
-        );
+      
         CaffeineCache instituteDashboard = new CaffeineCache(
                 "instituteDashboard",
                 caffeineCache2mBuilder().build()
@@ -82,7 +79,6 @@ public class CacheConfiguration {
                 instituteById,
                 openInstituteDetails,
                 openInstituteIdOrSubdomain,
-                userInstituteDetails,
                 instituteDashboard,
                 learnerInstituteDetails,
                 learnerInstituteDetailsByIds,

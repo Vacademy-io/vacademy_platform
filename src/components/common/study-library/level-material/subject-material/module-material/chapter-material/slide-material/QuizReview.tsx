@@ -209,7 +209,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
                 </div>
               )}
               <div className="mb-4">
-                <span className="font-semibold text-gray-700">Q:</span>{" "}
+                {/* <span className="font-semibold text-gray-700">Q:</span>{" "} */}
                 <span className="text-gray-900 text-xs" dangerouslySetInnerHTML={{ __html: questionText }} />
               </div>
               <div className="flex flex-col md:flex-row gap-4 mb-4">

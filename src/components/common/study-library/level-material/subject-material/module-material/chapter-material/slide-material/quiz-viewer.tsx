@@ -15,6 +15,7 @@ import katex from "katex";
 import "katex/dist/katex.css";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Slide } from "@/hooks/study-library/use-slides";
+import { useSelectedSessionStore } from "@/stores/study-library/selected-session-store";
 
 interface Option {
   id: string;
@@ -66,6 +67,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
 
   const submitQuizMutation = useSubmitQuizSlideActivityLog();
   const queryClient = useQueryClient();
+  const { selectedSession } = useSelectedSessionStore();
 
   // ✅ Helper: Restore 100% for ALL completed quizzes from localStorage
   const restoreLocalStorageCompletions = useCallback((chapterId: string) => {
@@ -184,12 +186,29 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
   // Helper to get URL params
   const getUrlParams = () => {
     const urlParams = new URLSearchParams(window.location.search);
+    
+    /**
+     * IMPORTANT: In the study library flow, courseId IS the package session ID.
+     * The slides route always has courseId in the URL, so we use that as the primary source.
+     * 
+     * Fallback order (only for backward compatibility):
+     * 1. sessionId (if explicitly provided and non-empty)
+     * 2. courseId (primary - always present in study library routes)
+     * 3. selectedSession from store (for edge cases)
+     */
+    const courseId = urlParams.get("courseId") || "";
+    const sessionId = urlParams.get("sessionId") || "";
+    const sessionFromStore = selectedSession?.id || "";
+    
+    // Use sessionId only if it's explicitly provided and non-empty
+    const packageSessionId = (sessionId && sessionId.trim()) || courseId || sessionFromStore;
+    
     return {
       slideId: urlParams.get("slideId") || "",
       chapterId: urlParams.get("chapterId") || "",
       moduleId: urlParams.get("moduleId") || "",
       subjectId: urlParams.get("subjectId") || "",
-      packageSessionId: urlParams.get("sessionId") || "",
+      packageSessionId,
     };
   };
 
@@ -388,12 +407,12 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
         const userId = (await getUserId()) || "";
 
         if (!slideId || !chapterId || !moduleId || !subjectId || !packageSessionId || !userId) {
-          console.error("❌ [QuizViewer] Missing required params for quiz submission", {
+          console.error("❌ 391 [QuizViewer] Missing required params for quiz submission", {
             slideId,
             chapterId,
             moduleId,
             subjectId,
-            packageSessionId,
+            packageSessionId: packageSessionId,
             userId,
           });
           toast.error("Cannot submit quiz — missing context. Please reopen this slide.");
@@ -451,14 +470,14 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
             
             // Invalidate and refetch modules query - this updates course structure
             await queryClient.invalidateQueries({
-              predicate: (query) => {
+                predicate: (query) => {
                 const queryKey = query.queryKey;
                 return Array.isArray(queryKey) && queryKey[0] === "GET_MODULES_WITH_CHAPTERS";
-              },
+                },
             });
-            
+              
             await queryClient.refetchQueries({
-              predicate: (query) => {
+                predicate: (query) => {
                 const queryKey = query.queryKey;
                 return Array.isArray(queryKey) && queryKey[0] === "GET_MODULES_WITH_CHAPTERS";
               },
@@ -481,10 +500,10 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
                 });
                 
                 console.log("✅ [QuizViewer] Slides synced with server data");
-                
+            
                 // ✅ CRITICAL: After refetch, restore localStorage completions again
                 console.log("🔄 [QuizViewer] Re-applying localStorage completions after server sync...");
-                restoreLocalStorageCompletions(chapterId);
+            restoreLocalStorageCompletions(chapterId);
                 console.log("✅ [QuizViewer] localStorage completions restored after server sync");
               } catch (e) {
                 console.error("❌ [QuizViewer] Slides sync error:", e);

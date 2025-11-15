@@ -204,6 +204,10 @@ public class UserService {
         Optional<User> optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(normalizedEmail);
         if (optionalUser.isPresent()) {
             User user = optionalUser.get();
+            userDTO.setFullName(user.getFullName());
+            userDTO.setUsername(user.getUsername());
+            userDTO.setPassword(user.getPassword());
+            userDTO.setEmail(user.getEmail());
             return user;
         } else {
             User user = new User();

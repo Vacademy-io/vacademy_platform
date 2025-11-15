@@ -9,7 +9,9 @@ import vacademy.io.admin_core_service.features.learner.dto.LearnerBatchDetail;
 import vacademy.io.admin_core_service.features.learner.dto.LearnerDetailsDTO;
 import vacademy.io.admin_core_service.features.learner.dto.LearnerDetailsEditDTO;
 import vacademy.io.admin_core_service.features.learner.dto.LearnerPaymentPlanStatusDTO;
+import vacademy.io.admin_core_service.features.learner.dto.LearnerProfileUpdateRequestDTO;
 import vacademy.io.admin_core_service.features.learner.manager.LearnerProfileManager;
+import vacademy.io.admin_core_service.features.learner.manager.LearnerProfileUpdateManager;
 import vacademy.io.admin_core_service.features.learner.service.LearnerService;
 import vacademy.io.admin_core_service.features.learner.service.LearnerUserPlanService;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -30,6 +32,9 @@ public class LearnerUserInfoController {
 
     @Autowired
     private LearnerUserPlanService learnerUserPlanService;
+
+    @Autowired
+    private LearnerProfileUpdateManager learnerProfileUpdateManager;
 
     @GetMapping("/details")
     @ClientCacheable(maxAgeSeconds = 300, scope = CacheScope.PRIVATE, varyHeaders = {"X-Institute-Id", "X-User-Id"})
@@ -68,6 +73,13 @@ public class LearnerUserInfoController {
     @GetMapping("user-plan-status")
     public ResponseEntity<LearnerPaymentPlanStatusDTO> getUserPlanStatus(@RequestParam("packageSessionId") String packageSessionId, @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(learnerUserPlanService.getUserPaymentPlanStatus(packageSessionId, user));
+    }
+
+    @PutMapping("/profile")
+    public ResponseEntity<String> updateLearnerProfile(@RequestBody LearnerProfileUpdateRequestDTO request,
+                                                     @RequestAttribute("user") CustomUserDetails actor) {
+        learnerProfileUpdateManager.updateLearnerProfile(request, actor);
+        return ResponseEntity.ok("Done");
     }
 
 }

@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.institute_learner.repository.Inst
 import vacademy.io.admin_core_service.features.learner.dto.LearnerDetailsDTO;
 import vacademy.io.admin_core_service.features.learner.dto.LearnerDetailsEditDTO;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.auth.dto.learner.LearnerExtraDetails;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -84,9 +85,34 @@ public class LearnerService {
     }
 
 
-    public String updateLearnerDetail(UserDTO userDTO) {
+    public String updateLearnerDetail(UserDTO userDTO,LearnerExtraDetails learnerExtraDetails) {
         Student student = instituteStudentRepository.findTopByUserId(userDTO.getId())
             .orElseThrow(() -> new VacademyException("User not found"));
+
+        student.setUsername(userDTO.getUsername());
+        student.setFullName(userDTO.getFullName());
+        student.setAddressLine(userDTO.getAddressLine());
+        student.setRegion(userDTO.getRegion());
+        student.setCity(userDTO.getCity());
+        student.setPinCode(userDTO.getPinCode());
+        student.setMobileNumber(userDTO.getMobileNumber());
+        student.setDateOfBirth(userDTO.getDateOfBirth());
+        student.setGender(userDTO.getGender());
+        student.setFatherName(learnerExtraDetails.getFathersName());
+        student.setMotherName(learnerExtraDetails.getMothersName());
+        student.setParentsMobileNumber(learnerExtraDetails.getParentsMobileNumber());
+        student.setParentsEmail(learnerExtraDetails.getParentsEmail());
+        student.setLinkedInstituteName(learnerExtraDetails.getLinkedInstituteName());
+        student.setParentsToMotherEmail(learnerExtraDetails.getParentsToMotherEmail());
+        student.setParentToMotherMobileNumber(learnerExtraDetails.getParentsToMotherMobileNumber());
+
+        instituteStudentRepository.save(student);
+        return "done";
+    }
+
+    public String updateLearnerDetail(UserDTO userDTO) {
+        Student student = instituteStudentRepository.findTopByUserId(userDTO.getId())
+                .orElseThrow(() -> new VacademyException("User not found"));
 
         if (StringUtils.hasText(userDTO.getUsername())) {
             student.setUsername(userDTO.getUsername());
@@ -118,8 +144,40 @@ public class LearnerService {
         if (StringUtils.hasText(userDTO.getGender())) {
             student.setGender(userDTO.getGender());
         }
-
         instituteStudentRepository.save(student);
         return "done";
+    }
+
+    public void updateLearnerExtraDetails(LearnerExtraDetails learnerExtraDetails, String userId) {
+        if (learnerExtraDetails == null || !StringUtils.hasText(userId)) {
+            return;
+        }
+
+        Student student = instituteStudentRepository.findTopByUserId(userId)
+                .orElseThrow(() -> new VacademyException("User not found"));
+
+        if (StringUtils.hasText(learnerExtraDetails.getFathersName())) {
+            student.setFatherName(learnerExtraDetails.getFathersName());
+        }
+        if (StringUtils.hasText(learnerExtraDetails.getMothersName())) {
+            student.setMotherName(learnerExtraDetails.getMothersName());
+        }
+        if (StringUtils.hasText(learnerExtraDetails.getParentsMobileNumber())) {
+            student.setParentsMobileNumber(learnerExtraDetails.getParentsMobileNumber());
+        }
+        if (StringUtils.hasText(learnerExtraDetails.getParentsEmail())) {
+            student.setParentsEmail(learnerExtraDetails.getParentsEmail());
+        }
+        if (StringUtils.hasText(learnerExtraDetails.getLinkedInstituteName())) {
+            student.setLinkedInstituteName(learnerExtraDetails.getLinkedInstituteName());
+        }
+        if (StringUtils.hasText(learnerExtraDetails.getParentsToMotherEmail())) {
+            student.setParentsToMotherEmail(learnerExtraDetails.getParentsToMotherEmail());
+        }
+        if (StringUtils.hasText(learnerExtraDetails.getParentsToMotherMobileNumber())) {
+            student.setParentToMotherMobileNumber(learnerExtraDetails.getParentsToMotherMobileNumber());
+        }
+
+        instituteStudentRepository.save(student);
     }
 }

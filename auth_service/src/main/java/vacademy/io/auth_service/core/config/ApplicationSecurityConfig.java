@@ -89,7 +89,7 @@ public class ApplicationSecurityConfig {
                 .csrf().disable()
                 .cors().and()
                 .sessionManagement()
-                .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
+                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 .and()
                 .authorizeHttpRequests(authz -> authz
                         .requestMatchers(ALLOWED_PATHS).permitAll()

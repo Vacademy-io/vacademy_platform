@@ -1,18 +1,85 @@
 import React from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { FooterProps } from "../../-types/course-catalogue-types";
+import { CourseCatalogueData } from "../../-types/course-catalogue-types";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { RouteMatcher } from "../../-services/route-matcher";
 
-export const FooterComponent: React.FC<FooterProps> = ({ 
-  layout, 
-  leftSection, 
-  rightSections, 
+export const FooterComponent: React.FC<FooterProps & {
+  catalogueData?: CourseCatalogueData;
+  tagName?: string;
+}> = ({
+  layout,
+  leftSection,
+  rightSection1,
+  rightSection2,
+  rightSection3,
+  rightSections,
   rightSection,
   socialsSection,
-  bottomNote 
+  bottomNote,
+  catalogueData,
+  tagName = "home"
 }) => {
+  const navigate = useNavigate();
   const domainRouting = useDomainRouting();
   
   
+  // Helper function to handle footer link navigation
+  const handleLinkNavigation = (route: string, openInSameTab: boolean = false) => {
+    // Check if route is external
+    if (RouteMatcher.isExternalLink(route)) {
+      console.log(`[FooterComponent] Opening external link: ${route}, openInSameTab: ${openInSameTab}`);
+      if (openInSameTab) {
+        // Open in same tab
+        window.location.href = route;
+      } else {
+        // Open in new tab (default behavior)
+        window.open(route, '_blank');
+      }
+      return;
+    }
+
+    // If catalogueData is available, try to match the route with pages
+    if (catalogueData && catalogueData.pages) {
+      const matchedPage = RouteMatcher.findMatchingPage(route, catalogueData.pages);
+
+      if (matchedPage) {
+        console.log(`[FooterComponent] Found matching page for route: ${route}`, matchedPage);
+        // Get the proper navigation route for this page
+        const navigationRoute = RouteMatcher.getPageNavigationRoute(matchedPage, tagName);
+        console.log(`[FooterComponent] Navigating to matched page route: ${navigationRoute}`);
+        navigate({ to: navigationRoute });
+        return;
+      }
+    }
+
+    // Handle special routes
+    const normalizedRoute = RouteMatcher.normalizeRoute(route);
+
+    if (normalizedRoute === 'home' || normalizedRoute === '') {
+      console.log(`[FooterComponent] Navigating to home: /${tagName}`);
+      navigate({ to: `/${tagName}` });
+      return;
+    }
+
+    // Navigate as regular internal link
+    console.log(`[FooterComponent] Navigating to: ${route}`);
+    navigate({ to: route });
+  };
+
+  // Helper function to handle social link navigation
+  const handleSocialLinkNavigation = (url: string, openInSameTab: boolean = false) => {
+    console.log(`[FooterComponent] Opening social link: ${url}, openInSameTab: ${openInSameTab}`);
+    if (openInSameTab) {
+      // Open in same tab
+      window.location.href = url;
+    } else {
+      // Open in new tab (default behavior)
+      window.open(url, '_blank');
+    }
+  };
+
   // Get social media icon component
   const getSocialIcon = (iconName: string) => {
     const iconProps = { className: "w-6 h-6", fill: "currentColor" };
@@ -42,6 +109,19 @@ export const FooterComponent: React.FC<FooterProps> = ({
             <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
           </svg>
         );
+      case "x":
+      case "twitter":
+        return (
+          <svg {...iconProps} viewBox="0 0 24 24">
+            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+          </svg>
+        );
+      case "pinterest":
+        return (
+          <svg {...iconProps} viewBox="0 0 24 24">
+            <path d="M12.017 0C5.396 0 .029 5.367.029 11.987c0 5.079 3.158 9.417 7.618 11.174-.105-.949-.199-2.403.041-3.439.219-.937 1.406-5.957 1.406-5.957s-.359-.72-.359-1.781c0-1.663.967-2.911 2.168-2.911 1.024 0 1.518.769 1.518 1.688 0 1.029-.653 2.567-.992 3.992-.285 1.193.6 2.165 1.775 2.165 2.128 0 3.768-2.245 3.768-5.487 0-2.861-2.063-4.869-5.008-4.869-3.41 0-5.409 2.562-5.409 5.199 0 1.033.394 2.143.889 2.751.098.118.112.221.085.345-.09.375-.293 1.199-.334 1.363-.053.225-.172.271-.402.165-1.495-.69-2.433-2.878-2.433-4.646 0-3.776 2.748-7.252 7.92-7.252 4.158 0 7.392 2.967 7.392 6.923 0 4.135-2.607 7.462-6.233 7.462-1.214 0-2.357-.629-2.747-1.378 0 0-.599 2.282-.744 2.84-.282 1.084-1.064 2.456-1.549 3.235C9.584 23.815 10.77 24.001 12.017 24.001c6.624 0 11.99-5.367 11.99-11.987C24.007 5.367 18.641.001 12.017.001z"/>
+          </svg>
+        );
       default:
         return (
           <svg {...iconProps} viewBox="0 0 24 24">
@@ -53,64 +133,226 @@ export const FooterComponent: React.FC<FooterProps> = ({
   
 
   
-   return (
-     <footer 
-       className="text-gray-800"
-       style={{
-         backgroundColor: domainRouting.instituteThemeCode ? 
-           `hsl(var(--primary-200))` : 
-           '#e5e7eb' // gray-200 fallback
-       }}
-     >
+  // Determine grid columns based on layout
+  const getGridCols = () => {
+    switch (layout) {
+      case "four-column":
+        return "grid-cols-1 md:grid-cols-2 lg:grid-cols-4";
+      case "three-column":
+        return "grid-cols-1 md:grid-cols-3";
+      case "two-column":
+      default:
+        return "grid-cols-1 md:grid-cols-2";
+    }
+  };
+
+  return (
+    <footer
+      className="text-gray-800"
+      style={{
+        backgroundColor: domainRouting.instituteThemeCode ?
+          `hsl(var(--primary-200))` :
+          '#e5e7eb' // gray-200 fallback
+      }}
+    >
       <div className="w-full px-4 sm:px-6 lg:px-8 py-12">
-         <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
-           {/* Left Section - Company Info */}
-           <div>
-             <h3 className="text-lg font-semibold mb-4 text-gray-900">{leftSection.title}</h3>
-             <p className="text-gray-700 mb-4">{leftSection.text}</p>
-           </div>
+        <div className={`grid ${getGridCols()} gap-8 lg:gap-12`}>
+          {/* Left Section - Company Info */}
+          <div className={layout === "four-column" ? "" : ""}>
+            <h3 className="text-lg font-semibold mb-4 text-gray-900">{leftSection.title}</h3>
+            <p className="text-gray-700 mb-4">{leftSection.text}</p>
 
-           {/* Right Section - Quick Links */}
-           {rightSection && (
-             <div>
-               <h3 className="text-lg font-semibold mb-4 text-gray-900">{rightSection.title}</h3>
-               <ul className="space-y-2">
-                 {rightSection.links.map((link, linkIndex) => (
-                   <li key={linkIndex}>
-                     <a 
-                       href={link.route} 
-                       className="text-gray-700 hover:text-gray-900 transition-colors"
-                       target={link.route.startsWith('http') ? '_blank' : '_self'}
-                       rel={link.route.startsWith('http') ? 'noopener noreferrer' : undefined}
-                     >
-                       {link.label}
-                     </a>
-                   </li>
-                 ))}
-               </ul>
-             </div>
-           )}
+            {/* Social Media Links in Left Section */}
+            {leftSection.socials && leftSection.socials.length > 0 && (
+              <div className="flex space-x-4 mt-4">
+                {leftSection.socials.map((social, linkIndex) => (
+                  <button
+                    key={linkIndex}
+                    onClick={() => handleSocialLinkNavigation(social.url, social.openInSameTab)}
+                    className="text-gray-700 hover:text-gray-900 transition-colors"
+                    title={social.platform}
+                  >
+                    {getSocialIcon(social.icon)}
+                  </button>
+                ))}
+              </div>
+            )}
 
-           {/* Social Media Section */}
-           {socialsSection && (
-             <div>
-               <h3 className="text-lg font-semibold mb-4 text-gray-900">{socialsSection.title}</h3>
-               <div className="flex space-x-4">
-                 {socialsSection.links.map((social, linkIndex) => (
-                   <a
-                     key={linkIndex}
-                     href={social.url}
-                     className="text-gray-700 hover:text-gray-900 transition-colors"
-                     target="_blank"
-                     rel="noopener noreferrer"
-                     title={social.platform}
-                   >
-                     {getSocialIcon(social.icon)}
-                   </a>
-                 ))}
-               </div>
-             </div>
-           )}
+            {/* Legacy Social Media Section (for backward compatibility) */}
+            {socialsSection && !leftSection.socials && (
+              <div className="mt-6">
+                <h4 className="text-md font-semibold mb-3 text-gray-900">{socialsSection.title}</h4>
+                <div className="flex space-x-4">
+                  {socialsSection.links.map((social, linkIndex) => (
+                    <a
+                      key={linkIndex}
+                      href={social.url}
+                      className="text-gray-700 hover:text-gray-900 transition-colors"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={social.platform}
+                    >
+                      {getSocialIcon(social.icon)}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Right Section 1 */}
+          {rightSection1 && (
+            <div>
+              <h3 className="text-lg font-semibold mb-4 text-gray-900">{rightSection1.title}</h3>
+              <ul className="space-y-2">
+                {rightSection1.links.map((link, linkIndex) => (
+                  <li key={linkIndex}>
+                    {RouteMatcher.isExternalLink(link.route) ? (
+                      <a
+                        href={link.route}
+                        className="text-gray-700 hover:text-gray-900 transition-colors cursor-pointer"
+                        target={link.openInSameTab ? "_self" : "_blank"}
+                        rel={!link.openInSameTab ? "noopener noreferrer" : undefined}
+                      >
+                        {link.label}
+                      </a>
+                    ) : (
+                      <button
+                        onClick={() => handleLinkNavigation(link.route, link.openInSameTab)}
+                        className="text-gray-700 hover:text-gray-900 transition-colors cursor-pointer text-left"
+                      >
+                        {link.label}
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Right Section 2 */}
+          {rightSection2 && (
+            <div>
+              <h3 className="text-lg font-semibold mb-4 text-gray-900">{rightSection2.title}</h3>
+              <ul className="space-y-2">
+                {rightSection2.links.map((link, linkIndex) => (
+                  <li key={linkIndex}>
+                    {RouteMatcher.isExternalLink(link.route) ? (
+                      <a
+                        href={link.route}
+                        className="text-gray-700 hover:text-gray-900 transition-colors cursor-pointer"
+                        target={link.openInSameTab ? "_self" : "_blank"}
+                        rel={!link.openInSameTab ? "noopener noreferrer" : undefined}
+                      >
+                        {link.label}
+                      </a>
+                    ) : (
+                      <button
+                        onClick={() => handleLinkNavigation(link.route, link.openInSameTab)}
+                        className="text-gray-700 hover:text-gray-900 transition-colors cursor-pointer text-left"
+                      >
+                        {link.label}
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Right Section 3 */}
+          {rightSection3 && (
+            <div>
+              <h3 className="text-lg font-semibold mb-4 text-gray-900">{rightSection3.title}</h3>
+              <ul className="space-y-2">
+                {rightSection3.links.map((link, linkIndex) => (
+                  <li key={linkIndex}>
+                    {RouteMatcher.isExternalLink(link.route) ? (
+                      <a
+                        href={link.route}
+                        className="text-gray-700 hover:text-gray-900 transition-colors cursor-pointer"
+                        target={link.openInSameTab ? "_self" : "_blank"}
+                        rel={!link.openInSameTab ? "noopener noreferrer" : undefined}
+                      >
+                        {link.label}
+                      </a>
+                    ) : (
+                      <button
+                        onClick={() => handleLinkNavigation(link.route, link.openInSameTab)}
+                        className="text-gray-700 hover:text-gray-900 transition-colors cursor-pointer text-left"
+                      >
+                        {link.label}
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Legacy Support - Single Right Section */}
+          {rightSection && !rightSection1 && !rightSection2 && !rightSection3 && (
+            <div>
+              <h3 className="text-lg font-semibold mb-4 text-gray-900">{rightSection.title}</h3>
+              <ul className="space-y-2">
+                {rightSection.links.map((link, linkIndex) => (
+                  <li key={linkIndex}>
+                    {RouteMatcher.isExternalLink(link.route) ? (
+                      <a
+                        href={link.route}
+                        className="text-gray-700 hover:text-gray-900 transition-colors cursor-pointer"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {link.label}
+                      </a>
+                    ) : (
+                      <button
+                        onClick={() => handleLinkNavigation(link.route)}
+                        className="text-gray-700 hover:text-gray-900 transition-colors cursor-pointer text-left"
+                      >
+                        {link.label}
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Legacy Support - Multiple Right Sections Array */}
+          {rightSections && rightSections.length > 0 && !rightSection1 && !rightSection2 && !rightSection3 && (
+            <>
+              {rightSections.map((section, sectionIndex) => (
+                <div key={sectionIndex}>
+                  <h3 className="text-lg font-semibold mb-4 text-gray-900">{section.title}</h3>
+                  <ul className="space-y-2">
+                    {section.links.map((link, linkIndex) => (
+                      <li key={linkIndex}>
+                        {RouteMatcher.isExternalLink(link.route) ? (
+                          <a
+                            href={link.route}
+                            className="text-gray-700 hover:text-gray-900 transition-colors cursor-pointer"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {link.label}
+                          </a>
+                        ) : (
+                          <button
+                            onClick={() => handleLinkNavigation(link.route)}
+                            className="text-gray-700 hover:text-gray-900 transition-colors cursor-pointer text-left"
+                          >
+                            {link.label}
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </>
+          )}
         </div>
 
         <div className="border-t border-gray-400 mt-8 pt-8 text-center">

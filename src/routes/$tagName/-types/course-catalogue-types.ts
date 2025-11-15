@@ -52,6 +52,7 @@ export interface GlobalSettings {
         navigation?: Array<{
           label: string;
           route: string;
+          openInSameTab?: boolean;
         }>;
         authLinks?: Array<{
           label: string;
@@ -235,7 +236,38 @@ export interface FooterProps {
   leftSection: {
     title: string;
     text: string;
+    socials?: Array<{
+      platform: string;
+      icon: string;
+      url: string;
+      openInSameTab?: boolean;
+    }>;
   };
+  rightSection1?: {
+    title: string;
+    links: Array<{
+      label: string;
+      route: string;
+      openInSameTab?: boolean;
+    }>;
+  };
+  rightSection2?: {
+    title: string;
+    links: Array<{
+      label: string;
+      route: string;
+      openInSameTab?: boolean;
+    }>;
+  };
+  rightSection3?: {
+    title: string;
+    links: Array<{
+      label: string;
+      route: string;
+      openInSameTab?: boolean;
+    }>;
+  };
+  // Legacy support for backward compatibility
   rightSections?: Array<{
     title: string;
     links: Array<{

@@ -1,5 +1,5 @@
 import React from "react";
-import { Page, GlobalSettings } from "../-types/course-catalogue-types";
+import { Page, GlobalSettings, CourseCatalogueData } from "../-types/course-catalogue-types";
 import { HeaderComponent } from "./components/HeaderComponent";
 import { BannerComponent } from "./components/BannerComponent";
 import { CourseCatalogComponent } from "./components/CourseCatalogComponent";
@@ -17,6 +17,7 @@ interface JsonRendererProps {
   instituteId: string;
   tagName: string;
   courseData?: any; // Course data for dynamic content
+  catalogueData?: CourseCatalogueData; // Full catalogue data for route matching
 }
 
 export const JsonRenderer: React.FC<JsonRendererProps> = ({
@@ -25,6 +26,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
   instituteId,
   tagName,
   courseData,
+  catalogueData,
 }) => {
   const renderComponent = (component: any) => {
     const { type, props, id, enabled = true } = component;
@@ -36,7 +38,16 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
 
     switch (type) {
       case "header":
-        return <HeaderComponent key={id} {...props} navigation={props.navigation} authLinks={props.authLinks} />;
+        return (
+          <HeaderComponent
+            key={id}
+            {...props}
+            navigation={props.navigation}
+            authLinks={props.authLinks}
+            catalogueData={catalogueData}
+            tagName={tagName}
+          />
+        );
       case "banner":
         return <BannerComponent key={id} {...props} />;
       case "courseCatalog":
@@ -56,7 +67,14 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
         // Skip course recommendations component - user doesn't want "you may also like" section
         return null;
       case "footer":
-        return <FooterComponent key={id} {...props} />;
+        return (
+          <FooterComponent
+            key={id}
+            {...props}
+            catalogueData={catalogueData}
+            tagName={tagName}
+          />
+        );
       case "heroSection":
         return <HeroSectionComponent key={id} {...props} courseData={courseData} />;
       case "mediaShowcase":

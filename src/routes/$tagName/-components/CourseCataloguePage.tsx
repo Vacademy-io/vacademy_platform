@@ -257,6 +257,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
               globalSettings={catalogueData.globalSettings}
               instituteId={instituteId}
               tagName={tagName}
+              catalogueData={catalogueData}
             />
           )}
 
@@ -303,6 +304,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
               globalSettings={catalogueData.globalSettings}
               instituteId={instituteId}
               tagName={tagName}
+              catalogueData={catalogueData}
             />
           )}
         </>

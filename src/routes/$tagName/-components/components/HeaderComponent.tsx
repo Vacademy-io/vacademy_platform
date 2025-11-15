@@ -3,17 +3,23 @@ import { useNavigate, useLocation } from "@tanstack/react-router";
 import { HeaderProps } from "../../-types/course-catalogue-types";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
+import { RouteMatcher } from "../../-services/route-matcher";
+import { CourseCatalogueData } from "../../-types/course-catalogue-types";
 import { useState, useEffect } from "react";
 
-export const HeaderComponent: React.FC<HeaderProps & { 
-  navigation?: Array<{ label: string; route: string }>;
+export const HeaderComponent: React.FC<HeaderProps & {
+  navigation?: Array<{ label: string; route: string; openInSameTab?: boolean }>;
   authLinks?: Array<{ label: string; route: string }>;
+  catalogueData?: CourseCatalogueData;
+  tagName?: string;
 }> = ({
   logoUrl,
   menus,
   actionButton,
   navigation = [],
   authLinks = [],
+  catalogueData,
+  tagName = "home",
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -106,35 +112,56 @@ export const HeaderComponent: React.FC<HeaderProps & {
   };
 
   // Helper function to handle navigation
-  const handleNavigation = (route: string, label: string) => {
-    // Handle external links
-    if (route.startsWith('http://') || route.startsWith('https://')) {
-      window.open(route, '_blank');
+  const handleNavigation = (route: string, label: string, openInSameTab: boolean = false) => {
+    // Check if route is external
+    if (RouteMatcher.isExternalLink(route)) {
+      console.log(`[HeaderComponent] Opening external link: ${route}, openInSameTab: ${openInSameTab}`);
+      if (openInSameTab) {
+        // Open in same tab
+        window.location.href = route;
+      } else {
+        // Open in new tab (default behavior)
+        window.open(route, '_blank');
+      }
       return;
     }
     
-    // Handle homepage route - always navigate to current tagName page
-    if (route === 'homepage' || route === '/') {
+    // If catalogueData is available, try to match the route with pages
+    if (catalogueData && catalogueData.pages) {
+      const matchedPage = RouteMatcher.findMatchingPage(route, catalogueData.pages);
+      
+      if (matchedPage) {
+        console.log(`[HeaderComponent] Found matching page for route: ${route}`, matchedPage);
+        // Get the proper navigation route for this page
+        const navigationRoute = RouteMatcher.getPageNavigationRoute(matchedPage, tagName);
+        console.log(`[HeaderComponent] Navigating to matched page route: ${navigationRoute}`);
+        navigate({ to: navigationRoute });
+        return;
+      } else {
+        console.log(`[HeaderComponent] No matching page found for route: ${route}, checking for special routes`);
+      }
+    }
+    
+    // Handle special routes (homepage, courses, etc.)
+    const normalizedRoute = RouteMatcher.normalizeRoute(route);
+    
+    if (normalizedRoute === 'home' || normalizedRoute === '' || route === '/') {
       const currentPath = location.pathname;
       const pathSegments = currentPath.split('/').filter(Boolean);
-      const tagName = pathSegments[0] || 'home'; // fallback to 'home' if no tagName
+      const currentTagName = pathSegments[0] || tagName;
       
-      // Always navigate to the tagName page, even if already there
-      // This allows switching between Home and Courses
-      console.log(`[HeaderComponent] Navigating to tagName page: /${tagName}`);
-      navigate({ to: `/${tagName}` });
+      console.log(`[HeaderComponent] Navigating to home page: /${currentTagName}`);
+      navigate({ to: `/${currentTagName}` });
       return;
     }
     
-    // Handle courses route - navigate to current tagName page
-    if (route === 'courses' || route === '/courses') {
+    if (normalizedRoute === 'courses') {
       const currentPath = location.pathname;
       const pathSegments = currentPath.split('/').filter(Boolean);
-      const tagName = pathSegments[0] || 'home'; // fallback to 'home' if no tagName
+      const currentTagName = pathSegments[0] || tagName;
       
-      // Always navigate to the tagName page, even if already there
-      console.log(`[HeaderComponent] Navigating to courses page: /${tagName}`);
-      navigate({ to: `/${tagName}` });
+      console.log(`[HeaderComponent] Navigating to courses page: /${currentTagName}`);
+      navigate({ to: `/${currentTagName}` });
       return;
     }
     
@@ -144,7 +171,8 @@ export const HeaderComponent: React.FC<HeaderProps & {
       return;
     }
     
-    // Navigate to the route
+    // Navigate to the route as-is (for custom internal routes)
+    console.log(`[HeaderComponent] Navigating to custom route: ${route}`);
     navigate({ to: route });
   };
 
@@ -179,7 +207,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                 return (
                   <button
                     key={index}
-                    onClick={() => handleNavigation(item.route, item.label)}
+                    onClick={() => handleNavigation(item.route, item.label, item.openInSameTab)}
                     className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                       isActive 
                         ? 'text-primary-600 border-b-2 border-primary-200' 
@@ -261,7 +289,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                     key={index}
                     onClick={() => {
                       setIsMobileMenuOpen(false);
-                      handleNavigation(item.route, item.label);
+                      handleNavigation(item.route, item.label, item.openInSameTab);
                     }}
                     className={`block w-full text-left px-3 py-2 rounded-md text-base font-medium transition-colors ${
                       isActive 

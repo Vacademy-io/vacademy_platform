@@ -76,7 +76,7 @@ public class StudentRegistrationManager {
         linkStudentToInstitute(student, instituteStudentDTO.getInstituteStudentDetails());
         learnerCouponService.generateCouponCodeForLearner(student.getUserId());
         if (instituteStudentDTO.getInstituteStudentDetails().getEnrollmentStatus().equalsIgnoreCase(LearnerSessionStatusEnum.ACTIVE.name())){
-            triggerEnrollmentWorkflow(instituteStudentDTO.getInstituteStudentDetails().getInstituteId(),instituteStudentDTO.getUserDetails(),List.of(instituteStudentDTO.getInstituteStudentDetails().getPackageSessionId()));
+            triggerEnrollmentWorkflow(instituteStudentDTO.getInstituteStudentDetails().getInstituteId(),instituteStudentDTO.getUserDetails(),instituteStudentDTO.getInstituteStudentDetails().getPackageSessionId());
         }
         return instituteStudentDTO;
     }
@@ -90,7 +90,7 @@ public class StudentRegistrationManager {
         if (instituteStudentDTO.getInstituteStudentDetails() != null) {
             linkStudentToInstitute(student, instituteStudentDTO.getInstituteStudentDetails());
             if (instituteStudentDTO.getInstituteStudentDetails().getEnrollmentStatus().equalsIgnoreCase(LearnerSessionStatusEnum.ACTIVE.name())){
-                triggerEnrollmentWorkflow(instituteStudentDTO.getInstituteStudentDetails().getInstituteId(),instituteStudentDTO.getUserDetails(),List.of(instituteStudentDTO.getInstituteStudentDetails().getPackageSessionId()));
+                triggerEnrollmentWorkflow(instituteStudentDTO.getInstituteStudentDetails().getInstituteId(),instituteStudentDTO.getUserDetails(),instituteStudentDTO.getInstituteStudentDetails().getPackageSessionId());
             }
         }
         return ResponseEntity.ok(new StudentDTO(student));
@@ -578,11 +578,10 @@ public class StudentRegistrationManager {
         return createStudentFromRequest(userDTO, null).getId();
     }
 
-    public void triggerEnrollmentWorkflow(String instituteId, UserDTO userDTO,List<String>packageSessionIds) {
-        List<String>eventNames = List.of(WorkflowTriggerEvent.LEARNER_BATCH_ENROLLMENT.name());
+    public void triggerEnrollmentWorkflow(String instituteId, UserDTO userDTO,String packageSessionId) {
         Map<String, Object> contextData = new HashMap<>();
         contextData.put("user", userDTO);
-        contextData.put("packageSessionIds", packageSessionIds);
-        workflowTriggerService.handleTriggerEvent(eventNames,instituteId,contextData);
+        contextData.put("packageSessionIds", packageSessionId);
+        workflowTriggerService.handleTriggerEvent(WorkflowTriggerEvent.LEARNER_BATCH_ENROLLMENT.name(),packageSessionId,instituteId,contextData);
     }
 }

@@ -24,20 +24,20 @@ public class WorkflowTriggerService {
     private WorkflowEngineService workflowEngineService;
 
     @Async
-    public void handleTriggerEvent(List<String>eventNames, String instituteId, Map<String, Object> contextData) {
+    public void handleTriggerEvent(String eventName,String eventId, String instituteId, Map<String, Object> contextData) {
         try {
-            log.info("Trigger received: event='{}', instituteId='{}'", eventNames, instituteId);
+            log.info("Trigger received: event='{}', instituteId='{}'", eventId, instituteId);
 
-            List<WorkflowTrigger> triggers = workflowTriggerRepository.findByInstituteIdAndStatusInAndTriggerEventNameIn(
-                    instituteId,  List.of(StatusEnum.ACTIVE.name()),eventNames
+            List<WorkflowTrigger> triggers = workflowTriggerRepository.findByInstituteIdAndEventIdAnsEventTypeAndStatusIn(
+                    instituteId,  eventId,eventName, List.of(StatusEnum.ACTIVE.name())
             );
 
             if (triggers.isEmpty()) {
-                log.info("No active workflow triggers found for event='{}', instituteId='{}'", eventNames, instituteId);
+                log.info("No active workflow triggers found for event='{}', instituteId='{}'", eventName, instituteId);
                 return;
             }
 
-            log.info("Found {} active workflow triggers for event='{}'", triggers.size(), eventNames);
+            log.info("Found {} active workflow triggers for event='{}'", triggers.size(), eventName);
 
             for (WorkflowTrigger trigger : triggers) {
                 String workflowId = trigger.getWorkflow().getId();
@@ -45,7 +45,7 @@ public class WorkflowTriggerService {
 
                 try {
                     Map<String, Object> seedContext = new HashMap<>(Optional.ofNullable(contextData).orElse(new HashMap<>()));
-                    seedContext.put("triggerEvents", eventNames);
+                    seedContext.put("triggerEvents", eventName);
                     seedContext.put("triggerId", trigger.getId());
                     seedContext.put("instituteId", instituteId);
 
@@ -58,7 +58,7 @@ public class WorkflowTriggerService {
             }
 
         } catch (Exception e) {
-            log.error("Error processing trigger event '{}'", eventNames, e);
+            log.error("Error processing trigger event '{}'", eventName, e);
             e.printStackTrace();
         }
     }

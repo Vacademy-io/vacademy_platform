@@ -94,7 +94,7 @@ public class LearnerBatchEnrollService {
             }
           String studentSessionId =  studentRegistrationManager.linkStudentToInstitute(student, instituteStudentDetail);
             if (instituteStudentDetail.getEnrollmentStatus().equalsIgnoreCase(LearnerSessionStatusEnum.ACTIVE.name())){
-                studentRegistrationManager.triggerEnrollmentWorkflow(instituteId,userDTO,List.of(instituteStudentDetail.getPackageSessionId()));
+                studentRegistrationManager.triggerEnrollmentWorkflow(instituteId,userDTO,instituteStudentDetail.getPackageSessionId());
             }
             customFieldValueService.addCustomFieldValue(customFieldValues, CustomFieldValueSourceTypeEnum.STUDENT_SESSION_INSTITUTE_GROUP_MAPPING.name(), studentSessionId);
             customFieldValueService.addCustomFieldValue(customFieldValues, CustomFieldValueSourceTypeEnum.USER.name(), userDTO.getId());
@@ -140,7 +140,7 @@ public class LearnerBatchEnrollService {
                         mapping,
                         LearnerStatusEnum.ACTIVE.name()
                 );
-                studentRegistrationManager.triggerEnrollmentWorkflow(mapping.getInstitute().getId(),userDTO,List.of(mapping.getDestinationPackageSession().getId()));
+                studentRegistrationManager.triggerEnrollmentWorkflow(mapping.getInstitute().getId(),userDTO,mapping.getDestinationPackageSession().getId());
                 customFieldValueService.shiftCustomField(
                         CustomFieldValueSourceTypeEnum.STUDENT_SESSION_INSTITUTE_GROUP_MAPPING.name(),
                         mapping.getId(),

@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.workflow.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import vacademy.io.admin_core_service.features.workflow.entity.WorkflowTrigger;
 
 import java.util.List;
@@ -13,4 +14,19 @@ public interface WorkflowTriggerRepository extends JpaRepository<WorkflowTrigger
             List<String> statuses,
             List<String> triggerEvents
     );
+
+    @Query("""
+    SELECT w FROM WorkflowTrigger w 
+    WHERE w.instituteId = :instituteId
+      AND w.workflow.id = :eventId
+      AND w.triggerEventName = :eventType
+      AND w.status IN :statuses
+""")
+    List<WorkflowTrigger> findByInstituteIdAndEventIdAnsEventTypeAndStatusIn(
+            @Param("instituteId") String instituteId,
+            @Param("eventId") String eventId,
+            @Param("eventType") String eventType,
+            @Param("statuses") List<String> statuses
+    );
+
 }

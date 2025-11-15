@@ -40,7 +40,7 @@ public class Presentation {
     @Column(name = "cover_file_id", length = 255)
     private String coverFileId;
 
-    @OneToMany(mappedBy = "presentation", cascade = CascadeType.ALL, fetch = FetchType.EAGER) // Adjust mapping as necessary
+    @OneToMany(mappedBy = "presentation", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @Where(clause = "status = 'PUBLISHED'")
     private Set<PresentationSlide> presentationSlides  = new HashSet<>();
 

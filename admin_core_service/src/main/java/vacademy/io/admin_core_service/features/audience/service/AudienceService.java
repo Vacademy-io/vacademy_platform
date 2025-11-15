@@ -387,7 +387,7 @@ public class AudienceService {
                         // Send default HTML email
                         GenericEmailRequest emailRequest = new GenericEmailRequest();
                         emailRequest.setTo(userForNotification.getEmail());
-                        emailRequest.setSubject("Form Submission Confirmation - " + audience.getCampaignName());
+                        emailRequest.setSubject("Thank You for Submitting Your Response for Campaign -" + audience.getCampaignName());
                         emailRequest.setBody(defaultEmailBody);
                         
                         try {

@@ -113,8 +113,6 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
   >(null);
 
   const [currentStep, setCurrentStep] = useState(0); // 0: Registration, 1: Payment Selection, 2: Review, 3: Payment Details, 4: Payment Pending, 5: Success
-  const [isRegistrationCardVisible, setIsRegistrationCardVisible] =
-    useState(false);
   const [privacyPolicyUrl, setPrivacyPolicyUrl] = useState<string | null>(null);
   const [termsAndConditionUrl, setTermsAndConditionUrl] = useState<
     string | null
@@ -486,9 +484,10 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
           enrollInviteId: inviteData?.id,
           payment_option_id:
             inviteData?.package_session_to_payment_options[0].payment_option.id,
-          package_session_id:
-            inviteData?.package_session_to_payment_options[0]
-              ?.package_session_id,
+          package_session_ids:
+            inviteData?.package_session_to_payment_options.map(
+              (ps: { package_session_id: string }) => ps?.package_session_id
+            ) || [""],
           allowLearnersToCreateCourses:
             JSON.parse(instituteData?.setting)?.setting?.COURSE_SETTING?.data
               ?.permissions?.allowLearnersToCreateCourses || false,
@@ -531,9 +530,10 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
           enrollInviteId: inviteData?.id,
           payment_option_id:
             inviteData?.package_session_to_payment_options[0].payment_option.id,
-          package_session_id:
-            inviteData?.package_session_to_payment_options[0]
-              ?.package_session_id,
+          package_session_ids:
+            inviteData?.package_session_to_payment_options.map(
+              (ps: { package_session_id: string }) => ps?.package_session_id
+            ) || [""],
           allowLearnersToCreateCourses:
             JSON.parse(instituteData?.setting)?.setting?.COURSE_SETTING?.data
               ?.permissions?.allowLearnersToCreateCourses || false,
@@ -615,8 +615,9 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         enrollInviteId: inviteData?.id,
         payment_option_id:
           inviteData?.package_session_to_payment_options[0].payment_option.id,
-        package_session_id:
-          inviteData?.package_session_to_payment_options[0]?.package_session_id,
+        package_session_ids: inviteData?.package_session_to_payment_options.map(
+          (ps: { package_session_id: string }) => ps?.package_session_id
+        ) || [""],
         allowLearnersToCreateCourses:
           JSON.parse(instituteData?.setting)?.setting?.COURSE_SETTING?.data
             ?.permissions?.allowLearnersToCreateCourses || false,
@@ -667,9 +668,10 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
             payment_option_id:
               inviteData?.package_session_to_payment_options[0].payment_option
                 .id,
-            package_session_id:
-              inviteData?.package_session_to_payment_options[0]
-                ?.package_session_id,
+            package_session_ids:
+              inviteData?.package_session_to_payment_options.map(
+                (ps: { package_session_id: string }) => ps?.package_session_id
+              ) || [""],
             allowLearnersToCreateCourses:
               JSON.parse(instituteData?.setting)?.setting?.COURSE_SETTING?.data
                 ?.permissions?.allowLearnersToCreateCourses || false,

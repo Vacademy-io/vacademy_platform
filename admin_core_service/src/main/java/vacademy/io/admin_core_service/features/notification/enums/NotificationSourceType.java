@@ -6,7 +6,8 @@ public enum NotificationSourceType {
     USER("user"),
     INSTITUTE("institute"),
     COURSE("course"),
-    SESSION("session");
+    SESSION("session"),
+    AUDIENCE("audience");
 
     private final String value;
 

@@ -8,6 +8,8 @@ import { loadStripe } from "@stripe/stripe-js";
 import { CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { SiStripe } from "react-icons/si";
 import { Lock } from "lucide-react";
+import PhoneInput from "react-phone-input-2";
+import "react-phone-input-2/lib/bootstrap.css";
 import {
   GET_PAYMENT_GATEWAY_DETAILS_URL,
   ENROLLMENT_INVITE_URL,
@@ -98,8 +100,9 @@ export const EnrollmentPaymentDialog: React.FC<
   };
 
   const validatePhone = (phone: string): boolean => {
-    const phoneRegex = /^\d{10}$/;
-    return phoneRegex.test(phone);
+    // Accept phone numbers with country code (e.g., +919876543210) or without (+91 is minimum)
+    const phoneRegex = /^\+\d{1,4}\d{6,14}$/;
+    return phoneRegex.test(phone) && phone.length >= 8; // Minimum length check
   };
 
   const handleEmailChange = (value: string) => {
@@ -109,9 +112,8 @@ export const EnrollmentPaymentDialog: React.FC<
   };
 
   const handlePhoneChange = (value: string) => {
-    // Only allow digits and limit to 10 characters
-    const digitsOnly = value.replace(/\D/g, "").slice(0, 10);
-    setPhone(digitsOnly);
+    // PhoneInput returns formatted value with country code (e.g., +919876543210)
+    setPhone(value);
     setPhoneError("");
     setValidationError("");
   };
@@ -150,7 +152,7 @@ export const EnrollmentPaymentDialog: React.FC<
         setPhoneError("Phone number is required");
         hasErrors = true;
       } else if (!validatePhone(phone)) {
-        setPhoneError("Please enter a valid 10-digit phone number");
+        setPhoneError("Please enter a valid phone number with country code");
         hasErrors = true;
       }
 
@@ -575,25 +577,34 @@ export const EnrollmentPaymentDialog: React.FC<
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Phone Number * (10 digits)
+                      Phone Number *
                     </label>
-                    <input
-                      type="tel"
+                    <PhoneInput
+                      country="in"
+                      enableSearch={true}
                       value={phone}
-                      onChange={(e) => handlePhoneChange(e.target.value)}
-                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
+                      onChange={(value) => handlePhoneChange(value)}
+                      inputClass={`w-full px-3 py-2 border rounded-r-md focus:outline-none focus:ring-2 ${
                         phoneError
                           ? "border-red-500 focus:ring-red-500"
                           : "border-gray-300 focus:ring-blue-500"
                       }`}
-                      placeholder="Enter your 10-digit phone number"
-                      maxLength={10}
+                      buttonClass="!rounded-l-md !border-r-0 !border-gray-300"
+                      containerClass="!w-full"
+                      placeholder="Enter your phone number"
+                      countryCodeEditable={false}
+                      enableAreaCodes={true}
+                      disableCountryGuess={false}
+                      preferredCountries={["in", "us", "gb", "au"]}
+                      inputProps={{
+                        maxLength: 15,
+                      }}
                     />
                     {phoneError && (
                       <p className="text-red-500 text-sm mt-1">{phoneError}</p>
                     )}
                     <p className="text-gray-500 text-xs mt-1">
-                      Enter only digits (e.g., 9876543210)
+                      Include country code (e.g., +91 9876543210)
                     </p>
                   </div>
 

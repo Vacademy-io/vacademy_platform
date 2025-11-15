@@ -50,9 +50,9 @@ const CourseImageWithState: React.FC<CourseImageProps> = ({ previewImageUrl, alt
       setImageError(false);
       
       try {
-        console.log("[CourseImage] Calling getPublicUrlWithoutLogin with:", previewImageUrl);
+       // console.log("[CourseImage] Calling getPublicUrlWithoutLogin with:", previewImageUrl);
         const url = await getPublicUrlWithoutLogin(previewImageUrl);
-        console.log("[CourseImage] Got URL from API:", url);
+       // console.log("[CourseImage] Got URL from API:", url);
         if (isMounted) {
           if (url) {
             setCourseImageUrl(url);

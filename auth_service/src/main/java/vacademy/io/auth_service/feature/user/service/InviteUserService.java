@@ -35,9 +35,6 @@ public class InviteUserService {
         userDTO.setRootUser(true);
         User user = userService.createUserFromUserDto(userDTO);
         userDTO.setId(user.getId());
-        user.setFullName(userDTO.getFullName());
-        user.setEmail(userDTO.getEmail());
-        user.setPassword(userDTO.getPassword());
         userService.addUserRoles(instituteId, userDTO.getRoles(), user, UserRoleStatus.INVITED.name());
         sendInvitationEmail(userDTO, instituteId);
         return userDTO;

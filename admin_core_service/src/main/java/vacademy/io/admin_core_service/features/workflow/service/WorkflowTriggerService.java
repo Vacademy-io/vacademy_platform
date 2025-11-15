@@ -24,24 +24,40 @@ public class WorkflowTriggerService {
     private WorkflowEngineService workflowEngineService;
 
     @Async
-    public void handleTriggerEvent(String eventName,String eventId, String instituteId, Map<String, Object> contextData) {
+    public void handleTriggerEvent(String eventName, String eventId, String instituteId, Map<String, Object> contextData) {
+        log.info("---- Workflow Trigger Event START ----");
+        log.info("Incoming trigger params: eventName='{}', eventId='{}', instituteId='{}'", eventName, eventId, instituteId);
+
         try {
-            log.info("Trigger received: event='{}', instituteId='{}'", eventId, instituteId);
+            // Log context data if present
+            if (contextData == null || contextData.isEmpty()) {
+                log.warn("Context data is EMPTY or NULL");
+            } else {
+                log.info("Context data received ({} keys): {}", contextData.size(), contextData);
+            }
+
+            log.info("Calling repository: findByInstituteIdAndEventIdAnsEventTypeAndStatusIn(instituteId='{}', eventId='{}', eventType='{}')",
+                    instituteId, eventId, eventName);
 
             List<WorkflowTrigger> triggers = workflowTriggerRepository.findByInstituteIdAndEventIdAnsEventTypeAndStatusIn(
-                    instituteId,  eventId,eventName, List.of(StatusEnum.ACTIVE.name())
+                    instituteId, eventId, eventName, List.of(StatusEnum.ACTIVE.name())
             );
 
+            log.info("Repository returned {} triggers for event='{}', eventId='{}', instituteId='{}'",
+                    triggers.size(), eventName, eventId, instituteId);
+
             if (triggers.isEmpty()) {
-                log.info("No active workflow triggers found for event='{}', instituteId='{}'", eventName, instituteId);
+                log.info("No ACTIVE workflow triggers found. Exiting execution.");
+                log.info("---- Workflow Trigger Event END ----");
                 return;
             }
 
-            log.info("Found {} active workflow triggers for event='{}'", triggers.size(), eventName);
+            int count = 0;
 
             for (WorkflowTrigger trigger : triggers) {
-                String workflowId = trigger.getWorkflow().getId();
-                log.info("Executing workflow '{}' for trigger '{}'", workflowId, trigger.getTriggerEventName());
+                count++;
+                log.info("Processing trigger {} of {} | TriggerId='{}', TriggerEventName='{}', WorkflowId='{}'",
+                        count, triggers.size(), trigger.getId(), trigger.getTriggerEventName(), trigger.getWorkflow().getId());
 
                 try {
                     Map<String, Object> seedContext = new HashMap<>(Optional.ofNullable(contextData).orElse(new HashMap<>()));
@@ -49,17 +65,25 @@ public class WorkflowTriggerService {
                     seedContext.put("triggerId", trigger.getId());
                     seedContext.put("instituteId", instituteId);
 
-                    // Use scheduleRunId = null for event-based executions
-                    workflowEngineService.run(workflowId, seedContext);
+                    log.info("Seed context prepared for workflow run ({} keys): {}", seedContext.size(), seedContext);
+                    log.info("Starting workflowEngineService.run for workflowId='{}'", trigger.getWorkflow().getId());
 
-                } catch (Exception e) {
-                    log.error("Error executing workflow '{}' for trigger '{}'", workflowId, trigger.getTriggerEventName(), e);
+                    workflowEngineService.run(trigger.getWorkflow().getId(), seedContext);
+
+                    log.info("Workflow execution completed for workflowId='{}'", trigger.getWorkflow().getId());
+
+                } catch (Exception ex) {
+                    log.error("Error executing workflowId='{}' for triggerId='{}'",
+                            trigger.getWorkflow().getId(), trigger.getId(), ex);
                 }
             }
 
+            log.info("Completed processing {} workflow triggers.", triggers.size());
+
         } catch (Exception e) {
-            log.error("Error processing trigger event '{}'", eventName, e);
-            e.printStackTrace();
+            log.error("Unexpected error while processing trigger event='{}', eventId='{}'", eventName, eventId, e);
         }
+
+        log.info("---- Workflow Trigger Event END ----");
     }
 }

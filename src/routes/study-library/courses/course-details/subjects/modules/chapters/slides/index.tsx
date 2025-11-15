@@ -257,22 +257,9 @@ function Slides() {
             }
           }
         }
-
-        // Also try sessionList as fallback
-        const sessionListData = await Preferences.get({ key: "sessionList" });
-        if (sessionListData.value && !courseName && !levelName) {
-          const sessionData = JSON.parse(sessionListData.value);
-          const sessions = Array.isArray(sessionData)
-            ? sessionData
-            : [sessionData];
-
-          if (sessions.length > 0) {
-            const firstSession = sessions[0];
-            setLevelName(firstSession.level?.level_name || "");
-          }
-        }
       } catch {
         // Silently handle errors
+        console.error("Error loading institute or course data");
       }
     };
 

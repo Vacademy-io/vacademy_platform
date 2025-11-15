@@ -343,8 +343,8 @@ public class AudienceService {
                     Optional<NotificationEventConfig> configOpt = notificationEventConfigRepository
                             .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeAndIsActiveTrueOrderByUpdatedAtDesc(
                                     NotificationEventType.AUDIENCE_FORM_SUBMISSION,
-                                    NotificationSourceType.INSTITUTE,
-                                    instituteIdForNotification,
+                                    NotificationSourceType.AUDIENCE,
+                                    requestDTO.getAudienceId(),
                                     NotificationTemplateType.EMAIL
                             );
 

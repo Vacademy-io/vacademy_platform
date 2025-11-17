@@ -845,4 +845,28 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
         @Param("levelIds") List<String> levelIds,
         Pageable pageable);
 
+    @Query(value = """
+            SELECT 
+                ssigm.id,
+                ssigm.user_id,
+                ssigm.institute_enrollment_number,
+                ssigm.enrolled_date,
+                ssigm.expiry_date,
+                ssigm.status,
+                ssigm.package_session_id,
+                ssigm.institute_id,
+                ssigm.group_id,
+                ssigm.sub_org_id,
+                ssigm.user_plan_id,
+                ssigm.destination_package_session_id
+            FROM student_session_institute_group_mapping ssigm
+            WHERE ssigm.package_session_id = :packageSessionId
+              AND ssigm.sub_org_id = :subOrgId
+              AND ssigm.status = 'ACTIVE'
+            ORDER BY ssigm.enrolled_date DESC
+            """, nativeQuery = true)
+    List<Object[]> findMappingsByPackageSessionAndSubOrg(
+            @Param("packageSessionId") String packageSessionId,
+            @Param("subOrgId") String subOrgId);
+
 }

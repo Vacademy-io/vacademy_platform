@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { CourseDetailsPage } from "./-components/CourseDetailsPage";
+import { CourseSubPage } from "../-components/CourseSubPage";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import RootNotFoundComponent from "@/components/core/default-not-found";
@@ -19,6 +20,16 @@ function RouteComponent() {
   const { courseId, tagName } = Route.useParams() as { courseId: string; tagName: string };
   const { enrollInviteId, packageSessionId, bannerImage, level } = Route.useSearch();
   const domainRouting = useDomainRouting();
+
+  // Check if courseId looks like a course ID (numeric or UUID)
+  const isNumeric = /^\d+$/.test(courseId);
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(courseId);
+  const isCourseId = isNumeric || isUUID;
+
+  // If this looks like a page name (not a course ID), render the subpage component
+  if (!isCourseId) {
+    return <CourseSubPage tagName={tagName} page={courseId} instituteId={domainRouting.instituteId || ''} instituteThemeCode={domainRouting.instituteThemeCode} />;
+  }
 
   // Debug logging to track domain routing
   useEffect(() => {

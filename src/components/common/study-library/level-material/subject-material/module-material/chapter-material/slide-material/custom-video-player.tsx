@@ -1409,9 +1409,9 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                         </div>
                     )}
 
-                    {/* Top Controls Overlay - Video controls moved to top */}
+                    {/* Bottom Controls Overlay - Video controls moved to bottom */}
                     {!isFullscreen && (
-                        <div className="absolute top-0 left-0 right-0 z-[999] bg-gradient-to-b from-black/80 via-black/40 to-transparent p-4 pb-8">
+                        <div className="absolute bottom-0 left-0 right-0 z-[9999] bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 pt-8">
                             {/* Video Controls */}
                             <div className="flex gap-2 justify-between items-center w-full mb-4">
                                 <div className="w-full flex gap-2 items-center justify-start">
@@ -1569,9 +1569,9 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
 
                     {/* Fullscreen controls overlay */}
                     {isFullscreen && showFullscreenControls && (
-                        <div className="absolute inset-0 z-[9999] flex flex-col justify-between p-4 bg-gradient-to-b from-black/50 via-transparent to-black/50 animate-in fade-in duration-200">
+                        <div className="absolute inset-0 z-[9999] flex flex-col justify-between bg-gradient-to-b from-black/50 via-transparent to-black/80 animate-in fade-in duration-200 pointer-events-none">
                             {/* Top controls - Exit fullscreen */}
-                            <div className="flex justify-end">
+                            <div className="flex justify-end p-4 pointer-events-auto">
                                 <button
                                     onClick={toggleFullscreen}
                                     className="p-2.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-all hover:scale-105 shadow-lg backdrop-blur-sm border border-white/10"
@@ -1581,76 +1581,125 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                                 </button>
                             </div>
 
-                            {/* Bottom controls - Play/Pause */}
-                            <div className="flex items-center justify-center gap-6 mb-4">
-                                <button
-                                    onClick={() => {
-                                        if (videoRef.current) {
-                                            const newTime =
-                                                videoRef.current.currentTime -
-                                                10;
-                                            videoRef.current.currentTime =
-                                                Math.max(newTime, 0);
-                                            setCurrentTime(
-                                                Math.max(newTime, 0)
-                                            );
-                                        }
-                                    }}
-                                    className="p-3 rounded-full bg-black/60 text-white hover:bg-black/80 transition-all hover:scale-105 shadow-lg backdrop-blur-sm border border-white/10"
-                                    aria-label="Rewind 10 seconds"
-                                >
-                                    <Rewind size={22} weight="bold" />
-                                </button>
+                            {/* Bottom controls - Complete controls like non-fullscreen */}
+                            <div className="p-4 pointer-events-auto">
+                                {/* Video Controls */}
+                                <div className="flex gap-2 justify-between items-center w-full mb-4">
+                                    <div className="w-full flex gap-2 items-center justify-start">
+                                        {isPlayed ? (
+                                            <button
+                                                onClick={togglePlay}
+                                                className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
+                                            >
+                                                <Pause size={20} weight="fill" />
+                                            </button>
+                                        ) : (
+                                            <button
+                                                onClick={togglePlay}
+                                                className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
+                                            >
+                                                <Play size={20} weight="fill" />
+                                            </button>
+                                        )}
 
-                                {isPlayed ? (
-                                    <button
-                                        onClick={togglePlay}
-                                        className="p-4 rounded-full bg-black/60 text-white hover:bg-black/80 transition-all hover:scale-105 shadow-lg backdrop-blur-sm border border-white/10"
-                                        aria-label="Pause"
-                                    >
-                                        <Pause size={28} weight="bold" />
-                                    </button>
-                                ) : (
-                                    <button
-                                        onClick={togglePlay}
-                                        className="p-4 rounded-full bg-black/60 text-white hover:bg-black/80 transition-all hover:scale-105 shadow-lg backdrop-blur-sm border border-white/10"
-                                        aria-label="Play"
-                                    >
-                                        <Play size={28} weight="bold" />
-                                    </button>
-                                )}
+                                        <button
+                                            onClick={() => {
+                                                if (videoRef.current) {
+                                                    const newTime =
+                                                        videoRef.current.currentTime - 10;
+                                                    videoRef.current.currentTime =
+                                                        Math.max(newTime, 0);
+                                                    setCurrentTime(Math.max(newTime, 0));
+                                                }
+                                            }}
+                                            className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
+                                        >
+                                            <Rewind size={18} weight="fill" />
+                                        </button>
 
-                                <button
-                                    onClick={() => {
-                                        if (videoRef.current) {
-                                            const newTime =
-                                                videoRef.current.currentTime +
-                                                10;
-                                            const duration =
-                                                videoRef.current.duration;
-                                            const finalTime = Math.min(
-                                                newTime,
-                                                duration
-                                            );
+                                        <button
+                                            onClick={() => {
+                                                if (videoRef.current) {
+                                                    const newTime =
+                                                        videoRef.current.currentTime + 10;
+                                                    const duration = videoRef.current.duration;
+                                                    const finalTime = Math.min(newTime, duration);
 
-                                            // Check if forward navigation is allowed
-                                            if (!canNavigateToTime(finalTime)) {
-                                                console.log(
-                                                    "Navigation blocked: Please answer previous required questions first"
-                                                );
-                                                return;
+                                                    // Check if forward navigation is allowed
+                                                    if (!canNavigateToTime(finalTime)) {
+                                                        console.log(
+                                                            "Navigation blocked: Please answer previous required questions first"
+                                                        );
+                                                        return;
+                                                    }
+
+                                                    videoRef.current.currentTime = finalTime;
+                                                    setCurrentTime(finalTime);
+                                                }
+                                            }}
+                                            className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
+                                        >
+                                            <FastForward size={18} weight="fill" />
+                                        </button>
+
+                                        <button
+                                            onClick={toggleFullscreen}
+                                            className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
+                                        >
+                                            <X size={18} weight="fill" />
+                                        </button>
+                                    </div>
+
+                                    {/* Time Jump Controls */}
+                                    <div className="flex items-center gap-1">
+                                        <input
+                                            type="text"
+                                            placeholder="Min"
+                                            value={minutesInput}
+                                            onChange={(e) =>
+                                                handleNumericInput(e, setMinutesInput)
                                             }
+                                            className="w-12 h-8 text-center text-xs bg-white/20 border border-white/30 rounded text-white placeholder-white/70 backdrop-blur-sm"
+                                        />
+                                        <span className="text-white text-xs">:</span>
+                                        <input
+                                            type="text"
+                                            placeholder="Sec"
+                                            value={secondsInput}
+                                            onChange={(e) =>
+                                                handleNumericInput(e, setSecondsInput)
+                                            }
+                                            className="w-12 h-8 text-center text-xs bg-white/20 border border-white/30 rounded text-white placeholder-white/70 backdrop-blur-sm"
+                                        />
+                                        <button
+                                            onClick={seekToTimestamp}
+                                            className="p-1.5 rounded bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
+                                        >
+                                            <Check size={14} weight="fill" />
+                                        </button>
+                                    </div>
+                                </div>
 
-                                            videoRef.current.currentTime =
-                                                finalTime;
-                                            setCurrentTime(finalTime);
-                                        }
-                                    }}
-                                    className="p-3 rounded-full bg-black/60 text-white hover:bg-black/80 transition-all hover:scale-105 shadow-lg backdrop-blur-sm border border-white/10"
-                                    aria-label="Forward 10 seconds"
-                                >
-                                    <FastForward size={22} weight="bold" />
-                                </button>
+                                {/* Progress Bar */}
+                                <div className="w-full flex flex-col gap-1">
+                                    <div
+                                        className="w-full h-2 bg-white/30 rounded-full cursor-pointer relative"
+                                        onClick={handleProgressBarClick}
+                                    >
+                                        <div
+                                            className="h-full bg-white rounded-full transition-all duration-150"
+                                            style={{
+                                                width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
+                                            }}
+                                        ></div>
+                                        {/* Question markers */}
+                                        {renderQuestionMarkers()}
+                                    </div>
+                                    <div className="flex justify-between text-xs text-white font-medium">
+                                        <span>{formatTime(currentTime)}</span>
+                                        <span>{formatTime(duration)}</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}

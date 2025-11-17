@@ -31,32 +31,32 @@ const Footer: React.FC = () => {
           <h2 className="font-bold text-lg mb-3">Quick Links</h2>
           <ul className="space-y-1">
             <li>
-              <a href="https://www-stg.codecircle.org/" className="hover:text-blue-400 transition">
+              <a href="https://codecircle.org/" className="hover:text-blue-400 transition">
                 Home
               </a>
             </li>
             <li>
-              <a href="https://www-stg.codecircle.org/about.html" className="hover:text-blue-400 transition">
+              <a href="https://codecircle.org/about.html" className="hover:text-blue-400 transition">
                 About
               </a>
             </li>
             <li>
-              <a href="https://www-stg.codecircle.org/impact/stories.html" className="hover:text-blue-400 transition">
+              <a href="https://codecircle.org/impact/stories.html" className="hover:text-blue-400 transition">
                 Impact
               </a>
             </li>
             <li>
-              <a href="https://learner-stg.codecircle.org/courses" className="hover:text-blue-400 transition">
+              <a href="https://learner-stgcodecircle.org/courses" className="hover:text-blue-400 transition">
                 Courses
               </a>
             </li>
             <li>
-              <a href="https://www-stg.codecircle.org/get-involved.html" className="hover:text-blue-400 transition">
+              <a href="https://codecircle.org/get-involved.html" className="hover:text-blue-400 transition">
                 Get Involved
               </a>
             </li>
             <li>
-              <a href="https://www-stg.codecircle.org/contact.html" className="hover:text-blue-400 transition">
+              <a href="https://codecircle.org/contact.html" className="hover:text-blue-400 transition">
                 Contact
               </a>
             </li>

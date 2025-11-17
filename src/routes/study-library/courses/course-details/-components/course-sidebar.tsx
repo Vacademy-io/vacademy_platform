@@ -117,8 +117,7 @@ export const CourseSidebar = ({
   onRatingsLoadingChange,
 }: CourseSidebarProps) => {
   const capitalizeFirst = (text: string): string => {
-    if (!text) return text;
-    return text.charAt(0).toUpperCase() + text.slice(1);
+   return text; 
   };
 
   console.log("level options", levelOptions);

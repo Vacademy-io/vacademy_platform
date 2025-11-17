@@ -74,15 +74,15 @@ const CourseListHeader = ({
   }, [homeIconClickRoute]);
 
   const navigationItems = [
-    { href: "https://www-stg.codecircle.org", label: "Home" },
-    { href: "https://www-stg.codecircle.org/about.html", label: "About" },
-    { href: "https://www-stg.codecircle.org/impact/stories.html", label: "Impact" },
+    { href: "https://codecircle.org", label: "Home" },
+    { href: "https://codecircle.org/about.html", label: "About" },
+    { href: "https://codecircle.org/impact/stories.html", label: "Impact" },
     {
       href: "#courses",
       label: getTerminology(ContentTerms.Course, SystemTerms.Course) ,
     },
-    { href: "https://www-stg.codecircle.org/get-involved.html", label: "Get Involved" },
-    { href: "https://www-stg.codecircle.org/contact.html", label: "Contact" },
+    { href: "https://codecircle.org/get-involved.html", label: "Get Involved" },
+    { href: "https://codecircle.org/contact.html", label: "Contact" },
   ];
 
   return (

@@ -145,6 +145,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [showSpeedOptions, setShowSpeedOptions] = useState(false);
   const speedOptions = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+  const speedButtonRef = useRef<HTMLButtonElement>(null);
 
   // Volume control state
   const [volume, setVolume] = useState(100); // 0 - 100
@@ -1536,7 +1537,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
-      if (showSpeedOptions && !target.closest(".speed-control-container")) {
+      if (showSpeedOptions && !target.closest(".speed-control-container") && !target.closest(".speed-dropdown")) {
         setShowSpeedOptions(false);
       }
     };
@@ -1645,7 +1646,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
       // Set timeout to hide fullscreen controls after 3 seconds of inactivity
       fullscreenControlsTimeoutRef.current = setTimeout(() => {
-        setShowFullscreenControls(false);
+        if (!showSpeedOptions) {
+          // Don't hide if speed menu is open
+          setShowFullscreenControls(false);
+        }
       }, 3000);
     } else {
       // Handle regular controls
@@ -1670,8 +1674,12 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   useEffect(() => {
     if (showSpeedOptions) {
       setShowControls(true);
+      setShowFullscreenControls(true);
       if (controlsTimeoutRef.current) {
         clearTimeout(controlsTimeoutRef.current);
+      }
+      if (fullscreenControlsTimeoutRef.current) {
+        clearTimeout(fullscreenControlsTimeoutRef.current);
       }
     }
   }, [showSpeedOptions]);
@@ -1914,9 +1922,9 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                       )}
                     </button>
 
-                    {/* Speed Options Dropdown - Only show if allowRewind is true */}
+                    {/* Speed Options Dropdown - Inline in fullscreen controls */}
                     {showSpeedOptions && allowRewind && (
-                      <div className="absolute bottom-full right-0 mb-2 bg-black/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 z-[10000] min-w-[80px] max-h-[240px] overflow-y-auto">
+                      <div className="speed-dropdown absolute bottom-full right-0 mb-2 bg-black/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 z-[20] min-w-[80px] max-h-[240px] overflow-y-auto">
                         <div className="px-3 py-1 text-xs font-medium text-white/70 border-b border-white/20 sticky top-0 bg-black/90">
                           Speed
                         </div>
@@ -2174,6 +2182,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                   {/* Playback Speed Control */}
                   <div className="relative speed-control-container">
                     <button
+                      ref={speedButtonRef}
                       onClick={toggleSpeedOptions}
                       className={`relative p-2 rounded-full text-white transition-all backdrop-blur-sm ${
                         allowRewind && playerReady
@@ -2189,30 +2198,6 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                         </span>
                       )}
                     </button>
-
-                    {/* Speed Options Dropdown - Only show if allowRewind is true */}
-                    {showSpeedOptions && allowRewind && (
-                      <div className="absolute bottom-full right-0 mb-2 bg-black/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 z-[10000] min-w-[80px] max-h-[240px] overflow-y-auto">
-                        <div className="px-3 py-1 text-xs font-medium text-white/70 border-b border-white/20 sticky top-0 bg-black/90">
-                          Speed
-                        </div>
-                        <div className="py-2">
-                          {speedOptions.map((speed) => (
-                            <button
-                              key={speed}
-                              onClick={() => changePlaybackSpeed(speed)}
-                              className={`w-full px-3 py-2 text-sm text-left hover:bg-white/20 transition-colors ${
-                                playbackSpeed === speed
-                                  ? "text-primary-400 bg-white/10 font-medium"
-                                  : "text-white"
-                              }`}
-                            >
-                              {speed}x
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
 
                   {/* Fullscreen */}
@@ -2336,6 +2321,36 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
           />
         )}
       </div>
+
+      {/* Speed Options Dropdown - Non-fullscreen - Rendered outside video container with fixed positioning */}
+      {showSpeedOptions && allowRewind && !isFullscreen && !isPseudoFullscreen && speedButtonRef.current && (
+        <div
+          className="speed-dropdown fixed bg-black/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 z-[10001] min-w-[80px] max-h-[240px] overflow-y-auto"
+          style={{
+            bottom: `${window.innerHeight - speedButtonRef.current.getBoundingClientRect().top + 8}px`,
+            right: `${window.innerWidth - speedButtonRef.current.getBoundingClientRect().right}px`,
+          }}
+        >
+          <div className="px-3 py-1 text-xs font-medium text-white/70 border-b border-white/20 sticky top-0 bg-black/90">
+            Speed
+          </div>
+          <div className="py-2">
+            {speedOptions.map((speed) => (
+              <button
+                key={speed}
+                onClick={() => changePlaybackSpeed(speed)}
+                className={`w-full px-3 py-2 text-sm text-left hover:bg-white/20 transition-colors ${
+                  playbackSpeed === speed
+                    ? "text-primary-400 bg-white/10 font-medium"
+                    : "text-white"
+                }`}
+              >
+                {speed}x
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

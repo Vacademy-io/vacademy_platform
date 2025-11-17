@@ -600,30 +600,8 @@ export const CourseDetailsPage = () => {
           }
         }
 
-        // NEW: Extract backend read_time_in_minutes from matching batch
-        const matchingBatch = response.data.batches_for_sessions?.find(
-          (batch: unknown) => {
-            const typedBatch = batch as {
-              level?: { id?: string };
-              session?: { id?: string };
-              package_dto?: { id?: string };
-              read_time_in_minutes?: number;
-            };
-            return (
-              typedBatch.level?.id === selectedLevel &&
-              typedBatch.session?.id === selectedSession &&
-              typedBatch.package_dto?.id === (searchParams.courseId || "")
-            );
-          }
-        );
-        const typedMatchingBatch = matchingBatch as
-          | { read_time_in_minutes?: number }
-          | undefined;
-        if (typedMatchingBatch?.read_time_in_minutes) {
-          setBackendReadTimeMinutes(typedMatchingBatch.read_time_in_minutes);
-        } else {
-          setBackendReadTimeMinutes(null); // Reset if no backend data
-        }
+        // Note: read_time_in_minutes is now extracted from package detail API (singleCourseQuery)
+        // The batches API value is NOT used as it may be incorrect
       } catch {
         // Error handling
       } finally {
@@ -1207,6 +1185,18 @@ export const CourseDetailsPage = () => {
     }),
     enabled: !!searchParams.courseId,
   });
+
+  // Extract read_time_in_minutes from package detail API (correct source of truth)
+  useEffect(() => {
+    const packageData = singleCourseQuery.data as unknown as {
+      read_time_in_minutes?: number;
+    };
+    
+    if (packageData?.read_time_in_minutes) {
+      console.log("📦 Package API read_time_in_minutes:", packageData.read_time_in_minutes);
+      setBackendReadTimeMinutes(packageData.read_time_in_minutes);
+    }
+  }, [singleCourseQuery.data]);
 
   // Custom slide count calculation to handle special document types
   const processedSlideCounts = useMemo(() => {

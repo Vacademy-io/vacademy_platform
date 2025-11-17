@@ -79,8 +79,24 @@ export const formatMinutesHuman = (minutes: number): string => {
   // Round up to nearest 15-minute interval
   const roundedMinutes = roundUpToNearest15(minutes);
   
-  const hours = Math.floor(roundedMinutes / 60);
-  const mins = roundedMinutes % 60;
+  const hours = Math.floor(minutes / 60);
+  const mins = Math.round(minutes % 60);
+  
+  if (hours > 0) {
+    if (mins === 0) {
+      return `${hours}h`;
+    }
+    return `${hours}h ${mins}m`;
+  }
+  return `${mins}m`;
+};
+
+// Format minutes without rounding (for exact backend data)
+export const formatMinutesExact = (minutes: number): string => {
+  if (!minutes || minutes <= 0) return "0m";
+  
+  const hours = Math.floor(minutes / 60);
+  const mins = Math.round(minutes % 60);
   
   if (hours > 0) {
     if (mins === 0) {
@@ -134,7 +150,7 @@ export const formatBatchCourseDuration = (batchData: BatchData, fallbackSlideEnt
 // NEW: Direct function to get duration from backend read_time_in_minutes
 export const getBackendCourseDuration = (readTimeInMinutes?: number): string => {
   if (typeof readTimeInMinutes === "number" && !Number.isNaN(readTimeInMinutes)) {
-    return formatMinutesHuman(readTimeInMinutes);
+    return formatMinutesExact(readTimeInMinutes);
   }
   return "0m";
 };

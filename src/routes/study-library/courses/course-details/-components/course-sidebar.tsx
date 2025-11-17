@@ -130,31 +130,46 @@ export const CourseSidebar = ({
       enrolledSession.level.id === selectedLevel
   );
 
-  // NEW: Compute total duration with backend priority
+  // Compute total duration - ALWAYS use backend read_time_in_minutes when available
   const totalDuration = (() => {
-    // Priority 1: Backend read_time_in_minutes
+    // ONLY Priority: Backend read_time_in_minutes from batch API (this is the source of truth)
     if (
       typeof backendReadTimeMinutes === "number" &&
-      !Number.isNaN(backendReadTimeMinutes)
+      !Number.isNaN(backendReadTimeMinutes) &&
+      backendReadTimeMinutes > 0
     ) {
+      console.log("✅ Using backend duration (source of truth):", backendReadTimeMinutes, "minutes");
       return getBackendCourseDuration(backendReadTimeMinutes);
     }
 
-    // Priority 2: Slide count data from API
+    // Fallback 1: If backend time not available, try slide count API with total_read_time_minutes
     const raw = (slideCountQuery as unknown as { data?: SlideCountEntry[] })
       ?.data;
     if (raw && Array.isArray(raw)) {
-      return formatTotalCourseDuration(raw);
+      const totalMinutesFromSlides = raw.reduce((sum, entry) => {
+        if (typeof entry.total_read_time_minutes === "number") {
+          return sum + entry.total_read_time_minutes;
+        }
+        return sum;
+      }, 0);
+      
+      if (totalMinutesFromSlides > 0) {
+        console.log("⚠️ Backend time not available. Using slide API total_read_time_minutes:", totalMinutesFromSlides);
+        return formatTotalCourseDuration(raw);
+      }
     }
 
-    // Priority 3: Fallback to processed slide counts
+    // Fallback 2: Frontend calculation from slide counts (least accurate)
     const mapped: SlideCountEntry[] = (processedSlideCounts || []).map((c) => ({
       slide_count: c.slide_count,
       total_read_time_minutes: null,
       source_type: c.source_type,
     }));
+    console.log("⚠️ No backend time available. Using frontend slide count calculation. => " + formatTotalCourseDuration(mapped));
     return formatTotalCourseDuration(mapped);
   })();
+  
+  console.log("📊 Final total duration displayed:", totalDuration);
 
   const displayAuthorName = (() => {
     if (

@@ -130,6 +130,7 @@ function EmbedComponent() {
             liveClassStartTime={
               isLive ? sessionStartTime.toISOString() : undefined
             }
+            enableConcentrationScore={false}
           />
         </div>
       );

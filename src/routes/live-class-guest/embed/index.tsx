@@ -73,6 +73,7 @@ function GuestEmbedComponent() {
             allowPlayPause={allowPlayPause}
             allowRewind={allowRewind}
             isLiveStream={isLive}
+            enableConcentrationScore={false}
             liveClassStartTime={
               isLive ? sessionStartTime.toISOString() : undefined
             }

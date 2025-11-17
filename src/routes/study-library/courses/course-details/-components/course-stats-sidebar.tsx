@@ -37,8 +37,7 @@ export const CourseStatsSidebar = ({
   ctaSlot,
 }: CourseStatsSidebarProps) => {
   const capitalizeFirst = (text: string): string => {
-    if (!text) return text;
-    return text.charAt(0).toUpperCase() + text.slice(1);
+    return text;
   };
 
   // NEW: Use backend time if available, fallback to slide count calculation

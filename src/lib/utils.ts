@@ -189,23 +189,6 @@ export const processHtmlString = (htmlString: string) => {
  * @param text - The string to convert to title case
  * @returns The string in title case format
  */
-export function toTitleCase(text: string): string {
-  if (!text) return text;
-  
-  return text
-    .toLowerCase()
-    .split(' ')
-    .map(word => {
-      // Handle special cases like "level 1", "level 2", etc.
-      if (word.match(/^level\s*\d+$/i)) {
-        return word.replace(/^level\s*(\d+)$/i, 'Level $1');
-      }
-      // Handle other common patterns
-      if (word.match(/^\d+$/)) {
-        return word; // Keep numbers as is
-      }
-      // Capitalize first letter of each word
-      return word.charAt(0).toUpperCase() + word.slice(1);
-    })
-    .join(' ');
+export function toTitleCase(text: string): string {  
+  return text;
 }

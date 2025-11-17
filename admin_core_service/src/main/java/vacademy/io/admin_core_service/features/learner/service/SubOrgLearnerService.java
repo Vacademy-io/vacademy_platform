@@ -21,7 +21,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class SubOrgService {
+public class SubOrgLearnerService {
 
     private final InstituteStudentRepository instituteStudentRepository;
     private final InstituteRepository instituteRepository;

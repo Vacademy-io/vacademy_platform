@@ -4,15 +4,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.learner.dto.SubOrgResponseDTO;
-import vacademy.io.admin_core_service.features.learner.service.SubOrgService;
+import vacademy.io.admin_core_service.features.learner.service.SubOrgLearnerService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 @RestController
 @RequestMapping("/admin-core-service/sub-org/v1")
-public class SubOrgController {
+public class SubOrgLearnerController {
 
     @Autowired
-    private SubOrgService subOrgService;
+    private SubOrgLearnerService subOrgLearnerService;
 
     @GetMapping("/members")
     public ResponseEntity<SubOrgResponseDTO> getUsersByPackageAndSubOrg(
@@ -20,7 +20,7 @@ public class SubOrgController {
             @RequestParam("sub_org_id") String subOrgId,
             @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
         
-        SubOrgResponseDTO response = subOrgService
+        SubOrgResponseDTO response = subOrgLearnerService
                 .getUsersByPackageSessionAndSubOrg(packageSessionId, subOrgId);
         
         return ResponseEntity.ok(response);

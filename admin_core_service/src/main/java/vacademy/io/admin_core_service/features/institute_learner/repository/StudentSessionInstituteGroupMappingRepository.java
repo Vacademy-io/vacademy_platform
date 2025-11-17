@@ -176,4 +176,21 @@ WHERE ssigm.package_session_id IN (:psIds)
     Optional<StudentSessionInstituteGroupMapping> findBySourceAndUserIdAndStatus(
             String source, String userId, String status);
 
+    @Query(value = """
+            UPDATE student_session_institute_group_mapping
+            SET status = :status
+            WHERE sub_org_id = :subOrgId
+              AND institute_id = :instituteId
+              AND package_session_id = :packageSessionId
+              AND user_id IN (:userIds)
+              AND status != :status
+            """, nativeQuery = true)
+    @org.springframework.data.jpa.repository.Modifying
+    int terminateLearnersBySubOrgAndUserIds(
+            @Param("subOrgId") String subOrgId,
+            @Param("instituteId") String instituteId,
+            @Param("packageSessionId") String packageSessionId,
+            @Param("userIds") List<String> userIds,
+            @Param("status") String status);
+
 }

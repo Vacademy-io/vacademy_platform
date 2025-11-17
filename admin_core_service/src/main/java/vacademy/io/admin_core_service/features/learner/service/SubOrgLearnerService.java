@@ -337,4 +337,38 @@ public class SubOrgLearnerService {
 
         return mapping;
     }
+
+    @Transactional
+    public SubOrgTerminateResponseDTO terminateLearners(SubOrgTerminateRequestDTO request) {
+        log.info("Terminating learners for sub_org_id: {}, institute_id: {}, package_session_id: {}, user_count: {}",
+                request.getSubOrgId(), request.getInstituteId(), request.getPackageSessionId(), request.getUserIds().size());
+
+        // Validate sub-organization exists
+        instituteRepository.findById(request.getSubOrgId())
+                .orElseThrow(() -> new VacademyException("Sub-organization not found with id: " + request.getSubOrgId()));
+
+        // Validate institute exists
+        instituteRepository.findById(request.getInstituteId())
+                .orElseThrow(() -> new VacademyException("Institute not found with id: " + request.getInstituteId()));
+
+        // Validate package session exists
+        packageSessionRepository.findById(request.getPackageSessionId())
+                .orElseThrow(() -> new VacademyException("Package session not found with id: " + request.getPackageSessionId()));
+
+        // Perform bulk termination
+        int terminatedCount = mappingRepository.terminateLearnersBySubOrgAndUserIds(
+                request.getSubOrgId(),
+                request.getInstituteId(),
+                request.getPackageSessionId(),
+                request.getUserIds(),
+                LearnerSessionStatusEnum.TERMINATED.name()
+        );
+
+        log.info("Successfully terminated {} learners", terminatedCount);
+
+        return SubOrgTerminateResponseDTO.builder()
+                .terminatedCount(terminatedCount)
+                .message("Successfully terminated " + terminatedCount + " learner(s)")
+                .build();
+    }
 }

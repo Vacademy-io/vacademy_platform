@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.notification_service.features.announcements.dto.*;
@@ -14,6 +15,7 @@ import vacademy.io.notification_service.features.announcements.service.UserMessa
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/notification-service/v1/user-messages")
@@ -23,6 +25,14 @@ import java.util.Map;
 public class UserMessagesController {
 
     private final UserMessageService userMessageService;
+    private static final long CACHE_MAX_AGE_MINUTES = 3L;
+
+    private <T> ResponseEntity<T> cacheableOk(T body) {
+        CacheControl cacheControl = CacheControl.maxAge(CACHE_MAX_AGE_MINUTES, TimeUnit.MINUTES).cachePublic();
+        return ResponseEntity.ok()
+                .cacheControl(cacheControl)
+                .body(body);
+    }
 
     /**
      * Get user messages by mode type (for UI components like bell icon, dashboard, etc.)
@@ -45,7 +55,7 @@ public class UserMessagesController {
                 messages = userMessageService.getUserMessages(userId, pageable);
             }
             
-            return ResponseEntity.ok(messages);
+            return cacheableOk(messages);
         } catch (Exception e) {
             log.error("Error getting user messages for user: {}", userId, e);
             return ResponseEntity.badRequest().build();
@@ -71,7 +81,7 @@ public class UserMessagesController {
                 counts = userMessageService.getUnreadCountsByMode(userId);
             }
             
-            return ResponseEntity.ok(counts);
+            return cacheableOk(counts);
         } catch (Exception e) {
             log.error("Error getting unread count for user: {}", userId, e);
             return ResponseEntity.badRequest().build();
@@ -138,7 +148,7 @@ public class UserMessagesController {
             Pageable pageable = PageRequest.of(page, size);
             Page<UserMessagesResponse> messages = userMessageService
                     .getResourceMessages(userId, folderName, category, pageable);
-            return ResponseEntity.ok(messages);
+            return cacheableOk(messages);
         } catch (Exception e) {
             log.error("Error getting resource messages for user: {}", userId, e);
             return ResponseEntity.badRequest().build();
@@ -160,7 +170,7 @@ public class UserMessagesController {
             Pageable pageable = PageRequest.of(page, size);
             Page<UserMessagesResponse> messages = userMessageService
                     .getCommunityMessages(userId, communityType, tag, pageable);
-            return ResponseEntity.ok(messages);
+            return cacheableOk(messages);
         } catch (Exception e) {
             log.error("Error getting community messages for user: {}", userId, e);
             return ResponseEntity.badRequest().build();
@@ -174,7 +184,7 @@ public class UserMessagesController {
     public ResponseEntity<List<UserMessagesResponse>> getDashboardPins(@PathVariable String userId) {
         try {
             List<UserMessagesResponse> pins = userMessageService.getActiveDashboardPins(userId);
-            return ResponseEntity.ok(pins);
+            return cacheableOk(pins);
         } catch (Exception e) {
             log.error("Error getting dashboard pins for user: {}", userId, e);
             return ResponseEntity.badRequest().build();
@@ -196,7 +206,7 @@ public class UserMessagesController {
             Pageable pageable = PageRequest.of(page, size);
             Page<UserMessagesResponse> messages = userMessageService
                     .getStreamMessages(userId, packageSessionId, streamType, pageable);
-            return ResponseEntity.ok(messages);
+            return cacheableOk(messages);
         } catch (Exception e) {
             log.error("Error getting stream messages for user: {} and package session: {}", userId, packageSessionId, e);
             return ResponseEntity.badRequest().build();
@@ -217,7 +227,7 @@ public class UserMessagesController {
             Pageable pageable = PageRequest.of(page, size);
             Page<UserMessagesResponse> messages = userMessageService
                     .getSystemAlerts(userId, priority, pageable);
-            return ResponseEntity.ok(messages);
+            return cacheableOk(messages);
         } catch (Exception e) {
             log.error("Error getting system alerts for user: {}", userId, e);
             return ResponseEntity.badRequest().build();
@@ -237,7 +247,7 @@ public class UserMessagesController {
             Pageable pageable = PageRequest.of(page, size);
             Page<UserMessagesResponse> messages = userMessageService
                     .getDirectMessages(userId, pageable);
-            return ResponseEntity.ok(messages);
+            return cacheableOk(messages);
         } catch (Exception e) {
             log.error("Error getting direct messages for user: {}", userId, e);
             return ResponseEntity.badRequest().build();
@@ -258,7 +268,7 @@ public class UserMessagesController {
             Pageable pageable = PageRequest.of(page, size);
             Page<UserMessagesResponse> messages = userMessageService
                     .getStreamMessages(userId, null, streamType, pageable);
-            return ResponseEntity.ok(messages);
+            return cacheableOk(messages);
         } catch (Exception e) {
             log.error("Error getting all stream messages for user: {}", userId, e);
             return ResponseEntity.badRequest().build();

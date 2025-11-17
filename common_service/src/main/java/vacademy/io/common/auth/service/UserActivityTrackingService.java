@@ -2,6 +2,7 @@ package vacademy.io.common.auth.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +24,8 @@ import java.util.stream.Collectors;
 @Service
 public class UserActivityTrackingService {
 
+    private static final String AUTH_SERVICE_NAME = "auth_service";
+
     @Autowired
     private UserActivityLogRepository activityLogRepository;
 
@@ -35,6 +38,9 @@ public class UserActivityTrackingService {
     @Autowired
     private UserRepository userRepository;
 
+    @Value("${spring.application.name:}")
+    private String applicationName;
+
     /**
      * Log user activity asynchronously
      */
@@ -43,6 +49,9 @@ public class UserActivityTrackingService {
             String endpoint, String actionType, String sessionToken,
             String ipAddress, String userAgent, Integer responseStatus,
             Long responseTimeMs) {
+        if (!shouldLogActivity()) {
+            return;
+        }
         try {
             UserActivityLog log = UserActivityLog.builder()
                     .userId(userId)
@@ -67,6 +76,13 @@ public class UserActivityTrackingService {
         } catch (Exception e) {
             log.error("Error logging user activity", e);
         }
+    }
+
+    private boolean shouldLogActivity() {
+        if (applicationName == null || applicationName.trim().isEmpty()) {
+            return false;
+        }
+        return AUTH_SERVICE_NAME.equalsIgnoreCase(applicationName.trim());
     }
 
     /**

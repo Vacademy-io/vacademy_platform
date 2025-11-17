@@ -1916,23 +1916,25 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
                     {/* Speed Options Dropdown - Only show if allowRewind is true */}
                     {showSpeedOptions && allowRewind && (
-                      <div className="absolute bottom-full right-0 mb-2 bg-black/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 py-2 z-[10000] min-w-[80px]">
-                        <div className="px-3 py-1 text-xs font-medium text-white/70 border-b border-white/20 mb-1">
+                      <div className="absolute bottom-full right-0 mb-2 bg-black/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 z-[10000] min-w-[80px] max-h-[240px] overflow-y-auto">
+                        <div className="px-3 py-1 text-xs font-medium text-white/70 border-b border-white/20 sticky top-0 bg-black/90">
                           Speed
                         </div>
-                        {speedOptions.map((speed) => (
-                          <button
-                            key={speed}
-                            onClick={() => changePlaybackSpeed(speed)}
-                            className={`w-full px-3 py-2 text-sm text-left hover:bg-white/20 transition-colors ${
-                              playbackSpeed === speed
-                                ? "text-primary-400 bg-white/10 font-medium"
-                                : "text-white"
-                            }`}
-                          >
-                            {speed}x
-                          </button>
-                        ))}
+                        <div className="py-2">
+                          {speedOptions.map((speed) => (
+                            <button
+                              key={speed}
+                              onClick={() => changePlaybackSpeed(speed)}
+                              className={`w-full px-3 py-2 text-sm text-left hover:bg-white/20 transition-colors ${
+                                playbackSpeed === speed
+                                  ? "text-primary-400 bg-white/10 font-medium"
+                                  : "text-white"
+                              }`}
+                            >
+                              {speed}x
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2190,23 +2192,25 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
                     {/* Speed Options Dropdown - Only show if allowRewind is true */}
                     {showSpeedOptions && allowRewind && (
-                      <div className="absolute bottom-full right-0 mb-2 bg-black/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 py-2 z-[10000] min-w-[80px]">
-                        <div className="px-3 py-1 text-xs font-medium text-white/70 border-b border-white/20 mb-1">
+                      <div className="absolute bottom-full right-0 mb-2 bg-black/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 z-[10000] min-w-[80px] max-h-[240px] overflow-y-auto">
+                        <div className="px-3 py-1 text-xs font-medium text-white/70 border-b border-white/20 sticky top-0 bg-black/90">
                           Speed
                         </div>
-                        {speedOptions.map((speed) => (
-                          <button
-                            key={speed}
-                            onClick={() => changePlaybackSpeed(speed)}
-                            className={`w-full px-3 py-2 text-sm text-left hover:bg-white/20 transition-colors ${
-                              playbackSpeed === speed
-                                ? "text-primary-400 bg-white/10 font-medium"
-                                : "text-white"
-                            }`}
-                          >
-                            {speed}x
-                          </button>
-                        ))}
+                        <div className="py-2">
+                          {speedOptions.map((speed) => (
+                            <button
+                              key={speed}
+                              onClick={() => changePlaybackSpeed(speed)}
+                              className={`w-full px-3 py-2 text-sm text-left hover:bg-white/20 transition-colors ${
+                                playbackSpeed === speed
+                                  ? "text-primary-400 bg-white/10 font-medium"
+                                  : "text-white"
+                              }`}
+                            >
+                              {speed}x
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>

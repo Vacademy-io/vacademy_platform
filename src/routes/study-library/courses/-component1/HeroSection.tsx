@@ -81,7 +81,7 @@ const HeroSection = ({
                     );
                 }
             } catch (error) {
-                // Error auto-setting cookies
+                console.error("Error auto-setting cookies", error);
             }
         };
 
@@ -141,7 +141,7 @@ const HeroSection = ({
 
                 {/* Actions Section (image removed) */}
                 <div
-                    className={`w-full lg:w-1/3 flex items-center justify-center p-0.5 sm:p-1 animate-fade-in-up ${
+                    className={`w-full lg:w-1/3 flex items-right justify-end lg:items-end lg:ml-auto p-0.5 sm:p-1 animate-fade-in-up ${
                         allowLeanersToCreateCourses
                             ? "gap-2 sm:gap-3 flex-col"
                             : ""

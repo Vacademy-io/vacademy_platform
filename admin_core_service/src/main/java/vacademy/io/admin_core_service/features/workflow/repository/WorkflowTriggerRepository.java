@@ -16,17 +16,16 @@ public interface WorkflowTriggerRepository extends JpaRepository<WorkflowTrigger
     );
 
     @Query("""
-    SELECT w FROM WorkflowTrigger w 
+    SELECT w FROM WorkflowTrigger w
     WHERE w.instituteId = :instituteId
-      AND w.workflow.id = :eventId
+      AND w.eventId = :eventId
       AND w.triggerEventName = :eventType
       AND w.status IN :statuses
 """)
     List<WorkflowTrigger> findByInstituteIdAndEventIdAnsEventTypeAndStatusIn(
-            @Param("instituteId") String instituteId,
-            @Param("eventId") String eventId,
-            @Param("eventType") String eventType,
-            @Param("statuses") List<String> statuses
+        @Param("instituteId") String instituteId,
+        @Param("eventId") String eventId, // Used to match w.workflow.id
+        @Param("eventType") String eventType,
+        @Param("statuses") List<String> statuses
     );
-
 }

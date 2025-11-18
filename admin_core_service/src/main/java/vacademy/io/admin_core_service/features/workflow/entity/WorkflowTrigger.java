@@ -50,4 +50,7 @@ public class WorkflowTrigger {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "workflow_id", nullable = false)
     private Workflow workflow;
+
+    @Column(name = "eventId")
+    private String eventId;
 }

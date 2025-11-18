@@ -582,6 +582,6 @@ public class StudentRegistrationManager {
         Map<String, Object> contextData = new HashMap<>();
         contextData.put("user", userDTO);
         contextData.put("packageSessionIds", packageSessionId);
-        workflowTriggerService.handleTriggerEvent(WorkflowTriggerEvent.LEARNER_BATCH_ENROLLMENT.name(),packageSessionId,instituteId,contextData);
+        workflowTriggerService.handleTriggerEvents(WorkflowTriggerEvent.LEARNER_BATCH_ENROLLMENT.name(),packageSessionId,instituteId,contextData);
     }
 }

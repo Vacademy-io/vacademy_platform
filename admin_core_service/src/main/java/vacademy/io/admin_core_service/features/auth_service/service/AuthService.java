@@ -12,7 +12,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import vacademy.io.admin_core_service.features.auth_service.constants.AuthServiceRoutes;
 import vacademy.io.admin_core_service.features.institute_learner.constants.StudentConstants;
+import vacademy.io.admin_core_service.features.learner.dto.JwtResponseDto;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.auth.dto.learner.UserWithJwtDTO;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -135,5 +137,26 @@ public class AuthService {
     }
 
 
+    public UserWithJwtDTO generateJwtTokensWithUser(String userId, String instituteId) {
+        try {
+            String endpoint = AuthServiceRoutes.GENERATE_TOKEN_FOR_LEARNER + "?userId=" + userId + "&instituteId="
+                + instituteId;
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                clientName,
+                HttpMethod.GET.name(),
+                authServerBaseUrl,
+                endpoint,
+                null);
+
+            if (response == null || response.getBody() == null) {
+                throw new VacademyException("Failed to generate JWT tokens");
+            }
+
+            ObjectMapper mapper = new ObjectMapper();
+            return mapper.readValue(response.getBody(), UserWithJwtDTO.class);
+        } catch (Exception e) {
+            throw new VacademyException("Failed to generate JWT tokens: " + e.getMessage());
+        }
+    }
 
 }

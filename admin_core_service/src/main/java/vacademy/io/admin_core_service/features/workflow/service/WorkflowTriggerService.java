@@ -23,11 +23,10 @@ public class WorkflowTriggerService {
     @Autowired
     private WorkflowEngineService workflowEngineService;
 
-    @Async
-    public void handleTriggerEvent(String eventName, String eventId, String instituteId, Map<String, Object> contextData) {
+    public Map<String,Object> handleTriggerEvents(String eventName, String eventId, String instituteId, Map<String, Object> contextData) {
         log.info("---- Workflow Trigger Event START ----");
         log.info("Incoming trigger params: eventName='{}', eventId='{}', instituteId='{}'", eventName, eventId, instituteId);
-
+        Map<String,Object>response = new HashMap<>();
         try {
             // Log context data if present
             if (contextData == null || contextData.isEmpty()) {
@@ -49,7 +48,7 @@ public class WorkflowTriggerService {
             if (triggers.isEmpty()) {
                 log.info("No ACTIVE workflow triggers found. Exiting execution.");
                 log.info("---- Workflow Trigger Event END ----");
-                return;
+                return response;
             }
 
             int count = 0;
@@ -68,10 +67,10 @@ public class WorkflowTriggerService {
                     log.info("Seed context prepared for workflow run ({} keys): {}", seedContext.size(), seedContext);
                     log.info("Starting workflowEngineService.run for workflowId='{}'", trigger.getWorkflow().getId());
 
-                    workflowEngineService.run(trigger.getWorkflow().getId(), seedContext);
+                   Map<String,Object>result = workflowEngineService.run(trigger.getWorkflow().getId(), seedContext);
 
                     log.info("Workflow execution completed for workflowId='{}'", trigger.getWorkflow().getId());
-
+                    response.putAll(result);
                 } catch (Exception ex) {
                     log.error("Error executing workflowId='{}' for triggerId='{}'",
                             trigger.getWorkflow().getId(), trigger.getId(), ex);
@@ -79,11 +78,12 @@ public class WorkflowTriggerService {
             }
 
             log.info("Completed processing {} workflow triggers.", triggers.size());
-
+            return response;
         } catch (Exception e) {
             log.error("Unexpected error while processing trigger event='{}', eventId='{}'", eventName, eventId, e);
         }
 
         log.info("---- Workflow Trigger Event END ----");
+        return response;
     }
 }

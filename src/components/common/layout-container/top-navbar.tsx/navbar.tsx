@@ -22,6 +22,8 @@ import { getTokenFromCookie } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { SystemAlertsBar } from "@/components/announcements";
 import { handleGetPublicInstituteDetails } from "../services/navbar-services";
+import { useRouter } from "@tanstack/react-router";
+import { ArrowLeft } from "@phosphor-icons/react";
 
 interface UserRole {
     id: string;
@@ -48,6 +50,8 @@ export function Navbar() {
 
     const { navHeading } = useNavHeadingStore();
     const { setInstituteDetails, setSidebarOpen, instituteName, instituteLogoFileUrl, hasCustomSidebar, homeIconClickRoute } = useStore();
+    const router = useRouter();
+    const [canGoBack, setCanGoBack] = useState(false);
 
     const handleNavigateToAdmin = () => {
         const accessToken = getTokenFromCookie(TokenKey.accessToken);
@@ -122,6 +126,30 @@ export function Navbar() {
         }
     };
 
+    const handleGoBack = () => {
+        router.history.back();
+    };
+
+    useEffect(() => {
+        // Check if we can go back in history
+        const checkCanGoBack = () => {
+            setCanGoBack(window.history.length > 1);
+        };
+        
+        checkCanGoBack();
+        
+        // Listen for navigation changes
+        const handleNavigation = () => {
+            checkCanGoBack();
+        };
+        
+        window.addEventListener('popstate', handleNavigation);
+        
+        return () => {
+            window.removeEventListener('popstate', handleNavigation);
+        };
+    }, []);
+
     if (isLoading) return <DashboardLoader />;
 
     // Handle error gracefully
@@ -134,6 +162,24 @@ export function Navbar() {
                 
                 {/* Left Section */}
                 <div className="flex items-center gap-2 md:gap-4 shrink-0">
+                    {canGoBack && (
+                        <Tooltip delayDuration={0}>
+                            <TooltipTrigger asChild>
+                                <button
+                                    onClick={handleGoBack}
+                                    className="group flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200"
+                                >
+                                    <ArrowLeft className="w-4 h-4 text-primary-600 dark:text-primary-400 group-hover:text-primary-700 dark:group-hover:text-primary-300 transition-colors duration-200" />
+                                </button>
+                            </TooltipTrigger>
+                            <TooltipContent
+                                className="bg-primary-400 text-white"
+                                side="bottom"
+                            >
+                            
+                            </TooltipContent>
+                        </Tooltip>
+                    )}
                     {showSidebarControls && (
                         <SidebarTrigger>
                             <div
@@ -196,6 +242,24 @@ export function Navbar() {
 
             {/* Left Section */}
             <div className="flex items-center gap-2 md:gap-4 shrink-0">
+                {canGoBack && (
+                    <Tooltip delayDuration={0}>
+                        <TooltipTrigger asChild>
+                            <button
+                                onClick={handleGoBack}
+                                className="group flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200"
+                            >
+                                <ArrowLeft className="w-4 h-4 text-primary-600 dark:text-neutral-300 group-hover:text-primary-700 dark:group-hover:text-neutral-200 transition-colors duration-200" />
+                            </button>
+                        </TooltipTrigger>
+                        <TooltipContent
+                            className="bg-primary-400 text-white"
+                            side="bottom"
+                        >
+                    
+                        </TooltipContent>
+                    </Tooltip>
+                )}
                 {showSidebarControls && (
                     <SidebarTrigger>
                         <div

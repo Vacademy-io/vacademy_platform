@@ -13,7 +13,7 @@ interface UseSystemAlertsOptions {
 export const useSystemAlerts = (options: UseSystemAlertsOptions = {}) => {
   const {
     enablePolling = true,
-    pollingInterval = 15000, // 15 seconds
+    pollingInterval = 300000, // 5 minutes
     autoMarkAsRead = true,
     markAsReadDelay = 1000, // 1 second
   } = options;

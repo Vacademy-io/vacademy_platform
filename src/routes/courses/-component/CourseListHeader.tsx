@@ -79,7 +79,7 @@ const CourseListHeader = ({
     { href: "https://codecircle.org/impact/stories.html", label: "Impact" },
     {
       href: "#courses",
-      label: getTerminology(ContentTerms.Course, SystemTerms.Course) ,
+      label: getTerminology(ContentTerms.Course, SystemTerms.Course) + 's' ,
     },
     { href: "https://codecircle.org/get-involved.html", label: "Get Involved" },
     { href: "https://codecircle.org/contact.html", label: "Contact" },

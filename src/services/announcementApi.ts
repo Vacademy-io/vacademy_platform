@@ -88,7 +88,8 @@ export const getSystemAlerts = async (filters: SystemAlertsFilters = {}) => {
     );
     return response.data;
   } catch (error) {
-    handleApiError(error, 'fetch system alerts');
+    console.error('Error fetching system alerts:', error);
+    return { content: [], totalElements: 0, totalPages: 0, pageNumber: 0, pageSize: filters.size || 10 };
   }
 };
 
@@ -102,7 +103,8 @@ export const getSystemAlertUnreadCount = async () => {
     );
     return response.data;
   } catch (error) {
-    handleApiError(error, 'fetch unread count');
+    console.error('Error fetching unread count:', error);
+    return { unreadCount: 0 };
   }
 };
 
@@ -117,7 +119,8 @@ export const getDashboardPins = async () => {
     );
     return response.data;
   } catch (error) {
-    handleApiError(error, 'fetch dashboard pins');
+    console.error('Error fetching dashboard pins:', error);
+    return [];
   }
 };
 
@@ -140,7 +143,8 @@ export const getStreamMessages = async (
     );
     return response.data;
   } catch (error) {
-    handleApiError(error, 'fetch stream messages');
+    console.error('Error fetching stream messages:', error);
+    return { content: [], totalElements: 0, totalPages: 0, pageNumber: 0, pageSize: filters.size || 10 };
   }
 };
 
@@ -161,7 +165,8 @@ export const getCommunityMessages = async (filters: CommunityMessagesFilters = {
     );
     return response.data;
   } catch (error) {
-    handleApiError(error, 'fetch community messages');
+    console.error('Error fetching community messages:', error);
+    return { content: [], totalElements: 0, totalPages: 0, pageNumber: 0, pageSize: filters.size || 10 };
   }
 };
 
@@ -240,7 +245,8 @@ export const getAnnouncementReplies = async (
     );
     return response.data;
   } catch (error) {
-    handleApiError(error, 'fetch replies');
+    console.error('Error fetching replies:', error);
+    return { content: [], totalElements: 0, totalPages: 0, pageNumber: 0, pageSize: filters.size || 10 };
   }
 };
 
@@ -251,7 +257,8 @@ export const getChildReplies = async (parentReplyId: string) => {
     );
     return response.data;
   } catch (error) {
-    handleApiError(error, 'fetch child replies');
+    console.error('Error fetching child replies:', error);
+    return [];
   }
 };
 
@@ -284,7 +291,8 @@ export const getUserMessages = async (
     );
     return response.data;
   } catch (error) {
-    handleApiError(error, 'fetch user messages');
+    console.error('Error fetching user messages:', error);
+    return { content: [], totalElements: 0, totalPages: 0, pageNumber: 0, pageSize: filters.size || 10 };
   }
 };
 
@@ -302,7 +310,8 @@ export const getUnreadCount = async (modeType?: ModeType) => {
     );
     return response.data;
   } catch (error) {
-    handleApiError(error, 'fetch unread count');
+    console.error('Error fetching unread count:', error);
+    return { unreadCount: 0 };
   }
 };
 

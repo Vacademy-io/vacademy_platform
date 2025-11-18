@@ -50,6 +50,48 @@ interface QuizViewerProps {
   onComplete?: () => void;
 }
 
+const BASE_QUESTION_TYPE_DESCRIPTIONS: Record<string, string> = {
+  MCQS: "Multiple Choice Questions - Single Correct Option",
+  MCQM: "Multiple Choice Questions - Multiple Correct Option",
+  NUMERIC: "Numeric Answer",
+  ONE_WORD: "One Word Answer",
+  TEXT: "Short Answer - Text Response",
+  LONG_ANSWER: "Long Answer - Detailed Response",
+  TRUE_FALSE: "True or False",
+  MATCH: "Match the Following",
+  FILL_IN_THE_BLANK: "Fill in the Blank",
+};
+
+const formatQuestionTypeLabel = (type?: string) => {
+  if (!type) return "Question";
+  return type
+    .split("_")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+};
+
+const getQuestionTypeDescription = (type?: string): string => {
+  if (!type) {
+    return BASE_QUESTION_TYPE_DESCRIPTIONS.MCQS;
+  }
+
+  const directMatch = BASE_QUESTION_TYPE_DESCRIPTIONS[type];
+  if (directMatch) {
+    return directMatch;
+  }
+
+  if (type.startsWith("C")) {
+    const baseType = type.slice(1);
+    const baseDescription = BASE_QUESTION_TYPE_DESCRIPTIONS[baseType];
+    if (baseDescription) {
+      return `Comprehension ${baseDescription}`;
+    }
+  }
+
+  return formatQuestionTypeLabel(type);
+};
+
 
 
 
@@ -252,6 +294,10 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
   const currentQuestion = questions?.[current];
   const total = questions?.length || 0;
   const questionType = currentQuestion?.question_type || "MCQS";
+  const questionTypeDescription = useMemo(
+    () => getQuestionTypeDescription(questionType),
+    [questionType]
+  );
   // Derive correct answers from auto_evaluation_json
   const correctAnswers = useMemo<(string | number)[]>(() => {
     const q = currentQuestion;
@@ -824,7 +870,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
         <div className="mb-2 flex items-center justify-between">
           <span className="text-sm text-gray-700 font-medium">Question {current + 1} of {total}</span>
           <span className="ml-auto text-xs text-primary-600 font-medium" style={{ minWidth: 80, textAlign: 'right' }}>
-            {questionType.replace(/_/g, ' ')}
+            {questionTypeDescription}
           </span>
         </div>
         <div className="w-full h-3 rounded-full overflow-hidden bg-gray-200 relative">

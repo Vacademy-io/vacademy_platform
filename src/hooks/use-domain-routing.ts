@@ -5,6 +5,7 @@ import {
   resolveDomainRouting,
   getCurrentDomainInfo,
   DomainRoutingResponse,
+  setCachedInstituteBranding,
 } from "@/services/domain-routing";
 import { useTheme } from "@/providers/theme/theme-provider";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
@@ -125,6 +126,14 @@ export const useDomainRouting = () => {
       } catch (error) {
         console.error("[Domain Routing] Error storing tab branding:", error);
       }
+
+      setCachedInstituteBranding({
+        instituteId: data.instituteId,
+        instituteName: data.instituteName,
+        instituteLogoFileId: data.instituteLogoFileId,
+        instituteThemeCode: data.instituteThemeCode,
+        homeIconClickRoute: data.homeIconClickRoute ?? null,
+      });
 
       // Update global state
       setInstituteId(data.instituteId);

@@ -261,7 +261,8 @@ public class AttendanceReportService {
      * Business Rules:
      * 1. Group sessions by meeting date
      * 2. For each date group:
-     *    - If any session has daily_attendance = true: count the entire group as 1 attendance unit
+     *    - If any session has daily_attendance = true: count all schedules as attendance units,
+     *      and if student attended ANY schedule on that date, mark ALL schedules as attended
      *    - If all sessions have daily_attendance = false: count each session individually
      * 3. A student is considered "attended" if they have any attendance record for that session
      * 
@@ -293,15 +294,17 @@ public class AttendanceReportService {
                     .anyMatch(session -> Boolean.TRUE.equals(session.getDailyAttendance()));
             
             if (hasDailyAttendance) {
-                // If any session has daily_attendance = true, count the entire date as 1 unit
-                totalAttendanceUnits += 1;
+                // If any session has daily_attendance = true, count all schedules as units
+                int scheduleCount = dateSessions.size();
+                totalAttendanceUnits += scheduleCount;
                 
                 // Check if student attended any session on this date
                 boolean attendedThisDate = dateSessions.stream()
                         .anyMatch(session -> session.getAttendanceStatus() != null);
                 
+                // If attended any schedule, mark all schedules for that date as attended
                 if (attendedThisDate) {
-                    attendedUnits += 1;
+                    attendedUnits += scheduleCount;
                 }
             } else {
                 // If all sessions have daily_attendance = false, count each session individually

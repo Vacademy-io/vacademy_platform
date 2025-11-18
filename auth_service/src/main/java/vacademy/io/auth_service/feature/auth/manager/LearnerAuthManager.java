@@ -32,6 +32,7 @@ import vacademy.io.common.auth.dto.RefreshTokenRequestDTO;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollRequestDTO;
+import vacademy.io.common.auth.dto.learner.UserWithJwtDTO;
 import vacademy.io.common.auth.entity.*;
 import vacademy.io.common.auth.enums.UserRoleStatus;
 import vacademy.io.common.auth.repository.RoleRepository;
@@ -400,5 +401,33 @@ public class LearnerAuthManager {
                 .accessToken(jwtService.generateToken(user, user.getRoles().stream().toList(), permissions,10))
                 .refreshToken(refreshToken.getToken())
                 .build();
+    }
+
+
+    public UserWithJwtDTO generateTokenForUserByUserId(String userId, String instituteId) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
+
+        Optional<UserRole> userRole = userRoleRepository.findFirstByUserIdAndInstituteIdAndRoleNamesAndStatuses(
+            userId,
+            instituteId,
+            AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL,
+            List.of(UserRoleStatus.ACTIVE.name()));
+
+        if (userRole.isEmpty()) {
+            throw new UsernameNotFoundException(
+                "User does not have active STUDENT role for this institute!");
+        }
+
+        refreshTokenService.deleteAllRefreshToken(user);
+
+        List<String> permissions = userPermissionRepository.findByUserId(user.getId()).stream()
+            .map(UserPermission::getPermissionId).toList();
+
+        RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getUsername(), "VACADEMY-WEB");
+
+        return new UserWithJwtDTO(new UserDTO(user),jwtService.generateToken(user, user.getRoles().stream().toList(),
+            permissions),refreshToken.getToken());
+
     }
 }

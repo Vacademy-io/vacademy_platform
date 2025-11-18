@@ -7,7 +7,10 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
+import vacademy.io.auth_service.feature.auth.manager.LearnerAuthManager;
 import vacademy.io.auth_service.feature.auth.service.UserDetailsCacheService;
+import vacademy.io.common.auth.dto.learner.UserWithJwtDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.service.UserActivityTrackingService;
 
@@ -24,6 +27,9 @@ public class AuthInternalController {
 
     @Autowired
     UserDetailsCacheService userDetailsCacheService;
+
+    @Autowired
+    private LearnerAuthManager learnerAuthManager;
 
     @GetMapping("/user")
     public ResponseEntity<CustomUserDetails> getUserDetails(@RequestParam String userName,
@@ -93,5 +99,12 @@ public class AuthInternalController {
 
         return request.getRemoteAddr();
     }
+
+    @GetMapping("/generate-token-for-learner")
+    public ResponseEntity<UserWithJwtDTO> generateTokenForLearner(@RequestParam String userId,
+                                                                  @RequestParam String instituteId) {
+        return ResponseEntity.ok(learnerAuthManager.generateTokenForUserByUserId(userId, instituteId));
+    }
+
 
 }

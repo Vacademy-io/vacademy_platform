@@ -33,8 +33,8 @@ android {
 		ssdc {
 			dimension "client"
 			applicationId "io.vacademy.student.app"
-			versionCode 19
-			versionName "2.1.1"
+			versionCode 21
+			versionName "2.1.3"
 			// Deep link host for this client
 			manifestPlaceholders.DEEP_LINK_HOST = "learner.vacademy.io"
 		}
@@ -42,8 +42,8 @@ android {
 		seven_cs {
 			dimension "client"
 			applicationId "com.sevencs.app"
-			versionCode 18
-			versionName "2.0.3"
+			versionCode 19
+			versionName "2.0.4"
 			// Change app name for Seven CS
 			resValue "string", "app_name", "The 7Cs"
 			// Set the deep link host for Seven CS (adjust to your domain)

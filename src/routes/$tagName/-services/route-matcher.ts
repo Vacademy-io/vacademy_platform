@@ -45,7 +45,6 @@ export class RouteMatcher {
     );
 
     if (matchedPage) {
-      console.log(`[RouteMatcher] Found page by route: ${route}`, matchedPage);
       return matchedPage;
     }
 
@@ -55,7 +54,6 @@ export class RouteMatcher {
     );
 
     if (matchedPage) {
-      console.log(`[RouteMatcher] Found page by id: ${route}`, matchedPage);
       return matchedPage;
     }
 
@@ -69,14 +67,8 @@ export class RouteMatcher {
     );
 
     if (matchedPage) {
-      console.log(
-        `[RouteMatcher] Found page by partial match: ${route}`,
-        matchedPage
-      );
       return matchedPage;
     }
-
-    console.log(`[RouteMatcher] No matching page found for route: ${route}`);
     return undefined;
   }
 
@@ -123,7 +115,6 @@ export class RouteMatcher {
       const isExternal = this.isExternalLink(item.route);
       
       if (isExternal) {
-        console.log(`[RouteMatcher] Route is external: ${item.route}`);
         return {
           label: item.label,
           route: item.route,
@@ -152,9 +143,6 @@ export class RouteMatcher {
 
       // If no matching page, but route looks like an internal route, keep it
       // This allows for routes to pages not yet loaded
-      console.log(
-        `[RouteMatcher] No matching page for route: ${item.route}, treating as internal route`
-      );
       return {
         label: item.label,
         route: item.route,

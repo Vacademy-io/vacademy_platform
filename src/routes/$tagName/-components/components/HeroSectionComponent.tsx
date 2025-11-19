@@ -64,13 +64,6 @@ export const HeroSectionComponent: React.FC<HeroSectionProps> = ({
     // Only use courseData.description if it's explicitly provided and not empty, otherwise don't show description
     const heroDescription = (courseData?.description && courseData.description.trim() !== "") ? courseData.description : "";
     
-    // Debug logging for hero description
-    console.log("[HeroSectionComponent] Description debug:", {
-      courseDataDescription: courseData?.description,
-      leftDescription: left?.description,
-      finalHeroDescription: heroDescription,
-      note: "Only using courseData.description, ignoring left.description from JSON"
-    });
   const heroImage = courseData?.previewImage || courseData?.bannerImage || right?.image || "";
   const heroImageAlt = right?.alt || courseData?.title || "Course preview";
   const heroBackgroundImage = backgroundImage;
@@ -99,37 +92,11 @@ export const HeroSectionComponent: React.FC<HeroSectionProps> = ({
       // Check if it looks like a raw media ID (contains underscores, no http/https, no slashes)
       (heroBackgroundImage.includes('_') && !heroBackgroundImage.includes('http') && !heroBackgroundImage.includes('/'));
 
-    // Debug logging for image processing
-    console.log("[HeroSectionComponent] Image processing debug:", {
-      heroImage,
-      isHeroImagePlaceholder,
-      heroBackgroundImage,
-      isBackgroundImagePlaceholder,
-      courseDataPreviewImage: courseData?.previewImage,
-      courseDataBannerImage: courseData?.bannerImage,
-      rightImage: right?.image,
-      willUsePlaceholder: isHeroImagePlaceholder,
-      willUseStateComponent: !isHeroImagePlaceholder,
-      timestamp: new Date().toISOString()
-    });
 
-    // Debug component re-renders
-    console.log("[HeroSectionComponent] Component render debug:", {
-      layout,
-      backgroundImage,
-      jsonBackgroundColor,
-      leftTitle: left?.title,
-      rightImage: right?.image,
-      courseDataTitle: courseData?.title,
-      courseDataPreviewImage: courseData?.previewImage,
-      courseDataBannerImage: courseData?.bannerImage,
-      renderCount: Date.now()
-    });
 
     // If hero image is a placeholder, render directly without any state management
     // (We don't need to check background image since we're not using it for now)
     if (isHeroImagePlaceholder) {
-      console.log("[HeroSectionComponent] Using HeroSectionPlaceholder - no state management");
       return <HeroSectionPlaceholder 
         layout={layout}
         left={left}
@@ -204,8 +171,6 @@ const HeroSectionPlaceholder: React.FC<any> = ({
   const finalBackgroundColor = primaryColor !== "neutral" ? `hsl(var(--primary) / 0.2)` : "rgb(191 219 254)";
 
   const handleButtonClick = (button: { text: string; action: string; target: string }) => {
-    console.log("[HeroSectionComponent] Button clicked:", button);
-    
     switch (button.action) {
       case "navigate":
         if (button.target) {
@@ -220,7 +185,7 @@ const HeroSectionPlaceholder: React.FC<any> = ({
         window.dispatchEvent(event);
         break;
       default:
-        console.log("Unknown button action:", button.action);
+        break;
     }
   };
 
@@ -351,17 +316,8 @@ const HeroSectionWithState: React.FC<any> = ({
 
   // Resolve image URLs - only for valid images
   useEffect(() => {
-    console.log("[HeroSectionComponent] useEffect triggered:", {
-      isHeroImagePlaceholder,
-      isBackgroundImagePlaceholder,
-      heroImage,
-      heroBackgroundImage,
-      timestamp: new Date().toISOString()
-    });
-
     // If both images are placeholders, don't run the effect
     if (isHeroImagePlaceholder && isBackgroundImagePlaceholder) {
-      console.log("[HeroSectionComponent] Skipping useEffect - both images are placeholders");
       return;
     }
 
@@ -393,10 +349,6 @@ const HeroSectionWithState: React.FC<any> = ({
       // Handle background image - only if it's not a placeholder
       if (!isBackgroundImagePlaceholder) {
         await resolveImageUrl(heroBackgroundImage);
-        if (isMounted) {
-          // Background image resolved but not used for now
-          console.log("Background image resolved for:", heroBackgroundImage);
-        }
       }
     };
 
@@ -405,8 +357,6 @@ const HeroSectionWithState: React.FC<any> = ({
   }, [heroImage, heroBackgroundImage, isHeroImagePlaceholder, isBackgroundImagePlaceholder]);
 
   const handleButtonClick = (button: { text: string; action: string; target: string }) => {
-    console.log("[HeroSectionComponent] Button clicked:", button);
-    
     switch (button.action) {
       case "navigate":
         if (button.target) {
@@ -421,7 +371,7 @@ const HeroSectionWithState: React.FC<any> = ({
         window.dispatchEvent(event);
         break;
       default:
-        console.log("Unknown button action:", button.action);
+        break;
     }
   };
 
@@ -484,7 +434,6 @@ const HeroSectionWithState: React.FC<any> = ({
                     className="max-w-full h-auto rounded-lg shadow-lg"
                     onError={() => {
                       // Don't show placeholder on error, just hide the image
-                      console.log("[HeroSectionComponent] Image failed to load, hiding image section");
                     }}
                   />
               </div>

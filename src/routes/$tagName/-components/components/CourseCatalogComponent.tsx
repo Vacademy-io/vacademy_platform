@@ -44,8 +44,6 @@ const CourseImageWithState: React.FC<CourseImageProps> = ({ previewImageUrl, alt
   useEffect(() => {
     let isMounted = true;
     const load = async () => {
-      console.log("[CourseImage] Loading image with previewImageUrl:", previewImageUrl);
-      
       setLoadingImage(true);
       setImageError(false);
       
@@ -262,8 +260,6 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     const fetchCourses = async () => {
       setIsLoading(true);
       try {
-        console.log("[CourseCatalogComponent] Fetching courses for institute:", instituteId);
-        
         const response = await axios.post(urlCourseDetails, {
           status: [],
           level_ids: [],
@@ -284,21 +280,11 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
           },
         });
 
-        console.log("[CourseCatalogComponent] API response:", response.data);
-        
         // Transform API response to Course interface
         const apiCourses = response.data?.content || response.data || [];
         
-        // Debug: Check for enroll_invite_id in the first course
         if (apiCourses.length > 0) {
-          console.log("[CourseCatalogComponent] First course data:", {
-            id: apiCourses[0].id,
-            package_name: apiCourses[0].package_name,
-            enroll_invite_id: apiCourses[0].enroll_invite_id,
-            package_session_id: apiCourses[0].package_session_id,
-            min_plan_actual_price: apiCourses[0].min_plan_actual_price,
-            payment_options_id: apiCourses[0].payment_options_id
-          });
+          // Check for enroll_invite_id in the first course
         }
         const transformedCourses: Course[] = apiCourses.map((course: any) => {
             // Get the raw media ID (same priority as study library)
@@ -317,16 +303,6 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
             const finalPrice = course.min_plan_actual_price || 0;
             const isFree = finalPrice === 0;
             
-            // Debug: Log the pricing decision
-            console.log("[CourseCatalogComponent] Pricing from search API:", {
-              courseName: course.package_name,
-              min_plan_actual_price: course.min_plan_actual_price,
-              payment_options_id: course.payment_options_id,
-              enroll_invite_id: course.enroll_invite_id,
-              isFree,
-              finalPrice,
-              note: "Using min_plan_actual_price from search API (should be minimum from all plans)"
-            });
 
             return {
               id: course.id || course.packageId,
@@ -347,8 +323,6 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
             };
           });
 
-        console.log("[CourseCatalogComponent] Transformed courses:", transformedCourses);
-        
         setCourses(transformedCourses);
         setFilteredCourses(transformedCourses);
       } catch (error) {
@@ -466,22 +440,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   };
 
   const handleCourseClick = (course: Course) => {
-    console.log('[CourseCatalogComponent] Course clicked:', {
-      id: course.id,
-      title: course.title,
-      price: course.price,
-      enrollInviteId: course.enrollInviteId,
-      packageSessionId: course.packageSessionId
-    });
-    
     // All courses navigate to details page with enroll_invite_id
-    console.log('[CourseCatalogComponent] Navigating to course details for all courses', {
-      isFree: course.price === 0,
-      price: course.price,
-      hasEnrollInviteId: !!course.enrollInviteId,
-      enrollInviteId: course.enrollInviteId
-    });
-    
     // Pass enroll_invite_id, banner image, and level as search params so details page can use them
     const searchParams = new URLSearchParams();
     if (course.enrollInviteId) {

@@ -100,9 +100,9 @@ export const EnrollmentPaymentDialog: React.FC<
   };
 
   const validatePhone = (phone: string): boolean => {
-    // Accept phone numbers with country code (e.g., +919876543210) or without (+91 is minimum)
-    const phoneRegex = /^\+\d{1,4}\d{6,14}$/;
-    return phoneRegex.test(phone) && phone.length >= 8; // Minimum length check
+    const phoneRegex = /^(\+\d{1,3})?\d{7,14}$/;
+    const cleaned = phone.replace(/[\s-]/g, "");
+    return phoneRegex.test(cleaned);
   };
 
   const handleEmailChange = (value: string) => {

@@ -9,36 +9,36 @@ export const Route = createFileRoute("/$tagName/")({
   component: RouteComponent,
 });
 
-console.log("[Course Catalogue] Route file loaded");
+//console.log("[Course Catalogue] Route file loaded");
 
 function RouteComponent() {
   try {
-    console.log("[Course Catalogue] RouteComponent function called");
+   // console.log("[Course Catalogue] RouteComponent function called");
     const { tagName } = Route.useParams() as { tagName: string };
     const domainRouting = useDomainRouting();
     
-    console.log("[Course Catalogue] RouteComponent mounted with tagName:", tagName);
+   // console.log("[Course Catalogue] RouteComponent mounted with tagName:", tagName);
 
   // Debug logging to track domain routing
-  useEffect(() => {
-    console.log("[Course Catalogue] Domain routing state:", {
-      isLoading: domainRouting.isLoading,
-      instituteId: domainRouting.instituteId,
-      instituteName: domainRouting.instituteName,
-      instituteThemeCode: domainRouting.instituteThemeCode,
-      error: domainRouting.error,
-    });
-  }, [domainRouting]);
+  // useEffect(() => {
+  //   console.log("[Course Catalogue] Domain routing state:", {
+  //     isLoading: domainRouting.isLoading,
+  //     instituteId: domainRouting.instituteId,
+  //     instituteName: domainRouting.instituteName,
+  //     instituteThemeCode: domainRouting.instituteThemeCode,
+  //     error: domainRouting.error,
+  //   });
+  // }, [domainRouting]);
 
   // Show loading while domain routing is resolving
   if (domainRouting.isLoading) {
-    console.log("[Course Catalogue] Domain routing in progress...");
+   // console.log("[Course Catalogue] Domain routing in progress...");
     return <DashboardLoader />;
   }
 
   // If there's an error in domain routing, show error
   if (domainRouting.error) {
-    console.error("[Course Catalogue] Domain routing error:", domainRouting.error);
+    //console.error("[Course Catalogue] Domain routing error:", domainRouting.error);
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -61,15 +61,15 @@ function RouteComponent() {
 
   // If no institute ID found after domain routing completes, show not found
   if (!domainRouting.instituteId) {
-    console.warn("[Course Catalogue] No institute ID found after domain routing");
+  //  console.warn("[Course Catalogue] No institute ID found after domain routing");
     return <RootNotFoundComponent />;
   }
 
-  console.log("[Course Catalogue] Rendering course catalogue for:", {
-    tagName,
-    instituteId: domainRouting.instituteId,
-    instituteThemeCode: domainRouting.instituteThemeCode,
-  });
+  // console.log("[Course Catalogue] Rendering course catalogue for:", {
+  //   tagName,
+  //   instituteId: domainRouting.instituteId,
+  //   instituteThemeCode: domainRouting.instituteThemeCode,
+  // });
 
   return (
     <CourseCataloguePage
@@ -79,7 +79,7 @@ function RouteComponent() {
     />
   );
   } catch (error) {
-    console.error("[Course Catalogue] Error in RouteComponent:", error);
+    //console.error("[Course Catalogue] Error in RouteComponent:", error);
     return <RootNotFoundComponent />;
   }
 }

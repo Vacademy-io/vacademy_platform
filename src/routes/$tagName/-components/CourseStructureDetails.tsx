@@ -70,19 +70,6 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
   packageSessionId,
   levelId,
 }) => {
-  console.log("[CourseStructureDetails] Component props:", {
-    courseDepth,
-    courseId,
-    instituteId,
-    packageSessionId,
-    levelId,
-    levelIdType: typeof levelId,
-    levelIdValue: levelId,
-    levelIdIsUndefined: levelId === undefined,
-    levelIdIsNull: levelId === null,
-    levelIdIsEmpty: levelId === ""
-  });
-
   const [isLoading, setIsLoading] = useState(true);
   const [studyLibraryData, setStudyLibraryData] = useState<SubjectType[]>([]);
   const [subjectModulesMap, setSubjectModulesMap] = useState<SubjectModulesMap>({});
@@ -134,12 +121,9 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
 
   // Step 1: Fetch subjects from init-details API
   const fetchSubjectsFromInitDetails = async () => {
-    console.log("[CourseStructureDetails] Step 1: Fetching subjects from init-details API for packageSessionId:", packageSessionId);
     try {
       const baseUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_BASE_URL || "https://backend-stage.vacademy.io";
       const url = `${baseUrl}/admin-core-service/open/v1/learner-study-library/init-details?packageSessionId=${packageSessionId}`;
-      
-      console.log("[CourseStructureDetails] Init-details API URL:", url);
       
       const response = await fetch(url, {
         method: 'GET',
@@ -153,7 +137,6 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
       }
       
       const data = await response.json();
-      console.log("[CourseStructureDetails] Subjects data received:", data);
       return data;
     } catch (error) {
       console.error("[CourseStructureDetails] Error fetching subjects data:", error);
@@ -163,11 +146,9 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
 
   // Step 2: Fetch modules for subjectId and packageSessionId
   const fetchModules = async (subjectId: string) => {
-    console.log("[CourseStructureDetails] Step 2: Fetching modules for subjectId:", subjectId, "packageSessionId:", packageSessionId);
     try {
       const baseUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_BASE_URL || "https://backend-stage.vacademy.io";
       const url = `${baseUrl}/admin-core-service/open/v1/learner-study-library/modules-with-chapters?subjectId=${subjectId}&packageSessionId=${packageSessionId}`;
-      console.log("[CourseStructureDetails] Modules API URL:", url);
       
       const response = await fetch(url, {
         method: 'GET',
@@ -181,17 +162,9 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
       }
       
       const modules = await response.json();
-      console.log("[CourseStructureDetails] Modules received for subject", subjectId, ":", modules);
-      console.log("[CourseStructureDetails] Modules count:", modules?.length);
-      
-      // Debug the structure of modules
+
       if (Array.isArray(modules) && modules.length > 0) {
-        console.log("[CourseStructureDetails] First module structure:", modules[0]);
-        console.log("[CourseStructureDetails] First module keys:", Object.keys(modules[0] || {}));
-        if (modules[0].module) {
-          console.log("[CourseStructureDetails] Module object structure:", modules[0].module);
-          console.log("[CourseStructureDetails] Module ID:", modules[0].module.id);
-        }
+        // Debug the structure of modules
       }
       
       return modules || [];
@@ -204,20 +177,13 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
 
   // Step 3: Fetch slides for a chapter
   const fetchSlidesForChapter = async (chapterId: string) => {
-    console.log("[CourseStructureDetails] Step 3: Fetching slides for chapter:", chapterId);
-    console.log("[CourseStructureDetails] ChapterId type:", typeof chapterId);
-    console.log("[CourseStructureDetails] ChapterId is null?", chapterId === null);
-    console.log("[CourseStructureDetails] ChapterId is undefined?", chapterId === undefined);
-    
     if (!chapterId || chapterId === null || chapterId === undefined) {
-      console.error("[CourseStructureDetails] ChapterId is null/undefined, cannot fetch slides");
       return [];
     }
-    
+
     try {
       const baseUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_BASE_URL || "https://backend-stage.vacademy.io";
       const url = `${baseUrl}/admin-core-service/open/v1/learner-study-library/slides?chapterId=${chapterId}`;
-      console.log("[CourseStructureDetails] Slides API URL:", url);
       
       const response = await fetch(url, {
         method: 'GET',
@@ -231,9 +197,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
       }
       
       const slides = await response.json();
-      console.log("[CourseStructureDetails] Slides received for chapter", chapterId, ":", slides);
-      console.log("[CourseStructureDetails] Slides count:", slides?.length);
-      
+
       return slides || [];
     } catch (error) {
       console.error("[CourseStructureDetails] Error fetching slides for chapter", chapterId, ":", error);
@@ -247,10 +211,8 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
     if (slidesMap[chapterId]) return;
 
     try {
-      console.log("[CourseStructureDetails] Step 4: Fetching slides for chapter:", chapterId);
       const baseUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_BASE_URL || "https://backend-stage.vacademy.io";
       const slidesUrl = `${baseUrl}/admin-core-service/open/v1/learner-study-library/slides?chapterId=${chapterId}`;
-      console.log("[CourseStructureDetails] Slides API URL:", slidesUrl);
       const response = await fetch(slidesUrl, {
         method: 'GET',
         headers: {
@@ -263,9 +225,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
       }
       
       const slides = await response.json();
-      console.log("[CourseStructureDetails] Slides received for chapter", chapterId, ":", slides);
-      console.log("[CourseStructureDetails] Slides count for chapter", chapterId, ":", slides?.length);
-      
+
       const filteredSlides = Array.isArray(slides) ? slides : [];
       setSlidesMap((prev) => ({ ...prev, [chapterId]: filteredSlides }));
     } catch (err) {
@@ -280,22 +240,15 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
 
       try {
         setIsLoading(true);
-        console.log("[CourseStructureDetails] Starting data load for course depth:", courseDepth);
 
         // Step 1: Fetch subjects from init-details API
         const subjectsData = await fetchSubjectsFromInitDetails();
-        console.log("[CourseStructureDetails] Subjects data loaded");
-        console.log("[CourseStructureDetails] Raw subjects data:", JSON.stringify(subjectsData, null, 2));
 
         // Transform subjects data to SubjectType format
         const subjects: SubjectType[] = [];
         
         if (Array.isArray(subjectsData)) {
-          console.log("[CourseStructureDetails] Processing subjects array with", subjectsData.length, "subjects");
-          
           subjectsData.forEach((subject: any, index: number) => {
-            console.log(`[CourseStructureDetails] Processing subject ${index}:`, subject);
-            
             if (subject.id) {
               const transformedSubject: SubjectType = {
                 id: subject.id,
@@ -304,52 +257,30 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                 description: subject.description || '',
               };
               subjects.push(transformedSubject);
-              console.log("[CourseStructureDetails] Added subject:", subject.id, subject.subject_name);
             }
           });
-        } else {
-          console.log("[CourseStructureDetails] Subjects data is not an array");
         }
-        
-        console.log("[CourseStructureDetails] Subjects extracted:", subjects.length);
-        console.log("[CourseStructureDetails] Subjects:", subjects);
         setStudyLibraryData(subjects);
 
         // Step 2: Fetch modules for each subject
         const modulesMap: SubjectModulesMap = {};
         
         if (subjects.length === 0) {
-          console.log("[CourseStructureDetails] No subjects found! This means the API calls will not proceed.");
-          console.log("[CourseStructureDetails] This could be because:");
-          console.log("1. CourseId not found in API response");
-          console.log("2. PackageSessionId not found in the course sessions");
-          console.log("3. No subjects in the session levels");
+          // No subjects found - API calls will not proceed
         } else {
-          console.log("[CourseStructureDetails] Processing", subjects.length, "subjects");
           for (const subject of subjects) {
-            console.log("[CourseStructureDetails] Fetching modules for subject:", subject.id);
             const modules = await fetchModules(subject.id);
             
             // Step 3: Process modules and fetch slides for each chapter
             const modulesWithChapters: ModuleWithChapters[] = [];
             for (const moduleItem of modules) {
-              console.log("[CourseStructureDetails] Processing module item:", moduleItem);
-              console.log("[CourseStructureDetails] Module item keys:", Object.keys(moduleItem || {}));
-              console.log("[CourseStructureDetails] Module item.module:", moduleItem.module);
-              console.log("[CourseStructureDetails] Module item.chapters:", moduleItem.chapters);
-              
               // The API response has structure: { module: {...}, chapters: [...] }
               const moduleData = moduleItem.module;
               const chapters = moduleItem.chapters || [];
-              
-              console.log("[CourseStructureDetails] Module data:", moduleData);
-              console.log("[CourseStructureDetails] Module name:", moduleData?.module_name);
-              console.log("[CourseStructureDetails] Chapters from module:", chapters.length);
-              
+
               // Fetch slides for each chapter
               const chaptersWithSlides = [];
               for (const chapter of chapters) {
-                console.log("[CourseStructureDetails] Processing chapter:", chapter.id, chapter.chapter_name);
                 const slides = await fetchSlidesForChapter(chapter.id);
                 
                 chaptersWithSlides.push({
@@ -399,63 +330,43 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
         // Step 3: Set up open states based on course depth
         if (courseDepth === 2) {
           // Depth 2: Only show slides - preload ALL slides immediately
-          console.log("[CourseStructureDetails] Depth 2: Preloading all slides");
           const newSlidesMap: Record<string, Slide[]> = {};
           const slideLoadPromises: Promise<void>[] = [];
-          
+
           Object.values(modulesMap).forEach((modules) => {
             modules.forEach((mod) => {
               mod.chapters.forEach((ch) => {
-                console.log(`[CourseStructureDetails] Depth 2: Fetching slides for chapter ${ch.id}`);
                 // Fetch slides directly and store in newSlidesMap
                 const slidePromise = fetchSlidesForChapter(ch.id).then((slides) => {
                   newSlidesMap[ch.id] = slides;
-                  console.log(`[CourseStructureDetails] Depth 2: Loaded ${slides.length} slides for chapter ${ch.id}`);
                 });
                 slideLoadPromises.push(slidePromise);
               });
             });
           });
-          
+
           // Wait for all slides to load before updating state
           await Promise.all(slideLoadPromises);
-          console.log("[CourseStructureDetails] Depth 2: All slides loaded");
-          console.log("[CourseStructureDetails] Depth 2: newSlidesMap keys:", Object.keys(newSlidesMap));
-          console.log("[CourseStructureDetails] Depth 2: newSlidesMap data:", newSlidesMap);
           setSlidesMap(newSlidesMap);
-          console.log("[CourseStructureDetails] Depth 2: State updated");
         } else if (courseDepth === 3) {
           // Depth 3: Show chapters and slides - preload slides same as depth 2
-          console.log("[CourseStructureDetails] Depth 3: Preloading all slides");
           const newSlidesMap: Record<string, Slide[]> = {};
           const slideLoadPromises: Promise<void>[] = [];
-          
+
           Object.values(modulesMap).forEach((modules) => {
             modules.forEach((mod) => {
               mod.chapters.forEach((ch) => {
-                console.log(`[CourseStructureDetails] Depth 3: Fetching slides for chapter ${ch.id}`);
                 const slidePromise = fetchSlidesForChapter(ch.id).then((slides) => {
                   newSlidesMap[ch.id] = slides;
-                  console.log(`[CourseStructureDetails] Depth 3: Loaded ${slides.length} slides for chapter ${ch.id}`);
                 });
                 slideLoadPromises.push(slidePromise);
               });
             });
           });
-          
-          await Promise.all(slideLoadPromises);
-          console.log("[CourseStructureDetails] Depth 3: All slides loaded, updating state");
-          setSlidesMap(newSlidesMap);
-        } else if (courseDepth === 4) {
-          // Depth 4: Show modules, chapters, slides
-          console.log("[CourseStructureDetails] Depth 4: Will show modules, chapters, slides (collapsed by default)");
-        } else if (courseDepth === 5) {
-          // Depth 5: Show everything - subjects, modules, chapters, slides
-          console.log("[CourseStructureDetails] Depth 5: Will show full hierarchy (collapsed by default)");
-          // Keep everything collapsed by default - users can expand as needed
-        }
 
-        console.log("[CourseStructureDetails] Data loading completed successfully");
+          await Promise.all(slideLoadPromises);
+          setSlidesMap(newSlidesMap);
+        }
       } catch (error) {
         console.error("[CourseStructureDetails] Error loading data:", error);
       } finally {
@@ -543,7 +454,6 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
     const filteredChapters = chapters.filter(
       (chapter) => !isDefaultName(chapter.chapter_name)
     );
-    console.log(`[CourseStructureDetails] [DEPTH-5] Module has ${chapters.length} chapters, ${filteredChapters.length} after filtering`);
     
     if (filteredChapters.length === 0) {
       return (
@@ -631,13 +541,11 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
 
   const renderModules = (subjectId: string) => {
     const modules = subjectModulesMap[subjectId] || [];
-    console.log(`[CourseStructureDetails] [DEPTH-5] renderModules for subject ${subjectId}:`, modules);
-    
+
     // Depth 5: Filter out "default" modules
     const filteredModules = modules.filter(
       (moduleWithChapters) => !isDefaultName(moduleWithChapters.module?.module_name)
     );
-    console.log(`[CourseStructureDetails] [DEPTH-5] Subject has ${modules.length} modules, ${filteredModules.length} after filtering`);
     
     if (filteredModules.length === 0) return null;
 
@@ -682,20 +590,11 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
   // Render slides only for depth 2 (skip "default" chapters - show slides directly)
   const renderSlidesForDepth2 = () => {
     const result: JSX.Element[] = [];
-    
-    console.log("[CourseStructureDetails] [DEPTH-2] renderSlidesForDepth2 - START");
-    console.log("[CourseStructureDetails] [DEPTH-2] subjectModulesMap keys:", Object.keys(subjectModulesMap));
-    console.log("[CourseStructureDetails] [DEPTH-2] slidesMap keys:", Object.keys(slidesMap));
-    console.log("[CourseStructureDetails] [DEPTH-2] slidesMap full data:", slidesMap);
-    
+
     Object.values(subjectModulesMap).forEach((modules, subjectIndex) => {
-      console.log(`[CourseStructureDetails] [DEPTH-2] Subject ${subjectIndex}:`, modules.length, "modules");
       modules.forEach((moduleWithChapters, moduleIndex) => {
-        console.log(`[CourseStructureDetails] [DEPTH-2] Module ${moduleIndex}:`, moduleWithChapters.chapters.length, "chapters");
-        
         moduleWithChapters.chapters.forEach((chapter, chapterIndex) => {
           const isChapterDefault = isDefaultName(chapter.chapter_name);
-          console.log(`[CourseStructureDetails] [DEPTH-2] Chapter "${chapter.chapter_name}" (ID: ${chapter.id}) - isDefault: ${isChapterDefault}`);
 
           if (!isChapterDefault) {
             // Chapter is not default, show it with slides
@@ -729,8 +628,6 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
           } else {
             // Chapter is "default", render slides directly
             const slides = slidesMap[chapter.id] || [];
-            console.log(`[CourseStructureDetails] [DEPTH-2] Rendering ${slides.length} slides directly for default chapter ${chapter.id}`);
-            console.log(`[CourseStructureDetails] [DEPTH-2] Slides for chapter ${chapter.id}:`, slides);
             
             if (slides.length === 0) {
               console.warn(`[CourseStructureDetails] [DEPTH-2] No slides found in slidesMap for chapter ${chapter.id}, this might be loading issue`);
@@ -777,15 +674,13 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
   // Render all chapters for depth 3 (skip "default" labels, show content directly)
   const renderAllChaptersForDepth3 = () => {
     const result: JSX.Element[] = [];
-    
-    console.log("[CourseStructureDetails] [DEPTH-3] Collecting chapters");
+
     Object.values(subjectModulesMap).forEach((modules) => {
       modules.forEach((moduleWithChapters) => {
         const chapters = moduleWithChapters.chapters || [];
-        
+
         chapters.forEach((chapter, chapterIndex) => {
           const isChapterDefault = isDefaultName(chapter.chapter_name);
-          console.log(`[CourseStructureDetails] [DEPTH-3] Chapter "${chapter.chapter_name}" - isDefault: ${isChapterDefault}`);
 
           if (!isChapterDefault) {
             // Chapter is not default, show it
@@ -819,7 +714,6 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
           } else {
             // Chapter is "default", render slides directly from chapter.slides
             const slides = (chapter as any).slides || [];
-            console.log(`[CourseStructureDetails] [DEPTH-3] Rendering ${slides.length} slides directly for default chapter`);
             
             slides.forEach((slide: Slide, slideIndex: number) => {
               const { Icon, color, label } = getSlideIcon(slide);
@@ -857,13 +751,10 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
   // Render all modules for depth 4 (skip "default" labels, show content directly)
   const renderModulesForDepth4 = () => {
     const result: JSX.Element[] = [];
-    
-    console.log("[CourseStructureDetails] [DEPTH-4] renderModulesForDepth4 - subjectModulesMap:", subjectModulesMap);
-    
+
     Object.values(subjectModulesMap).forEach((modules) => {
       modules.forEach((moduleWithChapters, moduleIndex) => {
         const isModuleDefault = isDefaultName(moduleWithChapters.module?.module_name);
-        console.log(`[CourseStructureDetails] [DEPTH-4] Module "${moduleWithChapters.module?.module_name}" - isDefault: ${isModuleDefault}`);
 
         if (!isModuleDefault) {
           // Module is not default, show it with chapters
@@ -947,7 +838,6 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
           const chapters = moduleWithChapters.chapters || [];
           chapters.forEach((chapter, chapterIndex) => {
             const isChapterDefault = isDefaultName(chapter.chapter_name);
-            console.log(`[CourseStructureDetails] [DEPTH-4] Chapter "${chapter.chapter_name}" - isDefault: ${isChapterDefault}`);
 
             if (!isChapterDefault) {
               // Chapter is not default, show it
@@ -981,7 +871,6 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
             } else {
               // Chapter is "default", render slides directly from chapter.slides
               const slides = (chapter as any).slides || [];
-              console.log(`[CourseStructureDetails] [DEPTH-4] Rendering ${slides.length} slides directly for default chapter`);
               
               slides.forEach((slide: Slide, slideIndex: number) => {
                 const { Icon, color, label } = getSlideIcon(slide);
@@ -1019,17 +908,11 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
 
   // Render all subjects for depth 5 (skip "default" labels, show content directly)
   const renderSubjectsForDepth5 = () => {
-    console.log("[CourseStructureDetails] [DEPTH-5] Rendering subjects for depth 5 - studyLibraryData:", studyLibraryData);
-    console.log("[CourseStructureDetails] [DEPTH-5] Subjects count:", studyLibraryData.length);
-    console.log("[CourseStructureDetails] [DEPTH-5] Subject names:", studyLibraryData.map(s => s.subject_name));
-    
     const result: JSX.Element[] = [];
 
     studyLibraryData.forEach((subject, subjectIndex) => {
       const modules = subjectModulesMap[subject.id] || [];
       const isSubjectDefault = isDefaultName(subject.subject_name);
-      
-      console.log(`[CourseStructureDetails] [DEPTH-5] Subject "${subject.subject_name}" - isDefault: ${isSubjectDefault}, modules: ${modules.length}`);
 
       // If subject is not default, show it with its modules
       if (!isSubjectDefault) {
@@ -1067,7 +950,6 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
         // Subject is "default", so render modules directly without subject wrapper
         modules.forEach((moduleWithChapters, moduleIndex) => {
           const isModuleDefault = isDefaultName(moduleWithChapters.module?.module_name);
-          console.log(`[CourseStructureDetails] [DEPTH-5] Module "${moduleWithChapters.module?.module_name}" - isDefault: ${isModuleDefault}`);
 
           if (!isModuleDefault) {
             // Module is not default, show it
@@ -1108,7 +990,6 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
             const chapters = moduleWithChapters.chapters || [];
             chapters.forEach((chapter, chapterIndex) => {
               const isChapterDefault = isDefaultName(chapter.chapter_name);
-              console.log(`[CourseStructureDetails] [DEPTH-5] Chapter "${chapter.chapter_name}" - isDefault: ${isChapterDefault}`);
 
               if (!isChapterDefault) {
                 // Chapter is not default, show it
@@ -1142,8 +1023,6 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
               } else {
                 // Chapter is "default", render slides directly from chapter.slides
                 const slides = (chapter as any).slides || [];
-                console.log(`[CourseStructureDetails] [DEPTH-5] Rendering ${slides.length} slides directly for default chapter`);
-                console.log(`[CourseStructureDetails] [DEPTH-5] Chapter object:`, chapter);
                 
                 slides.forEach((slide: Slide, slideIndex: number) => {
                   const { Icon, color, label } = getSlideIcon(slide);

@@ -31,20 +31,9 @@ function RouteComponent() {
     return <CourseSubPage tagName={tagName} page={courseId} instituteId={domainRouting.instituteId || ''} instituteThemeCode={domainRouting.instituteThemeCode} />;
   }
 
-  // Debug logging to track domain routing
-  useEffect(() => {
-    console.log("[Course Details] Domain routing state:", {
-      isLoading: domainRouting.isLoading,
-      instituteId: domainRouting.instituteId,
-      instituteName: domainRouting.instituteName,
-      instituteThemeCode: domainRouting.instituteThemeCode,
-      error: domainRouting.error,
-    });
-  }, [domainRouting]);
 
   // Show loading while domain routing is resolving
   if (domainRouting.isLoading) {
-    console.log("[Course Details] Domain routing in progress...");
     return <DashboardLoader />;
   }
 
@@ -77,12 +66,6 @@ function RouteComponent() {
     return <RootNotFoundComponent />;
   }
 
-  console.log("[Course Details] Rendering course details for:", {
-    courseId,
-    tagName,
-    instituteId: domainRouting.instituteId,
-    instituteThemeCode: domainRouting.instituteThemeCode,
-  });
 
   return (
     <CourseDetailsPage

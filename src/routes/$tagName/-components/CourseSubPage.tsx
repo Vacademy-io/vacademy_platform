@@ -24,12 +24,6 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
   instituteId,
   instituteThemeCode,
 }) => {
-  console.log("[CourseSubPage] Component mounted with props:", {
-    tagName,
-    page,
-    instituteId,
-    instituteThemeCode
-  });
 
   const navigate = useNavigate();
   const domainRouting = useDomainRouting();
@@ -55,12 +49,9 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
 
         // If user is authenticated, redirect to login page
         if (hasToken && hasStudentDetails && hasInstituteDetails) {
-          console.log("[CourseSubPage] User is authenticated, redirecting to login");
           navigate({ to: "/login" });
           return;
         }
-
-        console.log("[CourseSubPage] User is not authenticated, showing catalogue");
       } catch (error) {
         console.error("[CourseSubPage] Error checking authentication:", error);
       } finally {
@@ -84,23 +75,13 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
         const introPageSeenKey = `introPageSeen_${instituteId}_${tagName}`;
         const hasSeenIntroPage = localStorage.getItem(introPageSeenKey) === 'true';
 
-        console.log("Checking intro page and lead collection:", {
-          introPageEnabled: data.introPage?.enabled,
-          leadCollectionEnabled: data.globalSettings.leadCollection.enabled,
-          hasSeenIntroPage,
-          introPageSeenKey
-        });
-
         if (data.introPage?.enabled && !hasSeenIntroPage) {
-          console.log("Setting showIntroPage to true - first time visit or cache cleared");
           setShowIntroPage(true);
         } else if (data.introPage?.enabled && hasSeenIntroPage) {
-          console.log("Intro page already seen, skipping intro page");
           // Mark intro as completed since user has already seen it
           setIntroCompleted(true);
         } else if (data.globalSettings.leadCollection.enabled) {
           // Only show lead collection if no intro page or intro already seen
-          console.log("Setting showLeadCollection to true (no intro page or intro already seen)");
           setShowLeadCollection(true);
         }
       } catch (err) {
@@ -130,32 +111,26 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
   // Listen for custom event to open lead collection
   useEffect(() => {
     const handleOpenLeadCollection = () => {
-      console.log("[CourseSubPage] Received openLeadCollection event");
       setShowLeadCollection(true);
     };
 
-    console.log("[CourseSubPage] Adding openLeadCollection event listener");
     window.addEventListener('openLeadCollection', handleOpenLeadCollection);
 
     return () => {
-      console.log("[CourseSubPage] Removing openLeadCollection event listener");
       window.removeEventListener('openLeadCollection', handleOpenLeadCollection);
     };
   }, []);
 
   // Handle lead collection modal
   const handleLeadCollectionClose = () => {
-    console.log("[CourseSubPage] Closing lead collection modal");
     if (catalogueData?.globalSettings.leadCollection.mandatory) {
       // If mandatory, don't allow closing
-      console.log("[CourseSubPage] Lead collection is mandatory, not allowing close");
       return;
     }
     setShowLeadCollection(false);
   };
 
   const handleLeadCollectionSubmit = () => {
-    console.log("[CourseSubPage] Lead collection form submitted");
     setShowLeadCollection(false);
   };
 
@@ -177,7 +152,6 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
     // Mark intro page as seen in localStorage
     const introPageSeenKey = `introPageSeen_${instituteId}_${tagName}`;
     localStorage.setItem(introPageSeenKey, 'true');
-    console.log(`[CourseSubPage] Marked intro page as seen: ${introPageSeenKey}`);
 
     // Show lead collection if enabled and not already shown
     if (catalogueData?.globalSettings.leadCollection.enabled && !showLeadCollection) {
@@ -192,7 +166,6 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
     // Mark intro page as seen in localStorage even when closed
     const introPageSeenKey = `introPageSeen_${instituteId}_${tagName}`;
     localStorage.setItem(introPageSeenKey, 'true');
-    console.log(`[CourseSubPage] Marked intro page as seen (closed): ${introPageSeenKey}`);
   };
 
   if (isLoading || isCheckingAuth) {
@@ -251,17 +224,6 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
     );
   }
 
-  // Debug logging
-  console.log("CourseSubPage render state:", {
-    isLoading,
-    error,
-    showIntroPage,
-    introCompleted,
-    showLeadCollection,
-    catalogueData: !!catalogueData,
-    currentPage: currentPage.id,
-    page
-  });
 
   return (
     <div className="min-h-screen bg-white w-full pb-20 md:pb-0 pt-20 md:pt-0">
@@ -368,7 +330,6 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
             {/* Get Started Button */}
             <button
               onClick={() => {
-                console.log("[CourseSubPage] Mobile Get Started button clicked");
                 setShowLeadCollection(true);
               }}
               className="w-full px-4 py-2 text-white font-medium hover:opacity-90 rounded-md transition-colors"

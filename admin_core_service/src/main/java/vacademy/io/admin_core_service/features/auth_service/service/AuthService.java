@@ -159,4 +159,21 @@ public class AuthService {
         }
     }
 
+    public String sendCredToUsers(List<String>userIds) {
+        try {
+            String endpoint = AuthServiceRoutes.SEND_CRED_TO_USERS;
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                clientName,
+                HttpMethod.POST.name(),
+                authServerBaseUrl,
+                endpoint,
+                userIds);
+
+            return response.getBody();
+        } catch (Exception e) {
+            throw new VacademyException("Failed to generate JWT tokens: " + e.getMessage());
+        }
+    }
+
+
 }

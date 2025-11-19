@@ -27,4 +27,14 @@ public class LearnerPortalAccessController {
             userId);
         return ResponseEntity.ok(response);
     }
+
+    @GetMapping("/send-cred")
+    public ResponseEntity<Boolean> sendLearnerPortalCred(
+        @RequestAttribute("user") CustomUserDetails userDetails,
+        @RequestParam("instituteId") String instituteId,
+        @RequestParam("userId") String userId) {
+        Boolean response = learnerPortalAccessService.sendCredForLMS(instituteId,
+            userId);
+        return ResponseEntity.ok(response);
+    }
 }

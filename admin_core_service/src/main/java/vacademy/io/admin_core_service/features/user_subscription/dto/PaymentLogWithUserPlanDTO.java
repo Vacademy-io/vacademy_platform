@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import vacademy.io.common.auth.dto.UserDTO;
 
 @Data
 @Builder
@@ -16,4 +17,5 @@ public class PaymentLogWithUserPlanDTO {
     private PaymentLogDTO paymentLog;
     private UserPlanDTO userPlan;
     private String currentPaymentStatus;
+    private UserDTO user;
 }

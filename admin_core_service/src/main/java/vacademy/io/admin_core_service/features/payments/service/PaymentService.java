@@ -189,7 +189,8 @@ public class PaymentService {
                 request);
 
         // Process the payment
-        PaymentResponseDTO response = makePayment(
+        PaymentResponseDTO response =
+            makePayment(
                 request.getVendor(),
                 instituteId,
                 userDTO,

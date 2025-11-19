@@ -60,6 +60,9 @@ public class ApplicationSecurityConfig {
             "/auth-service/open/**",
             "/auth-service/v1/server-time/**",
             "/auth-service/wordpress-webhook/**",
+            
+            // OAuth2 callback endpoints (ingress routes /login/oauth2 directly to auth-service)
+            "/login/oauth2/**",
 
             // User Resolution APIs for notification service - OPEN for internal communication
             "/auth-service/v1/users/by-role",
@@ -104,6 +107,9 @@ public class ApplicationSecurityConfig {
                                 .authorizationRequestResolver(
                                         new CustomAuthorizationRequestResolver(clientRegistrationRepository, "/auth-service/oauth2/authorization")
                                 )
+                        )
+                        .redirectionEndpoint(redirection -> redirection
+                                .baseUri("/login/oauth2/code/*")
                         )
                         .successHandler(customOAuth2SuccessHandler)
                 )

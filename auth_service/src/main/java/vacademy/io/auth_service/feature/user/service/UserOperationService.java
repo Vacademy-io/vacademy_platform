@@ -47,6 +47,19 @@ public class UserOperationService {
         return sendUserPasswords(users, userDetails.getUserId());
     }
 
+    public String sendUserPasswords(List<String> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return "Invalid input: userIds or userDetails is missing";
+        }
+
+        List<User> users = userRepository.findUserDetailsByIds(userIds);
+        if (users == null || users.isEmpty()) {
+            return "No valid users found";
+        }
+
+        return sendUserPasswords(users,"auth-service");
+    }
+
     public String sendUserPasswords(List<User> users, String sourceId) {
         if (users == null || users.isEmpty() || sourceId == null || sourceId.isBlank()) {
             return "Invalid data for sending passwords";
@@ -100,7 +113,7 @@ public class UserOperationService {
         if (user.getRoles() != null && !user.getRoles().isEmpty()) {
             instituteId = user.getRoles().iterator().next().getInstituteId();
         }
-        
+
         String emailBody = NotificationEmailBody.sendUpdatedUserPasswords(
                 "auth-service", user.getFullName(), user.getUsername(), user.getPassword());
 

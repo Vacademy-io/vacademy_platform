@@ -58,6 +58,7 @@ public class LearnerPortalAccessService {
                 .redirectUrl(response.get("adminLoginUrl").toString())
                 .build();
            }
+           throw new VacademyException("User not foud on Learndash LMS");
         }
 
 
@@ -114,5 +115,24 @@ public class LearnerPortalAccessService {
         } else {
             return "https://" + subdomain + "." + domain;
         }
+    }
+
+    public Boolean sendCredForLMS(String instituteId, String userId) {
+        Institute institute = instituteRepository.findById(instituteId)
+            .orElseThrow(() -> new VacademyException("Institute not found"));
+
+        String activeLms = determineActiveLms(institute);
+        UserDTO userDTO = authService.getUsersFromAuthServiceByUserIds(List.of(userId)).get(0);
+        if (activeLms.equalsIgnoreCase(LmsSourcesEnum.LEARNDASH.name())){
+            Map<String,Object>response =  workflowTriggerService.handleTriggerEvents(WorkflowTriggerEvent.SEND_LEARNER_CREDENTIALS.name(),LmsSourcesEnum.LEARNDASH.name(),instituteId, Map.of("user",userDTO));
+            if (response.get("credSent") != null && response.get("credSent") instanceof Boolean && (Boolean) response.get("credSent")){
+                return true;
+            }
+            return false;
+        }
+
+
+        authService.sendCredToUsers(List.of(userId));
+        return true;
     }
 }

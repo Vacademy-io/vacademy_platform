@@ -7,6 +7,7 @@ public enum CampaignStatusEnum {
     ACTIVE,      // Campaign is active and accepting leads
     PAUSED,      // Campaign is temporarily paused
     COMPLETED,   // Campaign has ended successfully
-    ARCHIVED     // Campaign has been archived/deleted
+    ARCHIVED ,    // Campaign has been archived/deleted
+    DELETED
 }
 

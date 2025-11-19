@@ -71,7 +71,7 @@ public class AudienceController {
             @PathVariable String audienceId) {
 
         audienceService.deleteCampaign(audienceId, instituteId);
-        return ResponseEntity.ok("Campaign archived successfully");
+        return ResponseEntity.ok("Campaign deleted successfully");
     }
 
     @PostMapping("/leads")

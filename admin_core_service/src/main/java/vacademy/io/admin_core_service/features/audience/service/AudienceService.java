@@ -14,6 +14,7 @@ import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.audience.dto.*;
 import vacademy.io.admin_core_service.features.audience.entity.Audience;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
+import vacademy.io.admin_core_service.features.audience.enums.CampaignStatusEnum;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -529,10 +530,10 @@ public class AudienceService {
         Audience audience = audienceRepository.findByIdAndInstituteId(audienceId, instituteId)
                 .orElseThrow(() -> new VacademyException("Audience not found"));
 
-        audience.setStatus("ARCHIVED");
+        audience.setStatus(CampaignStatusEnum.DELETED.name());
         audienceRepository.save(audience);
 
-        logger.info("Archived audience: {}", audienceId);
+        logger.info("Deleted audience: {}", audienceId);
     }
 
 

@@ -5,6 +5,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowEngineService;
+import vacademy.io.common.auth.dto.UserDTO;
 
 import java.util.Map;
 
@@ -16,6 +17,12 @@ public class TestController {
 
     @GetMapping
     public void test(){
-        workflowEngineService.run("wf_paid_morning_001", Map.of());
+        workflowEngineService.run("wf_send_creds_v1", Map.of("user",getUser()));
+    }
+
+    public UserDTO getUser(){
+        UserDTO userDTO = new UserDTO();
+        userDTO.setEmail("punit@vidyayatan.com");
+        return userDTO;
     }
 }

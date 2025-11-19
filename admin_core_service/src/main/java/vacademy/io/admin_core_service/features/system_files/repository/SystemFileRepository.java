@@ -9,10 +9,15 @@ import java.util.Optional;
 
 @Repository
 public interface SystemFileRepository extends JpaRepository<SystemFile, String> {
-
-        List<SystemFile> findByInstituteIdAndStatus(String instituteId, String status);
-
-        Optional<SystemFile> findByIdAndStatus(String id, String status);
-
-        Optional<SystemFile> findByIdAndInstituteId(String id, String instituteId);
+    
+    List<SystemFile> findByInstituteIdAndStatus(String instituteId, String status);
+    
+    Optional<SystemFile> findByIdAndStatus(String id, String status);
+    
+    Optional<SystemFile> findByIdAndInstituteId(String id, String instituteId);
+    
+    List<SystemFile> findByCreatedByUserIdAndInstituteIdAndStatusIn(
+            String createdByUserId, 
+            String instituteId, 
+            List<String> statuses);
 }

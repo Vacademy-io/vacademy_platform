@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.system_files.dto.SystemFileListRe
 import vacademy.io.admin_core_service.features.system_files.dto.SystemFileRequestDTO;
 import vacademy.io.admin_core_service.features.system_files.dto.SystemFileUpdateAccessRequestDTO;
 import vacademy.io.admin_core_service.features.system_files.dto.SystemFileUpdateAccessResponseDTO;
+import vacademy.io.admin_core_service.features.system_files.dto.MyFilesRequestDTO;
 import vacademy.io.admin_core_service.features.system_files.service.SystemFileService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -79,6 +80,20 @@ public class SystemFileController {
 
                 SystemFileUpdateAccessResponseDTO response = systemFileService.updateSystemFileAccess(request,
                                 instituteId, user);
+
+                return ResponseEntity.ok(response);
+        }
+
+        @GetMapping("/my-files")
+        public ResponseEntity<SystemFileListResponseDTO> getMyFiles(
+                        @Valid @RequestBody MyFilesRequestDTO request,
+                        @RequestParam String instituteId,
+                        @RequestAttribute("user") CustomUserDetails user) {
+
+                log.info("GET /admin-core-service/system-files/v1/my-files - User: {}, Institute: {}, Roles: {}",
+                                user.getUserId(), instituteId, request.getUserRoles());
+
+                SystemFileListResponseDTO response = systemFileService.getMyFiles(request, instituteId, user);
 
                 return ResponseEntity.ok(response);
         }

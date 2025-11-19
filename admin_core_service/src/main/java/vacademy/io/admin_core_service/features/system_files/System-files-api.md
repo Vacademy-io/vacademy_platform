@@ -10,8 +10,9 @@ The System Files API provides a comprehensive solution for managing files with f
 
 1. [Add System File](#1-add-system-file)
 2. [List System Files by Access](#2-list-system-files-by-access)
-3. [Get File Access Details](#3-get-file-access-details)
-4. [Update File Access](#4-update-file-access)
+3. [Get My Files](#3-get-my-files)
+4. [Get File Access Details](#4-get-file-access-details)
+5. [Update File Access](#5-update-file-access)
 
 ---
 
@@ -237,7 +238,161 @@ curl -X GET "http://localhost:8080/admin-core-service/system-files/v1/list?insti
 
 ---
 
-## 3. Get File Access Details
+## 3. Get My Files
+
+### Endpoint
+
+```
+GET /admin-core-service/system-files/v1/my-files?instituteId={instituteId}
+```
+
+### Description
+
+Retrieves ALL files that the authenticated user has access to through any method: direct user access, role-based access, batch membership, institute-level access, or files they created. This is the recommended endpoint for displaying "My Files" or "My Library" in the UI.
+
+### Query Parameters
+
+| Parameter     | Type     | Required | Description                |
+| ------------- | -------- | -------- | -------------------------- |
+| `instituteId` | `string` | ✅       | Institute ID for filtering |
+
+### Request Payload
+
+| Field         | Type       | Required | Description                                                     |
+| ------------- | ---------- | -------- | --------------------------------------------------------------- |
+| `user_roles`  | `string[]` | ❌       | User's roles for role-based access (e.g., ["ADMIN", "TEACHER"]) |
+| `access_type` | `string`   | ❌       | Filter by access type: `view` or `edit` (omit for both)         |
+| `statuses`    | `string[]` | ❌       | Filter by file status (defaults to ["ACTIVE"] if not provided)  |
+
+### Sample Request
+
+```json
+{
+  "user_roles": ["ADMIN", "TEACHER"],
+  "access_type": "view",
+  "statuses": ["ACTIVE", "ARCHIVED"]
+}
+```
+
+### Response
+
+```json
+{
+  "files": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "file_type": "File",
+      "media_type": "video",
+      "data": "https://example.com/videos/intro.mp4",
+      "name": "Introduction Video",
+      "folder_name": "course-materials",
+      "thumbnail_file_id": "thumb-uuid-123",
+      "created_at_iso": "2025-11-19T10:30:00.000Z",
+      "updated_at_iso": "2025-11-19T10:30:00.000Z",
+      "created_by": "John Doe",
+      "access_types": ["view", "edit"]
+    },
+    {
+      "id": "660e8400-e29b-41d4-a716-446655440001",
+      "file_type": "Url",
+      "media_type": "pdf",
+      "data": "https://example.com/docs/guide.pdf",
+      "name": "Course Guide",
+      "folder_name": "course-materials",
+      "thumbnail_file_id": null,
+      "created_at_iso": "2025-11-19T11:00:00.000Z",
+      "updated_at_iso": "2025-11-19T11:00:00.000Z",
+      "created_by": "Jane Smith",
+      "access_types": ["view"]
+    }
+  ]
+}
+```
+
+### Access Resolution Logic
+
+The API automatically includes files where user has access through:
+
+1. **Direct User Access** - Files explicitly shared with the user (`level=user, level_id=userId`)
+2. **Role-Based Access** - Files shared with any of the user's roles (`level=role, level_id in userRoles`)
+3. **Batch Access** - Files shared with any batch the user belongs to (via `student_session_institute_group_mapping`)
+4. **Institute Access** - Files shared with the entire institute (`level=institute, level_id=instituteId`)
+5. **Creator Access** - Files created by the user (automatic view + edit access)
+
+### Filtering Behavior
+
+#### Status Filter
+
+- **Default:** Returns only `ACTIVE` files if `statuses` is not provided
+- **Custom:** Provide array of statuses to include: `["ACTIVE", "ARCHIVED"]` or `["DELETED"]`
+- **All statuses:** Provide `["ACTIVE", "DELETED", "ARCHIVED"]`
+
+#### Access Type Filter
+
+- **Null/Empty:** Returns files with any access type (view OR edit)
+- **"view":** Only files user can view
+- **"edit":** Only files user can edit
+
+#### User Roles
+
+- **Optional:** If not provided, skips role-based access checks
+- **Provided:** Checks if any of the provided roles have access to files
+- **Format:** Array of role names (e.g., `["ADMIN", "TEACHER", "COORDINATOR"]`)
+
+### Example Use Cases
+
+#### Get all active files I can access
+
+```json
+{
+  "user_roles": ["TEACHER"]
+}
+```
+
+#### Get only files I can edit (including archived)
+
+```json
+{
+  "user_roles": ["ADMIN"],
+  "access_type": "edit",
+  "statuses": ["ACTIVE", "ARCHIVED"]
+}
+```
+
+#### Get only my created files
+
+```json
+{
+  "statuses": ["ACTIVE"]
+}
+```
+
+(Will include files created by user plus any files explicitly shared)
+
+### Curl Example
+
+```bash
+curl -X GET "http://localhost:8080/admin-core-service/system-files/v1/my-files?instituteId=inst-123" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{
+    "user_roles": ["ADMIN", "TEACHER"],
+    "access_type": "view",
+    "statuses": ["ACTIVE"]
+  }'
+```
+
+### Performance Notes
+
+- User batches are fetched from `student_session_institute_group_mapping` table
+- Multiple access paths are combined (OR logic)
+- Files are deduplicated automatically
+- Creator names resolved from auth service (cached)
+- Uses indexed queries on `entity_access` table
+
+---
+
+## 4. Get File Access Details
 
 ### Endpoint
 
@@ -352,7 +507,7 @@ curl -X GET "http://localhost:8080/admin-core-service/system-files/v1/access?sys
 
 ---
 
-## 4. Update File Access
+## 5. Update File Access
 
 ### Endpoint
 

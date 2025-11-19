@@ -475,19 +475,9 @@ public class SystemFileService {
 
         private List<String> getUserBatchIds(String userId, String instituteId) {
                 try {
-                        // Query to get all package_session_ids (batch_ids) for the user in the
-                        // institute
-                        List<vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping> mappings = studentSessionInstituteGroupMappingRepository
-                                        .findAll();
-
-                        return mappings.stream()
-                                        .filter(m -> m.getUserId() != null && m.getUserId().equals(userId))
-                                        .filter(m -> m.getInstitute() != null
-                                                        && m.getInstitute().getId().equals(instituteId))
-                                        .filter(m -> m.getPackageSession() != null)
-                                        .map(m -> m.getPackageSession().getId())
-                                        .distinct()
-                                        .collect(Collectors.toList());
+                        // Optimized query to get package_session_ids directly from database
+                        return studentSessionInstituteGroupMappingRepository
+                                        .findPackageSessionIdsByUserIdAndInstituteId(userId, instituteId);
                 } catch (Exception e) {
                         log.error("Error fetching user's batch IDs: {}", e.getMessage());
                         return new ArrayList<>();
@@ -501,5 +491,167 @@ public class SystemFileService {
                         throw new IllegalArgumentException("Invalid status: " + status +
                                         ". Must be one of: ACTIVE, DELETED, ARCHIVED");
                 }
+        }
+
+        @Transactional(readOnly = true)
+        public SystemFileListResponseDTO getMyFiles(MyFilesRequestDTO request, String instituteId,
+                        CustomUserDetails user) {
+                String userId = user.getUserId();
+                log.info("Getting my files for user: {} in institute: {}, roles: {}, accessType: {}, statuses: {}",
+                                userId, instituteId, request.getUserRoles(), request.getAccessType(),
+                                request.getStatuses());
+
+                // 1. Determine statuses to filter by (default to ACTIVE only)
+                List<String> statuses = request.getStatuses();
+                if (statuses == null || statuses.isEmpty()) {
+                        statuses = List.of(StatusEnum.ACTIVE.name());
+                } else {
+                        // Validate each status
+                        for (String status : statuses) {
+                                validateStatus(status);
+                        }
+                }
+
+                // 2. Validate access type if provided
+                if (request.getAccessType() != null && !request.getAccessType().trim().isEmpty()) {
+                        validateAccessType(request.getAccessType());
+                }
+
+                // 3. Collect all entity_access records where user has access
+                List<EntityAccess> allAccessRecords = new ArrayList<>();
+
+                // 3a. Direct user-level access
+                List<EntityAccess> userAccess = entityAccessRepository.findByEntityAndLevelAndLevelId(
+                                "system_file", AccessLevelEnum.user.name(), userId);
+                allAccessRecords.addAll(userAccess);
+                log.info("Found {} user-level access records", userAccess.size());
+
+                // 3b. Role-based access (if roles provided)
+                if (request.getUserRoles() != null && !request.getUserRoles().isEmpty()) {
+                        for (String role : request.getUserRoles()) {
+                                List<EntityAccess> roleAccess = entityAccessRepository
+                                                .findByEntityAndLevelAndLevelId(
+                                                                "system_file", AccessLevelEnum.role.name(), role);
+                                allAccessRecords.addAll(roleAccess);
+                        }
+                        log.info("Found {} role-based access records", allAccessRecords.size() - userAccess.size());
+                }
+
+                // 3c. Batch-based access
+                List<String> userBatchIds = getUserBatchIds(userId, instituteId);
+                if (!userBatchIds.isEmpty()) {
+                        log.info("User belongs to {} batches", userBatchIds.size());
+                        for (String batchId : userBatchIds) {
+                                List<EntityAccess> batchAccess = entityAccessRepository
+                                                .findByEntityAndLevelAndLevelId(
+                                                                "system_file", AccessLevelEnum.batch.name(), batchId);
+                                allAccessRecords.addAll(batchAccess);
+                        }
+                }
+
+                // 3d. Institute-level access
+                List<EntityAccess> instituteAccess = entityAccessRepository.findByEntityAndLevelAndLevelId(
+                                "system_file", AccessLevelEnum.institute.name(), instituteId);
+                allAccessRecords.addAll(instituteAccess);
+                log.info("Found {} institute-level access records", instituteAccess.size());
+
+                // 4. Filter by access_type if provided
+                if (request.getAccessType() != null && !request.getAccessType().trim().isEmpty()) {
+                        final String accessTypeFilter = request.getAccessType();
+                        allAccessRecords = allAccessRecords.stream()
+                                        .filter(a -> a.getAccessType().equals(accessTypeFilter))
+                                        .collect(Collectors.toList());
+                        log.info("After access_type filter: {} records", allAccessRecords.size());
+                }
+
+                // 5. Group by entity_id and collect access types
+                Map<String, List<String>> entityAccessMap = new HashMap<>();
+                for (EntityAccess access : allAccessRecords) {
+                        entityAccessMap
+                                        .computeIfAbsent(access.getEntityId(), k -> new ArrayList<>())
+                                        .add(access.getAccessType());
+                }
+
+                // 6. Get unique file IDs from access records
+                List<String> fileIds = new ArrayList<>(entityAccessMap.keySet());
+
+                // 7. Also include files created by user
+                List<SystemFile> createdFiles = systemFileRepository
+                                .findByCreatedByUserIdAndInstituteIdAndStatusIn(userId, instituteId, statuses);
+                log.info("User created {} files", createdFiles.size());
+
+                for (SystemFile file : createdFiles) {
+                        if (!entityAccessMap.containsKey(file.getId())) {
+                                fileIds.add(file.getId());
+                                // Creator has both view and edit access
+                                entityAccessMap.put(file.getId(), List.of(AccessTypeEnum.view.name(),
+                                                AccessTypeEnum.edit.name()));
+                        }
+                }
+
+                if (fileIds.isEmpty()) {
+                        log.info("No files found for user");
+                        return new SystemFileListResponseDTO(new ArrayList<>());
+                }
+
+                // 8. Fetch system files
+                List<SystemFile> systemFiles = systemFileRepository.findAllById(fileIds);
+
+                // 9. Filter by institute and status
+                final List<String> finalStatuses = statuses;
+                List<SystemFile> filteredFiles = systemFiles.stream()
+                                .filter(file -> file.getInstituteId().equals(instituteId))
+                                .filter(file -> finalStatuses.contains(file.getStatus()))
+                                .collect(Collectors.toList());
+
+                // 10. Get unique user IDs from created_by_user_id
+                List<String> userIds = filteredFiles.stream()
+                                .map(SystemFile::getCreatedByUserId)
+                                .distinct()
+                                .collect(Collectors.toList());
+
+                // 11. Fetch user details from auth service
+                Map<String, String> userIdToNameMap = new HashMap<>();
+                if (!userIds.isEmpty()) {
+                        try {
+                                List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(userIds);
+                                userIdToNameMap = users.stream()
+                                                .collect(Collectors.toMap(
+                                                                UserDTO::getId,
+                                                                userDto -> userDto.getFullName() != null
+                                                                                ? userDto.getFullName()
+                                                                                : "Unknown",
+                                                                (existing, replacement) -> existing));
+                        } catch (Exception e) {
+                                log.error("Error fetching user details from auth service: {}", e.getMessage());
+                        }
+                }
+
+                // Final map for use in lambda
+                final Map<String, String> userNameMap = userIdToNameMap;
+
+                // 12. Map to response DTO
+                List<SystemFileItemDTO> fileItems = filteredFiles.stream()
+                                .map(file -> {
+                                        SystemFileItemDTO item = new SystemFileItemDTO();
+                                        item.setId(file.getId());
+                                        item.setFileType(file.getFileType());
+                                        item.setMediaType(file.getMediaType());
+                                        item.setData(file.getData());
+                                        item.setName(file.getName());
+                                        item.setFolderName(file.getFolderName());
+                                        item.setThumbnailFileId(file.getThumbnailFileId());
+                                        item.setCreatedAtIso(file.getCreatedAt());
+                                        item.setUpdatedAtIso(file.getUpdatedAt());
+                                        item.setCreatedBy(
+                                                        userNameMap.getOrDefault(file.getCreatedByUserId(), "Unknown"));
+                                        item.setAccessTypes(
+                                                        entityAccessMap.getOrDefault(file.getId(), new ArrayList<>()));
+                                        return item;
+                                })
+                                .collect(Collectors.toList());
+
+                log.info("Returning {} files for user", fileItems.size());
+                return new SystemFileListResponseDTO(fileItems);
         }
 }

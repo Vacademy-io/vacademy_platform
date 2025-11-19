@@ -14,13 +14,14 @@ Before deploying, ensure you have:
 
 ## Architecture Overview
 
-The Helm chart deploys 6 microservices:
+The Helm chart deploys 6 microservices and a Redis instance:
 - **admin-core-service** (Port 8072)
 - **auth-service** (Port 8071)
 - **community-service** (Port 8073)
 - **assessment-service** (Port 8074)
 - **media-service** (Port 8075)
 - **notification-service** (Port 8076)
+- **redis-master** (Port 6379, internal only)
 
 All services are exposed through a single NGINX ingress with path-based routing.
 
@@ -60,6 +61,22 @@ Update the ingress configuration for your domain:
 The chart supports different environments through values:
 - `environment.stage`: For staging deployment
 - `environment.prod`: For production deployment
+
+### Redis Configuration
+The chart includes a Redis instance (via Bitnami Redis chart). You can configure it in `values.yaml`:
+```yaml
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: "secure-password" # Optional: set a specific password
+  master:
+    persistence:
+      enabled: true
+      size: 8Gi
+```
+To access Redis from your services, use the host `{{ .Release.Name }}-redis-master` (e.g., `vacademy-services-redis-master`) and port `6379`.
+These are automatically exposed via the `REDIS_HOST` and `REDIS_PORT` environment variables injected into `admin-core-service`.
 
 ### Custom Values
 Create a custom values file to override defaults:

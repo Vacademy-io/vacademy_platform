@@ -24,6 +24,9 @@ spec:
         - name: admin-core-service
           image: "{{ .Values.services.admin_core_service.image.repository }}:{{ .Values.services.admin_core_service.image.tag }}"
           imagePullPolicy: Always
+          envFrom:
+            - configMapRef:
+                name: myconfigmapv1.0
           resources:
             requests:
               cpu: "200m"

@@ -5,10 +5,7 @@ import jakarta.transaction.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
@@ -294,42 +291,20 @@ public class PaymentLogService {
         int pageNo,
         int pageSize) {
 
-        if (filterDTO == null || !StringUtils.hasText(filterDTO.getInstituteId())) {
-            throw new VacademyException("Institute ID is required to fetch payment logs.");
-        }
+        validateFilter(filterDTO);
 
-        Sort sort = ListService.createSortObject(filterDTO.getSortColumns());
-        if (sort.isUnsorted()) {
-            sort = Sort.by(Sort.Direction.DESC, "createdAt");
-        }
-
+        Sort sort = resolveSort(filterDTO);
         Pageable pageable = PageRequest.of(pageNo, pageSize, sort);
 
-        List<String> paymentStatuses = CollectionUtils.isEmpty(filterDTO.getPaymentStatuses())
-            ? Collections.emptyList()
-            : filterDTO.getPaymentStatuses();
+        List<String> paymentStatuses = safeList(filterDTO.getPaymentStatuses());
+        List<String> enrollInviteIds = safeList(filterDTO.getEnrollInviteIds());
+        List<String> packageSessionIds = safeList(filterDTO.getPackageSessionIds());
+        List<String> userPlanStatuses = safeList(filterDTO.getUserPlanStatuses());
 
-        List<String> enrollInviteIds = CollectionUtils.isEmpty(filterDTO.getEnrollInviteIds())
-            ? Collections.emptyList()
-            : filterDTO.getEnrollInviteIds();
+        LocalDateTime startDate = resolveStartDate(filterDTO);
+        LocalDateTime endDate = resolveEndDate(filterDTO);
 
-        List<String> packageSessionIds = CollectionUtils.isEmpty(filterDTO.getPackageSessionIds())
-            ? Collections.emptyList()
-            : filterDTO.getPackageSessionIds();
-
-        List<String> userPlanStatuses = CollectionUtils.isEmpty(filterDTO.getUserPlanStatuses())
-            ? Collections.emptyList()
-            : filterDTO.getUserPlanStatuses();
-
-        LocalDateTime startDate = filterDTO.getStartDateInUtc() != null
-            ? filterDTO.getStartDateInUtc()
-            : LocalDateTime.of(1970, 1, 1, 0, 0);
-
-        LocalDateTime endDate = filterDTO.getEndDateInUtc() != null
-            ? filterDTO.getEndDateInUtc()
-            : LocalDateTime.now();
-
-        Page<PaymentLog> paymentLogIdsPage = paymentLogRepository.findPaymentLogIdsWithFilters(
+        Page<PaymentLog> paymentLogsPage = paymentLogRepository.findPaymentLogIdsWithFilters(
             filterDTO.getInstituteId(),
             startDate,
             endDate,
@@ -337,28 +312,70 @@ public class PaymentLogService {
             userPlanStatuses,
             enrollInviteIds,
             packageSessionIds,
-            pageable);
+            pageable
+        );
 
-        List<PaymentLog> paymentLogs = paymentLogIdsPage.getContent();
+        List<PaymentLog> paymentLogs = paymentLogsPage.getContent();
+        Map<String, UserDTO> userMap = fetchUsers(paymentLogs);
+
+        List<PaymentLogWithUserPlanDTO> content = paymentLogs.stream()
+            .map(pl -> mapEntityToDTO(pl, userMap))
+            .collect(Collectors.toList());
+
+        return new PageImpl<>(content, pageable, paymentLogsPage.getTotalElements());
+    }
+
+
+// -------------------- Helper Methods --------------------
+
+    private void validateFilter(PaymentLogFilterRequestDTO filterDTO) {
+        if (filterDTO == null || !StringUtils.hasText(filterDTO.getInstituteId())) {
+            throw new VacademyException("Institute ID is required to fetch payment logs.");
+        }
+    }
+
+    private Sort resolveSort(PaymentLogFilterRequestDTO filterDTO) {
+        Sort sort = ListService.createSortObject(filterDTO.getSortColumns());
+        return sort.isUnsorted()
+            ? Sort.by(Sort.Direction.DESC, "createdAt")
+            : sort;
+    }
+
+    private List<String> safeList(List<String> list) {
+        return CollectionUtils.isEmpty(list) ? Collections.emptyList() : list;
+    }
+
+    private LocalDateTime resolveStartDate(PaymentLogFilterRequestDTO filterDTO) {
+        return filterDTO.getStartDateInUtc() != null
+            ? filterDTO.getStartDateInUtc()
+            : LocalDateTime.of(1970, 1, 1, 0, 0);
+    }
+
+    private LocalDateTime resolveEndDate(PaymentLogFilterRequestDTO filterDTO) {
+        return filterDTO.getEndDateInUtc() != null
+            ? filterDTO.getEndDateInUtc()
+            : LocalDateTime.now();
+    }
+
+    private Map<String, UserDTO> fetchUsers(List<PaymentLog> paymentLogs) {
         Set<String> userIds = paymentLogs.stream()
             .map(PaymentLog::getUserId)
             .filter(Objects::nonNull)
             .collect(Collectors.toSet());
 
-        Map<String, UserDTO> userMap = new HashMap<>();
-        if (!userIds.isEmpty()) {
-            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(new ArrayList<>(userIds));
-            userMap = users.stream()
-                .collect(Collectors.toMap(UserDTO::getId, user -> user, (existing, replacement) -> existing));
+        if (userIds.isEmpty()) {
+            return Collections.emptyMap();
         }
 
-        final Map<String, UserDTO> finalUserMap = userMap;
+        List<UserDTO> users =
+            authService.getUsersFromAuthServiceByUserIds(new ArrayList<>(userIds));
 
-        List<PaymentLogWithUserPlanDTO> content = paymentLogs.stream()
-            .map(paymentLog -> mapEntityToDTO(paymentLog, finalUserMap))
-            .collect(Collectors.toList());
-
-        return new org.springframework.data.domain.PageImpl<>(content, pageable, paymentLogIdsPage.getTotalElements());
+        return users.stream()
+            .collect(Collectors.toMap(
+                UserDTO::getId,
+                u -> u,
+                (existing, replacement) -> existing
+            ));
     }
 
     private PaymentLogWithUserPlanDTO mapEntityToDTO(PaymentLog paymentLog, Map<String, UserDTO> userMap) {

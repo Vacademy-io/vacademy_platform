@@ -304,7 +304,7 @@ public class InstituteCustomFiledService {
      * Find custom field by field key for a specific institute
      */
     public Optional<CustomFields> findCustomFieldByKeyAndInstitute(String fieldKey, String instituteId) {
-        return customFieldRepository.findByFieldKeyAndInstituteId(fieldKey, instituteId);
+        return customFieldRepository.findTopByFieldKeyAndStatusOrderByCreatedAtDesc(fieldKey,StatusEnum.ACTIVE.name());
     }
 
     /**

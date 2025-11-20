@@ -636,8 +636,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             LEFT JOIN custom_fields cf
                 ON cf.id = icf.custom_field_id
             LEFT JOIN custom_field_values cfv
-                ON cfv.source_type = 'STUDENT_SESSION_INSTITUTE_GROUP_MAPPING'
-                AND cfv.source_id = ssigm.id
+                 ON cfv.source_type = 'USER'
+                AND cfv.source_id = ssigm.user_id
                 AND cfv.custom_field_id = cf.id
             LEFT JOIN user_plan up
                 ON up.id = ssigm.user_plan_id
@@ -765,8 +765,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             LEFT JOIN custom_fields cf
                 ON cf.id = icf.custom_field_id
             LEFT JOIN custom_field_values cfv
-                ON cfv.source_type = 'STUDENT_SESSION_INSTITUTE_GROUP_MAPPING'
-                AND cfv.source_id = ssigm.id
+                ON cfv.source_type = 'USER'
+                AND cfv.source_id = ssigm.user_id
                 AND cfv.custom_field_id = cf.id
             LEFT JOIN user_plan up
                 ON up.id = ssigm.user_plan_id
@@ -846,7 +846,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
         Pageable pageable);
 
     @Query(value = """
-            SELECT 
+            SELECT
                 ssigm.id,
                 ssigm.user_id,
                 ssigm.institute_enrollment_number,

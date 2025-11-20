@@ -87,4 +87,11 @@ public class InstituteCustomField {
             this.status = StatusEnum.ACTIVE.name();
     }
 
+    @PrePersist
+    private void setDefaultStatus(){
+        if(status == null){
+            this.status = StatusEnum.ACTIVE.name();
+        }
+    }
+
 }

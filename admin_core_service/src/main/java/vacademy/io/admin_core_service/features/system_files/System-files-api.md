@@ -135,7 +135,7 @@ curl -X POST "http://localhost:8080/admin-core-service/system-files/v1/add?insti
 ### Endpoint
 
 ```
-GET /admin-core-service/system-files/v1/list?instituteId={instituteId}
+POST /admin-core-service/system-files/v1/list?instituteId={instituteId}
 ```
 
 ### Description
@@ -227,7 +227,7 @@ Retrieves all system files that a specific user, batch, role, or institute has a
 ### Curl Example
 
 ```bash
-curl -X GET "http://localhost:8080/admin-core-service/system-files/v1/list?instituteId=inst-123" \
+curl -X POST "http://localhost:8080/admin-core-service/system-files/v1/list?instituteId=inst-123" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{
@@ -244,7 +244,7 @@ curl -X GET "http://localhost:8080/admin-core-service/system-files/v1/list?insti
 ### Endpoint
 
 ```
-GET /admin-core-service/system-files/v1/my-files?instituteId={instituteId}
+POST /admin-core-service/system-files/v1/my-files?instituteId={instituteId}
 ```
 
 ### Description
@@ -373,7 +373,7 @@ The API automatically includes files where user has access through:
 ### Curl Example
 
 ```bash
-curl -X GET "http://localhost:8080/admin-core-service/system-files/v1/my-files?instituteId=inst-123" \
+curl -X POST "http://localhost:8080/admin-core-service/system-files/v1/my-files?instituteId=inst-123" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{

@@ -43,14 +43,14 @@ public class SystemFileController {
                 return ResponseEntity.status(HttpStatus.CREATED).body(response);
         }
 
-        @GetMapping("/list")
+        @PostMapping("/list")
         @ClientCacheable(maxAgeSeconds = 120, scope = CacheScope.PRIVATE, varyHeaders = {"X-Institute-Id", "X-User-Id"})
         public ResponseEntity<SystemFileListResponseDTO> getSystemFiles(
                         @Valid @RequestBody SystemFileListRequestDTO request,
                         @RequestParam String instituteId,
                         @RequestAttribute("user") CustomUserDetails user) {
 
-                log.info("GET /admin-core-service/system-files/v1/list - User: {}, Level: {}, LevelId: {}, AccessType: {}",
+                log.info("POST /admin-core-service/system-files/v1/list - User: {}, Level: {}, LevelId: {}, AccessType: {}",
                                 user.getUserId(), request.getLevel(), request.getLevelId(), request.getAccessType());
 
                 SystemFileListResponseDTO response = systemFileService.getSystemFilesByAccess(request, instituteId,
@@ -90,14 +90,14 @@ public class SystemFileController {
                 return ResponseEntity.ok(response);
         }
 
-        @GetMapping("/my-files")
+        @PostMapping("/my-files")
         @ClientCacheable(maxAgeSeconds = 60, scope = CacheScope.PRIVATE, varyHeaders = {"X-Institute-Id", "X-User-Id"})
         public ResponseEntity<SystemFileListResponseDTO> getMyFiles(
                         @Valid @RequestBody MyFilesRequestDTO request,
                         @RequestParam String instituteId,
                         @RequestAttribute("user") CustomUserDetails user) {
 
-                log.info("GET /admin-core-service/system-files/v1/my-files - User: {}, Institute: {}, Roles: {}",
+                log.info("POST /admin-core-service/system-files/v1/my-files - User: {}, Institute: {}, Roles: {}",
                                 user.getUserId(), instituteId, request.getUserRoles());
 
                 SystemFileListResponseDTO response = systemFileService.getMyFiles(request, instituteId, user);

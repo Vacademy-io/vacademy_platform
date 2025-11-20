@@ -2,6 +2,8 @@ package vacademy.io.admin_core_service.features.system_files.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -136,6 +138,7 @@ public class SystemFileService {
         }
 
         @Transactional(readOnly = true)
+        @Cacheable(value = "systemFileList", key = "#request.level + ':' + #request.levelId + ':' + #request.accessType + ':' + #instituteId", unless = "#result == null || #result.files.isEmpty()")
         public SystemFileListResponseDTO getSystemFilesByAccess(SystemFileListRequestDTO request, String instituteId,
                         CustomUserDetails user) {
                 log.info("Getting system files for level: {}, levelId: {}, accessType: {}, institute: {}",
@@ -317,6 +320,7 @@ public class SystemFileService {
         }
 
         @Transactional
+        @CacheEvict(value = "systemFileList", allEntries = true)
         public SystemFileUpdateAccessResponseDTO updateSystemFileAccess(SystemFileUpdateAccessRequestDTO request,
                         String instituteId, CustomUserDetails user) {
                 log.info("Updating access for file: {} by user: {} in institute: {}", request.getSystemFileId(),

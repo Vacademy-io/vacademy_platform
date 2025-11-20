@@ -189,11 +189,16 @@ public interface StudentSessionInstituteGroupMappingRepository
                         @Param("userIds") List<String> userIds,
                         @Param("status") String status);
 
+
+                        // only active package sessions
         @Query("SELECT DISTINCT m.packageSession.id " +
                         "FROM StudentSessionInstituteGroupMapping m " +
+                        "JOIN m.packageSession ps " +
                         "WHERE m.userId = :userId " +
                         "AND m.institute.id = :instituteId " +
-                        "AND m.packageSession.id IS NOT NULL")
+                        "AND m.packageSession.id IS NOT NULL " +
+                        "AND m.status = 'ACTIVE' " +
+                        "AND ps.status = 'ACTIVE'")
         List<String> findPackageSessionIdsByUserIdAndInstituteId(
                         @Param("userId") String userId,
                         @Param("instituteId") String instituteId);

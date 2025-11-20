@@ -700,13 +700,13 @@ All GET endpoints include `Cache-Control` headers to enable browser/CDN caching.
 
 #### Cache Configuration by Endpoint
 
-| Endpoint        | Cache Duration | Scope     | Vary Headers                  |
-| --------------- | -------------- | --------- | ----------------------------- |
-| `GET /list`     | **2 minutes**  | `private` | `X-Institute-Id`, `X-User-Id` |
-| `GET /access`   | **5 minutes**  | `private` | `X-Institute-Id`              |
-| `GET /my-files` | **1 minute**   | `private` | `X-Institute-Id`, `X-User-Id` |
-| `POST /add`     | No cache       | -         | -                             |
-| `PUT /access`   | No cache       | -         | -                             |
+| Endpoint         | Cache Duration | Scope     | Vary Headers                  |
+| ---------------- | -------------- | --------- | ----------------------------- |
+| `POST /list`     | **2 minutes**  | `private` | `X-Institute-Id`, `X-User-Id` |
+| `GET /access`    | **5 minutes**  | `private` | `X-Institute-Id`              |
+| `POST /my-files` | **1 minute**   | `private` | `X-Institute-Id`, `X-User-Id` |
+| `POST /add`      | No cache       | -         | -                             |
+| `PUT /access`    | No cache       | -         | -                             |
 
 #### Example Response Headers
 
@@ -798,11 +798,11 @@ level:levelId:accessType:instituteId
 
 #### Why Only `/list` Has Server Cache?
 
-| Endpoint    | Server Cache | Reason                                                                      |
-| ----------- | ------------ | --------------------------------------------------------------------------- |
-| `/list`     | ✅ Yes       | **Shared data** - Multiple users query same batch/role files                |
-| `/access`   | ❌ No        | **File-specific** - Less frequently accessed, client cache sufficient       |
-| `/my-files` | ❌ No        | **User-specific** - Each user has unique result, less cache sharing benefit |
+| Endpoint         | Server Cache | Reason                                                                      |
+| ---------------- | ------------ | --------------------------------------------------------------------------- |
+| `POST /list`     | ✅ Yes       | **Shared data** - Multiple users query same batch/role files                |
+| `GET /access`    | ❌ No        | **File-specific** - Less frequently accessed, client cache sufficient       |
+| `POST /my-files` | ❌ No        | **User-specific** - Each user has unique result, less cache sharing benefit |
 
 ---
 
@@ -1046,15 +1046,15 @@ performance
 
 ### Cache Behavior Summary
 
-| Operation                           | Server Cache  | Client Cache     | Data Freshness      |
-| ----------------------------------- | ------------- | ---------------- | ------------------- |
-| **GET /list** (first time)          | MISS → Store  | MISS → Store     | Fresh from DB       |
-| **GET /list** (repeat, same params) | HIT → Instant | HIT → No request | Cached (fresh)      |
-| **GET /list** (different params)    | MISS → Store  | MISS → Store     | Fresh from DB       |
-| **POST /add**                       | Evict all     | N/A              | Clears server cache |
-| **PUT /access**                     | Evict all     | N/A              | Clears server cache |
-| **GET /access**                     | Not cached    | MISS → Store     | Fresh from DB       |
-| **GET /my-files**                   | Not cached    | MISS → Store     | Fresh from DB       |
+| Operation                            | Server Cache  | Client Cache     | Data Freshness      |
+| ------------------------------------ | ------------- | ---------------- | ------------------- |
+| **POST /list** (first time)          | MISS → Store  | MISS → Store     | Fresh from DB       |
+| **POST /list** (repeat, same params) | HIT → Instant | HIT → No request | Cached (fresh)      |
+| **POST /list** (different params)    | MISS → Store  | MISS → Store     | Fresh from DB       |
+| **POST /add**                        | Evict all     | N/A              | Clears server cache |
+| **PUT /access**                      | Evict all     | N/A              | Clears server cache |
+| **GET /access**                      | Not cached    | MISS → Store     | Fresh from DB       |
+| **POST /my-files**                   | Not cached    | MISS → Store     | Fresh from DB       |
 
 ---
 

@@ -14,98 +14,131 @@ import java.util.concurrent.TimeUnit;
  * Cache configuration for application-level caching.
  * 
  * Currently configured caches:
- * - studyLibraryInit: Caches study library initialization data (TTL: 20 seconds)
+ * - studyLibraryInit: Caches study library initialization data (TTL: 20
+ * seconds)
  */
 @Configuration
 @EnableCaching
 public class CacheConfiguration {
 
-    /**
-     * Configure Caffeine-based cache manager with per-cache TTLs.
-     */
-    @Bean
-    public CacheManager cacheManager() {
-        SimpleCacheManager cacheManager = new SimpleCacheManager();
+        /**
+         * Configure Caffeine-based cache manager with per-cache TTLs.
+         */
+        @Bean
+        public CacheManager cacheManager() {
+                SimpleCacheManager cacheManager = new SimpleCacheManager();
 
-        // 20s TTL caches (existing behavior)
-        CaffeineCache studyLibraryInit = new CaffeineCache(
-                "studyLibraryInit",
-                caffeineCache20sBuilder().build()
-        );
-        CaffeineCache facultyByPackageSessions = new CaffeineCache(
-                "facultyByPackageSessions",
-                caffeineCache20sBuilder().build()
-        );
-        CaffeineCache studentsByPackageSessions = new CaffeineCache(
-                "studentsByPackageSessions",
-                caffeineCache20sBuilder().build()
-        );
+                // 20s TTL caches (existing behavior)
+                CaffeineCache studyLibraryInit = new CaffeineCache(
+                                "studyLibraryInit",
+                                caffeineCache20sBuilder().build());
+                CaffeineCache facultyByPackageSessions = new CaffeineCache(
+                                "facultyByPackageSessions",
+                                caffeineCache20sBuilder().build());
+                CaffeineCache studentsByPackageSessions = new CaffeineCache(
+                                "studentsByPackageSessions",
+                                caffeineCache20sBuilder().build());
 
-        // 2 minutes TTL caches (new API-level caches)
-        CaffeineCache instituteById = new CaffeineCache(
-                "instituteById",
-                caffeineCache2mBuilder().build()
-        );
-        CaffeineCache openInstituteDetails = new CaffeineCache(
-                "openInstituteDetails",
-                caffeineCache2mBuilder().build()
-        );
-        CaffeineCache openInstituteIdOrSubdomain = new CaffeineCache(
-                "openInstituteIdOrSubdomain",
-                caffeineCache2mBuilder().build()
-        );
-      
-        CaffeineCache instituteDashboard = new CaffeineCache(
-                "instituteDashboard",
-                caffeineCache2mBuilder().build()
-        );
-        CaffeineCache learnerInstituteDetails = new CaffeineCache(
-                "learnerInstituteDetails",
-                caffeineCache2mBuilder().build()
-        );
-        CaffeineCache learnerInstituteDetailsByIds = new CaffeineCache(
-                "learnerInstituteDetailsByIds",
-                caffeineCache2mBuilder().build()
-        );
-        CaffeineCache learnerInfo = new CaffeineCache(
-                "learnerInfo",
-                caffeineCache2mBuilder().build()
-        );
+                // 2 minutes TTL caches (new API-level caches)
+                CaffeineCache instituteById = new CaffeineCache(
+                                "instituteById",
+                                caffeineCache2mBuilder().build());
+                CaffeineCache openInstituteDetails = new CaffeineCache(
+                                "openInstituteDetails",
+                                caffeineCache2mBuilder().build());
+                CaffeineCache openInstituteIdOrSubdomain = new CaffeineCache(
+                                "openInstituteIdOrSubdomain",
+                                caffeineCache2mBuilder().build());
 
-        cacheManager.setCaches(java.util.List.of(
-                studyLibraryInit,
-                facultyByPackageSessions,
-                studentsByPackageSessions,
-                instituteById,
-                openInstituteDetails,
-                openInstituteIdOrSubdomain,
-                instituteDashboard,
-                learnerInstituteDetails,
-                learnerInstituteDetailsByIds,
-                learnerInfo
-        ));
+                CaffeineCache instituteDashboard = new CaffeineCache(
+                                "instituteDashboard",
+                                caffeineCache2mBuilder().build());
+                CaffeineCache learnerInstituteDetails = new CaffeineCache(
+                                "learnerInstituteDetails",
+                                caffeineCache2mBuilder().build());
+                CaffeineCache learnerInstituteDetailsByIds = new CaffeineCache(
+                                "learnerInstituteDetailsByIds",
+                                caffeineCache2mBuilder().build());
+                CaffeineCache learnerInfo = new CaffeineCache(
+                                "learnerInfo",
+                                caffeineCache2mBuilder().build());
 
-        return cacheManager;
-    }
+                // System Files caches
+                CaffeineCache systemFileAccess = new CaffeineCache(
+                                "systemFileAccess",
+                                caffeineCache5mBuilder().build());
+                CaffeineCache systemFileList = new CaffeineCache(
+                                "systemFileList",
+                                caffeineCache3mBuilder().build());
+                CaffeineCache myFiles = new CaffeineCache(
+                                "myFiles",
+                                caffeineCache1mBuilder().build());
 
-    /**
-     * 20-second TTL cache builder.
-     */
-    private Caffeine<Object, Object> caffeineCache20sBuilder() {
-        return Caffeine.newBuilder()
-                .maximumSize(1000)
-                .expireAfterWrite(20, TimeUnit.SECONDS)
-                .recordStats();
-    }
+                cacheManager.setCaches(java.util.List.of(
+                                studyLibraryInit,
+                                facultyByPackageSessions,
+                                studentsByPackageSessions,
+                                instituteById,
+                                openInstituteDetails,
+                                openInstituteIdOrSubdomain,
+                                instituteDashboard,
+                                learnerInstituteDetails,
+                                learnerInstituteDetailsByIds,
+                                learnerInfo,
+                                systemFileAccess,
+                                systemFileList,
+                                myFiles));
 
-    /**
-     * 2-minute TTL cache builder.
-     */
-    private Caffeine<Object, Object> caffeineCache2mBuilder() {
-        return Caffeine.newBuilder()
-                .maximumSize(1000)
-                .expireAfterWrite(2, TimeUnit.MINUTES)
-                .recordStats();
-    }
+                return cacheManager;
+        }
+
+        /**
+         * 20-second TTL cache builder.
+         */
+        private Caffeine<Object, Object> caffeineCache20sBuilder() {
+                return Caffeine.newBuilder()
+                                .maximumSize(1000)
+                                .expireAfterWrite(20, TimeUnit.SECONDS)
+                                .recordStats();
+        }
+
+        /**
+         * 1-minute TTL cache builder (for frequently changing data).
+         */
+        private Caffeine<Object, Object> caffeineCache1mBuilder() {
+                return Caffeine.newBuilder()
+                                .maximumSize(2000)
+                                .expireAfterWrite(1, TimeUnit.MINUTES)
+                                .recordStats();
+        }
+
+        /**
+         * 2-minute TTL cache builder.
+         */
+        private Caffeine<Object, Object> caffeineCache2mBuilder() {
+                return Caffeine.newBuilder()
+                                .maximumSize(1000)
+                                .expireAfterWrite(2, TimeUnit.MINUTES)
+                                .recordStats();
+        }
+
+        /**
+         * 3-minute TTL cache builder (for stable data).
+         */
+        private Caffeine<Object, Object> caffeineCache3mBuilder() {
+                return Caffeine.newBuilder()
+                                .maximumSize(500)
+                                .expireAfterWrite(3, TimeUnit.MINUTES)
+                                .recordStats();
+        }
+
+        /**
+         * 5-minute TTL cache builder (for very stable data).
+         */
+        private Caffeine<Object, Object> caffeineCache5mBuilder() {
+                return Caffeine.newBuilder()
+                                .maximumSize(500)
+                                .expireAfterWrite(5, TimeUnit.MINUTES)
+                                .recordStats();
+        }
 }
-

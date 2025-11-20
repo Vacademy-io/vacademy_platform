@@ -5,13 +5,20 @@ import org.springframework.security.oauth2.client.registration.ClientRegistratio
 import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
+import java.util.function.Consumer;
 
 public class CustomAuthorizationRequestResolver implements OAuth2AuthorizationRequestResolver {
 
     private final OAuth2AuthorizationRequestResolver defaultResolver;
 
     public CustomAuthorizationRequestResolver(ClientRegistrationRepository repo, String baseUri) {
-        this.defaultResolver = new DefaultOAuth2AuthorizationRequestResolver(repo, baseUri);
+        DefaultOAuth2AuthorizationRequestResolver resolver = new DefaultOAuth2AuthorizationRequestResolver(repo, baseUri);
+        resolver.setAuthorizationRequestCustomizer(this::customizeAuthorizationRequest);
+        this.defaultResolver = resolver;
+    }
+    
+    private void customizeAuthorizationRequest(OAuth2AuthorizationRequest.Builder builder) {
+        // Any additional customization can go here
     }
 
     @Override

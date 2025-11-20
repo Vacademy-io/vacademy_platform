@@ -25,7 +25,7 @@ public class RedisSessionConfig {
     public CookieSerializer cookieSerializer() {
         DefaultCookieSerializer serializer = new DefaultCookieSerializer();
         serializer.setCookieName("VACADEMY_OAUTH_SESSION");
-        serializer.setCookiePath("/auth-service"); // Scope to auth-service only
+        serializer.setCookiePath("/"); // Must be "/" so cookie is sent for both /auth-service and /login paths
         serializer.setDomainNamePattern("^.+?\\.(\\w+\\.[a-z]+)$"); // Allows subdomain sharing
         serializer.setSameSite("Lax"); // Critical for OAuth redirects
         serializer.setUseHttpOnlyCookie(true);

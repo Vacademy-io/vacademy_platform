@@ -480,17 +480,6 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       AND (:groupIds IS NULL OR ssigm.group_id IN (:groupIds))
       AND (:packageSessionIds IS NULL OR ssigm.package_session_id IN (:packageSessionIds))
     GROUP BY s.id, s.username, s.user_id, s.email, s.full_name,
-             s.address_line, s.region, s.city, s.pin_code, s.mobile_number,
-             s.date_of_birth, s.gender, s.fathers_name, s.mothers_name,
-             s.parents_mobile_number, s.parents_email, s.linked_institute_name,
-             s.created_at, s.updated_at, ssigm.package_session_id,
-             ssigm.institute_enrollment_number, ssigm.status, ssigm.institute_id,
-             ssigm.expiry_date, s.face_file_id, s.parents_to_mother_mobile_number,
-             s.parents_to_mother_email
-    """,
-        countQuery = """
-    SELECT COUNT(DISTINCT s.id)
-    FROM student s
     JOIN student_session_institute_group_mapping ssigm
       ON s.user_id = ssigm.user_id
     WHERE (:statuses IS NULL OR ssigm.status IN (:statuses))
@@ -659,6 +648,17 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
               AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
               AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
+              AND (:#{#usernames == null || #usernames.isEmpty()} = true OR s.username IN (:usernames))
+              AND (:#{#emails == null || #emails.isEmpty()} = true OR s.email IN (:emails))
+              AND (:#{#mobileNumbers == null || #mobileNumbers.isEmpty()} = true OR s.mobile_number IN (:mobileNumbers))
+              AND (:#{#regions == null || #regions.isEmpty()} = true OR s.region IN (:regions))
+              AND (:#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true OR ARRAY(
+                  SELECT unnest(string_to_array(ssigm.comma_separated_org_roles, ','))
+                  ORDER BY 1
+              ) = ARRAY(
+                  SELECT unnest(CAST(:subOrgUserTypes AS text[]))
+                  ORDER BY 1
+              ))
             GROUP BY s.id, s.username, s.full_name, s.email, s.mobile_number,
                      ssigm.package_session_id, ssigm.enrolled_date, ssigm.expiry_date,
                      last_pl.payment_status, s.user_id, s.address_line, s.region, s.city,
@@ -692,6 +692,17 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
               AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
               AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
+              AND (:#{#usernames == null || #usernames.isEmpty()} = true OR s.username IN (:usernames))
+              AND (:#{#emails == null || #emails.isEmpty()} = true OR s.email IN (:emails))
+              AND (:#{#mobileNumbers == null || #mobileNumbers.isEmpty()} = true OR s.mobile_number IN (:mobileNumbers))
+              AND (:#{#regions == null || #regions.isEmpty()} = true OR s.region IN (:regions))
+              AND (:#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true OR ARRAY(
+                  SELECT unnest(string_to_array(ssigm.comma_separated_org_roles, ','))
+                  ORDER BY 1
+              ) = ARRAY(
+                  SELECT unnest(CAST(:subOrgUserTypes AS text[]))
+                  ORDER BY 1
+              ))
             """)
     Page<StudentListV2Projection> getAllStudentV2WithFilterRaw(
         @Param("statuses") List<String> statuses,
@@ -706,6 +717,11 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
         @Param("typeIds") List<String> typeIds,
         @Param("destinationPackageSessionIds") List<String> destinationPackageSessionIds,
         @Param("levelIds") List<String> levelIds,
+        @Param("usernames") List<String> usernames,
+        @Param("emails") List<String> emails,
+        @Param("mobileNumbers") List<String> mobileNumbers,
+        @Param("regions") List<String> regions,
+        @Param("subOrgUserTypes") List<String> subOrgUserTypes,
         Pageable pageable);
 
     @Query(nativeQuery = true, value = """
@@ -793,6 +809,17 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
               AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
               AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
+              AND (:#{#usernames == null || #usernames.isEmpty()} = true OR s.username IN (:usernames))
+              AND (:#{#emails == null || #emails.isEmpty()} = true OR s.email IN (:emails))
+              AND (:#{#mobileNumbers == null || #mobileNumbers.isEmpty()} = true OR s.mobile_number IN (:mobileNumbers))
+              AND (:#{#regions == null || #regions.isEmpty()} = true OR s.region IN (:regions))
+              AND (:#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true OR ARRAY(
+                  SELECT unnest(string_to_array(ssigm.comma_separated_org_roles, ','))
+                  ORDER BY 1
+              ) = ARRAY(
+                  SELECT unnest(CAST(:subOrgUserTypes AS text[]))
+                  ORDER BY 1
+              ))
             GROUP BY s.id, s.username, s.full_name, s.email, s.mobile_number,
                      ssigm.package_session_id, ssigm.enrolled_date, ssigm.expiry_date,
                      last_pl.payment_status, s.user_id, s.address_line, s.region, s.city,
@@ -831,6 +858,17 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
               AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
               AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
+              AND (:#{#usernames == null || #usernames.isEmpty()} = true OR s.username IN (:usernames))
+              AND (:#{#emails == null || #emails.isEmpty()} = true OR s.email IN (:emails))
+              AND (:#{#mobileNumbers == null || #mobileNumbers.isEmpty()} = true OR s.mobile_number IN (:mobileNumbers))
+              AND (:#{#regions == null || #regions.isEmpty()} = true OR s.region IN (:regions))
+              AND (:#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true OR ARRAY(
+                  SELECT unnest(string_to_array(ssigm.comma_separated_org_roles, ','))
+                  ORDER BY 1
+              ) = ARRAY(
+                  SELECT unnest(CAST(:subOrgUserTypes AS text[]))
+                  ORDER BY 1
+              ))
             """)
     Page<StudentListV2Projection> getAllStudentV2WithSearchRaw(
         @Param("name") String name,
@@ -843,6 +881,11 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
         @Param("typeIds") List<String> typeIds,
         @Param("destinationPackageSessionIds") List<String> destinationPackageSessionIds,
         @Param("levelIds") List<String> levelIds,
+        @Param("usernames") List<String> usernames,
+        @Param("emails") List<String> emails,
+        @Param("mobileNumbers") List<String> mobileNumbers,
+        @Param("regions") List<String> regions,
+        @Param("subOrgUserTypes") List<String> subOrgUserTypes,
         Pageable pageable);
 
     @Query(value = """

@@ -700,13 +700,13 @@ All GET endpoints include `Cache-Control` headers to enable browser/CDN caching.
 
 #### Cache Configuration by Endpoint
 
-| Endpoint | Cache Duration | Scope | Vary Headers |
-|----------|---------------|-------|--------------|
-| `GET /list` | **2 minutes** | `private` | `X-Institute-Id`, `X-User-Id` |
-| `GET /access` | **5 minutes** | `private` | `X-Institute-Id` |
-| `GET /my-files` | **1 minute** | `private` | `X-Institute-Id`, `X-User-Id` |
-| `POST /add` | No cache | - | - |
-| `PUT /access` | No cache | - | - |
+| Endpoint        | Cache Duration | Scope     | Vary Headers                  |
+| --------------- | -------------- | --------- | ----------------------------- |
+| `GET /list`     | **2 minutes**  | `private` | `X-Institute-Id`, `X-User-Id` |
+| `GET /access`   | **5 minutes**  | `private` | `X-Institute-Id`              |
+| `GET /my-files` | **1 minute**   | `private` | `X-Institute-Id`, `X-User-Id` |
+| `POST /add`     | No cache       | -         | -                             |
+| `PUT /access`   | No cache       | -         | -                             |
 
 #### Example Response Headers
 
@@ -720,6 +720,7 @@ Content-Type: application/json
 #### How It Works
 
 **First Request:**
+
 ```
 User A → Server (cache MISS) → Database → Response (200 OK)
          ← Cache-Control: private, max-age=120
@@ -727,6 +728,7 @@ Browser stores response for 2 minutes
 ```
 
 **Subsequent Requests (within 2 min):**
+
 ```
 User A → Browser Cache (cache HIT) → Instant Response (0ms)
 No network request made!
@@ -742,6 +744,7 @@ No network request made!
 #### Vary Headers
 
 Ensures cache is unique per:
+
 - **Authorization**: Different users get different caches
 - **X-Institute-Id**: Different institutes get different caches
 - **X-User-Id**: User-specific data properly isolated
@@ -754,25 +757,28 @@ Only the `/list` endpoint uses server-side caching to benefit multiple users que
 
 #### Cache Configuration
 
-| Cache Name | TTL | Max Size | Purpose |
-|------------|-----|----------|---------|
+| Cache Name       | TTL           | Max Size     | Purpose                  |
+| ---------------- | ------------- | ------------ | ------------------------ |
 | `systemFileList` | **3 minutes** | 1000 entries | Batch/role file listings |
 
 #### How It Works
 
 **Request 1 (User A - batch-123 files):**
+
 ```
 User A → Server (cache MISS) → Database (15 DB queries) → Response (500ms)
          Server cache stores result with key: "batch:batch-123:view:inst-1"
 ```
 
 **Request 2 (User B - same batch):**
+
 ```
 User B → Server (cache HIT) → Cached response (5ms)
          No database queries!
 ```
 
 **Request 3 (User C - different batch):**
+
 ```
 User C → Server (cache MISS, different key) → Database → Response
          Server cache stores with key: "batch:batch-456:view:inst-1"
@@ -785,17 +791,18 @@ level:levelId:accessType:instituteId
 ```
 
 **Examples:**
+
 - `"batch:batch-123:view:inst-1"` - View access for batch-123
 - `"role:ADMIN:edit:inst-1"` - Edit access for ADMIN role
 - `"user:user-456:view:inst-2"` - View access for specific user
 
 #### Why Only `/list` Has Server Cache?
 
-| Endpoint | Server Cache | Reason |
-|----------|--------------|--------|
-| `/list` | ✅ Yes | **Shared data** - Multiple users query same batch/role files |
-| `/access` | ❌ No | **File-specific** - Less frequently accessed, client cache sufficient |
-| `/my-files` | ❌ No | **User-specific** - Each user has unique result, less cache sharing benefit |
+| Endpoint    | Server Cache | Reason                                                                      |
+| ----------- | ------------ | --------------------------------------------------------------------------- |
+| `/list`     | ✅ Yes       | **Shared data** - Multiple users query same batch/role files                |
+| `/access`   | ❌ No        | **File-specific** - Less frequently accessed, client cache sufficient       |
+| `/my-files` | ❌ No        | **User-specific** - Each user has unique result, less cache sharing benefit |
 
 ---
 
@@ -806,14 +813,17 @@ Caches are automatically cleared when data changes to prevent stale information.
 #### POST /add - Creates New File
 
 **Server-Side:**
+
 ```java
 @CacheEvict(value = "systemFileList", allEntries = true)
 ```
+
 - ✅ Clears ALL cached file listings
 - ✅ Next request fetches fresh data from database
 - ✅ Ensures new files appear immediately
 
 **Client-Side:**
+
 - ❌ No automatic invalidation
 - ⚠️ Users may see old data for up to 1-2 minutes
 - ✅ Acceptable delay for non-critical updates
@@ -821,13 +831,16 @@ Caches are automatically cleared when data changes to prevent stale information.
 #### PUT /access - Updates Permissions
 
 **Server-Side:**
+
 ```java
 @CacheEvict(value = "systemFileList", allEntries = true)
 ```
+
 - ✅ Clears cached file listings
 - ✅ Access changes reflect on next query
 
 **Client-Side:**
+
 - ❌ No automatic invalidation
 - ⚠️ Cached responses remain valid until TTL expires
 - ✅ Users refresh page to see updated permissions
@@ -863,11 +876,11 @@ Performance improvement: 98% reduction in load
 
 #### Real-World Metrics
 
-| Metric | Without Cache | With Cache | Improvement |
-|--------|--------------|------------|-------------|
-| **Response Time** | 200-500ms | 0-10ms | **50x faster** |
-| **DB Queries** | 100% requests | ~20% requests | **80% reduction** |
-| **Server Load** | High | Low | **90% reduction** |
+| Metric              | Without Cache | With Cache    | Improvement       |
+| ------------------- | ------------- | ------------- | ----------------- |
+| **Response Time**   | 200-500ms     | 0-10ms        | **50x faster**    |
+| **DB Queries**      | 100% requests | ~20% requests | **80% reduction** |
+| **Server Load**     | High          | Low           | **90% reduction** |
 | **Network Traffic** | 100% requests | ~30% requests | **70% reduction** |
 
 ---
@@ -915,12 +928,13 @@ Age: 45  # ← Response is 45 seconds old, still fresh for 75 seconds
 
 ```javascript
 // ✅ GOOD - Let browser handle caching
-fetch('/admin-core-service/system-files/v1/list?instituteId=inst-1')
-  .then(res => res.json());
+fetch("/admin-core-service/system-files/v1/list?instituteId=inst-1").then(
+  (res) => res.json()
+);
 
 // ❌ BAD - Disabling cache unnecessarily
-fetch('/admin-core-service/system-files/v1/list?instituteId=inst-1', {
-  cache: 'no-store'  // Don't do this!
+fetch("/admin-core-service/system-files/v1/list?instituteId=inst-1", {
+  cache: "no-store", // Don't do this!
 });
 ```
 
@@ -929,8 +943,8 @@ fetch('/admin-core-service/system-files/v1/list?instituteId=inst-1', {
 ```javascript
 // Force fresh data after creating/updating a file
 async function refreshFileList() {
-  const response = await fetch('/list?instituteId=inst-1', {
-    headers: { 'Cache-Control': 'no-cache' }
+  const response = await fetch("/list?instituteId=inst-1", {
+    headers: { "Cache-Control": "no-cache" },
   });
   return response.json();
 }
@@ -942,14 +956,14 @@ async function refreshFileList() {
 // Show loading indicator while fetching
 async function getFiles() {
   try {
-    const response = await fetch('/list?instituteId=inst-1');
-    
+    const response = await fetch("/list?instituteId=inst-1");
+
     // Check if response is from cache
-    const age = response.headers.get('Age');
+    const age = response.headers.get("Age");
     if (age && parseInt(age) > 60) {
-      console.log('Using cached data (may be stale)');
+      console.log("Using cached data (may be stale)");
     }
-    
+
     return response.json();
   } catch (error) {
     // Fallback to cached data if network fails
@@ -961,7 +975,7 @@ async function getFiles() {
 
 ```javascript
 // Longer cache acceptable on slow networks
-const cacheTime = navigator.connection?.effectiveType === '4g' ? 60 : 120;
+const cacheTime = navigator.connection?.effectiveType === "4g" ? 60 : 120;
 // API already handles this, but client can extend cache locally
 ```
 
@@ -986,10 +1000,11 @@ System.out.println("Eviction Count: " + stats.evictionCount());
 
 ```javascript
 // Check browser cache usage
-performance.getEntriesByType('resource')
-  .filter(r => r.name.includes('/system-files/'))
-  .forEach(r => {
-    console.log(`${r.name}: ${r.transferSize === 0 ? 'CACHED' : 'NETWORK'}`);
+performance
+  .getEntriesByType("resource")
+  .filter((r) => r.name.includes("/system-files/"))
+  .forEach((r) => {
+    console.log(`${r.name}: ${r.transferSize === 0 ? "CACHED" : "NETWORK"}`);
   });
 ```
 
@@ -1001,7 +1016,8 @@ performance.getEntriesByType('resource')
 
 **Symptom:** Added a file but it doesn't appear in list  
 **Cause:** Client cache still valid  
-**Solution:** 
+**Solution:**
+
 1. Wait for cache to expire (1-2 min), OR
 2. Hard refresh (Ctrl+Shift+R), OR
 3. Add `Cache-Control: no-cache` header to request
@@ -1011,6 +1027,7 @@ performance.getEntriesByType('resource')
 **Symptom:** Every request hits server  
 **Cause:** Missing or disabled cache headers  
 **Solution:**
+
 1. Check response headers include `Cache-Control`
 2. Verify browser cache not disabled
 3. Check proxy/CDN configuration
@@ -1020,6 +1037,7 @@ performance.getEntriesByType('resource')
 **Symptom:** Many database queries despite caching  
 **Cause:** Cache TTL too short or different cache keys  
 **Solution:**
+
 1. Check cache hit rate in monitoring
 2. Verify requests use same level/levelId/accessType
 3. Consider increasing TTL if data is stable
@@ -1028,15 +1046,15 @@ performance.getEntriesByType('resource')
 
 ### Cache Behavior Summary
 
-| Operation | Server Cache | Client Cache | Data Freshness |
-|-----------|--------------|--------------|----------------|
-| **GET /list** (first time) | MISS → Store | MISS → Store | Fresh from DB |
-| **GET /list** (repeat, same params) | HIT → Instant | HIT → No request | Cached (fresh) |
-| **GET /list** (different params) | MISS → Store | MISS → Store | Fresh from DB |
-| **POST /add** | Evict all | N/A | Clears server cache |
-| **PUT /access** | Evict all | N/A | Clears server cache |
-| **GET /access** | Not cached | MISS → Store | Fresh from DB |
-| **GET /my-files** | Not cached | MISS → Store | Fresh from DB |
+| Operation                           | Server Cache  | Client Cache     | Data Freshness      |
+| ----------------------------------- | ------------- | ---------------- | ------------------- |
+| **GET /list** (first time)          | MISS → Store  | MISS → Store     | Fresh from DB       |
+| **GET /list** (repeat, same params) | HIT → Instant | HIT → No request | Cached (fresh)      |
+| **GET /list** (different params)    | MISS → Store  | MISS → Store     | Fresh from DB       |
+| **POST /add**                       | Evict all     | N/A              | Clears server cache |
+| **PUT /access**                     | Evict all     | N/A              | Clears server cache |
+| **GET /access**                     | Not cached    | MISS → Store     | Fresh from DB       |
+| **GET /my-files**                   | Not cached    | MISS → Store     | Fresh from DB       |
 
 ---
 

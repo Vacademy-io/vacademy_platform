@@ -1,5 +1,4 @@
 package vacademy.io.auth_service.feature.auth.service;
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
@@ -29,15 +28,12 @@ import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.auth.service.RefreshTokenService;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
-
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-
 @Service
 public class AuthService {
-
     @Autowired
     UserRepository userRepository;
     @Autowired
@@ -56,19 +52,18 @@ public class AuthService {
     private NotificationService notificationService;
     @Autowired
     private UserPermissionRepository userPermissionRepository;
-
     @Autowired
     private UserRoleRepository userRoleRepository;
     @Autowired
     private InstituteInternalService instituteInternalService;
-
+    @Value("${default.learner.portal.url}")
+    private String defaultLearnerPortalUrl;
     @Transactional
     public User createUser(RegisterRequest registerRequest, Set<UserRole> roles) {
         boolean isAlreadyPresent = false;
         String normalizedEmail = registerRequest.getEmail() != null ? registerRequest.getEmail().toLowerCase() : null;
         Optional<User> optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(normalizedEmail);
         User user;
-
         if (optionalUser.isPresent()) {
             isAlreadyPresent = true;
             user = optionalUser.get();
@@ -82,35 +77,27 @@ public class AuthService {
                     .build();
             user = userRepository.save(user); // Save first to get the ID
         }
-
         // Assign the user to each UserRole
         for (UserRole role : roles) {
             role.setUser(user);
         }
-
         user.setRoles(roles); // Now set the roles
         user = userRepository.save(user); // Save again with roles
-
         if (isAlreadyPresent) {
-            sendKeepingCredentialsWelcomeMailToUser(user, registerRequest.getInstitute().getId());
+            sendKeepingCredentialsWelcomeMailToUser(user, registerRequest.getInstitute().getId(),roles);
         } else {
-            sendWelcomeMailToUser(user, registerRequest.getInstitute().getId());
+            sendWelcomeMailToUser(user, registerRequest.getInstitute().getId(),roles);
         }
-
         return user;
     }
-
     @Transactional
     public User createUser(UserDTO registerRequest, String instituteId, boolean sendWelcomeMail) {
         String normalizedEmail = registerRequest.getEmail() != null ? registerRequest.getEmail().toLowerCase() : null;
         Optional<User> optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(normalizedEmail);
         boolean isAlreadyPresent = optionalUser.isPresent();
-
         User user;
-
         if (isAlreadyPresent) {
             user = optionalUser.get();
-
             if (StringUtils.hasText(registerRequest.getFullName())) user.setFullName(registerRequest.getFullName());
             if (StringUtils.hasText(registerRequest.getUsername())) user.setUsername(registerRequest.getUsername());
             if (StringUtils.hasText(registerRequest.getPassword())) user.setPassword(registerRequest.getPassword());
@@ -121,9 +108,7 @@ public class AuthService {
             if (registerRequest.getDateOfBirth() != null) user.setDateOfBirth(registerRequest.getDateOfBirth());
             if (StringUtils.hasText(registerRequest.getGender())) user.setGender(registerRequest.getGender());
             if (StringUtils.hasText(registerRequest.getProfilePicFileId())) user.setProfilePicFileId(registerRequest.getProfilePicFileId());
-
             if (!user.isRootUser()) user.setRootUser(true);
-
             user = userRepository.save(user);
         } else {
             if (!StringUtils.hasText(registerRequest.getUsername())) {
@@ -146,10 +131,8 @@ public class AuthService {
                     .profilePicFileId(registerRequest.getProfilePicFileId())
                     .isRootUser(true)
                     .build();
-
             user = userRepository.save(user);
         }
-
         List<Role> allRoles = getAllUserRoles(registerRequest.getRoles());
         Set<UserRole> userRoleSet = new HashSet<>();
         for (Role role : allRoles) {
@@ -162,97 +145,107 @@ public class AuthService {
         }
         user.setRoles(userRoleSet);
         user = userRepository.save(user);
-
         if (sendWelcomeMail) {
             if (isAlreadyPresent) {
-                sendKeepingCredentialsWelcomeMailToUser(user, instituteId);
+                sendKeepingCredentialsWelcomeMailToUser(user, instituteId,userRoleSet);
             } else {
-                sendWelcomeMailToUser(user, instituteId);
+                sendWelcomeMailToUser(user, instituteId,userRoleSet);
             }
         }
-
         return user;
     }
-
-
     private List<Role> getAllUserRoles(List<String> userRoles) {
         return roleRepository.findByNameIn(userRoles);
     }
-
     public JwtResponseDto generateJwtTokenForUser(User user, RefreshToken refreshToken, List<UserRole> userRoles) {
-
         List<String> userPermissions = userPermissionRepository.findByUserId(user.getId()).stream()
                 .map(UserPermission::getPermissionId).toList();
         String accessToken = jwtService.generateToken(user, userRoles, userPermissions);
-
         // Return a JwtResponseDto with access token and refresh token
         return JwtResponseDto.builder()
                 .accessToken(accessToken)
                 .refreshToken(refreshToken.getToken())
                 .build();
     }
-
-    public void sendWelcomeMailToUser(User user, String instituteId) {
+    public void sendWelcomeMailToUser(User user, String instituteId,Set<UserRole> roles) {
         InstituteInfoDTO instituteInfoDTO = null;
-
+        boolean isLearner = false;
+        if (roles != null){
+            for (UserRole userRole : roles) {
+                if (userRole.getRole().getName().equals("STUDENT")) {
+                    isLearner = true;
+                    break;
+                }
+            }
+        }
         String instituteName = "Vacademy"; // Default fallback
         String theme = "#E67E22";
-        String learnerLoginUrl = "https://dash.vacademy.io";
+        String loginUrl = "https://dash.vacademy.io";
         if (StringUtils.hasText(instituteId)) {
             instituteInfoDTO = instituteInternalService.getInstituteByInstituteId(instituteId);
             if (instituteInfoDTO.getInstituteName() != null)
                 instituteName = instituteInfoDTO.getInstituteName();
             if (instituteInfoDTO.getInstituteThemeCode() != null)
                 theme = instituteInfoDTO.getInstituteThemeCode();
-            if (instituteInfoDTO.getLearnerPortalUrl() != null)
-                learnerLoginUrl = instituteInfoDTO.getLearnerPortalUrl();
+            if (isLearner){
+                if (instituteInfoDTO.getLearnerPortalUrl() != null)
+                    loginUrl = instituteInfoDTO.getLearnerPortalUrl();
+                else
+                    loginUrl = defaultLearnerPortalUrl;
+            }
         }
         GenericEmailRequest genericEmailRequest = new GenericEmailRequest();
         genericEmailRequest.setTo(user.getEmail());
         genericEmailRequest.setBody(NotificationEmailBody.createWelcomeEmailBody(instituteName, user.getFullName(),
-                user.getUsername(), user.getPassword(), learnerLoginUrl, theme));
+                user.getUsername(), user.getPassword(), loginUrl, theme));
         genericEmailRequest.setSubject("Welcome to " + instituteName);
         notificationService.sendGenericHtmlMail(genericEmailRequest, instituteId);
     }
-
-    public void sendKeepingCredentialsWelcomeMailToUser(User user, String instituteId) {
+    public void sendKeepingCredentialsWelcomeMailToUser(User user, String instituteId,Set<UserRole>roles) {
         if (user == null || user.getEmail() == null) {
             throw new IllegalArgumentException("User or user email must not be null");
         }
         InstituteInfoDTO instituteInfoDTO = null;
-
+        boolean isLearner = false;
+        if (roles != null){
+            for (UserRole userRole : roles) {
+                if (userRole.getRole().getName().equals("STUDENT")) {
+                    isLearner = true;
+                    break;
+                }
+            }
+        }
         String instituteName = "Vacademy"; // Default fallback
         String theme = "#E67E22";
-        String learnerLoginUrl = "https://dash.vacademy.io";
+        String loginUrl = "https://dash.vacademy.io";
         if (StringUtils.hasText(instituteId)) {
             instituteInfoDTO = instituteInternalService.getInstituteByInstituteId(instituteId);
             if (instituteInfoDTO.getInstituteName() != null)
                 instituteName = instituteInfoDTO.getInstituteName();
             if (instituteInfoDTO.getInstituteThemeCode() != null)
                 theme = instituteInfoDTO.getInstituteThemeCode();
-            if (instituteInfoDTO.getLearnerPortalUrl() != null)
-                learnerLoginUrl = instituteInfoDTO.getLearnerPortalUrl();
+            if (isLearner){
+                if (instituteInfoDTO.getLearnerPortalUrl() != null)
+                    loginUrl = instituteInfoDTO.getLearnerPortalUrl();
+                else
+                    loginUrl = defaultLearnerPortalUrl;
+            }
         }
-
         String fullName = user.getFullName() != null ? user.getFullName() : "User";
         String username = user.getUsername() != null ? user.getUsername() : "N/A";
         String password = user.getPassword() != null ? user.getPassword() : "N/A"; // You might want to avoid sending
         // passwords in email
-
         String body = NotificationEmailBody.createCredentialsFoundEmailBody(
                 instituteName,
                 fullName,
                 username,
                 password,
-                learnerLoginUrl,
+                loginUrl,
                 theme);
-
         GenericEmailRequest emailRequest = new GenericEmailRequest();
         emailRequest.setTo(user.getEmail());
         emailRequest.setSubject("Welcome to " + instituteName);
         emailRequest.setBody(body);
-
         notificationService.sendGenericHtmlMail(emailRequest, instituteId);
     }
-
 }

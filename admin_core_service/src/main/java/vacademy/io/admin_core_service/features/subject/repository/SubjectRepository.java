@@ -24,19 +24,20 @@ public interface SubjectRepository extends JpaRepository<Subject, String> {
     List<Subject> findDistinctSubjectsByInstituteId(@Param("instituteId") String instituteId);
 
 
-    @Query(value = "SELECT DISTINCT s.*, ss.subject_order " +
-            "FROM subject s " +
-            "INNER JOIN subject_session ss ON s.id = ss.subject_id " +
-            "INNER JOIN package_session ps ON ss.session_id = ps.id " +
-            "WHERE ps.level_id = :levelId " +
-            "AND ps.package_id = :packageId " +
-            "AND ps.session_id = :sessionId " +
-            "AND s.status = 'ACTIVE' " +
-            "ORDER BY ss.subject_order ASC NULLS LAST", nativeQuery = true)
+    @Query(value = "SELECT s.* " +
+        "FROM subject s " +
+        "INNER JOIN subject_session ss ON s.id = ss.subject_id " +
+        "INNER JOIN package_session ps ON ss.session_id = ps.id " +
+        "WHERE ps.level_id = :levelId " +
+        "AND ps.package_id = :packageId " +
+        "AND ps.session_id = :sessionId " +
+        "AND s.status = 'ACTIVE' " +
+        "ORDER BY ss.subject_order ASC NULLS LAST, s.created_at ASC",
+        nativeQuery = true)
     List<Subject> findDistinctSubjectsPackageSession(
-            @Param("levelId") String levelId,
-            @Param("packageId") String packageId,
-            @Param("sessionId") String sessionId
+        @Param("levelId") String levelId,
+        @Param("packageId") String packageId,
+        @Param("sessionId") String sessionId
     );
 
     @Query(value = "SELECT DISTINCT s.* " +

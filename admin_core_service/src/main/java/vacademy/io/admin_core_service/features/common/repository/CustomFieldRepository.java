@@ -95,15 +95,6 @@ public interface CustomFieldRepository extends JpaRepository<CustomFields, Strin
    * Find custom field by field key and institute ID (through institute custom
    * field mapping)
    */
-  @Query(value = """
-      SELECT cf FROM CustomFields cf
-      JOIN InstituteCustomField icf ON cf.id = icf.customFieldId
-      WHERE cf.fieldKey = :fieldKey
-      AND icf.instituteId = :instituteId
-      AND icf.status = 'ACTIVE'
-      """)
-  Optional<CustomFields> findByFieldKeyAndInstituteId(@Param("fieldKey") String fieldKey,
-      @Param("instituteId") String instituteId);
 
     // In CustomFieldRepository
     Optional<CustomFields> findTopByFieldKeyAndStatusOrderByCreatedAtDesc(String fieldKey, String status);

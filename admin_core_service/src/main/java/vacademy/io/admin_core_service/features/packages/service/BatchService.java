@@ -42,7 +42,7 @@ public class BatchService {
         List<PackageDTOWithBatchDetails>packageDTOWithBatchDetails = new ArrayList<>();
         for (PackageEntity packageEntity : packages) {
             PackageDTO packageDTO = new PackageDTO(packageEntity);
-            List<BatchProjection> batches = packageSessionRepository.findBatchDetailsWithLatestInviteCode(packageEntity.getId(),List.of(PackageSessionStatusEnum.ACTIVE.name()),List.of(LearnerStatusEnum.ACTIVE.name()),List.of(LearnerInvitationCodeStatusEnum.DELETED.name(),LearnerInvitationCodeStatusEnum.CLOSED.name()));
+            List<BatchProjection> batches = packageSessionRepository.findBatchDetailsWithLatestInviteCode(packageEntity.getId(),List.of(PackageSessionStatusEnum.ACTIVE.name()),List.of(LearnerStatusEnum.ACTIVE.name()));
             packageDTOWithBatchDetails.add(new PackageDTOWithBatchDetails(packageDTO,batches));
         }
         return packageDTOWithBatchDetails;
@@ -88,8 +88,7 @@ public class BatchService {
             List<BatchProjection> batches = packageSessionRepository.findBatchDetailsWithLatestInviteCode(
                     packageEntity.getId(),
                     List.of(PackageSessionStatusEnum.ACTIVE.name()),
-                    List.of(LearnerStatusEnum.ACTIVE.name()),
-                    List.of(LearnerInvitationCodeStatusEnum.DELETED.name(), LearnerInvitationCodeStatusEnum.CLOSED.name()));
+                    List.of(LearnerStatusEnum.ACTIVE.name()));
             packageDetailsList.add(new PackageDTOWithBatchDetails(packageDTO, batches));
         }
         return new PageImpl<>(packageDetailsList, pageable, packageEntityPage.getTotalElements());

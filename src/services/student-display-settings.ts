@@ -130,6 +130,8 @@ function mergeWithDefaults(
       canDeleteProfile:
         incoming?.permissions?.canDeleteProfile ??
         d.permissions.canDeleteProfile,
+      canViewFiles:
+        incoming?.permissions?.canViewFiles ?? d.permissions.canViewFiles,
     },
     courseDetails: {
       tabs: mergeArrayById(

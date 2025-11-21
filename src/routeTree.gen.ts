@@ -16,6 +16,7 @@ import { Route as SignupIndexRouteImport } from './routes/signup/index'
 import { Route as RegisterIndexRouteImport } from './routes/register/index'
 import { Route as ReferralIndexRouteImport } from './routes/referral/index'
 import { Route as PrivacyPolicyIndexRouteImport } from './routes/privacy-policy/index'
+import { Route as MyFilesIndexRouteImport } from './routes/my-files/index'
 import { Route as LogoutIndexRouteImport } from './routes/logout/index'
 import { Route as LoginIndexRouteImport } from './routes/login/index'
 import { Route as LiveClassGuestIndexRouteImport } from './routes/live-class-guest/index'
@@ -93,6 +94,11 @@ const ReferralIndexRoute = ReferralIndexRouteImport.update({
 const PrivacyPolicyIndexRoute = PrivacyPolicyIndexRouteImport.update({
   id: '/privacy-policy/',
   path: '/privacy-policy/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MyFilesIndexRoute = MyFilesIndexRouteImport.update({
+  id: '/my-files/',
+  path: '/my-files/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LogoutIndexRoute = LogoutIndexRouteImport.update({
@@ -351,6 +357,7 @@ export interface FileRoutesByFullPath {
   '/live-class-guest': typeof LiveClassGuestIndexRoute
   '/login': typeof LoginIndexRoute
   '/logout': typeof LogoutIndexRoute
+  '/my-files': typeof MyFilesIndexRoute
   '/privacy-policy': typeof PrivacyPolicyIndexRoute
   '/referral': typeof ReferralIndexRoute
   '/register': typeof RegisterIndexRoute
@@ -403,6 +410,7 @@ export interface FileRoutesByTo {
   '/live-class-guest': typeof LiveClassGuestIndexRoute
   '/login': typeof LoginIndexRoute
   '/logout': typeof LogoutIndexRoute
+  '/my-files': typeof MyFilesIndexRoute
   '/privacy-policy': typeof PrivacyPolicyIndexRoute
   '/referral': typeof ReferralIndexRoute
   '/register': typeof RegisterIndexRoute
@@ -456,6 +464,7 @@ export interface FileRoutesById {
   '/live-class-guest/': typeof LiveClassGuestIndexRoute
   '/login/': typeof LoginIndexRoute
   '/logout/': typeof LogoutIndexRoute
+  '/my-files/': typeof MyFilesIndexRoute
   '/privacy-policy/': typeof PrivacyPolicyIndexRoute
   '/referral/': typeof ReferralIndexRoute
   '/register/': typeof RegisterIndexRoute
@@ -510,6 +519,7 @@ export interface FileRouteTypes {
     | '/live-class-guest'
     | '/login'
     | '/logout'
+    | '/my-files'
     | '/privacy-policy'
     | '/referral'
     | '/register'
@@ -562,6 +572,7 @@ export interface FileRouteTypes {
     | '/live-class-guest'
     | '/login'
     | '/logout'
+    | '/my-files'
     | '/privacy-policy'
     | '/referral'
     | '/register'
@@ -614,6 +625,7 @@ export interface FileRouteTypes {
     | '/live-class-guest/'
     | '/login/'
     | '/logout/'
+    | '/my-files/'
     | '/privacy-policy/'
     | '/referral/'
     | '/register/'
@@ -667,6 +679,7 @@ export interface RootRouteChildren {
   LiveClassGuestIndexRoute: typeof LiveClassGuestIndexRoute
   LoginIndexRoute: typeof LoginIndexRoute
   LogoutIndexRoute: typeof LogoutIndexRoute
+  MyFilesIndexRoute: typeof MyFilesIndexRoute
   PrivacyPolicyIndexRoute: typeof PrivacyPolicyIndexRoute
   ReferralIndexRoute: typeof ReferralIndexRoute
   RegisterIndexRoute: typeof RegisterIndexRoute
@@ -756,6 +769,13 @@ declare module '@tanstack/react-router' {
       path: '/privacy-policy'
       fullPath: '/privacy-policy'
       preLoaderRoute: typeof PrivacyPolicyIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/my-files/': {
+      id: '/my-files/'
+      path: '/my-files'
+      fullPath: '/my-files'
+      preLoaderRoute: typeof MyFilesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/logout/': {
@@ -1075,6 +1095,7 @@ const rootRouteChildren: RootRouteChildren = {
   LiveClassGuestIndexRoute: LiveClassGuestIndexRoute,
   LoginIndexRoute: LoginIndexRoute,
   LogoutIndexRoute: LogoutIndexRoute,
+  MyFilesIndexRoute: MyFilesIndexRoute,
   PrivacyPolicyIndexRoute: PrivacyPolicyIndexRoute,
   ReferralIndexRoute: ReferralIndexRoute,
   RegisterIndexRoute: RegisterIndexRoute,

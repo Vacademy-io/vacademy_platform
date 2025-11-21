@@ -13,6 +13,7 @@ export function useStudentPermissions() {
     canViewProfile: false,
     canEditProfile: false,
     canDeleteProfile: false,
+    canViewFiles: false,
   };
 
   return {

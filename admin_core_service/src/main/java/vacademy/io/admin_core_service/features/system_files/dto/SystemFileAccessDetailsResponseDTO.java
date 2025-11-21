@@ -19,6 +19,7 @@ public class SystemFileAccessDetailsResponseDTO {
         private String fileType;
         private String mediaType;
         private String data;
+        private String description;
         private String status;
         private String createdBy;
         private String createdByUserId;

@@ -7,6 +7,8 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.List;
+
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 @JsonIgnoreProperties(ignoreUnknown = true)
 @Getter
@@ -20,4 +22,6 @@ public class SystemFileListRequestDTO {
         private String levelId; // userId, batchId, instituteId, or role name
 
         private String accessType; // Optional: view, edit - if null, return all access types
+
+        private List<String> statuses; // Optional: ACTIVE, ARCHIVED, DELETED - if null, defaults to ACTIVE only
 }

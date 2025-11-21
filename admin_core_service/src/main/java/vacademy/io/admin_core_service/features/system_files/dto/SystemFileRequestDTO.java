@@ -29,6 +29,7 @@ public class SystemFileRequestDTO {
 
         private String folderName;
         private String thumbnailFileId;
+        private String description;
 
         private List<AccessDTO> viewAccess;
         private List<AccessDTO> editAccess;

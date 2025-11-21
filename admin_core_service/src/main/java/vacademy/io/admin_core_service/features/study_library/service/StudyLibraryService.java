@@ -25,6 +25,7 @@ import vacademy.io.admin_core_service.features.module.repository.ModuleChapterMa
 import vacademy.io.admin_core_service.features.module.repository.SubjectModuleMappingRepository;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
+import vacademy.io.admin_core_service.features.packages.repository.PackageInstituteRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.session.enums.SessionStatusEnum;
 import vacademy.io.admin_core_service.features.slide.enums.QuestionStatusEnum;
@@ -43,6 +44,7 @@ import vacademy.io.common.institute.dto.SessionDTO;
 import vacademy.io.common.institute.dto.SubjectDTO;
 import vacademy.io.common.institute.entity.Level;
 import vacademy.io.common.institute.entity.PackageEntity;
+import vacademy.io.common.institute.entity.PackageInstitute;
 import vacademy.io.common.institute.entity.module.Module;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.session.SessionProjection;
@@ -87,6 +89,9 @@ public class StudyLibraryService {
     @Autowired
     private AuthService authService;
 
+    @Autowired
+    private PackageInstituteRepository packageInstituteRepository;
+
 
     @Transactional
     public List<CourseDTOWithDetails> getStudyLibraryInitDetails(String instituteId) {
@@ -99,6 +104,14 @@ public class StudyLibraryService {
                 List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name())
         );
 
+        return buildCourseDTOWithDetailsForPackages(packages, instituteId);
+    }
+
+    /**
+     * Common method to build CourseDTOWithDetails for a list of packages
+     * This method is used by both getStudyLibraryInitDetails and getCourseInitDetails
+     */
+    private List<CourseDTOWithDetails> buildCourseDTOWithDetailsForPackages(List<PackageEntity> packages, String instituteId) {
         if (packages.isEmpty()) {
             return new ArrayList<>();
         }
@@ -454,6 +467,38 @@ public class StudyLibraryService {
         catch (JsonProcessingException jsonProcessingException){
             throw new VacademyException(jsonProcessingException.getMessage());
         }
+    }
+
+    @Transactional
+    public List<CourseDTOWithDetails> getCourseInitDetails(String courseId, String instituteId) {
+        if (Objects.isNull(courseId)) {
+            throw new VacademyException("Please provide courseId");
+        }
+        
+        validateInstituteId(instituteId);
+        
+        // Fetch the specific package/course
+        Optional<PackageEntity> packageOptional = packageRepository.findById(courseId);
+        if (packageOptional.isEmpty()) {
+            throw new VacademyException("Course not found with id: " + courseId);
+        }
+        
+        PackageEntity packageEntity = packageOptional.get();
+        
+        // Check if package status is valid
+        List<String> validPackageStatuses = List.of(PackageStatusEnum.ACTIVE.name(), PackageStatusEnum.DRAFT.name(), PackageStatusEnum.IN_REVIEW.name());
+        if (!validPackageStatuses.contains(packageEntity.getStatus())) {
+            return new ArrayList<>();
+        }
+
+        // Verify that the course belongs to the institute
+        Optional<PackageInstitute> packageInstitute = packageInstituteRepository.findByPackageIdAndInstituteId(courseId, instituteId);
+        if (packageInstitute.isEmpty()) {
+            throw new VacademyException("Course with id: " + courseId + " does not belong to institute with id: " + instituteId);
+        }
+
+        // Reuse the common method with a single package
+        return buildCourseDTOWithDetailsForPackages(List.of(packageEntity), instituteId);
     }
 
 }

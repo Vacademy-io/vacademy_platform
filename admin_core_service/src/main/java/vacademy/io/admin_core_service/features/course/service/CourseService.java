@@ -117,31 +117,31 @@ public class CourseService {
         PackageEntity packageEntity = new PackageEntity();
         packageEntity.setPackageName(addCourseDTO.getCourseName());
         packageEntity.setThumbnailFileId(addCourseDTO.getThumbnailFileId());
-        
+
         // Set status - default to DRAFT for teacher approval workflow
         if (StringUtils.hasText(addCourseDTO.getStatus())) {
             packageEntity.setStatus(addCourseDTO.getStatus());
         } else {
             packageEntity.setStatus(PackageStatusEnum.ACTIVE.name());
         }
-        
+
         // Set created by user ID for teacher approval workflow
         if (StringUtils.hasText(addCourseDTO.getCreatedByUserId())) {
             packageEntity.setCreatedByUserId(addCourseDTO.getCreatedByUserId());
         }
-        
+
         // Set original course ID if this is a copy
         if (StringUtils.hasText(addCourseDTO.getOriginalCourseId())) {
             packageEntity.setOriginalCourseId(addCourseDTO.getOriginalCourseId());
         }
-        
+
         // Set version number
         if (addCourseDTO.getVersionNumber() != null) {
             packageEntity.setVersionNumber(addCourseDTO.getVersionNumber());
         } else {
             packageEntity.setVersionNumber(1); // Default version
         }
-        
+
         packageEntity.setIsCoursePublishedToCatalaouge(addCourseDTO.getIsCoursePublishedToCatalaouge());
         packageEntity.setCoursePreviewImageMediaId(addCourseDTO.getCoursePreviewImageMediaId());
         packageEntity.setCourseBannerMediaId(addCourseDTO.getCourseBannerMediaId());
@@ -152,7 +152,6 @@ public class CourseService {
 
         if (addCourseDTO.getTags() != null && !addCourseDTO.getTags().isEmpty()) {
             packageEntity.setTags(addCourseDTO.getTags().stream()
-                    .map(String::toLowerCase)
                     .map(String::trim)
                     .collect(Collectors.joining(",")));
         }
@@ -179,17 +178,17 @@ public class CourseService {
         if (StringUtils.hasText(addCourseDTO.getStatus())) {
             packageEntity.setStatus(addCourseDTO.getStatus());
         }
-        
+
         // Update created by user ID if provided (usually shouldn't change, but for completeness)
         if (StringUtils.hasText(addCourseDTO.getCreatedByUserId())) {
             packageEntity.setCreatedByUserId(addCourseDTO.getCreatedByUserId());
         }
-        
+
         // Update original course ID if provided (for copy operations)
         if (StringUtils.hasText(addCourseDTO.getOriginalCourseId())) {
             packageEntity.setOriginalCourseId(addCourseDTO.getOriginalCourseId());
         }
-        
+
         // Update version number if provided
         if (addCourseDTO.getVersionNumber() != null) {
             packageEntity.setVersionNumber(addCourseDTO.getVersionNumber());

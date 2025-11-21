@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Preferences } from '@capacitor/preferences';
-import { hasUserDonated } from '@/services/user-enrollment-status';
+import { useState, useEffect, useCallback } from "react";
+import { Preferences } from "@capacitor/preferences";
+import { hasUserDonated } from "@/services/user-enrollment-status";
 
 export interface EnrolledSession {
   id: string;
@@ -26,10 +26,11 @@ export interface EnrolledSession {
 }
 
 export const useEnrollmentStatus = (instituteId: string | null) => {
-  
-  const [enrolledSessions, setEnrolledSessions] = useState<EnrolledSession[]>([]);
+  const [enrolledSessions, setEnrolledSessions] = useState<EnrolledSession[]>(
+    []
+  );
   const [userHasDonated, setUserHasDonated] = useState<boolean | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // Start as true since we're loading on mount
   const [donationCheckCompleted, setDonationCheckCompleted] = useState(false);
 
   // Always fetch enrolled sessions from preferences, regardless of instituteId
@@ -38,11 +39,17 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
       const sessionListResult = await Preferences.get({ key: "sessionList" });
       if (sessionListResult.value) {
         const sessionList = JSON.parse(sessionListResult.value);
-        const sessions = Array.isArray(sessionList) ? sessionList : [sessionList];
+        const sessions = Array.isArray(sessionList)
+          ? sessionList
+          : [sessionList];
         setEnrolledSessions(sessions);
+      } else {
+        setEnrolledSessions([]);
       }
     } catch (error) {
       setEnrolledSessions([]);
+    } finally {
+      setIsLoading(false);
     }
   }, []); // No dependencies needed
 
@@ -52,7 +59,7 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
       setUserHasDonated(false);
       return;
     }
-    
+
     try {
       const hasDonated = await hasUserDonated(instituteId);
       setUserHasDonated(hasDonated);
@@ -64,71 +71,78 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
   }, [instituteId]); // Add instituteId as dependency
 
   // Update preferences with new session
-  const updatePreferencesWithNewSession = useCallback(async (updatedSessions: EnrolledSession[]) => {
-    try {
-      await Preferences.set({
-        key: "sessionList",
-        value: JSON.stringify(updatedSessions)
-      });
-    } catch (error) {
-      // Silent error handling
-    }
-  }, []); // No dependencies needed
+  const updatePreferencesWithNewSession = useCallback(
+    async (updatedSessions: EnrolledSession[]) => {
+      try {
+        await Preferences.set({
+          key: "sessionList",
+          value: JSON.stringify(updatedSessions),
+        });
+      } catch (error) {
+        // Silent error handling
+      }
+    },
+    []
+  ); // No dependencies needed
 
   // Add a new enrolled session
-  const addEnrolledSession = useCallback(async (newSession: EnrolledSession) => {
-    return new Promise<void>((resolve) => {
-      setEnrolledSessions(prev => {
-        // Check if session already exists
-        const exists = prev.some(session => 
-          session.package_dto.id === newSession.package_dto.id &&
-          session.session.id === newSession.session.id &&
-          session.level.id === newSession.level.id
-        );
-        
-        if (exists) {
-          resolve(); // Don't add duplicate
-          return prev;
-        }
-        
-        const updatedSessions = [...prev, newSession];
-        
-        // Update preferences with the new sessions array
-        updatePreferencesWithNewSession(updatedSessions).then(() => {
-          resolve();
+  const addEnrolledSession = useCallback(
+    async (newSession: EnrolledSession) => {
+      return new Promise<void>((resolve) => {
+        setEnrolledSessions((prev) => {
+          // Check if session already exists
+          const exists = prev.some(
+            (session) =>
+              session.package_dto.id === newSession.package_dto.id &&
+              session.session.id === newSession.session.id &&
+              session.level.id === newSession.level.id
+          );
+
+          if (exists) {
+            resolve(); // Don't add duplicate
+            return prev;
+          }
+
+          const updatedSessions = [...prev, newSession];
+
+          // Update preferences with the new sessions array
+          updatePreferencesWithNewSession(updatedSessions).then(() => {
+            resolve();
+          });
+
+          return updatedSessions;
         });
-        
-        return updatedSessions;
       });
-    });
-  }, [updatePreferencesWithNewSession]); // Add dependency
+    },
+    [updatePreferencesWithNewSession]
+  ); // Add dependency
 
   // Check if user is enrolled in a specific course
-  const isEnrolledInCourse = useCallback((courseId: string, sessionId?: string, levelId?: string) => {
-    const result = (enrolledSessions || []).some(session => {
-      const courseMatch = session.package_dto.id === courseId;
-      
-      if (sessionId && levelId) {
-        return courseMatch && 
-               session.session.id === sessionId && 
-               session.level.id === levelId;
-      }
-      
-      return courseMatch;
-    });
-    
+  const isEnrolledInCourse = useCallback(
+    (courseId: string, sessionId?: string, levelId?: string) => {
+      const result = (enrolledSessions || []).some((session) => {
+        const courseMatch = session.package_dto.id === courseId;
 
-    
-    return result;
-  }, [enrolledSessions]); // Add enrolledSessions dependency
+        if (sessionId && levelId) {
+          return (
+            courseMatch &&
+            session.session.id === sessionId &&
+            session.level.id === levelId
+          );
+        }
+
+        return courseMatch;
+      });
+
+      return result;
+    },
+    [enrolledSessions]
+  ); // Add enrolledSessions dependency
 
   // Refresh all data
   const refreshData = useCallback(async () => {
     try {
-      await Promise.all([
-        fetchEnrolledSessions(),
-        checkDonationStatus()
-      ]);
+      await Promise.all([fetchEnrolledSessions(), checkDonationStatus()]);
     } catch (error) {
       // Silent error handling
     } finally {
@@ -139,7 +153,7 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
   // Always fetch enrolled sessions on mount
   useEffect(() => {
     fetchEnrolledSessions();
-  }, []); // Only run once on mount
+  }, [fetchEnrolledSessions]); // Include dependency
 
   // Also fetch enrolled sessions when the page becomes visible again
   // This handles the case when user navigates away and comes back
@@ -156,12 +170,12 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
       fetchEnrolledSessions();
     };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleFocus);
-    
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
+
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
     };
   }, [fetchEnrolledSessions]);
 

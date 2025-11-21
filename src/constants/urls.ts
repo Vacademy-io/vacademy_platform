@@ -155,3 +155,5 @@ export const GET_POINTS_COUNTS = `${BASE_URL}/admin-core-service/v1/points/count
 
 // Server time
 export const GET_SERVER_TIME = `${BASE_URL}/auth-service/v1/server-time/utc`;
+
+export const GET_CUSTOM_FIELDS = `${BASE_URL}/admin-core-service/open/common/custom-fields/setup`;

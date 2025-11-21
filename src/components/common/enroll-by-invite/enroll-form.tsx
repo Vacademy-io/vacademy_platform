@@ -2,18 +2,20 @@ import { Route } from "@/routes/learner-invitation-response";
 import { Preferences } from "@capacitor/preferences";
 import { applyTabBranding } from "@/utils/branding";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useSuspenseQuery, useQuery } from "@tanstack/react-query";
 import {
   handleEnrollLearnerForPayment,
   handleGetEnrollInviteData,
   handleGetPublicInstituteDetails,
   ReferRequest,
 } from "./-services/enroll-invite-services";
+import { handleGetInstituteCustomFields } from "./-services/custom-fields-setup";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { GraduationCap } from "lucide-react";
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import {
   convertInviteCustomFields,
+  convertInstituteCustomFields,
   getDefaultPlanFromPaymentsData,
   safeJsonParse,
   transformApiDataToCourseDataForInvite,
@@ -161,32 +163,94 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
     handleGetEnrollInviteData({ instituteId, inviteCode })
   );
 
+  // Fetch custom fields from institute if not available in inviteData
+  const hasCustomFieldsInInvite =
+    inviteData?.institute_custom_fields &&
+    inviteData.institute_custom_fields.length > 0;
+
+  const { data: instituteCustomFields } = useQuery({
+    ...handleGetInstituteCustomFields({ instituteId }),
+    enabled: !hasCustomFieldsInInvite, // Only fetch if not in inviteData
+  });
+
+  // Merge custom fields: prioritize inviteData fields, fallback to institute fields
+  const finalCustomFields = useMemo(() => {
+    if (hasCustomFieldsInInvite) {
+      const converted = convertInviteCustomFields(
+        inviteData.institute_custom_fields
+      );
+      return converted;
+    }
+    // Use convertInstituteCustomFields for institute API response
+    if (instituteCustomFields && instituteCustomFields.length > 0) {
+      const converted = convertInstituteCustomFields(instituteCustomFields);
+      return converted;
+    }
+    return [];
+  }, [
+    hasCustomFieldsInInvite,
+    inviteData?.institute_custom_fields,
+    instituteCustomFields,
+  ]);
+
+  // Track whether we're using institute custom fields (not from invite)
+  const isUsingInstituteCustomFields =
+    !hasCustomFieldsInInvite &&
+    instituteCustomFields &&
+    instituteCustomFields.length > 0;
+
   // Determine payment vendor from invite data or prop
   // const vendor = propVendor || getPaymentVendor(inviteData);
 
   const paymentOptions = getDefaultPlanFromPaymentsData(
     inviteData?.package_session_to_payment_options?.[0]?.payment_option
   );
-  const zodSchema = getDynamicSchema(
-    convertInviteCustomFields(inviteData?.institute_custom_fields || []) || []
-  );
+  const zodSchema = getDynamicSchema(finalCustomFields || []);
 
   type FormValues = z.infer<typeof zodSchema>;
 
-  const form = useForm<FormValues>({
-    resolver: zodResolver(zodSchema),
-    defaultValues: (
-      convertInviteCustomFields(inviteData?.institute_custom_fields || []) || []
-    )
-      .sort(
-        (
-          a: AssessmentCustomFieldOpenRegistration,
-          b: AssessmentCustomFieldOpenRegistration
-        ) => a.field_order - b.field_order
-      )
-      .reduce(
-        (
-          defaults: Record<
+  // Helper function to generate default values from custom fields
+  const generateDefaultValues = useCallback(
+    (fields: AssessmentCustomFieldOpenRegistration[]) => {
+      return fields
+        .sort((a, b) => a.field_order - b.field_order)
+        .reduce(
+          (
+            defaults: Record<
+              string,
+              {
+                id: string;
+                name: string;
+                value: string;
+                is_mandatory: boolean;
+                type: string;
+                config?: string;
+                comma_separated_options?: string[];
+              }
+            >,
+            field
+          ) => {
+            if (field.field_type === "dropdown") {
+              defaults[field.field_key] = {
+                id: field.id,
+                name: field.field_name,
+                value: "",
+                is_mandatory: field.is_mandatory || false,
+                type: field.field_type,
+                config: field.config || "{}",
+              };
+            } else {
+              defaults[field.field_key] = {
+                id: field.id,
+                name: field.field_name,
+                value: "",
+                is_mandatory: field.is_mandatory || false,
+                type: field.field_type,
+              };
+            }
+            return defaults;
+          },
+          {} as Record<
             string,
             {
               id: string;
@@ -197,44 +261,26 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
               config?: string;
               comma_separated_options?: string[];
             }
-          >,
-          field: AssessmentCustomFieldOpenRegistration
-        ) => {
-          if (field.field_type === "dropdown") {
-            defaults[field.field_key] = {
-              id: field.id,
-              name: field.field_name,
-              value: "",
-              is_mandatory: field.is_mandatory || false,
-              type: field.field_type,
-              config: field.config || "{}",
-            };
-          } else {
-            defaults[field.field_key] = {
-              id: field.id,
-              name: field.field_name,
-              value: "",
-              is_mandatory: field.is_mandatory || false,
-              type: field.field_type,
-            };
-          }
-          return defaults;
-        },
-        {} as Record<
-          string,
-          {
-            id: string;
-            name: string;
-            value: string;
-            is_mandatory: boolean;
-            type: string;
-            config?: string;
-            comma_separated_options?: string[];
-          }
-        >
-      ),
+          >
+        );
+    },
+    []
+  );
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(zodSchema),
+    defaultValues: generateDefaultValues(finalCustomFields || []),
     mode: "onChange",
   });
+
+  // Update form when finalCustomFields changes (e.g., when instituteCustomFields loads)
+  useEffect(() => {
+    if (finalCustomFields && finalCustomFields.length > 0) {
+      const newDefaultValues = generateDefaultValues(finalCustomFields);
+
+      form.reset(newDefaultValues);
+    }
+  }, [finalCustomFields, form, generateDefaultValues]);
 
   form.watch();
 
@@ -451,6 +497,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
               ?.permissions?.allowLearnersToCreateCourses || false,
           referRequest: referRequest,
           paymentVendor: "STRIPE", // Default for FREE payments
+          isUsingInstituteCustomFields: isUsingInstituteCustomFields,
         });
         setPaymentCompletionResponse(paymentResponse);
         setCurrentStep(5); // Go directly to success for FREE payments
@@ -494,6 +541,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
           referRequest: referRequest,
           ewayPaymentData: ewayEncryptedData,
           paymentVendor: "EWAY",
+          isUsingInstituteCustomFields: isUsingInstituteCustomFields,
         });
         setOrderId(paymentResponse?.payment_response?.order_id);
         setPaymentCompletionResponse(paymentResponse);
@@ -540,6 +588,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
           referRequest: referRequest,
           razorpayPaymentData: razorpayPaymentData || undefined, // Will be undefined on first call
           paymentVendor: "RAZORPAY",
+          isUsingInstituteCustomFields: isUsingInstituteCustomFields,
         });
 
         // Step 2: Extract order details from response
@@ -623,6 +672,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
             ?.permissions?.allowLearnersToCreateCourses || false,
         referRequest: referRequest,
         paymentVendor: "STRIPE",
+        isUsingInstituteCustomFields: isUsingInstituteCustomFields,
       });
       setOrderId(paymentResponse?.payment_response?.order_id);
       setPaymentCompletionResponse(paymentResponse);
@@ -678,6 +728,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
             referRequest: referRequest,
             razorpayPaymentData: razorpayPaymentData, // Now includes payment details
             paymentVendor: "RAZORPAY",
+            isUsingInstituteCustomFields: isUsingInstituteCustomFields,
           });
 
           setPaymentCompletionResponse(paymentResponse);

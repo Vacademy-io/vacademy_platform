@@ -415,7 +415,8 @@ export const CourseDetailsPage = () => {
   const [instituteId, setInstituteId] = useState<string | null>(null);
   const [certificateUrl, setCertificateUrl] = useState<string | null>(null);
   const [showConfetti, setShowConfetti] = useState<boolean>(false);
-  const [certificateDialogOpen, setCertificateDialogOpen] = useState<boolean>(false);
+  const [certificateDialogOpen, setCertificateDialogOpen] =
+    useState<boolean>(false);
   const [completionPercentage, setCompletionPercentage] = useState<number>(0);
   const [certificateThreshold, setCertificateThreshold] = useState<number>(80);
 
@@ -475,6 +476,7 @@ export const CourseDetailsPage = () => {
     enrolledSessions,
     addEnrolledSession,
     refreshData: refreshEnrollmentData,
+    isLoading: isEnrollmentLoading,
   } = useEnrollmentStatus(instituteId);
 
   // Payment status check state
@@ -593,10 +595,13 @@ export const CourseDetailsPage = () => {
               });
             }
           } else if (import.meta.env.MODE !== "production") {
-            console.info("[CourseDetailsPage] fallback mapping not found for course", {
-              courseId: searchParams.courseId,
-              batchesCount: batches.length,
-            });
+            console.info(
+              "[CourseDetailsPage] fallback mapping not found for course",
+              {
+                courseId: searchParams.courseId,
+                batchesCount: batches.length,
+              }
+            );
           }
         }
 
@@ -967,11 +972,16 @@ export const CourseDetailsPage = () => {
         label: toTitleCase(session.sessionDetails.session_name),
       }));
     }
-  }, [selectedTab, watchedSessions]); // Remove enrolledSessions dependency to avoid issues
+  }, [selectedTab, watchedSessions, enrolledSessions]);
 
   // Update level options when session changes - filter based on selectedTab
   const handleSessionChange = useCallback(
     async (sessionId: string) => {
+      // Wait for enrollment data to be loaded before processing
+      if (isEnrollmentLoading) {
+        return;
+      }
+
       setSelectedSession(sessionId);
       const sessions = form.getValues("courseData")?.sessions || [];
       const selectedSessionData = sessions.find(
@@ -1061,15 +1071,18 @@ export const CourseDetailsPage = () => {
         } else {
           setSelectedLevel("");
           if (import.meta.env.MODE !== "production") {
-            console.info("[CourseDetailsPage] handleSessionChange - no levels", {
-              selectedSession: sessionId,
-              newLevelOptionsCount: newLevelOptions.length,
-            });
+            console.info(
+              "[CourseDetailsPage] handleSessionChange - no levels",
+              {
+                selectedSession: sessionId,
+                newLevelOptionsCount: newLevelOptions.length,
+              }
+            );
           }
         }
       }
     },
-    [form, selectedTab] // Remove enrolledSessions dependency to avoid issues
+    [form, selectedTab, enrolledSessions, isEnrollmentLoading]
   );
 
   // Handle level change - clear expanded items and reset state
@@ -1082,6 +1095,11 @@ export const CourseDetailsPage = () => {
 
   // Set initial session and its levels - auto-select if only one option
   useEffect(() => {
+    // Wait for enrollment data to be loaded before auto-selecting
+    if (isEnrollmentLoading) {
+      return;
+    }
+
     if (
       sessionOptions.length > 0 &&
       !selectedSession &&
@@ -1096,7 +1114,13 @@ export const CourseDetailsPage = () => {
         });
       }
     }
-  }, [sessionOptions, selectedSession, selectedLevel, handleSessionChange]);
+  }, [
+    sessionOptions,
+    selectedSession,
+    selectedLevel,
+    handleSessionChange,
+    isEnrollmentLoading,
+  ]);
 
   // Trace selection state changes
   useEffect(() => {
@@ -1191,9 +1215,8 @@ export const CourseDetailsPage = () => {
     const packageData = singleCourseQuery.data as unknown as {
       read_time_in_minutes?: number;
     };
-    
+
     if (packageData?.read_time_in_minutes) {
-      console.log("📦 Package API read_time_in_minutes:", packageData.read_time_in_minutes);
       setBackendReadTimeMinutes(packageData.read_time_in_minutes);
     }
   }, [singleCourseQuery.data]);

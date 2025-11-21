@@ -25,6 +25,7 @@ import { Route as DeleteUserIndexRouteImport } from './routes/delete-user/index'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as CoursesIndexRouteImport } from './routes/courses/index'
 import { Route as ChangePasswordIndexRouteImport } from './routes/change-password/index'
+import { Route as AudienceResponseIndexRouteImport } from './routes/audience-response/index'
 import { Route as AssessmentIndexRouteImport } from './routes/assessment/index'
 import { Route as TagNameIndexRouteImport } from './routes/$tagName/index'
 import { Route as UserProfileEditIndexRouteImport } from './routes/user-profile/edit/index'
@@ -138,6 +139,11 @@ const CoursesIndexRoute = CoursesIndexRouteImport.update({
 const ChangePasswordIndexRoute = ChangePasswordIndexRouteImport.update({
   id: '/change-password/',
   path: '/change-password/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AudienceResponseIndexRoute = AudienceResponseIndexRouteImport.update({
+  id: '/audience-response/',
+  path: '/audience-response/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AssessmentIndexRoute = AssessmentIndexRouteImport.update({
@@ -335,6 +341,7 @@ const StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRoute =
 export interface FileRoutesByFullPath {
   '/$tagName': typeof TagNameIndexRoute
   '/assessment': typeof AssessmentIndexRoute
+  '/audience-response': typeof AudienceResponseIndexRoute
   '/change-password': typeof ChangePasswordIndexRoute
   '/courses': typeof CoursesIndexRoute
   '/dashboard': typeof DashboardIndexRoute
@@ -386,6 +393,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/$tagName': typeof TagNameIndexRoute
   '/assessment': typeof AssessmentIndexRoute
+  '/audience-response': typeof AudienceResponseIndexRoute
   '/change-password': typeof ChangePasswordIndexRoute
   '/courses': typeof CoursesIndexRoute
   '/dashboard': typeof DashboardIndexRoute
@@ -438,6 +446,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/$tagName/': typeof TagNameIndexRoute
   '/assessment/': typeof AssessmentIndexRoute
+  '/audience-response/': typeof AudienceResponseIndexRoute
   '/change-password/': typeof ChangePasswordIndexRoute
   '/courses/': typeof CoursesIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
@@ -491,6 +500,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/$tagName'
     | '/assessment'
+    | '/audience-response'
     | '/change-password'
     | '/courses'
     | '/dashboard'
@@ -542,6 +552,7 @@ export interface FileRouteTypes {
   to:
     | '/$tagName'
     | '/assessment'
+    | '/audience-response'
     | '/change-password'
     | '/courses'
     | '/dashboard'
@@ -593,6 +604,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/$tagName/'
     | '/assessment/'
+    | '/audience-response/'
     | '/change-password/'
     | '/courses/'
     | '/dashboard/'
@@ -645,6 +657,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   TagNameIndexRoute: typeof TagNameIndexRoute
   AssessmentIndexRoute: typeof AssessmentIndexRoute
+  AudienceResponseIndexRoute: typeof AudienceResponseIndexRoute
   ChangePasswordIndexRoute: typeof ChangePasswordIndexRoute
   CoursesIndexRoute: typeof CoursesIndexRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
@@ -806,6 +819,13 @@ declare module '@tanstack/react-router' {
       path: '/change-password'
       fullPath: '/change-password'
       preLoaderRoute: typeof ChangePasswordIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/audience-response/': {
+      id: '/audience-response/'
+      path: '/audience-response'
+      fullPath: '/audience-response'
+      preLoaderRoute: typeof AudienceResponseIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/assessment/': {
@@ -1045,6 +1065,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   TagNameIndexRoute: TagNameIndexRoute,
   AssessmentIndexRoute: AssessmentIndexRoute,
+  AudienceResponseIndexRoute: AudienceResponseIndexRoute,
   ChangePasswordIndexRoute: ChangePasswordIndexRoute,
   CoursesIndexRoute: CoursesIndexRoute,
   DashboardIndexRoute: DashboardIndexRoute,

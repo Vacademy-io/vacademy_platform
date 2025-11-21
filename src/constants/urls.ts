@@ -155,3 +155,7 @@ export const GET_POINTS_COUNTS = `${BASE_URL}/admin-core-service/v1/points/count
 
 // Server time
 export const GET_SERVER_TIME = `${BASE_URL}/auth-service/v1/server-time/utc`;
+
+// Audience campaign API endpoint
+export const GET_AUDIENCE_CAMPAIGN = `${BASE_URL}/admin-core-service/open/v1/audience/campaign`;
+export const SUBMIT_AUDIENCE_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit`;

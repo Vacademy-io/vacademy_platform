@@ -17,125 +17,125 @@ import java.util.Optional;
 public interface InstituteStudentRepository extends CrudRepository<Student, String> {
 
     @Query(value = "SELECT DISTINCT s.* FROM student s LEFT JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id "
-        +
-        "WHERE (:statuses IS NULL OR ssigm.status IN (:statuses)) " +
-        "AND (:gender IS NULL OR s.gender IN (:gender)) " +
-        "AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds)) " +
-        "AND (:groupIds IS NULL OR ssigm.group_id IN (:groupIds)) " +
-        "AND (:packageSessionIds IS NULL OR ssigm.package_session_id IN (:packageSessionIds))", countQuery = "SELECT COUNT(DISTINCT s.id) FROM student s LEFT JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id "
-        +
-        "WHERE (:statuses IS NULL OR ssigm.status IN (:statuses)) " +
-        "AND (:gender IS NULL OR s.gender IN (:gender)) " +
-        "AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds)) " +
-        "AND (:groupIds IS NULL OR ssigm.group_id IN (:groupIds)) " +
-        "AND (:packageSessionIds IS NULL OR ssigm.package_session_id IN (:packageSessionIds))", nativeQuery = true)
-    Page<Student> getAllStudentWithFilter(
-        @Param("statuses") List<String> statuses,
-        @Param("gender") List<String> gender,
-        @Param("instituteIds") List<String> instituteIds,
-        @Param("groupIds") List<String> groupIds,
-        @Param("packageSessionIds") List<String> packageSessionIds,
-        Pageable pageable);
-
-    @Query(nativeQuery = true, value = "SELECT DISTINCT s.* " +
-        "FROM student s " +
-        "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
-        "WHERE ( " +
-        "to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name) "
-        +
-        "OR s.full_name LIKE :name || '%' " +
-        "OR s.username LIKE :name || '%' " +
-        "OR ssigm.institute_enrollment_number LIKE :name || '%' " +
-        "OR s.user_id LIKE :name || '%' " +
-        "OR s.mobile_number LIKE :name || '%' " +
-        ") " +
-        "AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))", countQuery = "SELECT COUNT(DISTINCT s.id) "
-        +
-        "FROM student s " +
-        "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id "
-        +
-        "WHERE ( " +
-        "to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name) "
-        +
-        "OR s.full_name LIKE :name || '%' " +
-        "OR s.username LIKE :name || '%' " +
-        "OR ssigm.institute_enrollment_number LIKE :name || '%' " +
-        "OR s.user_id LIKE :name || '%' " +
-        "OR s.mobile_number LIKE :name || '%' " +
-        ") " +
-        "AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))")
-    Page<Student> getAllStudentWithSearch(
-        @Param("name") String name,
-        @Param("instituteIds") List<String> instituteIds,
-        Pageable pageable);
-
-    @Query(value = "SELECT DISTINCT s.id, s.username, s.user_id, s.email, s.full_name, s.address_line, s.region, " +
-        "s.city, s.pin_code, s.mobile_number, s.date_of_birth, s.gender, s.fathers_name, " +
-        "s.mothers_name, s.parents_mobile_number, s.parents_email, s.linked_institute_name, " +
-        "s.created_at, s.updated_at, ssigm.package_session_id, ssigm.institute_enrollment_number, ssigm.status, ssigm.institute_id, ssigm.expiry_date, s.face_file_id, s.parents_to_mother_mobile_number, s.parents_to_mother_email "
-        +
-        "FROM student s " +
-        "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
-        "WHERE (:statuses IS NULL OR ssigm.status IN (:statuses)) " +
-        "AND (:gender IS NULL OR s.gender IN (:gender)) " +
-        "AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds)) " +
-        "AND (:groupIds IS NULL OR ssigm.group_id IN (:groupIds)) " +
-        "AND (ssigm.package_session_id IN (:packageSessionIds))", // Ensures that the session ID matches
-        countQuery = "SELECT COUNT(DISTINCT s.id) " +
-            "FROM student s " +
-            "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id "
             +
             "WHERE (:statuses IS NULL OR ssigm.status IN (:statuses)) " +
             "AND (:gender IS NULL OR s.gender IN (:gender)) " +
             "AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds)) " +
             "AND (:groupIds IS NULL OR ssigm.group_id IN (:groupIds)) " +
-            "AND (ssigm.package_session_id IN (:packageSessionIds))", // Ensures that the
-        // session ID matches
-        nativeQuery = true)
+            "AND (:packageSessionIds IS NULL OR ssigm.package_session_id IN (:packageSessionIds))", countQuery = "SELECT COUNT(DISTINCT s.id) FROM student s LEFT JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id "
+            +
+            "WHERE (:statuses IS NULL OR ssigm.status IN (:statuses)) " +
+            "AND (:gender IS NULL OR s.gender IN (:gender)) " +
+            "AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds)) " +
+            "AND (:groupIds IS NULL OR ssigm.group_id IN (:groupIds)) " +
+            "AND (:packageSessionIds IS NULL OR ssigm.package_session_id IN (:packageSessionIds))", nativeQuery = true)
+    Page<Student> getAllStudentWithFilter(
+            @Param("statuses") List<String> statuses,
+            @Param("gender") List<String> gender,
+            @Param("instituteIds") List<String> instituteIds,
+            @Param("groupIds") List<String> groupIds,
+            @Param("packageSessionIds") List<String> packageSessionIds,
+            Pageable pageable);
+
+    @Query(nativeQuery = true, value = "SELECT DISTINCT s.* " +
+            "FROM student s " +
+            "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
+            "WHERE ( " +
+            "to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name) "
+            +
+            "OR s.full_name LIKE :name || '%' " +
+            "OR s.username LIKE :name || '%' " +
+            "OR ssigm.institute_enrollment_number LIKE :name || '%' " +
+            "OR s.user_id LIKE :name || '%' " +
+            "OR s.mobile_number LIKE :name || '%' " +
+            ") " +
+            "AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))", countQuery = "SELECT COUNT(DISTINCT s.id) "
+            +
+            "FROM student s " +
+            "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id "
+            +
+            "WHERE ( " +
+            "to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name) "
+            +
+            "OR s.full_name LIKE :name || '%' " +
+            "OR s.username LIKE :name || '%' " +
+            "OR ssigm.institute_enrollment_number LIKE :name || '%' " +
+            "OR s.user_id LIKE :name || '%' " +
+            "OR s.mobile_number LIKE :name || '%' " +
+            ") " +
+            "AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))")
+    Page<Student> getAllStudentWithSearch(
+            @Param("name") String name,
+            @Param("instituteIds") List<String> instituteIds,
+            Pageable pageable);
+
+    @Query(value = "SELECT DISTINCT s.id, s.username, s.user_id, s.email, s.full_name, s.address_line, s.region, " +
+            "s.city, s.pin_code, s.mobile_number, s.date_of_birth, s.gender, s.fathers_name, " +
+            "s.mothers_name, s.parents_mobile_number, s.parents_email, s.linked_institute_name, " +
+            "s.created_at, s.updated_at, ssigm.package_session_id, ssigm.institute_enrollment_number, ssigm.status, ssigm.institute_id, ssigm.expiry_date, s.face_file_id, s.parents_to_mother_mobile_number, s.parents_to_mother_email "
+            +
+            "FROM student s " +
+            "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
+            "WHERE (:statuses IS NULL OR ssigm.status IN (:statuses)) " +
+            "AND (:gender IS NULL OR s.gender IN (:gender)) " +
+            "AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds)) " +
+            "AND (:groupIds IS NULL OR ssigm.group_id IN (:groupIds)) " +
+            "AND (ssigm.package_session_id IN (:packageSessionIds))", // Ensures that the session ID matches
+            countQuery = "SELECT COUNT(DISTINCT s.id) " +
+                    "FROM student s " +
+                    "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id "
+                    +
+                    "WHERE (:statuses IS NULL OR ssigm.status IN (:statuses)) " +
+                    "AND (:gender IS NULL OR s.gender IN (:gender)) " +
+                    "AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds)) " +
+                    "AND (:groupIds IS NULL OR ssigm.group_id IN (:groupIds)) " +
+                    "AND (ssigm.package_session_id IN (:packageSessionIds))", // Ensures that the
+            // session ID matches
+            nativeQuery = true)
     Page<Object[]> getAllStudentWithFilterRaw(
-        @Param("statuses") List<String> statuses,
-        @Param("gender") List<String> gender,
-        @Param("instituteIds") List<String> instituteIds,
-        @Param("groupIds") List<String> groupIds,
-        @Param("packageSessionIds") List<String> packageSessionIds,
-        Pageable pageable);
+            @Param("statuses") List<String> statuses,
+            @Param("gender") List<String> gender,
+            @Param("instituteIds") List<String> instituteIds,
+            @Param("groupIds") List<String> groupIds,
+            @Param("packageSessionIds") List<String> packageSessionIds,
+            Pageable pageable);
 
     @Query(nativeQuery = true, value = "SELECT DISTINCT s.id, s.username, s.user_id, s.email, s.full_name, s.address_line, s.region, "
-        +
-        "s.city, s.pin_code, s.mobile_number, s.date_of_birth, s.gender, s.fathers_name, " +
-        "s.mothers_name, s.parents_mobile_number, s.parents_email, s.linked_institute_name, " +
-        "s.created_at, s.updated_at, ssigm.package_session_id, ssigm.institute_enrollment_number, ssigm.status, ssigm.institute_id, ssigm.expiry_date, s.face_file_id,s.parents_to_mother_mobile_number, s.parents_to_mother_email  "
-        +
-        "FROM student s " +
-        "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
-        "WHERE ( " +
-        "to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name) "
-        +
-        "OR s.full_name LIKE :name || '%' " +
-        "OR s.username LIKE :name || '%' " +
-        "OR ssigm.institute_enrollment_number LIKE :name || '%' " +
-        "OR s.user_id LIKE :name || '%' " +
-        "OR s.mobile_number LIKE :name || '%' " +
-        ") " +
-        "AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))", countQuery = "SELECT COUNT(DISTINCT s.id) "
-        +
-        "FROM student s " +
-        "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id "
-        +
-        "WHERE ( " +
-        "to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name) "
-        +
-        "OR s.full_name LIKE :name || '%' " +
-        "OR s.username LIKE :name || '%' " +
-        "OR ssigm.institute_enrollment_number LIKE :name || '%' " +
-        "OR s.user_id LIKE :name || '%' " +
-        "OR s.mobile_number LIKE :name || '%' " +
-        ") " +
-        "AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))")
+            +
+            "s.city, s.pin_code, s.mobile_number, s.date_of_birth, s.gender, s.fathers_name, " +
+            "s.mothers_name, s.parents_mobile_number, s.parents_email, s.linked_institute_name, " +
+            "s.created_at, s.updated_at, ssigm.package_session_id, ssigm.institute_enrollment_number, ssigm.status, ssigm.institute_id, ssigm.expiry_date, s.face_file_id,s.parents_to_mother_mobile_number, s.parents_to_mother_email  "
+            +
+            "FROM student s " +
+            "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
+            "WHERE ( " +
+            "to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name) "
+            +
+            "OR s.full_name LIKE :name || '%' " +
+            "OR s.username LIKE :name || '%' " +
+            "OR ssigm.institute_enrollment_number LIKE :name || '%' " +
+            "OR s.user_id LIKE :name || '%' " +
+            "OR s.mobile_number LIKE :name || '%' " +
+            ") " +
+            "AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))", countQuery = "SELECT COUNT(DISTINCT s.id) "
+            +
+            "FROM student s " +
+            "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id "
+            +
+            "WHERE ( " +
+            "to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name) "
+            +
+            "OR s.full_name LIKE :name || '%' " +
+            "OR s.username LIKE :name || '%' " +
+            "OR ssigm.institute_enrollment_number LIKE :name || '%' " +
+            "OR s.user_id LIKE :name || '%' " +
+            "OR s.mobile_number LIKE :name || '%' " +
+            ") " +
+            "AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))")
     Page<Object[]> getAllStudentWithSearchRaw(
-        @Param("name") String name,
-        @Param("instituteIds") List<String> instituteIds,
-        Pageable pageable);
+            @Param("name") String name,
+            @Param("instituteIds") List<String> instituteIds,
+            Pageable pageable);
 
     // get the recent one if more than pne institute_learner exist
     @Query(value = "SELECT * FROM student where username = :username ORDER BY created_at DESC LIMIT 1", nativeQuery = true)
@@ -146,24 +146,24 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
     Optional<Student> findTopByUserId(String userId);
 
     @Query(nativeQuery = true, value = "SELECT DISTINCT s.id, s.username, s.user_id, s.email, s.full_name, s.address_line, s.region, "
-        +
-        "s.city, s.pin_code, s.mobile_number, s.date_of_birth, s.gender, s.fathers_name, " +
-        "s.mothers_name, s.parents_mobile_number, s.parents_email, s.linked_institute_name, " +
-        "s.created_at, s.updated_at, ssigm.package_session_id, ssigm.institute_enrollment_number, ssigm.status, "
-        +
-        "ssigm.institute_id, ssigm.expiry_date, s.face_file_id, s.parents_to_mother_mobile_number, s.parents_to_mother_email, ssigm.user_plan_id "
-        +
-        "FROM student s " +
-        "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
-        "JOIN package_session ps ON ssigm.package_session_id = ps.id " +
-        "WHERE ssigm.institute_id = :instituteId " +
-        "AND s.user_id = :userId " +
-        "AND ps.status != 'DELETED' " +
-        "AND ssigm.status != 'INACTIVE' " +
-        "ORDER BY s.created_at DESC")
+            +
+            "s.city, s.pin_code, s.mobile_number, s.date_of_birth, s.gender, s.fathers_name, " +
+            "s.mothers_name, s.parents_mobile_number, s.parents_email, s.linked_institute_name, " +
+            "s.created_at, s.updated_at, ssigm.package_session_id, ssigm.institute_enrollment_number, ssigm.status, "
+            +
+            "ssigm.institute_id, ssigm.expiry_date, s.face_file_id, s.parents_to_mother_mobile_number, s.parents_to_mother_email, ssigm.user_plan_id "
+            +
+            "FROM student s " +
+            "JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id " +
+            "JOIN package_session ps ON ssigm.package_session_id = ps.id " +
+            "WHERE ssigm.institute_id = :instituteId " +
+            "AND s.user_id = :userId " +
+            "AND ps.status != 'DELETED' " +
+            "AND ssigm.status != 'INACTIVE' " +
+            "ORDER BY s.created_at DESC")
     List<Object[]> getStudentWithInstituteAndUserId(
-        @Param("userId") String userId,
-        @Param("instituteId") String instituteId);
+            @Param("userId") String userId,
+            @Param("instituteId") String instituteId);
 
     @Query("""
                 SELECT DISTINCT st FROM Student st
@@ -176,15 +176,15 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
     List<Student> findStudentsByChapterId(@Param("chapterId") String chapterId);
 
     @Query("SELECT s FROM Student s " +
-        "JOIN StudentSessionInstituteGroupMapping m ON s.userId = m.userId " +
-        "WHERE m.packageSession.id = :packageSessionId " +
-        "AND m.institute.id = :instituteId " +
-        "AND m.status IN :statuses " +
-        "ORDER BY s.fullName ASC")
+            "JOIN StudentSessionInstituteGroupMapping m ON s.userId = m.userId " +
+            "WHERE m.packageSession.id = :packageSessionId " +
+            "AND m.institute.id = :instituteId " +
+            "AND m.status IN :statuses " +
+            "ORDER BY s.fullName ASC")
     List<Student> findStudentsByPackageSessionIdAndInstituteIdAndStatus(
-        @Param("packageSessionId") String packageSessionId,
-        @Param("instituteId") String instituteId,
-        @Param("statuses") List<String> statuses);
+            @Param("packageSessionId") String packageSessionId,
+            @Param("instituteId") String instituteId,
+            @Param("statuses") List<String> statuses);
 
     @Query("""
                 SELECT s
@@ -195,8 +195,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 ORDER BY mapping.createdAt DESC
             """)
     Optional<Student> findTopStudentByEmailAndInstituteIdOrderByMappingCreatedAtDesc(
-        @Param("email") String email,
-        @Param("instituteId") String instituteId);
+            @Param("email") String email,
+            @Param("instituteId") String instituteId);
 
     @Query(nativeQuery = true, value = """
             SELECT
@@ -302,14 +302,14 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#paymentStatuses == null || #paymentStatuses.isEmpty()} = true OR last_pl.payment_status IN (:paymentStatuses))
             """)
     Page<StudentListV2Projection> getAllStudentV2WithFilterRaw(
-        @Param("statuses") List<String> statuses,
-        @Param("gender") List<String> gender,
-        @Param("instituteIds") List<String> instituteIds,
-        @Param("groupIds") List<String> groupIds,
-        @Param("packageSessionIds") List<String> packageSessionIds,
-        @Param("paymentStatuses") List<String> paymentStatuses,
-        @Param("customFieldStatus") List<String> customFieldStatus,
-        Pageable pageable);
+            @Param("statuses") List<String> statuses,
+            @Param("gender") List<String> gender,
+            @Param("instituteIds") List<String> instituteIds,
+            @Param("groupIds") List<String> groupIds,
+            @Param("packageSessionIds") List<String> packageSessionIds,
+            @Param("paymentStatuses") List<String> paymentStatuses,
+            @Param("customFieldStatus") List<String> customFieldStatus,
+            Pageable pageable);
 
     @Query(nativeQuery = true, value = """
             SELECT
@@ -425,12 +425,12 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:paymentStatuses IS NULL OR last_pl.payment_status IN (:paymentStatuses))
             """)
     Page<StudentListV2Projection> getAllStudentV2WithSearchRaw(
-        @Param("name") String name,
-        @Param("instituteIds") List<String> instituteIds,
-        @Param("statuses") List<String> statuses,
-        @Param("paymentStatuses") List<String> paymentStatuses,
-        @Param("customFieldStatus") List<String> customFieldStatus,
-        Pageable pageable);
+            @Param("name") String name,
+            @Param("instituteIds") List<String> instituteIds,
+            @Param("statuses") List<String> statuses,
+            @Param("paymentStatuses") List<String> paymentStatuses,
+            @Param("customFieldStatus") List<String> customFieldStatus,
+            Pageable pageable);
 
     // Get student details by user IDs for tag management
     @Query(value = """
@@ -457,7 +457,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
     List<String> findUserIdsByUsernames(@Param("usernames") List<String> usernames);
 
     @Query(
-        value = """
+            value = """
     SELECT DISTINCT s.id, s.username, s.user_id, s.email, s.full_name,
            s.address_line, s.region, s.city, s.pin_code, s.mobile_number,
            s.date_of_birth, s.gender, s.fathers_name, s.mothers_name,
@@ -480,6 +480,17 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       AND (:groupIds IS NULL OR ssigm.group_id IN (:groupIds))
       AND (:packageSessionIds IS NULL OR ssigm.package_session_id IN (:packageSessionIds))
     GROUP BY s.id, s.username, s.user_id, s.email, s.full_name,
+             s.address_line, s.region, s.city, s.pin_code, s.mobile_number,
+             s.date_of_birth, s.gender, s.fathers_name, s.mothers_name,
+             s.parents_mobile_number, s.parents_email, s.linked_institute_name,
+             s.created_at, s.updated_at, ssigm.package_session_id,
+             ssigm.institute_enrollment_number, ssigm.status, ssigm.institute_id,
+             ssigm.expiry_date, s.face_file_id, s.parents_to_mother_mobile_number,
+             s.parents_to_mother_email
+    """,
+            countQuery = """
+    SELECT COUNT(DISTINCT s.id)
+    FROM student s
     JOIN student_session_institute_group_mapping ssigm
       ON s.user_id = ssigm.user_id
     WHERE (:statuses IS NULL OR ssigm.status IN (:statuses))
@@ -488,20 +499,20 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       AND (:groupIds IS NULL OR ssigm.group_id IN (:groupIds))
       AND (:packageSessionIds IS NULL OR ssigm.package_session_id IN (:packageSessionIds))
     """,
-        nativeQuery = true
+            nativeQuery = true
     )
     Page<Object[]> findAllStudentsWithFiltersAndCustomFields(
-        @Param("statuses") List<String> statuses,
-        @Param("gender") List<String> gender,
-        @Param("instituteIds") List<String> instituteIds,
-        @Param("groupIds") List<String> groupIds,
-        @Param("packageSessionIds") List<String> packageSessionIds,
-        @Param("customFieldIds") List<String> customFieldIds,
-        Pageable pageable
+            @Param("statuses") List<String> statuses,
+            @Param("gender") List<String> gender,
+            @Param("instituteIds") List<String> instituteIds,
+            @Param("groupIds") List<String> groupIds,
+            @Param("packageSessionIds") List<String> packageSessionIds,
+            @Param("customFieldIds") List<String> customFieldIds,
+            Pageable pageable
     );
 
     @Query(
-        value = """
+            value = """
     SELECT DISTINCT s.id, s.username, s.user_id, s.email, s.full_name,
            s.address_line, s.region, s.city, s.pin_code, s.mobile_number,
            s.date_of_birth, s.gender, s.fathers_name, s.mothers_name,
@@ -538,7 +549,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
              ssigm.expiry_date, s.face_file_id, s.parents_to_mother_mobile_number,
              s.parents_to_mother_email
     """,
-        countQuery = """
+            countQuery = """
     SELECT COUNT(DISTINCT s.id)
     FROM student s
     JOIN student_session_institute_group_mapping ssigm
@@ -555,17 +566,17 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
            OR (s.user_id ILIKE :name || '%')
            OR (s.mobile_number ILIKE :name || '%'))
     """,
-        nativeQuery = true
+            nativeQuery = true
     )
     Page<Object[]> findAllStudentsWithFilterAndSearchAndCustomFields(
-        @Param("name") String name,
-        @Param("statuses") List<String> statuses,
-        @Param("gender") List<String> gender,
-        @Param("instituteIds") List<String> instituteIds,
-        @Param("groupIds") List<String> groupIds,
-        @Param("packageSessionIds") List<String> packageSessionIds,
-        @Param("customFieldIds") List<String> customFieldIds,
-        Pageable pageable
+            @Param("name") String name,
+            @Param("statuses") List<String> statuses,
+            @Param("gender") List<String> gender,
+            @Param("instituteIds") List<String> instituteIds,
+            @Param("groupIds") List<String> groupIds,
+            @Param("packageSessionIds") List<String> packageSessionIds,
+            @Param("customFieldIds") List<String> customFieldIds,
+            Pageable pageable
     );
 
     @Query(nativeQuery = true, value = """
@@ -648,17 +659,17 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
               AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
               AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
-              AND (:#{#usernames == null || #usernames.isEmpty()} = true OR s.username IN (:usernames))
-              AND (:#{#emails == null || #emails.isEmpty()} = true OR s.email IN (:emails))
-              AND (:#{#mobileNumbers == null || #mobileNumbers.isEmpty()} = true OR s.mobile_number IN (:mobileNumbers))
-              AND (:#{#regions == null || #regions.isEmpty()} = true OR s.region IN (:regions))
-              AND (:#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true OR ARRAY(
-                  SELECT unnest(string_to_array(ssigm.comma_separated_org_roles, ','))
-                  ORDER BY 1
-              ) = ARRAY(
-                  SELECT unnest(CAST(:subOrgUserTypes AS text[]))
-                  ORDER BY 1
-              ))
+
+
+
+
+
+
+
+
+
+
+
             GROUP BY s.id, s.username, s.full_name, s.email, s.mobile_number,
                      ssigm.package_session_id, ssigm.enrolled_date, ssigm.expiry_date,
                      last_pl.payment_status, s.user_id, s.address_line, s.region, s.city,
@@ -692,37 +703,37 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
               AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
               AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
-              AND (:#{#usernames == null || #usernames.isEmpty()} = true OR s.username IN (:usernames))
-              AND (:#{#emails == null || #emails.isEmpty()} = true OR s.email IN (:emails))
-              AND (:#{#mobileNumbers == null || #mobileNumbers.isEmpty()} = true OR s.mobile_number IN (:mobileNumbers))
-              AND (:#{#regions == null || #regions.isEmpty()} = true OR s.region IN (:regions))
-              AND (:#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true OR ARRAY(
-                  SELECT unnest(string_to_array(ssigm.comma_separated_org_roles, ','))
-                  ORDER BY 1
-              ) = ARRAY(
-                  SELECT unnest(CAST(:subOrgUserTypes AS text[]))
-                  ORDER BY 1
-              ))
+
+
+
+
+
+
+
+
+
+
+
             """)
     Page<StudentListV2Projection> getAllStudentV2WithFilterRaw(
-        @Param("statuses") List<String> statuses,
-        @Param("gender") List<String> gender,
-        @Param("instituteIds") List<String> instituteIds,
-        @Param("groupIds") List<String> groupIds,
-        @Param("packageSessionIds") List<String> packageSessionIds,
-        @Param("paymentStatuses") List<String> paymentStatuses,
-        @Param("customFieldStatus") List<String> customFieldStatus,
-        @Param("sources") List<String> sources,
-        @Param("types") List<String> types,
-        @Param("typeIds") List<String> typeIds,
-        @Param("destinationPackageSessionIds") List<String> destinationPackageSessionIds,
-        @Param("levelIds") List<String> levelIds,
-        @Param("usernames") List<String> usernames,
-        @Param("emails") List<String> emails,
-        @Param("mobileNumbers") List<String> mobileNumbers,
-        @Param("regions") List<String> regions,
-        @Param("subOrgUserTypes") List<String> subOrgUserTypes,
-        Pageable pageable);
+            @Param("statuses") List<String> statuses,
+            @Param("gender") List<String> gender,
+            @Param("instituteIds") List<String> instituteIds,
+            @Param("groupIds") List<String> groupIds,
+            @Param("packageSessionIds") List<String> packageSessionIds,
+            @Param("paymentStatuses") List<String> paymentStatuses,
+            @Param("customFieldStatus") List<String> customFieldStatus,
+            @Param("sources") List<String> sources,
+            @Param("types") List<String> types,
+            @Param("typeIds") List<String> typeIds,
+            @Param("destinationPackageSessionIds") List<String> destinationPackageSessionIds,
+            @Param("levelIds") List<String> levelIds,
+
+
+
+
+
+            Pageable pageable);
 
     @Query(nativeQuery = true, value = """
             SELECT
@@ -809,17 +820,17 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
               AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
               AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
-              AND (:#{#usernames == null || #usernames.isEmpty()} = true OR s.username IN (:usernames))
-              AND (:#{#emails == null || #emails.isEmpty()} = true OR s.email IN (:emails))
-              AND (:#{#mobileNumbers == null || #mobileNumbers.isEmpty()} = true OR s.mobile_number IN (:mobileNumbers))
-              AND (:#{#regions == null || #regions.isEmpty()} = true OR s.region IN (:regions))
-              AND (:#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true OR ARRAY(
-                  SELECT unnest(string_to_array(ssigm.comma_separated_org_roles, ','))
-                  ORDER BY 1
-              ) = ARRAY(
-                  SELECT unnest(CAST(:subOrgUserTypes AS text[]))
-                  ORDER BY 1
-              ))
+
+
+
+
+
+
+
+
+
+
+
             GROUP BY s.id, s.username, s.full_name, s.email, s.mobile_number,
                      ssigm.package_session_id, ssigm.enrolled_date, ssigm.expiry_date,
                      last_pl.payment_status, s.user_id, s.address_line, s.region, s.city,
@@ -858,35 +869,35 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
               AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
               AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
-              AND (:#{#usernames == null || #usernames.isEmpty()} = true OR s.username IN (:usernames))
-              AND (:#{#emails == null || #emails.isEmpty()} = true OR s.email IN (:emails))
-              AND (:#{#mobileNumbers == null || #mobileNumbers.isEmpty()} = true OR s.mobile_number IN (:mobileNumbers))
-              AND (:#{#regions == null || #regions.isEmpty()} = true OR s.region IN (:regions))
-              AND (:#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true OR ARRAY(
-                  SELECT unnest(string_to_array(ssigm.comma_separated_org_roles, ','))
-                  ORDER BY 1
-              ) = ARRAY(
-                  SELECT unnest(CAST(:subOrgUserTypes AS text[]))
-                  ORDER BY 1
-              ))
+
+
+
+
+
+
+
+
+
+
+
             """)
     Page<StudentListV2Projection> getAllStudentV2WithSearchRaw(
-        @Param("name") String name,
-        @Param("instituteIds") List<String> instituteIds,
-        @Param("statuses") List<String> statuses,
-        @Param("paymentStatuses") List<String> paymentStatuses,
-        @Param("customFieldStatus") List<String> customFieldStatus,
-        @Param("sources") List<String> sources,
-        @Param("types") List<String> types,
-        @Param("typeIds") List<String> typeIds,
-        @Param("destinationPackageSessionIds") List<String> destinationPackageSessionIds,
-        @Param("levelIds") List<String> levelIds,
-        @Param("usernames") List<String> usernames,
-        @Param("emails") List<String> emails,
-        @Param("mobileNumbers") List<String> mobileNumbers,
-        @Param("regions") List<String> regions,
-        @Param("subOrgUserTypes") List<String> subOrgUserTypes,
-        Pageable pageable);
+            @Param("name") String name,
+            @Param("instituteIds") List<String> instituteIds,
+            @Param("statuses") List<String> statuses,
+            @Param("paymentStatuses") List<String> paymentStatuses,
+            @Param("customFieldStatus") List<String> customFieldStatus,
+            @Param("sources") List<String> sources,
+            @Param("types") List<String> types,
+            @Param("typeIds") List<String> typeIds,
+            @Param("destinationPackageSessionIds") List<String> destinationPackageSessionIds,
+            @Param("levelIds") List<String> levelIds,
+
+
+
+
+
+            Pageable pageable);
 
     @Query(value = """
             SELECT

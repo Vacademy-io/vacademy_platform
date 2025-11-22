@@ -28,11 +28,4 @@ public class StudentListFilter {
     private List<String> typeIds;
     private List<String> destinationPackageSessionIds;
     private List<String> levelIds;
-    
-    // New filters added for enhanced filtering capabilities
-    private List<String> usernames;
-    private List<String> emails;
-    private List<String> mobileNumbers;
-    private List<String> regions;
-    private List<String> subOrgUserTypes;
 }

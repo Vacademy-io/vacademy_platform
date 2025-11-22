@@ -177,11 +177,6 @@ public class StudentListManager {
                     filter.getTypeIds(),
                     filter.getDestinationPackageSessionIds(),
                     filter.getLevelIds(),
-                    filter.getUsernames(),
-                    filter.getEmails(),
-                    filter.getMobileNumbers(),
-                    filter.getRegions(),
-                    filter.getSubOrgUserTypes(),
                     pageable);
         }
 
@@ -199,11 +194,6 @@ public class StudentListManager {
                     filter.getTypeIds(),
                     filter.getDestinationPackageSessionIds(),
                     filter.getLevelIds(),
-                    filter.getUsernames(),
-                    filter.getEmails(),
-                    filter.getMobileNumbers(),
-                    filter.getRegions(),
-                    filter.getSubOrgUserTypes(),
                     pageable);
         }
 

@@ -1,5 +1,6 @@
 package vacademy.io.common.auth.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +23,7 @@ import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 @Service
+@Slf4j
 public class UserService {
 
     @Autowired
@@ -487,6 +489,16 @@ public class UserService {
                 List.of(UserRoleStatus.ACTIVE.name()),
                 targetDate);
         return users.stream().map(UserDTO::new).toList();
+    }
+
+    public void updateLastLoginTimeForUser(String userId){
+        try{
+            User user = userRepository.findById(userId).orElseThrow(() -> new VacademyException("User Not Found with id " + userId));
+            user.setLastLoginTime(new Date());
+            userRepository.save(user);
+        }catch (Exception e){
+            log.error("Failed to update last login time for user: " + userId, e);
+        }
     }
 
 }

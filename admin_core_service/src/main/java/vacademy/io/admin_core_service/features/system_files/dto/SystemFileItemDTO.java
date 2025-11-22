@@ -20,6 +20,7 @@ public class SystemFileItemDTO {
         private String name;
         private String folderName;
         private String thumbnailFileId;
+        private String description;
         private Timestamp createdAtIso;
         private Timestamp updatedAtIso;
         private String createdBy; // User's full name

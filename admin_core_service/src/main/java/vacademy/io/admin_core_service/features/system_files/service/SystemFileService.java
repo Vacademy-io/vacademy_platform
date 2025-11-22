@@ -55,6 +55,7 @@ public class SystemFileService {
                 systemFile.setName(request.getName());
                 systemFile.setFolderName(request.getFolderName());
                 systemFile.setThumbnailFileId(request.getThumbnailFileId());
+                systemFile.setDescription(request.getDescription());
                 systemFile.setInstituteId(instituteId);
                 systemFile.setCreatedByUserId(user.getUserId());
                 systemFile.setStatus(StatusEnum.ACTIVE.name());
@@ -141,8 +142,8 @@ public class SystemFileService {
         @Cacheable(value = "systemFileList", key = "#request.level + ':' + #request.levelId + ':' + #request.accessType + ':' + #instituteId", unless = "#result == null || #result.files.isEmpty()")
         public SystemFileListResponseDTO getSystemFilesByAccess(SystemFileListRequestDTO request, String instituteId,
                         CustomUserDetails user) {
-                log.info("Getting system files for level: {}, levelId: {}, accessType: {}, institute: {}",
-                                request.getLevel(), request.getLevelId(), request.getAccessType(), instituteId);
+                log.info("Getting system files for level: {}, levelId: {}, accessType: {}, statuses: {}, institute: {}",
+                                request.getLevel(), request.getLevelId(), request.getAccessType(), request.getStatuses(), instituteId);
 
                 // Validate access level
                 validateAccessLevel(request.getLevel());
@@ -151,6 +152,19 @@ public class SystemFileService {
                 if (request.getAccessType() != null && !request.getAccessType().trim().isEmpty()) {
                         validateAccessType(request.getAccessType());
                 }
+
+                // Determine statuses to filter by (default to ACTIVE only)
+                List<String> statuses = request.getStatuses();
+                if (statuses == null || statuses.isEmpty()) {
+                        statuses = List.of(StatusEnum.ACTIVE.name());
+                } else {
+                        // Validate each status
+                        for (String status : statuses) {
+                                validateStatus(status);
+                        }
+                }
+                
+                log.info("Filtering by statuses: {}", statuses);
 
                 // Get entity access records based on filter
                 List<EntityAccess> accessRecords;
@@ -185,11 +199,14 @@ public class SystemFileService {
                 // Fetch system files
                 List<SystemFile> systemFiles = systemFileRepository.findAllById(entityIds);
 
-                // Filter by institute and active status
+                // Filter by institute and requested statuses
+                final List<String> finalStatuses = statuses;
                 List<SystemFile> filteredFiles = systemFiles.stream()
                                 .filter(file -> file.getInstituteId().equals(instituteId) &&
-                                                file.getStatus().equals(StatusEnum.ACTIVE.name()))
+                                                finalStatuses.contains(file.getStatus()))
                                 .collect(Collectors.toList());
+
+                log.info("Found {} files after filtering by institute and statuses", filteredFiles.size());
 
                 // Get unique user IDs from created_by_user_id
                 List<String> userIds = filteredFiles.stream()
@@ -228,6 +245,7 @@ public class SystemFileService {
                                         item.setName(file.getName());
                                         item.setFolderName(file.getFolderName());
                                         item.setThumbnailFileId(file.getThumbnailFileId());
+                                        item.setDescription(file.getDescription());
                                         item.setCreatedAtIso(file.getCreatedAt());
                                         item.setUpdatedAtIso(file.getUpdatedAt());
                                         item.setCreatedBy(
@@ -308,6 +326,7 @@ public class SystemFileService {
                 response.setFileType(systemFile.getFileType());
                 response.setMediaType(systemFile.getMediaType());
                 response.setData(systemFile.getData());
+                response.setDescription(systemFile.getDescription());
                 response.setStatus(systemFile.getStatus());
                 response.setCreatedBy(createdByName);
                 response.setCreatedByUserId(systemFile.getCreatedByUserId());
@@ -645,6 +664,7 @@ public class SystemFileService {
                                         item.setName(file.getName());
                                         item.setFolderName(file.getFolderName());
                                         item.setThumbnailFileId(file.getThumbnailFileId());
+                                        item.setDescription(file.getDescription());
                                         item.setCreatedAtIso(file.getCreatedAt());
                                         item.setUpdatedAtIso(file.getUpdatedAt());
                                         item.setCreatedBy(

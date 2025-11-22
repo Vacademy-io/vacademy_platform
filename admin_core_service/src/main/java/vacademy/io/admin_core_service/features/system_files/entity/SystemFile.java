@@ -41,6 +41,9 @@ public class SystemFile {
         @Column(name = "thumbnail_file_id")
         private String thumbnailFileId;
 
+        @Column(name = "description", columnDefinition = "TEXT")
+        private String description;
+
         @Column(name = "institute_id", nullable = false)
         private String instituteId;
 

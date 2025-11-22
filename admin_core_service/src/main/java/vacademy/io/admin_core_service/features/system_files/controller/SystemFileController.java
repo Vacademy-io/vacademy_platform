@@ -44,7 +44,8 @@ public class SystemFileController {
         }
 
         @PostMapping("/list")
-        @ClientCacheable(maxAgeSeconds = 120, scope = CacheScope.PRIVATE, varyHeaders = {"X-Institute-Id", "X-User-Id"})
+        @ClientCacheable(maxAgeSeconds = 120, scope = CacheScope.PRIVATE, varyHeaders = { "X-Institute-Id",
+                        "X-User-Id" })
         public ResponseEntity<SystemFileListResponseDTO> getSystemFiles(
                         @Valid @RequestBody SystemFileListRequestDTO request,
                         @RequestParam String instituteId,
@@ -60,7 +61,7 @@ public class SystemFileController {
         }
 
         @GetMapping("/access")
-        @ClientCacheable(maxAgeSeconds = 300, scope = CacheScope.PRIVATE, varyHeaders = {"X-Institute-Id"})
+        @ClientCacheable(maxAgeSeconds = 300, scope = CacheScope.PRIVATE, varyHeaders = { "X-Institute-Id" })
         public ResponseEntity<SystemFileAccessDetailsResponseDTO> getSystemFileAccessDetails(
                         @RequestParam String systemFileId,
                         @RequestParam String instituteId,
@@ -76,6 +77,7 @@ public class SystemFileController {
         }
 
         @PutMapping("/access")
+        @CacheEvict(value = "systemFileAccess", allEntries = true)
         public ResponseEntity<SystemFileUpdateAccessResponseDTO> updateSystemFileAccess(
                         @Valid @RequestBody SystemFileUpdateAccessRequestDTO request,
                         @RequestParam String instituteId,
@@ -91,7 +93,8 @@ public class SystemFileController {
         }
 
         @PostMapping("/my-files")
-        @ClientCacheable(maxAgeSeconds = 60, scope = CacheScope.PRIVATE, varyHeaders = {"X-Institute-Id", "X-User-Id"})
+        @ClientCacheable(maxAgeSeconds = 60, scope = CacheScope.PRIVATE, varyHeaders = { "X-Institute-Id",
+                        "X-User-Id" })
         public ResponseEntity<SystemFileListResponseDTO> getMyFiles(
                         @Valid @RequestBody MyFilesRequestDTO request,
                         @RequestParam String instituteId,

@@ -44,7 +44,7 @@ public class LearnerTrackingAsyncService {
     // ==== Document Slide Tracking ====
 
     @Async
-    @Transactional
+    @Transactional // Added back to fix TransactionRequiredException
     public void updateLearnerOperationsForDocument(String userId, String slideId, String chapterId,
                                                    String moduleId, String subjectId, String packageSessionId,
                                                    ActivityLogDTO activityLogDTO) {
@@ -69,8 +69,9 @@ public class LearnerTrackingAsyncService {
         updateLearnerOperationsForChapter(userId, chapterId, moduleId, subjectId, packageSessionId);
     }
 
-    @Transactional
+
     @Async
+    @Transactional // Added back to fix TransactionRequiredException
     public void updateLearnerOperationsForQuestion(String userId, String slideId, String chapterId,
                                                    String moduleId, String subjectId, String packageSessionId,
                                                    ActivityLogDTO activityLogDTO) {
@@ -82,8 +83,9 @@ public class LearnerTrackingAsyncService {
         updateLearnerOperationsForChapter(userId, chapterId, moduleId, subjectId, packageSessionId);
     }
 
-    @Transactional
+
     @Async
+    @Transactional // Added back to fix TransactionRequiredException
     public void updateLearnerOperationsForAssignment(String userId, String slideId, String chapterId,
                                                      String moduleId, String subjectId, String packageSessionId,
                                                      ActivityLogDTO activityLogDTO) {
@@ -95,8 +97,8 @@ public class LearnerTrackingAsyncService {
         updateLearnerOperationsForChapter(userId, chapterId, moduleId, subjectId, packageSessionId);
     }
 
-    @Transactional
     @Async
+    @Transactional // Added back to fix TransactionRequiredException
     public void updateLearnerOperationsForQuiz(String userId, String slideId, String chapterId,
                                                String moduleId, String subjectId, String packageSessionId,
                                                ActivityLogDTO activityLogDTO) {
@@ -113,8 +115,8 @@ public class LearnerTrackingAsyncService {
 
     // ==== Video Slide Tracking ====
 
-    @Transactional
     @Async
+    @Transactional // Added back to fix TransactionRequiredException
     public void updateLearnerOperationsForVideo(String userId, String slideId, String chapterId,
                                                 String moduleId, String subjectId, String packageSessionId,
                                                 ActivityLogDTO activityLogDTO) {
@@ -197,7 +199,8 @@ public class LearnerTrackingAsyncService {
             LearnerOperationEnum.PERCENTAGE_VIDEO_WATCHED.name(),
             LearnerOperationEnum.PERCENTAGE_DOCUMENT_COMPLETED.name(),
             LearnerOperationEnum.PERCENTAGE_ASSIGNMENT_COMPLETED.name(),
-            LearnerOperationEnum.PERCENTAGE_QUESTION_COMPLETED.name()
+            LearnerOperationEnum.PERCENTAGE_QUESTION_COMPLETED.name(),
+            LearnerOperationEnum.PERCENTAGE_QUIZ_COMPLETED.name()
         );
         List<String> slideStatusList = List.of(
             SlideStatus.PUBLISHED.name(),
@@ -205,7 +208,7 @@ public class LearnerTrackingAsyncService {
         );
 
         Double chapterPercentage = activityLogRepository.getChapterCompletionPercentage(
-            userId, chapterId, operationList, slideStatusList, List.of(SlideTypeEnum.VIDEO.name(), SlideTypeEnum.DOCUMENT.name(), SlideTypeEnum.ASSIGNMENT.name(), SlideTypeEnum.QUESTION.name())
+            userId, chapterId, operationList, slideStatusList, List.of(SlideTypeEnum.VIDEO.name(), SlideTypeEnum.DOCUMENT.name(), SlideTypeEnum.ASSIGNMENT.name(), SlideTypeEnum.QUESTION.name(), SlideTypeEnum.QUIZ.name())
         );
 
         addOrUpdatePercentageOperation(
@@ -316,8 +319,8 @@ public class LearnerTrackingAsyncService {
 
     // ==== Batch-Level Trigger ====
 
-    @Transactional
     @Async
+    @Transactional // Added back to fix TransactionRequiredException
     public void updateLearnerOperationsForBatch(String source, String slideId, String slideType,
                                                 String chapterId, String moduleId,
                                                 String subjectId, String packageSessionId) {

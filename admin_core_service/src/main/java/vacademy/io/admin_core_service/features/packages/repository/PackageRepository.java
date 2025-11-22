@@ -1381,6 +1381,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             LEFT JOIN learner_operation lo
                 ON lo.source = 'PACKAGE_SESSION'
                 AND lo.source_id = ps.id
+                AND lo.user_id = :userId
                 AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
             LEFT JOIN faculty_subject_package_session_mapping fspm
                 ON fspm.package_session_id = ps.id
@@ -1544,6 +1545,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 LEFT JOIN learner_operation lo
                   ON lo.source = 'PACKAGE_SESSION'
                   AND lo.source_id = ps.id
+                  AND lo.user_id = :userId
                   AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
                 LEFT JOIN faculty_subject_package_session_mapping fspm
                   ON fspm.package_session_id = ps.id
@@ -2078,7 +2080,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
      * Get packages where teacher is either:
      * 1. Creator of the package (created_by_user_id = teacherId)
      * 2. Assigned as faculty to any package session of the package
-     * 
+     *
      * @param teacherId              - ID of the teacher/faculty
      * @param packageStatuses        - List of package statuses to filter by
      * @param facultyMappingStatuses - List of faculty mapping statuses to consider
@@ -2243,7 +2245,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             AND (:#{#ratingStatuses == null || #ratingStatuses.isEmpty()} = true OR r.status IN (:ratingStatuses))
         ), 0.0) AS rating,
         COALESCE(ps_read_time.total_read_time_minutes, 0) AS readTimeInMinutes,
-        
+
         -- Selecting details from the cheapest plan (row_num = 1)
         payment_info.enroll_invite_id AS enrollInviteId,
         payment_info.payment_option_id AS paymentOptionId,
@@ -2251,7 +2253,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
         payment_info.payment_option_status AS paymentOptionStatus,
         payment_info.actual_price AS minPlanActualPrice,
         payment_info.currency AS currency,
-        
+
         -- Faculty User IDs aggregation
         ARRAY_REMOVE(
             ARRAY_AGG(DISTINCT fspm.user_id), NULL

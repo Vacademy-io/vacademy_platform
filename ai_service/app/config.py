@@ -62,6 +62,16 @@ class Settings(BaseSettings):
     db_pool_timeout_seconds: int = 30
     db_pool_recycle_seconds: int = 1800  # 30 minutes
 
+    # LLM Configuration - Using OpenRouter (your working API key)
+    llm_base_url: str = "https://openrouter.ai/api/v1/chat/completions"
+    llm_api_key: Optional[str] = None  # Your OpenRouter API key (sk-or-v1-...)
+    llm_default_model: str = "google/gemini-2.5-pro"  # Gemini 2.5 Pro (default from media-service)
+    # Alternative working models:
+    # llm_default_model: str = "openai/gpt-4o-mini"  # Good balance
+    # llm_default_model: str = "google/gemini-pro"  # Google's model
+    # llm_default_model: str = "meta-llama/llama-3.2-3b-instruct"  # Smaller llama
+    llm_timeout_seconds: float = 60.0
+
     model_config = SettingsConfigDict(env_file=None, extra="ignore")
 
     def build_sqlalchemy_url(self) -> str:

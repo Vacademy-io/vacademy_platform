@@ -14,6 +14,7 @@ import vacademy.io.admin_core_service.features.institute_learner.entity.StudentS
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
+import vacademy.io.admin_core_service.features.institute_learner.dto.StudentDTO;
 import vacademy.io.admin_core_service.features.learner.dto.*;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
@@ -369,6 +370,69 @@ public class SubOrgLearnerService {
         return SubOrgTerminateResponseDTO.builder()
                 .terminatedCount(terminatedCount)
                 .message("Successfully terminated " + terminatedCount + " learner(s)")
+                .build();
+    }
+
+    /**
+     * Get admin details for a specific user by user_id
+     * Returns student details with all ADMIN role mappings and their associated institutes
+     */
+    @Transactional(readOnly = true)
+    public UserAdminDetailsResponseDTO getAdminDetailsByUserId(String userId) {
+        log.info("Fetching admin details for user_id: {}", userId);
+
+        // Fetch student details
+        Student student = instituteStudentRepository.findTopByUserIdOrderByCreatedAtDesc(userId)
+                .orElseThrow(() -> new VacademyException("Student not found with user_id: " + userId));
+
+        // Convert to DTO
+        StudentDTO studentDto = new StudentDTO(student);
+
+        // Find all active mappings where user has ADMIN role
+        List<StudentSessionInstituteGroupMapping> adminMappings = mappingRepository
+                .findActiveAdminMappingsByUserId(userId, "ADMIN");
+
+        if (adminMappings.isEmpty()) {
+            log.info("No admin mappings found for user_id: {}", userId);
+        }
+
+        // Build admin mapping DTOs with institute details
+        List<AdminMappingDTO> adminMappingDTOs = adminMappings.stream()
+                .map(this::buildAdminMappingDTO)
+                .toList();
+
+        log.info("Found {} admin mappings for user_id: {}", adminMappingDTOs.size(), userId);
+
+        return UserAdminDetailsResponseDTO.builder()
+                .studentDto(studentDto)
+                .adminMappings(adminMappingDTOs)
+                .build();
+    }
+
+    /**
+     * Build AdminMappingDTO from StudentSessionInstituteGroupMapping entity
+     */
+    private AdminMappingDTO buildAdminMappingDTO(StudentSessionInstituteGroupMapping mapping) {
+        // Build institute details
+        Institute institute = mapping.getInstitute();
+        InstituteBasicDTO instituteDto = InstituteBasicDTO.builder()
+                .instituteId(institute.getId())
+                .instituteName(institute.getInstituteName())
+                .instituteCode(institute.getSubdomain())
+                .email(institute.getEmail())
+                .mobileNumber(institute.getMobileNumber())
+                .address(institute.getAddress())
+                .city(institute.getCity())
+                .state(institute.getState())
+                .country(institute.getCountry())
+                .build();
+
+        return AdminMappingDTO.builder()
+                .studentSessionId(mapping.getPackageSession() != null ? mapping.getPackageSession().getId() : null)
+                .instituteGroupId(mapping.getGroup() != null ? mapping.getGroup().getId() : null)
+                .institute(instituteDto)
+                .roles("ADMIN") // Extract only ADMIN role
+                .status(mapping.getStatus())
                 .build();
     }
 }

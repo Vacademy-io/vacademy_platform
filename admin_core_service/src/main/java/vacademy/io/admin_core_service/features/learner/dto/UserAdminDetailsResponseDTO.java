@@ -6,12 +6,11 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import vacademy.io.admin_core_service.features.institute_learner.dto.StudentDTO;
 
 import java.util.List;
 
 /**
- * Response DTO containing student details and their admin mappings
+ * Response DTO containing complete student session mappings with sub-org details
  */
 @Data
 @Builder
@@ -19,6 +18,5 @@ import java.util.List;
 @AllArgsConstructor
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class UserAdminDetailsResponseDTO {
-    private StudentDTO studentDto;
-    private List<AdminMappingDTO> adminMappings;
+    private List<StudentSessionMappingWithSubOrgDTO> adminMappings;
 }

@@ -15,7 +15,6 @@ import vacademy.io.admin_core_service.features.institute_learner.entity.StudentS
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
-import vacademy.io.admin_core_service.features.institute_learner.dto.StudentDTO;
 import vacademy.io.admin_core_service.features.learner.dto.*;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
@@ -43,9 +42,9 @@ public class SubOrgLearnerService {
 
     @Transactional(readOnly = true)
     public SubOrgResponseDTO getUsersByPackageSessionAndSubOrg(
-            String packageSessionId, 
+            String packageSessionId,
             String subOrgId) {
-        
+
         log.info("Fetching student mappings for package_session_id: {} and sub_org_id: {}", packageSessionId, subOrgId);
 
         // Validate and fetch sub-organization (institute)
@@ -56,7 +55,7 @@ public class SubOrgLearnerService {
         List<Object[]> mappingData = instituteStudentRepository
                 .findMappingsByPackageSessionAndSubOrg(packageSessionId, subOrgId);
 
-        log.info("Found {} student mappings for package_session_id: {} and sub_org_id: {}", 
+        log.info("Found {} student mappings for package_session_id: {} and sub_org_id: {}",
                 mappingData.size(), packageSessionId, subOrgId);
 
         // Extract unique user IDs
@@ -69,7 +68,7 @@ public class SubOrgLearnerService {
 
         // Fetch complete user details from auth service
         List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(new ArrayList<>(userIds));
-        
+
         // Create a map for quick lookup
         Map<String, UserDTO> userMap = users.stream()
                 .collect(Collectors.toMap(UserDTO::getId, Function.identity()));
@@ -103,7 +102,7 @@ public class SubOrgLearnerService {
 
         String userId = (String) row[1];
         UserDTO user = userMap.get(userId);
-        
+
         if (user == null) {
             log.warn("User not found for userId: {}", userId);
             return null;
@@ -142,7 +141,7 @@ public class SubOrgLearnerService {
         dto.setPincode(institute.getPinCode());
         dto.setWebsiteUrl(institute.getWebsiteUrl());
         dto.setStatus("ACTIVE"); // Default status
-        
+
         return dto;
     }
 
@@ -374,20 +373,9 @@ public class SubOrgLearnerService {
                 .build();
     }
 
-    /**
-     * Get admin details for a specific user by user_id
-     * Returns student details with all ADMIN role mappings and their associated institutes
-     */
     @Transactional(readOnly = true)
     public UserAdminDetailsResponseDTO getAdminDetailsByUserId(String userId) {
         log.info("Fetching admin details for user_id: {}", userId);
-
-        // Fetch student details
-        Student student = instituteStudentRepository.findTopByUserIdOrderByCreatedAtDesc(userId)
-                .orElseThrow(() -> new VacademyException("Student not found with user_id: " + userId));
-
-        // Convert to DTO
-        StudentDTO studentDto = new StudentDTO(student);
 
         // Find all active mappings where user has ADMIN role
         List<StudentSessionInstituteGroupMapping> adminMappings = mappingRepository
@@ -397,43 +385,62 @@ public class SubOrgLearnerService {
             log.info("No admin mappings found for user_id: {}", userId);
         }
 
-        // Build admin mapping DTOs with institute details
-        List<AdminMappingDTO> adminMappingDTOs = adminMappings.stream()
-                .map(this::buildAdminMappingDTO)
+        // Build complete mapping DTOs with sub-org details
+        List<StudentSessionMappingWithSubOrgDTO> mappingDTOs = adminMappings.stream()
+                .map(this::buildCompleteMappingDTO)
                 .toList();
 
-        log.info("Found {} admin mappings for user_id: {}", adminMappingDTOs.size(), userId);
+        log.info("Found {} admin mappings for user_id: {}", mappingDTOs.size(), userId);
 
         return UserAdminDetailsResponseDTO.builder()
-                .studentDto(studentDto)
-                .adminMappings(adminMappingDTOs)
+                .adminMappings(mappingDTOs)
                 .build();
     }
 
     /**
-     * Build AdminMappingDTO from StudentSessionInstituteGroupMapping entity
+     * Build complete StudentSessionMappingWithSubOrgDTO from StudentSessionInstituteGroupMapping entity
      */
-    private AdminMappingDTO buildAdminMappingDTO(StudentSessionInstituteGroupMapping mapping) {
-        // Build institute details
-        Institute institute = mapping.getInstitute();
-        InstituteBasicDTO instituteDto = InstituteBasicDTO.builder()
-                .instituteId(institute.getId())
-                .instituteName(institute.getInstituteName())
-                .instituteCode(institute.getSubdomain())
-                .email(institute.getEmail())
-                .mobileNumber(institute.getMobileNumber())
-                .address(institute.getAddress())
-                .city(institute.getCity())
-                .state(institute.getState())
-                .country(institute.getCountry())
-                .build();
+    private StudentSessionMappingWithSubOrgDTO buildCompleteMappingDTO(StudentSessionInstituteGroupMapping mapping) {
+        // Build sub-org (institute) details
+        Institute subOrg = mapping.getSubOrg();
+        InstituteBasicDTO subOrgDto = null;
+        if (subOrg != null) {
+            subOrgDto = InstituteBasicDTO.builder()
+                    .instituteId(subOrg.getId())
+                    .instituteName(subOrg.getInstituteName())
+                    .instituteCode(subOrg.getSubdomain())
+                    .email(subOrg.getEmail())
+                    .mobileNumber(subOrg.getMobileNumber())
+                    .address(subOrg.getAddress())
+                    .city(subOrg.getCity())
+                    .state(subOrg.getState())
+                    .country(subOrg.getCountry())
+                    .build();
+        }
 
-        return AdminMappingDTO.builder()
-                .studentSessionId(mapping.getPackageSession() != null ? mapping.getPackageSession().getId() : null)
-                .instituteGroupId(mapping.getGroup() != null ? mapping.getGroup().getId() : null)
-                .subOrgDetails(instituteDto)
-                .roles(SubOrgRoles.ADMIN.name())
+        return StudentSessionMappingWithSubOrgDTO.builder()
+                .id(mapping.getId())
+                .userId(mapping.getUserId())
+                .instituteEnrolledNumber(mapping.getInstituteEnrolledNumber())
+                .enrolledDate(mapping.getEnrolledDate())
+                .expiryDate(mapping.getExpiryDate())
                 .status(mapping.getStatus())
+                .createdAt(mapping.getCreatedAt())
+                .updatedAt(mapping.getUpdatedAt())
+                .groupId(mapping.getGroup() != null ? mapping.getGroup().getId() : null)
+                .instituteId(mapping.getInstitute() != null ? mapping.getInstitute().getId() : null)
+                .packageSessionId(mapping.getPackageSession() != null ? mapping.getPackageSession().getId() : null)
+                .destinationPackageSessionId(mapping.getDestinationPackageSession() != null ? mapping.getDestinationPackageSession().getId() : null)
+                .userPlanId(mapping.getUserPlanId())
+                .typeId(mapping.getTypeId())
+                .type(mapping.getType())
+                .source(mapping.getSource())
+                .desiredLevelId(mapping.getDesiredLevelId())
+                .desiredPackageId(mapping.getDesiredPackageId())
+                .automatedCompletionCertificateFileId(mapping.getAutomatedCompletionCertificateFileId())
+                .subOrgId(subOrg != null ? subOrg.getId() : null)
+                .commaSeparatedOrgRoles(mapping.getCommaSeparatedOrgRoles())
+                .subOrgDetails(subOrgDto)
                 .build();
     }
 }

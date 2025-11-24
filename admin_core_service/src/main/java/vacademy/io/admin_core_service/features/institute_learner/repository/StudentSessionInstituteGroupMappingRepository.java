@@ -205,10 +205,10 @@ public interface StudentSessionInstituteGroupMappingRepository
 
         // Find all active admin mappings for a user
         @Query("SELECT m FROM StudentSessionInstituteGroupMapping m " +
-                        "LEFT JOIN FETCH m.institute " +
+                        "LEFT JOIN FETCH m.subOrg " +
                         "WHERE m.userId = :userId " +
                         "AND m.status = 'ACTIVE' " +
-                        "AND m.commaSeparatedOrgRoles LIKE %:role%")
+                        "AND m.commaSeparatedOrgRoles LIKE CONCAT('%', :role, '%')")
         List<StudentSessionInstituteGroupMapping> findActiveAdminMappingsByUserId(
                         @Param("userId") String userId,
                         @Param("role") String role);

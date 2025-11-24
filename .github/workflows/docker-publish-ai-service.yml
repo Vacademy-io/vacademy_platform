@@ -52,6 +52,12 @@ jobs:
           NAMESPACE: default
         run: |
           if kubectl get deployment "$DEPLOYMENT_NAME" --namespace "$NAMESPACE" >/dev/null 2>&1; then
+            kubectl set env deployment/"$DEPLOYMENT_NAME" \
+              --namespace "$NAMESPACE" \
+              APP_ENV=stage \
+              LLM_BASE_URL=https://openrouter.ai/api/v1/chat/completions \
+              LLM_API_KEY=${{ secrets.OPENROUTER_API_KEY }} \
+              LLM_DEFAULT_MODEL=google/gemini-2.5-flash
             kubectl rollout restart deployment "$DEPLOYMENT_NAME" --namespace "$NAMESPACE"
           else
             echo "Deployment $DEPLOYMENT_NAME not found in namespace $NAMESPACE. Skipping restart."

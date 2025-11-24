@@ -18,7 +18,7 @@ import lombok.NoArgsConstructor;
 public class AdminMappingDTO {
     private String studentSessionId;
     private String instituteGroupId;
-    private InstituteBasicDTO institute;
+    private InstituteBasicDTO subOrgDetails;
     private String roles;
     private String status;
 }

@@ -8,6 +8,7 @@ import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.enums.CustomFieldValueSourceTypeEnum;
 import vacademy.io.admin_core_service.features.common.service.CustomFieldValueService;
+import vacademy.io.admin_core_service.features.enroll_invite.enums.SubOrgRoles;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
@@ -390,7 +391,7 @@ public class SubOrgLearnerService {
 
         // Find all active mappings where user has ADMIN role
         List<StudentSessionInstituteGroupMapping> adminMappings = mappingRepository
-                .findActiveAdminMappingsByUserId(userId, "ADMIN");
+                .findActiveAdminMappingsByUserId(userId, SubOrgRoles.ADMIN.name());
 
         if (adminMappings.isEmpty()) {
             log.info("No admin mappings found for user_id: {}", userId);
@@ -430,8 +431,8 @@ public class SubOrgLearnerService {
         return AdminMappingDTO.builder()
                 .studentSessionId(mapping.getPackageSession() != null ? mapping.getPackageSession().getId() : null)
                 .instituteGroupId(mapping.getGroup() != null ? mapping.getGroup().getId() : null)
-                .institute(instituteDto)
-                .roles("ADMIN") // Extract only ADMIN role
+                .subOrgDetails(instituteDto)
+                .roles(SubOrgRoles.ADMIN.name())
                 .status(mapping.getStatus())
                 .build();
     }

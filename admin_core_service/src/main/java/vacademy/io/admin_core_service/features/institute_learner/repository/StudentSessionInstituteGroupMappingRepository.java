@@ -203,4 +203,14 @@ public interface StudentSessionInstituteGroupMappingRepository
                         @Param("userId") String userId,
                         @Param("instituteId") String instituteId);
 
+        // Find all active admin mappings for a user
+        @Query("SELECT m FROM StudentSessionInstituteGroupMapping m " +
+                        "LEFT JOIN FETCH m.institute " +
+                        "WHERE m.userId = :userId " +
+                        "AND m.status = 'ACTIVE' " +
+                        "AND m.commaSeparatedOrgRoles LIKE %:role%")
+        List<StudentSessionInstituteGroupMapping> findActiveAdminMappingsByUserId(
+                        @Param("userId") String userId,
+                        @Param("role") String role);
+
 }

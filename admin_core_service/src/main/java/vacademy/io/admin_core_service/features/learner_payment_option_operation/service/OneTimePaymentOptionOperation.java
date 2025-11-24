@@ -46,12 +46,12 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
 
     @Override
     public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
-                                                         LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
-                                                         String instituteId,
-                                                         EnrollInvite enrollInvite,
-                                                         PaymentOption paymentOption,
-                                                         UserPlan userPlan,
-                                                         Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
+            LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
+            String instituteId,
+            EnrollInvite enrollInvite,
+            PaymentOption paymentOption,
+            UserPlan userPlan,
+            Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
         String learnerSessionStatus = null;
         if (paymentOption.isRequireApproval()) {
             learnerSessionStatus = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();
@@ -71,14 +71,14 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
                 instituteId,
                 instituteStudentDetails,
                 learnerPackageSessionsEnrollDTO.getCustomFieldValues(),
-                extraData,learnerExtraDetails,enrollInvite);
+                extraData, learnerExtraDetails, enrollInvite, userPlan);
 
         PaymentPlan paymentPlan = userPlan.getPaymentPlan();
         if (Objects.isNull(paymentPlan)) {
             throw new VacademyException("Payment plan is null");
         }
 
-        if (learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest() != null){
+        if (learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest() != null) {
             learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setAmount(paymentPlan.getActualPrice());
         }
         // Process referral request if present
@@ -89,8 +89,7 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
                     paymentOption,
                     userPlan,
                     user,
-                    instituteId
-            );
+                    instituteId);
         }
 
         // Handle payment
@@ -115,8 +114,8 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
     }
 
     private List<InstituteStudentDetails> buildInstituteStudentDetails(String instituteId,
-                                                                       List<String> packageSessionIds,
-                                                                       Integer accessDays, String learnerSessionStatus, UserPlan userPlan) {
+            List<String> packageSessionIds,
+            Integer accessDays, String learnerSessionStatus, UserPlan userPlan) {
         List<InstituteStudentDetails> detailsList = new ArrayList<>();
 
         for (String packageSessionId : packageSessionIds) {
@@ -142,7 +141,7 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
                     null,
                     accessDays != null ? accessDays.toString() : null,
                     packageSessionId,
-                    userPlan.getId(),null,null);
+                    userPlan.getId(), null, null);
             detailsList.add(detail);
         }
         return detailsList;

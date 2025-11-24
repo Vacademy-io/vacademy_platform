@@ -55,12 +55,12 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
 
     @Override
     public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
-                                                         LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
-                                                         String instituteId,
-                                                         EnrollInvite enrollInvite,
-                                                         PaymentOption paymentOption,
-                                                         UserPlan userPlan,
-                                                         Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
+            LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
+            String instituteId,
+            EnrollInvite enrollInvite,
+            PaymentOption paymentOption,
+            UserPlan userPlan,
+            Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
         List<InstituteStudentDetails> instituteStudentDetails = new ArrayList<>();
         if (paymentOption.isRequireApproval()) {
             String status = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();
@@ -87,7 +87,7 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
                         null,
                         enrollInvite.getLearnerAccessDays() != null ? enrollInvite.getLearnerAccessDays().toString()
                                 : null,
-                        packageSessionId, userPlan.getId(),null,null);
+                        packageSessionId, userPlan.getId(), null, null);
                 instituteStudentDetails.add(detail);
             }
         } else {
@@ -97,12 +97,13 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
             for (String packageSessionId : packageSessionIds) {
                 InstituteStudentDetails instituteStudentDetail = new InstituteStudentDetails(instituteId,
                         packageSessionId, null, status, new Date(), null,
-                        (accessDays != null ? accessDays.toString() : null), null, userPlan.getId(),null,null);
+                        (accessDays != null ? accessDays.toString() : null), null, userPlan.getId(), null, null);
                 instituteStudentDetails.add(instituteStudentDetail);
             }
         }
         UserDTO user = learnerBatchEnrollService.checkAndCreateStudentAndAddToBatch(userDTO, instituteId,
-                instituteStudentDetails, learnerPackageSessionsEnrollDTO.getCustomFieldValues(), extraData,learnerExtraDetails,enrollInvite);
+                instituteStudentDetails, learnerPackageSessionsEnrollDTO.getCustomFieldValues(), extraData,
+                learnerExtraDetails, enrollInvite, userPlan);
 
         // Process referral request if present - for donation payments, benefits are
         // activated immediately
@@ -112,8 +113,7 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
                     paymentOption,
                     userPlan,
                     user,
-                    instituteId
-            );
+                    instituteId);
         }
 
         LearnerEnrollResponseDTO learnerEnrollResponseDTO = new LearnerEnrollResponseDTO();

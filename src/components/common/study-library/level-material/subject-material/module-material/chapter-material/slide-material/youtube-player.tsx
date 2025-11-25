@@ -1811,7 +1811,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
         {/* Fullscreen controls overlay */}
         {(isFullscreen || isPseudoFullscreen) && showFullscreenControls && (
-          <div className="absolute inset-0 z-[9999] flex flex-col justify-between bg-gradient-to-b from-black/50 via-transparent to-black/80 animate-in fade-in duration-200 pointer-events-none">
+          <div className="absolute inset-0 z-[9999] flex flex-col justify-between animate-in fade-in duration-200 pointer-events-none">
             {/* Top controls - Exit fullscreen */}
             <div className="flex justify-end p-4 pointer-events-auto">
               <button

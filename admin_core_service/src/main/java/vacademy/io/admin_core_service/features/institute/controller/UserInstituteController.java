@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.institute.dto.InstituteDashboardResponse;
+import vacademy.io.admin_core_service.features.institute.dto.InstituteSetupDTO;
 import vacademy.io.admin_core_service.features.institute.manager.InstituteInitManager;
 import vacademy.io.admin_core_service.features.institute.service.UserInstituteService;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -33,6 +34,12 @@ public class UserInstituteController {
     public ResponseEntity<InstituteInfoDTO> getInstituteDetails(@PathVariable String instituteId) {
         InstituteInfoDTO instituteInfoDTO = instituteInitManager.getInstituteDetails(instituteId);
         return ResponseEntity.ok(instituteInfoDTO);
+    }
+
+    @GetMapping("/setup/{instituteId}")
+    public ResponseEntity<InstituteSetupDTO> getInstituteSetupDetails(@PathVariable String instituteId) {
+        InstituteSetupDTO instituteSetupDTO = instituteInitManager.getInstituteSetupDetails(instituteId);
+        return ResponseEntity.ok(instituteSetupDTO);
     }
 
     @PostMapping("/institute-update")

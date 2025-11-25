@@ -151,12 +151,20 @@ public class StudentListManager {
         Pageable pageable = createPageable(studentListFilter, pageNo, pageSize);
         Page<StudentListV2Projection> page = fetchStudentPage(studentListFilter, pageable);
         List<StudentV2DTO> content = page != null ? mapProjectionsToDTOs(page.getContent()) : new ArrayList<>();
+        
+        boolean hasCustomFieldFilters = studentListFilter.getCustomFieldFilters() != null 
+                && !studentListFilter.getCustomFieldFilters().isEmpty();
+        
+        // Apply custom field filters (if any)
+        if (hasCustomFieldFilters) {
+            content = applyCustomFieldFilters(content, studentListFilter.getCustomFieldFilters());
+        }
 
         if (!content.isEmpty()) {
             enrichWithUserCredentials(content);
         }
 
-        return ResponseEntity.ok(buildResponse(content, page, pageSize));
+        return ResponseEntity.ok(buildResponse(content, page, pageSize, hasCustomFieldFilters));
     }
 
     private Pageable createPageable(StudentListFilter filter, int pageNo, int pageSize) {
@@ -177,6 +185,7 @@ public class StudentListManager {
                     filter.getTypeIds(),
                     filter.getDestinationPackageSessionIds(),
                     filter.getLevelIds(),
+                    filter.getSubOrgUserTypes(),
                     pageable);
         }
 
@@ -194,10 +203,67 @@ public class StudentListManager {
                     filter.getTypeIds(),
                     filter.getDestinationPackageSessionIds(),
                     filter.getLevelIds(),
+                    filter.getSubOrgUserTypes(),
                     pageable);
         }
 
         return null;
+    }
+
+    /**
+     * Filters students by custom field values.
+     * Implements AND logic: student must match ALL specified custom field filters.
+     * 
+     * @param students List of students to filter
+     * @param customFieldFilters Map where key=field_key/field_id and value=list of acceptable values
+     * @return Filtered list of students
+     */
+    private List<StudentV2DTO> applyCustomFieldFilters(
+            List<StudentV2DTO> students, 
+            Map<String, List<String>> customFieldFilters) {
+        
+        if (customFieldFilters == null || customFieldFilters.isEmpty()) {
+            return students;
+        }
+        
+        return students.stream()
+                .filter(student -> matchesAllCustomFieldFilters(student, customFieldFilters))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Checks if a student matches all custom field filter criteria.
+     * 
+     * @param student Student to check
+     * @param filters Custom field filters (fieldKey -> allowed values)
+     * @return true if student satisfies ALL filters, false otherwise
+     */
+    private boolean matchesAllCustomFieldFilters(
+            StudentV2DTO student, 
+            Map<String, List<String>> filters) {
+        
+        Map<String, String> studentCustomFields = student.getCustomFields();
+        
+        if (studentCustomFields == null || studentCustomFields.isEmpty()) {
+            // Student has no custom field values, so can't match any filter
+            return false;
+        }
+        
+        // AND logic: Student must satisfy ALL custom field filters
+        for (Map.Entry<String, List<String>> filterEntry : filters.entrySet()) {
+            String fieldKey = filterEntry.getKey();
+            List<String> allowedValues = filterEntry.getValue();
+            
+            // Get student's value for this custom field
+            String studentValue = studentCustomFields.get(fieldKey);
+            
+            // If student doesn't have this field OR value doesn't match any allowed value
+            if (studentValue == null || !allowedValues.contains(studentValue)) {
+                return false;
+            }
+        }
+        
+        return true;
     }
 
 
@@ -313,7 +379,7 @@ public class StudentListManager {
     }
 
     private AllStudentV2Response buildResponse(List<StudentV2DTO> content, Page<StudentListV2Projection> page,
-            int pageSize) {
+            int pageSize, boolean customFieldFiltersApplied) {
         if (page == null) {
             return AllStudentV2Response.builder()
                     .content(content)
@@ -322,6 +388,19 @@ public class StudentListManager {
                     .totalElements(0)
                     .totalPages(0)
                     .last(true)
+                    .build();
+        }
+
+        // When custom field filters are applied, pagination info is approximate
+        // because filtering happens after DB fetch
+        if (customFieldFiltersApplied) {
+            return AllStudentV2Response.builder()
+                    .content(content)
+                    .pageNo(page.getNumber())
+                    .pageSize(content.size())  // Actual size after filtering
+                    .totalElements((long) content.size())  // Cannot determine true total
+                    .totalPages(1)  // Cannot determine true total pages
+                    .last(content.size() < pageSize)  // Last page if we got fewer results than requested
                     .build();
         }
 

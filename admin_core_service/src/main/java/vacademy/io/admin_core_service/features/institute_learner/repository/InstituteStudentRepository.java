@@ -272,6 +272,18 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#groupIds == null || #groupIds.isEmpty()} = true OR ssigm.group_id IN (:groupIds))
               AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ssigm.package_session_id IN (:packageSessionIds))
               AND (:#{#paymentStatuses == null || #paymentStatuses.isEmpty()} = true OR last_pl.payment_status IN (:paymentStatuses))
+              AND (
+                :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true 
+                OR (
+                  ssigm.comma_separated_org_roles IS NOT NULL 
+                  AND ssigm.comma_separated_org_roles != ''
+                  AND EXISTS (
+                    SELECT 1 
+                    FROM unnest(string_to_array(ssigm.comma_separated_org_roles, ',')) AS role
+                    WHERE TRIM(role) IN (:subOrgUserTypes)
+                  )
+                )
+              )
             GROUP BY s.id, s.username, s.full_name, s.email, s.mobile_number,
                      ssigm.package_session_id, ssigm.enrolled_date, ssigm.expiry_date,
                      last_pl.payment_status, s.user_id, s.address_line, s.region, s.city,
@@ -300,6 +312,18 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#groupIds == null || #groupIds.isEmpty()} = true OR ssigm.group_id IN (:groupIds))
               AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ssigm.package_session_id IN (:packageSessionIds))
               AND (:#{#paymentStatuses == null || #paymentStatuses.isEmpty()} = true OR last_pl.payment_status IN (:paymentStatuses))
+              AND (
+                :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true 
+                OR (
+                  ssigm.comma_separated_org_roles IS NOT NULL 
+                  AND ssigm.comma_separated_org_roles != ''
+                  AND EXISTS (
+                    SELECT 1 
+                    FROM unnest(string_to_array(ssigm.comma_separated_org_roles, ',')) AS role
+                    WHERE TRIM(role) IN (:subOrgUserTypes)
+                  )
+                )
+              )
             """)
     Page<StudentListV2Projection> getAllStudentV2WithFilterRaw(
             @Param("statuses") List<String> statuses,
@@ -309,6 +333,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             @Param("packageSessionIds") List<String> packageSessionIds,
             @Param("paymentStatuses") List<String> paymentStatuses,
             @Param("customFieldStatus") List<String> customFieldStatus,
+            @Param("subOrgUserTypes") List<String> subOrgUserTypes,
             Pageable pageable);
 
     @Query(nativeQuery = true, value = """
@@ -390,6 +415,18 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))
               AND (:statuses IS NULL OR ssigm.status IN (:statuses))
               AND (:paymentStatuses IS NULL OR last_pl.payment_status IN (:paymentStatuses))
+              AND (
+                :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true 
+                OR (
+                  ssigm.comma_separated_org_roles IS NOT NULL 
+                  AND ssigm.comma_separated_org_roles != ''
+                  AND EXISTS (
+                    SELECT 1 
+                    FROM unnest(string_to_array(ssigm.comma_separated_org_roles, ',')) AS role
+                    WHERE TRIM(role) IN (:subOrgUserTypes)
+                  )
+                )
+              )
             GROUP BY s.id, s.username, s.full_name, s.email, s.mobile_number,
                      ssigm.package_session_id, ssigm.enrolled_date, ssigm.expiry_date,
                      last_pl.payment_status, s.user_id, s.address_line, s.region, s.city,
@@ -430,6 +467,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             @Param("statuses") List<String> statuses,
             @Param("paymentStatuses") List<String> paymentStatuses,
             @Param("customFieldStatus") List<String> customFieldStatus,
+            @Param("subOrgUserTypes") List<String> subOrgUserTypes,
             Pageable pageable);
 
     // Get student details by user IDs for tag management
@@ -659,6 +697,18 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
               AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
               AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
+              AND (
+                :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true 
+                OR (
+                  ssigm.comma_separated_org_roles IS NOT NULL 
+                  AND ssigm.comma_separated_org_roles != ''
+                  AND EXISTS (
+                    SELECT 1 
+                    FROM unnest(string_to_array(ssigm.comma_separated_org_roles, ',')) AS role
+                    WHERE TRIM(role) IN (:subOrgUserTypes)
+                  )
+                )
+              )
 
 
 
@@ -703,6 +753,18 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
               AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
               AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
+              AND (
+                :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true 
+                OR (
+                  ssigm.comma_separated_org_roles IS NOT NULL 
+                  AND ssigm.comma_separated_org_roles != ''
+                  AND EXISTS (
+                    SELECT 1 
+                    FROM unnest(string_to_array(ssigm.comma_separated_org_roles, ',')) AS role
+                    WHERE TRIM(role) IN (:subOrgUserTypes)
+                  )
+                )
+              )
 
 
 
@@ -728,7 +790,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             @Param("typeIds") List<String> typeIds,
             @Param("destinationPackageSessionIds") List<String> destinationPackageSessionIds,
             @Param("levelIds") List<String> levelIds,
-
+            @Param("subOrgUserTypes") List<String> subOrgUserTypes,
 
 
 
@@ -805,12 +867,22 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 LIMIT 1
             ) last_pl ON TRUE
             WHERE (
-                to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name)
-                OR s.full_name LIKE :name || '%'
-                OR s.username LIKE :name || '%'
-                OR ssigm.institute_enrollment_number LIKE :name || '%'
-                OR s.user_id LIKE :name || '%'
-                OR s.mobile_number LIKE :name || '%'
+                (s.full_name IS NOT NULL AND s.full_name != '' AND s.full_name ILIKE '%' || :name || '%')
+                OR (s.username IS NOT NULL AND s.username != '' AND s.username ILIKE '%' || :name || '%')
+                OR (s.email IS NOT NULL AND s.email != '' AND s.email ILIKE '%' || :name || '%')
+                OR (s.city IS NOT NULL AND s.city != '' AND s.city ILIKE '%' || :name || '%')
+                OR (ssigm.institute_enrollment_number IS NOT NULL AND ssigm.institute_enrollment_number != '' AND ssigm.institute_enrollment_number ILIKE '%' || :name || '%')
+                OR (s.user_id IS NOT NULL AND s.user_id != '' AND s.user_id ILIKE '%' || :name || '%')
+                OR (s.mobile_number IS NOT NULL AND s.mobile_number != '' AND s.mobile_number ILIKE '%' || :name || '%')
+                OR EXISTS (
+                    SELECT 1 
+                    FROM custom_field_values cfv_inner
+                    WHERE cfv_inner.source_type = 'USER'
+                      AND cfv_inner.source_id = ssigm.user_id
+                      AND cfv_inner.value IS NOT NULL 
+                      AND cfv_inner.value != ''
+                      AND LOWER(cfv_inner.value) LIKE LOWER('%' || :name || '%')
+                )
             )
               AND (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm.institute_id IN (:instituteIds))
               AND (:#{#statuses == null || #statuses.isEmpty()} = true OR ssigm.status IN (:statuses))
@@ -820,6 +892,18 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
               AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
               AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
+              AND (
+                :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true 
+                OR (
+                  ssigm.comma_separated_org_roles IS NOT NULL 
+                  AND ssigm.comma_separated_org_roles != ''
+                  AND EXISTS (
+                    SELECT 1 
+                    FROM unnest(string_to_array(ssigm.comma_separated_org_roles, ',')) AS role
+                    WHERE TRIM(role) IN (:subOrgUserTypes)
+                  )
+                )
+              )
 
 
 
@@ -854,12 +938,22 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 LIMIT 1
             ) last_pl ON TRUE
             WHERE (
-                to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name)
-                OR s.full_name LIKE :name || '%'
-                OR s.username LIKE :name || '%'
-                OR ssigm.institute_enrollment_number LIKE :name || '%'
-                OR s.user_id LIKE :name || '%'
-                OR s.mobile_number LIKE :name || '%'
+                (s.full_name IS NOT NULL AND s.full_name != '' AND s.full_name ILIKE '%' || :name || '%')
+                OR (s.username IS NOT NULL AND s.username != '' AND s.username ILIKE '%' || :name || '%')
+                OR (s.email IS NOT NULL AND s.email != '' AND s.email ILIKE '%' || :name || '%')
+                OR (s.city IS NOT NULL AND s.city != '' AND s.city ILIKE '%' || :name || '%')
+                OR (ssigm.institute_enrollment_number IS NOT NULL AND ssigm.institute_enrollment_number != '' AND ssigm.institute_enrollment_number ILIKE '%' || :name || '%')
+                OR (s.user_id IS NOT NULL AND s.user_id != '' AND s.user_id ILIKE '%' || :name || '%')
+                OR (s.mobile_number IS NOT NULL AND s.mobile_number != '' AND s.mobile_number ILIKE '%' || :name || '%')
+                OR EXISTS (
+                    SELECT 1 
+                    FROM custom_field_values cfv_inner
+                    WHERE cfv_inner.source_type = 'USER'
+                      AND cfv_inner.source_id = ssigm.user_id
+                      AND cfv_inner.value IS NOT NULL 
+                      AND cfv_inner.value != ''
+                      AND LOWER(cfv_inner.value) LIKE LOWER('%' || :name || '%')
+                )
             )
               AND (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm.institute_id IN (:instituteIds))
               AND (:#{#statuses == null || #statuses.isEmpty()} = true OR ssigm.status IN (:statuses))
@@ -869,6 +963,18 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
               AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
               AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
+              AND (
+                :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true 
+                OR (
+                  ssigm.comma_separated_org_roles IS NOT NULL 
+                  AND ssigm.comma_separated_org_roles != ''
+                  AND EXISTS (
+                    SELECT 1 
+                    FROM unnest(string_to_array(ssigm.comma_separated_org_roles, ',')) AS role
+                    WHERE TRIM(role) IN (:subOrgUserTypes)
+                  )
+                )
+              )
 
 
 
@@ -892,7 +998,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             @Param("typeIds") List<String> typeIds,
             @Param("destinationPackageSessionIds") List<String> destinationPackageSessionIds,
             @Param("levelIds") List<String> levelIds,
-
+            @Param("subOrgUserTypes") List<String> subOrgUserTypes,
 
 
 

@@ -28,4 +28,6 @@ public class StudentListFilter {
     private List<String> typeIds;
     private List<String> destinationPackageSessionIds;
     private List<String> levelIds;
+    private List<String> subOrgUserTypes;
+    private Map<String, List<String>> customFieldFilters;
 }

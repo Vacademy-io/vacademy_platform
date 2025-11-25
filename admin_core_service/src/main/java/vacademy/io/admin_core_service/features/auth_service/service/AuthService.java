@@ -175,5 +175,23 @@ public class AuthService {
         }
     }
 
+    public UserDTO createOrGetExistingUserById(UserDTO userDTO, String instituteId) {
+        try {
+            String endpoint = AuthServiceRoutes.CREATE_OR_GET_EXISTING_BY_ID + "?instituteId=" + instituteId;
+            ObjectMapper objectMapper = new ObjectMapper();
+            
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                clientName,
+                HttpMethod.POST.name(),
+                authServerBaseUrl,
+                endpoint,
+                userDTO);
+
+            return objectMapper.readValue(response.getBody(), UserDTO.class);
+        } catch (Exception e) {
+            throw new VacademyException("Failed to create or get existing user: " + e.getMessage());
+        }
+    }
+
 
 }

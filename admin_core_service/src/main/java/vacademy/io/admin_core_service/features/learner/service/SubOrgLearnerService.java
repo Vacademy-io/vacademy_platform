@@ -27,6 +27,7 @@ import vacademy.io.common.institute.entity.session.PackageSession;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.Random;
 
 @Slf4j
 @Service
@@ -243,25 +244,39 @@ public class SubOrgLearnerService {
     }
 
     /**
-     * Create new user or fetch existing user
+     * Create new user or fetch existing user with proper user_roles entry
      */
     private UserDTO createOrFetchUser(SubOrgEnrollRequestDTO request) {
-        if (!StringUtils.hasText(request.getUser().getId())) {
-            log.info("Creating new user with email: {}", request.getUser().getEmail());
-            return authService.createUserFromAuthService(
-                    request.getUser(),
-                    request.getInstituteId(),
-                    false // Don't send credentials
-            );
-        } else {
-            log.info("Using existing user with ID: {}", request.getUser().getId());
-            return request.getUser();
+        log.info("Creating or fetching user with email: {}, userId: {}", 
+                request.getUser().getEmail(), request.getUser().getId());
+
+        if (request.getUser().getRoles() == null || request.getUser().getRoles().isEmpty()) {
+            request.getUser().setRoles(List.of("STUDENT"));
         }
+
+        // Generate password if not provided
+        if (!StringUtils.hasText(request.getUser().getPassword())) {
+            String generatedPassword = generateRandomPassword(8);
+            request.getUser().setPassword(generatedPassword);
+            log.info("Generated password for user with email: {}", request.getUser().getEmail());
+        }
+
+        return authService.createOrGetExistingUserById(
+                request.getUser(),
+                request.getInstituteId()
+        );
     }
 
-    /**
-     * Ensure student record exists for the user
-     */
+    private String generateRandomPassword(int length) {
+        String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        Random random = new Random();
+        StringBuilder password = new StringBuilder(length);
+        for (int i = 0; i < length; i++) {
+            password.append(chars.charAt(random.nextInt(chars.length())));
+        }
+        return password.toString();
+    }
+
     private void ensureStudentExists(UserDTO user) {
         Optional<Student> studentOpt = instituteStudentRepository.findTopByUserIdOrderByCreatedAtDesc(user.getId());
         if (studentOpt.isEmpty()) {

@@ -422,8 +422,7 @@ The format depends on the `interval_type`:
 - Examples:
   - ✅ `2024-11-26` (November 26, 2024)
   - ✅ `2025-01-15` (January 15, 2025)
-  - ❌ `2024_D01` (Wrong format for daily)
-  - ❌ `2024-13-01` (Invalid month)
+
 
 **Weekly** (`interval_type: "weekly"`):
 - Pattern: `^\d{4}_D0[1-7]$`
@@ -431,8 +430,7 @@ The format depends on the `interval_type`:
 - Examples:
   - ✅ `2024_D01` (Monday)
   - ✅ `2024_D05` (Friday)
-  - ❌ `2024_D08` (Invalid day, must be 1-7)
-  - ❌ `2024_D0` (Missing day number)
+
 
 **Monthly** (`interval_type: "monthly"`):
 - Pattern: `^\d{4}_\d{2}_W0[1-5]$`
@@ -440,8 +438,6 @@ The format depends on the `interval_type`:
 - Examples:
   - ✅ `2024_01_W01` (Week 1 of January 2024)
   - ✅ `2024_03_W03` (Week 3 of March 2024)
-  - ❌ `2024_01_W06` (Invalid week, must be 1-5)
-  - ❌ `2024_W01` (Missing month)
 
 **Yearly Month** (`interval_type: "yearly_month"`):
 - Pattern: `^\d{4}_M(0[1-9]|1[0-2])$`
@@ -449,8 +445,7 @@ The format depends on the `interval_type`:
 - Examples:
   - ✅ `2024_M01` (January)
   - ✅ `2024_M12` (December)
-  - ❌ `2024_M13` (Invalid month)
-  - ❌ `2024_M00` (Invalid month, must be 01-12)
+ 
 
 **Yearly Quarter** (`interval_type: "yearly_quarter"`):
 - Pattern: `^\d{4}_Q0[1-4]$`
@@ -458,8 +453,7 @@ The format depends on the `interval_type`:
 - Examples:
   - ✅ `2024_Q01` (Q1)
   - ✅ `2024_Q04` (Q4)
-  - ❌ `2024_Q05` (Invalid quarter, must be 1-4)
-  - ❌ `2024_Q0` (Missing quarter number)
+
 
 ### Required Fields (Create)
 - `log_type`

@@ -66,9 +66,7 @@
       }
     ],
     "icon": "assets/ssdc_horizon.ico",
-    "signtoolOptions": {
-      "signingHashAlgorithms": ["sha256"]
-    },
+    "signingHashAlgorithms": ["sha256"],
     "verifyUpdateCodeSignature": false
   },
   "mac": {

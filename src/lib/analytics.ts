@@ -4,7 +4,8 @@ import * as amplitude from '@amplitude/analytics-browser';
 let analyticsReady = false;
 
 // Amplitude configuration
-const AMPLITUDE_API_KEY = 'da01da74b4f51da33ee2dea67aa520e2';
+// get from env VITE_AMPLITUDE_API_KEY
+const AMPLITUDE_API_KEY = import.meta.env.VITE_AMPLITUDE_API_KEY;
 
 /**
  * Initialize Amplitude analytics

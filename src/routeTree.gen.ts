@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as UserProfileIndexRouteImport } from './routes/user-profile/index'
 import { Route as TermsAndConditionsIndexRouteImport } from './routes/terms-and-conditions/index'
+import { Route as SubOrgLearnersIndexRouteImport } from './routes/sub-org-learners/index'
 import { Route as StudyLibraryIndexRouteImport } from './routes/study-library/index'
 import { Route as SignupIndexRouteImport } from './routes/signup/index'
 import { Route as RegisterIndexRouteImport } from './routes/register/index'
@@ -69,6 +70,11 @@ const UserProfileIndexRoute = UserProfileIndexRouteImport.update({
 const TermsAndConditionsIndexRoute = TermsAndConditionsIndexRouteImport.update({
   id: '/terms-and-conditions/',
   path: '/terms-and-conditions/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SubOrgLearnersIndexRoute = SubOrgLearnersIndexRouteImport.update({
+  id: '/sub-org-learners/',
+  path: '/sub-org-learners/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const StudyLibraryIndexRoute = StudyLibraryIndexRouteImport.update({
@@ -363,6 +369,7 @@ export interface FileRoutesByFullPath {
   '/register': typeof RegisterIndexRoute
   '/signup': typeof SignupIndexRoute
   '/study-library': typeof StudyLibraryIndexRoute
+  '/sub-org-learners': typeof SubOrgLearnersIndexRoute
   '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
@@ -416,6 +423,7 @@ export interface FileRoutesByTo {
   '/register': typeof RegisterIndexRoute
   '/signup': typeof SignupIndexRoute
   '/study-library': typeof StudyLibraryIndexRoute
+  '/sub-org-learners': typeof SubOrgLearnersIndexRoute
   '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
@@ -470,6 +478,7 @@ export interface FileRoutesById {
   '/register/': typeof RegisterIndexRoute
   '/signup/': typeof SignupIndexRoute
   '/study-library/': typeof StudyLibraryIndexRoute
+  '/sub-org-learners/': typeof SubOrgLearnersIndexRoute
   '/terms-and-conditions/': typeof TermsAndConditionsIndexRoute
   '/user-profile/': typeof UserProfileIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
@@ -525,6 +534,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/signup'
     | '/study-library'
+    | '/sub-org-learners'
     | '/terms-and-conditions'
     | '/user-profile'
     | '/login/oauth/learner'
@@ -578,6 +588,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/signup'
     | '/study-library'
+    | '/sub-org-learners'
     | '/terms-and-conditions'
     | '/user-profile'
     | '/login/oauth/learner'
@@ -631,6 +642,7 @@ export interface FileRouteTypes {
     | '/register/'
     | '/signup/'
     | '/study-library/'
+    | '/sub-org-learners/'
     | '/terms-and-conditions/'
     | '/user-profile/'
     | '/login/oauth/learner'
@@ -685,6 +697,7 @@ export interface RootRouteChildren {
   RegisterIndexRoute: typeof RegisterIndexRoute
   SignupIndexRoute: typeof SignupIndexRoute
   StudyLibraryIndexRoute: typeof StudyLibraryIndexRoute
+  SubOrgLearnersIndexRoute: typeof SubOrgLearnersIndexRoute
   TermsAndConditionsIndexRoute: typeof TermsAndConditionsIndexRoute
   UserProfileIndexRoute: typeof UserProfileIndexRoute
   LoginOauthLearnerRoute: typeof LoginOauthLearnerRoute
@@ -734,6 +747,13 @@ declare module '@tanstack/react-router' {
       path: '/terms-and-conditions'
       fullPath: '/terms-and-conditions'
       preLoaderRoute: typeof TermsAndConditionsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sub-org-learners/': {
+      id: '/sub-org-learners/'
+      path: '/sub-org-learners'
+      fullPath: '/sub-org-learners'
+      preLoaderRoute: typeof SubOrgLearnersIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/study-library/': {
@@ -1101,6 +1121,7 @@ const rootRouteChildren: RootRouteChildren = {
   RegisterIndexRoute: RegisterIndexRoute,
   SignupIndexRoute: SignupIndexRoute,
   StudyLibraryIndexRoute: StudyLibraryIndexRoute,
+  SubOrgLearnersIndexRoute: SubOrgLearnersIndexRoute,
   TermsAndConditionsIndexRoute: TermsAndConditionsIndexRoute,
   UserProfileIndexRoute: UserProfileIndexRoute,
   LoginOauthLearnerRoute: LoginOauthLearnerRoute,

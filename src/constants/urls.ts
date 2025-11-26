@@ -160,3 +160,10 @@ export const GET_CUSTOM_FIELDS = `${BASE_URL}/admin-core-service/open/common/cus
 // Audience campaign API endpoint
 export const GET_AUDIENCE_CAMPAIGN = `${BASE_URL}/admin-core-service/open/v1/audience/campaign`;
 export const SUBMIT_AUDIENCE_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit`;
+
+// Sub-Organization Learner Management API endpoints
+export const SUB_ORG_MEMBER_ADMIN_DETAILS = `${BASE_URL}/admin-core-service/sub-org/v1/member-admin-details`;
+export const SUB_ORG_BASE = `${BASE_URL}/admin-core-service/sub-org/v1`;
+export const SUB_ORG_MEMBERS = `${SUB_ORG_BASE}/members`;
+export const SUB_ORG_ADD_MEMBER = `${SUB_ORG_BASE}/add-member`;
+export const SUB_ORG_TERMINATE_MEMBER = `${SUB_ORG_BASE}/terminate-member`;

@@ -5,6 +5,7 @@ import {
   Scroll,
   SignOut,
   NotePencil,
+  Users,
 } from "@phosphor-icons/react";
 import { Files, Password, UserCircle, UserCircleMinus } from "phosphor-react";
 import { NamingSettingsType } from "@/services/fetchAndStoreInstituteDetails";
@@ -64,6 +65,11 @@ export const SidebarItemsData: SidebarItemsType[] = [
         subItemLink: "/homework/reports",
       },
     ],
+  },
+  {
+    icon: Users,
+    title: "Sub-Org Learners",
+    to: "/sub-org-learners",
   },
   {
     icon: Scroll,

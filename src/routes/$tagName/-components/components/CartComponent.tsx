@@ -147,7 +147,7 @@ const CartItemCard: React.FC<CartItemCardProps> = ({
   }, [imageUrl, item.image]);
 
   return (
-    <div className="flex flex-col sm:flex-row gap-4 p-4 border border-gray-200 rounded-lg bg-white hover:shadow-md transition-shadow">
+    <div className="w-full max-w-[950px] mx-auto flex flex-col sm:flex-row gap-4 p-4 border border-gray-200 rounded-lg bg-white hover:shadow-md transition-shadow">
       {/* Item Image */}
       {showItemImage && (
         <div className="flex-shrink-0 w-full sm:w-32 h-32 bg-gray-100 rounded-lg overflow-hidden">

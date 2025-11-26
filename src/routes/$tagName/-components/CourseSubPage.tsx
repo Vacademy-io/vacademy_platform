@@ -276,7 +276,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
             >
               <div className="w-full px-4 sm:px-6 lg:px-8">
                 <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4">
-                  {currentPage.title}
+                  {currentPage.title} {currentPage.title == "Your Cart" ? "🛒" : ""}
                 </h1>
               </div>
             </div>

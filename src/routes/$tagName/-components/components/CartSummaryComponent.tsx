@@ -37,7 +37,7 @@ export const CartSummaryComponent: React.FC<CartSummaryProps> = ({
 
   return (
     <div
-      className={`w-full ${roundedEdges} border border-gray-200`}
+      className={`w-full max-w-[950px] mx-auto ${roundedEdges} border border-gray-200`}
       style={{ backgroundColor, padding }}
     >
       <div className="space-y-4">

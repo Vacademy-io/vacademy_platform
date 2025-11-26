@@ -322,7 +322,7 @@ const CartControls: React.FC<{
           });
           toast.success(`${course.title} added to cart!`);
         }}
-        className="bg-blue-900 hover:bg-primary-700 text-white text-sm font-medium rounded-md px-3 py-1.5 flex items-center justify-center gap-2 shadow-sm"
+        className="bg-primary hover:bg-primary-400 text-white text-sm font-medium rounded-md px-3 py-1.5 flex items-center justify-center gap-2 shadow-sm"
         size="sm"
       >
         <ShoppingCart className="h-4 w-4" />
@@ -999,7 +999,24 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                             </span>
                           )}
 
-                          {/* Add to Cart Button or Quantity Controls */}
+                        
+                        </div>
+
+                        {/* Badges */}
+                        {(displayLevel || displayRating) && (
+                          <div className="flex justify-between h-8 gap-2">
+                            {displayLevel && (
+                              <span className="px-2 py-1 bg-primary-100 text-primary-800 text-xs sm:text-sm rounded-full">
+                                {course.level}
+                              </span>
+                            )}
+                            {displayRating && course.rating > 0 && (
+                              <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs sm:text-sm rounded-full">
+                                ⭐ {course.rating.toFixed(1)}
+                              </span>
+                            )}
+
+                               {/* Add to Cart Button or Quantity Controls */}
                           {shouldShowCartControls && (
                             <div className="flex-shrink-0">
                               <CartControls
@@ -1013,21 +1030,6 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                               />
                             </div>
                           )}
-                        </div>
-
-                        {/* Badges */}
-                        {(displayLevel || displayRating) && (
-                          <div className="flex flex-wrap gap-2">
-                            {displayLevel && (
-                              <span className="px-2 py-1 bg-primary-100 text-primary-800 text-xs sm:text-sm rounded-full">
-                                {course.level}
-                              </span>
-                            )}
-                            {displayRating && course.rating > 0 && (
-                              <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs sm:text-sm rounded-full">
-                                ⭐ {course.rating.toFixed(1)}
-                              </span>
-                            )}
                           </div>
                         )}
                       </div>
@@ -1088,7 +1090,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
       {cartButtonConfig?.enabled && <div className="fixed bottom-6 right-6 z-50">
         <Button
           onClick={() => navigate({ to: `/${tagName}/cart` })}
-          className="h-12 w-12 rounded-full bg-blue-600 hover:bg-primary-700 text-white shadow-lg flex items-center justify-center relative"
+          className="h-12 w-12 rounded-full bg-primary hover:bg-primary-700 text-white shadow-lg flex items-center justify-center relative"
           size="sm"
         >
           <ShoppingCart className="h-5 w-5" />

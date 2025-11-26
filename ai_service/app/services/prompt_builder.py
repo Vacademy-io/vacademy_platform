@@ -21,25 +21,33 @@ class CourseOutlinePromptBuilder:
         metadata: Optional[CourseMetadata],
     ) -> str:
         # Build context variables (match media-service pattern)
-        print(f"DEBUG PROMPT: request.course_depth = {request.course_depth}")
-        print(f"DEBUG PROMPT: request.user_prompt = {request.user_prompt}")
+
+        # Extract generation options (with defaults for backward compatibility)
+        gen_options = request.generation_options or {}
+        num_slides_spec = gen_options.num_slides if hasattr(gen_options, 'num_slides') and gen_options.num_slides else None
+        num_chapters_spec = gen_options.num_chapters if hasattr(gen_options, 'num_chapters') and gen_options.num_chapters else None
+        generate_images = gen_options.generate_images if hasattr(gen_options, 'generate_images') else False
+
+        # Build generation requirements string
+        generation_requirements = ""
+        if num_slides_spec:
+            generation_requirements += f"\n- User specifies exact slide count: EXACTLY {num_slides_spec} slides"
+        if num_chapters_spec:
+            generation_requirements += f"\n- User specifies exact chapter count: EXACTLY {num_chapters_spec} chapters"
+        if generate_images:
+            generation_requirements += f"\n- Generate course images: YES (will provide S3 URLs in response)"
+        else:
+            generation_requirements += f"\n- Generate course images: NO"
 
         context_vars = {
             "userPrompt": request.user_prompt,
             "merkleHash": "",  # TODO: Implement merkle hash logic if needed
             "merkleMap": "",   # TODO: Implement merkle map logic if needed
             "existingCourse": request.existing_course_tree or "",
-            "courseDepth": str(request.course_depth) if request.course_depth else "auto"
+            "courseDepth": str(request.course_depth) if request.course_depth else "auto",
+            "generationRequirements": generation_requirements
         }
 
-        print(f"DEBUG PROMPT: context_vars keys: {list(context_vars.keys())}")
-        print(f"DEBUG PROMPT: context_vars['courseDepth'] = {context_vars['courseDepth']}")
-        print(f"DEBUG PROMPT: context_vars['courseDepth'] type: {type(context_vars['courseDepth'])}")
-
-        # Test formatting on a simple string
-        test_template = "Depth: {courseDepth}"
-        test_result = test_template.format(**context_vars)
-        print(f"DEBUG PROMPT: Test formatting result: '{test_result}'")
 
         # Use the exact template from media-service
         template = """
@@ -67,6 +75,9 @@ class CourseOutlinePromptBuilder:
               * If no specific counts mentioned, use reasonable defaults for depth {courseDepth}
             - DEPTH SPECIFIC: For depth {courseDepth}, follow the structure rules below
             - CRITICAL: Respect user-specified counts, or use defaults if none specified
+
+            GENERATION CONFIGURATION:
+            {generationRequirements}
 
             🚨 CRITICAL DEPTH RULES - YOU ARE USING DEPTH {courseDepth}:
 
@@ -244,6 +255,18 @@ class CourseOutlinePromptBuilder:
             📝 COURSE METADATA REQUIREMENT:
             - courseDepth MUST be set to {courseDepth} in courseMetadata
             - Do NOT change this value regardless of what depth you actually used
+
+            🖼️  IMAGE GENERATION (IF REQUESTED):
+            - If "generate_images" is enabled in generation configuration:
+              * Generate a professional course banner image (1200x400px recommended)
+              * Generate a course preview thumbnail (400x300px recommended)
+              * For banner: Create a visually appealing design that represents the course topic
+              * For preview: Create a smaller thumbnail that complements the banner
+              * Return S3 URLs in courseMetadata.bannerImageUrl and courseMetadata.previewImageUrl
+              * Use descriptive filenames (e.g., "course_banner_python_basics.jpg")
+            - If "generate_images" is NOT enabled:
+              * Set bannerImageUrl and previewImageUrl to null or omit them
+              * Use filename-based media IDs (courseBannerMediaId: "banner.jpg")
 
             HIERARCHICAL NAMES RULES (CRITICAL):
             For SLIDE nodes AND TODO objects, populate based on depth:
@@ -485,7 +508,9 @@ class CourseOutlinePromptBuilder:
                 "courseBannerMediaId": "banner.jpg",
                 "coursePreviewImageMediaId": "preview.jpg",
                 "tags": ["tag1", "tag2"],
-                "courseDepth": {courseDepth}
+                "courseDepth": {courseDepth},
+                "bannerImageUrl": "https://s3.amazonaws.com/bucket/banner.jpg",
+                "previewImageUrl": "https://s3.amazonaws.com/bucket/preview.jpg"
               }}
             }}
             ```
@@ -654,25 +679,7 @@ class CourseOutlinePromptBuilder:
             ------------------------------------------------------------
             """
 
-        print(f"DEBUG PROMPT: About to format template...")
-        print(f"DEBUG PROMPT: Template contains single braces: {'{courseDepth}' in template}")
-        print(f"DEBUG PROMPT: Template contains formatted value: {context_vars['courseDepth']}")
-
         formatted_prompt = template.format(**context_vars)
-
-        print(f"DEBUG PROMPT: Formatting completed")
-
-        # Debug: Check if depth is properly formatted
-        depth_line = None
-        for line in formatted_prompt.split('\n'):
-            if 'COURSE DEPTH IS SET TO:' in line:
-                depth_line = line.strip()
-                break
-
-        print(f"DEBUG PROMPT: Depth line found: '{depth_line}'")
-        print(f"DEBUG PROMPT: First 300 chars: {formatted_prompt[:300]}")
-        print(f"DEBUG PROMPT: Contains 'depth 5': {'depth 5' in formatted_prompt.lower()}")
-
         return formatted_prompt
 
     @staticmethod

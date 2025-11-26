@@ -5,6 +5,29 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
 
 
+class GenerationOptions(BaseModel):
+    """
+    Optional configuration for course outline generation.
+    Allows fine-grained control over generation behavior.
+    """
+    num_slides: Optional[int] = Field(
+        default=None,
+        description="Target number of slides to generate (overrides user_prompt specification)"
+    )
+    num_chapters: Optional[int] = Field(
+        default=None,
+        description="Target number of chapters to generate (only for depth >= 3)"
+    )
+    generate_images: bool = Field(
+        default=False,
+        description="Whether to generate course_banner_image and course_preview_image (S3 URLs)"
+    )
+    image_style: Optional[str] = Field(
+        default="professional",
+        description="Style for generated images (e.g., 'professional', 'creative', 'minimalist')"
+    )
+
+
 class CourseUserPromptRequest(BaseModel):
     """
     Request schema matching media-service CourseUserPrompt format.
@@ -12,6 +35,10 @@ class CourseUserPromptRequest(BaseModel):
     user_prompt: str = Field(..., description="High-level user prompt / goal for the course")
     course_tree: Optional[str] = Field(default=None, description="Existing course tree JSON string")
     course_depth: Optional[int] = Field(default=None, description="Desired course depth (2-5), auto-determined if not specified")
+    generation_options: Optional[GenerationOptions] = Field(
+        default=None,
+        description="Optional generation configuration (slides, chapters, images, etc.)"
+    )
 
 
 class CourseOutlineRequest(BaseModel):
@@ -39,6 +66,10 @@ class CourseOutlineRequest(BaseModel):
     course_depth: Optional[int] = Field(
         default=None,
         description="Desired course depth (2-5); AI determines optimal depth if not specified",
+    )
+    generation_options: Optional[GenerationOptions] = Field(
+        default=None,
+        description="Optional generation configuration (slides, chapters, images, etc.)",
     )
 
 
@@ -119,6 +150,14 @@ class CourseMetadata(BaseModel):
     course_preview_image_media_id: str = Field(..., description="Preview image filename")
     tags: List[str] = Field(default_factory=list, description="Course tags")
     course_depth: int = Field(..., description="Course hierarchy depth (2-5)")
+    banner_image_url: Optional[str] = Field(
+        default=None,
+        description="Generated banner image S3 URL (if generate_images was true)"
+    )
+    preview_image_url: Optional[str] = Field(
+        default=None,
+        description="Generated preview image S3 URL (if generate_images was true)"
+    )
 
 
 class CourseOutlineResponse(BaseModel):
@@ -144,6 +183,8 @@ class CourseOutlineResponse(BaseModel):
 
 
 __all__ = [
+    "GenerationOptions",
+    "CourseUserPromptRequest",
     "CourseOutlineRequest",
     "CourseNode",
     "Todo",

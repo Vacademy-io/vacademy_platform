@@ -53,27 +53,17 @@ async def stream_course_outline(
         institute_id: Institute identifier.
     """
     # Convert CourseUserPromptRequest to internal CourseOutlineRequest
-    print(f"DEBUG: payload.user_prompt = {payload.user_prompt}")
-    print(f"DEBUG: payload.course_tree = {payload.course_tree}")
-    print(f"DEBUG: payload.course_depth = {payload.course_depth}")
-    print(f"DEBUG: payload.course_depth type = {type(payload.course_depth)}")
-
     # Use provided model or fall back to settings default
     final_model = model or get_settings().llm_default_model
-    print(f"DEBUG: query model param = {model}")
-    print(f"DEBUG: settings default model = {get_settings().llm_default_model}")
-    print(f"DEBUG: final model used = {final_model}")
 
     internal_request = CourseOutlineRequest(
         institute_id=institute_id,
         user_prompt=payload.user_prompt,
         existing_course_tree=json.loads(payload.course_tree) if payload.course_tree else None,
         model=final_model,
-        course_depth=payload.course_depth
+        course_depth=payload.course_depth,
+        generation_options=payload.generation_options
     )
-
-    print(f"DEBUG: internal_request.course_depth = {internal_request.course_depth}")
-    print(f"DEBUG: internal_request.user_prompt = {internal_request.user_prompt}")
 
     request_id = str(uuid.uuid4())
 

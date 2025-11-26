@@ -46,10 +46,6 @@ class CourseOutlineParser:
 
     def _convert_from_media_service_format(self, data: Dict[str, Any]) -> CourseOutlineResponse:
         """Convert media-service JSON format to our CourseOutlineResponse format."""
-        # Debug: Log the structure we received from LLM
-        print(f"DEBUG PARSER: Received data keys: {list(data.keys())}")
-        print(f"DEBUG PARSER: Number of todos: {len(data.get('todos', []))}")
-        
         explanation = data.get("explanation", "")
 
         # Extract todos and convert to our format
@@ -61,13 +57,6 @@ class CourseOutlineParser:
             subject_name = todo_data.get("subject_name") or todo_data.get("subjectName")
             module_name = todo_data.get("module_name") or todo_data.get("moduleName")
             chapter_name = todo_data.get("chapter_name") or todo_data.get("chapterName")
-            
-            # Debug: Log what we're extracting
-            if i == 0:  # Log first todo for debugging
-                print(f"DEBUG PARSER: First todo raw data keys: {list(todo_data.keys())}")
-                print(f"DEBUG PARSER: subject_name from LLM: {subject_name}")
-                print(f"DEBUG PARSER: module_name from LLM: {module_name}")
-                print(f"DEBUG PARSER: chapter_name from LLM: {chapter_name}")
             
             todo = {
                 "name": todo_data.get("name", f"todo-{i}"),

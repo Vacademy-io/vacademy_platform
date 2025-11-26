@@ -57,6 +57,12 @@ jobs:
               APP_ENV=stage \
               LLM_BASE_URL=https://openrouter.ai/api/v1/chat/completions \
               LLM_API_KEY=${{ secrets.OPENROUTER_API_KEY }} \
+              LLM_TIMEOUT_SECONDS=60.0 \
+              S3_AWS_ACCESS_KEY=${{ secrets.S3_AWS_ACCESS_KEY }} \
+              S3_AWS_ACCESS_SECRET=${{ secrets.S3_AWS_ACCESS_SECRET }} \
+              S3_AWS_REGION=${{ secrets.S3_AWS_REGION }} \
+              AWS_BUCKET_NAME=${{ secrets.AWS_S3_PUBLIC_BUCKET }} \
+              GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
               LLM_DEFAULT_MODEL=google/gemini-2.5-flash
             kubectl rollout restart deployment "$DEPLOYMENT_NAME" --namespace "$NAMESPACE"
           else

@@ -15,8 +15,11 @@ def _load_env_file() -> None:
     Files later in the list override earlier ones.
     """
     app_env = os.getenv("APP_ENV", "stage")
+
     # Load base .env first, then env-specific to allow overrides
-    load_dotenv(dotenv_path=os.path.join(os.getcwd(), ".env"), override=False)
+    base_env = os.path.join(os.getcwd(), ".env")
+    load_dotenv(dotenv_path=base_env, override=False)
+
     env_specific = os.path.join(os.getcwd(), f".env.{app_env}")
     if os.path.exists(env_specific):
         load_dotenv(dotenv_path=env_specific, override=True)
@@ -71,6 +74,15 @@ class Settings(BaseSettings):
     # llm_default_model: str = "google/gemini-pro"  # Google's model
     # llm_default_model: str = "meta-llama/llama-3.2-3b-instruct"  # Smaller llama
     llm_timeout_seconds: float = 60.0
+
+    # S3 Configuration (for generated course images)
+    s3_aws_access_key: Optional[str] = None
+    s3_aws_access_secret: Optional[str] = None
+    s3_aws_region: Optional[str] = None
+    aws_bucket_name: Optional[str] = None
+
+    # Google Generative AI Configuration (for Gemini image generation)
+    gemini_api_key: Optional[str] = None
 
     model_config = SettingsConfigDict(env_file=None, extra="ignore")
 

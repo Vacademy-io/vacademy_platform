@@ -74,6 +74,11 @@ public class CacheConfiguration {
                                 "myFiles",
                                 caffeineCache1mBuilder().build());
 
+                // Planning Logs cache
+                CaffeineCache planningLogsList = new CaffeineCache(
+                                "planningLogsList",
+                                caffeineCache1mBuilder().build());
+
                 cacheManager.setCaches(java.util.List.of(
                                 studyLibraryInit,
                                 facultyByPackageSessions,
@@ -87,7 +92,8 @@ public class CacheConfiguration {
                                 learnerInfo,
                                 systemFileAccess,
                                 systemFileList,
-                                myFiles));
+                                myFiles,
+                                planningLogsList));
 
                 return cacheManager;
         }

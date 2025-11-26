@@ -99,8 +99,6 @@ public class AuthService {
         if (isAlreadyPresent) {
             user = optionalUser.get();
             if (StringUtils.hasText(registerRequest.getFullName())) user.setFullName(registerRequest.getFullName());
-            if (StringUtils.hasText(registerRequest.getUsername())) user.setUsername(registerRequest.getUsername());
-            if (StringUtils.hasText(registerRequest.getPassword())) user.setPassword(registerRequest.getPassword());
             if (StringUtils.hasText(registerRequest.getAddressLine())) user.setAddressLine(registerRequest.getAddressLine());
             if (StringUtils.hasText(registerRequest.getCity())) user.setCity(registerRequest.getCity());
             if (StringUtils.hasText(registerRequest.getPinCode())) user.setPinCode(registerRequest.getPinCode());

@@ -125,19 +125,21 @@ function RouteComponent() {
   }
 
   return (
-    <div className="container mx-auto py-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="container mx-auto py-6 px-4">
+      <div className="flex items-center justify-between mb-6 gap-4">
         <h1 className="text-2xl font-bold">My Files</h1>
         <Button
           variant="default"
           onClick={() => navigate({ to: "/dashboard" })}
+          className="shrink-0"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back to Dashboard
+          <span className="hidden sm:inline ml-2">Back to Dashboard</span>
         </Button>
       </div>
       
-      <div className="border rounded-lg">
+      {/* Table view for desktop */}
+      <div className="hidden md:block border rounded-lg">
         <Table>
           <TableHeader>
             <TableRow>
@@ -198,6 +200,80 @@ function RouteComponent() {
             ))}
           </TableBody>
         </Table>
+      </div>
+
+      {/* Card view for mobile */}
+      <div className="md:hidden space-y-4">
+        {files.map((file) => (
+          <div
+            key={file.id}
+            className="border rounded-lg p-4 space-y-3 bg-card"
+          >
+            <div className="space-y-2">
+              <h3 className="font-semibold text-lg break-words">{file.name}</h3>
+              
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Type:</span>
+                  <p className="font-medium">{file.file_type==="Html" ? "Note" : file.file_type}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Media Type:</span>
+                  <p className="font-medium capitalize">{file.media_type === "note" ? "Text" : file.media_type}</p>
+                </div>
+              </div>
+
+              <div className="text-sm">
+                <span className="text-muted-foreground">Added By:</span>
+                <p className="font-medium">{file.created_by}</p>
+              </div>
+
+              <div className="text-sm">
+                <span className="text-muted-foreground">Date Added:</span>
+                <p className="font-medium">{formatDate(file.created_at_iso)}</p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 pt-2 border-t">
+              {canShowViewButton(file) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleViewClick(file)}
+                  title={file.file_type === "Url" ? "Open URL" : "View Note"}
+                  className="flex-1 min-w-[100px]"
+                >
+                  <Eye className="h-4 w-4 mr-2" />
+                  View
+                </Button>
+              )}
+              {canShowDownloadButton(file) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleDownloadClick(file)}
+                  title="Download File"
+                  className="flex-1 min-w-[100px]"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Download
+                </Button>
+              )}
+              {hasEditAccess(file) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleEditClick(file)}
+                  title="Edit File"
+                  className="flex-1 min-w-[100px]"
+                >
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit
+                </Button>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
 
       <NotePreviewDialog

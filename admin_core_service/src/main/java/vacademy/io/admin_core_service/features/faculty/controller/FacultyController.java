@@ -56,7 +56,7 @@ public class FacultyController {
         return ResponseEntity.ok(facultyService.getAllFacultyBatchSubject(userId, userDetails));
     }
 
-    @GetMapping("/by-institute/{instituteId}")
+    @GetMapping("/by-institute/only-creator/{instituteId}")
     public ResponseEntity<List<UserDTO> > getFacultyByInstitute(@PathVariable String instituteId) {
         return ResponseEntity.ok(facultyService.findFacultyByFilters(instituteId));
     }

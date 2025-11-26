@@ -33,8 +33,8 @@ The Planning Logs API allows teachers and admins to create, list, and update pla
       "log_type": "planning",
       "entity": "packageSession",
       "entity_id": "session-uuid",
-      "interval_type": "weekly",
-      "interval_type_id": "2024_MM_W01",
+      "interval_type": "monthly",
+      "interval_type_id": "2024_01_W01",
       "title": "Week 1 Planning",
       "description": "Planning for first week of the month",
       "content_html": "<p>Detailed planning content in HTML</p>",
@@ -49,7 +49,7 @@ The Planning Logs API allows teachers and admins to create, list, and update pla
 - `log_type`: Type of log - `"planning"` or `"diary"`
 - `entity`: Entity type - `"packageSession"`, `"subject"`, etc.
 - `entity_id`: UUID of the associated entity
-- `interval_type`: Time interval - `"daily"`, `"weekly"`, `"monthly"`, `"quarterly"`
+- `interval_type`: Time interval - `"daily"`, `"weekly"`, `"monthly"`, `"yearly_month"`, `"yearly_quarter"`
 - `interval_type_id`: Formatted interval identifier (see format below)
 - `title`: Log title
 - `description`: Optional description
@@ -58,10 +58,11 @@ The Planning Logs API allows teachers and admins to create, list, and update pla
 - `comma_separated_file_ids`: Optional comma-separated file UUIDs
 
 **Interval Type ID Formats:**
-- Daily: `YYYY_D0X` (e.g., `2024_D01` for Monday, `2024_D07` for Sunday)
-- Weekly: `YYYY_MM_W0X` (e.g., `2024_01_W01` for first week of January)
-- Monthly: `YYYY_M0X` or `YYYY_M1X` (e.g., `2024_M01` for January, `2024_M12` for December)
-- Quarterly: `YYYY_Q0X` (e.g., `2024_Q01` for Q1)
+- Daily: `YYYY-MM-DD` (e.g., `2024-11-26` for November 26, 2024) - ISO date format
+- Weekly: `YYYY_D0X` (e.g., `2024_D01` for Monday, `2024_D07` for Sunday) - Day of week (1-7)
+- Monthly: `YYYY_MM_W0X` (e.g., `2024_01_W01` for first week of January, `2024_03_W03` for third week of March) - Week of specific month (1-5)
+- Yearly Month: `YYYY_MXX` (e.g., `2024_M01` for January, `2024_M12` for December) - Month of year (01-12)
+- Yearly Quarter: `YYYY_Q0X` (e.g., `2024_Q01` for Q1, `2024_Q04` for Q4) - Quarter (1-4)
 
 **Response:**
 ```json
@@ -73,8 +74,8 @@ The Planning Logs API allows teachers and admins to create, list, and update pla
       "log_type": "planning",
       "entity": "packageSession",
       "entity_id": "session-uuid",
-      "interval_type": "weekly",
-      "interval_type_id": "2024_MM_W01",
+      "interval_type": "monthly",
+      "interval_type_id": "2024_01_W01",
       "title": "Week 1 Planning",
       "description": "Planning for first week of the month",
       "content_html": "<p>Detailed planning content in HTML</p>",
@@ -118,7 +119,7 @@ The Planning Logs API allows teachers and admins to create, list, and update pla
 **Request Body (all fields optional):**
 ```json
 {
-  "interval_types": ["weekly", "monthly"],
+  "interval_types": ["monthly", "yearly_month"],
   "interval_type_ids": ["2024_01_W01", "2024_M01"],
   "created_by_user_ids": ["user-uuid-1", "user-uuid-2"],
   "log_types": ["planning", "diary"],
@@ -144,7 +145,7 @@ The Planning Logs API allows teachers and admins to create, list, and update pla
       "log_type": "planning",
       "entity": "packageSession",
       "entity_id": "session-uuid",
-      "interval_type": "weekly",
+      "interval_type": "monthly",
       "interval_type_id": "2024_01_W01",
       "title": "Week 1 Planning",
       "description": "Planning for first week",
@@ -241,7 +242,7 @@ Only fields provided in the request will be updated. Omitted fields remain uncha
   "log_type": "planning",
   "entity": "packageSession",
   "entity_id": "session-uuid",
-  "interval_type": "weekly",
+  "interval_type": "monthly",
   "interval_type_id": "2024_01_W01",
   "title": "Updated Title",
   "description": "Updated description",
@@ -315,7 +316,7 @@ curl -X POST "http://localhost:8080/admin-core-service/planning-logs/v1/create?i
       "log_type": "planning",
       "entity": "packageSession",
       "entity_id": "session-456",
-      "interval_type": "weekly",
+      "interval_type": "monthly",
       "interval_type_id": "2024_01_W01",
       "title": "Week 1 Math Planning",
       "description": "Algebra basics",
@@ -342,7 +343,7 @@ curl -X POST "http://localhost:8080/admin-core-service/planning-logs/v1/list?ins
   -H "Content-Type: application/json" \
   -d '{
     "log_types": ["planning"],
-    "interval_types": ["weekly", "monthly"],
+    "interval_types": ["monthly", "yearly_month"],
     "subject_ids": ["math-789", "science-101"]
   }'
 ```
@@ -412,16 +413,53 @@ All cached list responses are cleared when:
 ## Validation Rules
 
 ### interval_type_id Format
-Must match the pattern: `^\d{4}_(D0[1-7]|MM_W0[1-5]|M0[1-9]|M1[0-2]|Q0[1-4])$`
 
-Examples:
-- ✅ `2024_D01` (Monday)
-- ✅ `2024_01_W03` (Week 3 of January)
-- ✅ `2024_M06` (June)
-- ✅ `2024_Q02` (Q2)
-- ❌ `2024_D08` (Invalid day)
-- ❌ `2024_W01` (Missing month)
-- ❌ `2024_M13` (Invalid month)
+The format depends on the `interval_type`:
+
+**Daily** (`interval_type: "daily"`):
+- Pattern: `^\d{4}-\d{2}-\d{2}$`
+- Format: YYYY-MM-DD (ISO date)
+- Examples:
+  - ✅ `2024-11-26` (November 26, 2024)
+  - ✅ `2025-01-15` (January 15, 2025)
+  - ❌ `2024_D01` (Wrong format for daily)
+  - ❌ `2024-13-01` (Invalid month)
+
+**Weekly** (`interval_type: "weekly"`):
+- Pattern: `^\d{4}_D0[1-7]$`
+- Format: YYYY_D0X (day of week, 1=Monday, 7=Sunday)
+- Examples:
+  - ✅ `2024_D01` (Monday)
+  - ✅ `2024_D05` (Friday)
+  - ❌ `2024_D08` (Invalid day, must be 1-7)
+  - ❌ `2024_D0` (Missing day number)
+
+**Monthly** (`interval_type: "monthly"`):
+- Pattern: `^\d{4}_\d{2}_W0[1-5]$`
+- Format: YYYY_MM_W0X (week of specific month, 1-5)
+- Examples:
+  - ✅ `2024_01_W01` (Week 1 of January 2024)
+  - ✅ `2024_03_W03` (Week 3 of March 2024)
+  - ❌ `2024_01_W06` (Invalid week, must be 1-5)
+  - ❌ `2024_W01` (Missing month)
+
+**Yearly Month** (`interval_type: "yearly_month"`):
+- Pattern: `^\d{4}_M(0[1-9]|1[0-2])$`
+- Format: YYYY_MXX (month of year, 01-12)
+- Examples:
+  - ✅ `2024_M01` (January)
+  - ✅ `2024_M12` (December)
+  - ❌ `2024_M13` (Invalid month)
+  - ❌ `2024_M00` (Invalid month, must be 01-12)
+
+**Yearly Quarter** (`interval_type: "yearly_quarter"`):
+- Pattern: `^\d{4}_Q0[1-4]$`
+- Format: YYYY_Q0X (quarter, 1-4)
+- Examples:
+  - ✅ `2024_Q01` (Q1)
+  - ✅ `2024_Q04` (Q4)
+  - ❌ `2024_Q05` (Invalid quarter, must be 1-4)
+  - ❌ `2024_Q0` (Missing quarter number)
 
 ### Required Fields (Create)
 - `log_type`

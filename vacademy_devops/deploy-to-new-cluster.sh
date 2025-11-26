@@ -127,7 +127,11 @@ deploy_services() {
         print_error "Helm chart directory 'vacademy-services' not found!"
         exit 1
     fi
-    
+
+    # Update Helm dependencies
+    print_status "Updating Helm dependencies..."
+    helm dependency update ./vacademy-services
+
     # Deploy using Helm
     print_status "Installing/upgrading Helm release..."
     helm upgrade --install $HELM_RELEASE_NAME ./vacademy-services \

@@ -22,9 +22,24 @@
             <artifactId>common_service</artifactId>
             <version>0.0.2-SNAPSHOT</version>
         </dependency>
+        <!-- Sentry Spring Boot Integration for Performance Monitoring -->
+        <dependency>
+            <groupId>io.sentry</groupId>
+            <artifactId>sentry-spring-boot-starter-jakarta</artifactId>
+            <version>7.15.0</version>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <!-- Spring Cache with Caffeine for application-level caching -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-cache</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
         </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
@@ -64,6 +79,12 @@
             <groupId>com.stripe</groupId>
             <artifactId>stripe-java</artifactId>
             <version>24.6.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.razorpay</groupId>
+            <artifactId>razorpay-java</artifactId>
+            <version>1.4.6</version>
         </dependency>
 
 <!--        <dependency>-->
@@ -172,6 +193,13 @@
             <artifactId>spring-retry</artifactId>
         </dependency>
 
+        <!-- JSON library for Razorpay Invoice API -->
+        <dependency>
+            <groupId>org.json</groupId>
+            <artifactId>json</artifactId>
+            <version>20231013</version>
+        </dependency>
+
     </dependencies>
 
     <dependencyManagement>
@@ -194,6 +222,27 @@
                 <configuration>
                     <mainClass>vacademy.io.admin_core_service.AdminCoreServiceApplication</mainClass>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>io.sentry</groupId>
+                <artifactId>sentry-maven-plugin</artifactId>
+                <version>0.9.0</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <!-- for showing output of sentry-cli -->
+                    <debugSentryCli>true</debugSentryCli>
+                    <org>vacademy</org>
+                    <project>java-spring-boot</project>
+                    <!-- Auth token passed via Maven property: -Dsentry.authToken -->
+                    <authToken>${sentry.authToken}</authToken>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>uploadSourceBundle</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
         <finalName>admin_core_service</finalName>

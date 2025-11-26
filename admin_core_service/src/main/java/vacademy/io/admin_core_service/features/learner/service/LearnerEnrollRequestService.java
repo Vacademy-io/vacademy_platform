@@ -69,21 +69,7 @@ public class LearnerEnrollRequestService {
         EnrollInvite enrollInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
         PaymentOption paymentOption = getValidatedPaymentOption(enrollDTO.getPaymentOptionId());
         PaymentPlan paymentPlan = getOptionalPaymentPlan(enrollDTO.getPlanId());
-        // Use new dynamic notification system
-        sendDynamicNotificationForEnrollment(
-                learnerEnrollRequestDTO.getInstituteId(),
-                learnerEnrollRequestDTO.getUser(),
-                paymentOption,
-                enrollInvite,
-                enrollDTO.getPackageSessionIds().get(0) // Get first package session ID
-        );
         
-        // Send separate referral invitation email
-        sendReferralInvitationEmail(
-                learnerEnrollRequestDTO.getInstituteId(),
-                learnerEnrollRequestDTO.getUser(),
-                enrollInvite
-        );
         UserPlan userPlan = createUserPlan(
             learnerEnrollRequestDTO.getUser().getId(),
             enrollDTO,
@@ -91,21 +77,46 @@ public class LearnerEnrollRequestService {
             paymentOption,
             paymentPlan
         );
-        return enrollLearnerToBatch(
+        
+        LearnerEnrollResponseDTO response = enrollLearnerToBatch(
             learnerEnrollRequestDTO,
             enrollDTO,
             enrollInvite,
             paymentOption,
             userPlan
-        );
+        );        
+        // Send enrollment notifications ONLY for FREE enrollments (status = ACTIVE)
+        // For PAID enrollments, notifications will be sent after webhook confirms payment
+        if (UserPlanStatusEnum.ACTIVE.name().equals(userPlan.getStatus())) {
+            log.info("FREE enrollment completed. Sending enrollment notifications for user: {}", 
+                    learnerEnrollRequestDTO.getUser().getId());
+            sendDynamicNotificationForEnrollment(
+                    learnerEnrollRequestDTO.getInstituteId(),
+                    learnerEnrollRequestDTO.getUser(),
+                    paymentOption,
+                    enrollInvite,
+                    enrollDTO.getPackageSessionIds().get(0) // Get first package session ID
+            );
+            
+            sendReferralInvitationEmail(
+                    learnerEnrollRequestDTO.getInstituteId(),
+                    learnerEnrollRequestDTO.getUser(),
+                    enrollInvite
+            );
+        } else {
+            log.info("PAID enrollment initiated. Notifications will be sent after payment confirmation. UserPlan ID: {}", 
+                    userPlan.getId());
+        }
+        
+        return response;
     }
     private void sendDynamicNotificationForEnrollment(
-            String instituteId, 
-            UserDTO user, 
-            PaymentOption paymentOption, 
+            String instituteId,
+            UserDTO user,
+            PaymentOption paymentOption,
             EnrollInvite enrollInvite,
             String packageSessionId) {
-        
+
         try {
             dynamicNotificationService.sendDynamicNotification(
                     NotificationEventType.LEARNER_ENROLL,
@@ -121,10 +132,10 @@ public class LearnerEnrollRequestService {
     }
 
     private void sendReferralInvitationEmail(
-            String instituteId, 
-            UserDTO user, 
+            String instituteId,
+            UserDTO user,
             EnrollInvite enrollInvite) {
-        
+
         try {
             dynamicNotificationService.sendReferralInvitationNotification(
                     instituteId,
@@ -196,7 +207,8 @@ public class LearnerEnrollRequestService {
             enrollInvite,
             paymentOption,
             userPlan,
-            Map.of() // optional extra data
+            Map.of() ,// optional extra data,
+            learnerEnrollRequestDTO.getLearnerExtraDetails()
         );
     }
 

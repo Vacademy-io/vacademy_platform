@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-service
+  namespace: default
+  labels:
+    app: ai-service
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ .Values.rollingUpdate.maxSurge }}
+      maxUnavailable: {{ .Values.rollingUpdate.maxUnavailable }}
+  selector:
+    matchLabels:
+      app: ai-service
+  template:
+    metadata:
+      labels:
+        app: ai-service
+    spec:
+      containers:
+        - name: ai-service
+          image: "{{ .Values.services.ai_service.image.repository }}:{{ .Values.services.ai_service.image.tag }}"
+          imagePullPolicy: Always
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "450Mi"
+            limits:
+              cpu: "250m"
+              memory: "600Mi"
+          livenessProbe:
+            httpGet:
+              path: /ai-service/health
+              port: {{ .Values.services.ai_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
+          startupProbe:
+            httpGet:
+              path: /ai-service/health
+              port: {{ .Values.services.ai_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 30
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /ai-service/health
+              port: {{ .Values.services.ai_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
+          ports:
+            - containerPort: {{ .Values.services.ai_service.port }}
+
+

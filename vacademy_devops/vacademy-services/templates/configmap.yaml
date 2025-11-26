@@ -7,3 +7,5 @@ data:
   BG_COLOR: '#12181b'
   FONT_COLOR: '#FFFFFF'
   CUSTOM_HEADER: 'Customized with a configmap!'
+  REDIS_HOST: 'redis'
+  REDIS_PORT: '6379'

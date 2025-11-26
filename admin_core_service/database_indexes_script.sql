@@ -242,6 +242,26 @@ ON assignment_slide_question (assignment_slide_id, status) WHERE status != 'DELE
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_video_slide_question_video_id 
 ON video_slide_question (video_slide_id, status) WHERE status != 'DELETED';
 
+-- --------------------------------------------------------------------------------
+-- Additional indexes to optimize Learner Slides-by-Chapter API
+-- --------------------------------------------------------------------------------
+-- chapter_to_slides lookup with sort support (used for ORDER BY slide_order)
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_chapter_to_slides_chapter_status_order
+ON chapter_to_slides (chapter_id, status, slide_order) WHERE status != 'DELETED';
+
+-- learner_operation join used for per-user slide progress lookups
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_learner_operation_slide_user_operation_sourceid
+ON learner_operation (user_id, operation, source, source_id)
+WHERE source = 'SLIDE' AND operation IN ('PERCENTAGE_VIDEO_COMPLETED','PERCENTAGE_ASSIGNMENT_COMPLETED','PERCENTAGE_QUIZ_COMPLETED');
+
+-- quiz slide question list ordered by question_order
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_quiz_slide_question_quiz_status_order
+ON quiz_slide_question (quiz_slide_id, status, question_order) WHERE status != 'DELETED';
+
+-- options lookup per quiz question
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_quiz_slide_question_options_question_id
+ON quiz_slide_question_options (quiz_slide_question_id);
+
 -- ================================================================================================
 -- LIVE SESSION INDEXES
 -- ================================================================================================

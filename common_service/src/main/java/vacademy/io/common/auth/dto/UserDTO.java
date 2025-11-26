@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import vacademy.io.common.auth.entity.User;
@@ -14,6 +15,7 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class UserDTO {
@@ -32,6 +34,7 @@ public class UserDTO {
     private String password;
     private String profilePicFileId;
     private List<String> roles;
+    private Date lastLoginTime;
 
     public UserDTO(User user) {
         this.id = user.getId();
@@ -46,7 +49,7 @@ public class UserDTO {
         this.gender = user.getGender();
         this.isRootUser = user.isRootUser();
         this.profilePicFileId = user.getProfilePicFileId();
-
+        this.setLastLoginTime(user.getLastLoginTime());
         this.roles = user.getRoles().stream().map((ur) -> ur.getRole().getName()).toList();
     }
 
@@ -64,7 +67,7 @@ public class UserDTO {
         this.isRootUser = user.isRootUser();
         this.profilePicFileId = user.getProfilePicFileId();
         this.region=userDTO.getRegion();
-
+        this.setLastLoginTime(user.getLastLoginTime());
         this.roles = user.getRoles().stream().map((ur) -> ur.getRole().getName()).toList();
 
     }

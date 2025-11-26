@@ -42,6 +42,12 @@ public class InstituteDomainRouting {
     @Column(name = "after_login_route")
     private String afterLoginRoute;
 
+    @Column(name = "admin_portal_after_logout_route")
+    private String adminPortalAfterLogoutRoute;
+
+    @Column(name = "home_icon_click_route")
+    private String homeIconClickRoute;
+
     @Column(name = "terms_and_condition_url", length = 500)
     private String termsAndConditionUrl;
 

@@ -33,4 +33,6 @@ public class CustomFieldDto {
     private List<String> locations;
 
     private String status;
+
+    private String config;
 }

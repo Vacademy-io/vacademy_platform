@@ -20,7 +20,7 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
 
 
     // Get all package sessions of an institute_id and of a session_id
-    @Query(value = "SELECT ps.id, ps.level_id, ps.session_id, ps.start_time, ps.updated_at, ps.created_at, ps.status, ps.package_id, ps.group_id " +
+    @Query(value = "SELECT ps.id, ps.level_id, ps.session_id, ps.start_time, ps.updated_at, ps.created_at, ps.status, ps.package_id, ps.group_id, ps.is_org_associated " +
             "FROM package_session ps " +
             "JOIN package p ON ps.package_id = p.id " +
             "JOIN package_institute pi ON p.id = pi.package_id " +
@@ -32,7 +32,7 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
 
 
 
-    @Query(value = "SELECT ps.id, ps.level_id, ps.session_id, ps.start_time, ps.updated_at, ps.created_at, ps.status, ps.package_id " +
+    @Query(value = "SELECT ps.id, ps.level_id, ps.session_id, ps.start_time, ps.updated_at, ps.created_at, ps.status, ps.package_id, ps.group_id, ps.is_org_associated " +
             "FROM package_session ps " +
             "JOIN package p ON ps.package_id = p.id " +
             "JOIN package_institute pi ON p.id = pi.package_id " +
@@ -100,33 +100,29 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
         ps.status AS batchStatus,
         ps.start_time AS startDate,
         COUNT(ssigm.id) AS countStudents,
-        li.invite_code AS inviteCode
+        ei.invite_code AS inviteCode
     FROM package_session ps
     JOIN level l ON l.id = ps.level_id
     JOIN package p ON p.id = ps.package_id
     LEFT JOIN student_session_institute_group_mapping ssigm
         ON ssigm.package_session_id = ps.id
         AND ssigm.status IN (:studentSessionStatuses)
-    LEFT JOIN learner_invitation li
-        ON li.id = (
-            SELECT li_inner.id
-            FROM learner_invitation li_inner
-            WHERE li_inner.source_id = ps.id
-              AND li_inner.source = 'PACKAGE_SESSION'
-              AND li_inner.status NOT IN (:excludedInvitationStatuses)
-            ORDER BY li_inner.created_at DESC
-            LIMIT 1
-        )
+    LEFT JOIN package_session_learner_invitation_to_payment_option psli
+        ON psli.package_session_id = ps.id
+        AND psli.status = 'ACTIVE'
+    LEFT JOIN enroll_invite ei
+        ON ei.id = psli.enroll_invite_id
+        AND ei.tag = 'DEFAULT'
+        AND ei.status = 'ACTIVE'
     WHERE p.id = :packageId
       AND ps.status IN (:packageSessionStatuses)
-    GROUP BY ps.id, batchName, ps.status, ps.start_time, li.invite_code
+    GROUP BY ps.id, batchName, ps.status, ps.start_time, ei.invite_code
     ORDER BY ps.start_time DESC
     """, nativeQuery = true)
     List<BatchProjection> findBatchDetailsWithLatestInviteCode(
             @Param("packageId") String packageId,
             @Param("packageSessionStatuses") List<String> packageSessionStatuses,
-            @Param("studentSessionStatuses") List<String> studentSessionStatuses,
-            @Param("excludedInvitationStatuses") List<String> excludedInvitationStatuses
+            @Param("studentSessionStatuses") List<String> studentSessionStatuses
     );
 
 
@@ -172,7 +168,7 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
     Optional<PackageSession> findByPackageEntityIdAndSessionIdAndLevelId(String packageId, String sessionId, String levelId);
 
     @Query(value = """
-    SELECT ps.id, ps.level_id, ps.session_id, ps.start_time, ps.updated_at, ps.created_at, ps.status, ps.package_id, ps.group_id
+    SELECT ps.id, ps.level_id, ps.session_id, ps.start_time, ps.updated_at, ps.created_at, ps.status, ps.package_id, ps.group_id, ps.is_org_associated
     FROM package_session ps
     WHERE ps.id IN (:packageSessionIds)
     """, nativeQuery = true)

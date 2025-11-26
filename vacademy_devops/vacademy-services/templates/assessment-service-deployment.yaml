@@ -7,6 +7,11 @@ metadata:
     app: assessment-service
 spec:
   replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ .Values.rollingUpdate.maxSurge }}
+      maxUnavailable: {{ .Values.rollingUpdate.maxUnavailable }}
   selector:
     matchLabels:
       app: assessment-service
@@ -21,8 +26,8 @@ spec:
           imagePullPolicy: Always
           resources:
             requests:
-              cpu: "200m"
-              memory: "450Mi"
+              cpu: "100m"
+              memory: "250Mi"
             limits:
               cpu: "250m"
               memory: "600Mi"

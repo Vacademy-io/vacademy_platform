@@ -27,4 +27,6 @@ public class InstituteStudentDetails {
     private String accessDays;
     private String destinationPackageSessionId;
     private String userPlanId;
+    private String subOrgId;
+    private String commaSeparatedOrgRoles;
 }

@@ -42,7 +42,8 @@ public class EmailConfig {
         props.put("mail.transport.protocol", "smtp");
         props.put("mail.smtp.auth", Boolean.toString(smtpAuth));
         props.put("mail.smtp.starttls.enable", Boolean.toString(starttlsEnable));
-        props.put("mail.debug", "true");
+        // Disabled mail.debug to prevent excessive SMTP protocol logs (can flood logs with 50+ emails/second)
+        props.put("mail.debug", "false");
 
         return mailSender;
     }

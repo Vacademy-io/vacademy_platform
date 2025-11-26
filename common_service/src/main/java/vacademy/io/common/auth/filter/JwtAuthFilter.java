@@ -19,6 +19,7 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.repository.UserActivityRepository;
 import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.auth.service.UserActivityTrackingService;
+import vacademy.io.common.auth.service.UserService;
 import vacademy.io.common.exceptions.ExpiredTokenException;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -35,12 +36,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private UserActivityRepository userActivityRepository;
     @Autowired
     private JwtService jwtService; // Inject JwtService dependency
-    
+
     @Autowired(required = false)
     private UserActivityTrackingService userActivityTrackingService;
-    
+
     @Value("${spring.application.name:unknown-service}")
     private String serviceName;
+
+    @Autowired(required = false)
+    private UserService userService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
@@ -57,10 +61,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         try {
             // Extract JWT token from the header (remove "Bearer ")
             final String jwt = authHeader.substring(7);
-            
+
             // Generate session token from JWT for activity tracking
             String sessionToken = generateSessionIdFromJwt(jwt);
-            
+
             // Set request attributes for UserDetailsService to use
             request.setAttribute("serviceName", serviceName);
             request.setAttribute("sessionToken", sessionToken);
@@ -76,10 +80,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
                 boolean isTokenExpired = jwtService.isTokenExpired(jwt);
                 if (isTokenExpired) throw new ExpiredTokenException("Expired Token");
-                
+
                 // Track authentication attempt
                 long startTime = System.currentTimeMillis();
-                
+
                 // Load user details using user email
                 CustomUserDetails userDetails = (CustomUserDetails) userDetailsService.loadUserByUsername(usernameWithInstituteId);
 
@@ -97,7 +101,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
                     // Set the authentication object in SecurityContextHolder
                     SecurityContextHolder.getContext().setAuthentication(authToken);
-                    
+                    if (userService != null){
+                        userService.updateLastLoginTimeForUser(userDetails.getUserId());
+                    }
                     // Track successful JWT authentication activity
                     if (userActivityTrackingService != null) {
                         try {
@@ -105,7 +111,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                             String ipAddress = getClientIpAddress(request);
                             String userAgent = request.getHeader("User-Agent");
                             String endpoint = request.getRequestURI();
-                            
+
                             userActivityTrackingService.logUserActivity(
                                 userDetails.getUserId(),
                                 instituteId,
@@ -118,7 +124,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                                 200,
                                 responseTime
                             );
-                            
+
                             // Create or update session
                             userActivityTrackingService.createOrUpdateSession(
                                 userDetails.getUserId(),
@@ -127,7 +133,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                                 ipAddress,
                                 userAgent
                             );
-                            
+
                         } catch (Exception e) {
                             log.debug("Error tracking JWT authentication activity: {}", e.getMessage());
                         }
@@ -175,12 +181,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         if (xForwardedForHeader != null && !xForwardedForHeader.isEmpty()) {
             return xForwardedForHeader.split(",")[0].trim();
         }
-        
+
         String xRealIpHeader = request.getHeader("X-Real-IP");
         if (xRealIpHeader != null && !xRealIpHeader.isEmpty()) {
             return xRealIpHeader;
         }
-        
+
         return request.getRemoteAddr();
     }
 

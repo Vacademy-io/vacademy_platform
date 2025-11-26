@@ -174,7 +174,7 @@ public class OpenPackageService {
                 projection.getLevelName(),
                 instructors,
                 projection.getLevelIds(),
-                projection.getReadTimeInMinutes()
+                getReadTimeInMinutes(packageId)
         );
 
         return dto;
@@ -290,6 +290,21 @@ public class OpenPackageService {
         }).toList();
 
         return new PageImpl<>(dtos, pageable, learnerPackageDetail.getTotalElements());
+    }
+
+    private Long getReadTimeInMinutes(String packageId){
+        try{
+            return packageRepository.sumReadTimeInMinutesForPackage(
+                    packageId,
+                    List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                    List.of(ChapterStatus.ACTIVE.name())
+            );
+        }catch (Exception e){
+            return 0L;
+        }
     }
 
 }

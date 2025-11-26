@@ -1,10 +1,15 @@
 package vacademy.io.admin_core_service.features.live_session.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.live_session.dto.GroupedSessionsByDateDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionListDTO;
+import vacademy.io.admin_core_service.features.live_session.dto.SessionSearchRequest;
+import vacademy.io.admin_core_service.features.live_session.dto.SessionSearchResponse;
 import vacademy.io.admin_core_service.features.live_session.enums.NotificationStatusEnum;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.ScheduleNotificationRepository;
@@ -327,6 +332,49 @@ public class GetLiveSessionService {
                 .stream()
                 .map(entry -> new GroupedSessionsByDateDTO(entry.getKey(), entry.getValue()))
                 .toList();
+    }
+
+    public SessionSearchResponse searchSessions(SessionSearchRequest request, CustomUserDetails user) {
+        // Create pageable object
+        Pageable pageable = PageRequest.of(request.getPage(), request.getSize());
+        
+        // Call repository with dynamic query
+        Page<LiveSessionRepository.LiveSessionListProjection> page = 
+            sessionRepository.searchSessions(request, pageable);
+        
+        // Map projections to DTOs
+        List<LiveSessionListDTO> sessions = page.getContent().stream()
+            .map(p -> new LiveSessionListDTO(
+                p.getSessionId(),
+                p.getWaitingRoomTime(),
+                p.getThumbnailFileId(),
+                p.getBackgroundScoreFileId(),
+                p.getSessionStreamingServiceType(),
+                p.getScheduleId(),
+                p.getMeetingDate(),
+                p.getStartTime(),
+                p.getLastEntryTime(),
+                p.getRecurrenceType(),
+                p.getAccessLevel(),
+                p.getTitle(),
+                p.getSubject(),
+                p.getMeetingLink(),
+                p.getRegistrationFormLinkForPublicSessions(),
+                p.getTimezone()
+            ))
+            .collect(Collectors.toList());
+        
+        // Build pagination metadata
+        SessionSearchResponse.PageMetadata pagination = new SessionSearchResponse.PageMetadata(
+            page.getNumber(),
+            page.getSize(),
+            page.getTotalElements(),
+            page.getTotalPages(),
+            page.hasNext(),
+            page.hasPrevious()
+        );
+        
+        return new SessionSearchResponse(sessions, pagination);
     }
 
     public String deleteLiveSessions(List<String> ids, String type) {

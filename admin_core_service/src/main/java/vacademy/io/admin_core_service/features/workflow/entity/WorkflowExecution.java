@@ -2,9 +2,12 @@ package vacademy.io.admin_core_service.features.workflow.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.admin_core_service.features.workflow.enums.WorkflowExecutionStatus;
 
-import java.util.Date;
+import java.time.Instant;
 
 @Entity
 @Table(name = "workflow_execution")
@@ -20,33 +23,42 @@ public class WorkflowExecution {
     @Column(name = "id", nullable = false, unique = true)
     private String id;
 
-    @Column(name = "workflow_id", nullable = false)
-    private String workflowId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+        name = "workflow_id",
+        nullable = false,
+        foreignKey = @ForeignKey(name = "fk_workflow_execution_workflow")
+    )
+    private Workflow workflow;
 
-    @Column(name = "execution_id", nullable = false, unique = true)
-    private String executionId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+        name = "workflow_schedule_id",
+        foreignKey = @ForeignKey(name = "fk_workflow_execution_schedule")
+    )
+    private WorkflowSchedule workflowSchedule;
 
-    @Column(name = "schedule_id")
-    private String scheduleId;
+    @Column(name = "idempotency_key", nullable = false, unique = true)
+    private String idempotencyKey;
 
-    @Column(name = "schedule_run_id")
-    private String scheduleRunId;
-
+    @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
-    private String status;
+    private WorkflowExecutionStatus status;
 
-    @Column(name = "current_node_link_id")
-    private String currentNodeLinkId;
-
-    @Column(name = "input_data")
-    private String inputData; // JSON text
-
-    @Column(name = "output_data")
-    private String outputData; // JSON text
+    @Column(name = "error_message", columnDefinition = "TEXT")
+    private String errorMessage;
 
     @Column(name = "started_at", nullable = false)
-    private Date startedAt;
+    private Instant startedAt;
 
     @Column(name = "completed_at")
-    private Date completedAt;
+    private Instant completedAt;
+
+    @CreationTimestamp
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
+
+    @UpdateTimestamp
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
 }

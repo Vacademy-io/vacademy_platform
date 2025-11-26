@@ -31,6 +31,9 @@ public class GetSessionByIdResponseDTO {
     private String waitingRoomTime;
     private String thumbnailFileId;
     private String backgroundScoreFileId;
+    private String coverFileId;
+    private Boolean allowRewind;
+    private Boolean allowPlayPause;
     private String sessionStreamingServiceType;
     private String timezone;
     private List<String> packageSessionIds;
@@ -44,6 +47,8 @@ public class GetSessionByIdResponseDTO {
         private String startTime;
         private String duration;
         private String link;
+        private LocalDate meetingDate;
+        private String timezone;
     }
 
     @Getter

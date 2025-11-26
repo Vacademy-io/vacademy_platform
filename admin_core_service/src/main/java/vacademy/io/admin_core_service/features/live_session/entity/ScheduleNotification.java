@@ -6,7 +6,6 @@ import org.hibernate.annotations.UuidGenerator;
 
 import java.time.LocalDateTime;
 import java.util.Date;
-import java.util.UUID;
 
 @Entity
 @Table(name = "schedule_notifications")
@@ -44,6 +43,9 @@ public class ScheduleNotification {
 
     @Column(name = "schedule_id")
     private String scheduleId;
+
+    @Column(name = "idempotency_key", unique = true)
+    private String idempotencyKey;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;

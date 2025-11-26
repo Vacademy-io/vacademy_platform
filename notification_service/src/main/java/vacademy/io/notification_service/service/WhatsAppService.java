@@ -11,10 +11,11 @@ import org.springframework.web.client.RestTemplate;
 import vacademy.io.notification_service.constants.NotificationConstants;
 import vacademy.io.notification_service.institute.InstituteInfoDTO;
 import vacademy.io.notification_service.institute.InstituteInternalService;
+import vacademy.io.notification_service.features.external_communication_log.service.ExternalCommunicationLogService;
+import vacademy.io.notification_service.features.external_communication_log.model.ExternalCommunicationSource;
 
 import java.util.*;
 import java.util.stream.Collectors;
-
 
 @Service
 @Slf4j
@@ -22,19 +23,22 @@ public class WhatsAppService {
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
     private final WatiService watiService;
+    private final ExternalCommunicationLogService externalCommunicationLogService;
 
-    String appId=null;
-    String accessToken=null;
-    
+    String appId = null;
+    String accessToken = null;
+
     private final InstituteInternalService internalService;
 
     @Autowired
-    public WhatsAppService(WatiService watiService, InstituteInternalService internalService) {
+    public WhatsAppService(WatiService watiService, InstituteInternalService internalService,
+            ExternalCommunicationLogService externalCommunicationLogService) {
         this.internalService = internalService;
         this.watiService = watiService;
         this.restTemplate = new RestTemplate();
         this.objectMapper = new ObjectMapper();
         this.objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+        this.externalCommunicationLogService = externalCommunicationLogService;
     }
 
     // Helper method to create body component
@@ -60,7 +64,7 @@ public class WhatsAppService {
     // Helper method to create document parameter
     public static Parameter createDocumentParameter(String link, String id, String filename) {
         return new Parameter("document", null, null, new Document(link, id, filename),
-               null, null);
+                null, null);
     }
 
     // Helper method to create image parameter
@@ -74,11 +78,12 @@ public class WhatsAppService {
         return new Parameter("date_time", null, null, null, null,
                 new DateTime(fallbackValue, timestamp));
     }
-    public List<Map<String, Boolean>> sendWhatsappMessages(String templateName,
-                                                           List<Map<String, Map<String, String>>> bodyParams,
-                                                           Map<String, Map<String, String>> headerParams, String languageCode, String headerType,String instituteId) {
 
-        if(instituteId==null){
+    public List<Map<String, Boolean>> sendWhatsappMessages(String templateName,
+            List<Map<String, Map<String, String>>> bodyParams,
+            Map<String, Map<String, String>> headerParams, String languageCode, String headerType, String instituteId) {
+
+        if (instituteId == null) {
             log.error("Missing instituteId for WhatsApp message sending");
             return null;
         }
@@ -114,7 +119,8 @@ public class WhatsAppService {
             }
 
         } catch (Exception e) {
-            log.error("Exception occurred while sending WhatsApp messages for institute {}: {}", instituteId, e.getMessage(), e);
+            log.error("Exception occurred while sending WhatsApp messages for institute {}: {}", instituteId,
+                    e.getMessage(), e);
             return null;
         }
     }
@@ -123,29 +129,46 @@ public class WhatsAppService {
             JsonNode root,
             List<Map<String, Map<String, String>>> bodyParams) {
 
-        if (root == null || bodyParams == null || bodyParams.isEmpty()) return bodyParams;
+        if (root == null || bodyParams == null || bodyParams.isEmpty())
+            return bodyParams;
 
         JsonNode testConfig = root.path(NotificationConstants.SETTING)
                 .path(NotificationConstants.TEST_PHONE_NUMBER);
 
-        // Ensure path exists and flag is true
-        if (testConfig.isMissingNode() || !testConfig.has(NotificationConstants.FLAG) || !testConfig.path(NotificationConstants.FLAG).asBoolean(false)) {
+        if (testConfig.isMissingNode()) {
             return bodyParams; // no filtering
         }
 
         JsonNode dataNode = testConfig.path(NotificationConstants.DATA);
-        if (dataNode == null || !dataNode.isArray() || dataNode.size() == 0) {
+        boolean flagEnabled = false;
+        JsonNode mobileNumbersNode = null;
+
+        if (dataNode != null && !dataNode.isMissingNode() && dataNode.isObject()) {
+            flagEnabled = dataNode.path(NotificationConstants.FLAG).asBoolean(false);
+            mobileNumbersNode = dataNode.path("mobile_numbers");
+        } else {
+            flagEnabled = testConfig.path(NotificationConstants.FLAG).asBoolean(false);
+            mobileNumbersNode = dataNode;
+        }
+
+        if (!flagEnabled) {
+            return bodyParams; // filtering disabled
+        }
+
+        if (mobileNumbersNode == null || mobileNumbersNode.isMissingNode() || !mobileNumbersNode.isArray()
+                || mobileNumbersNode.size() == 0) {
             return bodyParams; // nothing to filter by
         }
 
         Set<String> allow = new HashSet<>();
-        for (JsonNode node : dataNode) {
+        for (JsonNode node : mobileNumbersNode) {
             String raw = node.asText();
             if (raw != null && !raw.isBlank()) {
                 allow.add(raw.replaceAll("[^0-9]", ""));
             }
         }
-        if (allow.isEmpty()) return bodyParams;
+        if (allow.isEmpty())
+            return bodyParams;
 
         List<Map<String, Map<String, String>>> filtered = bodyParams.stream()
                 .filter(detail -> {
@@ -163,15 +186,14 @@ public class WhatsAppService {
      * Send WhatsApp messages via WATI
      */
     private List<Map<String, Boolean>> sendViaWati(String templateName,
-                                                   List<Map<String, Map<String, String>>> bodyParams,
-                                                   String languageCode,
-                                                   JsonNode whatsappSetting) {
+            List<Map<String, Map<String, String>>> bodyParams,
+            String languageCode,
+            JsonNode whatsappSetting) {
         try {
             JsonNode watiConfig = whatsappSetting.path(NotificationConstants.WATI);
-            
+
             String apiKey = watiConfig.path(NotificationConstants.API_KEY).asText();
             String apiUrl = watiConfig.path(NotificationConstants.API_URL).asText("https://live-server.wati.io");
-            
             if (apiKey == null || apiKey.isBlank()) {
                 log.error("WATI API key not configured");
                 return bodyParams.stream()
@@ -179,7 +201,7 @@ public class WhatsAppService {
                         .collect(Collectors.toList());
             }
 
-            log.info("Sending WhatsApp messages via WATI: template={}, recipients={}", 
+            log.info("Sending WhatsApp messages via WATI: template={}, recipients={}",
                     templateName, bodyParams.size());
 
             return watiService.sendTemplateMessages(
@@ -188,8 +210,7 @@ public class WhatsAppService {
                     languageCode != null ? languageCode : "en",
                     apiKey,
                     apiUrl,
-                    "Notification - " + templateName
-            );
+                    "Notification - " + templateName);
 
         } catch (Exception e) {
             log.error("Error sending via WATI: {}", e.getMessage(), e);
@@ -203,15 +224,15 @@ public class WhatsAppService {
      * Send WhatsApp messages via Meta (Facebook) - existing implementation
      */
     private List<Map<String, Boolean>> sendViaMeta(String templateName,
-                                                   List<Map<String, Map<String, String>>> bodyParams,
-                                                   Map<String, Map<String, String>> headerParams,
-                                                   String languageCode,
-                                                   String headerType,
-                                                   JsonNode whatsappSetting) {
-        
+            List<Map<String, Map<String, String>>> bodyParams,
+            Map<String, Map<String, String>> headerParams,
+            String languageCode,
+            String headerType,
+            JsonNode whatsappSetting) {
+
         // Extract Meta credentials
         JsonNode metaConfig = whatsappSetting.path(NotificationConstants.META);
-        
+
         // Fallback to root level for backward compatibility
         if (metaConfig.isMissingNode()) {
             appId = whatsappSetting.path(NotificationConstants.APP_ID).asText();
@@ -228,13 +249,12 @@ public class WhatsAppService {
                     .collect(Collectors.toList());
         }
 
-
         // Deduplicate based on phone number, retaining the first occurrence
         Map<String, Map<String, String>> uniqueUsers = bodyParams.stream()
                 .collect(Collectors.toMap(
-                        detail -> detail.keySet().iterator().next(),  // Phone number as key
-                        detail -> detail.get(detail.keySet().iterator().next()),  // Params as value
-                        (existing, replacement) -> existing  // Keep the first entry on duplicates
+                        detail -> detail.keySet().iterator().next(), // Phone number as key
+                        detail -> detail.get(detail.keySet().iterator().next()), // Params as value
+                        (existing, replacement) -> existing // Keep the first entry on duplicates
                 ));
 
         return uniqueUsers.entrySet().stream()
@@ -251,25 +271,31 @@ public class WhatsAppService {
 
                         Component bodyComponent = createBodyComponent(parameters);
 
-                        List<Parameter> headerParameters = (headerParams == null || headerParams.get(phoneNumber) == null) ? Collections.emptyList() : headerParams.get(phoneNumber).entrySet().stream()
-                                .sorted(Comparator.comparingInt(e -> Integer.parseInt(e.getKey())))
-                                .map((e) -> {
-                                    if("image".equals(headerType)) {
-                                        return createImageParameter(e.getValue(), e.getValue(), "image.png");
-                                    }
-                                    return createDocumentParameter(null, e.getValue(), "file.pdf");
-                                })
-                                .collect(Collectors.toList());
+                        List<Parameter> headerParameters = (headerParams == null
+                                || headerParams.get(phoneNumber) == null)
+                                        ? Collections.emptyList()
+                                        : headerParams.get(phoneNumber).entrySet().stream()
+                                                .sorted(Comparator.comparingInt(e -> Integer.parseInt(e.getKey())))
+                                                .map((e) -> {
+                                                    if ("image".equals(headerType)) {
+                                                        return createImageParameter(e.getValue(), e.getValue(),
+                                                                "image.png");
+                                                    }
+                                                    return createDocumentParameter(null, e.getValue(), "file.pdf");
+                                                })
+                                                .collect(Collectors.toList());
 
                         Component headerComponent = null;
-                        if (!headerParameters.isEmpty()) headerComponent = createHeaderComponent(headerParameters);
+                        if (!headerParameters.isEmpty())
+                            headerComponent = createHeaderComponent(headerParameters);
 
                         ResponseEntity<String> response = sendTemplateMessage(
                                 phoneNumber,
                                 templateName,
                                 languageCode,
-                                (headerComponent == null) ? List.of(bodyComponent) : List.of(bodyComponent, headerComponent),accessToken,appId
-                        );
+                                (headerComponent == null) ? List.of(bodyComponent)
+                                        : List.of(bodyComponent, headerComponent),
+                                accessToken, appId);
 
                         log.info("Whatsapp Response: " + response.getBody());
 
@@ -282,41 +308,48 @@ public class WhatsAppService {
     }
 
     public ResponseEntity<String> sendTemplateMessage(String toNumber, String templateName,
-                                                      String languageCode, List<Component> components,String accessToken,String appId) {
-        //Right now bypass the whatsapp
-        //when appId and accesstoken available then use this
-        if(true){
+            String languageCode, List<Component> components, String accessToken, String appId) {
+        // Create request body (used for both bypass and real call)
+        WhatsAppMessageRequest request = new WhatsAppMessageRequest(
+                "whatsapp",
+                toNumber,
+                "template",
+                new Template(
+                        templateName,
+                        new Language(languageCode),
+                        components));
+        String jsonRequest;
+        try {
+            jsonRequest = objectMapper.writeValueAsString(request);
+        } catch (Exception e) {
+            jsonRequest = "{\"error\":\"failed to serialize request\"}";
+        }
+        String logId = externalCommunicationLogService.start(ExternalCommunicationSource.WHATSAPP, null, request);
+        // Right now bypass the whatsapp; log success and return
+        if (true) {
+            externalCommunicationLogService.markSuccess(logId, "Whatsapp Send Successfully");
             return ResponseEntity.ok("Whatsapp Send Successfully");
         }
 
-
         try {
-            // Create request body
-            WhatsAppMessageRequest request = new WhatsAppMessageRequest(
-                    "whatsapp",
-                    toNumber,
-                    "template",
-                    new Template(
-                            templateName,
-                            new Language(languageCode),
-                            components
-                    )
-            );
-
             // Create headers
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.setBearerAuth(accessToken);
 
             // Convert request to JSON
-            String jsonRequest = objectMapper.writeValueAsString(request);
+            jsonRequest = objectMapper.writeValueAsString(request);
 
             // Create HTTP entity
             HttpEntity<String> entity = new HttpEntity<>(jsonRequest, headers);
 
             // Send request
-            return restTemplate.exchange("https://graph.facebook.com/v22.0/" + appId+ "/messages", HttpMethod.POST, entity, String.class);
+            ResponseEntity<String> response = restTemplate.exchange(
+                    "https://graph.facebook.com/v22.0/" + appId + "/messages", HttpMethod.POST, entity, String.class);
+            externalCommunicationLogService.markSuccess(logId, response.getBody());
+            return response;
         } catch (Exception e) {
+            externalCommunicationLogService.markFailure(logId, e.getMessage(), null);
             throw new RuntimeException("Failed to send WhatsApp message", e);
         }
     }
@@ -326,15 +359,13 @@ public class WhatsAppService {
             String messaging_product,
             String to,
             String type,
-            Template template
-    ) {
+            Template template) {
     }
 
     public record Template(
             String name,
             Language language,
-            List<Component> components
-    ) {
+            List<Component> components) {
     }
 
     public record Language(String code) {
@@ -342,8 +373,7 @@ public class WhatsAppService {
 
     public record Component(
             String type,
-            List<Parameter> parameters
-    ) {
+            List<Parameter> parameters) {
     }
 
     public record Parameter(
@@ -353,34 +383,29 @@ public class WhatsAppService {
 
             Document document,
             Currency currency,
-            DateTime date_time
-    ) {
+            DateTime date_time) {
     }
 
     public record Currency(
             String fallback_value,
             String code,
-            Long amount_1000
-    ) {
+            Long amount_1000) {
     }
 
     public record DateTime(
             String fallback_value,
-            String timestamp
-    ) {
+            String timestamp) {
     }
 
     public record Image(
             String link,
-            String caption
-    ) {
+            String caption) {
     }
 
     public record Document(
             String link,
             String id,
 
-            String filename
-    ) {
+            String filename) {
     }
 }

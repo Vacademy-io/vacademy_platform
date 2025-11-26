@@ -55,6 +55,11 @@ public class NotificationTemplateVariables {
     private String refCode;
     private String inviteCode; // The invite code
     private String themeColor; // Theme color from institute
+    
+    // Audience campaign details
+    private String campaignName; // Campaign name for audience forms
+    private java.util.Map<String, String> customFields; // Dynamic custom field key-value pairs
+    private String submissionTime; // Submission timestamp with timezone
 
     /**
      * Factory method to create variables from entities

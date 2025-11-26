@@ -37,10 +37,21 @@ class AnnouncementApiTest {
         req.setCreatedByRole("ADMIN");
         req.setTimezone("UTC");
 
+        // Example: ROLE recipient type (requires recipientId)
         var recipient = new CreateAnnouncementRequest.RecipientRequest();
         recipient.setRecipientType("ROLE");
         recipient.setRecipientId("STUDENT");
         req.setRecipients(List.of(recipient));
+        
+        // Note: For CUSTOM_FIELD_FILTER type, use this pattern instead:
+        // var customFieldRecipient = new CreateAnnouncementRequest.RecipientRequest();
+        // customFieldRecipient.setRecipientType("CUSTOM_FIELD_FILTER");
+        // var filter = new CreateAnnouncementRequest.RecipientRequest.CustomFieldFilter();
+        // filter.setCustomFieldId("field-id");
+        // filter.setFieldValue("value");
+        // filter.setOperator("equals");
+        // customFieldRecipient.setFilters(List.of(filter));
+        // req.setRecipients(List.of(customFieldRecipient));
 
         var mode = new CreateAnnouncementRequest.ModeRequest();
         mode.setModeType("SYSTEM_ALERT");

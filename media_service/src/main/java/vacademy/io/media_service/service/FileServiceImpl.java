@@ -350,7 +350,7 @@ public class FileServiceImpl implements FileService {
         FileMetadata fileMetadata = fileMetadataRepository.findById(acknowledgeRequest.getFileId()).orElseThrow(() -> new DatabaseException("File Not Found"));
         copyFileToPublicBucket(fileMetadata.getKey());
         FileDetailsDTO.FileDetailsDTOBuilder builder = FileDetailsDTO.builder()
-                .url(getPublicUrl(acknowledgeRequest.getFileId()))
+                .url(getPublicUrl(acknowledgeRequest.getFileId(), publicBucket))
                 .sourceId(fileMetadata.getSourceId())
                 .source(fileMetadata.getSource())
                 .id(fileMetadata.getId())
@@ -368,14 +368,15 @@ public class FileServiceImpl implements FileService {
 
     }
 
-    public String getPublicUrl(String id) {
+    @Override
+    public String getPublicUrl(String id, String bucketName) {
         Optional<FileMetadata> fileMetadata = fileMetadataRepository.findById(id);
         if (fileMetadata.isEmpty()) throw new DatabaseException("File Not Found");
 
         String objectKey = fileMetadata.get().getKey().trim();
 
-        // Directly return the public URL (ACLs are not needed)
-        return "https://" + publicBucket + ".s3.amazonaws.com/" + objectKey;
+        // Directly return the public URL without expiry (for public APIs)
+        return "https://" + bucketName + ".s3.amazonaws.com/" + objectKey;
     }
 
 

@@ -183,6 +183,9 @@ public class InstituteAnnouncementSettingsResponse {
         
         @JsonProperty("retention_days")
         private Integer retentionDays;
+
+        @JsonProperty("email_tracking_enabled")
+        private Boolean emailTrackingEnabled;
     }
     
     @Data

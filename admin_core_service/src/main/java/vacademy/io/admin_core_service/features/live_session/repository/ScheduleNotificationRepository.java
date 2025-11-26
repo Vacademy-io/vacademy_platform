@@ -67,5 +67,37 @@ public interface ScheduleNotificationRepository extends JpaRepository<ScheduleNo
     @Query(value = "UPDATE schedule_notifications SET status = :status WHERE session_id = :sessionId", nativeQuery = true)
     int disableNotificationsBySessionId(@Param("sessionId") String sessionId,@Param("status")String status);
 
+    @Modifying
+    @Transactional
+    @Query(value = """
+        UPDATE schedule_notifications
+        SET idempotency_key = :key
+        WHERE id = :id
+          AND status = :pendingStatus
+          AND idempotency_key IS NULL
+        """, nativeQuery = true)
+    int claimWithIdempotencyKey(@Param("id") String id,
+                                @Param("key") String key,
+                                @Param("pendingStatus") String pendingStatus);
+
+    @Modifying
+    @Transactional
+    @Query(value = """
+        UPDATE schedule_notifications
+        SET status = :status
+        WHERE id = :id
+        """, nativeQuery = true)
+    int updateStatus(@Param("id") String id, @Param("status") String status);
+
+    @Modifying
+    @Transactional
+    @Query(value = """
+        UPDATE schedule_notifications
+        SET idempotency_key = NULL,
+            status = :pendingStatus
+        WHERE id = :id
+        """, nativeQuery = true)
+    void releaseClaim(@Param("id") String id, @Param("pendingStatus") String pendingStatus);
+
 
 }

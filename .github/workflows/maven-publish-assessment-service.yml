@@ -35,7 +35,8 @@ jobs:
         env:
           JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
           ACCESS_GITHUB_USERNAME: ${{ secrets.ACCESS_GITHUB_USERNAME }}
-        run: mvn -s settings.xml clean install -DskipTests
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: mvn -s settings.xml clean install -DskipTests -Dsentry.authToken=$SENTRY_AUTH_TOKEN
 
       # To push to ECR you need to login through us-east-1
       # https://github.com/aws-actions/amazon-ecr-login/issues/587
@@ -63,8 +64,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.JAVA_TOKEN }}
           ACCESS_GITHUB_USERNAME: ${{ secrets.ACCESS_GITHUB_USERNAME }}
           JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
-          docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg ACCESS_GITHUB_USERNAME=${ACCESS_GITHUB_USERNAME} --build-arg JAVA_TOKEN=${JAVA_TOKEN}
+          docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg ACCESS_GITHUB_USERNAME=${ACCESS_GITHUB_USERNAME} --build-arg JAVA_TOKEN=${JAVA_TOKEN} --build-arg SENTRY_AUTH_TOKEN=${SENTRY_AUTH_TOKEN}
           docker push $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG
           echo "Docker Image Link = $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG"
 
@@ -95,7 +98,9 @@ jobs:
             MEDIA_SERVICE_BASE_URL=${{ secrets.MEDIA_SERVICE_BASE_URL }} \
             CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
             ASSESSMENT_SERVICE_DB_URL=${{ secrets.ASSESSMENT_SERVICE_DB_URL }} \
-            SCHEDULING_TIME_FRAME=${{ secrets.SCHEDULING_TIME_FRAME }}
+            SCHEDULING_TIME_FRAME=${{ secrets.SCHEDULING_TIME_FRAME }} \
+            SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
+            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
 
       - name: Restart deployment
         id: restart-deployment

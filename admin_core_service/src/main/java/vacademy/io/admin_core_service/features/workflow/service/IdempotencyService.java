@@ -1,159 +1,127 @@
 package vacademy.io.admin_core_service.features.workflow.service;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.workflow.entity.Workflow;
+import vacademy.io.admin_core_service.features.workflow.entity.WorkflowExecution;
+import vacademy.io.admin_core_service.features.workflow.entity.WorkflowSchedule;
+import vacademy.io.admin_core_service.features.workflow.enums.WorkflowExecutionStatus;
+import vacademy.io.admin_core_service.features.workflow.repository.WorkflowExecutionRepository;
+import vacademy.io.admin_core_service.features.workflow.repository.WorkflowRepository;
+import vacademy.io.admin_core_service.features.workflow.repository.WorkflowScheduleRepository;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Optional;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class IdempotencyService {
 
-    private static final ConcurrentHashMap<String, ExecutionStatus> idempotencyStore = new ConcurrentHashMap<>();
-    private static final long PROCESSING_TIMEOUT_MINUTES = 30; // 30 minutes timeout
+    private final WorkflowExecutionRepository workflowExecutionRepository;
+    private final WorkflowRepository workflowRepository;
+    private final WorkflowScheduleRepository workflowScheduleRepository;
 
-    public static class ExecutionStatus {
-        private String state;
-        private LocalDateTime timestamp;
-        private Map<String, Object> result;
-        private String error;
-        private String message;
+    private static final long PROCESSING_TIMEOUT_MINUTES = 30;
 
-        public ExecutionStatus(String state, String message) {
-            this.state = state;
-            this.message = message;
-            this.timestamp = LocalDateTime.now();
-        }
+    @Transactional
+    public WorkflowExecution markAsProcessing(String idempotencyKey, String workflowId, String scheduleId) {
+        try {
+            Workflow workflow = workflowRepository.findById(workflowId)
+                .orElseThrow(() -> new RuntimeException("Workflow not found: " + workflowId));
 
-        // Getters and setters
-        public String getState() {
-            return state;
-        }
+            WorkflowSchedule schedule = null;
+            if (scheduleId != null && !scheduleId.isBlank()) {
+                schedule = workflowScheduleRepository.findById(scheduleId).orElse(null);
+            }
 
-        public void setState(String state) {
-            this.state = state;
-        }
+            WorkflowExecution execution = WorkflowExecution.builder()
+                .idempotencyKey(idempotencyKey)
+                .workflow(workflow)
+                .workflowSchedule(schedule)
+                .status(WorkflowExecutionStatus.PROCESSING)
+                .startedAt(Instant.now())
+                .build();
 
-        public LocalDateTime getTimestamp() {
-            return timestamp;
-        }
+            WorkflowExecution saved = workflowExecutionRepository.save(execution);
+            log.debug("Created new execution record with status PROCESSING: {}", idempotencyKey);
+            return saved;
 
-        public void setTimestamp(LocalDateTime timestamp) {
-            this.timestamp = timestamp;
-        }
-
-        public Map<String, Object> getResult() {
-            return result;
-        }
-
-        public void setResult(Map<String, Object> result) {
-            this.result = result;
-        }
-
-        public String getError() {
-            return error;
-        }
-
-        public void setError(String error) {
-            this.error = error;
-        }
-
-        public String getMessage() {
-            return message;
-        }
-
-        public void setMessage(String message) {
-            this.message = message;
+        } catch (DataIntegrityViolationException e) {
+            // Let DB enforce idempotency constraint and fail fast
+            log.error("Duplicate idempotency key detected (DB constraint violation): {}", idempotencyKey, e);
+            throw e; // rethrow as-is (so transaction rolls back)
         }
     }
 
-    /**
-     * Check if a workflow execution key has already been processed
-     */
-    public boolean isAlreadyProcessed(String idempotencyKey) {
-        ExecutionStatus status = idempotencyStore.get(idempotencyKey);
+    @Transactional
+    public WorkflowExecution markAsCompleted(String idempotencyKey, Map<String, Object> result) {
+        Optional<WorkflowExecution> executionOpt = workflowExecutionRepository.findByIdempotencyKey(idempotencyKey);
 
-        if (status == null) {
-            return false; // Not processed yet
+        if (executionOpt.isEmpty()) {
+            log.warn("Cannot mark as completed - execution not found: {}", idempotencyKey);
+            return null;
         }
 
-        // Check if it's marked as completed or failed
-        return "COMPLETED".equals(status.getState()) || "FAILED".equals(status.getState());
+        WorkflowExecution execution = executionOpt.get();
+        execution.setStatus(WorkflowExecutionStatus.COMPLETED);
+        execution.setCompletedAt(Instant.now());
+        execution.setErrorMessage(null);
+
+        WorkflowExecution saved = workflowExecutionRepository.save(execution);
+        log.debug("Marked execution as COMPLETED: {}", idempotencyKey);
+        return saved;
     }
 
-    /**
-     * Mark a workflow execution as currently processing
-     */
-    public void markAsProcessing(String idempotencyKey) {
-        ExecutionStatus status = new ExecutionStatus("PROCESSING", "Workflow execution in progress");
-        idempotencyStore.put(idempotencyKey, status);
-        log.debug("Marked workflow execution as processing: {}", idempotencyKey);
+    @Transactional
+    public WorkflowExecution markAsFailed(String idempotencyKey, String errorMessage) {
+        Optional<WorkflowExecution> executionOpt = workflowExecutionRepository.findByIdempotencyKey(idempotencyKey);
+
+        if (executionOpt.isEmpty()) {
+            log.warn("Cannot mark as failed - execution not found: {}", idempotencyKey);
+            return null;
+        }
+
+        WorkflowExecution execution = executionOpt.get();
+        if (execution.getStatus().equals(WorkflowExecutionStatus.COMPLETED.name())){
+            return execution;
+        }
+        execution.setStatus(WorkflowExecutionStatus.FAILED);
+        execution.setCompletedAt(Instant.now());
+        execution.setErrorMessage(errorMessage);
+
+        WorkflowExecution saved = workflowExecutionRepository.save(execution);
+        log.debug("Marked execution as FAILED: {}", idempotencyKey);
+        return saved;
     }
 
-    /**
-     * Mark a workflow execution as completed
-     */
-    public void markAsCompleted(String idempotencyKey, Map<String, Object> result) {
-        ExecutionStatus status = new ExecutionStatus("COMPLETED", "Workflow execution completed successfully");
-        status.setResult(result);
-        idempotencyStore.put(idempotencyKey, status);
-        log.debug("Marked workflow execution as completed: {}", idempotencyKey);
+    @Transactional(readOnly = true)
+    public Optional<WorkflowExecution> getExecutionStatus(String idempotencyKey) {
+        return workflowExecutionRepository.findByIdempotencyKey(idempotencyKey);
     }
 
-    /**
-     * Mark a workflow execution as failed
-     */
-    public void markAsFailed(String idempotencyKey, String errorMessage) {
-        ExecutionStatus status = new ExecutionStatus("FAILED", "Workflow execution failed");
-        status.setError(errorMessage);
-        idempotencyStore.put(idempotencyKey, status);
-        log.debug("Marked workflow execution as failed: {}", idempotencyKey);
-    }
-
-    /**
-     * Get the current status of a workflow execution
-     */
-    public ExecutionStatus getExecutionStatus(String idempotencyKey) {
-        return idempotencyStore.get(idempotencyKey);
-    }
-
-    /**
-     * Clear idempotency key (useful for testing or manual cleanup)
-     */
+    @Transactional
     public void clearIdempotencyKey(String idempotencyKey) {
-        idempotencyStore.remove(idempotencyKey);
+        Optional<WorkflowExecution> execution = workflowExecutionRepository.findByIdempotencyKey(idempotencyKey);
+        execution.ifPresent(workflowExecutionRepository::delete);
         log.debug("Cleared idempotency key: {}", idempotencyKey);
     }
 
-    /**
-     * Clean up expired processing entries
-     */
-    public void cleanupExpiredEntries() {
-        LocalDateTime cutoff = LocalDateTime.now().minusMinutes(PROCESSING_TIMEOUT_MINUTES);
 
-        idempotencyStore.entrySet().removeIf(entry -> {
-            ExecutionStatus status = entry.getValue();
-            if ("PROCESSING".equals(status.getState()) && status.getTimestamp().isBefore(cutoff)) {
-                log.warn("Cleaning up expired processing entry: {}", entry.getKey());
-                return true;
-            }
-            return false;
-        });
-    }
-
-    /**
-     * Get statistics about idempotency store
-     */
+    @Transactional(readOnly = true)
     public Map<String, Long> getStatistics() {
         return Map.of(
-                "total_entries", (long) idempotencyStore.size(),
-                "processing_count", idempotencyStore.values().stream()
-                        .filter(s -> "PROCESSING".equals(s.getState())).count(),
-                "completed_count", idempotencyStore.values().stream()
-                        .filter(s -> "COMPLETED".equals(s.getState())).count(),
-                "failed_count", idempotencyStore.values().stream()
-                        .filter(s -> "FAILED".equals(s.getState())).count());
+            "total_entries", workflowExecutionRepository.count(),
+            "processing_count", workflowExecutionRepository.countByStatus(WorkflowExecutionStatus.PROCESSING),
+            "completed_count", workflowExecutionRepository.countByStatus(WorkflowExecutionStatus.COMPLETED),
+            "failed_count", workflowExecutionRepository.countByStatus(WorkflowExecutionStatus.FAILED),
+            "pending_count", workflowExecutionRepository.countByStatus(WorkflowExecutionStatus.PENDING)
+        );
     }
 }

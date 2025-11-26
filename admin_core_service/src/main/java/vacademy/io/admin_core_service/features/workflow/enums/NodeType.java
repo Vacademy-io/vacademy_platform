@@ -6,5 +6,6 @@ public enum NodeType {
     TRANSFORM,
     TRIGGER,
     ROUTER,
-    SEND_EMAIL
+    SEND_EMAIL,
+    HTTP_REQUEST
 }

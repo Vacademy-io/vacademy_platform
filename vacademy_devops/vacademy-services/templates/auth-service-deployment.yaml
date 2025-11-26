@@ -6,7 +6,12 @@ metadata:
   labels:
     app: auth-service
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ .Values.rollingUpdate.maxSurge }}
+      maxUnavailable: {{ .Values.rollingUpdate.maxUnavailable }}
   selector:
     matchLabels:
       app: auth-service
@@ -19,13 +24,16 @@ spec:
         - name: auth-service
           image: {{ .Values.services.auth_service.image.repository }}:{{ .Values.services.auth_service.image.tag }}
           imagePullPolicy: Always
+          envFrom:
+            - configMapRef:
+                name: myconfigmapv1.0
           resources:
             requests:
-              cpu: "200m"
-              memory: "450Mi"
+              cpu: "150m"
+              memory: "250Mi"
             limits:
-              cpu: "250m"
-              memory: "600Mi"
+              cpu: "200m"
+              memory: "400Mi"
           livenessProbe:
             httpGet:
               path: /auth-service/actuator/health

@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.Date;
+import java.util.List;
 
 @Data
 @Builder
@@ -25,6 +26,8 @@ public class WorkflowResponseDTO {
     private String instituteId;
     private Date createdAt;
     private Date updatedAt;
+
+    private List<WorkflowScheduleResponseDTO> schedules;
 
     /**
      * Convert Workflow entity to WorkflowResponseDTO
@@ -44,6 +47,7 @@ public class WorkflowResponseDTO {
                 .instituteId(workflow.getInstituteId())
                 .createdAt(workflow.getCreatedAt())
                 .updatedAt(workflow.getUpdatedAt())
+                .schedules(null)
                 .build();
     }
 }

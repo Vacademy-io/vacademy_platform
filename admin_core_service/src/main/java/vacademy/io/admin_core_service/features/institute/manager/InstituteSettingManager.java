@@ -7,6 +7,7 @@ import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.entity.CustomFields;
 import vacademy.io.admin_core_service.features.common.entity.InstituteCustomField;
+import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
 import vacademy.io.admin_core_service.features.institute.dto.settings.GenericSettingRequest;
 import vacademy.io.admin_core_service.features.institute.dto.settings.InstituteSettingDto;
@@ -20,6 +21,7 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -143,61 +145,135 @@ public class InstituteSettingManager {
         return "Done";
     }
 
-    private String handleCaseCustomFieldSettingPresent(Institute institute,
-            CustomFieldSettingRequest customFieldSettingRequest) {
-        if (customFieldSettingRequest.getCustomFieldsAndGroups() != null) {
-            for (var fieldDto : customFieldSettingRequest.getCustomFieldsAndGroups()) {
+    private String handleCaseCustomFieldSettingPresent(
+        Institute institute,
+        CustomFieldSettingRequest req
+    ) {
+
+        List<CustomFieldDto> dtos = req.getCustomFieldsAndGroups();
+
+        if (dtos != null) {
+            for (var fieldDto : dtos) {
+
                 if (!StringUtils.hasText(fieldDto.getCustomFieldId())) {
-                    // This is a new custom field that needs to be created
-                    CustomFieldDTO newCustomFieldDto = new CustomFieldDTO();
 
-                    newCustomFieldDto.setFieldName(fieldDto.getFieldName());
-                    newCustomFieldDto.setFieldType(fieldDto.getFieldType());
-                    newCustomFieldDto.setGroupName(fieldDto.getGroupName());
-                    newCustomFieldDto.setGroupInternalOrder(fieldDto.getGroupInternalOrder());
-                    newCustomFieldDto.setIndividualOrder(fieldDto.getIndividualOrder());
+                    // Create new field
+                    CustomFieldDTO newDto = new CustomFieldDTO();
+                    newDto.setFieldName(fieldDto.getFieldName());
+                    newDto.setFieldType(fieldDto.getFieldType());
+                    newDto.setGroupName(fieldDto.getGroupName());
+                    newDto.setGroupInternalOrder(fieldDto.getGroupInternalOrder());
+                    newDto.setIndividualOrder(fieldDto.getIndividualOrder());
+                    newDto.setConfig(fieldDto.getConfig());
 
-                    // Use the new method that prevents duplicate keys for the institute
-                    CustomFields savedCustomField = instituteCustomFiledService
-                            .createOrFindCustomFieldByKey(newCustomFieldDto, institute.getId());
+                    CustomFields saved = instituteCustomFiledService
+                        .createOrFindCustomFieldByKey(newDto, institute.getId());
 
-                    // Check if mapping already exists for this custom field and institute
-                    Optional<InstituteCustomField> existingMapping = instituteCustomFiledService
-                            .getByInstituteIdAndFieldIdAndTypeAndTypeId(
-                                    institute.getId(), savedCustomField.getId(), "DEFAULT_CUSTOM_FIELD", null);
+                    Optional<InstituteCustomField> existing =
+                        instituteCustomFiledService.getByInstituteIdAndFieldIdAndTypeAndTypeId(
+                            institute.getId(),
+                            saved.getId(),
+                            "DEFAULT_CUSTOM_FIELD",
+                            null
+                        );
 
                     InstituteCustomField savedMapping;
-                    if (existingMapping.isPresent()) {
-                        // Update existing mapping with only provided fields
-                        savedMapping = existingMapping.get();
+
+                    if (existing.isPresent()) {
+                        savedMapping = existing.get();
                         patchInstituteCustomFieldMapping(savedMapping, fieldDto);
-                        savedMapping = instituteCustomFiledService.createorupdateinstutefieldmapping(savedMapping);
-                    } else {
-                        // Create new mapping
                         savedMapping = instituteCustomFiledService
-                                .createInstituteMappingFromCustomField(savedCustomField, institute, newCustomFieldDto);
+                            .createorupdateinstutefieldmapping(savedMapping);
+                    } else {
+                        savedMapping = instituteCustomFiledService
+                            .createInstituteMappingFromCustomField(saved, institute, newDto);
                     }
 
-                    fieldDto.setCustomFieldId(savedCustomField.getId());
+                    fieldDto.setCustomFieldId(saved.getId());
                     fieldDto.setId(savedMapping.getId());
+
                 } else {
-                    // This is an existing custom field that needs to be updated
+                    // Update existing custom field
                     updateExistingCustomField(fieldDto, institute);
                 }
             }
         }
 
-        // Update the list of all custom field IDs
-        if (customFieldSettingRequest.getCustomFieldsAndGroups() != null) {
-            List<String> allCustomFieldIds = customFieldSettingRequest.getCustomFieldsAndGroups().stream()
-                    .map(dto -> dto.getCustomFieldId())
-                    .filter(Objects::nonNull)
-                    .collect(Collectors.toList());
-            customFieldSettingRequest.setAllCustomFields(allCustomFieldIds);
+        // ---------- APPLY UNIQUENESS AFTER ALL DB OPERATIONS ----------
+        applyUniqueness(req);
+
+        instituteSettingService.updateCustomFieldSetting(institute, req);
+        return "Done";
+    }
+
+    private void applyUniqueness(CustomFieldSettingRequest req) {
+
+        // Filter out DELETED DTOs first
+        List<CustomFieldDto> activeDtos = null;
+        if (req.getCustomFieldsAndGroups() != null) {
+            activeDtos = req.getCustomFieldsAndGroups().stream()
+                .filter(Objects::nonNull)
+                .filter(dto -> dto.getStatus() == null ||
+                    !StatusEnum.INACTIVE.name().equalsIgnoreCase(dto.getStatus()))
+                .collect(Collectors.toList());
+            req.setCustomFieldsAndGroups(activeDtos);
         }
 
-        instituteSettingService.updateCustomFieldSetting(institute, customFieldSettingRequest);
-        return "Done";
+        // Unique by customFieldId for DTO list
+        if (activeDtos != null) {
+            req.setCustomFieldsAndGroups(
+                activeDtos.stream()
+                    .collect(Collectors.toMap(
+                        CustomFieldDto::getCustomFieldId,   // unique by ID
+                        dto -> dto,
+                        (a, b) -> a,                       // keep first
+                        LinkedHashMap::new                 // preserve order
+                    ))
+                    .values()
+                    .stream()
+                    .collect(Collectors.toList())
+            );
+        }
+
+        // Unique list of all custom field IDs (only non-deleted)
+        if (req.getCustomFieldsAndGroups() != null) {
+            req.setAllCustomFields(
+                req.getCustomFieldsAndGroups().stream()
+                    .map(CustomFieldDto::getCustomFieldId)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .collect(Collectors.toList())
+            );
+        }
+
+        // Unique / filtered group names
+        if (req.getGroupNames() != null) {
+            req.setGroupNames(req.getGroupNames()
+                .stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .distinct()
+                .collect(Collectors.toList())
+            );
+        }
+
+        // Other string lists → dedupe
+        req.setCustomFieldsName(makeDistinct(req.getCustomFieldsName()));
+        req.setCompulsoryCustomFields(makeDistinct(req.getCompulsoryCustomFields()));
+        req.setFixedCustomFields(makeDistinct(req.getFixedCustomFields()));
+        req.setCustomFieldLocations(makeDistinct(req.getCustomFieldLocations()));
+    }
+
+    private List<String> makeDistinct(List<String> input) {
+        if (input == null) return null;
+
+        return input.stream()
+            .filter(Objects::nonNull)
+            .map(String::trim)
+            .filter(s -> !s.isEmpty())
+            .distinct()
+            .collect(Collectors.toList());
     }
 
     /**
@@ -229,6 +305,10 @@ public class InstituteSettingManager {
 
         if (StringUtils.hasText(fieldDto.getStatus())){
             customField.setStatus(fieldDto.getStatus());
+        }
+
+        if (StringUtils.hasText(fieldDto.getConfig())){
+            customField.setConfig(fieldDto.getConfig());
         }
 
         // Save custom field if it was updated

@@ -33,7 +33,8 @@ jobs:
         working-directory: ./auth_service
         env:
           JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
-        run: mvn -s settings.xml clean install -DskipTests
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: mvn -s settings.xml clean install -DskipTests -Dsentry.authToken=$SENTRY_AUTH_TOKEN
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v3
@@ -60,9 +61,11 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           TEACHER_PORTAL_CLIENT_URL: ${{ secrets.TEACHER_PORTAL_CLIENT_URL }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
 
         run: |
-          docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg ACCESS_GITHUB_USERNAME=${ACCESS_GITHUB_USERNAME} --build-arg JAVA_TOKEN=${JAVA_TOKEN}
+          docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg ACCESS_GITHUB_USERNAME=${ACCESS_GITHUB_USERNAME} --build-arg JAVA_TOKEN=${JAVA_TOKEN} --build-arg SENTRY_AUTH_TOKEN=${SENTRY_AUTH_TOKEN}
           docker push $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG
           echo "Docker Image Link = $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG"
 
@@ -88,7 +91,9 @@ jobs:
             TEACHER_PORTAL_CLIENT_URL=${{ secrets.TEACHER_PORTAL_CLIENT_URL }} \
             GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }} \
             OAUTH_GITHUB_CLIENT_ID=${{ secrets.OAUTH_GITHUB_CLIENT_ID }} \
-            OAUTH_GITHUB_CLIENT_SECRET=${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
+            OAUTH_GITHUB_CLIENT_SECRET=${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }} \
+            SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
+            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
 
       - name: Restart deployment
         id: restart-deployment

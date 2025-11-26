@@ -32,23 +32,24 @@ public class NotificationService {
 
         for (NotificationToUserDTO user : users) {
             String parsedBody = parsePlaceholders(notificationDTO.getBody(), user.getPlaceholders());
+            String parsedSubject = parsePlaceholders(notificationDTO.getSubject(), user.getPlaceholders());
+
             String notificationType = notificationDTO.getNotificationType();
             String channelId = user.getChannelId();
             String userId = user.getUserId();
 
-            // Create and add notification log to the list
             NotificationLog log = createNotificationLog(notificationType, channelId, parsedBody, notificationDTO.getSource(), notificationDTO.getSourceId(), userId);
             notificationLogs.add(log);
 
-            // Send notification based on type
             switch (notificationType.toUpperCase()) {
                 case "EMAIL":
-                    emailSenderService.sendHtmlEmail(channelId, notificationDTO.getSubject(), "email-service", parsedBody,instituteId);
+                    emailSenderService.sendHtmlEmail(channelId, parsedSubject, "email-service", parsedBody, instituteId);
                     break;
                 default:
                     throw new IllegalArgumentException("Unsupported notification type: " + notificationType);
             }
         }
+
 
         // Save all notification logs in a batch
         notificationLogRepository.saveAll(notificationLogs);

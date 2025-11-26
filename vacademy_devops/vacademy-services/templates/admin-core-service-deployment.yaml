@@ -6,7 +6,12 @@ metadata:
   labels:
     app: admin-core-service
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ .Values.rollingUpdate.maxSurge }}
+      maxUnavailable: {{ .Values.rollingUpdate.maxUnavailable }}
   selector:
     matchLabels:
       app: admin-core-service
@@ -19,12 +24,15 @@ spec:
         - name: admin-core-service
           image: "{{ .Values.services.admin_core_service.image.repository }}:{{ .Values.services.admin_core_service.image.tag }}"
           imagePullPolicy: Always
+          envFrom:
+            - configMapRef:
+                name: myconfigmapv1.0
           resources:
             requests:
               cpu: "200m"
               memory: "450Mi"
             limits:
-              cpu: "250m"
+              cpu: "450m"
               memory: "600Mi"
           livenessProbe:
             httpGet:

@@ -15,7 +15,6 @@ import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
 
-import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -198,7 +197,6 @@ public class PaymentNotificatonService {
     private String safeCastToString(Object value) {
         return value != null ? value.toString() : "";
     }
-
     private <T> T safe(T val) {
         // A simple way to avoid NullPointerException for strings in the template.
         if (val == null) return (T) "";

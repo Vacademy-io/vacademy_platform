@@ -1,29 +1,35 @@
 package vacademy.io.admin_core_service.features.workflow.engine;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
-import vacademy.io.admin_core_service.features.workflow.dto.SendWhatsAppNodeDTO;
-import vacademy.io.admin_core_service.features.workflow.dto.ForEachConfigDTO;
-import vacademy.io.admin_core_service.features.workflow.dto.WhatsAppNotificationTemplateDTO;
-import vacademy.io.admin_core_service.features.workflow.entity.NodeTemplate;
-import vacademy.io.admin_core_service.features.workflow.spel.SpelEvaluator;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.institute.entity.Template;
+import vacademy.io.admin_core_service.features.institute.repository.TemplateRepository;
 import vacademy.io.admin_core_service.features.notification.dto.WhatsappRequest;
 import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
-import vacademy.io.admin_core_service.features.common.util.JsonUtil;
+import vacademy.io.admin_core_service.features.workflow.dto.ForEachConfigDTO;
+import vacademy.io.admin_core_service.features.workflow.dto.SendWhatsAppNodeDTO;
+import vacademy.io.admin_core_service.features.workflow.entity.NodeTemplate;
+import vacademy.io.admin_core_service.features.workflow.spel.SpelEvaluator;
+import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Slf4j
-@Component
+@Service
 @RequiredArgsConstructor
 public class SendWhatsAppNodeHandler implements NodeHandler {
 
     private final ObjectMapper objectMapper;
     private final SpelEvaluator spelEvaluator;
     private final NotificationService notificationService;
+    private final TemplateRepository templateRepository;
+
+    // Cache for templates (InstituteID:TemplateName -> Template)
+    private final Map<String, Template> templateCache = new HashMap<>();
 
     @Override
     public boolean supports(String nodeType) {
@@ -31,112 +37,156 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
     }
 
     @Override
-    public Map<String, Object> handle(
-            Map<String, Object> context,
-            String nodeConfigJson,
-            Map<String, NodeTemplate> nodeTemplates,
-            int countProcessed) {
+    public Map<String, Object> handle(Map<String, Object> context,
+                                      String nodeConfigJson,
+                                      Map<String, NodeTemplate> nodeTemplates,
+                                      int countProcessed) {
 
+        log.info("SendWhatsAppNodeHandler.handle() invoked.");
         Map<String, Object> changes = new HashMap<>();
+
         try {
-            SendWhatsAppNodeDTO sendWhatsAppNodeDTO = objectMapper.readValue(nodeConfigJson, SendWhatsAppNodeDTO.class);
-
-            // Get the 'on' expression to evaluate the list to iterate over
-            String onExpr = sendWhatsAppNodeDTO.getOn();
-            if (onExpr == null || onExpr.isBlank()) {
-                log.warn("SEND_WHATSAPP node missing 'on' expression");
-                changes.put("status", "missing_on_expression");
+            SendWhatsAppNodeDTO nodeDTO = objectMapper.readValue(nodeConfigJson, SendWhatsAppNodeDTO.class);
+            String onExpression = nodeDTO.getOn();
+            if (!StringUtils.hasText(onExpression)) {
+                log.warn("SendWhatsAppNode missing 'on' expression");
+                changes.put("status", "error");
+                changes.put("error", "Missing 'on' expression");
                 return changes;
             }
 
-            // Evaluate the list expression (e.g., #ctx['ssigmList'])
-            Object listObj = spelEvaluator.evaluate(onExpr, context);
+            Object listObj = spelEvaluator.evaluate(onExpression, context);
             if (listObj == null) {
-                log.warn("No list found for expression: {}", onExpr);
-                changes.put("status", "no_list_found");
+                log.warn("No list found for expression: {}", onExpression);
+                changes.put("status", "no_items_found");
                 return changes;
             }
 
-            if (!(listObj instanceof Collection<?> list) || list.isEmpty()) {
-                log.debug("SEND_WHATSAPP found nothing for expression: {}", onExpr);
-                changes.put("status", "empty_list");
+            List<Object> items;
+            if (listObj instanceof List) {
+                items = (List<Object>) listObj;
+            } else if (listObj instanceof Collection) {
+                items = new ArrayList<>((Collection<?>) listObj);
+            } else {
+                log.warn("Expression '{}' did not evaluate to a list: {}", onExpression, listObj.getClass());
+                changes.put("status", "error");
+                changes.put("error", "Expression did not evaluate to a list");
                 return changes;
             }
 
-            // Process each item in the list and create WhatsApp requests
-            List<WhatsappRequest> allWhatsappRequests = new ArrayList<>();
+            log.info("Processing {} items for WhatsApp sending", items.size());
+            List<String> results = new ArrayList<>();
+            String instituteId = (String) context.get("instituteIdForWhatsapp"); // Use correct context key
 
-            for (Object item : list) {
+            if (!StringUtils.hasText(instituteId)) {
+                log.warn("Missing 'instituteIdForWhatsapp' in context");
+                changes.put("status", "error");
+                changes.put("error", "Missing 'instituteIdForWhatsapp' in context");
+                return changes;
+            }
+
+            // --- OPTIMIZATION START ---
+
+            // Map to group users by templateName
+            Map<String, WhatsappRequest> batchRequestMap = new HashMap<>();
+            // Set to deduplicate (mobileNumber::templateName)
+            Set<String> sentLog = new HashSet<>();
+            int processedCount = 0;
+            int skippedCount = 0;
+
+            for (Object item : items) {
                 Map<String, Object> itemContext = new HashMap<>(context);
                 itemContext.put("item", item);
 
-                // Process the forEach operation for this item
-                List<WhatsappRequest> itemRequests = processForEachOperation(sendWhatsAppNodeDTO.getForEach(),
-                        itemContext, item);
-                if (itemRequests != null && !itemRequests.isEmpty()) {
-                    allWhatsappRequests.addAll(itemRequests);
-                }
-            }
+                List<Map<String, Object>> messagesToSend = processForEachOperation(
+                    nodeDTO.getForEach(), itemContext);
 
-            // Group requests by template for optimization and create proper structure
-            if (!allWhatsappRequests.isEmpty()) {
-                // Group requests by template for optimization
-                Map<String, List<WhatsappRequest>> requestsByTemplate = allWhatsappRequests
-                        .stream()
-                        .collect(Collectors.groupingBy(WhatsappRequest::getTemplateName));
+                for (Map<String, Object> messageData : messagesToSend) {
+                    try {
+                        String templateName = (String) messageData.get("templateName");
+                        String languageCode = (String) messageData.get("languageCode");
+                        String mobileNumber = (String) messageData.get("mobileNumber");
+                        String userId = (String) messageData.get("userId");
+                        Map<String, String> templateVars = (Map<String, String>) messageData.get("templateVars");
 
-                // Create grouped WhatsApp requests for bulk sending
-                List<WhatsappRequest> groupedRequests = new ArrayList<>();
-
-                for (Map.Entry<String, List<WhatsappRequest>> entry : requestsByTemplate.entrySet()) {
-                    List<WhatsappRequest> whatsappRequests = entry.getValue();
-                    String templateName = entry.getKey();
-
-                    // Create a new grouped request for this template
-                    WhatsappRequest groupedRequest = new WhatsappRequest();
-                    groupedRequest.setTemplateName(templateName);
-
-                    // Set language code from the first request (assuming all have same language)
-                    String languageCode = whatsappRequests.get(0).getLanguageCode();
-                    groupedRequest.setLanguageCode(languageCode != null ? languageCode : "en");
-
-                    // Combine all userDetails from requests with the same template
-                    List<Map<String, Map<String, String>>> allUserDetails = new ArrayList<>();
-                    for (WhatsappRequest request : whatsappRequests) {
-                        if (request.getUserDetails() != null) {
-                            allUserDetails.addAll(request.getUserDetails());
+                        // 1. Validate Mobile Number
+                        if (!StringUtils.hasText(mobileNumber)) {
+                            log.warn("Skipping user {}: mobile number is null or empty.", userId);
+                            results.add("SKIPPED: User " + userId + " - Missing mobile number.");
+                            skippedCount++;
+                            continue;
                         }
+
+                        // Sanitize: remove '+' and all non-numeric characters
+                        String sanitizedMobile = mobileNumber.replaceAll("[^0-9]", "");
+
+                        if (!StringUtils.hasText(sanitizedMobile)) {
+                            log.warn("Skipping user {}: mobile number '{}' is invalid after sanitization.", userId, mobileNumber);
+                            results.add("SKIPPED: User " + userId + " - Invalid mobile number.");
+                            skippedCount++;
+                            continue;
+                        }
+
+                        // 2. Deduplicate
+                        String dedupeKey = sanitizedMobile + "::" + templateName;
+                        if (sentLog.contains(dedupeKey)) {
+                            log.warn("Skipping user {}: duplicate request for template '{}'.", userId, templateName);
+                            results.add("SKIPPED: User " + userId + " - Duplicate request.");
+                            skippedCount++;
+                            continue;
+                        }
+
+                        // 3. Fetch Template (from cache or DB)
+                        String cacheKey = instituteId + ":" + templateName;
+                        Template template = templateCache.computeIfAbsent(cacheKey, k ->
+                            templateRepository.findByInstituteIdAndNameAndType(instituteId, templateName, "WHATSAPP")
+                                .orElseThrow(() -> new VacademyException("Template not found with name: " + templateName + " for institute: " + instituteId))
+                        );
+
+                        // 4. Build User Params
+                        Map<String, String> finalParamMap = buildValidatedParams(template, templateVars, userId);
+                        Map<String, Map<String, String>> singleUser = Map.of(sanitizedMobile, finalParamMap);
+
+                        // 5. Add to Batch
+                        WhatsappRequest batchRequest = batchRequestMap.computeIfAbsent(templateName, k -> {
+                            WhatsappRequest newReq = new WhatsappRequest();
+                            newReq.setTemplateName(templateName);
+                            newReq.setLanguageCode(StringUtils.hasText(languageCode) ? languageCode : "en");
+                            newReq.setHeaderParams(null);
+                            newReq.setUserDetails(new ArrayList<>()); // Initialize list
+                            return newReq;
+                        });
+
+                        batchRequest.getUserDetails().add(singleUser);
+                        sentLog.add(dedupeKey); // Mark as processed
+                        processedCount++;
+
+                    } catch (Exception e) {
+                        log.error("Failed to build WhatsApp request for item {}: {}", item, e.getMessage());
+                        results.add("ERROR: " + e.getMessage());
                     }
-                    groupedRequest.setUserDetails(allUserDetails);
-
-                    // Add header params if available
-                    if (!whatsappRequests.isEmpty() && whatsappRequests.get(0).getHeaderParams() != null) {
-                        groupedRequest.setHeaderParams(whatsappRequests.get(0).getHeaderParams());
-                    }
-
-                    // Add header type if available
-                    if (!whatsappRequests.isEmpty() && whatsappRequests.get(0).getHeaderType() != null) {
-                        groupedRequest.setHeaderType(whatsappRequests.get(0).getHeaderType());
-                    }
-
-                    groupedRequests.add(groupedRequest);
-
-                    log.debug("Created grouped request for template '{}' with {} individual requests",
-                            templateName, whatsappRequests.size());
                 }
-
-                log.info("Created {} WhatsApp requests grouped into {} templates",
-                        allWhatsappRequests.size(), groupedRequests.size());
-
-                // Send bulk requests to notification service
-                String instituteId = (String) context.get("instituteId");
-                Map<String, Object> notificationResult = sendBulkWhatsAppRequests(groupedRequests, instituteId);
-
-                log.info("Successfully sent {} WhatsApp requests in {} template groups",
-                        allWhatsappRequests.size(), groupedRequests.size());
-            } else {
-                changes.put("status", "no_requests_created");
             }
+
+            // 6. Dispatch Batches
+            List<WhatsappRequest> finalBatchList = new ArrayList<>(batchRequestMap.values());
+            if (!finalBatchList.isEmpty()) {
+                try {
+                    // Call the batch method ONCE
+                    notificationService.sendWhatsappToUsers(finalBatchList, instituteId);
+                    log.info("Successfully dispatched {} WhatsApp batches for {} total users.", finalBatchList.size(), processedCount);
+                    results.add("SUCCESS: Dispatched " + finalBatchList.size() + " batches for " + processedCount + " users.");
+                } catch (Exception e) {
+                    log.error("Failed to send WhatsApp batch request: {}", e.getMessage(), e);
+                    results.add("ERROR: Batch send failed - " + e.getMessage());
+                }
+            }
+            // --- OPTIMIZATION END ---
+
+            changes.put("status", "completed");
+            changes.put("results", results);
+            changes.put("processed_count", processedCount);
+            changes.put("skipped_count", skippedCount);
 
         } catch (Exception e) {
             log.error("Error handling SendWhatsApp node", e);
@@ -147,194 +197,74 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
         return changes;
     }
 
-    private List<WhatsappRequest> processForEachOperation(ForEachConfigDTO forEachConfig,
-            Map<String, Object> itemContext, Object item) {
+    /**
+     * Evaluates the 'eval' expression to get the list of messages for a single item.
+     */
+    private List<Map<String, Object>> processForEachOperation(ForEachConfigDTO forEachConfig,
+                                                              Map<String, Object> itemContext) {
         if (forEachConfig == null) {
             log.warn("No forEach configuration found in SendWhatsApp node");
-            return Collections.emptyList();
+            return List.of();
         }
 
-        // Get the templates expression from forEach config
-        String templatesExpr = forEachConfig.getEval();
-        if (templatesExpr == null || templatesExpr.isBlank()) {
-            log.warn("SEND_WHATSAPP forEach missing 'on' expression for templates");
-            return Collections.emptyList();
+        String evalExpression = forEachConfig.getEval();
+        if (!StringUtils.hasText(evalExpression)) {
+            log.warn("SEND_WHATSAPP forEach missing 'eval' expression");
+            return List.of();
         }
 
         try {
-            // Evaluate the templates expression
-            Object templatesObj = spelEvaluator.evaluate(templatesExpr, itemContext);
-            if (templatesObj == null) {
-                log.warn("No templates found for expression: {}", templatesExpr);
-                return Collections.emptyList();
+            Object evalResult = spelEvaluator.evaluate(evalExpression, itemContext);
+            if (evalResult instanceof List) {
+                return (List<Map<String, Object>>) evalResult;
+            } else if (evalResult != null) {
+                log.warn("Eval expression did not return a List. Got: {}", evalResult.getClass().getName());
             }
-
-            // Process templates and create WhatsApp requests
-            return processTemplatesAndCreateRequests(templatesObj, itemContext, forEachConfig);
-
         } catch (Exception e) {
-            log.error("Error processing forEach operation for item: {}", item, e);
-            return Collections.emptyList();
+            log.error("Error processing forEach operation for item: {}", itemContext.get("item"), e);
         }
+
+        return List.of();
     }
 
-    private List<WhatsappRequest> processTemplatesAndCreateRequests(Object templatesObj,
-            Map<String, Object> itemContext, ForEachConfigDTO forEachConfig) {
-        List<WhatsappRequest> requests = new ArrayList<>();
+    /**
+     * Validates template variables against the template's dynamic parameters.
+     * This logic is extracted from the old buildValidatedRequest.
+     */
+    private Map<String, String> buildValidatedParams(Template template, Map<String, String> templateVarsFromAutomation, String userId) {
+        // Parse template's required parameters
+        Map<String, String> dynamicParams = parseDynamicParameters(template.getDynamicParameters());
+        Map<String, String> finalParamMap = new HashMap<>();
 
+        // Validate and build final parameters
+        if (dynamicParams != null && !dynamicParams.isEmpty()) {
+            for (String requiredKey : dynamicParams.keySet()) {
+                if (!templateVarsFromAutomation.containsKey(requiredKey)) {
+                    throw new RuntimeException("Missing required template variable '" + requiredKey +
+                        "' for template: " + template.getName() + ", user: " + userId);
+                }
+                String value = templateVarsFromAutomation.get(requiredKey);
+                finalParamMap.put(requiredKey, value != null ? value : "");
+            }
+        } else {
+            log.warn("No dynamic_parameters JSON found for template: {}. Proceeding without validation.", template.getName());
+            finalParamMap.putAll(templateVarsFromAutomation); // Send all vars if no dynamic params defined
+        }
+        return finalParamMap;
+    }
+
+    /**
+     * Helper to parse the dynamic_parameters JSON string from the Template entity.
+     */
+    private Map<String, String> parseDynamicParameters(String dynamicParametersJson) {
+        if (!StringUtils.hasText(dynamicParametersJson)) {
+            return new HashMap<>();
+        }
         try {
-            if (templatesObj instanceof List) {
-                // Handle list of templates
-                List<?> templates = (List<?>) templatesObj;
-                for (Object template : templates) {
-                    WhatsappRequest request = createWhatsAppRequest(template, itemContext, forEachConfig);
-                    if (request != null) {
-                        requests.add(request);
-                    }
-                }
-            } else if (templatesObj instanceof Map) {
-                // Handle map of templates
-                Map<?, ?> templates = (Map<?, ?>) templatesObj;
-                for (Map.Entry<?, ?> entry : templates.entrySet()) {
-                    WhatsappRequest request = createWhatsAppRequest(entry.getValue(), itemContext, forEachConfig);
-                    if (request != null) {
-                        requests.add(request);
-                    }
-                }
-            } else {
-                // Handle single template
-                WhatsappRequest request = createWhatsAppRequest(templatesObj, itemContext, forEachConfig);
-                if (request != null) {
-                    requests.add(request);
-                }
-            }
+            return objectMapper.readValue(dynamicParametersJson, new TypeReference<>() {});
         } catch (Exception e) {
-            log.error("Error processing templates", e);
+            log.error("Failed to parse dynamic_parameters JSON: " + dynamicParametersJson, e);
+            return new HashMap<>();
         }
-
-        return requests;
-    }
-
-    private WhatsappRequest createWhatsAppRequest(Object template, Map<String, Object> itemContext,
-            ForEachConfigDTO forEachConfig) {
-        try {
-            // Extract user details from context
-            Object userDetailsObj = itemContext.get("item");
-            if (userDetailsObj == null) {
-                log.warn("No user details found in context");
-                return null;
-            }
-
-            Map<String, Object> userDetails = JsonUtil.convertValue(userDetailsObj, Map.class);
-            if (userDetails == null) {
-                log.warn("Could not convert user details to map");
-                return null;
-            }
-
-            // Extract mobile number
-            String mobileNumber = extractMobileNumber(userDetails);
-            if (mobileNumber == null || mobileNumber.isBlank()) {
-                log.warn("No mobile number found for user: {}", userDetails);
-                return null;
-            }
-
-            // Create WhatsApp request using existing WhatsappRequest class
-            WhatsappRequest request = new WhatsappRequest();
-            WhatsAppNotificationTemplateDTO whatsAppNotificationTemplateDTO = JsonUtil.convertValue(template,
-                    WhatsAppNotificationTemplateDTO.class);
-            request.setTemplateName(whatsAppNotificationTemplateDTO.getTemplateName());
-            // Create userDetails structure as expected by existing WhatsappRequest
-            // userDetails is List<Map<String, Map<String, String>>>
-            Map<String, Map<String, String>> userDetail = new HashMap<>();
-            Map<String, String> evaluatedPlaceHolders = getEvaluatedPlaceHolder(
-                    whatsAppNotificationTemplateDTO.getPlaceholders(), itemContext);
-            userDetail.put(mobileNumber, evaluatedPlaceHolders);
-            request.setUserDetails(Collections.singletonList(userDetail));
-
-            // Set default language code if not specified
-            request.setLanguageCode("en");
-
-            return request;
-
-        } catch (Exception e) {
-
-            log.error("Error creating WhatsApp request", e);
-            return null;
-        }
-    }
-
-    private Map<String, String> getEvaluatedPlaceHolder(Map<String, String> placeholders,
-            Map<String, Object> itemContext) {
-        Map<String, String> evaluatedPlaceholders = new HashMap<>();
-        for (Map.Entry<String, String> entry : placeholders.entrySet()) {
-            String key = entry.getKey();
-            Object value = spelEvaluator.evaluate(entry.getValue(), itemContext);
-            evaluatedPlaceholders.put(key, String.valueOf(value));
-        }
-        return evaluatedPlaceholders;
-    }
-
-    private String extractMobileNumber(Map<String, Object> userDetails) {
-        // Possible field names where mobile number may be stored
-        String[] possibleFields = {
-                "mobileNumber", "mobile_number", "mobile",
-                "phone", "phoneNumber", "phone_number"
-        };
-
-        for (String field : possibleFields) {
-            Object value = userDetails.get(field);
-
-            if (value != null) {
-                String number = String.valueOf(value).trim();
-
-                if (!number.isBlank()) {
-                    // Remove + if present
-                    if (number.startsWith("+")) {
-                        number = number.substring(1);
-                    }
-
-                    // Keep only digits
-                    number = number.replaceAll("\\D", "");
-
-                    // WhatsApp generally supports 10–15 digit numbers
-                    if (number.matches("\\d{10,15}")) {
-                        return number;
-                    }
-                }
-            }
-        }
-
-        return null; // No valid number found
-    }
-
-    private Map<String, Object> sendBulkWhatsAppRequests(List<WhatsappRequest> groupedRequests,
-            String instituteId) {
-        Map<String, Object> result = new HashMap<>();
-
-        try {
-            // Flatten all requests into a single list for bulk sending
-            List<WhatsappRequest> allRequests = groupedRequests;
-
-            log.info("Sending {} WhatsApp requests in {} template groups to notification service",
-                    allRequests.size(), groupedRequests.size());
-
-            // Call the notification service for each request
-            // to do: actual send notificatios
-            for (WhatsappRequest whatsappRequest : allRequests) {
-                // notificationService.sendWhatsappToUsers(whatsappRequest, instituteId);
-            }
-
-            result.put("status", "success");
-            result.put("totalRequests", allRequests.size());
-            result.put("templateGroups", groupedRequests.size());
-            result.put("message", "All requests sent successfully");
-
-        } catch (Exception e) {
-            log.error("Error sending bulk WhatsApp requests", e);
-            result.put("status", "error");
-            result.put("error", e.getMessage());
-        }
-
-        return result;
     }
 }

@@ -1,5 +1,6 @@
 package vacademy.io.common.auth.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,14 +16,14 @@ import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.exceptions.*;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Optional;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 @Service
+@Slf4j
 public class UserService {
 
     @Autowired
@@ -205,6 +206,10 @@ public class UserService {
         Optional<User> optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(normalizedEmail);
         if (optionalUser.isPresent()) {
             User user = optionalUser.get();
+            userDTO.setFullName(user.getFullName());
+            userDTO.setUsername(user.getUsername());
+            userDTO.setPassword(user.getPassword());
+            userDTO.setEmail(user.getEmail());
             return user;
         } else {
             User user = new User();
@@ -463,4 +468,37 @@ public class UserService {
         user = updateUser(user, userDTO);
         return new UserDTO(user);
     }
+
+    public List<UserDTO> findUsersOfRolesOfInstitute(List<String> roles, String instituteId, int inactiveDays) {
+        LocalDate localTargetDate = LocalDate.now().minusDays(inactiveDays);
+        Date targetDate = Date.from(localTargetDate.atStartOfDay(ZoneId.systemDefault()).toInstant());
+        List<User> users = userRepository.findUsersInactiveOnDate(
+                instituteId,
+                roles,
+                List.of(UserRoleStatus.ACTIVE.name()),
+                targetDate);
+        return users.stream().map(UserDTO::new).toList();
+    }
+
+    public List<UserDTO> findUsersInactiveForDaysOrMore(List<String> roles, String instituteId, int inactiveDays) {
+        LocalDate localTargetDate = LocalDate.now().minusDays(inactiveDays);
+        Date targetDate = Date.from(localTargetDate.atStartOfDay(ZoneId.systemDefault()).toInstant());
+        List<User> users = userRepository.findUsersInactiveForDaysOrMore(
+                instituteId,
+                roles,
+                List.of(UserRoleStatus.ACTIVE.name()),
+                targetDate);
+        return users.stream().map(UserDTO::new).toList();
+    }
+
+    public void updateLastLoginTimeForUser(String userId){
+        try{
+            User user = userRepository.findById(userId).orElseThrow(() -> new VacademyException("User Not Found with id " + userId));
+            user.setLastLoginTime(new Date());
+            userRepository.save(user);
+        }catch (Exception e){
+            log.error("Failed to update last login time for user: " + userId, e);
+        }
+    }
+
 }

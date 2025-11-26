@@ -13,6 +13,31 @@ import java.util.Date;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@SqlResultSetMapping(
+    name = "LiveSessionListProjectionMapping",
+    classes = @ConstructorResult(
+        targetClass = LiveSessionListProjectionImpl.class,
+        columns = {
+            @ColumnResult(name = "sessionId", type = String.class),
+            @ColumnResult(name = "waitingRoomTime", type = Integer.class),
+            @ColumnResult(name = "thumbnailFileId", type = String.class),
+            @ColumnResult(name = "backgroundScoreFileId", type = String.class),
+            @ColumnResult(name = "sessionStreamingServiceType", type = String.class),
+            @ColumnResult(name = "scheduleId", type = String.class),
+            @ColumnResult(name = "meetingDate", type = java.sql.Date.class),
+            @ColumnResult(name = "startTime", type = java.sql.Time.class),
+            @ColumnResult(name = "lastEntryTime", type = java.sql.Time.class),
+            @ColumnResult(name = "recurrenceType", type = String.class),
+            @ColumnResult(name = "accessLevel", type = String.class),
+            @ColumnResult(name = "title", type = String.class),
+            @ColumnResult(name = "subject", type = String.class),
+            @ColumnResult(name = "registrationFormLinkForPublicSessions", type = String.class),
+            @ColumnResult(name = "allowPlayPause", type = Boolean.class),
+            @ColumnResult(name = "timezone", type = String.class),
+            @ColumnResult(name = "meetingLink", type = String.class)
+        }
+    )
+)
 public class LiveSession {
 
     @Id

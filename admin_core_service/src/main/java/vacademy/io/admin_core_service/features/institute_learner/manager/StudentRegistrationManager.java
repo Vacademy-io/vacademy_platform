@@ -19,6 +19,7 @@ import vacademy.io.admin_core_service.features.enrollment_policy.dto.EnrollmentP
 import vacademy.io.admin_core_service.features.enrollment_policy.dto.ReenrollmentPolicyDTO;
 import vacademy.io.admin_core_service.features.enrollment_policy.enums.ActiveRepurchaseBehavior;
 import vacademy.io.admin_core_service.features.institute.controller.InstituteCertificateController;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute_learner.constants.StudentConstants;
 import vacademy.io.admin_core_service.features.institute_learner.dto.*;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
@@ -33,6 +34,8 @@ import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentP
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionType;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
+import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
@@ -75,6 +78,11 @@ public class StudentRegistrationManager {
     @Autowired
     private UserPlanService userPlanService;
 
+    @Autowired
+    private WorkflowTriggerService workflowTriggerService;
+
+    @Autowired
+    private InstituteRepository instituteRepository;
 
     StudentRegistrationManager(InstituteCertificateController instituteCertificateController) {
         this.instituteCertificateController = instituteCertificateController;
@@ -86,6 +94,9 @@ public class StudentRegistrationManager {
         Student student = checkAndCreateStudent(instituteStudentDTO);
         linkStudentToInstitute(student, instituteStudentDTO.getInstituteStudentDetails());
         learnerCouponService.generateCouponCodeForLearner(student.getUserId());
+        if (instituteStudentDTO.getInstituteStudentDetails().getEnrollmentStatus().equalsIgnoreCase(LearnerSessionStatusEnum.ACTIVE.name())){
+            triggerEnrollmentWorkflow(instituteStudentDTO.getInstituteStudentDetails().getInstituteId(),instituteStudentDTO.getUserDetails(),instituteStudentDTO.getInstituteStudentDetails().getPackageSessionId());
+        }
         return instituteStudentDTO;
     }
 
@@ -95,8 +106,12 @@ public class StudentRegistrationManager {
         instituteStudentDTO.setInstituteStudentDetails(InstituteStudentDetails.builder().instituteId(instituteId).build());
 
         Student student = checkAndCreateStudent(instituteStudentDTO);
-        if (instituteStudentDTO.getInstituteStudentDetails() != null)
+        if (instituteStudentDTO.getInstituteStudentDetails() != null) {
             linkStudentToInstitute(student, instituteStudentDTO.getInstituteStudentDetails());
+            if (instituteStudentDTO.getInstituteStudentDetails().getEnrollmentStatus().equalsIgnoreCase(LearnerSessionStatusEnum.ACTIVE.name())){
+                triggerEnrollmentWorkflow(instituteStudentDTO.getInstituteStudentDetails().getInstituteId(),instituteStudentDTO.getUserDetails(),instituteStudentDTO.getInstituteStudentDetails().getPackageSessionId());
+            }
+        }
         return ResponseEntity.ok(new StudentDTO(student));
     }
 
@@ -233,7 +248,6 @@ public class StudentRegistrationManager {
 
             // 3. Check for an *existing* mapping in *this* session (for re-enrollment/repurchase)
             Optional<StudentSessionInstituteGroupMapping> existingMapping = getExistingMapping(student, details);
-
             if (existingMapping.isPresent()) {
                 // Scenario: Re-enrollment (EXPIRED -> ACTIVE) or Repurchase (ACTIVE -> ACTIVE)
                 return updateExistingMapping(existingMapping.get(), activeDestinationMapping, details, policy);
@@ -292,8 +306,6 @@ public class StudentRegistrationManager {
             InstituteStudentDetails details,
             EnrollmentPolicySettingsDTO policy
     ) {
-        Date now = new Date();
-        LearnerSessionStatusEnum currentStatus = LearnerSessionStatusEnum.valueOf(mapping.getStatus());
 
         // --- 1. Re-enrollment Gap Logic (Point 6: Demo Scenario) ---
         if (currentStatus == LearnerSessionStatusEnum.EXPIRED
@@ -342,28 +354,12 @@ public class StudentRegistrationManager {
                 baseDate = mapping.getExpiryDate(); // STACK: Base is current expiry date
             }
         }
-        // If OVERWRITE, INACTIVE, EXPIRED, etc., baseDate remains 'now'
-
-        // --- 3. Check Active Destination Mapping (Stacking on other courses) ---
-        if (activeDestinationMapping.isPresent()) {
-            Date destExpiry = activeDestinationMapping.get().getExpiryDate();
-            if (destExpiry != null && destExpiry.after(baseDate)) {
-                baseDate = destExpiry; // Always stack on the *latest* available date
-            }
+        if (activeDestinationMapping.isPresent() && activeDestinationMapping.get().getSubOrg() == null && StringUtils.hasText(details.getSubOrgId())){
+            mapping.setSubOrg(instituteRepository.findById(details.getSubOrgId()).orElseThrow(()-> new VacademyException("Sub Org not found")));
         }
-
-        // --- 4. Calculate New Expiry Date ---
-        Date newExpiryDate = calculateNewExpiryDate(baseDate, details.getUserPlanId(), details.getAccessDays());
-
-        // --- 5. Apply Updates ---
-        mapping.setEnrolledDate(now);
-        mapping.setStatus(LearnerSessionStatusEnum.ACTIVE.name()); // Reactivate
-        if (details.getEnrollmentId() != null) {
-            mapping.setInstituteEnrolledNumber(details.getEnrollmentId());
+        if (activeDestinationMapping.isPresent() && activeDestinationMapping.get().getSubOrg() == null && StringUtils.hasText(details.getCommaSeparatedOrgRoles())){
+            mapping.setCommaSeparatedOrgRoles(details.getCommaSeparatedOrgRoles());
         }
-        mapping.setUserPlanId(details.getUserPlanId());
-        mapping.setExpiryDate(newExpiryDate);
-
         return studentSessionRepository.save(mapping).getId();
     }
 
@@ -380,17 +376,19 @@ public class StudentRegistrationManager {
         Date baseDate = determineBaseDate(null, activeDestinationMapping);
 
         studentSessionRepository.addStudentToInstitute(
-                studentSessionId.toString(),
-                student.getUserId(),
-                details.getEnrollmentDate() == null ? new Date() : details.getEnrollmentDate(),
-                details.getEnrollmentStatus(),
-                generateEnrollmentId(),
-                details.getGroupId(),
-                details.getInstituteId(),
-                makeExpiryDate(baseDate, details.getAccessDays()),
-                details.getPackageSessionId(),
-                details.getDestinationPackageSessionId(),
-                details.getUserPlanId()
+            studentSessionId.toString(),
+            student.getUserId(),
+            details.getEnrollmentDate() == null ? new Date() : details.getEnrollmentDate(),
+            details.getEnrollmentStatus(),
+            generateEnrollmentId(),
+            details.getGroupId(),
+            details.getInstituteId(),
+            makeExpiryDate(baseDate, details.getAccessDays()),
+            details.getPackageSessionId(),
+            details.getDestinationPackageSessionId(),
+            details.getUserPlanId(),
+            details.getSubOrgId(),
+            details.getCommaSeparatedOrgRoles()
         );
 
         return studentSessionId.toString();
@@ -466,12 +464,13 @@ public class StudentRegistrationManager {
             activePackageSession.setType(invitedPackageSession.getType());
             activePackageSession.setTypeId(invitedPackageSession.getTypeId());
         }
-
-        // Use the new helper method
-        Date baseDate = activePackageSession.getExpiryDate() != null && activePackageSession.getExpiryDate().after(new Date())
-                ? activePackageSession.getExpiryDate() : new Date();
-        activePackageSession.setExpiryDate(calculateNewExpiryDate(baseDate, invitedPackageSession.getUserPlanId(), null));
-
+        if (invitedPackageSession.getSubOrg() != null){
+            activePackageSession.setSubOrg(invitedPackageSession.getSubOrg());
+        }
+        if (StringUtils.hasText(invitedPackageSession.getCommaSeparatedOrgRoles())){
+            activePackageSession.setCommaSeparatedOrgRoles(invitedPackageSession.getCommaSeparatedOrgRoles());
+        }
+        activePackageSession.setExpiryDate(getExpiryDateBasedOnPaymentPlan(activePackageSession,invitedPackageSession.getUserPlanId()));
         return activePackageSession;
     }
 
@@ -694,9 +693,11 @@ public class StudentRegistrationManager {
         return createStudentFromRequest(userDTO, null).getId();
     }
 
-    private EnrollmentPolicySettingsDTO parseEnrollmentPolicy(String policyJson) {
-        // Use the JsonUtil from the common package as seen in the provided file
-        return JsonUtil.fromJson(policyJson, EnrollmentPolicySettingsDTO.class);
+    public void triggerEnrollmentWorkflow(String instituteId, UserDTO userDTO,String packageSessionId) {
+        Map<String, Object> contextData = new HashMap<>();
+        contextData.put("user", userDTO);
+        contextData.put("packageSessionIds", packageSessionId);
+        workflowTriggerService.handleTriggerEvents(WorkflowTriggerEvent.LEARNER_BATCH_ENROLLMENT.name(),packageSessionId,instituteId,contextData);
     }
 }
 

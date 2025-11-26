@@ -4,10 +4,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import vacademy.io.admin_core_service.features.workflow.dto.WorkflowResponseDTO;
+import vacademy.io.admin_core_service.features.workflow.dto.*;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowScheduleQueryService;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowService;
+import vacademy.io.common.auth.config.PageConstants;
 
 import java.util.List;
+
+import static vacademy.io.common.auth.config.PageConstants.DEFAULT_PAGE_NUMBER;
 
 @Slf4j
 @RestController
@@ -16,6 +20,7 @@ import java.util.List;
 public class WorkflowController {
 
     private final WorkflowService workflowService;
+    private final WorkflowScheduleQueryService workflowScheduleQueryService;
 
     @GetMapping("/institute/{instituteId}")
     public ResponseEntity<List<WorkflowResponseDTO>> getActiveWorkflowsByInstituteId(
@@ -23,5 +28,34 @@ public class WorkflowController {
 
         List<WorkflowResponseDTO> workflows = workflowService.getActiveWorkflowsByInstituteId(instituteId);
         return ResponseEntity.ok(workflows);
+    }
+
+    @PostMapping("/schedule/list")
+    public ResponseEntity<PagedWorkflowScheduleResponseDTO> getWorkflowSchedules(
+            @RequestBody WorkflowScheduleFilterDTO filter,
+            @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
+            @RequestParam(value = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE, required = false) int pageSize) {
+
+        log.info("Getting workflow schedules for instituteId: {}, workflowIds: {}, statuses: {}, page: {}, size: {}",
+                filter.getInstituteId(), filter.getWorkflowIds(), filter.getStatuses(), pageNo, pageSize);
+
+        PagedWorkflowScheduleResponseDTO response = workflowScheduleQueryService.getWorkflowSchedules(filter, pageNo,
+                pageSize);
+
+        log.info("Retrieved {} workflow schedules out of {} total",
+                response.getContent().size(), response.getTotalElements());
+
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/institute/workflows-with-schedules/list")
+    public ResponseEntity<PagedWorkflowsResponseDTO> getWorkflowsWithSchedules(
+        @RequestBody WorkflowWithSchedulesFilterDTO filter,
+        @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
+        @RequestParam(value = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE, required = false) int pageSize) {
+
+        PagedWorkflowsResponseDTO response = workflowService.getWorkflowsWithSchedulesPaged(filter, pageNo,
+            pageSize);
+        return ResponseEntity.ok(response);
     }
 }

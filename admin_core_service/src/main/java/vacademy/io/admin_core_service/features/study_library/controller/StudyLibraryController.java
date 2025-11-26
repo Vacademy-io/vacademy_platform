@@ -23,6 +23,13 @@ public class StudyLibraryController {
         return ResponseEntity.ok(studyLibraryService.getStudyLibraryInitDetails(instituteId));
     }
 
+    @GetMapping("/course-init")
+    public ResponseEntity<List<CourseDTOWithDetails>> initCourse(
+            @RequestParam("courseId") String courseId,
+            @RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(studyLibraryService.getCourseInitDetails(courseId, instituteId));
+    }
+
     @GetMapping("/modules-with-chapters")
     public ResponseEntity<List<ModuleDTOWithDetails>> modulesWithChapters(@RequestParam("subjectId") String subjectId, @RequestParam("packageSessionId") String packageSessionId, @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(studyLibraryService.getModulesDetailsWithChapters(subjectId, packageSessionId, user));

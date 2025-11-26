@@ -267,77 +267,34 @@ public class PackageService {
             return;
         }
 
-        if (StringUtils.hasText(addCourseDTO.getCourseName())) {
-            packageEntity.setPackageName(addCourseDTO.getCourseName());
-        }
+        // Directly overwrite every field — even if null or empty
+        packageEntity.setPackageName(addCourseDTO.getCourseName());
+        packageEntity.setThumbnailFileId(addCourseDTO.getThumbnailFileId());
+        packageEntity.setStatus(addCourseDTO.getStatus());
+        packageEntity.setCreatedByUserId(addCourseDTO.getCreatedByUserId());
+        packageEntity.setOriginalCourseId(addCourseDTO.getOriginalCourseId());
+        packageEntity.setVersionNumber(addCourseDTO.getVersionNumber());
+        packageEntity.setIsCoursePublishedToCatalaouge(addCourseDTO.getIsCoursePublishedToCatalaouge());
+        packageEntity.setCoursePreviewImageMediaId(addCourseDTO.getCoursePreviewImageMediaId());
+        packageEntity.setCourseBannerMediaId(addCourseDTO.getCourseBannerMediaId());
+        packageEntity.setCourseMediaId(addCourseDTO.getCourseMediaId());
+        packageEntity.setWhyLearn(addCourseDTO.getWhyLearnHtml());
+        packageEntity.setWhoShouldLearn(addCourseDTO.getWhoShouldLearnHtml());
+        packageEntity.setAboutTheCourse(addCourseDTO.getAboutTheCourseHtml());
+        packageEntity.setCourseDepth(addCourseDTO.getCourseDepth());
+        packageEntity.setCourseHtmlDescription(addCourseDTO.getCourseHtmlDescription());
 
-        if (StringUtils.hasText(addCourseDTO.getThumbnailFileId())) {
-            packageEntity.setThumbnailFileId(addCourseDTO.getThumbnailFileId());
-        }
-
-        // Update status if provided
-        if (StringUtils.hasText(addCourseDTO.getStatus())) {
-            packageEntity.setStatus(addCourseDTO.getStatus());
-        }
-        
-        // Update created by user ID if provided
-        if (StringUtils.hasText(addCourseDTO.getCreatedByUserId())) {
-            packageEntity.setCreatedByUserId(addCourseDTO.getCreatedByUserId());
-        }
-        
-        // Update original course ID if provided
-        if (StringUtils.hasText(addCourseDTO.getOriginalCourseId())) {
-            packageEntity.setOriginalCourseId(addCourseDTO.getOriginalCourseId());
-        }
-        
-        // Update version number if provided
-        if (addCourseDTO.getVersionNumber() != null) {
-            packageEntity.setVersionNumber(addCourseDTO.getVersionNumber());
-        }
-
-        if (addCourseDTO.getIsCoursePublishedToCatalaouge() != null) {
-            packageEntity.setIsCoursePublishedToCatalaouge(addCourseDTO.getIsCoursePublishedToCatalaouge());
-        }
-
-        if (StringUtils.hasText(addCourseDTO.getCoursePreviewImageMediaId())) {
-            packageEntity.setCoursePreviewImageMediaId(addCourseDTO.getCoursePreviewImageMediaId());
-        }
-
-        if (StringUtils.hasText(addCourseDTO.getCourseBannerMediaId())) {
-            packageEntity.setCourseBannerMediaId(addCourseDTO.getCourseBannerMediaId());
-        }
-
-        if (StringUtils.hasText(addCourseDTO.getCourseMediaId())) {
-            packageEntity.setCourseMediaId(addCourseDTO.getCourseMediaId());
-        }
-
-        if (StringUtils.hasText(addCourseDTO.getWhyLearnHtml())) {
-            packageEntity.setWhyLearn(addCourseDTO.getWhyLearnHtml());
-        }
-
-        if (StringUtils.hasText(addCourseDTO.getWhoShouldLearnHtml())) {
-            packageEntity.setWhoShouldLearn(addCourseDTO.getWhoShouldLearnHtml());
-        }
-
-        if (StringUtils.hasText(addCourseDTO.getAboutTheCourseHtml())) {
-            packageEntity.setAboutTheCourse(addCourseDTO.getAboutTheCourseHtml());
-        }
-
-        if (addCourseDTO.getTags() != null && !addCourseDTO.getTags().isEmpty()) {
+        // Handle tags safely — even if null
+        if (addCourseDTO.getTags() != null) {
             packageEntity.setTags(addCourseDTO.getTags().stream()
                     .map(String::toLowerCase)
                     .map(String::trim)
                     .collect(Collectors.joining(",")));
-        }
-
-        if (addCourseDTO.getCourseDepth() != null) {
-            packageEntity.setCourseDepth(addCourseDTO.getCourseDepth());
-        }
-
-        if (StringUtils.hasText(addCourseDTO.getCourseHtmlDescription())) {
-            packageEntity.setCourseHtmlDescription(addCourseDTO.getCourseHtmlDescription());
+        } else {
+            packageEntity.setTags(null);
         }
 
         packageRepository.save(packageEntity);
     }
+
 }

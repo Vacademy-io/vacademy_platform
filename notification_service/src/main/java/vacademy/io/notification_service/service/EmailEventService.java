@@ -7,8 +7,10 @@ import vacademy.io.notification_service.dto.SesEventDTO;
 import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 
+import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -29,7 +31,9 @@ public class EmailEventService {
             String eventType = sesEvent.getEventType();
             String messageId = sesEvent.getMail() != null ? sesEvent.getMail().getMessageId() : "unknown";
             
-            log.info("Processing SES event: {} for message: {}", eventType, messageId);
+            // Reduced logging: Changed from INFO to DEBUG to prevent log flooding
+            // With high-volume email sending (150K+ emails), INFO logs can overwhelm the system
+            log.debug("Processing SES event: {} for message: {}", eventType, messageId);
 
             String recipient = getRecipientFromEvent(sesEvent);
             String timestamp = getTimestampFromEvent(sesEvent);
@@ -38,14 +42,17 @@ public class EmailEventService {
             
             // Find original notification log ID
             String originalLogId = findOriginalNotificationLogId(recipient, timestamp);
-            log.info("Original log ID found: {} for recipient: {}", originalLogId, recipient);
+            log.debug("Original log ID found: {} for recipient: {}", originalLogId, recipient);
             
-            // Create notification log entry for the email event
-            NotificationLog eventLog = createEmailEventLog(eventType, messageId, recipient, timestamp, sesEvent, originalLogId);
-            notificationLogRepository.save(eventLog);
+            // Use atomic operation to prevent race conditions
+            if (!createEventAtomically(originalLogId, eventType, messageId, recipient, timestamp, sesEvent)) {
+                log.debug("Event already exists or failed to create atomically: {} for source: {} message: {}", 
+                    eventType, originalLogId, messageId);
+                return;
+            }
             
-            log.info("Successfully saved SES event to database: {} for message: {} to recipient: {} with source: {}", 
-                eventType, messageId, recipient, eventLog.getSource());
+            log.debug("Successfully saved SES event to database: {} for message: {} to recipient: {} with source: {}", 
+                eventType, messageId, recipient, originalLogId);
             
         } catch (Exception e) {
             log.error("Error processing SES event: {} - Error: {}", 
@@ -66,7 +73,10 @@ public class EmailEventService {
     private String getTimestampFromEvent(SesEventDTO sesEvent) {
         String timestamp = null;
         
-        switch (sesEvent.getEventType()) {
+        // Handle case-insensitive event types (SES can send "Send", "Delivery", etc. with capital letters)
+        String eventType = sesEvent.getEventType() != null ? sesEvent.getEventType().toLowerCase() : null;
+        
+        switch (eventType) {
             case "send":
                 if (sesEvent.getSend() != null) {
                     timestamp = sesEvent.getSend().getTimestamp();
@@ -104,7 +114,8 @@ public class EmailEventService {
                 }
                 break;
             default:
-                log.warn("Unknown SES event type: {}", sesEvent.getEventType());
+                // Changed from WARN to DEBUG to prevent log flooding for unexpected event types
+                log.debug("Unknown SES event type: {}", sesEvent.getEventType());
                 break;
         }
         
@@ -113,27 +124,37 @@ public class EmailEventService {
 
     private NotificationLog createEmailEventLog(String eventType, String messageId, String recipient, 
                                               String timestamp, SesEventDTO sesEvent, String originalLogId) {
-        NotificationLog log = new NotificationLog();
-        log.setId(UUID.randomUUID().toString());
-        log.setNotificationType("EMAIL_EVENT");
-        log.setChannelId(recipient);
-        log.setSource(originalLogId != null ? originalLogId : "SES"); // Use original log ID as source
-        log.setSourceId(messageId);
-        log.setUserId(recipient); // Using recipient as userId for email events
+        NotificationLog notificationLog = new NotificationLog();
+        notificationLog.setId(UUID.randomUUID().toString());
+        notificationLog.setNotificationType("EMAIL_EVENT");
+        notificationLog.setChannelId(recipient);
+        notificationLog.setSource(originalLogId != null ? originalLogId : "SES"); // Use original log ID as source
+        notificationLog.setSourceId(messageId);
+        notificationLog.setUserId(recipient); // Using recipient as userId for email events
         
         // Create detailed body with event information
         String eventDetails = createEventDetailsBody(eventType, sesEvent);
-        log.setBody(eventDetails);
+        notificationLog.setBody(eventDetails);
         
-        // Parse timestamp
+        // Parse timestamp - SES timestamps are in UTC, convert to local timezone
         try {
-            LocalDateTime eventTime = LocalDateTime.parse(timestamp, DateTimeFormatter.ISO_DATE_TIME);
-            log.setNotificationDate(eventTime);
+            // Parse as UTC first, then convert to local timezone
+            if (timestamp.endsWith("Z")) {
+                // UTC timestamp - parse as Instant then convert to LocalDateTime
+                java.time.Instant instant = java.time.Instant.parse(timestamp);
+                LocalDateTime eventTime = LocalDateTime.ofInstant(instant, java.time.ZoneId.systemDefault());
+                notificationLog.setNotificationDate(eventTime);
+            } else {
+                // Local timestamp - parse directly
+                LocalDateTime eventTime = LocalDateTime.parse(timestamp, DateTimeFormatter.ISO_DATE_TIME);
+                notificationLog.setNotificationDate(eventTime);
+            }
         } catch (Exception e) {
-            log.setNotificationDate(LocalDateTime.now());
+            log.warn("Could not parse SES timestamp '{}', using current time", timestamp);
+            notificationLog.setNotificationDate(LocalDateTime.now());
         }
         
-        return log;
+        return notificationLog;
     }
 
     private String createEventDetailsBody(String eventType, SesEventDTO sesEvent) {
@@ -154,8 +175,9 @@ public class EmailEventService {
             }
         }
         
-        // Add event-specific details
-        switch (eventType) {
+        // Add event-specific details (case-insensitive matching)
+        String eventTypeLower = eventType != null ? eventType.toLowerCase() : null;
+        switch (eventTypeLower) {
             case "send":
                 // Send event - email accepted by SES
                 body.append("Status: Email accepted by SES for sending\n");
@@ -200,23 +222,111 @@ public class EmailEventService {
         return body.toString();
     }
     
-    // All duplicate checking logic completely removed
+    /**
+     * Atomically create an event, preventing race conditions
+     * Uses synchronized method and database-level checking to ensure only one event per type per message
+     */
+    @Transactional
+    public synchronized boolean createEventAtomically(String originalLogId, String eventType, String messageId, 
+                                       String recipient, String timestamp, SesEventDTO sesEvent) {
+        if (originalLogId == null) {
+            log.warn("Cannot create event - originalLogId is null for event: {} message: {}", eventType, messageId);
+            return false; // Can't create without original log ID
+        }
+        
+        try {
+            // Double-check pattern: Check again within synchronized method
+            if (isDuplicateEvent(originalLogId, eventType, messageId)) {
+                log.debug("Event already exists (double-check): {} for source: {} message: {} - SKIPPING", 
+                    eventType, originalLogId, messageId);
+                return false; // Event already exists
+            }
+            
+            log.debug("Creating new event: {} for source: {} message: {} recipient: {}", 
+                eventType, originalLogId, messageId, recipient);
+            
+            // Create the event log
+            NotificationLog eventLog = createEmailEventLog(eventType, messageId, recipient, timestamp, sesEvent, originalLogId);
+            
+            // Save with transaction
+            notificationLogRepository.save(eventLog);
+            
+            log.debug("Successfully created event atomically: {} for source: {} message: {} with ID: {}", 
+                eventType, originalLogId, messageId, eventLog.getId());
+            return true;
+            
+        } catch (Exception e) {
+            log.error("Error creating event atomically: {} for source: {} message: {}", 
+                eventType, originalLogId, messageId, e);
+            return false;
+        }
+    }
+    
+    /**
+     * Check if an event already exists for the same source and event type
+     * Prevents duplicate events of the same type for the same email (source)
+     */
+    private boolean isDuplicateEvent(String originalLogId, String eventType, String messageId) {
+        if (originalLogId == null) {
+            return false; // Can't check duplicates without original log ID
+        }
+        
+        try {
+            // Find all events for this source (original email log ID)
+            List<NotificationLog> existingEvents = notificationLogRepository
+                .findBySourceAndNotificationType(originalLogId, "EMAIL_EVENT");
+            
+            log.debug("Checking for duplicates: {} events found for source: {} eventType: {}", 
+                existingEvents.size(), originalLogId, eventType);
+            
+            // Check if we already have this exact event type for this source (not message ID)
+            for (NotificationLog existingEvent : existingEvents) {
+                String existingBody = existingEvent.getBody();
+                
+                if (existingBody != null) {
+                    // Check the first line after "Email Event: " for exact match
+                    String[] lines = existingBody.split("\n");
+                    if (lines.length > 0) {
+                        String firstLine = lines[0].trim();
+                        if (firstLine.equals("Email Event: " + eventType.toUpperCase())) {
+                            log.debug("Duplicate event found: {} for source {} (existing event ID: {}) - SKIPPING", 
+                                eventType, originalLogId, existingEvent.getId());
+                            return true; // True duplicate found
+                        }
+                    }
+                }
+            }
+            
+            log.debug("No duplicate found for event: {} source: {}", eventType, originalLogId);
+            return false;
+        } catch (Exception e) {
+            log.error("Error checking for duplicate event: {}", e.getMessage(), e);
+            return false; // Allow processing on error
+        }
+    }
     
     private String findOriginalNotificationLogId(String recipient, String timestamp) {
         try {
-            // Parse the event timestamp
+            // Parse the event timestamp - SES timestamps are in UTC, convert to local timezone
             LocalDateTime eventTime;
             try {
-                eventTime = LocalDateTime.parse(timestamp, DateTimeFormatter.ISO_DATE_TIME);
+                if (timestamp.endsWith("Z")) {
+                    // UTC timestamp - parse as Instant then convert to LocalDateTime
+                    java.time.Instant instant = java.time.Instant.parse(timestamp);
+                    eventTime = LocalDateTime.ofInstant(instant, java.time.ZoneId.systemDefault());
+                } else {
+                    // Local timestamp - parse directly
+                    eventTime = LocalDateTime.parse(timestamp, DateTimeFormatter.ISO_DATE_TIME);
+                }
             } catch (Exception e) {
                 log.warn("Could not parse timestamp '{}', using current time", timestamp);
                 eventTime = LocalDateTime.now();
             }
             
-            // Step 1: Look for EMAIL log for this recipient within a narrow time window
-            // Events typically arrive within 5 minutes of email sending
-            LocalDateTime searchStart = eventTime.minusMinutes(10);
-            LocalDateTime searchEnd = eventTime.plusMinutes(5);
+            // Step 1: Look for EMAIL log for this recipient within a wider time window
+            // Events can arrive within 30 minutes of email sending
+            LocalDateTime searchStart = eventTime.minusMinutes(30);
+            LocalDateTime searchEnd = eventTime.plusMinutes(15);
             
             Optional<NotificationLog> matchingEmail = notificationLogRepository
                 .findTopByChannelIdAndNotificationTypeAndNotificationDateBeforeOrderByNotificationDateDesc(
@@ -227,7 +337,7 @@ public class EmailEventService {
                 // Verify the email was sent within reasonable time window
                 if (emailLog.getNotificationDate().isAfter(searchStart)) {
                     String logId = emailLog.getId();
-                    log.info("Found matching EMAIL log ID: '{}' for recipient: '{}' (sent at: {}, event at: {})", 
+                    log.debug("Found matching EMAIL log ID: '{}' for recipient: '{}' (sent at: {}, event at: {})", 
                         logId, recipient, emailLog.getNotificationDate(), eventTime);
                     return logId;
                 } else {
@@ -245,7 +355,7 @@ public class EmailEventService {
                 NotificationLog emailLog = recentEmail.get();
                 String logId = emailLog.getId();
                 long minutesDiff = java.time.Duration.between(emailLog.getNotificationDate(), eventTime).toMinutes();
-                log.info("Using most recent EMAIL log ID: '{}' for recipient: '{}' (time diff: {} minutes)", 
+                log.debug("Using most recent EMAIL log ID: '{}' for recipient: '{}' (time diff: {} minutes)", 
                     logId, recipient, minutesDiff);
                 
                 // Warn if time difference is large (might be wrong email)

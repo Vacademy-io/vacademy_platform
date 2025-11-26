@@ -15,6 +15,7 @@ import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan
 import vacademy.io.admin_core_service.features.user_subscription.handler.ReferralBenefitOrchestrator;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
+import vacademy.io.common.auth.dto.learner.LearnerExtraDetails;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.session.PackageSession;
@@ -42,7 +43,7 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
                                                          EnrollInvite enrollInvite,
                                                          PaymentOption paymentOption,
                                                          UserPlan userPlan,
-                                                         Map<String, Object> extraData) {
+                                                         Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
         List<InstituteStudentDetails> instituteStudentDetails = new ArrayList<>();
         if (paymentOption.isRequireApproval()) {
             String status = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();
@@ -70,7 +71,7 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
                         enrollInvite.getLearnerAccessDays() != null ? enrollInvite.getLearnerAccessDays().toString()
                                 : null,
                         packageSessionId,
-                        userPlan.getId());
+                        userPlan.getId(),null,null);
                 instituteStudentDetails.add(detail);
             }
         } else {
@@ -80,12 +81,12 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
             for (String packageSessionId : packageSessionIds) {
                 InstituteStudentDetails instituteStudentDetail = new InstituteStudentDetails(instituteId,
                         packageSessionId, null, status, new Date(), null,
-                        (accessDays != null ? accessDays.toString() : null), null, userPlan.getId());
+                        (accessDays != null ? accessDays.toString() : null), null, userPlan.getId(),null,null);
                 instituteStudentDetails.add(instituteStudentDetail);
             }
         }
         UserDTO user = learnerBatchEnrollService.checkAndCreateStudentAndAddToBatch(userDTO, instituteId,
-                instituteStudentDetails, learnerPackageSessionsEnrollDTO.getCustomFieldValues(), extraData);
+                instituteStudentDetails, learnerPackageSessionsEnrollDTO.getCustomFieldValues(), extraData,learnerExtraDetails,enrollInvite);
 
         // Process referral request if present - for free payments, benefits are
         // activated immediately

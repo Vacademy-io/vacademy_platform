@@ -15,40 +15,58 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.notification_service.constants.NotificationConstants;
+import vacademy.io.notification_service.features.announcements.service.InstituteAnnouncementSettingsService;
+import vacademy.io.notification_service.features.announcements.dto.EmailConfigDTO;
+import vacademy.io.notification_service.features.announcements.service.EmailConfigurationService;
 import vacademy.io.notification_service.institute.InstituteInfoDTO;
 import vacademy.io.notification_service.institute.InstituteInternalService;
 
 import java.util.AbstractMap;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
+import java.util.Set;
 
 @Service
 public class EmailService {
 
     private static final Logger logger = LoggerFactory.getLogger(EmailService.class);
     private final JavaMailSender mailSender;
-    private final EmailDispatcher emailDispatcher = EmailDispatcher.getInstance();
+    private final EmailDispatcher emailDispatcher;
     @Value("${app.ses.sender.email}")
     private String from;
 
     @Value("${ses.configuration.set}")
     private String sesConfigurationSet;
 
+    @Value("${aws.sqs.enabled}")
+    private boolean awsSqsEnabled;
+
     private final InstituteInternalService internalService;
+    private final EmailConfigurationService emailConfigurationService;
     private final ObjectMapper objectMapper;
+    private final InstituteAnnouncementSettingsService instituteAnnouncementSettingsService;
 
     @Autowired
-    public EmailService(JavaMailSender mailSender, InstituteInternalService internalService, ObjectMapper objectMapper) {
+    public EmailService(JavaMailSender mailSender, InstituteInternalService internalService,
+                        ObjectMapper objectMapper, EmailDispatcher emailDispatcher,
+                        InstituteAnnouncementSettingsService instituteAnnouncementSettingsService,
+                        EmailConfigurationService emailConfigurationService) {
         this.mailSender = mailSender;
         this.internalService = internalService;
         this.objectMapper = objectMapper;
+        this.emailDispatcher = emailDispatcher;
+        this.instituteAnnouncementSettingsService = instituteAnnouncementSettingsService;
+        this.emailConfigurationService = emailConfigurationService;
     }
 
     private JavaMailSenderImpl createCustomMailSender(JsonNode emailSettings) {
@@ -63,7 +81,7 @@ public class EmailService {
         props.put("mail.transport.protocol", "smtp");
         props.put("mail.smtp.auth", "true");
         props.put("mail.smtp.starttls.enable", "true"); // This is the key part
-        props.put("mail.debug", "true"); // Optional: for debugging connection issues in logs
+        props.put("mail.debug", "false");
         mailSender.setJavaMailProperties(props);
         return mailSender;
     }
@@ -112,7 +130,7 @@ public class EmailService {
                         }
                         
                         // Always use the 'from' address from the email type configuration
-                        fromToUse = emailConfig.path(NotificationConstants.FROM).asText(from);
+                        fromToUse = resolveFromAddress(emailConfig, from);
                         logger.info("Using from address: {} from email type: {}", fromToUse, emailTypeToUse);
                         
                     } else {
@@ -170,6 +188,23 @@ public class EmailService {
         return false;
     }
 
+    private boolean shouldIncludeSesConfigurationHeader(String instituteId) {
+        if (!awsSqsEnabled) {
+            return false;
+        }
+
+        if (!StringUtils.hasText(instituteId)) {
+            return true;
+        }
+
+        try {
+            return instituteAnnouncementSettingsService.isEmailTrackingEnabled(instituteId);
+        } catch (Exception e) {
+            logger.warn("Failed to resolve email tracking setting for institute {}: {}", instituteId, e.getMessage());
+            return true;
+        }
+    }
+
     public void sendEmail(String to, String subject, String text, String instituteId) {
         try {
             AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId);
@@ -184,7 +219,9 @@ public class EmailService {
             message.setText(text);
             
             // Add SES configuration set header for event tracking
-            message.setHeader("X-SES-CONFIGURATION-SET", sesConfigurationSet);
+            if (shouldIncludeSesConfigurationHeader(instituteId)) {
+                message.setHeader("X-SES-CONFIGURATION-SET", sesConfigurationSet);
+            }
 
             mailSenderToUse.send(message);
             logger.info("Email sent successfully to {} using {}", to,
@@ -220,10 +257,12 @@ public class EmailService {
 
             final String emailSubject = StringUtils.hasText(subject)
                     ? subject
-                    : "Your One-Time Password (OTP) for "+instituteName+" Access";
+                    : "Your One-Time Password (OTP) for "+instituteName+" Access | "+otp;
 
             // Build the HTML body for the OTP email
             final String emailBody = createEmailBody(name, otp, instituteTheme, instituteName, instituteUrl,fromToUse);
+
+            final boolean includeSesHeader = shouldIncludeSesConfigurationHeader(instituteId);
 
             emailDispatcher.sendEmail(() -> {
                 try {
@@ -235,7 +274,9 @@ public class EmailService {
                     message.setSubject(emailSubject);
                     
                     // Add SES configuration set header for event tracking
-                    message.setHeader("X-SES-CONFIGURATION-SET", sesConfigurationSet);
+                    if (includeSesHeader) {
+                        message.setHeader("X-SES-CONFIGURATION-SET", sesConfigurationSet);
+                    }
 
                     // Add HTML content
                     MimeMultipart multipart = new MimeMultipart();
@@ -376,6 +417,8 @@ public class EmailService {
 
             String emailSubject = StringUtils.hasText(subject) ? subject : "This is a very important email";
 
+            final boolean includeSesHeader = shouldIncludeSesConfigurationHeader(instituteId);
+
             emailDispatcher.sendEmail(() -> {
                 try {
                     MimeMessage message = new MimeMessage(Session.getInstance(new Properties()));
@@ -391,7 +434,9 @@ public class EmailService {
                     message.setSubject(emailSubject);
                     
                     // Add SES configuration set header for event tracking
-                    message.setHeader("X-SES-CONFIGURATION-SET", sesConfigurationSet);
+                    if (includeSesHeader) {
+                        message.setHeader("X-SES-CONFIGURATION-SET", sesConfigurationSet);
+                    }
 
                     MimeMultipart multipart = new MimeMultipart();
                     MimeBodyPart htmlPart = new MimeBodyPart();
@@ -427,6 +472,8 @@ public class EmailService {
                     : "This is a very important email";
             final String emailBody = body;
 
+            final boolean includeSesHeader = shouldIncludeSesConfigurationHeader(instituteId);
+
             emailDispatcher.sendEmail(() -> {
                 try {
                     logger.info("Setting up email session and message...");
@@ -438,7 +485,9 @@ public class EmailService {
                     message.setSubject(emailSubject);
                     
                     // Add SES configuration set header for event tracking
-                    message.setHeader("X-SES-CONFIGURATION-SET", sesConfigurationSet);
+                    if (includeSesHeader) {
+                        message.setHeader("X-SES-CONFIGURATION-SET", sesConfigurationSet);
+                    }
 
                     MimeMultipart multipart = new MimeMultipart();
 
@@ -483,4 +532,91 @@ public class EmailService {
         }
     }
 
+    /**
+     * Resolve all available email senders for an institute (type + from address).
+     */
+    public List<EmailSenderInfo> listInstituteEmailSenders(String instituteId) {
+        Set<EmailSenderInfo> senders = new LinkedHashSet<>();
+        senders.add(new EmailSenderInfo(NotificationConstants.UTILITY_EMAIL, from));
+
+        if (!StringUtils.hasText(instituteId)) {
+            return new ArrayList<>(senders);
+        }
+
+        try {
+            List<EmailConfigDTO> configurations = emailConfigurationService.getEmailConfigurations(instituteId);
+            configurations.stream()
+                    .filter(Objects::nonNull)
+                    .forEach(config -> {
+                        String type = config.getType();
+                        String email = config.getEmail();
+                        if (StringUtils.hasText(type) && StringUtils.hasText(email)) {
+                            senders.add(new EmailSenderInfo(type.trim().toUpperCase(), email.trim()));
+                        }
+                    });
+        } catch (Exception e) {
+            logger.warn("Failed to resolve institute email senders for {}: {}", instituteId, e.getMessage());
+        }
+
+        return new ArrayList<>(senders);
+    }
+
+    private String resolveFromAddress(JsonNode config, String defaultFrom) {
+        if (config == null || config.isMissingNode()) {
+            return defaultFrom;
+        }
+
+        String fromAddress = config.path(NotificationConstants.FROM).asText(null);
+        if (!StringUtils.hasText(fromAddress)) {
+            fromAddress = config.path("fromEmail").asText(null);
+        }
+        if (!StringUtils.hasText(fromAddress)) {
+            fromAddress = config.path("fromAddress").asText(null);
+        }
+        if (!StringUtils.hasText(fromAddress)) {
+            fromAddress = config.path("from_email").asText(null);
+        }
+        if (!StringUtils.hasText(fromAddress)) {
+            fromAddress = config.path("from_email_address").asText(null);
+        }
+        if (!StringUtils.hasText(fromAddress)) {
+            fromAddress = config.path("email").asText(null);
+        }
+
+        if (!StringUtils.hasText(fromAddress)) {
+            return defaultFrom;
+        }
+        return fromAddress.trim();
+    }
+
+    public static class EmailSenderInfo {
+        private final String emailType;
+        private final String fromAddress;
+
+        public EmailSenderInfo(String emailType, String fromAddress) {
+            this.emailType = emailType;
+            this.fromAddress = fromAddress;
+        }
+
+        public String getEmailType() {
+            return emailType;
+        }
+
+        public String getFromAddress() {
+            return fromAddress;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof EmailSenderInfo that)) return false;
+            return Objects.equals(emailType, that.emailType) &&
+                    Objects.equals(fromAddress, that.fromAddress);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(emailType, fromAddress);
+        }
+    }
 }

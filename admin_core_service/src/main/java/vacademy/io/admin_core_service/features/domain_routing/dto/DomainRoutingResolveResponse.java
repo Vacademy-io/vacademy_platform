@@ -18,6 +18,8 @@ public class DomainRoutingResolveResponse {
     private String redirect;
     private String privacyPolicyUrl;
     private String afterLoginRoute;
+    private String adminPortalAfterLogoutRoute;
+    private String homeIconClickRoute;
     private String termsAndConditionUrl;
     private String theme;
     private String tabText;

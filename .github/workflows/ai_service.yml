@@ -1,0 +1,55 @@
+name: AI Service CI
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'ai_service/**'
+      - '.github/workflows/ai_service.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      APP_ENV: stage
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        working-directory: ai_service
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Import smoke test
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        working-directory: ai_service
+        run: |
+          python - << 'PY'
+          from ai_service.app.config import get_settings
+          from ai_service.main import app
+          s = get_settings()
+          print(f"Loaded APP_ENV={s.app_env}, API_BASE={s.api_base_path}")
+          PY
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./ai_service
+          file: ./ai_service/Dockerfile
+          push: false
+          build-args: |
+            APP_ENV=${{ env.APP_ENV }}
+          tags: ai-service:ci
+
+

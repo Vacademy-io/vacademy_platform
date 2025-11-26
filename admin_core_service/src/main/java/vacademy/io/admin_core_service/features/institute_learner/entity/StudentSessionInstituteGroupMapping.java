@@ -87,4 +87,11 @@ public class StudentSessionInstituteGroupMapping {
 
     @Column(name = "desired_package_id", length = 255)
     private String desiredPackageId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "sub_org_id", referencedColumnName = "id")
+    private Institute subOrg;
+
+    @Column(name = "comma_separated_org_roles", columnDefinition = "TEXT")
+    private String commaSeparatedOrgRoles;
 }

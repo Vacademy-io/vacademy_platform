@@ -21,6 +21,8 @@ import java.util.Map;
 import java.lang.reflect.Field;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.notification.dto.WhatsappRequest;
 
 @Component
 public class SendUniqueLinkService {
@@ -41,6 +43,7 @@ public class SendUniqueLinkService {
     /**
      * Convert NotificationTemplateVariables to a generic map for template placeholders
      * This method uses reflection to dynamically extract all fields and their values
+     * Special handling for customFields Map to expand nested key-value pairs
      */
     private Map<String, String> convertTemplateVariablesToMap(NotificationTemplateVariables templateVars) {
         Map<String, String> placeholders = new HashMap<>();
@@ -54,8 +57,33 @@ public class SendUniqueLinkService {
             for (Field field : fields) {
                 field.setAccessible(true);
                 Object value = field.get(templateVars);
+                
                 if (value != null) {
-                    placeholders.put(field.getName(), value.toString());
+                    // Special handling for customFields Map
+                    if (field.getName().equals("customFields") && value instanceof Map) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, String> customFieldsMap = (Map<String, String>) value;
+                        
+                        // Generate HTML for all custom fields
+                        String customFieldsHtml = generateCustomFieldsHtml(customFieldsMap);
+                        placeholders.put("customFieldsHtml", customFieldsHtml);
+                        
+                        // Add each custom field with "customFields." prefix for template access
+                        for (Map.Entry<String, String> entry : customFieldsMap.entrySet()) {
+                            if (entry.getValue() != null && !entry.getValue().trim().isEmpty()) {
+                                // Allow access as: {{customFields.Phone Number}}
+                                placeholders.put("customFields." + entry.getKey(), entry.getValue());
+                                
+                                // Also add snake_case version for flexibility: {{custom_fields_phone_number}}
+                                String snakeCaseKey = "custom_fields_" + 
+                                    entry.getKey().toLowerCase().replaceAll("[^a-z0-9]+", "_");
+                                placeholders.put(snakeCaseKey, entry.getValue());
+                            }
+                        }
+                    } else {
+                        // Standard field mapping
+                        placeholders.put(field.getName(), value.toString());
+                    }
                 }
             }
         } catch (Exception e) {
@@ -64,6 +92,46 @@ public class SendUniqueLinkService {
         }
 
         return placeholders;
+    }
+
+    /**
+     * Generate HTML for custom fields dynamically
+     * Creates formatted HTML with detail-item divs for each custom field
+     */
+    private String generateCustomFieldsHtml(Map<String, String> customFields) {
+        if (customFields == null || customFields.isEmpty()) {
+            return "<p style='color: #6c757d; font-style: italic;'>No additional information provided.</p>";
+        }
+        
+        StringBuilder html = new StringBuilder();
+        
+        for (Map.Entry<String, String> entry : customFields.entrySet()) {
+            String fieldName = entry.getKey();
+            String fieldValue = entry.getValue();
+            
+            if (fieldValue != null && !fieldValue.trim().isEmpty()) {
+                html.append("<div class=\"detail-item\">");
+                html.append("<span class=\"detail-label\">").append(escapeHtml(fieldName)).append(":</span>");
+                html.append("<span class=\"detail-value\">").append(escapeHtml(fieldValue)).append("</span>");
+                html.append("</div>");
+            }
+        }
+        
+        return html.toString();
+    }
+
+    /**
+     * Escape HTML special characters to prevent XSS
+     */
+    private String escapeHtml(String text) {
+        if (text == null) {
+            return "";
+        }
+        return text.replace("&", "&amp;")
+                   .replace("<", "&lt;")
+                   .replace(">", "&gt;")
+                   .replace("\"", "&quot;")
+                   .replace("'", "&#x27;");
     }
 
     /**
@@ -88,6 +156,7 @@ public class SendUniqueLinkService {
      * Merge template dynamic parameters with user-specific values
      * Template parameters that are empty will be filled with user data
      * Template parameters that already have values will be kept as-is
+     * Now includes campaignName and all custom fields from customFields map
      */
     private Map<String, String> mergeTemplateParameters(Template template, NotificationTemplateVariables userVars) {
         Map<String, String> mergedParams = new HashMap<>();
@@ -113,11 +182,17 @@ public class SendUniqueLinkService {
             if (isEmpty(mergedParams.get("user_mobile"))) {
                 mergedParams.put("user_mobile", userParams.getOrDefault("userMobile", ""));
             }
+            if (isEmpty(mergedParams.get("user_full_name"))) {
+                mergedParams.put("user_full_name", userParams.getOrDefault("userFullName", ""));
+            }
             if (isEmpty(mergedParams.get("package_name"))) {
                 mergedParams.put("package_name", userParams.getOrDefault("packageName", ""));
             }
             if (isEmpty(mergedParams.get("institute_name"))) {
                 mergedParams.put("institute_name", userParams.getOrDefault("instituteName", ""));
+            }
+            if (isEmpty(mergedParams.get("institute_id"))) {
+                mergedParams.put("institute_id", userParams.getOrDefault("instituteId", ""));
             }
             if (isEmpty(mergedParams.get("payment_type"))) {
                 mergedParams.put("payment_type", userParams.getOrDefault("paymentType", ""));
@@ -150,6 +225,43 @@ public class SendUniqueLinkService {
             }
             if (isEmpty(mergedParams.get("ref_code"))) {
                 mergedParams.put("ref_code", userParams.getOrDefault("refCode", ""));
+            }
+            
+            // NEW: Audience campaign variables
+            if (isEmpty(mergedParams.get("campaign_name"))) {
+                mergedParams.put("campaign_name", userParams.getOrDefault("campaignName", ""));
+            }
+            if (isEmpty(mergedParams.get("campaignName"))) {
+                mergedParams.put("campaignName", userParams.getOrDefault("campaignName", ""));
+            }
+            
+            // NEW: Add template-specific mappings for camelCase variables
+            if (isEmpty(mergedParams.get("userFullName"))) {
+                mergedParams.put("userFullName", userParams.getOrDefault("userFullName", ""));
+            }
+            if (isEmpty(mergedParams.get("userEmail"))) {
+                mergedParams.put("userEmail", userParams.getOrDefault("userEmail", ""));
+            }
+            if (isEmpty(mergedParams.get("userMobile"))) {
+                mergedParams.put("userMobile", userParams.getOrDefault("userMobile", ""));
+            }
+            if (isEmpty(mergedParams.get("submissionTime"))) {
+                mergedParams.put("submissionTime", userParams.getOrDefault("submissionTime", ""));
+            }
+            if (isEmpty(mergedParams.get("customFieldsHtml"))) {
+                mergedParams.put("customFieldsHtml", userParams.getOrDefault("customFieldsHtml", ""));
+            }
+            
+            // NEW: Add all custom fields from userParams (already expanded by convertTemplateVariablesToMap)
+            // This includes both "customFields.Field Name" and "custom_fields_field_name" formats
+            for (Map.Entry<String, String> entry : userParams.entrySet()) {
+                String key = entry.getKey();
+                // Add custom field mappings if they don't already exist
+                if (key.startsWith("customFields.") || key.startsWith("custom_fields_") || key.equals("customFieldsHtml")) {
+                    if (isEmpty(mergedParams.get(key))) {
+                        mergedParams.put(key, entry.getValue());
+                    }
+                }
             }
             
             // Add unique_link if not present
@@ -244,17 +356,45 @@ public class SendUniqueLinkService {
             
             // Merge template parameters with user variables
             Map<String, String> mergedParams = mergeTemplateParameters(template, templateVars);
-            
-            // Add unique link
-            String learnerDashBoardUrl = templateReader.getLearnerDashBoardUrl(institute.getSetting());
-            if (learnerDashBoardUrl != null) {
-                mergedParams.put("unique_link", learnerDashBoardUrl + user.getUsername());
+            String templateName = template.getName() != null ? template.getName().trim() : "";
+            String languageCode = "en";
+            Map<String, String> finalParamMap = new HashMap<>();
+            // Use only keys present in dynamic_parameters for the outgoing payload
+            Map<String, String> dynamicParams = parseDynamicParameters(template.getDynamicParameters());
+            if (dynamicParams != null && !dynamicParams.isEmpty()) {
+                // language_code override if provided in dynamic params
+                if (dynamicParams.containsKey("language_code") && StringUtils.hasText(dynamicParams.get("language_code"))) {
+                    languageCode = dynamicParams.get("language_code");
+                }
+                for (Map.Entry<String, String> entry : dynamicParams.entrySet()) {
+                    String key = entry.getKey();
+                    if (!StringUtils.hasText(key)) continue;
+                    // Prefer merged (user/event) value, else template default
+                    String value = mergedParams.get(key);
+                    if (!StringUtils.hasText(value)) value = entry.getValue();
+                    finalParamMap.put(key, value != null ? value : "");
+                }
+            } else {
+                finalParamMap.put("name", mergedParams.getOrDefault("name", user.getFullName()));
             }
-            
-            // Send WhatsApp message with processed content
-            // Note: You may need to modify templateReader.sendWhatsAppMessage to accept processed content
-            templateReader.sendWhatsAppMessage(institute.getSetting(), user, 
-                learnerDashBoardUrl + user.getUsername(), instituteId, templateId);
+
+            // Build request for notification-service
+            WhatsappRequest request = new WhatsappRequest();
+            request.setTemplateName(templateName);
+            request.setLanguageCode(languageCode);
+
+            // Sanitize mobile number: remove +, spaces, and non-numeric characters
+            String sanitizedMobile = user.getMobileNumber();
+            if (sanitizedMobile != null) {
+                sanitizedMobile = sanitizedMobile.replaceAll("[^0-9]", "");
+            }
+
+            Map<String, Map<String, String>> singleUser = new HashMap<>();
+            singleUser.put(sanitizedMobile, finalParamMap);
+            request.setUserDetails(List.of(singleUser));
+
+            // Dispatch to notification-service
+            notificationService.sendWhatsappToUsers(request, instituteId);
         }
     }
 }

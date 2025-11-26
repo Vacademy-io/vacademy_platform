@@ -808,4 +808,30 @@ public class SlideService {
     public Double calculateTotalReadTimeInMinutes(String packageSessionId) {
         return slideRepository.calculateTotalReadTimeInMinutes(packageSessionId, List.of(SlideStatus.PUBLISHED.name(),SlideStatus.UNSYNC.name()), List.of(StatusEnum.ACTIVE.name()), List.of(StatusEnum.ACTIVE.name()));
     }
+
+    /**
+     * Batch method to calculate read times for multiple package sessions at once.
+     * This eliminates the N+1 query problem.
+     * @param packageSessionIds List of package session IDs
+     * @return Map of package session ID to read time in minutes
+     */
+    public Map<String, Double> calculateReadTimesForPackageSessions(List<String> packageSessionIds) {
+        if (packageSessionIds == null || packageSessionIds.isEmpty()) {
+            return Map.of();
+        }
+        
+        List<vacademy.io.admin_core_service.features.slide.dto.PackageSessionReadTimeProjection> results = 
+            slideRepository.calculateReadTimesForPackageSessions(
+                packageSessionIds,
+                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                List.of(StatusEnum.ACTIVE.name()),
+                List.of(StatusEnum.ACTIVE.name())
+            );
+        
+        return results.stream()
+            .collect(Collectors.toMap(
+                vacademy.io.admin_core_service.features.slide.dto.PackageSessionReadTimeProjection::getPackageSessionId,
+                vacademy.io.admin_core_service.features.slide.dto.PackageSessionReadTimeProjection::getReadTimeInMinutes
+            ));
+    }
 }

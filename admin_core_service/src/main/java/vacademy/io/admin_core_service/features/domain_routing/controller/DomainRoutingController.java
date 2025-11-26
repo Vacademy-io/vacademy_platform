@@ -25,7 +25,7 @@ public class DomainRoutingController {
     }
 
     @GetMapping("/resolve")
-    @ClientCacheable(maxAgeSeconds = 600, scope = CacheScope.PUBLIC)
+    @ClientCacheable(maxAgeSeconds = 7200, scope = CacheScope.PRIVATE)
     public ResponseEntity<DomainRoutingResolveResponse> resolveGet(@RequestParam("domain") String domain,
                                                                    @RequestParam("subdomain") String subdomain) {
         Optional<DomainRoutingResolveResponse> response = domainRoutingService.resolve(domain, subdomain);

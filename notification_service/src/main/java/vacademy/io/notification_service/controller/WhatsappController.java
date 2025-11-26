@@ -33,4 +33,12 @@ public class WhatsappController {
         return ResponseEntity.ok(whatsAppService.sendWhatsappMessages(request.getTemplateName(), request.getUserDetails(), request.getHeaderParams(), request.getLanguageCode(), request.getHeaderType(),instituteId));
     }
 
+    @PostMapping("/send-template-whatsapp/multiple")
+    public ResponseEntity<String> sendWhatsappMessages(@RequestBody List<WhatsappRequest> requests , @RequestParam(name="instituteId", required = false)String instituteId) {
+        for (WhatsappRequest whatsappRequest:requests){
+            whatsAppService.sendWhatsappMessages(whatsappRequest.getTemplateName(), whatsappRequest.getUserDetails(), whatsappRequest.getHeaderParams(), whatsappRequest.getLanguageCode(), whatsappRequest.getHeaderType(),instituteId);
+        }
+        return ResponseEntity.ok("Ok!!!");
+    }
+
 }

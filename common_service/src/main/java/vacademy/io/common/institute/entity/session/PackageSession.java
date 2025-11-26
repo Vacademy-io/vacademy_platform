@@ -54,4 +54,13 @@ public class PackageSession {
     @ManyToOne
     private Group group;
 
+    @Column(name = "is_org_associated")
+    private Boolean isOrgAssociated;
+
+    @PrePersist
+    public void prePersist() {
+        if (isOrgAssociated == null){
+            isOrgAssociated = false;
+        }
+    }
 }

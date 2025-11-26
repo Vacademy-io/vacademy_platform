@@ -8,10 +8,12 @@ WORKDIR /build
 ARG GITHUB_TOKEN
 ARG ACCESS_GITHUB_USERNAME
 ARG JAVA_TOKEN
+ARG SENTRY_AUTH_TOKEN
 
 # Set environment variables
 ENV JAVA_TOKEN=$JAVA_TOKEN
 ENV ACCESS_GITHUB_USERNAME=$ACCESS_GITHUB_USERNAME
+ENV SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN
 
 # Copy the Maven settings file
 COPY settings.xml ./
@@ -19,8 +21,8 @@ COPY settings.xml ./
 # Copy the project files
 COPY . .
 
-# Build the project
-RUN mvn -s settings.xml clean install -DskipTests
+# Build the project with SENTRY_AUTH_TOKEN passed as Maven property
+RUN mvn -s settings.xml clean install -DskipTests -Dsentry.authToken=$SENTRY_AUTH_TOKEN
 
 # Stage 2: Package the application into the final image
 FROM amazoncorretto:17-alpine

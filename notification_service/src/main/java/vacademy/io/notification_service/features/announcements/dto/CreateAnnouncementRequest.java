@@ -85,14 +85,44 @@ public class CreateAnnouncementRequest {
     public static class RecipientRequest {
         
         @NotBlank(message = "Recipient type is required")
-        @Pattern(regexp = "^(ROLE|USER|PACKAGE_SESSION|TAG)$", message = "Recipient type must be one of: ROLE, USER, PACKAGE_SESSION, TAG")
-        private String recipientType; // ROLE, USER, PACKAGE_SESSION
+        @Pattern(regexp = "^(ROLE|USER|PACKAGE_SESSION|TAG|CUSTOM_FIELD_FILTER|AUDIENCE)$", message = "Recipient type must be one of: ROLE, USER, PACKAGE_SESSION, TAG, CUSTOM_FIELD_FILTER, AUDIENCE")
+        private String recipientType; // ROLE, USER, PACKAGE_SESSION, TAG, CUSTOM_FIELD_FILTER, AUDIENCE
         
-        @NotBlank(message = "Recipient ID is required")
+        @NotBlank(message = "Recipient ID is required", groups = {RecipientRequest.StandardRecipient.class})
         private String recipientId;
         
         @Size(max = 255, message = "Recipient name must not exceed 255 characters")
         private String recipientName;
+        
+        // Custom field filters (required when recipientType is CUSTOM_FIELD_FILTER)
+        @Valid
+        private List<CustomFieldFilter> filters;
+        
+        // Interface for validation groups
+        public interface StandardRecipient {}
+        public interface CustomFieldFilterRecipient {}
+        
+        @Getter
+        @Setter
+        @AllArgsConstructor
+        @NoArgsConstructor
+        public static class CustomFieldFilter {
+            // Custom field ID (preferred)
+            @Size(max = 255, message = "Custom field ID must not exceed 255 characters")
+            private String customFieldId;
+            
+            // Deprecated: kept for backward compatibility
+            @Size(max = 255, message = "Field name must not exceed 255 characters")
+            private String fieldName;
+            
+            @NotBlank(message = "Field value is required")
+            @Size(max = 1000, message = "Field value must not exceed 1000 characters")
+            private String fieldValue;
+            
+            // Optional: operator type (equals, contains, startsWith, etc.)
+            @Size(max = 50, message = "Operator must not exceed 50 characters")
+            private String operator; // Default: "equals"
+        }
     }
     
     @Getter

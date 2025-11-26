@@ -1,5 +1,9 @@
 replicaCount: 1
 
+rollingUpdate:
+  maxSurge: 1
+  maxUnavailable: 0
+
 services:
   admin_core_service:
     port: 8072
@@ -31,7 +35,29 @@ services:
     image:
       repository: public.ecr.aws/e0x1f4p4/notification-service/notification-service-repo
       tag: latest
+  ai_service:
+    port: 8077
+    image:
+      repository: public.ecr.aws/e0x1f4p4/ai-service/ai-service-repo
+      tag: latest
 
 environment:
   stage: stage
   prod: prod
+
+# Redis Configuration
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: false
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi

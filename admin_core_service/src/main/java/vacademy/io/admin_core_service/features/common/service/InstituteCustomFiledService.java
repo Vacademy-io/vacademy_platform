@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.common.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.util.CustomFieldKeyGenerator;
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
@@ -46,7 +47,7 @@ public class InstituteCustomFiledService {
 
             CustomFields cf;
 
-            if (cfDto.getId() != null) {
+            if (StringUtils.hasText(cfDto.getId())) {
                 Optional<CustomFields> existingCF = customFieldRepository.findById(cfDto.getId());
                 if (existingCF.isEmpty()) {
                     throw new VacademyException("Custom Field Not Found");
@@ -303,7 +304,7 @@ public class InstituteCustomFiledService {
      * Find custom field by field key for a specific institute
      */
     public Optional<CustomFields> findCustomFieldByKeyAndInstitute(String fieldKey, String instituteId) {
-        return customFieldRepository.findByFieldKeyAndInstituteId(fieldKey, instituteId);
+        return customFieldRepository.findTopByFieldKeyAndStatusOrderByCreatedAtDesc(fieldKey,StatusEnum.ACTIVE.name());
     }
 
     /**

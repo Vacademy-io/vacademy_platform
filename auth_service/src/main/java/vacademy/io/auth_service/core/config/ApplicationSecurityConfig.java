@@ -24,6 +24,10 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.cors.CorsConfigurationSource;
 import vacademy.io.common.auth.filter.InternalAuthFilter;
 import vacademy.io.common.auth.filter.JwtAuthFilter;
+import org.springframework.security.web.authentication.AuthenticationFailureHandler;
+import org.springframework.security.oauth2.client.web.AuthorizationRequestRepository;
+import org.springframework.security.oauth2.client.web.HttpSessionOAuth2AuthorizationRequestRepository;
+import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
 
 @Configuration
 @EnableMethodSecurity
@@ -59,7 +63,8 @@ public class ApplicationSecurityConfig {
             "/auth-service/v1/login",
             "/auth-service/open/**",
             "/auth-service/v1/server-time/**",
-            
+            "/auth-service/wordpress-webhook/**",
+
             // User Resolution APIs for notification service - OPEN for internal communication
             "/auth-service/v1/users/by-role",
             "/auth-service/v1/users/by-ids"
@@ -82,14 +87,19 @@ public class ApplicationSecurityConfig {
     @Autowired
     private AuthenticationSuccessHandler customOAuth2SuccessHandler;
 
+    @Autowired
+    private AuthenticationFailureHandler customOAuth2FailureHandler;
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf().disable()
                 .cors().and()
-                .sessionManagement()
-                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-                .and()
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
+                        .maximumSessions(1)
+                )
+                
                 .authorizeHttpRequests(authz -> authz
                         .requestMatchers(ALLOWED_PATHS).permitAll()
                         .requestMatchers(INTERNAL_PATHS).authenticated()
@@ -98,11 +108,13 @@ public class ApplicationSecurityConfig {
                 .oauth2Login(oauth2 -> oauth2
                         .authorizationEndpoint(auth -> auth
                                 .baseUri("/auth-service/oauth2/authorization")
+                                .authorizationRequestRepository(authorizationRequestRepository())
                                 .authorizationRequestResolver(
                                         new CustomAuthorizationRequestResolver(clientRegistrationRepository, "/auth-service/oauth2/authorization")
                                 )
                         )
                         .successHandler(customOAuth2SuccessHandler)
+                        .failureHandler(customOAuth2FailureHandler)
                 )
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(internalAuthFilter, UsernamePasswordAuthenticationFilter.class)
@@ -141,6 +153,11 @@ public class ApplicationSecurityConfig {
     @Bean
     public OAuth2AccessTokenResponseClient<OAuth2AuthorizationCodeGrantRequest> accessTokenResponseClient() {
         return new DefaultAuthorizationCodeTokenResponseClient();
+    }
+
+    @Bean
+    public AuthorizationRequestRepository<OAuth2AuthorizationRequest> authorizationRequestRepository() {
+        return new HttpSessionOAuth2AuthorizationRequestRepository();
     }
 
 }

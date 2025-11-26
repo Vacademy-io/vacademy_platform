@@ -1675,4 +1675,91 @@ WHERE
             @Param("quizQuestionStatusList") List<String> quizQuestionStatusList
     );
 
+    /**
+     * Batch query to calculate read times for multiple package sessions at once.
+     * This eliminates the N+1 query problem when fetching read times for multiple sessions.
+     */
+    @Query(
+            value = """
+-- CTE to count active questions for each assignment slide
+WITH assignment_question_counts AS (
+    SELECT
+        asq.assignment_slide_id,
+        COUNT(asq.id) AS question_count
+    FROM
+        assignment_slide_question asq
+    WHERE
+        asq.status IN (:assignmentQuestionStatusList)
+    GROUP BY
+        asq.assignment_slide_id
+),
+-- CTE to count active questions for each quiz slide
+quiz_question_counts AS (
+    SELECT
+        qsq.quiz_slide_id,
+        COUNT(qsq.id) AS question_count
+    FROM
+        quiz_slide_question qsq
+    WHERE
+        qsq.status IN (:quizQuestionStatusList)
+    GROUP BY
+        qsq.quiz_slide_id
+)
+-- Main query to calculate read time per package session
+SELECT
+    ps.id AS packageSessionId,
+    COALESCE(SUM(
+        CASE
+            WHEN s.source_type = 'VIDEO' THEN
+                ROUND(COALESCE(vs.published_video_length, vs.video_length, 0) / 60000.0, 2)
+            WHEN s.source_type = 'DOCUMENT' THEN
+                CASE
+                    WHEN ds.type = 'PDF' THEN
+                        LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages, 0) * 3, 120)
+                    WHEN ds.type = 'PRESENTATION' THEN
+                        LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages, 0) * 2, 60)
+                    ELSE
+                        10
+                END
+            WHEN s.source_type = 'QUESTION' THEN
+                5
+            WHEN s.source_type = 'ASSIGNMENT' THEN
+                COALESCE(aqc.question_count, 0) * 3
+            WHEN s.source_type = 'QUIZ' THEN
+                COALESCE(qqc.question_count, 0) * 2
+            ELSE 0
+        END
+    ), 0) AS readTimeInMinutes
+FROM
+    package_session ps
+JOIN
+    chapter_package_session_mapping cpsm ON cpsm.package_session_id = ps.id
+JOIN
+    chapter_to_slides cts ON cts.chapter_id = cpsm.chapter_id
+JOIN
+    slide s ON s.id = cts.slide_id
+LEFT JOIN
+    video vs ON s.source_id = vs.id AND s.source_type = 'VIDEO'
+LEFT JOIN
+    document_slide ds ON s.source_id = ds.id AND s.source_type = 'DOCUMENT'
+LEFT JOIN
+    assignment_question_counts aqc ON s.source_id = aqc.assignment_slide_id AND s.source_type = 'ASSIGNMENT'
+LEFT JOIN
+    quiz_question_counts qqc ON s.source_id = qqc.quiz_slide_id AND s.source_type = 'QUIZ'
+WHERE
+    ps.id IN (:packageSessionIds)
+    AND s.status IN (:slideStatusList)
+    AND cts.status IN (:slideStatusList)
+GROUP BY
+    ps.id
+""",
+            nativeQuery = true
+    )
+    List<PackageSessionReadTimeProjection> calculateReadTimesForPackageSessions(
+            @Param("packageSessionIds") List<String> packageSessionIds,
+            @Param("slideStatusList") List<String> slideStatusList,
+            @Param("assignmentQuestionStatusList") List<String> assignmentQuestionStatusList,
+            @Param("quizQuestionStatusList") List<String> quizQuestionStatusList
+    );
+
 }

@@ -35,7 +35,8 @@ jobs:
         env:
           JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
           ACCESS_GITHUB_USERNAME: ${{ secrets.ACCESS_GITHUB_USERNAME }}
-        run: mvn -s settings.xml clean install -DskipTests
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: mvn -s settings.xml clean install -DskipTests -Dsentry.authToken=$SENTRY_AUTH_TOKEN
 
       # To push to ECR you need to login through us-east-1
       # https://github.com/aws-actions/amazon-ecr-login/issues/587
@@ -75,8 +76,11 @@ jobs:
           SQS_AWS_REGION: ${{ secrets.SQS_AWS_REGION }}
           SQS_ENDPOINT: ${{ secrets.SQS_ENDPOINT }}
           SQS_REGION: ${{ secrets.SQS_REGION }}
+          AWS_SQS_ENABLED: ${{ secrets.AWS_SQS_ENABLED }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
-          docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg ACCESS_GITHUB_USERNAME=${ACCESS_GITHUB_USERNAME} --build-arg JAVA_TOKEN=${JAVA_TOKEN}
+          docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg ACCESS_GITHUB_USERNAME=${ACCESS_GITHUB_USERNAME} --build-arg JAVA_TOKEN=${JAVA_TOKEN} --build-arg SENTRY_AUTH_TOKEN=${SENTRY_AUTH_TOKEN}
           docker push $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG
           echo "Docker Image Link = $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG"
 
@@ -111,13 +115,16 @@ jobs:
             AWS_MAIL_PASSWORD=${{ secrets.AWS_MAIL_PASSWORD }} \
             SES_SENDER_EMAIL=${{ secrets.SES_SENDER_EMAIL }} \
             WHATSAPP_ACCESS_TOKEN=${{ secrets.WHATSAPP_ACCESS_TOKEN }} \
-            SES_CONFIGURATION_SET: ${{ secrets.SES_CONFIGURATION_SET }} \
-            SES_EVENTS_SQS_URL: ${{ secrets.SES_EVENTS_SQS_URL }} \
-            SQS_AWS_ACCESS_KEY: ${{ secrets.SQS_AWS_ACCESS_KEY }} \
-            SQS_AWS_SECRET_KEY: ${{ secrets.SQS_AWS_SECRET_KEY }} \
-            SQS_AWS_REGION: ${{ secrets.SQS_AWS_REGION }} \
-            SQS_ENDPOINT: ${{ secrets.SQS_ENDPOINT }} \
-            SQS_REGION: ${{ secrets.SQS_REGION }} \
+            SES_CONFIGURATION_SET=${{ secrets.SES_CONFIGURATION_SET }} \
+            SES_EVENTS_SQS_URL=${{ secrets.SES_EVENTS_SQS_URL }} \
+            SQS_AWS_ACCESS_KEY=${{ secrets.SQS_AWS_ACCESS_KEY }} \
+            SQS_AWS_SECRET_KEY=${{ secrets.SQS_AWS_SECRET_KEY }} \
+            SQS_AWS_REGION=${{ secrets.SQS_AWS_REGION }} \
+            SQS_ENDPOINT=${{ secrets.SQS_ENDPOINT }} \
+            SQS_REGION=${{ secrets.SQS_REGION }} \
+            AWS_SQS_ENABLED=${{ secrets.AWS_SQS_ENABLED }} \
+            SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
+            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
 
       - name: Restart deployment
         id: restart-deployment

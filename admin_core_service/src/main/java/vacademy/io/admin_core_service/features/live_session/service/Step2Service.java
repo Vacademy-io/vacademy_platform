@@ -138,7 +138,7 @@ public class Step2Service {
                 .type(dto.getType().name())
                 .status(dto.getNotify() ? NotificationStatusEnum.PENDING.name()
                         : NotificationStatusEnum.DISABLED.name())
-                .channel(NotificationMediaTypeEnum.MAIL.name())
+                .channel(resolveChannel(dto.getNotifyBy()))
                 .offsetMinutes(offset)
                 .triggerTime(null)
                 .build();
@@ -185,20 +185,32 @@ public class Step2Service {
     private void updateNotificationEntity(ScheduleNotification notification,
                                           LiveSessionStep2RequestDTO.NotificationActionDTO dto) {
         notification.setType(dto.getType().name());
-        // TODO : change this what whatsapp service is available
-        notification.setChannel(NotificationMediaTypeEnum.MAIL.name());
+        notification.setChannel(resolveChannel(dto.getNotifyBy()));
         notification.setStatus(
                 dto.getNotify() ? NotificationStatusEnum.PENDING.name() : NotificationStatusEnum.DISABLED.name());
         notification.setOffsetMinutes(dto.getType() == NotificationTypeEnum.BEFORE_LIVE
                 ? extractMinutes(dto.getTime())
                 : 0);
     }
-    // TODO : for later
-    // private String resolveChannel(LiveSessionStep2RequestDTO.NotifyBy notifyBy) {
-    // if (notifyBy.isMail()) return NotificationMediaTypeEnum.MAIL.name();
-    // if (notifyBy.isWhatsapp()) return NotificationMediaTypeEnum.WHATSAPP.name();
-    // return NotificationMediaTypeEnum.MAIL.name();
-    // }
+
+    private String resolveChannel(LiveSessionStep2RequestDTO.NotifyBy notifyBy) {
+        if (notifyBy == null) {
+            return "EMAIL"; // Default fallback
+        }
+        
+        boolean mail = notifyBy.isMail();
+        boolean whatsapp = notifyBy.isWhatsapp();
+        
+        if (mail && whatsapp) {
+            return "BOTH";
+        } else if (whatsapp) {
+            return "WHATSAPP";
+        } else if (mail) {
+            return "EMAIL";
+        } else {
+            return "EMAIL"; // Default fallback
+        }
+    }
 
     private void linkParticipants(LiveSessionStep2RequestDTO request) {
         // Handle batch participants (existing functionality)

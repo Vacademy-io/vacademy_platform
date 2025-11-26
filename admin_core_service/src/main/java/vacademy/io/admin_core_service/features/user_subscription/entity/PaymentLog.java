@@ -1,11 +1,13 @@
 package vacademy.io.admin_core_service.features.user_subscription.entity;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogDTO;
 
 import java.time.LocalDateTime;
@@ -70,9 +72,28 @@ public class PaymentLog {
         paymentLogDTO.setVendorId(vendorId);
         paymentLogDTO.setDate(date);
         paymentLogDTO.setCurrency(currency);
-        paymentLogDTO.setPaymentSpecificData(paymentSpecificData);
         paymentLogDTO.setPaymentAmount(paymentAmount);
+
+        // Safely parse transactionId if possible
+        if (paymentSpecificData != null) {
+            try {
+                JsonNode root = JsonUtil.fromJson(paymentSpecificData, JsonNode.class);
+                // .path() is null-safe: if a node isn't there, you get a “missing” node, not NPE
+                String txnId = root
+                    .path("response")
+                    .path("response_data")
+                    .path("transactionId")
+                    .asText(null);   // default to null if missing
+
+                paymentLogDTO.setTransactionId(txnId);
+            } catch (Exception e) {
+                // Parsing failed: maybe log a warning, but do not throw
+                paymentLogDTO.setTransactionId(null);
+            }
+        } else {
+            paymentLogDTO.setTransactionId(null);
+        }
+
         return paymentLogDTO;
     }
-
 }

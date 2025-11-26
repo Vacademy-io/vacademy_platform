@@ -103,4 +103,19 @@ public class PaymentOption {
                 .build();
     }
 
+    public PaymentOptionDTO mapToPaymentOptionDTOWithoutPlans() {
+        return PaymentOptionDTO.builder()
+            .id(this.id)
+            .name(this.name)
+            .status(this.status)
+            .source(this.source)
+            .sourceId(this.sourceId)
+            .tag(this.tag)
+            .type(this.type)
+            .paymentOptionMetadataJson(this.paymentOptionMetadataJson)
+            .requireApproval(this.requireApproval)
+            .unit(this.unit)
+            .build();
+    }
+
 }

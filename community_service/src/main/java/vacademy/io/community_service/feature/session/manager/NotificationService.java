@@ -8,6 +8,7 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import vacademy.io.community_service.feature.session.dto.admin.EmailRequestDto;
+import org.springframework.beans.factory.annotation.Value;
 
 @Service
 public class NotificationService {
@@ -16,7 +17,11 @@ public class NotificationService {
     @Autowired
     private ObjectMapper objectMapper;
 
-    private final String emailApiUrl = "https://backend-stage.vacademy.io/notification-service/v1/send-email-to-users-public";
+    @Value("${NOTIFICATION_SERVER_BASE_URL}")
+    private String notificationServerBaseUrl;
+
+
+    private final String emailApiUrl = notificationServerBaseUrl + "/notification-service/v1/send-email-to-users-public";
 
     public void sendEmail(EmailRequestDto emailRequest) {
 

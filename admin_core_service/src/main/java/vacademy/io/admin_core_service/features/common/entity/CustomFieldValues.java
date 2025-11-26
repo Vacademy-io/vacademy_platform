@@ -1,9 +1,11 @@
 package vacademy.io.admin_core_service.features.common.entity;
 
 import jakarta.persistence.*;
-        import lombok.*;
+import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.common.common.dto.CustomFieldValueDTO;
+
+import java.sql.Timestamp;
 
 @Entity
 @Table(name = "custom_field_values")
@@ -35,6 +37,12 @@ public class CustomFieldValues {
 
     @Column(columnDefinition = "TEXT")
     private String value;
+
+    @Column(name = "created_at", insertable = false, updatable = false)
+    private Timestamp createdAt;
+
+    @Column(name = "updated_at", insertable = false, updatable = false)
+    private Timestamp updatedAt;
 
     public CustomFieldValues(CustomFieldValueDTO customFieldValuesDTO) {
         this.customFieldId = customFieldValuesDTO.getCustomFieldId();

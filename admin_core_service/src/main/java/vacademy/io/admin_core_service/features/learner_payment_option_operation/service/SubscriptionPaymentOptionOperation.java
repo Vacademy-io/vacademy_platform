@@ -47,12 +47,12 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
 
     @Override
     public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
-                                                         LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
-                                                         String instituteId,
-                                                         EnrollInvite enrollInvite,
-                                                         PaymentOption paymentOption,
-                                                         UserPlan userPlan,
-                                                         Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
+            LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
+            String instituteId,
+            EnrollInvite enrollInvite,
+            PaymentOption paymentOption,
+            UserPlan userPlan,
+            Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
         String learnerSessionStatus = null;
         if (paymentOption.isRequireApproval()) {
             learnerSessionStatus = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();
@@ -72,7 +72,7 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
                 instituteId,
                 instituteStudentDetails,
                 learnerPackageSessionsEnrollDTO.getCustomFieldValues(),
-                extraData,learnerExtraDetails,enrollInvite);
+                extraData, learnerExtraDetails, enrollInvite, userPlan);
 
         PaymentPlan paymentPlan = userPlan.getPaymentPlan();
         if (Objects.isNull(paymentPlan)) {
@@ -86,8 +86,7 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
                     paymentOption,
                     userPlan,
                     user,
-                    instituteId
-            );
+                    instituteId);
         }
 
         // Handle payment
@@ -113,8 +112,8 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
     }
 
     private List<InstituteStudentDetails> buildInstituteStudentDetails(String instituteId,
-                                                                       List<String> packageSessionIds,
-                                                                       Integer accessDays, String learnerSessionStatus, UserPlan userPlan) {
+            List<String> packageSessionIds,
+            Integer accessDays, String learnerSessionStatus, UserPlan userPlan) {
         List<InstituteStudentDetails> detailsList = new ArrayList<>();
 
         for (String packageSessionId : packageSessionIds) {
@@ -140,7 +139,7 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
                     null,
                     accessDays != null ? accessDays.toString() : null,
                     packageSessionId,
-                    userPlan.getId(),null,null);
+                    userPlan.getId(), null, null);
             detailsList.add(detail);
         }
         return detailsList;

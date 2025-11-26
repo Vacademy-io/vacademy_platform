@@ -71,6 +71,7 @@ The Planning Logs API allows teachers and admins to create, list, and update pla
     {
       "id": "log-uuid",
       "created_by_user_id": "user-uuid",
+      "created_by": null,
       "log_type": "planning",
       "entity": "packageSession",
       "entity_id": "session-uuid",
@@ -142,6 +143,7 @@ The Planning Logs API allows teachers and admins to create, list, and update pla
     {
       "id": "log-uuid",
       "created_by_user_id": "user-uuid",
+      "created_by": "John Doe",
       "log_type": "planning",
       "entity": "packageSession",
       "entity_id": "session-uuid",
@@ -239,6 +241,7 @@ Only fields provided in the request will be updated. Omitted fields remain uncha
 {
   "id": "log-uuid",
   "created_by_user_id": "user-uuid",
+  "created_by": null,
   "log_type": "planning",
   "entity": "packageSession",
   "entity_id": "session-uuid",
@@ -378,6 +381,7 @@ curl -X POST "http://localhost:8080/admin-core-service/planning-logs/v1/list?ins
 |-------|------|-------------|----------|
 | id | UUID | Unique identifier | Auto-generated |
 | created_by_user_id | UUID | User who created the log | Yes |
+| created_by | String | Full name of the creator (null in create/update responses, populated in list responses) | Auto-populated |
 | log_type | String | Type: "planning" or "diary" | Yes |
 | entity | String | Entity type | Yes |
 | entity_id | UUID | Associated entity ID | Yes |

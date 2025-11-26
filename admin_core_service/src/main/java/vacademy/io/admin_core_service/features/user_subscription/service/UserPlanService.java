@@ -22,6 +22,7 @@ import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogD
 import vacademy.io.admin_core_service.features.user_subscription.dto.UserPlanDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.UserPlanFilterDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.*;
+import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanSourceEnum;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
@@ -64,11 +65,37 @@ public class UserPlanService {
             PaymentOption paymentOption,
             PaymentInitiationRequestDTO paymentInitiationRequestDTO,
             String status) {
-        logger.info("Creating UserPlan for userId={}, status={}", userId, status);
+        return createUserPlan(userId, paymentPlan, appliedCouponDiscount, enrollInvite,
+                paymentOption, paymentInitiationRequestDTO, status, null, null);
+    }
+
+    public UserPlan createUserPlan(String userId,
+            PaymentPlan paymentPlan,
+            AppliedCouponDiscount appliedCouponDiscount,
+            EnrollInvite enrollInvite,
+            PaymentOption paymentOption,
+            PaymentInitiationRequestDTO paymentInitiationRequestDTO,
+            String status,
+            String source,
+            String subOrgId) {
+        logger.info("Creating UserPlan for userId={}, status={}, source={}, subOrgId={}",
+                userId, status, source, subOrgId);
 
         UserPlan userPlan = new UserPlan();
         userPlan.setStatus(status);
         userPlan.setUserId(userId);
+
+        // Set source and sub_org_id if provided
+        if (source != null) {
+            userPlan.setSource(source);
+        } else {
+            // Default to USER if not specified
+            userPlan.setSource(UserPlanSourceEnum.USER.name());
+        }
+
+        if (subOrgId != null) {
+            userPlan.setSubOrgId(subOrgId);
+        }
 
         setPaymentPlan(userPlan, paymentPlan);
         setAppliedCouponDiscount(userPlan, appliedCouponDiscount);

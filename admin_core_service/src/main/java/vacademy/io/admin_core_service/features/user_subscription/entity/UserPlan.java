@@ -71,6 +71,12 @@ public class UserPlan {
     @Column(name = "json_payment_details", columnDefinition = "TEXT")
     private String jsonPaymentDetails;
 
+    @Column(name = "source", length = 50)
+    private String source;
+
+    @Column(name = "sub_org_id", length = 255)
+    private String subOrgId;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
 

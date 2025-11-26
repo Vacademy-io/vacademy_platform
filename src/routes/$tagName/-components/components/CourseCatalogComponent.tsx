@@ -1,13 +1,17 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { CourseCatalogProps } from "../../-types/course-catalogue-types";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { urlCourseDetails } from "@/constants/urls";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
-import { Filter, ChevronDown, ChevronUp, Search, SortAsc } from "lucide-react";
+import { Filter, ChevronDown, ChevronUp, Search, SortAsc, ShoppingCart, Plus, Minus } from "lucide-react";
 import { toTitleCase } from "@/lib/utils";
+import { useCartStore, CartItem } from "@/stores/cart-store";
+import { toast } from "sonner";
 // EnrollmentPaymentDialog import removed - not used in catalog
+
+type PriceRangeState = { min?: number; max?: number } | null;
 
 // CourseImage component that handles image resolution like study library
 interface CourseImageProps {
@@ -126,6 +130,12 @@ interface CourseCatalogComponentProps extends CourseCatalogProps {
   instituteId: string;
   tagName: string;
   globalSettings?: any;
+  cartButtonConfig?: {
+    enabled?: boolean;
+    showAddToCartButton?: boolean;
+    showQuantitySelector?: boolean;
+    quantityMin?: number;
+  };
 }
 
 interface Course {
@@ -224,16 +234,127 @@ const FilterSection: React.FC<FilterSectionProps> = ({
   );
 };
 
+// Helper component for cart button/quantity controls
+const CartControls: React.FC<{
+  course: Course;
+  globalSettings?: any;
+  cartButtonConfig?: {
+    enabled?: boolean;
+    showAddToCartButton?: boolean;
+    showQuantitySelector?: boolean;
+    quantityMin?: number;
+  };
+  addItem: (item: Omit<CartItem, 'quantity'>) => void;
+  getItemByEnrollInviteId: (enrollInviteId: string) => CartItem | undefined;
+  updateQuantity: (enrollInviteId: string, quantity: number) => void;
+  removeItem: (enrollInviteId: string) => void;
+}> = ({ course, globalSettings, cartButtonConfig, addItem, getItemByEnrollInviteId, updateQuantity, removeItem }) => {
+  const cartItem = course.enrollInviteId ? getItemByEnrollInviteId(course.enrollInviteId) : undefined;
+  const quantityMin = cartButtonConfig?.quantityMin ?? 1;
+  const showAddToCartButton = cartButtonConfig?.showAddToCartButton !== false;
+  const showQuantitySelector = cartButtonConfig?.showQuantitySelector !== false;
+
+  // Only hide if payment is explicitly disabled AND cartButtonConfig is not provided
+  // If cartButtonConfig is provided, always show the button (even for free courses)
+  if (!cartButtonConfig && (globalSettings?.payment?.enabled === false || course.price <= 0)) {
+    return null;
+  }
+
+  if (cartItem && showQuantitySelector) {
+    // Show quantity controls if item is in cart and quantity selector is enabled
+    return (
+      <div className="flex items-center gap-1.5 border border-gray-300 rounded-md px-1.5 py-1 bg-white">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0 hover:bg-gray-100"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (cartItem && course.enrollInviteId) {
+              if (cartItem.quantity > quantityMin) {
+                updateQuantity(course.enrollInviteId, cartItem.quantity - 1);
+              } else {
+                // Remove from cart if quantity reaches minimum
+                removeItem(course.enrollInviteId);
+                toast.success(`${course.title} removed from cart`);
+              }
+            }
+          }}
+        >
+          <Minus className="h-3 w-3" />
+        </Button>
+        <span className="min-w-[32px] text-center font-medium text-gray-900 text-sm">
+          {cartItem.quantity}
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0 hover:bg-gray-100"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (cartItem && course.enrollInviteId) {
+              updateQuantity(course.enrollInviteId, cartItem.quantity + 1);
+            }
+          }}
+        >
+          <Plus className="h-3 w-3" />
+        </Button>
+      </div>
+    );
+  } else if (!cartItem && showAddToCartButton) {
+    // Show Add to Cart button if item is not in cart and button is enabled
+    return (
+      <Button
+        onClick={(e) => {
+          e.stopPropagation(); // Prevent card click
+          if (!course.enrollInviteId) {
+            toast.error('Cannot add item to cart: missing enroll invite ID');
+            return;
+          }
+          addItem({
+            id: course.id,
+            title: course.title,
+            price: course.price,
+            image: course.thumbnail,
+            level: course.level,
+            packageSessionId: course.packageSessionId,
+            enrollInviteId: course.enrollInviteId,
+            levelId: course.levelId,
+            courseId: course.courseId,
+          });
+          toast.success(`${course.title} added to cart!`);
+        }}
+        className="bg-blue-900 hover:bg-primary-700 text-white text-sm font-medium rounded-md px-3 py-1.5 flex items-center justify-center gap-2 shadow-sm"
+        size="sm"
+      >
+        <ShoppingCart className="h-4 w-4" />
+        <span>Add to Cart</span>
+      </Button>
+    );
+  }
+  
+  // Don't render anything if both are disabled
+  return null;
+};
+
 export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   title,
   showFilters,
   filtersConfig,
+  cartButtonConfig,
   render,
   instituteId,
   tagName,
   globalSettings,
 }) => {
   const navigate = useNavigate();
+  const { addItem, getItemByEnrollInviteId, updateQuantity, removeItem, getItemCount } = useCartStore();
+  
+  // Debug: Log cartButtonConfig to help diagnose issues
+  useEffect(() => {
+    console.log('[CourseCatalogComponent] cartButtonConfig:', cartButtonConfig);
+    console.log('[CourseCatalogComponent] render.cardFields:', render?.cardFields);
+  }, [cartButtonConfig, render?.cardFields]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [filteredCourses, setFilteredCourses] = useState<Course[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -256,6 +377,118 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   // Removed enrollment dialog state - all enrollment happens on details page
   
   const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  const cardFieldsSet = useMemo(
+    () => new Set((render?.cardFields ?? []).map((field) => field.toLowerCase())),
+    [render?.cardFields]
+  );
+
+  const isCardFieldEnabled = (field: string) =>
+    cardFieldsSet.size === 0 || cardFieldsSet.has(field.toLowerCase());
+
+  const displayTitle = isCardFieldEnabled("package_name");
+  const displayDescription = isCardFieldEnabled("course_html_description_html");
+  const displayImage = isCardFieldEnabled("course_preview_image_media_id");
+  const displayLevel = isCardFieldEnabled("level_name");
+  const displayRating = isCardFieldEnabled("rating");
+  const displayPrice = isCardFieldEnabled("price");
+  const displayQuantity = isCardFieldEnabled("quantity");
+  const displayCartActions = isCardFieldEnabled("cart_actions");
+
+  // Determine if cart controls should be shown
+  const shouldShowCartControls = useMemo(() => {
+    // Priority 1: If cartButtonConfig is explicitly disabled, don't show
+    if (cartButtonConfig?.enabled === false) {
+      return false;
+    }
+    
+    // Priority 2: If "cart_actions" is in cardFields, always show (highest priority)
+    if (displayCartActions) {
+      return true;
+    }
+    
+    // Priority 3: If cartButtonConfig exists (even if enabled is not explicitly set), show it
+    if (cartButtonConfig) {
+      return true;
+    }
+    
+    // Priority 4: If "quantity" is in cardFields (backward compatibility), show it
+    if (displayQuantity) {
+      return true;
+    }
+    
+    // Default: don't show if nothing is configured
+    return false;
+  }, [cartButtonConfig, displayCartActions, displayQuantity]);
+
+  const filtersEnabled = showFilters !== false;
+  const filterIds = useMemo(
+    () => new Set((filtersConfig ?? []).map((filter) => filter.id)),
+    [filtersConfig]
+  );
+  const defaultToAllFilters = filterIds.size === 0;
+  const shouldShowLevelFilter = filtersEnabled && (defaultToAllFilters || filterIds.has("level"));
+  const shouldShowTagsFilter = filtersEnabled && (defaultToAllFilters || filterIds.has("tags"));
+  const shouldShowInstructorFilter =
+    filtersEnabled && (defaultToAllFilters || filterIds.has("instructors") || filterIds.has("authors"));
+  const priceFilterConfig = useMemo(
+    () =>
+      filtersEnabled
+        ? (filtersConfig ?? []).find((filter) => filter.type === "range" && filter.field === "price")
+        : undefined,
+    [filtersConfig, filtersEnabled]
+  );
+  const shouldShowPriceFilter = filtersEnabled && Boolean(priceFilterConfig);
+  const hasFiltersToShow =
+    shouldShowLevelFilter || shouldShowTagsFilter || shouldShowInstructorFilter || shouldShowPriceFilter;
+  const shouldRenderFiltersPanel = filtersEnabled && hasFiltersToShow;
+
+  const defaultPriceRange = useMemo<PriceRangeState>(() => {
+    if (!priceFilterConfig?.default) {
+      return null;
+    }
+    const { min, max } = priceFilterConfig.default;
+    const normalized: PriceRangeState = {};
+    if (typeof min === "number") {
+      normalized.min = min;
+    }
+    if (typeof max === "number") {
+      normalized.max = max;
+    }
+    return normalized.min !== undefined || normalized.max !== undefined ? normalized : null;
+  }, [priceFilterConfig]);
+
+  const [priceRange, setPriceRange] = useState<PriceRangeState>(defaultPriceRange);
+
+  useEffect(() => {
+    setPriceRange(defaultPriceRange);
+  }, [defaultPriceRange]);
+
+  const handlePriceInputChange = (key: "min" | "max", value: string) => {
+    setPriceRange((prev) => {
+      const numericValue = value === "" ? undefined : Number(value);
+      const updated: { min?: number; max?: number } = { ...(prev || {}) };
+      if (numericValue === undefined || Number.isNaN(numericValue)) {
+        delete updated[key];
+      } else {
+        updated[key] = numericValue;
+      }
+      return updated.min === undefined && updated.max === undefined ? null : updated;
+    });
+  };
+
+  const isPriceFilterActive = useMemo(() => {
+    if (!priceRange) {
+      return false;
+    }
+    if (!defaultPriceRange) {
+      return priceRange.min !== undefined || priceRange.max !== undefined;
+    }
+    return (
+      priceRange.min !== defaultPriceRange.min ||
+      priceRange.max !== defaultPriceRange.max
+    );
+  }, [priceRange, defaultPriceRange]);
 
   // Fetch courses from API
   useEffect(() => {
@@ -384,7 +617,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     // Apply tag filter
     if (selectedTags.length > 0) {
       filtered = filtered.filter(course => {
-        const courseTags = course.comma_separeted_tags?.split(',').map(tag => tag.trim()) || [];
+        const courseTags = course.comma_separeted_tags?.split(',').map((tag: string) => tag.trim()) || [];
         return selectedTags.some(tag => courseTags.includes(tag));
       });
     }
@@ -392,6 +625,16 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     // Apply instructor filter
     if (selectedInstructors.length > 0) {
       filtered = filtered.filter(course => selectedInstructors.includes(course.instructor));
+    }
+
+    // Apply price range filter
+    if (shouldShowPriceFilter && priceRange && (priceRange.min !== undefined || priceRange.max !== undefined)) {
+      filtered = filtered.filter((course) => {
+        const coursePrice = typeof course.price === "number" ? course.price : Number(course.price) || 0;
+        const meetsMin = priceRange.min !== undefined ? coursePrice >= priceRange.min : true;
+        const meetsMax = priceRange.max !== undefined ? coursePrice <= priceRange.max : true;
+        return meetsMin && meetsMax;
+      });
     }
 
     // Apply sorting
@@ -421,7 +664,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
     setFilteredCourses(filtered);
     setCurrentPage(1); // Reset to first page when filters change
-  }, [courses, searchTerm, selectedLevels, selectedTags, selectedInstructors, sortOption]);
+  }, [courses, searchTerm, selectedLevels, selectedTags, selectedInstructors, sortOption, priceRange, shouldShowPriceFilter]);
 
   // Pagination
   const paginatedCourses = filteredCourses.slice(
@@ -458,6 +701,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     setSelectedTags([]);
     setSelectedInstructors([]);
     setSearchTerm("");
+    setPriceRange(defaultPriceRange);
   };
 
   const onApplyFilters = () => {
@@ -516,7 +760,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   }));
 
   const tags = [...new Set(courses.flatMap(course => 
-    course.comma_separeted_tags?.split(',').map(tag => tag.trim()) || []
+    course.comma_separeted_tags?.split(',').map((tag :string)=> tag.trim()) || []
   ))].map(tag => ({
     id: tag,
     name: tag
@@ -527,7 +771,12 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     name: instructor
   }));
 
-  const hasActiveFilters = selectedLevels.length > 0 || selectedTags.length > 0 || selectedInstructors.length > 0;
+  const filterBadgeCount =
+    selectedLevels.length +
+    selectedTags.length +
+    selectedInstructors.length +
+    (shouldShowPriceFilter && isPriceFilterActive ? 1 : 0);
+  const hasActiveFilters = filterBadgeCount > 0;
 
   if (isLoading) {
     return (
@@ -551,107 +800,153 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
       <div className="w-full px-4 sm:px-6 lg:px-8">
         <h2 className="text-3xl font-bold text-gray-900 mb-8">{title}</h2>
 
-        <div className="flex flex-col lg:flex-row p-2 sm:p-4 lg:p-8 bg-gray-50 min-h-screen">
+        <div
+          className={`flex flex-col ${shouldRenderFiltersPanel ? "lg:flex-row" : ""} p-2 sm:p-4 lg:p-8 bg-gray-50 min-h-screen`}
+        >
           {/* Filter Panel - Full width on mobile, sidebar on desktop */}
-          <div className="w-full lg:w-1/4 lg:pr-8 mb-6 lg:mb-0 order-1">
-            <div className="lg:sticky lg:top-8">
-              <div className="bg-white p-4 sm:p-6 rounded-lg shadow">
-                {/* Mobile Header - Only visible on mobile */}
-                <div className="lg:hidden mb-4">
-                  <button
-                    onClick={() => setIsMobileFilterExpanded(!isMobileFilterExpanded)}
-                    className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-                  >
-                    <div className="flex items-center space-x-2">
-                      <Filter size={18} className="text-gray-600" />
-                      <span className="text-sm font-semibold text-gray-900">Filters</span>
-                      {hasActiveFilters && (
-                        <span className="bg-blue-100 text-blue-700 text-xs font-medium px-2 py-1 rounded-full">
-                          {selectedLevels.length + selectedTags.length + selectedInstructors.length}
-                        </span>
-                      )}
-                    </div>
-                    <ChevronDown 
-                      size={16} 
-                      className={`text-gray-500 transition-transform ${isMobileFilterExpanded ? 'rotate-180' : ''}`} 
-                    />
-                  </button>
-                </div>
-
-                {/* Filter Content - Hidden on mobile when collapsed */}
-                <div className={`lg:block ${isMobileFilterExpanded ? 'block' : 'hidden'}`}>
-                  {/* Desktop Header */}
-                  <div className="hidden lg:flex justify-between items-center mb-6">
-                    <h2 className="text-xl font-bold text-gray-800">Filters</h2>
-                    <div className="flex gap-1">
-                      <Button
-                        onClick={clearAllFilters}
-                        disabled={!hasActiveFilters}
-                        className={`px-2 py-1 h-fit transition text-xs mt-[1px]`}
-                      >
-                        Clear All
-                      </Button>
-                      <Button
-                        onClick={onApplyFilters}
-                        disabled={!hasActiveFilters}
-                        className={`px-2 py-1 h-fit transition text-xs mt-[1px]`}
-                      >
-                        Apply
-                      </Button>
-                    </div>
+          {shouldRenderFiltersPanel && (
+            <div className="w-full lg:w-1/4 lg:pr-8 mb-6 lg:mb-0 order-1">
+              <div className="lg:sticky lg:top-8">
+                <div className="bg-white p-4 sm:p-6 rounded-lg shadow">
+                  {/* Mobile Header - Only visible on mobile */}
+                  <div className="lg:hidden mb-4">
+                    <button
+                      onClick={() => setIsMobileFilterExpanded(!isMobileFilterExpanded)}
+                      className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <Filter size={18} className="text-gray-600" />
+                        <span className="text-sm font-semibold text-gray-900">Filters</span>
+                        {hasActiveFilters && (
+                          <span className="bg-blue-100 text-blue-700 text-xs font-medium px-2 py-1 rounded-full">
+                            {filterBadgeCount}
+                          </span>
+                        )}
+                      </div>
+                      <ChevronDown
+                        size={16}
+                        className={`text-gray-500 transition-transform ${isMobileFilterExpanded ? "rotate-180" : ""}`}
+                      />
+                    </button>
                   </div>
 
-                  {/* Mobile Header */}
-                  <div className="lg:hidden flex justify-between items-center mb-4">
-                    <h2 className="text-lg font-bold text-gray-800">Filters</h2>
-                    <div className="flex gap-1">
-                      <Button
-                        onClick={clearAllFilters}
-                        disabled={!hasActiveFilters}
-                        className={`px-2 py-1 h-fit transition text-xs mt-[1px]`}
-                      >
-                        Clear All
-                      </Button>
-                      <Button
-                        onClick={onApplyFilters}
-                        disabled={!hasActiveFilters}
-                        className={`px-2 py-1 h-fit transition text-xs mt-[1px]`}
-                      >
-                        Apply
-                      </Button>
+                  {/* Filter Content - Hidden on mobile when collapsed */}
+                  <div className={`lg:block ${isMobileFilterExpanded ? "block" : "hidden"}`}>
+                    {/* Desktop Header */}
+                    <div className="hidden lg:flex justify-between items-center mb-6">
+                      <h2 className="text-xl font-bold text-gray-800">Filters</h2>
+                      <div className="flex gap-1">
+                        <Button
+                          onClick={clearAllFilters}
+                          disabled={!hasActiveFilters}
+                          className="px-2 py-1 h-fit transition text-xs mt-[1px]"
+                        >
+                          Clear All
+                        </Button>
+                        <Button
+                          onClick={onApplyFilters}
+                          disabled={!hasActiveFilters}
+                          className="px-2 py-1 h-fit transition text-xs mt-[1px]"
+                        >
+                          Apply
+                        </Button>
+                      </div>
                     </div>
+
+                    {/* Mobile Header */}
+                    <div className="lg:hidden flex justify-between items-center mb-4">
+                      <h2 className="text-lg font-bold text-gray-800">Filters</h2>
+                      <div className="flex gap-1">
+                        <Button
+                          onClick={clearAllFilters}
+                          disabled={!hasActiveFilters}
+                          className="px-2 py-1 h-fit transition text-xs mt-[1px]"
+                        >
+                          Clear All
+                        </Button>
+                        <Button
+                          onClick={onApplyFilters}
+                          disabled={!hasActiveFilters}
+                          className="px-2 py-1 h-fit transition text-xs mt-[1px]"
+                        >
+                          Apply
+                        </Button>
+                      </div>
+                    </div>
+
+                    {shouldShowLevelFilter && (
+                      <FilterSection
+                        title={filtersConfig?.find((filter) => filter.id === "level")?.label ?? "Level"}
+                        items={levels}
+                        selectedItems={selectedLevels}
+                        handleChange={(id) => toggleItem(id, selectedLevels, setSelectedLevels)}
+                        disabled={levels.length === 0}
+                      />
+                    )}
+
+                    {shouldShowTagsFilter && (
+                      <FilterSection
+                        title={filtersConfig?.find((filter) => filter.id === "tags")?.label ?? "Popular Tags"}
+                        items={tags}
+                        selectedItems={selectedTags}
+                        handleChange={(id) => toggleItem(id, selectedTags, setSelectedTags)}
+                        disabled={tags.length === 0}
+                      />
+                    )}
+
+                    {shouldShowInstructorFilter && (
+                      <FilterSection
+                        title={
+                          filtersConfig?.find((filter) => filter.id === "instructors" || filter.id === "authors")
+                            ?.label ?? "Authors"
+                        }
+                        items={instructors}
+                        selectedItems={selectedInstructors}
+                        handleChange={(id) => toggleItem(id, selectedInstructors, setSelectedInstructors)}
+                        disabled={instructors.length === 0}
+                      />
+                    )}
+
+                    {shouldShowPriceFilter && (
+                      <div className="mb-4 sm:mb-6">
+                        <h3 className="text-base sm:text-lg font-semibold text-gray-700 mb-2 sm:mb-3">
+                          {priceFilterConfig?.label ?? "Price Range"}
+                        </h3>
+                        <div className="flex flex-col gap-3">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1">
+                              <label className="block text-xs text-gray-500 mb-1">Min</label>
+                              <input
+                                type="number"
+                                min={0}
+                                value={priceRange?.min ?? ""}
+                                onChange={(e) => handlePriceInputChange("min", e.target.value)}
+                                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              />
+                            </div>
+                            <span className="text-gray-500 mt-6">-</span>
+                            <div className="flex-1">
+                              <label className="block text-xs text-gray-500 mb-1">Max</label>
+                              <input
+                                type="number"
+                                min={0}
+                                value={priceRange?.max ?? ""}
+                                onChange={(e) => handlePriceInputChange("max", e.target.value)}
+                                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
-
-                  <FilterSection
-                    title="Level"
-                    items={levels}
-                    selectedItems={selectedLevels}
-                    handleChange={(id) => toggleItem(id, selectedLevels, setSelectedLevels)}
-                    disabled={levels.length === 0}
-                  />
-
-                  <FilterSection
-                    title="Popular Tags"
-                    items={tags}
-                    selectedItems={selectedTags}
-                    handleChange={(id) => toggleItem(id, selectedTags, setSelectedTags)}
-                    disabled={tags.length === 0}
-                  />
-
-                  <FilterSection
-                    title="Authors"
-                    items={instructors}
-                    selectedItems={selectedInstructors}
-                    handleChange={(id) => toggleItem(id, selectedInstructors, setSelectedInstructors)}
-                    disabled={instructors.length === 0}
-                  />
                 </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Main Content Area */}
-          <div className="w-full lg:w-3/4 order-2">
+          <div className={shouldRenderFiltersPanel ? "w-full lg:w-3/4 order-2" : "w-full"}>
             {/* Search and Sort Bar */}
             <div className="bg-white p-4 sm:p-6 rounded-lg shadow mb-6">
               <div className="flex flex-col sm:flex-row gap-4">
@@ -711,41 +1006,70 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                   onClick={() => handleCourseClick(course)}
                 >
                   {/* Course Thumbnail */}
-                  <CourseImage 
-                    previewImageUrl={course.thumbnail}
-                    alt={course.title}
-                    className="w-full h-48 object-cover"
-                  />
+                  {displayImage && (
+                    <CourseImage 
+                      previewImageUrl={course.thumbnail}
+                      alt={course.title}
+                      className="w-full h-48 object-cover"
+                    />
+                  )}
                   
                   <div className="p-4 sm:p-6">
                     {/* Course Title */}
-                    <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2 line-clamp-2">
-                      {course.title}
-                    </h3>
+                    {displayTitle && (
+                      <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2 line-clamp-2">
+                        {course.title}
+                      </h3>
+                    )}
                     
                     {/* Course Description */}
-                    <p className="text-sm sm:text-base text-gray-600 mb-4 line-clamp-2 sm:line-clamp-3">
-                      {course.description}
-                    </p>
+                    {displayDescription && (
+                      <p className="text-sm sm:text-base text-gray-600 mb-4 line-clamp-2 sm:line-clamp-3">
+                        {course.description}
+                      </p>
+                    )}
                     
                     {/* Course Info */}
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
-                      {/* Price - Only show if payment is enabled */}
-                      {globalSettings?.payment?.enabled !== false && (
-                      <span className="text-xl sm:text-2xl font-bold text-primary-600">
-                        {course.price === 0 ? "Free" : `$${course.price}`}
-                      </span>
-                      )}
-                      
-                      {/* Badges */}
-                      <div className="flex flex-wrap gap-2">
-                        <span className="px-2 py-1 bg-primary-100 text-primary-800 text-xs sm:text-sm rounded-full">
-                          {course.level}
-                        </span>
-                        {course.rating > 0 && (
-                          <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs sm:text-sm rounded-full">
-                            ⭐ {course.rating.toFixed(1)}
-                          </span>
+                    <div className="flex flex-col gap-3">
+                      <div className="flex flex-col gap-3">
+                        <div className="flex items-start justify-between gap-3">
+                          {/* Price - Only show if payment is enabled */}
+                          {displayPrice && globalSettings?.payment?.enabled !== false && (
+                            <span className="text-xl sm:text-2xl font-bold text-primary-600">
+                              {course.price === 0 ? "Free" : `₹${course.price.toFixed(2)}`}
+                            </span>
+                          )}
+
+                          {/* Add to Cart Button or Quantity Controls */}
+                          {shouldShowCartControls && (
+                            <div className="flex-shrink-0">
+                              <CartControls
+                                course={course}
+                                globalSettings={globalSettings}
+                                cartButtonConfig={cartButtonConfig}
+                                addItem={addItem}
+                                getItemByEnrollInviteId={getItemByEnrollInviteId}
+                                updateQuantity={updateQuantity}
+                                removeItem={removeItem}
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Badges */}
+                        {(displayLevel || displayRating) && (
+                          <div className="flex flex-wrap gap-2">
+                            {displayLevel && (
+                              <span className="px-2 py-1 bg-primary-100 text-primary-800 text-xs sm:text-sm rounded-full">
+                                {course.level}
+                              </span>
+                            )}
+                            {displayRating && course.rating > 0 && (
+                              <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs sm:text-sm rounded-full">
+                                ⭐ {course.rating.toFixed(1)}
+                              </span>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>
@@ -800,6 +1124,22 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Floating Cart Button - Fixed at bottom right */}
+      {cartButtonConfig?.enabled && <div className="fixed bottom-6 right-6 z-50">
+        <Button
+          onClick={() => navigate({ to: `/${tagName}/cart` })}
+          className="h-12 w-12 rounded-full bg-blue-600 hover:bg-primary-700 text-white shadow-lg flex items-center justify-center relative"
+          size="sm"
+        >
+          <ShoppingCart className="h-5 w-5" />
+          {getItemCount() > 0 && (
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center text-[10px]">
+              {getItemCount()}
+            </span>
+          )}
+        </Button>
+      </div>}
 
       {/* Enrollment dialog removed - all enrollment happens on course details page */}
     </div>

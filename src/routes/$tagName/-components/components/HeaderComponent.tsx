@@ -112,16 +112,19 @@ export const HeaderComponent: React.FC<HeaderProps & {
   };
 
   // Helper function to handle navigation
-  const handleNavigation = (route: string, label: string, openInSameTab: boolean = false) => {
+  const handleNavigation = (route: string, label: string, openInSameTab?: boolean | string) => {
+    // Normalize openInSameTab value (handle string "true"/"false", boolean, or undefined)
+    const shouldOpenInSameTab = openInSameTab === true || openInSameTab === "true";
+    
     // Check if route is external
     if (RouteMatcher.isExternalLink(route)) {
-      console.log(`[HeaderComponent] Opening external link: ${route}, openInSameTab: ${openInSameTab}`);
-      if (openInSameTab) {
+      console.log(`[HeaderComponent] Opening external link: ${route}, openInSameTab: ${openInSameTab}, shouldOpenInSameTab: ${shouldOpenInSameTab}`);
+      if (shouldOpenInSameTab) {
         // Open in same tab
         window.location.href = route;
       } else {
-        // Open in new tab (default behavior)
-        window.open(route, '_blank');
+        // Open in new tab (default behavior when openInSameTab is false or undefined)
+        window.open(route, '_blank', 'noopener,noreferrer');
       }
       return;
     }
@@ -204,10 +207,12 @@ export const HeaderComponent: React.FC<HeaderProps & {
             <nav className="hidden md:flex items-center space-x-6">
               {navigation.map((item, index) => {
                 const isActive = isActiveRoute(item.route, item.label);
+                // Explicitly handle openInSameTab - convert to boolean if needed
+                const openInSameTab = item.openInSameTab === true || String(item.openInSameTab) === "true";
                 return (
                   <button
                     key={index}
-                    onClick={() => handleNavigation(item.route, item.label, item.openInSameTab)}
+                    onClick={() => handleNavigation(item.route, item.label, openInSameTab)}
                     className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                       isActive 
                         ? 'text-primary-600 border-b-2 border-primary-200' 
@@ -284,12 +289,14 @@ export const HeaderComponent: React.FC<HeaderProps & {
               {/* Navigation Links */}
               {navigation.map((item, index) => {
                 const isActive = isActiveRoute(item.route, item.label);
+                // Explicitly handle openInSameTab - convert to boolean if needed
+                const openInSameTab = item.openInSameTab === true || String(item.openInSameTab) === "true";
                 return (
                   <button
                     key={index}
                     onClick={() => {
                       setIsMobileMenuOpen(false);
-                      handleNavigation(item.route, item.label, item.openInSameTab);
+                      handleNavigation(item.route, item.label, openInSameTab);
                     }}
                     className={`block w-full text-left px-3 py-2 rounded-md text-base font-medium transition-colors ${
                       isActive 

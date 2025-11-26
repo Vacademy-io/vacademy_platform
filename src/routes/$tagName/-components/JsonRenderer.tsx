@@ -10,6 +10,8 @@ import { HeroSectionComponent } from "./components/HeroSectionComponent";
 import { MediaShowcaseComponent } from "./components/MediaShowcaseComponent";
 import { StatsHighlightsComponent } from "./components/StatsHighlightsComponent";
 import { TestimonialSectionComponent } from "./components/TestimonialSectionComponent";
+import { CartComponent } from "./components/CartComponent";
+import { CartSummaryComponent } from "./components/CartSummaryComponent";
 
 interface JsonRendererProps {
   page: Page;
@@ -83,6 +85,10 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
         return <StatsHighlightsComponent key={id} {...props} />;
       case "testimonialSection":
         return <TestimonialSectionComponent key={id} {...props} />;
+      case "cartComponent":
+        return <CartComponent key={id} {...props} />;
+      case "cartSummary":
+        return <CartSummaryComponent key={id} {...props} />;
       default:
         console.warn(`Unknown component type: ${type}`);
         return null;

@@ -42,6 +42,7 @@ import { Route as CoursesCourseDetailsIndexRouteImport } from './routes/courses/
 import { Route as AssessmentReportsIndexRouteImport } from './routes/assessment/reports/index'
 import { Route as AssessmentListIndexRouteImport } from './routes/assessment/list/index'
 import { Route as AssessmentExaminationIndexRouteImport } from './routes/assessment/examination/index'
+import { Route as TagNameCartIndexRouteImport } from './routes/$tagName/cart/index'
 import { Route as TagNameCourseIdIndexRouteImport } from './routes/$tagName/$courseId/index'
 import { Route as LoginOauthModalLearnerRouteImport } from './routes/login/oauth/modal-learner'
 import { Route as LoginOauthLearnerRouteImport } from './routes/login/oauth/learner'
@@ -234,6 +235,11 @@ const AssessmentExaminationIndexRoute =
     path: '/assessment/examination/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const TagNameCartIndexRoute = TagNameCartIndexRouteImport.update({
+  id: '/$tagName/cart/',
+  path: '/$tagName/cart/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TagNameCourseIdIndexRoute = TagNameCourseIdIndexRouteImport.update({
   id: '/$tagName/$courseId/',
   path: '/$tagName/$courseId/',
@@ -354,6 +360,7 @@ export interface FileRoutesByFullPath {
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
   '/$tagName/$courseId': typeof TagNameCourseIdIndexRoute
+  '/$tagName/cart': typeof TagNameCartIndexRoute
   '/assessment/examination': typeof AssessmentExaminationIndexRoute
   '/assessment/list': typeof AssessmentListIndexRoute
   '/assessment/reports': typeof AssessmentReportsIndexRoute
@@ -405,6 +412,7 @@ export interface FileRoutesByTo {
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
   '/$tagName/$courseId': typeof TagNameCourseIdIndexRoute
+  '/$tagName/cart': typeof TagNameCartIndexRoute
   '/assessment/examination': typeof AssessmentExaminationIndexRoute
   '/assessment/list': typeof AssessmentListIndexRoute
   '/assessment/reports': typeof AssessmentReportsIndexRoute
@@ -457,6 +465,7 @@ export interface FileRoutesById {
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
   '/$tagName/$courseId/': typeof TagNameCourseIdIndexRoute
+  '/$tagName/cart/': typeof TagNameCartIndexRoute
   '/assessment/examination/': typeof AssessmentExaminationIndexRoute
   '/assessment/list/': typeof AssessmentListIndexRoute
   '/assessment/reports/': typeof AssessmentReportsIndexRoute
@@ -510,6 +519,7 @@ export interface FileRouteTypes {
     | '/login/oauth/learner'
     | '/login/oauth/modal-learner'
     | '/$tagName/$courseId'
+    | '/$tagName/cart'
     | '/assessment/examination'
     | '/assessment/list'
     | '/assessment/reports'
@@ -561,6 +571,7 @@ export interface FileRouteTypes {
     | '/login/oauth/learner'
     | '/login/oauth/modal-learner'
     | '/$tagName/$courseId'
+    | '/$tagName/cart'
     | '/assessment/examination'
     | '/assessment/list'
     | '/assessment/reports'
@@ -612,6 +623,7 @@ export interface FileRouteTypes {
     | '/login/oauth/learner'
     | '/login/oauth/modal-learner'
     | '/$tagName/$courseId/'
+    | '/$tagName/cart/'
     | '/assessment/examination/'
     | '/assessment/list/'
     | '/assessment/reports/'
@@ -664,6 +676,7 @@ export interface RootRouteChildren {
   LoginOauthLearnerRoute: typeof LoginOauthLearnerRoute
   LoginOauthModalLearnerRoute: typeof LoginOauthModalLearnerRoute
   TagNameCourseIdIndexRoute: typeof TagNameCourseIdIndexRoute
+  TagNameCartIndexRoute: typeof TagNameCartIndexRoute
   AssessmentExaminationIndexRoute: typeof AssessmentExaminationIndexRoute
   AssessmentListIndexRoute: typeof AssessmentListIndexRoute
   AssessmentReportsIndexRoute: typeof AssessmentReportsIndexRoute
@@ -927,6 +940,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AssessmentExaminationIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/$tagName/cart/': {
+      id: '/$tagName/cart/'
+      path: '/$tagName/cart'
+      fullPath: '/$tagName/cart'
+      preLoaderRoute: typeof TagNameCartIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/$tagName/$courseId/': {
       id: '/$tagName/$courseId/'
       path: '/$tagName/$courseId'
@@ -1064,6 +1084,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginOauthLearnerRoute: LoginOauthLearnerRoute,
   LoginOauthModalLearnerRoute: LoginOauthModalLearnerRoute,
   TagNameCourseIdIndexRoute: TagNameCourseIdIndexRoute,
+  TagNameCartIndexRoute: TagNameCartIndexRoute,
   AssessmentExaminationIndexRoute: AssessmentExaminationIndexRoute,
   AssessmentListIndexRoute: AssessmentListIndexRoute,
   AssessmentReportsIndexRoute: AssessmentReportsIndexRoute,

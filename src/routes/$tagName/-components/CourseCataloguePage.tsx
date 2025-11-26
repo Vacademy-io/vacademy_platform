@@ -97,8 +97,8 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
           setIntroCompleted(true);
         } else if (data.globalSettings.leadCollection.enabled) {
           // Only show lead collection if no intro page or intro already seen
-          console.log("Setting showLeadCollection to true (no intro page or intro already seen)");
-          setShowLeadCollection(true);
+          console.log("Setting showLeadCollection to true (no intro page or intro already seen)"  + data.globalSettings.leadCollection.enabled);
+          setShowLeadCollection(false);
         }
       } catch (err) {
         setError("Failed to load course catalogue");
@@ -278,8 +278,8 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
               </div>
             </div>
           )}
-          
-          {/* Render only homepage components from JSON */}
+{/*           
+          Render only homepage components from JSON */}
           {catalogueData.pages
             .filter(page => page.id === "home" || page.route === "homepage")
             .map((page) => (

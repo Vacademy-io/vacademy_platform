@@ -98,7 +98,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         } else if (data.globalSettings.leadCollection.enabled) {
           // Only show lead collection if no intro page or intro already seen
           console.log("Setting showLeadCollection to true (no intro page or intro already seen)"  + data.globalSettings.leadCollection.enabled);
-          setShowLeadCollection(false);
+          setShowLeadCollection(true);
         }
       } catch (err) {
         setError("Failed to load course catalogue");
@@ -128,7 +128,12 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   useEffect(() => {
     const handleOpenLeadCollection = () => {
       console.log("[CourseCataloguePage] Received openLeadCollection event");
-      setShowLeadCollection(true);
+      // Only show lead collection if it's enabled in JSON
+      if (catalogueData?.globalSettings.leadCollection.enabled) {
+        setShowLeadCollection(true);
+      } else {
+        console.log("[CourseCataloguePage] Lead collection is disabled, ignoring openLeadCollection event");
+      }
     };
 
     console.log("[CourseCataloguePage] Adding openLeadCollection event listener");
@@ -138,7 +143,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       console.log("[CourseCataloguePage] Removing openLeadCollection event listener");
       window.removeEventListener('openLeadCollection', handleOpenLeadCollection);
     };
-  }, []);
+  }, [catalogueData]);
 
   // Handle lead collection modal
   const handleLeadCollectionClose = () => {
@@ -151,10 +156,10 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     setShowLeadCollection(false);
   };
 
-  const handleLeadCollectionSubmit = () => {
-    console.log("[CourseCataloguePage] Lead collection form submitted");
-    setShowLeadCollection(false);
-  };
+    const handleLeadCollectionSubmit = () => {
+      console.log("[CourseCataloguePage] Lead collection form submitted");
+      setShowLeadCollection(false);
+    };
 
   // Intro page handlers
   const handleIntroGetStarted = () => {
@@ -311,13 +316,13 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       )}
 
       {/* Lead Collection Modal - Show when requested and intro is completed or not active */}
-      {showLeadCollection && catalogueData && (!showIntroPage || introCompleted) && (
+      {showLeadCollection && catalogueData && catalogueData.globalSettings.leadCollection.enabled && (!showIntroPage || introCompleted) && (
         <LeadCollectionModal
           isOpen={showLeadCollection}
           onClose={handleLeadCollectionClose}
           onSubmit={handleLeadCollectionSubmit}
           settings={{
-            enabled: true, // Force enable when triggered by buttons
+            enabled: catalogueData.globalSettings.leadCollection.enabled,
             mandatory: catalogueData.globalSettings.leadCollection.mandatory,
             inviteLink: catalogueData.globalSettings.leadCollection.inviteLink,
             formStyle: catalogueData.globalSettings.leadCollection.formStyle,
@@ -337,7 +342,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
             <button
               onClick={() => {
                 console.log("[CourseCataloguePage] Mobile Get Started button clicked");
-                setShowLeadCollection(true);
+                setShowLeadCollection(false);
               }}
               className="w-full px-4 py-2 text-white font-medium hover:opacity-90 rounded-md transition-colors"
               style={{

@@ -365,7 +365,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   useEffect(() => {
     const handleOpenLeadCollection = () => {
       console.log("[CourseDetailsPage] Received openLeadCollection event from HeaderComponent");
-      setShowLeadCollection(true);
+      setShowLeadCollection(false);
     };
 
     window.addEventListener('openLeadCollection', handleOpenLeadCollection);
@@ -584,7 +584,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                           if (isGetStartedButton || !showPayment) {
                             console.log("Get Started button clicked - opening lead collection modal!");
                             console.log("Setting showLeadCollection to true");
-                            setShowLeadCollection(true);
+                            setShowLeadCollection(false);
                           } else {
                             console.log("Enroll button clicked - opening enrollment payment dialog!");
                             setEnrollmentDialogOpen(true);

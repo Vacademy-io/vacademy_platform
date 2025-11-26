@@ -111,7 +111,12 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
   // Listen for custom event to open lead collection
   useEffect(() => {
     const handleOpenLeadCollection = () => {
-      setShowLeadCollection(true);
+      // Only show lead collection if it's enabled in JSON
+      if (catalogueData?.globalSettings.leadCollection.enabled) {
+        setShowLeadCollection(true);
+      } else {
+        console.log("[CourseSubPage] Lead collection is disabled, ignoring openLeadCollection event");
+      }
     };
 
     window.addEventListener('openLeadCollection', handleOpenLeadCollection);
@@ -119,7 +124,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
     return () => {
       window.removeEventListener('openLeadCollection', handleOpenLeadCollection);
     };
-  }, []);
+  }, [catalogueData]);
 
   // Handle lead collection modal
   const handleLeadCollectionClose = () => {
@@ -305,13 +310,13 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
       )}
 
       {/* Lead Collection Modal - Show when requested and intro is completed or not active */}
-      {showLeadCollection && catalogueData && (!showIntroPage || introCompleted) && (
+      {showLeadCollection && catalogueData && catalogueData.globalSettings.leadCollection.enabled && (!showIntroPage || introCompleted) && (
         <LeadCollectionModal
           isOpen={showLeadCollection}
           onClose={handleLeadCollectionClose}
           onSubmit={handleLeadCollectionSubmit}
           settings={{
-            enabled: true, // Force enable when triggered by buttons
+            enabled: catalogueData.globalSettings.leadCollection.enabled,
             mandatory: catalogueData.globalSettings.leadCollection.mandatory,
             inviteLink: catalogueData.globalSettings.leadCollection.inviteLink,
             formStyle: catalogueData.globalSettings.leadCollection.formStyle,

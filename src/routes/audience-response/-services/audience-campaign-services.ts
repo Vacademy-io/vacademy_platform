@@ -214,36 +214,23 @@ export const handleSubmitAudienceLead = (
   // Build custom_field_values object using unique field IDs from custom_field.id
   // Iterate in the same order as received from GET API to maintain order
   // JavaScript objects maintain insertion order (ES2015+), so the order will be preserved
-  // Include ALL custom fields from GET API, even if empty
   const customFieldValues: Record<string, string> = {};
   
   if (customFieldsOrder.length > 0) {
     // Use the ordered array to maintain the exact order from GET API response
     // This ensures custom_field_values in POST payload matches the order from GET API
-    // Include all fields from GET API, even if they have empty values
     customFieldsOrder.forEach((field) => {
       const formValue = formValues[field.field_key];
-      if (formValue && formValue.id) {
+      if (formValue && formValue.id && formValue.value !== undefined && formValue.value !== null && formValue.value !== "") {
         // Use custom_field.id as the key to maintain the unique identifier
-        // Include the field even if value is empty (use empty string)
-        const fieldValue = formValue.value !== undefined && formValue.value !== null 
-          ? String(formValue.value) 
-          : "";
-        customFieldValues[formValue.id] = fieldValue;
-      } else if (field.id) {
-        // If formValue doesn't exist but we have the field from GET API, include it with empty value
-        customFieldValues[field.id] = "";
+        customFieldValues[formValue.id] = String(formValue.value);
       }
     });
   } else {
     // Fallback: if no order array provided, iterate over formValues (may not preserve order)
-    // Include all fields, even if empty
     Object.entries(formValues).forEach(([, field]) => {
-      if (field.id) {
-        const fieldValue = field.value !== undefined && field.value !== null 
-          ? String(field.value) 
-          : "";
-        customFieldValues[field.id] = fieldValue;
+      if (field.id && field.value !== undefined && field.value !== null && field.value !== "") {
+        customFieldValues[field.id] = String(field.value);
       }
     });
   }

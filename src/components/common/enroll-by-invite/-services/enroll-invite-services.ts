@@ -119,6 +119,8 @@ interface EnrollLearnerForPaymentProps {
   };
   // Payment vendor (STRIPE, EWAY, or RAZORPAY)
   paymentVendor?: "STRIPE" | "EWAY" | "RAZORPAY";
+  // Flag to indicate if using institute custom fields (don't exclude from custom_field_values)
+  isUsingInstituteCustomFields?: boolean;
 }
 
 /**
@@ -153,7 +155,7 @@ const getPhoneField = (registrationData: RegistrationDataType): string => {
  * Uses keyword matching instead of hardcoded keys
  */
 const getFullNameField = (registrationData: RegistrationDataType): string => {
-  // First, try to find a single full name field
+  // First, try to find a single full name field (e.g., "full_name", "Full Name")
   const fullNameEntry = Object.entries(registrationData).find(([key]) => {
     const lowerKey = key.toLowerCase();
     return (
@@ -164,6 +166,42 @@ const getFullNameField = (registrationData: RegistrationDataType): string => {
 
   if (fullNameEntry && !isNullOrEmptyOrUndefined(fullNameEntry[1].value)) {
     return fullNameEntry[1].value;
+  }
+
+  // Try to find a simple "name" field (common in institute custom fields)
+  const nameEntry = Object.entries(registrationData).find(([key, value]) => {
+    const lowerKey = key.toLowerCase();
+    const lowerName = (value.name || "").toLowerCase();
+
+    // Check both field key and field name for "name"
+    const keyMatches =
+      lowerKey === "name" ||
+      lowerKey === "full_name" ||
+      lowerKey === "fullname";
+
+    const nameMatches =
+      lowerName === "name" ||
+      lowerName === "full name" ||
+      lowerName.includes("name");
+
+    // Exclude email, phone, username, first_name, last_name
+    const shouldExclude =
+      lowerKey.includes("email") ||
+      lowerKey.includes("phone") ||
+      lowerKey.includes("first") ||
+      lowerKey.includes("last") ||
+      lowerKey.includes("user") ||
+      lowerName.includes("email") ||
+      lowerName.includes("phone") ||
+      lowerName.includes("first") ||
+      lowerName.includes("last") ||
+      lowerName.includes("user");
+
+    return (keyMatches || nameMatches) && !shouldExclude;
+  });
+
+  if (nameEntry && !isNullOrEmptyOrUndefined(nameEntry[1].value)) {
+    return nameEntry[1].value;
   }
 
   // If no full name field, try to combine first name + last name
@@ -180,7 +218,9 @@ const getFullNameField = (registrationData: RegistrationDataType): string => {
   const firstName = firstNameEntry ? firstNameEntry[1].value || "" : "";
   const lastName = lastNameEntry ? lastNameEntry[1].value || "" : "";
 
-  return `${firstName} ${lastName}`.trim();
+  const combinedName = `${firstName} ${lastName}`.trim();
+
+  return combinedName;
 };
 
 /**
@@ -234,6 +274,7 @@ export const handleEnrollLearnerForPayment = async ({
   ewayPaymentData,
   razorpayPaymentData,
   paymentVendor = "STRIPE",
+  isUsingInstituteCustomFields = false,
 }: EnrollLearnerForPaymentProps) => {
   // Dynamically extract email, phone, and full name using helper functions
   const email = getEmailField(registrationData);
@@ -241,8 +282,10 @@ export const handleEnrollLearnerForPayment = async ({
   const fullName = getFullNameField(registrationData);
 
   // Dynamically identify keys to exclude from custom field values
-  const keysToExclude = getKeysToExclude(registrationData);
-  console.log("package_session_ids", package_session_ids);
+  // If using institute custom fields, don't exclude name, email, phone
+  const keysToExclude = isUsingInstituteCustomFields
+    ? []
+    : getKeysToExclude(registrationData);
   // Prepare payment request based on vendor
   const stripe_request =
     paymentVendor === "STRIPE"

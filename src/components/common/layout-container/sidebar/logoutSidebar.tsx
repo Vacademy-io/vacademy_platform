@@ -55,6 +55,7 @@ export const LogoutSidebar = ({
         canViewProfile: false,
         canEditProfile: false,
         canDeleteProfile: false,
+        canViewFiles: false,
       }
     ).then((data) => {
       setFilteredHamburgerItems(data);

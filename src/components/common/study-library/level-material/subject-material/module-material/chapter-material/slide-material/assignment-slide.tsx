@@ -83,7 +83,6 @@ const AssignmentSlide = ({
   // Constants for numeric input
   const isDecimal = false;
   const maxDecimals = 2;
-
   // Format date for display
   const formatDate = (dateString: string) => {
     if (!dateString) return "N/A";
@@ -249,12 +248,16 @@ const AssignmentSlide = ({
       const urlParams = new URLSearchParams(window.location.search);
       const slideId = urlParams.get("slideId") || "";
       const userId = await getUserId();
-      return authenticatedAxiosInstance.post(SUBMIT_ASSIGNMENT_SLIDE_ANSWERS, payload, {
-        params: {
-          slideId,
-          userId,
-        },
-      });
+      return authenticatedAxiosInstance.post(
+        SUBMIT_ASSIGNMENT_SLIDE_ANSWERS,
+        payload,
+        {
+          params: {
+            slideId,
+            userId,
+          },
+        }
+      );
     },
     onSuccess: () => {
       setSubmitSuccess(true);
@@ -296,6 +299,62 @@ const AssignmentSlide = ({
         {(() => {
           switch (question.question_type) {
             case "MCQS":
+              return (
+                <div className="space-y-4">
+                  {question.options?.map((option, optIndex) => (
+                    <div
+                      key={option.id}
+                      className={`flex flex-row-reverse items-center justify-between rounded-lg border p-4 w-full ${
+                        Array.isArray(currentResponse) &&
+                        currentResponse.includes(option.id)
+                          ? "border-primary-500 bg-primary-50"
+                          : "border-gray-200"
+                      }`}
+                      onClick={() => {
+                        const currentValues = Array.isArray(currentResponse)
+                          ? currentResponse
+                          : [];
+                        const newValues = currentValues.includes(option.id)
+                          ? currentValues.filter((id) => id !== option.id)
+                          : [...currentValues, option.id];
+                        handleResponseChange(
+                          question.id,
+                          newValues,
+                          question.question_type
+                        );
+                      }}
+                    >
+                      <div className="relative flex items-center">
+                        <div
+                          className={`w-6 h-6 border rounded-md flex items-center justify-center ${
+                            Array.isArray(currentResponse) &&
+                            currentResponse.includes(option.id)
+                              ? "bg-green-500 border-green-500"
+                              : "border-gray-300"
+                          }`}
+                        >
+                          {Array.isArray(currentResponse) &&
+                            currentResponse.includes(option.id) && (
+                              <span className="text-white font-bold">✔</span>
+                            )}
+                        </div>
+                      </div>
+
+                      <label
+                        className={`flex-grow text-sm ${
+                          Array.isArray(currentResponse) &&
+                          currentResponse.includes(option.id)
+                            ? "font-semibold"
+                            : "text-gray-700"
+                        }`}
+                      >
+                        {String.fromCharCode(65 + optIndex)}.{" "}
+                        {option.text.content}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              );
             case "TRUE_FALSE":
               return (
                 <div className="space-y-4">
@@ -606,19 +665,6 @@ const AssignmentSlide = ({
                   key={question.id}
                   className="mb-6 pb-6 border-b border-gray-200 last:border-0 last:mb-0 last:pb-0"
                 >
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-3 gap-2">
-                    <h3 className="text-base sm:text-lg font-medium text-gray-900">
-                      {index + 1}. {question.text_data.content}
-                    </h3>
-                    <div className="text-xs sm:text-sm text-gray-500 sm:text-right">
-                      <div>
-                        Type: {getQuestionTypeDisplay(question.question_type)}
-                      </div>
-                      <div>
-                        Attempts: {question.re_attempt_count || "Unlimited"}
-                      </div>
-                    </div>
-                  </div>
                   {renderQuestion(question, index)}
                 </div>
               ))}

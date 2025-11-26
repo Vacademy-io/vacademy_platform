@@ -155,7 +155,6 @@ const RegistrationStep = ({
   const [otp, setOtp] = useState("");
   const [isLoadingOtp, setIsLoadingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
-
   const planInfo =
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-expect-error
@@ -178,7 +177,7 @@ const RegistrationStep = ({
     if (countryFieldKey && formValues) {
       const countryField = formValues[countryFieldKey];
       if (countryField && typeof countryField.value === "string") {
-        return getCountryCode(countryField.value, "au");
+        return getCountryCode(countryField.value, "in");
       }
     }
     return "au"; // Default to Australia
@@ -207,7 +206,6 @@ const RegistrationStep = ({
     }
 
     const email = emailField.value;
-    console.log("Sending OTP to email:", email);
 
     // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -301,10 +299,7 @@ const RegistrationStep = ({
 
   return (
     <>
-      <Card
-        id="registration-card"
-        className="overflow-hidden shadow-lg w-full"
-      >
+      <Card id="registration-card" className="overflow-hidden shadow-lg w-full">
         <CardContent className="p-4 sm:p-5 md:p-6">
           <div className="flex items-start gap-2 sm:gap-3 mb-6">
             <div className="p-1.5 sm:p-2 bg-blue-100 rounded-lg flex-shrink-0">
@@ -451,7 +446,7 @@ const RegistrationStep = ({
                       // Render Dropdown
                       if (renderType === FieldRenderType.DROPDOWN) {
                         // Parse dropdown options if not already parsed
-                        console.log("dropdownOptions", value);
+
                         let dropdownOptions = value.comma_separated_options
                           ? value.comma_separated_options
                           : parseDropdownOptions(value.config || "{}");
@@ -617,7 +612,6 @@ const RegistrationStep = ({
             </div>
           </Card>
         )}
-    
     </>
   );
 };

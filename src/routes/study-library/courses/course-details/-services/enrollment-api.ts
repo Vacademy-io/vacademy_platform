@@ -887,6 +887,20 @@ export const initiatePaymentForEnrollment = async (
  * @param params - Parameters for payment
  * @returns Promise<any>
  */
+export interface UserData {
+  email: string;
+  username: string;
+  full_name: string;
+  mobile_number: string;
+  date_of_birth: string;
+  gender: string;
+  address_line: string;
+  city: string;
+  region: string;
+  pin_code: string;
+  profile_pic_file_id: string;
+  country: string;
+}
 export const handlePaymentForEnrollment = async (params: {
   userEmail: string; // profile email
   receiptEmail: string; // dialog email
@@ -909,20 +923,7 @@ export const handlePaymentForEnrollment = async (params: {
   paymentMethod?: unknown;
   token: string;
   returnUrl?: string;
-  userData?: {
-    email: string;
-    username: string;
-    full_name: string;
-    mobile_number: string;
-    date_of_birth: string;
-    gender: string;
-    address_line: string;
-    city: string;
-    region: string;
-    pin_code: string;
-    profile_pic_file_id: string;
-    country: string;
-  };
+  userData?: UserData;
 }): Promise<any> => {
   const {
     userEmail,
@@ -1053,17 +1054,19 @@ export const handlePaymentForEnrollment = async (params: {
     }
 
     // Prepare payment data according to the exact backend API specification
+    if (!userData?.full_name && !userData?.email && !userData?.username) {
+      throw new Error(
+        "User data with full name, email, and username is required."
+      );
+    }
     const paymentPayload = {
       user: {
         id: currentUserId,
-        username:
-          userData?.username ||
-          sanitizedUserEmail.split("@")[0] ||
-          `user_${Date.now()}`,
+        username: userData?.username,
         email: sanitizedUserEmail,
-        full_name: userData?.full_name || "Donation User",
+        full_name: userData?.full_name,
         mobile_number: userData?.mobile_number || "",
-        date_of_birth: userData?.date_of_birth || new Date().toISOString(),
+        date_of_birth: userData?.date_of_birth,
         gender: userData?.gender,
         address_line: userData?.address_line || "",
         city: userData?.city || "",

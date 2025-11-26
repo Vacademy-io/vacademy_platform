@@ -14,6 +14,7 @@ import {
   getPaymentOptions,
   getPaymentPlans,
   handlePaymentForEnrollment,
+  UserData,
   type EnrollmentResponse,
   type PaymentOption,
   type PaymentPlan,
@@ -62,36 +63,39 @@ export const FreeEnrollmentConfirmationDialog: React.FC<
     useState(false);
 
   // Helper function to get real user data from preferences
-  const getRealUserData = useCallback(async () => {
-    try {
-      const { value } = await Preferences.get({ key: "StudentDetails" });
-      if (!value) {
+  const getRealUserData: () => Promise<UserData | undefined> =
+    useCallback(async () => {
+      try {
+        const { value } = await Preferences.get({ key: "StudentDetails" });
+        if (!value) {
+          return null;
+        }
+
+        const studentData = JSON.parse(value);
+        // Handle both array and object formats
+        const student = Array.isArray(studentData)
+          ? studentData[0]
+          : studentData;
+
+        return {
+          email: student.email || "",
+          username: student.username || "",
+          full_name: student.full_name || "",
+          mobile_number: student.mobile_number || "",
+          date_of_birth: student.date_of_birth || new Date().toISOString(),
+          gender: student.gender,
+          address_line: student.address_line || "",
+          city: student.city || "",
+          region: student.region || "",
+          pin_code: student.pin_code || "",
+          profile_pic_file_id: student.face_file_id || "",
+          country: student.country || "",
+        } as UserData;
+      } catch (error) {
+        console.error("Error fetching user data from preferences:", error);
         return null;
       }
-
-      const studentData = JSON.parse(value);
-      // Handle both array and object formats
-      const student = Array.isArray(studentData) ? studentData[0] : studentData;
-
-      return {
-        email: student.email || "",
-        username: student.username || "",
-        full_name: student.full_name || "",
-        mobile_number: student.mobile_number || "",
-        date_of_birth: student.date_of_birth || new Date().toISOString(),
-        gender: student.gender,
-        address_line: student.address_line || "",
-        city: student.city || "",
-        region: student.region || "",
-        pin_code: student.pin_code || "",
-        profile_pic_file_id: student.face_file_id || "",
-        country: student.country || "",
-      };
-    } catch (error) {
-      console.error("Error fetching user data from preferences:", error);
-      return null;
-    }
-  }, []);
+    }, []);
 
   // Fetch enrollment data when dialog opens
   useEffect(() => {
@@ -203,6 +207,7 @@ export const FreeEnrollmentConfirmationDialog: React.FC<
       // Call the enrollment API
       await handlePaymentForEnrollment({
         userEmail: userProfileEmail,
+        userData: userData,
         receiptEmail: userProfileEmail,
         instituteId,
         packageSessionId,

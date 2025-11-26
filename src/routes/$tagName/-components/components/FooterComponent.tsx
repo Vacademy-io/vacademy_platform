@@ -29,7 +29,6 @@ export const FooterComponent: React.FC<FooterProps & {
   const handleLinkNavigation = (route: string, openInSameTab: boolean = false) => {
     // Check if route is external
     if (RouteMatcher.isExternalLink(route)) {
-      console.log(`[FooterComponent] Opening external link: ${route}, openInSameTab: ${openInSameTab}`);
       if (openInSameTab) {
         // Open in same tab
         window.location.href = route;
@@ -45,10 +44,8 @@ export const FooterComponent: React.FC<FooterProps & {
       const matchedPage = RouteMatcher.findMatchingPage(route, catalogueData.pages);
 
       if (matchedPage) {
-        console.log(`[FooterComponent] Found matching page for route: ${route}`, matchedPage);
         // Get the proper navigation route for this page
         const navigationRoute = RouteMatcher.getPageNavigationRoute(matchedPage, tagName);
-        console.log(`[FooterComponent] Navigating to matched page route: ${navigationRoute}`);
         navigate({ to: navigationRoute });
         return;
       }
@@ -58,19 +55,16 @@ export const FooterComponent: React.FC<FooterProps & {
     const normalizedRoute = RouteMatcher.normalizeRoute(route);
 
     if (normalizedRoute === 'home' || normalizedRoute === '') {
-      console.log(`[FooterComponent] Navigating to home: /${tagName}`);
       navigate({ to: `/${tagName}` });
       return;
     }
 
     // Navigate as regular internal link
-    console.log(`[FooterComponent] Navigating to: ${route}`);
     navigate({ to: route });
   };
 
   // Helper function to handle social link navigation
   const handleSocialLinkNavigation = (url: string, openInSameTab: boolean = false) => {
-    console.log(`[FooterComponent] Opening social link: ${url}, openInSameTab: ${openInSameTab}`);
     if (openInSameTab) {
       // Open in same tab
       window.location.href = url;

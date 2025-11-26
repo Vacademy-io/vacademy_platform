@@ -19,11 +19,9 @@ export class CourseCatalogueService {
     try {
       // First, try to parse as-is
       JSON.parse(repaired);
-      console.log("[CourseCatalogueService] JSON is already valid");
       return repaired;
     } catch (error) {
-      console.log("[CourseCatalogueService] JSON needs repair, attempting fixes...");
-      console.log("[CourseCatalogueService] Original JSON:", jsonString.substring(0, 500) + "...");
+      // JSON needs repair, attempting fixes...
     }
     
     // Remove BOM and extra whitespace
@@ -31,7 +29,6 @@ export class CourseCatalogueService {
     
     // Process line by line to remove comments more effectively
     const lines = repaired.split('\n');
-    console.log("[CourseCatalogueService] Processing", lines.length, "lines for comment removal");
     const cleanedLines = lines.map((line, index) => {
       const originalLine = line;
       // Remove // comments from each line, but be careful not to remove // that are inside strings
@@ -64,10 +61,7 @@ export class CourseCatalogueService {
       }
       
       cleanedLine = result;
-      
-      if (originalLine !== cleanedLine) {
-        console.log(`[CourseCatalogueService] Line ${index + 1}: "${originalLine}" -> "${cleanedLine}"`);
-      }
+
       return cleanedLine;
     });
     repaired = cleanedLines.join('\n');
@@ -96,16 +90,12 @@ export class CourseCatalogueService {
       .replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:\s*"([^"]*)"\s*([,}])/g, '$1"$2": "$3"$4') // Ensure keys are quoted
       .replace(/,(\s*[}\]])/g, '$1'); // Remove trailing commas again
     
-    console.log("[CourseCatalogueService] Repaired JSON:", repaired.substring(0, 500) + "...");
-    
     // Try to parse the repaired JSON to see if it works
     try {
       JSON.parse(repaired);
-      console.log("[CourseCatalogueService] Repaired JSON is now valid!");
       return repaired;
     } catch (repairError) {
       console.error("[CourseCatalogueService] Repaired JSON still invalid:", repairError);
-      console.log("[CourseCatalogueService] Repaired JSON full:", repaired);
     }
     
     return repaired;
@@ -116,7 +106,6 @@ export class CourseCatalogueService {
    */
   private static extractDataAggressively(jsonString: string): CourseCatalogueData | null {
     try {
-      console.log("[CourseCatalogueService] Attempting aggressive data extraction");
       
       // Create a basic structure
       const aggressiveData: CourseCatalogueData = {
@@ -238,8 +227,6 @@ export class CourseCatalogueService {
         aggressiveData.globalSettings.leadCollection.formStyle.showProgress = true;
       }
       
-      console.log("[CourseCatalogueService] Aggressively extracted data:", aggressiveData);
-      console.log("[CourseCatalogueService] Aggressive extraction mandatory value:", aggressiveData.globalSettings.leadCollection.mandatory);
       return aggressiveData;
     } catch (error) {
       console.error("[CourseCatalogueService] Error in aggressive extraction:", error);
@@ -252,13 +239,11 @@ export class CourseCatalogueService {
    */
   private static extractBasicStructure(jsonString: string): CourseCatalogueData | null {
     try {
-      console.log("[CourseCatalogueService] Attempting to extract basic structure from malformed JSON");
       
       // Extract basic structure using regex patterns
       const globalSettingsMatch = jsonString.match(/"globalSettings"\s*:\s*\{([^}]+)\}/);
       
       if (!globalSettingsMatch) {
-        console.log("[CourseCatalogueService] No globalSettings found in malformed JSON");
         return null;
       }
       
@@ -297,7 +282,6 @@ export class CourseCatalogueService {
       const leadCollectionMatch = jsonString.match(/"leadCollection"\s*:\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/);
       if (leadCollectionMatch) {
         const leadCollectionStr = leadCollectionMatch[1];
-        console.log("[CourseCatalogueService] Extracted leadCollection string:", leadCollectionStr);
         
         const enabledMatch = leadCollectionStr.match(/"enabled"\s*:\s*(true|false)/);
         const mandatoryMatch = leadCollectionStr.match(/"mandatory"\s*:\s*(true|false)/);
@@ -314,7 +298,6 @@ export class CourseCatalogueService {
         // Try to extract formStyle
         if (formStyleMatch) {
           const formStyleStr = formStyleMatch[1];
-          console.log("[CourseCatalogueService] Extracted formStyle string:", formStyleStr);
           
           const typeMatch = formStyleStr.match(/"type"\s*:\s*"([^"]+)"/);
           const showProgressMatch = formStyleStr.match(/"showProgress"\s*:\s*(true|false)/);
@@ -338,7 +321,6 @@ export class CourseCatalogueService {
         // Try to extract fields
         if (fieldsMatch) {
           const fieldsStr = fieldsMatch[1];
-          console.log("[CourseCatalogueService] Extracted fields string:", fieldsStr);
           
           // This is a simplified extraction - in a real scenario, you'd need more sophisticated parsing
           const fieldMatches = fieldsStr.match(/\{[^}]+\}/g);
@@ -362,7 +344,6 @@ export class CourseCatalogueService {
         }
       }
       
-      console.log("[CourseCatalogueService] Extracted basic structure:", basicData);
       return basicData;
     } catch (error) {
       console.error("[CourseCatalogueService] Error extracting basic structure:", error);
@@ -375,9 +356,6 @@ export class CourseCatalogueService {
     tagName: string
   ): Promise<CourseCatalogueData> {
     try {
-      console.log("[CourseCatalogueService] Making API call to:", this.API_ENDPOINT);
-      console.log("[CourseCatalogueService] With params:", { instituteId, tagName });
-      console.log("[CourseCatalogueService] Full URL:", `${this.API_ENDPOINT}?instituteId=${instituteId}&tagName=${tagName}`);
       
       const response = await publicAxios.get(this.API_ENDPOINT, {
         params: {
@@ -389,42 +367,27 @@ export class CourseCatalogueService {
           "Content-Type": "application/json",
         },
       });
-
-      console.log("[CourseCatalogueService] API response status:", response.status);
-      console.log("[CourseCatalogueService] API response headers:", response.headers);
-      console.log("[CourseCatalogueService] API response data:", response.data);
       
       // Parse the catalogue_json field if it exists
       if (response.data.catalogue_json) {
         try {
-                console.log("[CourseCatalogueService] Raw catalogue_json:", response.data.catalogue_json);
-                
                 // Try to parse the JSON directly first
                 let parsedData;
                 try {
                   parsedData = JSON.parse(response.data.catalogue_json);
-                  console.log("[CourseCatalogueService] JSON parsed successfully without repair");
                 } catch (directParseError) {
-                  console.log("[CourseCatalogueService] Direct parse failed, attempting repair...");
-                  
                   // Use the repair function to fix common JSON issues
                   const cleanedJson = this.repairJson(response.data.catalogue_json);
-                  console.log("[CourseCatalogueService] Cleaned JSON:", cleanedJson);
-                  
+
                   parsedData = JSON.parse(cleanedJson);
-                  console.log("[CourseCatalogueService] JSON parsed successfully after repair");
                 }
-          console.log("[CourseCatalogueService] Parsed catalogue data:", parsedData);
-                console.log("[CourseCatalogueService] LeadCollection mandatory value:", parsedData.globalSettings?.leadCollection?.mandatory);
                 
                 // Force check and fix mandatory value from raw JSON if needed
                 const rawJson = response.data.catalogue_json;
                 const mandatoryMatch = rawJson.match(/"mandatory"\s*:\s*(true|false)/);
                 if (mandatoryMatch) {
                   const correctMandatoryValue = mandatoryMatch[1] === 'true';
-                  console.log("[CourseCatalogueService] Raw JSON mandatory value:", correctMandatoryValue);
                   if (parsedData.globalSettings?.leadCollection?.mandatory !== correctMandatoryValue) {
-                    console.log("[CourseCatalogueService] Fixing mandatory value from", parsedData.globalSettings?.leadCollection?.mandatory, "to", correctMandatoryValue);
                     parsedData.globalSettings.leadCollection.mandatory = correctMandatoryValue;
                   }
                 }
@@ -436,10 +399,9 @@ export class CourseCatalogueService {
                       page.components = page.components.map((component: any) => {
                         if (component.type === 'courseCatalog' && component.props && component.props.courses) {
                           // Filter courses to only show published ones
-                          component.props.courses = component.props.courses.filter((course: any) => 
+                          component.props.courses = component.props.courses.filter((course: any) =>
                             course.is_course_published_to_catalaouge === true
                           );
-                          console.log("[CourseCatalogueService] Filtered courses to published only:", component.props.courses.length);
                         }
                         return component;
                       });
@@ -457,7 +419,6 @@ export class CourseCatalogueService {
                 // Ensure leadCollection has the new structure
                 if (parsedData.globalSettings.leadCollection && !parsedData.globalSettings.leadCollection.formStyle) {
                   console.warn("[CourseCatalogueService] Upgrading leadCollection to new structure");
-                  console.log("[CourseCatalogueService] Original mandatory value before upgrade:", parsedData.globalSettings.leadCollection.mandatory);
                   parsedData.globalSettings.leadCollection = {
                     ...parsedData.globalSettings.leadCollection,
                     formStyle: {
@@ -474,12 +435,9 @@ export class CourseCatalogueService {
                         )
                       : []
                   };
-                  console.log("[CourseCatalogueService] Mandatory value after upgrade:", parsedData.globalSettings.leadCollection.mandatory);
                 }
                 
-                console.log("[CourseCatalogueService] Final parsedData being returned:", parsedData);
-                console.log("[CourseCatalogueService] Final mandatory value:", parsedData.globalSettings?.leadCollection?.mandatory);
-          return parsedData;
+                return parsedData;
         } catch (parseError) {
           console.error("[CourseCatalogueService] Error parsing catalogue_json:", parseError);
                 console.error("[CourseCatalogueService] Raw JSON that failed to parse:", response.data.catalogue_json);
@@ -489,23 +447,19 @@ export class CourseCatalogueService {
                 });
                 
                 // Try to return a fallback with the raw data structure
-                console.log("[CourseCatalogueService] Attempting to use raw response data as fallback");
                 
                 // Try to extract basic structure from the malformed JSON
                 try {
                   const fallbackData = this.extractBasicStructure(response.data.catalogue_json);
                   if (fallbackData) {
-                    console.log("[CourseCatalogueService] Successfully extracted basic structure");
-                    
                     // Force fix mandatory value from raw JSON
                     const rawJson = response.data.catalogue_json;
                     const mandatoryMatch = rawJson.match(/"mandatory"\s*:\s*(true|false)/);
                     if (mandatoryMatch) {
                       const correctMandatoryValue = mandatoryMatch[1] === 'true';
-                      console.log("[CourseCatalogueService] Raw JSON mandatory value for fallback:", correctMandatoryValue);
                       fallbackData.globalSettings.leadCollection.mandatory = correctMandatoryValue;
                     }
-                    
+
                     return fallbackData;
                   }
                 } catch (extractError) {
@@ -516,24 +470,19 @@ export class CourseCatalogueService {
                 try {
                   const aggressiveData = this.extractDataAggressively(response.data.catalogue_json);
                   if (aggressiveData) {
-                    console.log("[CourseCatalogueService] Successfully extracted data aggressively");
-                    
                     // Force fix mandatory value from raw JSON
                     const rawJson = response.data.catalogue_json;
                     const mandatoryMatch = rawJson.match(/"mandatory"\s*:\s*(true|false)/);
                     if (mandatoryMatch) {
                       const correctMandatoryValue = mandatoryMatch[1] === 'true';
-                      console.log("[CourseCatalogueService] Raw JSON mandatory value for aggressive:", correctMandatoryValue);
                       aggressiveData.globalSettings.leadCollection.mandatory = correctMandatoryValue;
                     }
-                    
+
                     return aggressiveData;
                   }
                 } catch (aggressiveError) {
                   console.error("[CourseCatalogueService] Failed aggressive extraction:", aggressiveError);
                 }
-                
-                console.log("[CourseCatalogueService] Using empty catalogue data as final fallback");
                 return this.getEmptyCatalogueData();
         }
       }
@@ -542,25 +491,18 @@ export class CourseCatalogueService {
       return response.data;
     } catch (error: any) {
       console.error("[CourseCatalogueService] Error fetching course catalogue:", error);
-      console.error("[CourseCatalogueService] Error type:", typeof error);
-      console.error("[CourseCatalogueService] Error message:", error?.message);
-      console.error("[CourseCatalogueService] Error response:", error?.response);
-      console.error("[CourseCatalogueService] Error response status:", error?.response?.status);
-      console.error("[CourseCatalogueService] Error response data:", error?.response?.data);
-      console.error("[CourseCatalogueService] Error stack:", error?.stack);
-      
+
       // Check if it's a 404 error (tag not found)
       if (error?.response?.status === 404) {
-        console.log("[CourseCatalogueService] Tag not found, returning empty catalogue");
         return this.getEmptyCatalogueData();
       }
-      
+
       // Check if it's a network error
       if (error?.code === 'NETWORK_ERROR' || error?.message?.includes('Network Error')) {
         console.error("[CourseCatalogueService] Network error detected");
         throw new Error("Network error: Unable to connect to the server. Please check your internet connection.");
       }
-      
+
       // Check if it's a timeout error
       if (error?.code === 'ECONNABORTED' || error?.message?.includes('timeout')) {
         console.error("[CourseCatalogueService] Timeout error detected");

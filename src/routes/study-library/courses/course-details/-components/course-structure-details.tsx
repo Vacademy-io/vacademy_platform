@@ -1063,10 +1063,13 @@ export const CourseStructureDetails = ({
                                                         "sm"
                                                       )}
                                                     </div>
-                                                    <span className="text-xs text-neutral-500 hidden sm:inline">
-                                                      {completedSlides}/
-                                                      {totalSlides}
-                                                    </span>
+                                                    {slidesMap[ch.id] !==
+                                                      undefined && (
+                                                      <span className="text-xs text-neutral-500 hidden sm:inline">
+                                                        {completedSlides}/
+                                                        {totalSlides}
+                                                      </span>
+                                                    )}
                                                     {renderCompletionBadge(
                                                       progress
                                                     )}
@@ -1383,10 +1386,13 @@ export const CourseStructureDetails = ({
                                                         "sm"
                                                       )}
                                                     </div>
-                                                    <span className="text-xs text-neutral-500 hidden sm:inline">
-                                                      {completedSlides}/
-                                                      {totalSlides}
-                                                    </span>
+                                                    {slidesMap[ch.id] !==
+                                                      undefined && (
+                                                      <span className="text-xs text-neutral-500 hidden sm:inline">
+                                                        {completedSlides}/
+                                                        {totalSlides}
+                                                      </span>
+                                                    )}
                                                     {renderCompletionBadge(
                                                       progress
                                                     )}
@@ -1644,10 +1650,13 @@ export const CourseStructureDetails = ({
                                                       "sm"
                                                     )}
                                                   </div>
-                                                  <span className="text-xs text-neutral-500 hidden sm:inline">
-                                                    {completedSlides}/
-                                                    {totalSlides}
-                                                  </span>
+                                                  {slidesMap[ch.id] !==
+                                                    undefined && (
+                                                    <span className="text-xs text-neutral-500 hidden sm:inline">
+                                                      {completedSlides}/
+                                                      {totalSlides}
+                                                    </span>
+                                                  )}
                                                   {renderCompletionBadge(
                                                     progress
                                                   )}

@@ -134,14 +134,10 @@ export const HeaderComponent: React.FC<HeaderProps & {
       const matchedPage = RouteMatcher.findMatchingPage(route, catalogueData.pages);
       
       if (matchedPage) {
-        console.log(`[HeaderComponent] Found matching page for route: ${route}`, matchedPage);
         // Get the proper navigation route for this page
         const navigationRoute = RouteMatcher.getPageNavigationRoute(matchedPage, tagName);
-        console.log(`[HeaderComponent] Navigating to matched page route: ${navigationRoute}`);
         navigate({ to: navigationRoute });
         return;
-      } else {
-        console.log(`[HeaderComponent] No matching page found for route: ${route}, checking for special routes`);
       }
     }
     
@@ -152,8 +148,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
       const currentPath = location.pathname;
       const pathSegments = currentPath.split('/').filter(Boolean);
       const currentTagName = pathSegments[0] || tagName;
-      
-      console.log(`[HeaderComponent] Navigating to home page: /${currentTagName}`);
+
       navigate({ to: `/${currentTagName}` });
       return;
     }
@@ -162,20 +157,17 @@ export const HeaderComponent: React.FC<HeaderProps & {
       const currentPath = location.pathname;
       const pathSegments = currentPath.split('/').filter(Boolean);
       const currentTagName = pathSegments[0] || tagName;
-      
-      console.log(`[HeaderComponent] Navigating to courses page: /${currentTagName}`);
+
       navigate({ to: `/${currentTagName}` });
       return;
     }
     
     // For other routes, check if we're already on the target route
     if (isActiveRoute(route, label)) {
-      console.log(`[HeaderComponent] Already on route ${route}, not navigating`);
       return;
     }
     
     // Navigate to the route as-is (for custom internal routes)
-    console.log(`[HeaderComponent] Navigating to custom route: ${route}`);
     navigate({ to: route });
   };
 
@@ -254,7 +246,6 @@ export const HeaderComponent: React.FC<HeaderProps & {
                         window.location.href = `/${link.route}`;
                       } else if (link.route === '' || link.route === 'get-started') {
                         // Empty route or get-started should open lead collection
-                        console.log("[HeaderComponent] Get Started button clicked, opening lead collection");
                         window.dispatchEvent(new CustomEvent('openLeadCollection'));
                       } else {
                         navigate({ to: link.route });

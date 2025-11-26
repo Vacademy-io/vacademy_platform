@@ -5,8 +5,9 @@ import {
   Scroll,
   SignOut,
   NotePencil,
+  Users,
 } from "@phosphor-icons/react";
-import { Password, UserCircle, UserCircleMinus } from "phosphor-react";
+import { Files, Password, UserCircle, UserCircleMinus } from "phosphor-react";
 import { NamingSettingsType } from "@/services/fetchAndStoreInstituteDetails";
 import { NAMING_SETTINGS_KEY } from "@/types/naming-settings";
 
@@ -66,6 +67,11 @@ export const SidebarItemsData: SidebarItemsType[] = [
     ],
   },
   {
+    icon: Users,
+    title: "Sub-Org Learners",
+    to: "/sub-org-learners",
+  },
+  {
     icon: Scroll,
     title: "Assessment Centre",
     subItems: [
@@ -98,6 +104,11 @@ export const HamBurgerSidebarItemsData: SidebarItemsType[] = [
     icon: UserCircle,
     title: "View Profile Details",
     to: "/user-profile",
+  },
+  {
+    icon: Files,
+    title: "My Files",
+    to: "/my-files",
   },
   // {
   //   icon: CreditCard,
@@ -133,12 +144,19 @@ export async function filterHamburgerMenuItemsWithPermissions(
     canViewProfile: boolean;
     canEditProfile: boolean;
     canDeleteProfile: boolean;
+    canViewFiles: boolean;
   }
 ) {
   // Filter based on permissions
   if (!permissions.canViewProfile) {
     HamBurgerSidebarItemsData = HamBurgerSidebarItemsData.filter(
       (item) => item.title !== "View Profile Details"
+    );
+  }
+  
+  if (!permissions.canViewFiles) {
+    HamBurgerSidebarItemsData = HamBurgerSidebarItemsData.filter(
+      (item) => item.title !== "My Files"
     );
   }
 

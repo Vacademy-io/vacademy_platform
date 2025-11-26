@@ -884,61 +884,73 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     };
   }, [player]);
 
-  // Add an additional effect to handle iframe load and inject CSS
-  useEffect(() => {
-    if (!iframeRef.current) return;
-
-    const injectCSS = () => {
-      try {
-        const iframe = iframeRef.current;
-        if (!iframe) return;
-
-        // Try to access iframe content
-        const iframeDocument =
-          iframe.contentDocument || iframe.contentWindow?.document;
-        if (!iframeDocument) return;
-
-        // Create a style element
-        const style = iframeDocument.createElement("style");
-        style.textContent = `
-            .ytp-chrome-top,
-            .ytp-chrome-bottom,
-            .ytp-watermark,
-            .ytp-show-cards-title,
-            .ytp-youtube-button,
-            .ytp-embed-title,
-            .ytp-embed-owner,
-            .ytp-share-button,
-            .ytp-watch-later-button,
-            .ytp-more-videos-overlay,
-            .ytp-pause-overlay,
-            .ytp-related-on-pause-container,
-            .ytp-endscreen-content,
-            .ytp-ce-element {
-                display: none !important;
-            }
-            `;
-
-        // Append style to iframe head
-        iframeDocument.head.appendChild(style);
-      } catch (error) {
-        console.error("Error injecting CSS into iframe:", error);
-      }
-    };
-
-    // Try to inject CSS after iframe is loaded
-    const iframe = iframeRef.current;
-    if (iframe) {
-      iframe.addEventListener("load", injectCSS);
-
-      // Also try immediately in case iframe is already loaded
-      injectCSS();
-
-      return () => {
-        iframe.removeEventListener("load", injectCSS);
+    // Add an additional effect to handle iframe load and inject CSS
+    useEffect(() => {
+      if (!iframeRef.current) return;
+      const injectCSS = () => {
+        try {
+          const iframe = iframeRef.current;
+          if (!iframe) return;
+  
+          // Try to access iframe content
+          const iframeDocument =
+            iframe.contentDocument || iframe.contentWindow?.document;
+          if (!iframeDocument) return;
+  
+          // Create a style element
+          const style = iframeDocument.createElement("style");
+          style.textContent = `
+              .ytp-chrome-top,
+              .ytp-chrome-bottom,
+              .ytp-watermark,
+              .ytp-show-cards-title,
+              .ytp-youtube-button,
+              .ytp-embed-title,
+              .ytp-embed-owner,
+              .ytp-share-button,
+              .ytp-watch-later-button,
+              .ytp-more-videos-overlay,
+              .ytp-pause-overlay,
+              .ytp-related-on-pause-container,
+              .ytp-endscreen-content,
+              .ytp-ce-element {
+                  display: none !important;
+              }
+              `;
+  
+          // Append style to iframe head
+          iframeDocument.head.appendChild(style);
+        } catch (error) {
+          console.error("Error injecting CSS into iframe:", error);
+        }
       };
+  
+      // Try to inject CSS after iframe is loaded
+      const iframe = iframeRef.current;
+      if (iframe) {
+        iframe.addEventListener("load", injectCSS);
+  
+        // Also try immediately in case iframe is already loaded
+        injectCSS();
+  
+        return () => {
+          iframe.removeEventListener("load", injectCSS);
+        };
+      }
+    }, [iframeRef.current]);
+
+  // Note: CSS injection into YouTube iframe removed due to cross-origin restrictions
+  // YouTube UI elements are controlled via playerVars (controls, modestbranding, etc.)
+
+  // Determine proper origin for Electron vs Web
+  const getPlayerOrigin = () => {
+    const origin = window.location.origin;
+    // If running in Electron with capacitor protocol, use localhost as origin
+    if (origin.includes('capacitor-electron') || origin.includes('file://')) {
+      return 'http://localhost';
     }
-  }, [iframeRef.current]);
+    return origin;
+  };
 
   const opts: YouTubeProps["opts"] = {
     height: "100%",
@@ -953,7 +965,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       // showinfo: 0, // Hide video title and uploader
       autoplay: allowPlayPause ? 0 : 1, // Autoplay when pause control is disabled
       // cc_load_policy: 0, // Hide closed captions
-      origin: window.location.origin, // Set origin for security
+      origin: getPlayerOrigin(), // Use localhost for Electron, actual origin for web
       enablejsapi: 1, // Enable JavaScript API
       playsinline: 1, // Play inline on iOS
       loop: 0, // Don't loop the video
@@ -1019,7 +1031,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       const iframe = await event.target.getIframe();
       iframeRef.current = iframe;
 
-      // Try to hide YouTube elements by injecting CSS
+      // Set iframe attributes for Error 153 fix
       if (iframe) {
         try {
           iframe.setAttribute(
@@ -1811,7 +1823,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
         {/* Fullscreen controls overlay */}
         {(isFullscreen || isPseudoFullscreen) && showFullscreenControls && (
-          <div className="absolute inset-0 z-[9999] flex flex-col justify-between bg-gradient-to-b from-black/50 via-transparent to-black/80 animate-in fade-in duration-200 pointer-events-none">
+          <div className="absolute inset-0 z-[9999] flex flex-col justify-between animate-in fade-in duration-200 pointer-events-none">
             {/* Top controls - Exit fullscreen */}
             <div className="flex justify-end p-4 pointer-events-auto">
               <button
@@ -2319,6 +2331,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                 : undefined
             }
           />
+        )}
+        {/* Bottom gradient overlay in fullscreen */}
+        {(isFullscreen || isPseudoFullscreen) && (
+          <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black/80 via-black/40 to-transparent pointer-events-none rounded-b-lg z-[9998]" />
         )}
       </div>
 

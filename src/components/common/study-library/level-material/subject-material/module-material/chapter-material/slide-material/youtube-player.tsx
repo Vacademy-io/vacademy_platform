@@ -2320,6 +2320,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
             }
           />
         )}
+        {/* Bottom gradient overlay in fullscreen */}
+        {(isFullscreen || isPseudoFullscreen) && (
+          <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black/80 via-black/40 to-transparent pointer-events-none rounded-b-lg z-[9998]" />
+        )}
       </div>
 
       {/* Speed Options Dropdown - Non-fullscreen - Rendered outside video container with fixed positioning */}

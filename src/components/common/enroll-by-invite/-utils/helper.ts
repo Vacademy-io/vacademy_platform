@@ -1,4 +1,5 @@
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
+import { InsituteCustomField } from "../-services/custom-fields-setup";
 
 interface CourseMedia {
   type: string; // e.g., 'video', 'image', etc.
@@ -201,6 +202,41 @@ export function convertInviteCustomFields(
       field_type: field.fieldType,
       created_at: field.createdAt,
       updated_at: field.updatedAt,
+    };
+  });
+}
+
+export const isSystemRequiedCustomFeilds = (field: InsituteCustomField) => {
+  const name = (field.field_name || "").toLocaleLowerCase();
+  // Exclude explicit "username" fields since they contain "name" substring
+  if (name.includes("username")) return false;
+  return (
+    name.includes("email") || name.includes("name") || name.includes("phone")
+  );
+};
+
+export function convertInstituteCustomFields(
+  data: InsituteCustomField[]
+): ConvertedCustomField[] {
+  // Filter to only include system required fields (email, name, phone)
+  const filteredFields = data?.filter((field) =>
+    isSystemRequiedCustomFeilds(field)
+  );
+
+  return filteredFields?.map((field, idx) => {
+    return {
+      id: field.custom_field_id,
+      field_name: field.field_name,
+      field_key: field.field_key,
+      field_order: field.form_order ?? idx + 1,
+      comma_separated_options:
+        field.comma_separated_options || field.config || "",
+      config: field.config || "{}",
+      status: field.status || "ACTIVE",
+      is_mandatory: field.is_mandatory ?? false, // Use field's is_mandatory or default to false
+      field_type: field.field_type,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     };
   });
 }

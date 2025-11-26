@@ -67,7 +67,7 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
     passwordStrategy: "manual",
     passwordDelivery: "none",
   },
-  permissions: { canViewProfile: false, canEditProfile: false, canDeleteProfile: false },
+  permissions: { canViewProfile: false, canEditProfile: false, canDeleteProfile: false, canViewFiles: false },
   courseDetails: {
     tabs: [
       { id: "OUTLINE", order: 1, visible: true },

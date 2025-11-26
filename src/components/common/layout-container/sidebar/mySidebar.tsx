@@ -140,6 +140,7 @@ export const MySidebar = ({
           canViewProfile: false,
           canEditProfile: false,
           canDeleteProfile: false,
+          canViewFiles: false,
         }
       ).then((data) => {
         setFilteredHamburgerItems(data);

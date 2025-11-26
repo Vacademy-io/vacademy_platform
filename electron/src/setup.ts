@@ -238,7 +238,7 @@ export class ElectronCapacitorApp {
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: true,
-        devTools: false,
+        devTools: true,
         webSecurity: false, // Allow cross-origin iframes (for YouTube)
         allowRunningInsecureContent: false,
         // Use preload to inject the electron varriant overrides for capacitor plugins.
@@ -355,5 +355,27 @@ export function setupContentSecurityPolicy(customScheme: string): void {
         'Referrer-Policy': ['strict-origin-when-cross-origin'],
       },
     });
+  });
+
+  // YouTube Error 153 fix - applies to all platforms
+  // Adds proper headers for YouTube iframe requests
+  session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    // Only modify YouTube iframe embed requests (not video chunks or other resources)
+    if (details.url.includes('youtube.com/embed/')) {
+      const modifiedHeaders = { ...details.requestHeaders };
+      
+      // Set Origin to localhost for Electron (YouTube accepts this)
+      modifiedHeaders['Origin'] = 'http://localhost';
+      
+      // Set Referer to localhost if not already present
+      if (!modifiedHeaders['Referer']) {
+        modifiedHeaders['Referer'] = 'http://localhost/';
+      }
+      
+      callback({ requestHeaders: modifiedHeaders });
+    } else {
+      // Don't modify other requests
+      callback({ requestHeaders: details.requestHeaders });
+    }
   });
 }

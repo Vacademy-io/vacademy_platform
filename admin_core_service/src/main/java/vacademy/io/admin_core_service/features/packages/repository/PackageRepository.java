@@ -166,46 +166,149 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             Pageable pageable);
 
     @Query(value = """
-                SELECT
-                    p.id AS id,
-                    p.package_name AS packageName,
-                    p.thumbnail_file_id AS thumbnailFileId,
-                    p.is_course_published_to_catalaouge AS isCoursePublishedToCatalaouge,
-                    p.course_preview_image_media_id AS coursePreviewImageMediaId,
-                    p.course_banner_media_id AS courseBannerMediaId,
-                    p.course_media_id AS courseMediaId,
-                    p.why_learn AS whyLearnHtml,
-                    p.who_should_learn AS whoShouldLearnHtml,
-                    p.about_the_course AS aboutTheCourseHtml,
-                    p.comma_separated_tags AS commaSeparetedTags,
-                    p.course_depth AS courseDepth,
-                    p.course_html_description AS courseHtmlDescriptionHtml,
-                    p.created_at AS createdAt,
-                    COALESCE(SUM(DISTINCT CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
-                    COALESCE(SUM(DISTINCT ps_read_time.total_read_time_minutes), 0) AS readTimeInMinutes,
-                    COALESCE((
-                        SELECT AVG(r.points)
-                        FROM rating r
-                        LEFT JOIN package_session psr ON psr.id = r.source_id AND r.source_type = 'PACKAGE_SESSION'
-                        WHERE (
-                            (r.source_type = 'PACKAGE_SESSION' AND psr.package_id = p.id)
-                            OR (r.source_type = 'PACKAGE' AND r.source_id = p.id)
-                        )
-                        AND (:#{#ratingStatuses == null || #ratingStatuses.isEmpty()} = true OR r.status IN (:ratingStatuses))
-                        AND (
-                            r.source_type != 'PACKAGE_SESSION'
-                            OR (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR psr.status IN (:packageSessionStatus))
-                        )
-                    ), 0.0) AS rating,
-                    MIN(l.id) AS levelId,
-                    MIN(l.level_name) AS levelName,
-                    ARRAY_REMOVE(ARRAY_AGG(DISTINCT fspm.user_id), NULL) AS facultyUserIds,
-                    (
-                        SELECT ARRAY_AGG(DISTINCT l2.id)
-                        FROM package_session ps2
-                        JOIN level l2 ON l2.id = ps2.level_id
-                        WHERE ps2.package_id = p.id
-                    ) AS levelIds
+        SELECT
+            p.id AS id,
+            p.package_name AS packageName,
+            p.thumbnail_file_id AS thumbnailFileId,
+            p.is_course_published_to_catalaouge AS isCoursePublishedToCatalaouge,
+            p.course_preview_image_media_id AS coursePreviewImageMediaId,
+            p.course_banner_media_id AS courseBannerMediaId,
+            p.course_media_id AS courseMediaId,
+            p.why_learn AS whyLearnHtml,
+            p.who_should_learn AS whoShouldLearnHtml,
+            p.about_the_course AS aboutTheCourseHtml,
+            p.comma_separated_tags AS commaSeparetedTags,
+            p.course_depth AS courseDepth,
+            p.course_html_description AS courseHtmlDescriptionHtml,
+            p.created_at AS createdAt,
+            
+            /* 1. Progress Calculation (Removed DISTINCT to ensure accuracy) */
+            COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
+            
+            SUM(COALESCE(ps_read_time.total_read_time_minutes, 0)) AS readTimeInMinutes,
+            
+            COALESCE((
+                SELECT AVG(r.points)
+                FROM rating r
+                LEFT JOIN package_session psr ON psr.id = r.source_id AND r.source_type = 'PACKAGE_SESSION'
+                WHERE (
+                    (r.source_type = 'PACKAGE_SESSION' AND psr.package_id = p.id)
+                    OR (r.source_type = 'PACKAGE' AND r.source_id = p.id)
+                )
+                AND (:#{#ratingStatuses == null || #ratingStatuses.isEmpty()} = true OR r.status IN (:ratingStatuses))
+                AND (
+                    r.source_type != 'PACKAGE_SESSION'
+                    OR (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR psr.status IN (:packageSessionStatus))
+                )
+            ), 0.0) AS rating,
+            
+            /* 2. Session Identifiers */
+            MIN(l.id) AS levelId,
+            MIN(l.level_name) AS levelName,
+            
+            ARRAY_REMOVE(ARRAY_AGG(DISTINCT fspm.user_id), NULL) AS facultyUserIds,
+            
+            /* 3. Return only current Level ID */
+            ARRAY[CAST(MIN(l.id) AS text)] AS levelIds
+
+        FROM package p
+        JOIN package_session ps ON ps.package_id = p.id
+        JOIN level l ON l.id = ps.level_id
+        JOIN package_institute pi ON pi.package_id = p.id
+        
+        LEFT JOIN learner_operation lo
+            ON lo.source = 'PACKAGE_SESSION'
+            AND lo.source_id = ps.id
+            AND (:userId IS NULL OR lo.user_id = :userId)
+            AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
+            
+        LEFT JOIN faculty_subject_package_session_mapping fspm
+            ON fspm.package_session_id = ps.id
+            AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
+            
+        LEFT JOIN (
+            SELECT
+                cpsm.package_session_id,
+                SUM(
+                    CASE
+                        WHEN s.source_type = 'VIDEO' THEN ROUND(COALESCE(vs.published_video_length, 0) / 60000.0, 2)
+                        WHEN s.source_type = 'DOCUMENT' THEN
+                            CASE
+                                WHEN ds.type = 'PDF' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 3, 120)
+                                WHEN ds.type = 'PRESENTATION' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 2, 60)
+                                ELSE 10
+                            END
+                        WHEN s.source_type = 'QUESTION' THEN 5
+                        WHEN s.source_type = 'ASSIGNMENT' THEN COALESCE(aqc.question_count, 0) * 3
+                        WHEN s.source_type = 'QUIZ' THEN COALESCE(qqc.question_count, 0) * 2
+                        ELSE 0
+                    END
+                ) AS total_read_time_minutes
+            FROM slide s
+            LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
+            LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
+            LEFT JOIN (
+                SELECT assignment_slide_id AS slide_id, COUNT(*) AS question_count
+                FROM assignment_slide_question
+                WHERE status IN (:assignmentQuestionStatusList)
+                GROUP BY assignment_slide_id
+            ) aqc ON aqc.slide_id = s.source_id AND s.source_type = 'ASSIGNMENT'
+            LEFT JOIN (
+                SELECT quiz_slide_id AS slide_id, COUNT(*) AS question_count
+                FROM quiz_slide_question
+                WHERE status IN (:questionStatusList)
+                GROUP BY quiz_slide_id
+            ) qqc ON qqc.slide_id = s.source_id AND s.source_type = 'QUIZ'
+            JOIN chapter_to_slides cs ON cs.slide_id = s.id
+            JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = cs.chapter_id
+            WHERE
+                s.status IN (:slideStatusList)
+                AND cs.status IN (:slideStatusList)
+                AND cpsm.status IN (:chapterPackageStatusList)
+            GROUP BY cpsm.package_session_id
+        ) ps_read_time ON ps.id = ps_read_time.package_session_id
+        
+        WHERE
+            p.is_course_published_to_catalaouge = true
+            AND (:userId IS NULL OR lo.user_id = :userId)
+            AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
+            AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
+            AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+            AND (
+                :#{#facultyIds == null || #facultyIds.isEmpty()} = true
+                OR EXISTS (
+                    SELECT 1 FROM faculty_subject_package_session_mapping f
+                    WHERE f.package_session_id = ps.id
+                    AND f.user_id IN (:facultyIds)
+                    AND (
+                        :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+                        OR f.status IN (:facultySubjectSessionStatus)
+                    )
+                )
+            )
+            AND (
+                :#{#tags == null || #tags.isEmpty()} = true OR
+                EXISTS (
+                    SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                    WHERE tag ILIKE ANY (array[:#{#tags}])
+                )
+            )
+        
+        GROUP BY
+            p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
+            p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
+            p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
+            p.course_depth, p.course_html_description, p.created_at,
+            ps.id /* 4. Added Grouping by Session ID */
+        
+        HAVING
+            COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) >= 80
+        """,
+
+            countQuery = """
+            SELECT COUNT(*) FROM (
+                SELECT ps.id
                 FROM package p
                 JOIN package_session ps ON ps.package_id = p.id
                 JOIN level l ON l.id = ps.level_id
@@ -218,47 +321,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 LEFT JOIN faculty_subject_package_session_mapping fspm
                     ON fspm.package_session_id = ps.id
                     AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
-                LEFT JOIN (
-                    SELECT
-                        cpsm.package_session_id,
-                        SUM(
-                            CASE
-                                WHEN s.source_type = 'VIDEO' THEN ROUND(COALESCE(vs.published_video_length, 0) / 60000.0, 2)
-                                WHEN s.source_type = 'DOCUMENT' THEN
-                                    CASE
-                                        WHEN ds.type = 'PDF' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 3, 120)
-                                        WHEN ds.type = 'PRESENTATION' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 2, 60)
-                                        ELSE 10
-                                    END
-                                WHEN s.source_type = 'QUESTION' THEN 5
-                                WHEN s.source_type = 'ASSIGNMENT' THEN COALESCE(aqc.question_count, 0) * 3
-                                WHEN s.source_type = 'QUIZ' THEN COALESCE(qqc.question_count, 0) * 2
-                                ELSE 0
-                            END
-                        ) AS total_read_time_minutes
-                    FROM slide s
-                    LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
-                    LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
-                    LEFT JOIN (
-                        SELECT assignment_slide_id AS slide_id, COUNT(*) AS question_count
-                        FROM assignment_slide_question
-                        WHERE status IN (:assignmentQuestionStatusList)
-                        GROUP BY assignment_slide_id
-                    ) aqc ON aqc.slide_id = s.source_id AND s.source_type = 'ASSIGNMENT'
-                    LEFT JOIN (
-                        SELECT quiz_slide_id AS slide_id, COUNT(*) AS question_count
-                        FROM quiz_slide_question
-                        WHERE status IN (:questionStatusList)
-                        GROUP BY quiz_slide_id
-                    ) qqc ON qqc.slide_id = s.source_id AND s.source_type = 'QUIZ'
-                    JOIN chapter_to_slides cs ON cs.slide_id = s.id
-                    JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = cs.chapter_id
-                    WHERE
-                        s.status IN (:slideStatusList)
-                        AND cs.status IN (:slideStatusList)
-                        AND cpsm.status IN (:chapterPackageStatusList)
-                    GROUP BY cpsm.package_session_id
-                ) ps_read_time ON ps.id = ps_read_time.package_session_id
                 WHERE
                     p.is_course_published_to_catalaouge = true
                     AND (:userId IS NULL OR lo.user_id = :userId)
@@ -271,7 +333,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         OR EXISTS (
                             SELECT 1 FROM faculty_subject_package_session_mapping f
                             WHERE f.package_session_id = ps.id
-                            AND f.subject_id IS NULL
                             AND f.user_id IN (:facultyIds)
                             AND (
                                 :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
@@ -286,58 +347,10 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                             WHERE tag ILIKE ANY (array[:#{#tags}])
                         )
                     )
-                GROUP BY
-                    p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
-                    p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
-                    p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
-                    p.course_depth, p.course_html_description, p.created_at
-                HAVING
-                    COALESCE(SUM(DISTINCT CAST(lo.value AS DOUBLE PRECISION)), 0) >= 80
-            """,
-
-            countQuery = """
-                        SELECT COUNT(DISTINCT p.id)
-                        FROM package p
-                        JOIN package_session ps ON ps.package_id = p.id
-                        JOIN level l ON l.id = ps.level_id
-                        JOIN package_institute pi ON pi.package_id = p.id
-                        LEFT JOIN learner_operation lo
-                            ON lo.source = 'PACKAGE_SESSION'
-                            AND lo.source_id = ps.id
-                            AND (:userId IS NULL OR lo.user_id = :userId)
-                            AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
-                        LEFT JOIN faculty_subject_package_session_mapping fspm
-                            ON fspm.package_session_id = ps.id
-                            AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
-                        WHERE
-                            p.is_course_published_to_catalaouge = true
-                            AND (:userId IS NULL OR lo.user_id = :userId)
-                            AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
-                            AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
-                            AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
-                            AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
-                            AND (
-                                :#{#facultyIds == null || #facultyIds.isEmpty()} = true
-                                OR EXISTS (
-                                    SELECT 1 FROM faculty_subject_package_session_mapping f
-                                    WHERE f.package_session_id = ps.id
-                                    AND f.user_id IN (:facultyIds)
-                                    AND (
-                                        :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
-                                        OR f.status IN (:facultySubjectSessionStatus)
-                                    )
-                                )
-                            )
-                            AND (
-                                :#{#tags == null || #tags.isEmpty()} = true OR
-                                EXISTS (
-                                    SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
-                                    WHERE tag ILIKE ANY (array[:#{#tags}])
-                                )
-                            )
-                        GROUP BY p.id
-                        HAVING COALESCE(SUM(DISTINCT CAST(lo.value AS DOUBLE PRECISION)), 0) >= 80
-                    """,
+                GROUP BY ps.id
+                HAVING COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) >= 80
+            ) AS count_subquery
+        """,
 
             nativeQuery = true)
     Page<PackageDetailProjection> getCompletedLearnerPackageDetail(
@@ -360,124 +373,133 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
     // to do: here I have hard coded the rating of course
 
     @Query(value = """
-                SELECT DISTINCT ON (p.id)
-                    p.id AS id,
-                    p.package_name AS packageName,
-                    p.thumbnail_file_id AS thumbnailFileId,
-                    p.is_course_published_to_catalaouge AS isCoursePublishedToCatalaouge,
-                    p.course_preview_image_media_id AS coursePreviewImageMediaId,
-                    p.course_banner_media_id AS courseBannerMediaId,
-                    p.course_media_id AS courseMediaId,
-                    p.why_learn AS whyLearnHtml,
-                    p.who_should_learn AS whoShouldLearnHtml,
-                    p.about_the_course AS aboutTheCourseHtml,
-                    p.comma_separated_tags AS commaSeparetedTags,
-                    p.course_depth AS courseDepth,
-                    p.course_html_description AS courseHtmlDescriptionHtml,
-                    p.created_at AS createdAt,
-                    COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
-                    ps_read_time.total_read_time_minutes AS readTimeInMinutes,
-                    COALESCE((
-                        SELECT AVG(r.points)
-                        FROM rating r
-                        LEFT JOIN package_session psr ON psr.id = r.source_id AND r.source_type = 'PACKAGE_SESSION'
-                        WHERE (
-                            (r.source_type = 'PACKAGE_SESSION' AND psr.package_id = p.id)
-                            OR (r.source_type = 'PACKAGE' AND r.source_id = p.id)
-                        )
-                        AND (:#{#ratingStatuses == null || #ratingStatuses.isEmpty()} = true OR r.status IN (:ratingStatuses))
-                        AND (
-                            r.source_type != 'PACKAGE_SESSION'
-                            OR (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR psr.status IN (:packageSessionStatus))
-                        )
-                    ), 0.0) AS rating,
-                    ps.id AS packageSessionId,
-                    l.id AS levelId,
-                    l.level_name AS levelName,
-                    ARRAY_REMOVE(ARRAY_AGG(DISTINCT fspm.user_id), NULL) AS facultyUserIds,
-                    (
-                        SELECT ARRAY_AGG(DISTINCT l2.id)
-                        FROM package_session ps2
-                        JOIN level l2 ON l2.id = ps2.level_id
-                        WHERE ps2.package_id = p.id
-                    ) AS levelIds
-                FROM package p
-                JOIN package_session ps ON ps.package_id = p.id
-                JOIN level l ON l.id = ps.level_id
-                JOIN package_institute pi ON pi.package_id = p.id
-                LEFT JOIN learner_operation lo
-                    ON lo.source = 'PACKAGE_SESSION'
-                    AND lo.source_id = ps.id
-                    AND (:userId IS NULL OR lo.user_id = :userId)
-                    AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
-                LEFT JOIN faculty_subject_package_session_mapping fspm
-                    ON fspm.package_session_id = ps.id
-                    AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
-                LEFT JOIN (
-                    SELECT cpsm.package_session_id,
-                           SUM(
+        SELECT
+            p.id AS id,
+            p.package_name AS packageName,
+            p.thumbnail_file_id AS thumbnailFileId,
+            p.is_course_published_to_catalaouge AS isCoursePublishedToCatalaouge,
+            p.course_preview_image_media_id AS coursePreviewImageMediaId,
+            p.course_banner_media_id AS courseBannerMediaId,
+            p.course_media_id AS courseMediaId,
+            p.why_learn AS whyLearnHtml,
+            p.who_should_learn AS whoShouldLearnHtml,
+            p.about_the_course AS aboutTheCourseHtml,
+            p.comma_separated_tags AS commaSeparetedTags,
+            p.course_depth AS courseDepth,
+            p.course_html_description AS courseHtmlDescriptionHtml,
+            p.created_at AS createdAt,
+            
+            COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
+            SUM(COALESCE(ps_read_time.total_read_time_minutes, 0)) AS readTimeInMinutes,
+            
+            COALESCE((
+                SELECT AVG(r.points)
+                FROM rating r
+                LEFT JOIN package_session psr ON psr.id = r.source_id AND r.source_type = 'PACKAGE_SESSION'
+                WHERE (
+                    (r.source_type = 'PACKAGE_SESSION' AND psr.package_id = p.id)
+                    OR (r.source_type = 'PACKAGE' AND r.source_id = p.id)
+                )
+                AND (:#{#ratingStatuses == null || #ratingStatuses.isEmpty()} = true OR r.status IN (:ratingStatuses))
+                AND (
+                    r.source_type != 'PACKAGE_SESSION'
+                    OR (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR psr.status IN (:packageSessionStatus))
+                )
+            ), 0.0) AS rating,
+            
+            ps.id AS packageSessionId,
+            MIN(l.id) AS levelId,
+            MIN(l.level_name) AS levelName,
+            
+            ARRAY_REMOVE(ARRAY_AGG(DISTINCT fspm.user_id), NULL) AS facultyUserIds,
+            
+            /* Fixed: Return only current level ID */
+            ARRAY[CAST(MIN(l.id) AS text)] AS levelIds
+
+        FROM package p
+        JOIN package_session ps ON ps.package_id = p.id
+        JOIN level l ON l.id = ps.level_id
+        JOIN package_institute pi ON pi.package_id = p.id
+        
+        LEFT JOIN learner_operation lo
+            ON lo.source = 'PACKAGE_SESSION'
+            AND lo.source_id = ps.id
+            AND (:userId IS NULL OR lo.user_id = :userId)
+            AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
+            
+        LEFT JOIN faculty_subject_package_session_mapping fspm
+            ON fspm.package_session_id = ps.id
+            AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
+            
+        LEFT JOIN (
+            SELECT cpsm.package_session_id,
+                   SUM(
+                       CASE
+                           WHEN s.source_type = 'VIDEO' THEN ROUND(COALESCE(v.published_video_length, 0) / 60000.0, 2)
+                           WHEN s.source_type = 'DOCUMENT' THEN
                                CASE
-                                   WHEN s.source_type = 'VIDEO' THEN ROUND(COALESCE(v.published_video_length, 0) / 60000.0, 2)
-                                   WHEN s.source_type = 'DOCUMENT' THEN
-                                       CASE
-                                           WHEN d.type = 'PDF' THEN LEAST(COALESCE(d.published_document_total_pages, d.total_pages) * 3, 120)
-                                           WHEN d.type = 'PRESENTATION' THEN LEAST(COALESCE(d.published_document_total_pages, d.total_pages) * 2, 60)
-                                           ELSE 10
-                                       END
-                                   WHEN s.source_type = 'QUESTION' THEN 5
-                                   WHEN s.source_type = 'ASSIGNMENT' THEN COALESCE(aqc.question_count, 0) * 3
-                                   WHEN s.source_type = 'QUIZ' THEN COALESCE(qqc.question_count, 0) * 2
-                                   ELSE 0
+                                   WHEN d.type = 'PDF' THEN LEAST(COALESCE(d.published_document_total_pages, d.total_pages) * 3, 120)
+                                   WHEN d.type = 'PRESENTATION' THEN LEAST(COALESCE(d.published_document_total_pages, d.total_pages) * 2, 60)
+                                   ELSE 10
                                END
-                           ) AS total_read_time_minutes
-                    FROM slide s
-                    JOIN chapter_to_slides cs ON cs.slide_id = s.id
-                    JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = cs.chapter_id
-                    LEFT JOIN video v ON v.id = s.source_id AND s.source_type = 'VIDEO'
-                    LEFT JOIN document_slide d ON d.id = s.source_id AND s.source_type = 'DOCUMENT'
-                    LEFT JOIN (
-                        SELECT assignment_slide_id AS slide_id, COUNT(*) AS question_count
-                        FROM assignment_slide_question
-                        WHERE status IN (:assignmentQuestionStatusList)
-                        GROUP BY assignment_slide_id
-                    ) aqc ON aqc.slide_id = s.source_id AND s.source_type = 'ASSIGNMENT'
-                    LEFT JOIN (
-                        SELECT quiz_slide_id AS slide_id, COUNT(*) AS question_count
-                        FROM quiz_slide_question
-                        WHERE status IN (:questionStatusList)
-                        GROUP BY quiz_slide_id
-                    ) qqc ON qqc.slide_id = s.source_id AND s.source_type = 'QUIZ'
-                    WHERE
-                        s.status IN (:slideStatusList)
-                        AND cs.status IN (:slideStatusList)
-                        AND cpsm.status IN (:chapterPackageStatusList)
-                    GROUP BY cpsm.package_session_id
-                ) ps_read_time ON ps.id = ps_read_time.package_session_id
-                WHERE
-                    p.is_course_published_to_catalaouge = true
-                    AND (:userId IS NULL OR lo.user_id = :userId)
-                    AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
-                    AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
-                    AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
-                    AND (
-                        :name IS NULL OR
-                        LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
-                        LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
-                        EXISTS (
-                            SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
-                            WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
-                        ) OR
-                        LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
-                    )
-                GROUP BY
-                    p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
-                    p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
-                    p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
-                    p.course_depth, p.course_html_description, p.created_at,
-                    ps.id, l.id, l.level_name, ps_read_time.total_read_time_minutes
-                HAVING COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) >= 80
-            """, countQuery = """
-                SELECT COUNT(DISTINCT p.id)
+                           WHEN s.source_type = 'QUESTION' THEN 5
+                           WHEN s.source_type = 'ASSIGNMENT' THEN COALESCE(aqc.question_count, 0) * 3
+                           WHEN s.source_type = 'QUIZ' THEN COALESCE(qqc.question_count, 0) * 2
+                           ELSE 0
+                       END
+                   ) AS total_read_time_minutes
+            FROM slide s
+            JOIN chapter_to_slides cs ON cs.slide_id = s.id
+            JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = cs.chapter_id
+            LEFT JOIN video v ON v.id = s.source_id AND s.source_type = 'VIDEO'
+            LEFT JOIN document_slide d ON d.id = s.source_id AND s.source_type = 'DOCUMENT'
+            LEFT JOIN (
+                SELECT assignment_slide_id AS slide_id, COUNT(*) AS question_count
+                FROM assignment_slide_question
+                WHERE status IN (:assignmentQuestionStatusList)
+                GROUP BY assignment_slide_id
+            ) aqc ON aqc.slide_id = s.source_id AND s.source_type = 'ASSIGNMENT'
+            LEFT JOIN (
+                SELECT quiz_slide_id AS slide_id, COUNT(*) AS question_count
+                FROM quiz_slide_question
+                WHERE status IN (:questionStatusList)
+                GROUP BY quiz_slide_id
+            ) qqc ON qqc.slide_id = s.source_id AND s.source_type = 'QUIZ'
+            WHERE
+                s.status IN (:slideStatusList)
+                AND cs.status IN (:slideStatusList)
+                AND cpsm.status IN (:chapterPackageStatusList)
+            GROUP BY cpsm.package_session_id
+        ) ps_read_time ON ps.id = ps_read_time.package_session_id
+        
+        WHERE
+            p.is_course_published_to_catalaouge = true
+            AND (:userId IS NULL OR lo.user_id = :userId)
+            AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
+            AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+            AND (
+                :name IS NULL OR
+                LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+                LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+                EXISTS (
+                    SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                    WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
+                ) OR
+                LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
+            )
+        GROUP BY
+            p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
+            p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
+            p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
+            p.course_depth, p.course_html_description, p.created_at,
+            ps.id
+        HAVING COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) >= 80
+        """,
+
+            countQuery = """
+            SELECT COUNT(*) FROM (
+                SELECT ps.id
                 FROM package p
                 JOIN package_session ps ON ps.package_id = p.id
                 JOIN level l ON l.id = ps.level_id
@@ -503,9 +525,10 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         ) OR
                         LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
                     )
-                GROUP BY p.id
+                GROUP BY ps.id
                 HAVING COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) >= 80
-            """, nativeQuery = true)
+            ) AS count_sub
+        """, nativeQuery = true)
     Page<PackageDetailProjection> getCompletedLearnerPackageDetail(
             @Param("userId") String userId,
             @Param("name") String name,
@@ -684,177 +707,184 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             Pageable pageable);
 
     @Query(value = """
+        SELECT
+            p.id AS id,
+            p.package_name AS packageName,
+            p.thumbnail_file_id AS thumbnailFileId,
+            p.is_course_published_to_catalaouge AS isCoursePublishedToCatalaouge,
+            p.course_preview_image_media_id AS coursePreviewImageMediaId,
+            p.course_banner_media_id AS courseBannerMediaId,
+            p.course_media_id AS courseMediaId,
+            p.why_learn AS whyLearnHtml,
+            p.who_should_learn AS whoShouldLearnHtml,
+            p.about_the_course AS aboutTheCourseHtml,
+            p.comma_separated_tags AS commaSeparetedTags,
+            p.course_depth AS courseDepth,
+            p.course_html_description AS courseHtmlDescriptionHtml,
+            p.created_at AS createdAt,
+            SUM(COALESCE(ps_read_time.total_read_time_minutes, 0)) AS readTimeInMinutes,
+            
+            COALESCE((
+                SELECT AVG(r.points)
+                FROM rating r
+                LEFT JOIN package_session ps2
+                    ON ps2.id = r.source_id AND r.source_type = 'PACKAGE_SESSION'
+                WHERE (
+                    (r.source_type = 'PACKAGE_SESSION' AND ps2.package_id = p.id)
+                    OR (r.source_type = 'PACKAGE' AND r.source_id = p.id)
+                )
+                AND (:#{#ratingStatuses == null || #ratingStatuses.isEmpty()} = true OR r.status IN (:ratingStatuses))
+                AND (
+                    r.source_type != 'PACKAGE_SESSION'
+                    OR (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps2.status IN (:packageSessionStatus))
+                )
+            ), 0.0) AS rating,
+            
+            /* 1. Direct Level/Session Selection */
+            l.id AS levelId,
+            l.level_name AS levelName,
+            
+            ARRAY_REMOVE(
+                ARRAY_AGG(DISTINCT
+                    CASE
+                        WHEN (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
+                        THEN fspm.user_id
+                        ELSE NULL
+                    END
+                ), NULL
+            ) AS facultyUserIds,
+            
+            /* 2. Return only the current level ID in the array */
+            ARRAY[CAST(l.id AS text)] AS levelIds
+
+        FROM package p
+        JOIN package_session ps ON ps.package_id = p.id
+        JOIN level l ON l.id = ps.level_id
+        JOIN package_institute pi ON pi.package_id = p.id
+        
+        LEFT JOIN faculty_subject_package_session_mapping fspm
+            ON fspm.package_session_id = ps.id
+            AND (
+                :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+                OR fspm.status IN (:facultySubjectSessionStatus)
+            )
+            
+        LEFT JOIN (
             SELECT
-                p.id AS id,
-                p.package_name AS packageName,
-                p.thumbnail_file_id AS thumbnailFileId,
-                p.is_course_published_to_catalaouge AS isCoursePublishedToCatalaouge,
-                p.course_preview_image_media_id AS coursePreviewImageMediaId,
-                p.course_banner_media_id AS courseBannerMediaId,
-                p.course_media_id AS courseMediaId,
-                p.why_learn AS whyLearnHtml,
-                p.who_should_learn AS whoShouldLearnHtml,
-                p.about_the_course AS aboutTheCourseHtml,
-                p.comma_separated_tags AS commaSeparetedTags,
-                p.course_depth AS courseDepth,
-                p.course_html_description AS courseHtmlDescriptionHtml,
-                p.created_at AS createdAt,
-                SUM(COALESCE(ps_read_time.total_read_time_minutes, 0)) AS readTimeInMinutes,
-                COALESCE((
-                    SELECT AVG(r.points)
-                    FROM rating r
-                    LEFT JOIN package_session ps2
-                        ON ps2.id = r.source_id AND r.source_type = 'PACKAGE_SESSION'
-                    WHERE (
-                        (r.source_type = 'PACKAGE_SESSION' AND ps2.package_id = p.id)
-                        OR (r.source_type = 'PACKAGE' AND r.source_id = p.id)
-                    )
-                    AND (:#{#ratingStatuses == null || #ratingStatuses.isEmpty()} = true OR r.status IN (:ratingStatuses))
-                    AND (
-                        r.source_type != 'PACKAGE_SESSION'
-                        OR (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps2.status IN (:packageSessionStatus))
-                    )
-                ), 0.0) AS rating,
-                MIN(l.id) AS levelId,
-                MIN(l.level_name) AS levelName,
-                ARRAY_REMOVE(
-                    ARRAY_AGG(DISTINCT
-                        CASE
-                            WHEN (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
-                            THEN fspm.user_id
-                            ELSE NULL
-                        END
-                    ), NULL
-                ) AS facultyUserIds,
-                (
-                    SELECT ARRAY_AGG(DISTINCT l2.id)
-                    FROM package_session ps2
-                    JOIN level l2 ON l2.id = ps2.level_id
-                    WHERE ps2.package_id = p.id
-                ) AS levelIds
-            FROM package p
-            JOIN package_session ps ON ps.package_id = p.id
-            JOIN level l ON l.id = ps.level_id
-            JOIN package_institute pi ON pi.package_id = p.id
-            LEFT JOIN faculty_subject_package_session_mapping fspm
-                ON fspm.package_session_id = ps.id
-                AND (
-                    :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
-                    OR fspm.status IN (:facultySubjectSessionStatus)
-                )
+                cpsm.package_session_id,
+                SUM(
+                    CASE
+                        WHEN s.source_type = 'VIDEO' THEN ROUND(COALESCE(vs.published_video_length, 0) / 60000.0, 2)
+                        WHEN s.source_type = 'DOCUMENT' THEN
+                            CASE
+                                WHEN ds.type = 'PDF' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 3, 120)
+                                WHEN ds.type = 'PRESENTATION' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 2, 60)
+                                ELSE 10
+                            END
+                        WHEN s.source_type = 'QUESTION' THEN 5
+                        WHEN s.source_type = 'ASSIGNMENT' THEN COALESCE(aqc.question_count, 0) * 3
+                        WHEN s.source_type = 'QUIZ' THEN COALESCE(qqc.question_count, 0) * 2
+                        ELSE 0
+                    END
+                ) AS total_read_time_minutes
+            FROM slide s
+            LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
+            LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
             LEFT JOIN (
-                SELECT
-                    cpsm.package_session_id,
-                    SUM(
-                        CASE
-                            WHEN s.source_type = 'VIDEO' THEN ROUND(COALESCE(vs.published_video_length, 0) / 60000.0, 2)
-                            WHEN s.source_type = 'DOCUMENT' THEN
-                                CASE
-                                    WHEN ds.type = 'PDF' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 3, 120)
-                                    WHEN ds.type = 'PRESENTATION' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 2, 60)
-                                    ELSE 10
-                                END
-                            WHEN s.source_type = 'QUESTION' THEN 5
-                            WHEN s.source_type = 'ASSIGNMENT' THEN COALESCE(aqc.question_count, 0) * 3
-                            WHEN s.source_type = 'QUIZ' THEN COALESCE(qqc.question_count, 0) * 2
-                            ELSE 0
-                        END
-                    ) AS total_read_time_minutes
-                FROM slide s
-                LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
-                LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
-                LEFT JOIN (
-                    SELECT assignment_slide_id AS slide_id, COUNT(*) AS question_count
-                    FROM assignment_slide_question
-                    WHERE status IN (:assignmentQuestionStatusList)
-                    GROUP BY assignment_slide_id
-                ) aqc ON aqc.slide_id = s.source_id AND s.source_type = 'ASSIGNMENT'
-                LEFT JOIN (
-                    SELECT quiz_slide_id AS slide_id, COUNT(*) AS question_count
-                    FROM quiz_slide_question
-                    WHERE status IN (:questionStatusList)
-                    GROUP BY quiz_slide_id
-                ) qqc ON qqc.slide_id = s.source_id AND s.source_type = 'QUIZ'
-                JOIN chapter_to_slides cs ON cs.slide_id = s.id
-                JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = cs.chapter_id
-                WHERE
-                    s.status IN (:slideStatusList)
-                    AND cs.status IN (:slideStatusList)
-                    AND cpsm.status IN (:chapterPackageStatusList)
-                GROUP BY cpsm.package_session_id
-            ) ps_read_time ON ps.id = ps_read_time.package_session_id
+                SELECT assignment_slide_id AS slide_id, COUNT(*) AS question_count
+                FROM assignment_slide_question
+                WHERE status IN (:assignmentQuestionStatusList)
+                GROUP BY assignment_slide_id
+            ) aqc ON aqc.slide_id = s.source_id AND s.source_type = 'ASSIGNMENT'
+            LEFT JOIN (
+                SELECT quiz_slide_id AS slide_id, COUNT(*) AS question_count
+                FROM quiz_slide_question
+                WHERE status IN (:questionStatusList)
+                GROUP BY quiz_slide_id
+            ) qqc ON qqc.slide_id = s.source_id AND s.source_type = 'QUIZ'
+            JOIN chapter_to_slides cs ON cs.slide_id = s.id
+            JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = cs.chapter_id
             WHERE
-                (:instituteId IS NULL OR pi.institute_id = :instituteId)
-                AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
-                AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
-                AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
-                AND (
-                    :#{#userIds == null || #userIds.isEmpty()} = true
-                    OR EXISTS (
-                        SELECT 1 FROM faculty_subject_package_session_mapping f
-                        WHERE f.package_session_id = ps.id
-                        AND f.user_id IN (:userIds)
-                        AND (
-                            :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
-                            OR f.status IN (:facultySubjectSessionStatus)
-                        )
+                s.status IN (:slideStatusList)
+                AND cs.status IN (:slideStatusList)
+                AND cpsm.status IN (:chapterPackageStatusList)
+            GROUP BY cpsm.package_session_id
+        ) ps_read_time ON ps.id = ps_read_time.package_session_id
+        
+        WHERE
+            (:instituteId IS NULL OR pi.institute_id = :instituteId)
+            AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+            AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
+            AND (
+                :#{#userIds == null || #userIds.isEmpty()} = true
+                OR EXISTS (
+                    SELECT 1 FROM faculty_subject_package_session_mapping f
+                    WHERE f.package_session_id = ps.id
+                    AND f.user_id IN (:userIds)
+                    AND (
+                        :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+                        OR f.status IN (:facultySubjectSessionStatus)
                     )
                 )
-                AND (
-                    :name IS NULL OR
-                    LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
-                    LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
-                    EXISTS (
-                        SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
-                        WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
-                    )
+            )
+            AND (
+                :name IS NULL OR
+                LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+                LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+                EXISTS (
+                    SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                    WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
                 )
-            GROUP BY
-                p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
-                p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
-                p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
-                p.course_depth, p.course_html_description, p.created_at
-            """,
+            )
+            
+        GROUP BY
+            p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
+            p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
+            p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
+            p.course_depth, p.course_html_description, p.created_at,
+            ps.id, l.id, l.level_name /* 3. Added Grouping by Session */
+        """,
 
             countQuery = """
-                    SELECT COUNT(DISTINCT p.id)
-                    FROM package p
-                    JOIN package_session ps ON ps.package_id = p.id
-                    JOIN level l ON l.id = ps.level_id
-                    JOIN package_institute pi ON pi.package_id = p.id
-                    LEFT JOIN faculty_subject_package_session_mapping fspm
-                        ON fspm.package_session_id = ps.id
-                        AND (
-                            :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
-                            OR fspm.status IN (:facultySubjectSessionStatus)
-                        )
-                    WHERE
-                        (:instituteId IS NULL OR pi.institute_id = :instituteId)
-                        AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
-                        AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
-                        AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
-                        AND (
-                            :#{#userIds == null || #userIds.isEmpty()} = true
-                            OR EXISTS (
-                                SELECT 1 FROM faculty_subject_package_session_mapping f
-                                WHERE f.package_session_id = ps.id
-                                AND f.user_id IN (:userIds)
-                                AND (
-                                    :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
-                                    OR f.status IN (:facultySubjectSessionStatus)
-                                )
+                SELECT COUNT(DISTINCT ps.id) /* 4. Count Sessions, not Packages */
+                FROM package p
+                JOIN package_session ps ON ps.package_id = p.id
+                JOIN level l ON l.id = ps.level_id
+                JOIN package_institute pi ON pi.package_id = p.id
+                LEFT JOIN faculty_subject_package_session_mapping fspm
+                    ON fspm.package_session_id = ps.id
+                    AND (
+                        :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+                        OR fspm.status IN (:facultySubjectSessionStatus)
+                    )
+                WHERE
+                    (:instituteId IS NULL OR pi.institute_id = :instituteId)
+                    AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+                    AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+                    AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
+                    AND (
+                        :#{#userIds == null || #userIds.isEmpty()} = true
+                        OR EXISTS (
+                            SELECT 1 FROM faculty_subject_package_session_mapping f
+                            WHERE f.package_session_id = ps.id
+                            AND f.user_id IN (:userIds)
+                            AND (
+                                :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+                                OR f.status IN (:facultySubjectSessionStatus)
                             )
                         )
-                        AND (
-                            :name IS NULL OR
-                            LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
-                            LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
-                            EXISTS (
-                                SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
-                                WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
-                            )
+                    )
+                    AND (
+                        :name IS NULL OR
+                        LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+                        LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+                        EXISTS (
+                            SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                            WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
                         )
-                    """, nativeQuery = true)
+                    )
+                """, nativeQuery = true)
     Page<PackageDetailProjection> getCatalogPackageDetail(
             @Param("name") String name,
             @Param("userIds") List<String> userIds,
@@ -868,7 +898,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("questionStatusList") List<String> questionStatusList,
             @Param("slideStatusList") List<String> slideStatusList,
             @Param("chapterPackageStatusList") List<String> chapterPackageStatusList,
-
             Pageable pageable);
 
     @Query(value = """
@@ -947,157 +976,111 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("ratingStatuses") List<String> ratingStatuses);
 
     @Query(value = """
-                SELECT
-                    p.id AS id,
-                    p.package_name AS packageName,
-                    p.thumbnail_file_id AS thumbnailFileId,
-                    p.is_course_published_to_catalaouge AS isCoursePublishedToCatalaouge,
-                    p.course_preview_image_media_id AS coursePreviewImageMediaId,
-                    p.course_banner_media_id AS courseBannerMediaId,
-                    p.course_media_id AS courseMediaId,
-                    p.why_learn AS whyLearnHtml,
-                    p.who_should_learn AS whoShouldLearnHtml,
-                    p.about_the_course AS aboutTheCourseHtml,
-                    p.comma_separated_tags AS commaSeparetedTags,
-                    p.course_depth AS courseDepth,
-                    p.course_html_description AS courseHtmlDescriptionHtml,
-                    p.created_at AS createdAt,
-                    0.0 AS percentageCompleted,
+            SELECT
+                p.id AS id,
+                p.package_name AS packageName,
+                p.thumbnail_file_id AS thumbnailFileId,
+                p.is_course_published_to_catalaouge AS isCoursePublishedToCatalaouge,
+                p.course_preview_image_media_id AS coursePreviewImageMediaId,
+                p.course_banner_media_id AS courseBannerMediaId,
+                p.course_media_id AS courseMediaId,
+                p.why_learn AS whyLearnHtml,
+                p.who_should_learn AS whoShouldLearnHtml,
+                p.about_the_course AS aboutTheCourseHtml,
+                p.comma_separated_tags AS commaSeparetedTags,
+                p.course_depth AS courseDepth,
+                p.course_html_description AS courseHtmlDescriptionHtml,
+                p.created_at AS createdAt,
+                0.0 AS percentageCompleted,
 
-                    SUM(COALESCE(ps_read_time.total_read_time_minutes, 0)) AS readTimeInMinutes,
+                SUM(COALESCE(ps_read_time.total_read_time_minutes, 0)) AS readTimeInMinutes,
 
-                    COALESCE((
-                        SELECT AVG(r.points)
-                        FROM rating r
-                        LEFT JOIN package_session ps2 ON ps2.id = r.source_id
-                            AND r.source_type = 'PACKAGE_SESSION'
-                            AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true
-                                 OR ps2.status IN (:packageSessionStatus))
-                        WHERE (
-                            (r.source_type = 'PACKAGE_SESSION' AND ps2.package_id = p.id)
-                            OR (r.source_type = 'PACKAGE' AND r.source_id = p.id)
-                        )
-                        AND (:#{#ratingStatuses == null || #ratingStatuses.isEmpty()} = true OR r.status IN (:ratingStatuses))
-                    ), 0.0) AS rating,
-
-                    MIN(l.id) AS levelId,
-                    MIN(l.level_name) AS levelName,
-
-                    ARRAY_REMOVE(
-                        ARRAY_AGG(DISTINCT
-                            CASE
-                                WHEN (:#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
-                                      OR fspm.status IN (:facultyPackageSessionStatus))
-                                THEN fspm.user_id
-                                ELSE NULL
-                            END
-                        ), NULL
-                    ) AS facultyUserIds,
-
-                    (
-                        SELECT ARRAY_AGG(DISTINCT l2.id)
-                        FROM package_session ps2
-                        JOIN level l2 ON l2.id = ps2.level_id
-                        WHERE ps2.package_id = p.id
-                    ) AS levelIds
-
-                FROM package p
-                JOIN package_session ps ON ps.package_id = p.id
-                JOIN level l ON l.id = ps.level_id
-                JOIN package_institute pi ON pi.package_id = p.id
-
-                LEFT JOIN faculty_subject_package_session_mapping fspm
-                    ON fspm.package_session_id = ps.id
-                    AND (
-                        :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
-                        OR fspm.status IN (:facultyPackageSessionStatus)
+                COALESCE((
+                    SELECT AVG(r.points)
+                    FROM rating r
+                    LEFT JOIN package_session ps2 ON ps2.id = r.source_id
+                        AND r.source_type = 'PACKAGE_SESSION'
+                        AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true
+                             OR ps2.status IN (:packageSessionStatus))
+                    WHERE (
+                        (r.source_type = 'PACKAGE_SESSION' AND ps2.package_id = p.id)
+                        OR (r.source_type = 'PACKAGE' AND r.source_id = p.id)
                     )
+                    AND (:#{#ratingStatuses == null || #ratingStatuses.isEmpty()} = true OR r.status IN (:ratingStatuses))
+                ), 0.0) AS rating,
 
-                LEFT JOIN (
-                    SELECT
-                        cpsm.package_session_id,
-                        SUM(
-                            CASE
-                                WHEN s.source_type = 'VIDEO' THEN ROUND(COALESCE(vs.published_video_length, 0) / 60000.0, 2)
-                                WHEN s.source_type = 'DOCUMENT' THEN
-                                    CASE
-                                        WHEN ds.type = 'PDF' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 3, 120)
-                                        WHEN ds.type = 'PRESENTATION' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 2, 60)
-                                        ELSE 10
-                                    END
-                                WHEN s.source_type = 'QUESTION' THEN 5
-                                WHEN s.source_type = 'ASSIGNMENT' THEN COALESCE(aqc.question_count, 0) * 3
-                                WHEN s.source_type = 'QUIZ' THEN COALESCE(qqc.question_count, 0) * 2
-                                ELSE 0
-                            END
-                        ) AS total_read_time_minutes
-                    FROM slide s
-                    LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
-                    LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
-                    LEFT JOIN (
-                        SELECT assignment_slide_id AS slide_id, COUNT(*) AS question_count
-                        FROM assignment_slide_question
-                        WHERE status IN (:assignmentQuestionStatusList)
-                        GROUP BY assignment_slide_id
-                    ) aqc ON aqc.slide_id = s.source_id AND s.source_type = 'ASSIGNMENT'
-                    LEFT JOIN (
-                        SELECT quiz_slide_id AS slide_id, COUNT(*) AS question_count
-                        FROM quiz_slide_question
-                        WHERE status IN (:questionStatusList)
-                        GROUP BY quiz_slide_id
-                    ) qqc ON qqc.slide_id = s.source_id AND s.source_type = 'QUIZ'
-                    JOIN chapter_to_slides cs ON cs.slide_id = s.id
-                    JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = cs.chapter_id
-                    WHERE
-                        s.status IN (:slideStatusList)
-                        AND cs.status IN (:slideStatusList)
-                        AND cpsm.status IN (:chapterPackageStatusList)
-                    GROUP BY cpsm.package_session_id
-                ) ps_read_time ON ps.id = ps_read_time.package_session_id
+                /* 1. Direct Level/Session Selection */
+                l.id AS levelId,
+                l.level_name AS levelName,
 
-                WHERE
-                    (:instituteId IS NULL OR pi.institute_id = :instituteId)
-                    AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
-                    AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
-                    AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
-                    AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
-                    AND (
-                        :#{#facultyIds == null || #facultyIds.isEmpty()} = true
-                        OR EXISTS (
-                            SELECT 1 FROM faculty_subject_package_session_mapping f
-                            WHERE f.package_session_id = ps.id
-                            AND f.user_id IN (:facultyIds)
-                            AND (
-                                :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
-                                OR f.status IN (:facultyPackageSessionStatus)
-                            )
-                        )
-                    )
-                    AND (
-                        :#{#tags == null || #tags.isEmpty()} = true
-                        OR EXISTS (
-                            SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
-                            WHERE tag ILIKE ANY (array[:#{#tags}])
-                        )
-                    )
+                ARRAY_REMOVE(
+                    ARRAY_AGG(DISTINCT
+                        CASE
+                            WHEN (:#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
+                                  OR fspm.status IN (:facultyPackageSessionStatus))
+                            THEN fspm.user_id
+                            ELSE NULL
+                        END
+                    ), NULL
+                ) AS facultyUserIds,
 
-                GROUP BY
-                    p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
-                    p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
-                    p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
-                    p.course_depth, p.course_html_description, p.created_at
-            """, countQuery = """
-            SELECT COUNT(DISTINCT p.id)
+                /* 2. Return only the current level ID in the array */
+                ARRAY[CAST(l.id AS text)] AS levelIds
+
             FROM package p
             JOIN package_session ps ON ps.package_id = p.id
             JOIN level l ON l.id = ps.level_id
             JOIN package_institute pi ON pi.package_id = p.id
+
             LEFT JOIN faculty_subject_package_session_mapping fspm
                 ON fspm.package_session_id = ps.id
                 AND (
                     :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
                     OR fspm.status IN (:facultyPackageSessionStatus)
                 )
+
+            LEFT JOIN (
+                SELECT
+                    cpsm.package_session_id,
+                    SUM(
+                        CASE
+                            WHEN s.source_type = 'VIDEO' THEN ROUND(COALESCE(vs.published_video_length, 0) / 60000.0, 2)
+                            WHEN s.source_type = 'DOCUMENT' THEN
+                                CASE
+                                    WHEN ds.type = 'PDF' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 3, 120)
+                                    WHEN ds.type = 'PRESENTATION' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 2, 60)
+                                    ELSE 10
+                                END
+                            WHEN s.source_type = 'QUESTION' THEN 5
+                            WHEN s.source_type = 'ASSIGNMENT' THEN COALESCE(aqc.question_count, 0) * 3
+                            WHEN s.source_type = 'QUIZ' THEN COALESCE(qqc.question_count, 0) * 2
+                            ELSE 0
+                        END
+                    ) AS total_read_time_minutes
+                FROM slide s
+                LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
+                LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
+                LEFT JOIN (
+                    SELECT assignment_slide_id AS slide_id, COUNT(*) AS question_count
+                    FROM assignment_slide_question
+                    WHERE status IN (:assignmentQuestionStatusList)
+                    GROUP BY assignment_slide_id
+                ) aqc ON aqc.slide_id = s.source_id AND s.source_type = 'ASSIGNMENT'
+                LEFT JOIN (
+                    SELECT quiz_slide_id AS slide_id, COUNT(*) AS question_count
+                    FROM quiz_slide_question
+                    WHERE status IN (:questionStatusList)
+                    GROUP BY quiz_slide_id
+                ) qqc ON qqc.slide_id = s.source_id AND s.source_type = 'QUIZ'
+                JOIN chapter_to_slides cs ON cs.slide_id = s.id
+                JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = cs.chapter_id
+                WHERE
+                    s.status IN (:slideStatusList)
+                    AND cs.status IN (:slideStatusList)
+                    AND cpsm.status IN (:chapterPackageStatusList)
+                GROUP BY cpsm.package_session_id
+            ) ps_read_time ON ps.id = ps_read_time.package_session_id
+
             WHERE
                 (:instituteId IS NULL OR pi.institute_id = :instituteId)
                 AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
@@ -1123,7 +1106,53 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         WHERE tag ILIKE ANY (array[:#{#tags}])
                     )
                 )
-            """, nativeQuery = true)
+
+            GROUP BY
+                p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
+                p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
+                p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
+                p.course_depth, p.course_html_description, p.created_at,
+                ps.id, l.id, l.level_name /* 3. Added Grouping by Session */
+        """,
+
+            countQuery = """
+        SELECT COUNT(DISTINCT ps.id) /* 4. Count Sessions, not Packages */
+        FROM package p
+        JOIN package_session ps ON ps.package_id = p.id
+        JOIN level l ON l.id = ps.level_id
+        JOIN package_institute pi ON pi.package_id = p.id
+        LEFT JOIN faculty_subject_package_session_mapping fspm
+            ON fspm.package_session_id = ps.id
+            AND (
+                :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
+                OR fspm.status IN (:facultyPackageSessionStatus)
+            )
+        WHERE
+            (:instituteId IS NULL OR pi.institute_id = :instituteId)
+            AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
+            AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
+            AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+            AND (
+                :#{#facultyIds == null || #facultyIds.isEmpty()} = true
+                OR EXISTS (
+                    SELECT 1 FROM faculty_subject_package_session_mapping f
+                    WHERE f.package_session_id = ps.id
+                    AND f.user_id IN (:facultyIds)
+                    AND (
+                        :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
+                        OR f.status IN (:facultyPackageSessionStatus)
+                    )
+                )
+            )
+            AND (
+                :#{#tags == null || #tags.isEmpty()} = true
+                OR EXISTS (
+                    SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                    WHERE tag ILIKE ANY (array[:#{#tags}])
+                )
+            )
+        """, nativeQuery = true)
     Page<PackageDetailProjection> getCatalogPackageDetail(
             @Param("instituteId") String instituteId,
             @Param("levelIds") List<String> levelIds,
@@ -1328,154 +1357,207 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("slideStatusList") List<String> slideStatusList,
             @Param("chapterPackageStatusList") List<String> chapterPackageStatusList,
             Pageable pageable);
-
     @Query(value = """
-            SELECT DISTINCT ON (p.id)
-                p.id AS id,
-                p.package_name AS packageName,
-                p.thumbnail_file_id AS thumbnailFileId,
-                p.is_course_published_to_catalaouge AS isCoursePublishedToCatalaouge,
-                p.course_preview_image_media_id AS coursePreviewImageMediaId,
-                p.course_banner_media_id AS courseBannerMediaId,
-                p.course_media_id AS courseMediaId,
-                p.why_learn AS whyLearnHtml,
-                p.who_should_learn AS whoShouldLearnHtml,
-                p.about_the_course AS aboutTheCourseHtml,
-                p.comma_separated_tags AS commaSeparetedTags,
-                p.course_depth AS courseDepth,
-                p.course_html_description AS courseHtmlDescriptionHtml,
-                p.created_at AS createdAt,
-                COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
-                COALESCE(ps_read_time.total_read_time_minutes, 0) AS readTimeMinutes,
-                COALESCE((
-                    SELECT AVG(r.points)
-                    FROM rating r
-                    LEFT JOIN package_session psr ON psr.id = r.source_id AND r.source_type = 'PACKAGE_SESSION'
-                    WHERE (
-                        (r.source_type = 'PACKAGE_SESSION' AND psr.package_id = p.id)
-                        OR (r.source_type = 'PACKAGE' AND r.source_id = p.id)
-                    )
-                    AND (:#{#ratingStatuses == null || #ratingStatuses.isEmpty()} = true OR r.status IN (:ratingStatuses))
-                    AND (
-                        r.source_type != 'PACKAGE_SESSION'
-                        OR (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR psr.status IN (:packageSessionStatus))
-                    )
-                ), 0.0) AS rating,
-                MIN(l.id) AS levelId,
-                MIN(l.level_name) AS levelName,
-                ARRAY_REMOVE(ARRAY_AGG(DISTINCT fspm.user_id), NULL) AS facultyUserIds,
-                (
-                    SELECT ARRAY_AGG(DISTINCT l2.id)
-                    FROM package_session ps2
-                    JOIN level l2 ON l2.id = ps2.level_id
-                    WHERE ps2.package_id = p.id
-                ) AS levelIds
-            FROM package p
-            JOIN package_session ps ON ps.package_id = p.id
-            JOIN level l ON l.id = ps.level_id
-            JOIN package_institute pi ON pi.package_id = p.id
-            JOIN student_session_institute_group_mapping ssigm
-                ON ssigm.package_session_id = ps.id
-                AND ssigm.user_id = :userId
-                AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
-            LEFT JOIN learner_operation lo
-                ON lo.source = 'PACKAGE_SESSION'
-                AND lo.source_id = ps.id
-                AND lo.user_id = :userId
-                AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
-            LEFT JOIN faculty_subject_package_session_mapping fspm
-                ON fspm.package_session_id = ps.id
-                AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
-            LEFT JOIN (
-                SELECT
-                    cpsm.package_session_id,
-                    SUM(
+    SELECT
+        p.id AS id,
+        p.package_name AS packageName,
+        p.thumbnail_file_id AS thumbnailFileId,
+        p.is_course_published_to_catalaouge AS isCoursePublishedToCatalaouge,
+        p.course_preview_image_media_id AS coursePreviewImageMediaId,
+        p.course_banner_media_id AS courseBannerMediaId,
+        p.course_media_id AS courseMediaId,
+        p.why_learn AS whyLearnHtml,
+        p.who_should_learn AS whoShouldLearnHtml,
+        p.about_the_course AS aboutTheCourseHtml,
+        p.comma_separated_tags AS commaSeparetedTags,
+        p.course_depth AS courseDepth,
+        p.course_html_description AS courseHtmlDescriptionHtml,
+        p.created_at AS createdAt,
+        
+        COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
+        SUM(COALESCE(ps_read_time.total_read_time_minutes, 0)) AS readTimeInMinutes,
+
+        COALESCE((
+            SELECT AVG(r.points)
+            FROM rating r
+            LEFT JOIN package_session ps2 ON ps2.id = r.source_id
+                AND r.source_type = 'PACKAGE_SESSION'
+                AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true
+                        OR ps2.status IN (:packageSessionStatus))
+            WHERE (
+                (r.source_type = 'PACKAGE_SESSION' AND ps2.package_id = p.id)
+                OR (r.source_type = 'PACKAGE' AND r.source_id = p.id)
+            )
+            AND (:#{#ratingStatuses == null || #ratingStatuses.isEmpty()} = true OR r.status IN (:ratingStatuses))
+        ), 0.0) AS rating,
+
+        MIN(l.id) AS levelId,
+        MIN(l.level_name) AS levelName,
+
+        ARRAY_REMOVE(
+            ARRAY_AGG(DISTINCT
+                CASE
+                    WHEN (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+                            OR fspm.status IN (:facultySubjectSessionStatus))
+                    THEN fspm.user_id
+                    ELSE NULL
+                END
+            ), NULL
+        ) AS facultyUserIds,
+
+        /* CHANGED: Now returns only the current level ID in an array */
+        ARRAY[CAST(MIN(l.id) AS text)] AS levelIds
+
+    FROM package p
+    JOIN package_session ps ON ps.package_id = p.id
+    JOIN level l ON l.id = ps.level_id
+    JOIN package_institute pi ON pi.package_id = p.id
+    
+    JOIN student_session_institute_group_mapping ssigm 
+        ON ssigm.package_session_id = ps.id
+        AND ssigm.user_id = :userId
+        AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
+
+    LEFT JOIN learner_operation lo 
+        ON lo.source = 'PACKAGE_SESSION' 
+        AND lo.source_id = ps.id 
+        AND lo.user_id = :userId
+        AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
+
+    LEFT JOIN faculty_subject_package_session_mapping fspm
+        ON fspm.package_session_id = ps.id
+        AND (
+            :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+            OR fspm.status IN (:facultySubjectSessionStatus)
+        )
+
+    LEFT JOIN (
+        SELECT
+            cpsm.package_session_id,
+            SUM(
+                CASE
+                    WHEN s.source_type = 'VIDEO' THEN ROUND(COALESCE(vs.published_video_length, 0) / 60000.0, 2)
+                    WHEN s.source_type = 'DOCUMENT' THEN
                         CASE
-                            WHEN s.source_type = 'VIDEO' THEN ROUND(COALESCE(vs.published_video_length, 0) / 60000.0, 2)
-                            WHEN s.source_type = 'DOCUMENT' THEN
-                                CASE
-                                    WHEN ds.type = 'PDF' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 3, 120)
-                                    WHEN ds.type = 'PRESENTATION' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 2, 60)
-                                    ELSE 10
-                                END
-                            WHEN s.source_type = 'QUESTION' THEN 5
-                            WHEN s.source_type = 'ASSIGNMENT' THEN COALESCE(aqc.question_count, 0) * 3
-                            WHEN s.source_type = 'QUIZ' THEN COALESCE(qqc.question_count, 0) * 2
-                            ELSE 0
+                            WHEN ds.type = 'PDF' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 3, 120)
+                            WHEN ds.type = 'PRESENTATION' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 2, 60)
+                            ELSE 10
                         END
-                    ) AS total_read_time_minutes
-                FROM slide s
-                LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
-                LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
-                LEFT JOIN (
-                    SELECT assignment_slide_id AS slide_id, COUNT(*) AS question_count
-                    FROM assignment_slide_question
-                    WHERE status IN (:assignmentQuestionStatusList)
-                    GROUP BY assignment_slide_id
-                ) aqc ON aqc.slide_id = s.source_id AND s.source_type = 'ASSIGNMENT'
-                LEFT JOIN (
-                    SELECT quiz_slide_id AS slide_id, COUNT(*) AS question_count
-                    FROM quiz_slide_question
-                    WHERE status IN (:questionStatusList)
-                    GROUP BY quiz_slide_id
-                ) qqc ON qqc.slide_id = s.source_id AND s.source_type = 'QUIZ'
-                JOIN chapter_to_slides cs ON cs.slide_id = s.id
-                JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = cs.chapter_id
-                WHERE
-                    s.status IN (:slideStatusList)
-                    AND cs.status IN (:slideStatusList)
-                    AND cpsm.status IN (:chapterPackageStatusList)
-                GROUP BY cpsm.package_session_id
-            ) ps_read_time ON ps.id = ps_read_time.package_session_id
-            WHERE
-                (:instituteId IS NULL OR pi.institute_id = :instituteId)
-                AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
-                AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
-                AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+                    WHEN s.source_type = 'QUESTION' THEN 5
+                    WHEN s.source_type = 'ASSIGNMENT' THEN COALESCE(aqc.question_count, 0) * 3
+                    WHEN s.source_type = 'QUIZ' THEN COALESCE(qqc.question_count, 0) * 2
+                    ELSE 0
+                END
+            ) AS total_read_time_minutes
+        FROM slide s
+        LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
+        LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
+        LEFT JOIN (
+            SELECT assignment_slide_id AS slide_id, COUNT(*) AS question_count
+            FROM assignment_slide_question
+            WHERE status IN (:assignmentQuestionStatusList)
+            GROUP BY assignment_slide_id
+        ) aqc ON aqc.slide_id = s.source_id AND s.source_type = 'ASSIGNMENT'
+        LEFT JOIN (
+            SELECT quiz_slide_id AS slide_id, COUNT(*) AS question_count
+            FROM quiz_slide_question
+            WHERE status IN (:questionStatusList)
+            GROUP BY quiz_slide_id
+        ) qqc ON qqc.slide_id = s.source_id AND s.source_type = 'QUIZ'
+        JOIN chapter_to_slides cs ON cs.slide_id = s.id
+        JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = cs.chapter_id
+        WHERE
+            s.status IN (:slideStatusList)
+            AND cs.status IN (:slideStatusList)
+            AND cpsm.status IN (:chapterPackageStatusList)
+        GROUP BY cpsm.package_session_id
+    ) ps_read_time ON ps.id = ps_read_time.package_session_id
+
+    WHERE
+        (:instituteId IS NULL OR pi.institute_id = :instituteId)
+        AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
+        AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+        AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+        AND (
+            :#{#facultyIds == null || #facultyIds.isEmpty()} = true
+            OR EXISTS (
+                SELECT 1 FROM faculty_subject_package_session_mapping f
+                WHERE f.package_session_id = ps.id
+                AND f.user_id IN (:facultyIds)
                 AND (
-                    :#{#facultyIds == null || #facultyIds.isEmpty()} = true
-                    OR EXISTS (
-                        SELECT 1 FROM faculty_subject_package_session_mapping f
-                        WHERE f.package_session_id = ps.id
-                        AND f.subject_id IS NULL
-                        AND f.user_id IN (:facultyIds)
-                        AND (
-                            :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
-                            OR f.status IN (:facultySubjectSessionStatus)
-                        )
-                    )
+                    :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+                    OR f.status IN (:facultySubjectSessionStatus)
                 )
-                AND (
-                    :#{#tags == null || #tags.isEmpty()} = true OR
-                    EXISTS (
-                        SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
-                        WHERE tag ILIKE ANY (CAST(:tags AS text[]))
-                    )
-                )
-            GROUP BY
-                p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
-                p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
-                p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
-                p.course_depth, p.course_html_description, p.created_at,
-                ps.id, l.id, l.level_name, ps_read_time.total_read_time_minutes
-            """,
+            )
+        )
+        AND (
+            :#{#tags == null || #tags.isEmpty()} = true
+            OR EXISTS (
+                SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                WHERE tag ILIKE ANY (array[:#{#tags}])
+            )
+        )
+
+    GROUP BY
+        p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
+        p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
+        p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
+        p.course_depth, p.course_html_description, p.created_at,
+        ps.id 
+    
+    HAVING COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) < 100
+    """,
 
             countQuery = """
-                        SELECT COUNT(DISTINCT p.id)
-                        FROM package p
-                        JOIN package_session ps ON ps.package_id = p.id
-                        JOIN level l ON l.id = ps.level_id
-                        JOIN package_institute pi ON pi.package_id = p.id
-                        JOIN student_session_institute_group_mapping ssigm
-                            ON ssigm.package_session_id = ps.id
-                            AND ssigm.user_id = :userId
-                            AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
-                        WHERE
-                            (:instituteId IS NULL OR pi.institute_id = :instituteId)
-                            AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
-                            AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
-                            AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
-                    """, nativeQuery = true)
+    SELECT COUNT(*) FROM (
+        SELECT ps.id
+        FROM package p
+        JOIN package_session ps ON ps.package_id = p.id
+        JOIN level l ON l.id = ps.level_id
+        JOIN package_institute pi ON pi.package_id = p.id
+        JOIN student_session_institute_group_mapping ssigm 
+            ON ssigm.package_session_id = ps.id
+            AND ssigm.user_id = :userId
+            AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
+        LEFT JOIN learner_operation lo 
+            ON lo.source = 'PACKAGE_SESSION' 
+            AND lo.source_id = ps.id 
+            AND lo.user_id = :userId
+            AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
+        LEFT JOIN faculty_subject_package_session_mapping fspm
+            ON fspm.package_session_id = ps.id
+            AND (
+                :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+                OR fspm.status IN (:facultySubjectSessionStatus)
+            )
+        WHERE
+            (:instituteId IS NULL OR pi.institute_id = :instituteId)
+            AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
+            AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+            AND (
+                :#{#facultyIds == null || #facultyIds.isEmpty()} = true
+                OR EXISTS (
+                    SELECT 1 FROM faculty_subject_package_session_mapping f
+                    WHERE f.package_session_id = ps.id
+                    AND f.user_id IN (:facultyIds)
+                    AND (
+                        :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+                        OR f.status IN (:facultySubjectSessionStatus)
+                    )
+                )
+            )
+            AND (
+                :#{#tags == null || #tags.isEmpty()} = true
+                OR EXISTS (
+                    SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                    WHERE tag ILIKE ANY (array[:#{#tags}])
+                )
+            )
+        GROUP BY ps.id
+        HAVING COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) < 100
+    ) AS count_subquery
+    """, nativeQuery = true)
     Page<PackageDetailProjection> getIncompleteMappedPackages(
             @Param("userId") String userId,
             @Param("instituteId") String instituteId,
@@ -1495,154 +1577,174 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             Pageable pageable);
 
     @Query(value = """
-                SELECT DISTINCT ON (p.id)
-                    p.id AS id,
-                    p.package_name AS packageName,
-                    p.thumbnail_file_id AS thumbnailFileId,
-                    p.is_course_published_to_catalaouge AS isCoursePublishedToCatalaouge,
-                    p.course_preview_image_media_id AS coursePreviewImageMediaId,
-                    p.course_banner_media_id AS courseBannerMediaId,
-                    p.course_media_id AS courseMediaId,
-                    p.why_learn AS whyLearnHtml,
-                    p.who_should_learn AS whoShouldLearnHtml,
-                    p.about_the_course AS aboutTheCourseHtml,
-                    p.comma_separated_tags AS commaSeparetedTags,
-                    p.course_depth AS courseDepth,
-                    p.course_html_description AS courseHtmlDescriptionHtml,
-                    p.created_at AS createdAt,
-                    COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
-                    COALESCE(ps_read_time.total_read_time_minutes, 0) AS readTimeInMinutes,
-                    COALESCE((
-                        SELECT AVG(r.points)
-                        FROM rating r
-                        LEFT JOIN package_session psr ON psr.id = r.source_id AND r.source_type = 'PACKAGE_SESSION'
-                        WHERE (
-                            (r.source_type = 'PACKAGE_SESSION' AND psr.package_id = p.id)
-                            OR (r.source_type = 'PACKAGE' AND r.source_id = p.id)
-                        )
-                        AND (:#{#ratingStatuses == null || #ratingStatuses.isEmpty()} = true OR r.status IN (:ratingStatuses))
-                        AND (
-                            r.source_type != 'PACKAGE_SESSION'
-                            OR (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR psr.status IN (:packageSessionStatus))
-                        )
-                    ), 0.0) AS rating,
-                    ps.id AS packageSessionId,
-                    l.id AS levelId,
-                    l.level_name AS levelName,
-                    ARRAY_REMOVE(ARRAY_AGG(DISTINCT fspm.user_id), NULL) AS facultyUserIds,
-                    (
-                        SELECT ARRAY_AGG(DISTINCT l2.id)
-                        FROM package_session ps2
-                        JOIN level l2 ON l2.id = ps2.level_id
-                        WHERE ps2.package_id = p.id
-                    ) AS levelIds
-                FROM package p
-                JOIN package_session ps ON ps.package_id = p.id
-                JOIN level l ON l.id = ps.level_id
-                JOIN package_institute pi ON pi.package_id = p.id
-                JOIN student_session_institute_group_mapping ssigm
-                  ON ssigm.package_session_id = ps.id
-                LEFT JOIN learner_operation lo
-                  ON lo.source = 'PACKAGE_SESSION'
-                  AND lo.source_id = ps.id
-                  AND lo.user_id = :userId
-                  AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
-                LEFT JOIN faculty_subject_package_session_mapping fspm
-                  ON fspm.package_session_id = ps.id
-                  AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
-                LEFT JOIN (
-                    SELECT
-                        cpsm.package_session_id,
-                        SUM(
-                            CASE
-                                WHEN s.source_type = 'VIDEO' THEN ROUND(COALESCE(vs.published_video_length, 0) / 60000.0, 2)
-                                WHEN s.source_type = 'DOCUMENT' THEN
-                                    CASE
-                                        WHEN ds.type = 'PDF' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 3, 120)
-                                        WHEN ds.type = 'PRESENTATION' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 2, 60)
-                                        ELSE 10
-                                    END
-                                WHEN s.source_type = 'QUESTION' THEN 5
-                                WHEN s.source_type = 'ASSIGNMENT' THEN COALESCE(aqc.question_count, 0) * 3
-                                WHEN s.source_type = 'QUIZ' THEN COALESCE(qqc.question_count, 0) * 2
-                                ELSE 0
-                            END
-                        ) AS total_read_time_minutes
-                    FROM slide s
-                    LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
-                    LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
-                    LEFT JOIN (
-                        SELECT assignment_slide_id AS slide_id, COUNT(*) AS question_count
-                        FROM assignment_slide_question
-                        WHERE status IN (:assignmentQuestionStatusList)
-                        GROUP BY assignment_slide_id
-                    ) aqc ON aqc.slide_id = s.source_id AND s.source_type = 'ASSIGNMENT'
-                    LEFT JOIN (
-                        SELECT quiz_slide_id AS slide_id, COUNT(*) AS question_count
-                        FROM quiz_slide_question
-                        WHERE status IN (:questionStatusList)
-                        GROUP BY quiz_slide_id
-                    ) qqc ON qqc.slide_id = s.source_id AND s.source_type = 'QUIZ'
-                    JOIN chapter_to_slides cs ON cs.slide_id = s.id
-                    JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = cs.chapter_id
-                    WHERE
-                        s.status IN (:slideStatusList)
-                        AND cs.status IN (:slideStatusList)
-                        AND cpsm.status IN (:chapterPackageStatusList)
-                    GROUP BY cpsm.package_session_id
-                ) ps_read_time ON ps.id = ps_read_time.package_session_id
-                WHERE
-                  ssigm.user_id = :userId
-                  AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
-                  AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
-                  AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
-                  AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
-                  AND (
-                      :name IS NULL OR
-                      LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
-                      LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
-                      EXISTS (
-                          SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
-                          WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
-                      ) OR
-                      LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
-                  )
-                GROUP BY
-                  p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
-                  p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
-                  p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
-                  p.course_depth, p.course_html_description, p.created_at,
-                  ps.id, l.id, l.level_name, ps_read_time.total_read_time_minutes
-            """,
+    SELECT
+        p.id AS id,
+        p.package_name AS packageName,
+        p.thumbnail_file_id AS thumbnailFileId,
+        p.is_course_published_to_catalaouge AS isCoursePublishedToCatalaouge,
+        p.course_preview_image_media_id AS coursePreviewImageMediaId,
+        p.course_banner_media_id AS courseBannerMediaId,
+        p.course_media_id AS courseMediaId,
+        p.why_learn AS whyLearnHtml,
+        p.who_should_learn AS whoShouldLearnHtml,
+        p.about_the_course AS aboutTheCourseHtml,
+        p.comma_separated_tags AS commaSeparetedTags,
+        p.course_depth AS courseDepth,
+        p.course_html_description AS courseHtmlDescriptionHtml,
+        p.created_at AS createdAt,
+        
+        COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
+        SUM(COALESCE(ps_read_time.total_read_time_minutes, 0)) AS readTimeInMinutes,
+
+        COALESCE((
+            SELECT AVG(r.points)
+            FROM rating r
+            LEFT JOIN package_session psr ON psr.id = r.source_id AND r.source_type = 'PACKAGE_SESSION'
+            WHERE (
+                (r.source_type = 'PACKAGE_SESSION' AND psr.package_id = p.id)
+                OR (r.source_type = 'PACKAGE' AND r.source_id = p.id)
+            )
+            AND (:#{#ratingStatuses == null || #ratingStatuses.isEmpty()} = true OR r.status IN (:ratingStatuses))
+            AND (
+                r.source_type != 'PACKAGE_SESSION'
+                OR (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR psr.status IN (:packageSessionStatus))
+            )
+        ), 0.0) AS rating,
+        
+        /* Session & Level Info */
+        ps.id AS packageSessionId,
+        MIN(l.id) AS levelId,
+        MIN(l.level_name) AS levelName,
+
+        ARRAY_REMOVE(
+            ARRAY_AGG(DISTINCT
+                CASE
+                    WHEN (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+                          OR fspm.status IN (:facultySubjectSessionStatus))
+                    THEN fspm.user_id
+                    ELSE NULL
+                END
+            ), NULL
+        ) AS facultyUserIds,
+
+        /* Returns only the current level ID in the array */
+        ARRAY[CAST(MIN(l.id) AS text)] AS levelIds
+
+    FROM package p
+    JOIN package_session ps ON ps.package_id = p.id
+    JOIN level l ON l.id = ps.level_id
+    JOIN package_institute pi ON pi.package_id = p.id
+    
+    /* Inner Join for Assigned Packages */
+    JOIN student_session_institute_group_mapping ssigm
+      ON ssigm.package_session_id = ps.id
+      AND ssigm.user_id = :userId
+      AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
+
+    LEFT JOIN learner_operation lo
+      ON lo.source = 'PACKAGE_SESSION'
+      AND lo.source_id = ps.id
+      AND lo.user_id = :userId
+      AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
+
+    LEFT JOIN faculty_subject_package_session_mapping fspm
+      ON fspm.package_session_id = ps.id
+      AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
+
+    LEFT JOIN (
+        SELECT
+            cpsm.package_session_id,
+            SUM(
+                CASE
+                    WHEN s.source_type = 'VIDEO' THEN ROUND(COALESCE(vs.published_video_length, 0) / 60000.0, 2)
+                    WHEN s.source_type = 'DOCUMENT' THEN
+                        CASE
+                            WHEN ds.type = 'PDF' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 3, 120)
+                            WHEN ds.type = 'PRESENTATION' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 2, 60)
+                            ELSE 10
+                        END
+                    WHEN s.source_type = 'QUESTION' THEN 5
+                    WHEN s.source_type = 'ASSIGNMENT' THEN COALESCE(aqc.question_count, 0) * 3
+                    WHEN s.source_type = 'QUIZ' THEN COALESCE(qqc.question_count, 0) * 2
+                    ELSE 0
+                END
+            ) AS total_read_time_minutes
+        FROM slide s
+        LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
+        LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
+        LEFT JOIN (
+            SELECT assignment_slide_id AS slide_id, COUNT(*) AS question_count
+            FROM assignment_slide_question
+            WHERE status IN (:assignmentQuestionStatusList)
+            GROUP BY assignment_slide_id
+        ) aqc ON aqc.slide_id = s.source_id AND s.source_type = 'ASSIGNMENT'
+        LEFT JOIN (
+            SELECT quiz_slide_id AS slide_id, COUNT(*) AS question_count
+            FROM quiz_slide_question
+            WHERE status IN (:questionStatusList)
+            GROUP BY quiz_slide_id
+        ) qqc ON qqc.slide_id = s.source_id AND s.source_type = 'QUIZ'
+        JOIN chapter_to_slides cs ON cs.slide_id = s.id
+        JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = cs.chapter_id
+        WHERE
+            s.status IN (:slideStatusList)
+            AND cs.status IN (:slideStatusList)
+            AND cpsm.status IN (:chapterPackageStatusList)
+        GROUP BY cpsm.package_session_id
+    ) ps_read_time ON ps.id = ps_read_time.package_session_id
+
+    WHERE
+      (:instituteId IS NULL OR pi.institute_id = :instituteId)
+      AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+      AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+      AND (
+          :name IS NULL OR
+          LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+          LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+          EXISTS (
+              SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+              WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
+          ) OR
+          /* Note: Ensure fspm has a 'name' column or join to user table if needed */
+          LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
+      )
+
+    GROUP BY
+      p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
+      p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
+      p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
+      p.course_depth, p.course_html_description, p.created_at,
+      ps.id
+    """,
 
             countQuery = """
-                        SELECT COUNT(DISTINCT p.id)
-                        FROM package p
-                        JOIN package_session ps ON ps.package_id = p.id
-                        JOIN level l ON l.id = ps.level_id
-                        JOIN package_institute pi ON pi.package_id = p.id
-                        JOIN student_session_institute_group_mapping ssigm
-                          ON ssigm.package_session_id = ps.id
-                        LEFT JOIN faculty_subject_package_session_mapping fspm
-                          ON fspm.package_session_id = ps.id
-                          AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
-                        WHERE
-                          ssigm.user_id = :userId
-                          AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
-                          AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
-                          AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
-                          AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
-                          AND (
-                              :name IS NULL OR
-                              LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
-                              LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
-                              EXISTS (
-                                  SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
-                                  WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
-                              ) OR
-                              LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
-                          )
-                    """, nativeQuery = true)
+    SELECT COUNT(DISTINCT ps.id)
+    FROM package p
+    JOIN package_session ps ON ps.package_id = p.id
+    JOIN level l ON l.id = ps.level_id
+    JOIN package_institute pi ON pi.package_id = p.id
+    JOIN student_session_institute_group_mapping ssigm
+      ON ssigm.package_session_id = ps.id
+      AND ssigm.user_id = :userId
+      AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
+    LEFT JOIN faculty_subject_package_session_mapping fspm
+      ON fspm.package_session_id = ps.id
+      AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
+    WHERE
+      (:instituteId IS NULL OR pi.institute_id = :instituteId)
+      AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+      AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+      AND (
+          :name IS NULL OR
+          LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+          LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+          EXISTS (
+              SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+              WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
+          ) OR
+          LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
+      )
+    """, nativeQuery = true)
     Page<PackageDetailProjection> getStudentAssignedPackages(
             @Param("userId") String userId,
             @Param("name") String name,
@@ -1660,175 +1762,186 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             Pageable pageable);
 
     @Query(value = """
+        SELECT
+            p.id AS id,
+            p.package_name AS packageName,
+            p.thumbnail_file_id AS thumbnailFileId,
+            p.is_course_published_to_catalaouge AS isCoursePublishedToCatalaouge,
+            p.course_preview_image_media_id AS coursePreviewImageMediaId,
+            p.course_banner_media_id AS courseBannerMediaId,
+            p.course_media_id AS courseMediaId,
+            p.why_learn AS whyLearnHtml,
+            p.who_should_learn AS whoShouldLearnHtml,
+            p.about_the_course AS aboutTheCourseHtml,
+            p.comma_separated_tags AS commaSeparatedTags,
+            p.course_depth AS courseDepth,
+            p.course_html_description AS courseHtmlDescriptionHtml,
+            p.created_at AS createdAt,
+            
+            /* 1. Calculate Progress */
+            COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
+            
+            SUM(COALESCE(ps_read_time.total_read_time_minutes, 0)) AS readTimeInMinutes,
+            
+            COALESCE((
+                SELECT AVG(r.points)
+                FROM rating r
+                LEFT JOIN package_session psr ON psr.id = r.source_id AND r.source_type = 'PACKAGE_SESSION'
+                WHERE (
+                    (r.source_type = 'PACKAGE_SESSION' AND psr.package_id = p.id)
+                    OR (r.source_type = 'PACKAGE' AND r.source_id = p.id)
+                )
+                AND (:#{#ratingStatuses == null || #ratingStatuses.isEmpty()} = true OR r.status IN (:ratingStatuses))
+                AND (
+                    r.source_type != 'PACKAGE_SESSION'
+                    OR (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR psr.status IN (:packageSessionStatus))
+                )
+            ), 0.0) AS rating,
+            
+            /* 2. Session/Level Identifiers */
+            MIN(l.id) AS levelId,
+            MIN(l.level_name) AS levelName,
+            
+            ARRAY_REMOVE(ARRAY_AGG(DISTINCT fspm.user_id), NULL) AS facultyUserIds,
+            
+            /* 3. Return only current Level ID */
+            ARRAY[CAST(MIN(l.id) AS text)] AS levelIds
+
+        FROM package p
+        JOIN package_session ps ON ps.package_id = p.id
+        JOIN level l ON l.id = ps.level_id
+        JOIN package_institute pi ON pi.package_id = p.id
+        
+        LEFT JOIN learner_operation lo
+            ON lo.source = 'PACKAGE_SESSION'
+            AND lo.source_id = ps.id
+            AND (:userId IS NULL OR lo.user_id = :userId)
+            AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
+            
+        LEFT JOIN faculty_subject_package_session_mapping fspm
+            ON fspm.package_session_id = ps.id
+            AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
+            
+        LEFT JOIN (
             SELECT
-                p.id AS id,
-                p.package_name AS packageName,
-                p.thumbnail_file_id AS thumbnailFileId,
-                p.is_course_published_to_catalaouge AS isCoursePublishedToCatalaouge,
-                p.course_preview_image_media_id AS coursePreviewImageMediaId,
-                p.course_banner_media_id AS courseBannerMediaId,
-                p.course_media_id AS courseMediaId,
-                p.why_learn AS whyLearnHtml,
-                p.who_should_learn AS whoShouldLearnHtml,
-                p.about_the_course AS aboutTheCourseHtml,
-                p.comma_separated_tags AS commaSeparatedTags,
-                p.course_depth AS courseDepth,
-                p.course_html_description AS courseHtmlDescriptionHtml,
-                p.created_at AS createdAt,
-                COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
-                COALESCE(ps_read_time.total_read_time_minutes, 0) AS readTimeInMinutes,
-                COALESCE((
-                    SELECT AVG(r.points)
-                    FROM rating r
-                    LEFT JOIN package_session psr ON psr.id = r.source_id AND r.source_type = 'PACKAGE_SESSION'
-                    WHERE (
-                        (r.source_type = 'PACKAGE_SESSION' AND psr.package_id = p.id)
-                        OR (r.source_type = 'PACKAGE' AND r.source_id = p.id)
-                    )
-                    AND (:#{#ratingStatuses == null || #ratingStatuses.isEmpty()} = true OR r.status IN (:ratingStatuses))
-                    AND (
-                        r.source_type != 'PACKAGE_SESSION'
-                        OR (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR psr.status IN (:packageSessionStatus))
-                    )
-                ), 0.0) AS rating,
-                MIN(l.id) AS levelId,
-                MIN(l.level_name) AS levelName,
-                ARRAY_REMOVE(ARRAY_AGG(DISTINCT fspm.user_id), NULL) AS facultyUserIds,
-                (
-                    SELECT ARRAY_AGG(DISTINCT l2.id)
-                    FROM package_session ps2
-                    JOIN level l2 ON l2.id = ps2.level_id
-                    WHERE ps2.package_id = p.id
-                ) AS levelIds
-            FROM package p
-            JOIN package_session ps ON ps.package_id = p.id
-            JOIN level l ON l.id = ps.level_id
-            JOIN package_institute pi ON pi.package_id = p.id
-            LEFT JOIN learner_operation lo
-                ON lo.source = 'PACKAGE_SESSION'
-                AND lo.source_id = ps.id
-                AND (:userId IS NULL OR lo.user_id = :userId)
-                AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
-            LEFT JOIN faculty_subject_package_session_mapping fspm
-                ON fspm.package_session_id = ps.id
-                AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
+                cpsm.package_session_id,
+                SUM(
+                    CASE
+                        WHEN s.source_type = 'VIDEO' THEN ROUND(COALESCE(vs.published_video_length, 0) / 60000.0, 2)
+                        WHEN s.source_type = 'DOCUMENT' THEN
+                            CASE
+                                WHEN ds.type = 'PDF' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 3, 120)
+                                WHEN ds.type = 'PRESENTATION' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 2, 60)
+                                ELSE 10
+                            END
+                        WHEN s.source_type = 'QUESTION' THEN 5
+                        WHEN s.source_type = 'ASSIGNMENT' THEN COALESCE(aqc.question_count, 0) * 3
+                        WHEN s.source_type = 'QUIZ' THEN COALESCE(qqc.question_count, 0) * 2
+                        ELSE 0
+                    END
+                ) AS total_read_time_minutes
+            FROM slide s
+            LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
+            LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
             LEFT JOIN (
-                SELECT
-                    cpsm.package_session_id,
-                    SUM(
-                        CASE
-                            WHEN s.source_type = 'VIDEO' THEN ROUND(COALESCE(vs.published_video_length, 0) / 60000.0, 2)
-                            WHEN s.source_type = 'DOCUMENT' THEN
-                                CASE
-                                    WHEN ds.type = 'PDF' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 3, 120)
-                                    WHEN ds.type = 'PRESENTATION' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 2, 60)
-                                    ELSE 10
-                                END
-                            WHEN s.source_type = 'QUESTION' THEN 5
-                            WHEN s.source_type = 'ASSIGNMENT' THEN COALESCE(aqc.question_count, 0) * 3
-                            WHEN s.source_type = 'QUIZ' THEN COALESCE(qqc.question_count, 0) * 2
-                            ELSE 0
-                        END
-                    ) AS total_read_time_minutes
-                FROM slide s
-                LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
-                LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
-                LEFT JOIN (
-                    SELECT assignment_slide_id AS slide_id, COUNT(*) AS question_count
-                    FROM assignment_slide_question
-                    WHERE status IN (:assignmentQuestionStatusList)
-                    GROUP BY assignment_slide_id
-                ) aqc ON aqc.slide_id = s.source_id AND s.source_type = 'ASSIGNMENT'
-                LEFT JOIN (
-                    SELECT quiz_slide_id AS slide_id, COUNT(*) AS question_count
-                    FROM quiz_slide_question
-                    WHERE status IN (:questionStatusList)
-                    GROUP BY quiz_slide_id
-                ) qqc ON qqc.slide_id = s.source_id AND s.source_type = 'QUIZ'
-                JOIN chapter_to_slides cs ON cs.slide_id = s.id
-                JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = cs.chapter_id
-                WHERE
-                    s.status IN (:slideStatusList)
-                    AND cs.status IN (:slideStatusList)
-                    AND cpsm.status IN (:chapterPackageStatusList)
-                GROUP BY cpsm.package_session_id
-            ) ps_read_time ON ps.id = ps_read_time.package_session_id
+                SELECT assignment_slide_id AS slide_id, COUNT(*) AS question_count
+                FROM assignment_slide_question
+                WHERE status IN (:assignmentQuestionStatusList)
+                GROUP BY assignment_slide_id
+            ) aqc ON aqc.slide_id = s.source_id AND s.source_type = 'ASSIGNMENT'
+            LEFT JOIN (
+                SELECT quiz_slide_id AS slide_id, COUNT(*) AS question_count
+                FROM quiz_slide_question
+                WHERE status IN (:questionStatusList)
+                GROUP BY quiz_slide_id
+            ) qqc ON qqc.slide_id = s.source_id AND s.source_type = 'QUIZ'
+            JOIN chapter_to_slides cs ON cs.slide_id = s.id
+            JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = cs.chapter_id
             WHERE
-                p.is_course_published_to_catalaouge = true
-                AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
-                AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
-                AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
-                AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
-                AND (
-                    :#{#facultyIds == null || #facultyIds.isEmpty()} = true
-                    OR EXISTS (
-                        SELECT 1 FROM faculty_subject_package_session_mapping f
-                        WHERE f.package_session_id = ps.id
-                        AND f.subject_id IS NULL
-                        AND f.user_id IN (:facultyIds)
-                        AND (
-                            :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
-                            OR f.status IN (:facultySubjectSessionStatus)
-                        )
+                s.status IN (:slideStatusList)
+                AND cs.status IN (:slideStatusList)
+                AND cpsm.status IN (:chapterPackageStatusList)
+            GROUP BY cpsm.package_session_id
+        ) ps_read_time ON ps.id = ps_read_time.package_session_id
+        
+        WHERE
+            p.is_course_published_to_catalaouge = true
+            AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
+            AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
+            AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+            AND (
+                :#{#facultyIds == null || #facultyIds.isEmpty()} = true
+                OR EXISTS (
+                    SELECT 1 FROM faculty_subject_package_session_mapping f
+                    WHERE f.package_session_id = ps.id
+                    AND f.subject_id IS NULL
+                    AND f.user_id IN (:facultyIds)
+                    AND (
+                        :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+                        OR f.status IN (:facultySubjectSessionStatus)
                     )
                 )
-                AND (
-                    :#{#tags == null || #tags.isEmpty()} = true
-                    OR EXISTS (
-                        SELECT 1
-                        FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
-                        WHERE tag ILIKE ANY (CAST(:tags AS text[]))
-                    )
+            )
+            AND (
+                :#{#tags == null || #tags.isEmpty()} = true
+                OR EXISTS (
+                    SELECT 1
+                    FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                    WHERE tag ILIKE ANY (array[:#{#tags}])
                 )
-            GROUP BY
-                p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
-                p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
-                p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
-                p.course_depth, p.course_html_description, p.created_at,
-                ps_read_time.total_read_time_minutes
-            """,
+            )
+            
+        GROUP BY
+            p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
+            p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
+            p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
+            p.course_depth, p.course_html_description, p.created_at,
+            ps.id /* 4. Added Grouping by Session */
+        """,
 
             countQuery = """
-                    SELECT COUNT(DISTINCT p.id)
-                    FROM package p
-                    JOIN package_session ps ON ps.package_id = p.id
-                    JOIN level l ON l.id = ps.level_id
-                    JOIN package_institute pi ON pi.package_id = p.id
-                    LEFT JOIN learner_operation lo
-                        ON lo.source = 'PACKAGE_SESSION'
-                        AND lo.source_id = ps.id
-                        AND (:userId IS NULL OR lo.user_id = :userId)
-                        AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
-                    LEFT JOIN faculty_subject_package_session_mapping fspm
-                        ON fspm.package_session_id = ps.id
-                        AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
-                    WHERE
-                        p.is_course_published_to_catalaouge = true
-                        AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
-                        AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
-                        AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
-                        AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
-                        AND (
-                            :#{#facultyIds == null || #facultyIds.isEmpty()} = true
-                            OR EXISTS (
-                                SELECT 1 FROM faculty_subject_package_session_mapping f
-                                WHERE f.package_session_id = ps.id
-                                AND f.user_id IN (:facultyIds)
-                                AND (
-                                    :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
-                                    OR f.status IN (:facultySubjectSessionStatus)
-                                )
+                SELECT COUNT(DISTINCT ps.id) /* 5. Count Distinct Sessions */
+                FROM package p
+                JOIN package_session ps ON ps.package_id = p.id
+                JOIN level l ON l.id = ps.level_id
+                JOIN package_institute pi ON pi.package_id = p.id
+                LEFT JOIN learner_operation lo
+                    ON lo.source = 'PACKAGE_SESSION'
+                    AND lo.source_id = ps.id
+                    AND (:userId IS NULL OR lo.user_id = :userId)
+                    AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
+                LEFT JOIN faculty_subject_package_session_mapping fspm
+                    ON fspm.package_session_id = ps.id
+                    AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
+                WHERE
+                    p.is_course_published_to_catalaouge = true
+                    AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
+                    AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
+                    AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+                    AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+                    AND (
+                        :#{#facultyIds == null || #facultyIds.isEmpty()} = true
+                        OR EXISTS (
+                            SELECT 1 FROM faculty_subject_package_session_mapping f
+                            WHERE f.package_session_id = ps.id
+                            AND f.subject_id IS NULL
+                            AND f.user_id IN (:facultyIds)
+                            AND (
+                                :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
+                                OR f.status IN (:facultySubjectSessionStatus)
                             )
                         )
-                        AND (
-                            :#{#tags == null || #tags.isEmpty()} = true
-                            OR EXISTS (
-                                SELECT 1
-                                FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
-                                WHERE tag ILIKE ANY (CAST(:tags AS text[]))
-                            )
+                    )
+                    AND (
+                        :#{#tags == null || #tags.isEmpty()} = true
+                        OR EXISTS (
+                            SELECT 1
+                            FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                            WHERE tag ILIKE ANY (array[:#{#tags}])
                         )
-                    """, nativeQuery = true)
+                    )
+                """, nativeQuery = true)
     Page<PackageDetailProjection> getAllLearnerPackagesIrrespectiveOfProgress(
             @Param("userId") String userId,
             @Param("instituteId") String instituteId,
@@ -1847,156 +1960,162 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             Pageable pageable);
 
     @Query(value = """
-            SELECT DISTINCT ON (p.id)
-                p.id AS id,
-                p.package_name AS packageName,
-                p.thumbnail_file_id AS thumbnailFileId,
-                p.is_course_published_to_catalaouge AS isCoursePublishedToCatalaouge,
-                p.course_preview_image_media_id AS coursePreviewImageMediaId,
-                p.course_banner_media_id AS courseBannerMediaId,
-                p.course_media_id AS courseMediaId,
-                p.why_learn AS whyLearnHtml,
-                p.who_should_learn AS whoShouldLearnHtml,
-                p.about_the_course AS aboutTheCourseHtml,
-                p.comma_separated_tags AS commaSeparetedTags,
-                p.course_depth AS courseDepth,
-                p.course_html_description AS courseHtmlDescriptionHtml,
-                p.created_at AS createdAt,
-                COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
-                COALESCE(ps_read_time.total_read_time_minutes, 0) AS readTimeInMinutes,
-                COALESCE((
-                    SELECT AVG(r.points)
-                    FROM rating r
-                    LEFT JOIN package_session psr ON psr.id = r.source_id AND r.source_type = 'PACKAGE_SESSION'
-                    WHERE (
-                        (r.source_type = 'PACKAGE_SESSION' AND psr.package_id = p.id)
-                        OR (r.source_type = 'PACKAGE' AND r.source_id = p.id)
-                    )
-                    AND (:#{#ratingStatuses == null || #ratingStatuses.isEmpty()} = true OR r.status IN (:ratingStatuses))
-                    AND (
-                        r.source_type != 'PACKAGE_SESSION'
-                        OR (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR psr.status IN (:packageSessionStatus))
-                    )
-                ), 0.0) AS rating,
-                ps.id AS packageSessionId,
-                l.id AS levelId,
-                l.level_name AS levelName,
-                ARRAY_REMOVE(ARRAY_AGG(DISTINCT fspm.user_id), NULL) AS facultyUserIds,
-                (
-                    SELECT ARRAY_AGG(DISTINCT l2.id)
-                    FROM package_session ps2
-                    JOIN level l2 ON l2.id = ps2.level_id
-                    WHERE ps2.package_id = p.id
-                ) AS levelIds
-            FROM package p
-            JOIN package_session ps ON ps.package_id = p.id
-            JOIN level l ON l.id = ps.level_id
-            JOIN package_institute pi ON pi.package_id = p.id
-            LEFT JOIN learner_operation lo
-                ON lo.source = 'PACKAGE_SESSION'
-                AND lo.source_id = ps.id
-                AND (:userId IS NULL OR lo.user_id = :userId)
-                AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
-            LEFT JOIN faculty_subject_package_session_mapping fspm
-                ON fspm.package_session_id = ps.id
-                AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
-            LEFT JOIN (
-                SELECT
-                    cpsm.package_session_id,
-                    SUM(
-                        CASE
-                            WHEN s.source_type = 'VIDEO' THEN ROUND(COALESCE(vs.published_video_length, 0) / 60000.0, 2)
-                            WHEN s.source_type = 'DOCUMENT' THEN
-                                CASE
-                                    WHEN ds.type = 'PDF' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 3, 120)
-                                    WHEN ds.type = 'PRESENTATION' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 2, 60)
-                                    ELSE 10
-                                END
-                            WHEN s.source_type = 'QUESTION' THEN 5
-                            WHEN s.source_type = 'ASSIGNMENT' THEN COALESCE(aqc.question_count, 0) * 3
-                            WHEN s.source_type = 'QUIZ' THEN COALESCE(qqc.question_count, 0) * 2
-                            ELSE 0
-                        END
-                    ) AS total_read_time_minutes
-                FROM slide s
-                LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
-                LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
-                LEFT JOIN (
-                    SELECT assignment_slide_id AS slide_id, COUNT(*) AS question_count
-                    FROM assignment_slide_question
-                    WHERE status IN (:assignmentQuestionStatusList)
-                    GROUP BY assignment_slide_id
-                ) aqc ON aqc.slide_id = s.source_id AND s.source_type = 'ASSIGNMENT'
-                LEFT JOIN (
-                    SELECT quiz_slide_id AS slide_id, COUNT(*) AS question_count
-                    FROM quiz_slide_question
-                    WHERE status IN (:questionStatusList)
-                    GROUP BY quiz_slide_id
-                ) qqc ON qqc.slide_id = s.source_id AND s.source_type = 'QUIZ'
-                JOIN chapter_to_slides cs ON cs.slide_id = s.id
-                JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = cs.chapter_id
-                WHERE
-                    s.status IN (:slideStatusList)
-                    AND cs.status IN (:slideStatusList)
-                    AND cpsm.status IN (:chapterPackageStatusList)
-                GROUP BY cpsm.package_session_id
-            ) ps_read_time ON ps.id = ps_read_time.package_session_id
-            WHERE
-                p.is_course_published_to_catalaouge = true
-                AND (:userId IS NULL OR lo.user_id = :userId)
-                AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
-                AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
-                AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
-                AND (
-                    :name IS NULL OR
-                    LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
-                    LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
-                    EXISTS (
-                        SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
-                        WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
-                    ) OR
-                    LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
+        SELECT
+            p.id AS id,
+            p.package_name AS packageName,
+            p.thumbnail_file_id AS thumbnailFileId,
+            p.is_course_published_to_catalaouge AS isCoursePublishedToCatalaouge,
+            p.course_preview_image_media_id AS coursePreviewImageMediaId,
+            p.course_banner_media_id AS courseBannerMediaId,
+            p.course_media_id AS courseMediaId,
+            p.why_learn AS whyLearnHtml,
+            p.who_should_learn AS whoShouldLearnHtml,
+            p.about_the_course AS aboutTheCourseHtml,
+            p.comma_separated_tags AS commaSeparetedTags,
+            p.course_depth AS courseDepth,
+            p.course_html_description AS courseHtmlDescriptionHtml,
+            p.created_at AS createdAt,
+            
+            COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
+            SUM(COALESCE(ps_read_time.total_read_time_minutes, 0)) AS readTimeInMinutes,
+            
+            COALESCE((
+                SELECT AVG(r.points)
+                FROM rating r
+                LEFT JOIN package_session psr ON psr.id = r.source_id AND r.source_type = 'PACKAGE_SESSION'
+                WHERE (
+                    (r.source_type = 'PACKAGE_SESSION' AND psr.package_id = p.id)
+                    OR (r.source_type = 'PACKAGE' AND r.source_id = p.id)
                 )
-            GROUP BY
-                p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
-                p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
-                p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
-                p.course_depth, p.course_html_description, p.created_at,
-                ps.id, l.id, l.level_name, ps_read_time.total_read_time_minutes
-            """,
+                AND (:#{#ratingStatuses == null || #ratingStatuses.isEmpty()} = true OR r.status IN (:ratingStatuses))
+                AND (
+                    r.source_type != 'PACKAGE_SESSION'
+                    OR (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR psr.status IN (:packageSessionStatus))
+                )
+            ), 0.0) AS rating,
+            
+            ps.id AS packageSessionId,
+            MIN(l.id) AS levelId,
+            MIN(l.level_name) AS levelName,
+            
+            ARRAY_REMOVE(ARRAY_AGG(DISTINCT fspm.user_id), NULL) AS facultyUserIds,
+            
+            /* Fixed: Return only current level ID */
+            ARRAY[CAST(MIN(l.id) AS text)] AS levelIds
+
+        FROM package p
+        JOIN package_session ps ON ps.package_id = p.id
+        JOIN level l ON l.id = ps.level_id
+        JOIN package_institute pi ON pi.package_id = p.id
+        
+        LEFT JOIN learner_operation lo
+            ON lo.source = 'PACKAGE_SESSION'
+            AND lo.source_id = ps.id
+            AND (:userId IS NULL OR lo.user_id = :userId)
+            AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
+            
+        LEFT JOIN faculty_subject_package_session_mapping fspm
+            ON fspm.package_session_id = ps.id
+            AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
+            
+        LEFT JOIN (
+            SELECT
+                cpsm.package_session_id,
+                SUM(
+                    CASE
+                        WHEN s.source_type = 'VIDEO' THEN ROUND(COALESCE(vs.published_video_length, 0) / 60000.0, 2)
+                        WHEN s.source_type = 'DOCUMENT' THEN
+                            CASE
+                                WHEN ds.type = 'PDF' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 3, 120)
+                                WHEN ds.type = 'PRESENTATION' THEN LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages) * 2, 60)
+                                ELSE 10
+                            END
+                        WHEN s.source_type = 'QUESTION' THEN 5
+                        WHEN s.source_type = 'ASSIGNMENT' THEN COALESCE(aqc.question_count, 0) * 3
+                        WHEN s.source_type = 'QUIZ' THEN COALESCE(qqc.question_count, 0) * 2
+                        ELSE 0
+                    END
+                ) AS total_read_time_minutes
+            FROM slide s
+            LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
+            LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
+            LEFT JOIN (
+                SELECT assignment_slide_id AS slide_id, COUNT(*) AS question_count
+                FROM assignment_slide_question
+                WHERE status IN (:assignmentQuestionStatusList)
+                GROUP BY assignment_slide_id
+            ) aqc ON aqc.slide_id = s.source_id AND s.source_type = 'ASSIGNMENT'
+            LEFT JOIN (
+                SELECT quiz_slide_id AS slide_id, COUNT(*) AS question_count
+                FROM quiz_slide_question
+                WHERE status IN (:questionStatusList)
+                GROUP BY quiz_slide_id
+            ) qqc ON qqc.slide_id = s.source_id AND s.source_type = 'QUIZ'
+            JOIN chapter_to_slides cs ON cs.slide_id = s.id
+            JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = cs.chapter_id
+            WHERE
+                s.status IN (:slideStatusList)
+                AND cs.status IN (:slideStatusList)
+                AND cpsm.status IN (:chapterPackageStatusList)
+            GROUP BY cpsm.package_session_id
+        ) ps_read_time ON ps.id = ps_read_time.package_session_id
+        
+        WHERE
+            p.is_course_published_to_catalaouge = true
+            AND (:userId IS NULL OR lo.user_id = :userId)
+            AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
+            AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+            AND (
+                :name IS NULL OR
+                LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+                LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+                EXISTS (
+                    SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                    WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
+                ) OR
+                LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
+            )
+            
+        GROUP BY
+            p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
+            p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
+            p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
+            p.course_depth, p.course_html_description, p.created_at,
+            ps.id
+        """,
 
             countQuery = """
-                        SELECT COUNT(DISTINCT p.id)
-                        FROM package p
-                        JOIN package_session ps ON ps.package_id = p.id
-                        JOIN level l ON l.id = ps.level_id
-                        JOIN package_institute pi ON pi.package_id = p.id
-                        LEFT JOIN learner_operation lo
-                            ON lo.source = 'PACKAGE_SESSION'
-                            AND lo.source_id = ps.id
-                            AND (:userId IS NULL OR lo.user_id = :userId)
-                            AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
-                        LEFT JOIN faculty_subject_package_session_mapping fspm
-                            ON fspm.package_session_id = ps.id
-                            AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
-                        WHERE
-                            p.is_course_published_to_catalaouge = true
-                            AND (:userId IS NULL OR lo.user_id = :userId)
-                            AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
-                            AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
-                            AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
-                            AND (
-                                :name IS NULL OR
-                                LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
-                                LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
-                                EXISTS (
-                                    SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
-                                    WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
-                                ) OR
-                                LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
-                            )
-                        GROUP BY p.id
-                    """, nativeQuery = true)
+                    SELECT COUNT(DISTINCT ps.id)
+                    FROM package p
+                    JOIN package_session ps ON ps.package_id = p.id
+                    JOIN level l ON l.id = ps.level_id
+                    JOIN package_institute pi ON pi.package_id = p.id
+                    LEFT JOIN learner_operation lo
+                        ON lo.source = 'PACKAGE_SESSION'
+                        AND lo.source_id = ps.id
+                        AND (:userId IS NULL OR lo.user_id = :userId)
+                        AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
+                    LEFT JOIN faculty_subject_package_session_mapping fspm
+                        ON fspm.package_session_id = ps.id
+                        AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
+                    WHERE
+                        p.is_course_published_to_catalaouge = true
+                        AND (:userId IS NULL OR lo.user_id = :userId)
+                        AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
+                        AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+                        AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+                        AND (
+                            :name IS NULL OR
+                            LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+                            LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+                            EXISTS (
+                                SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                                WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
+                            ) OR
+                            LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
+                        )
+                """, nativeQuery = true)
     Page<PackageDetailProjection> getAllPackagesIrrespectiveOfLearnerOperation(
             @Param("userId") String userId,
             @Param("name") String name,

@@ -326,37 +326,25 @@ const CourseCatalougePage: React.FC = () => {
 
     // ✅ Fetch instructor
     useEffect(() => {
-        const fetchInstructor = async () => {
+         const fetchInstructor = async () => {
             try {
                 const instituteId = await getInstituteId();
-                const response = await axios.post(
-                    urlInstructor,
+                const response = await axios.get(
+                    `${urlInstructor}/${instituteId}`,
                     {
-                        roles: [
-                            "TEACHER",
-                            "ADMIN",
-                            "COURSE CREATOR",
-                            "ASSESSMENT CREATOR",
-                            "EVALUATOR",
-                        ],
-                        status: ["ACTIVE"],
-                    },
-                    {
-                        headers: {
-                            Accept: "*/*",
-                            "Content-Type": "application/json",
-                        },
                         params: {
                             instituteId,
+                        },
+                        headers: {
+                            accept: "*/*",
                         },
                     }
                 );
                 setInstructors(response.data);
-            } catch {
-                // Error handling
+            } catch (error) {
+                console.log(error);
             }
         };
-
         fetchInstructor();
     }, [setInstructors]);
 

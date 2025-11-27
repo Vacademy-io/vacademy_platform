@@ -165,25 +165,14 @@ const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }
 
         const fetchInstructor = async () => {
             try {
-                const response = await axios.post(
-                    `${urlInstructor}`,
+                const response = await axios.get(
+                    `${urlInstructor}/${instituteId}`,
                     {
-                        roles: [
-                            "TEACHER",
-                            "ADMIN",
-                            "COURSE CREATOR",
-                            "ASSESSMENT CREATOR",
-                            "EVALUATOR",
-                        ],
-                        status: ["ACTIVE"],
-                    },
-                    {
-                        headers: {
-                            Accept: "*/*",
-                            "Content-Type": "application/json",
-                        },
                         params: {
                             instituteId,
+                        },
+                        headers: {
+                            accept: "*/*",
                         },
                     }
                 );

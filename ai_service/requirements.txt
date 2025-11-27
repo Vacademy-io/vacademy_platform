@@ -4,5 +4,8 @@ SQLAlchemy==2.0.35
 psycopg[binary]==3.2.12
 pydantic-settings==2.6.1
 python-dotenv==1.0.1
+httpx==0.27.2
+boto3==1.34.0
+
 
 

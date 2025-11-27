@@ -8,7 +8,10 @@ import vacademy.io.admin_core_service.features.faculty.dto.FacultyAllResponse;
 import vacademy.io.admin_core_service.features.faculty.dto.FacultyBatchSubjectDTO;
 import vacademy.io.admin_core_service.features.faculty.dto.FacultyRequestFilter;
 import vacademy.io.admin_core_service.features.faculty.service.FacultyService;
+import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
+
+import java.util.List;
 
 import static vacademy.io.common.auth.config.PageConstants.DEFAULT_PAGE_NUMBER;
 import static vacademy.io.common.auth.config.PageConstants.DEFAULT_PAGE_SIZE;
@@ -52,6 +55,12 @@ public class FacultyController {
     ) {
         return ResponseEntity.ok(facultyService.getAllFacultyBatchSubject(userId, userDetails));
     }
+
+    @GetMapping("/by-institute/only-creator/{instituteId}")
+    public ResponseEntity<List<UserDTO> > getFacultyByInstitute(@PathVariable String instituteId) {
+        return ResponseEntity.ok(facultyService.findFacultyByFilters(instituteId));
+    }
+
 }
 
 

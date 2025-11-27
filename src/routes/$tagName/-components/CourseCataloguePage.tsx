@@ -81,11 +81,17 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         const introPageSeenKey = `introPageSeen_${instituteId}_${tagName}`;
         const hasSeenIntroPage = localStorage.getItem(introPageSeenKey) === 'true';
         
+        // Check if lead collection form has already been submitted
+        const leadCollectionSubmittedKey = `leadCollectionSubmitted_${instituteId}_${tagName}`;
+        const hasSubmittedLeadCollection = localStorage.getItem(leadCollectionSubmittedKey) === 'true';
+        
         console.log("Checking intro page and lead collection:", {
           introPageEnabled: data.introPage?.enabled,
           leadCollectionEnabled: data.globalSettings.leadCollection.enabled,
           hasSeenIntroPage,
-          introPageSeenKey
+          hasSubmittedLeadCollection,
+          introPageSeenKey,
+          leadCollectionSubmittedKey
         });
         
         if (data.introPage?.enabled && !hasSeenIntroPage) {
@@ -95,10 +101,10 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
           console.log("Intro page already seen, skipping intro page");
           // Mark intro as completed since user has already seen it
           setIntroCompleted(true);
-        } else if (data.globalSettings.leadCollection.enabled) {
-          // Only show lead collection if no intro page or intro already seen
+        } else if (data.globalSettings.leadCollection.enabled && !hasSubmittedLeadCollection) {
+          // Only show lead collection if no intro page or intro already seen, and form hasn't been submitted
           console.log("Setting showLeadCollection to true (no intro page or intro already seen)"  + data.globalSettings.leadCollection.enabled);
-          setShowLeadCollection(true);
+          setShowLeadCollection(false);
         }
       } catch (err) {
         setError("Failed to load course catalogue");
@@ -130,7 +136,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       console.log("[CourseCataloguePage] Received openLeadCollection event");
       // Only show lead collection if it's enabled in JSON
       if (catalogueData?.globalSettings.leadCollection.enabled) {
-        setShowLeadCollection(true);
+        setShowLeadCollection(false);
       } else {
         console.log("[CourseCataloguePage] Lead collection is disabled, ignoring openLeadCollection event");
       }
@@ -181,9 +187,12 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     localStorage.setItem(introPageSeenKey, 'true');
     console.log(`[CourseCataloguePage] Marked intro page as seen: ${introPageSeenKey}`);
     
-    // Show lead collection if enabled and not already shown
-    if (catalogueData?.globalSettings.leadCollection.enabled && !showLeadCollection) {
-      setShowLeadCollection(true);
+    // Show lead collection if enabled and not already shown and not already submitted
+    const leadCollectionSubmittedKey = `leadCollectionSubmitted_${instituteId}_${tagName}`;
+    const hasSubmittedLeadCollection = localStorage.getItem(leadCollectionSubmittedKey) === 'true';
+    
+    if (catalogueData?.globalSettings.leadCollection.enabled && !showLeadCollection && !hasSubmittedLeadCollection) {
+      setShowLeadCollection(false);
     }
   };
 

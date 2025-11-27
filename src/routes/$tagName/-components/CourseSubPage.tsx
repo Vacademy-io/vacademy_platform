@@ -75,14 +75,18 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
         const introPageSeenKey = `introPageSeen_${instituteId}_${tagName}`;
         const hasSeenIntroPage = localStorage.getItem(introPageSeenKey) === 'true';
 
+        // Check if lead collection form has already been submitted
+        const leadCollectionSubmittedKey = `leadCollectionSubmitted_${instituteId}_${tagName}`;
+        const hasSubmittedLeadCollection = localStorage.getItem(leadCollectionSubmittedKey) === 'true';
+
         if (data.introPage?.enabled && !hasSeenIntroPage) {
           setShowIntroPage(true);
         } else if (data.introPage?.enabled && hasSeenIntroPage) {
           // Mark intro as completed since user has already seen it
           setIntroCompleted(true);
-        } else if (data.globalSettings.leadCollection.enabled) {
-          // Only show lead collection if no intro page or intro already seen
-          setShowLeadCollection(true);
+        } else if (data.globalSettings.leadCollection.enabled && !hasSubmittedLeadCollection) {
+          // Only show lead collection if no intro page or intro already seen, and form hasn't been submitted
+          setShowLeadCollection(false);
         }
       } catch (err) {
         setError("Failed to load course catalogue");
@@ -113,7 +117,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
     const handleOpenLeadCollection = () => {
       // Only show lead collection if it's enabled in JSON
       if (catalogueData?.globalSettings.leadCollection.enabled) {
-        setShowLeadCollection(true);
+        setShowLeadCollection(false);
       } else {
         console.log("[CourseSubPage] Lead collection is disabled, ignoring openLeadCollection event");
       }
@@ -158,9 +162,12 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
     const introPageSeenKey = `introPageSeen_${instituteId}_${tagName}`;
     localStorage.setItem(introPageSeenKey, 'true');
 
-    // Show lead collection if enabled and not already shown
-    if (catalogueData?.globalSettings.leadCollection.enabled && !showLeadCollection) {
-      setShowLeadCollection(true);
+    // Show lead collection if enabled and not already shown and not already submitted
+    const leadCollectionSubmittedKey = `leadCollectionSubmitted_${instituteId}_${tagName}`;
+    const hasSubmittedLeadCollection = localStorage.getItem(leadCollectionSubmittedKey) === 'true';
+    
+    if (catalogueData?.globalSettings.leadCollection.enabled && !showLeadCollection && !hasSubmittedLeadCollection) {
+      setShowLeadCollection(false);
     }
   };
 
@@ -335,7 +342,11 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
             {/* Get Started Button */}
             <button
               onClick={() => {
-                setShowLeadCollection(true);
+                if (catalogueData?.globalSettings.leadCollection.enabled) {
+                  setShowLeadCollection(false);
+                } else {
+                  console.log("[CourseSubPage] Lead collection is disabled, not showing modal");
+                }
               }}
               className="w-full px-4 py-2 text-white font-medium hover:opacity-90 rounded-md transition-colors"
               style={{

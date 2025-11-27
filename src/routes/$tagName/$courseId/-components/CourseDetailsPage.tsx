@@ -336,7 +336,11 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
         const globalSettings = catalogueData?.globalSettings as any;
         const leadCollectionConfig = globalSettings?.leadCollection;
         
-        if (leadCollectionConfig?.enabled) {
+        // Check if form has already been submitted
+        const leadCollectionSubmittedKey = `leadCollectionSubmitted_${instituteId}_${tagName}`;
+        const hasSubmittedLeadCollection = localStorage.getItem(leadCollectionSubmittedKey) === 'true';
+        
+        if (leadCollectionConfig?.enabled && !hasSubmittedLeadCollection) {
           setTimeout(() => {
             setShowLeadCollection(true);
           }, 2000);
@@ -580,11 +584,14 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                           // Check if this is a "Get Started" button (when payment is disabled)
                           const isGetStartedButton = catalogueData?.globalSettings?.payment?.enabled === false;
                           
-                          // If this is a "Get Started" button or payment is disabled, always open lead collection
+                          // If this is a "Get Started" button or payment is disabled, check if lead collection is enabled
                           if (isGetStartedButton || !showPayment) {
-                            console.log("Get Started button clicked - opening lead collection modal!");
-                            console.log("Setting showLeadCollection to true");
-                            setShowLeadCollection(false);
+                            if (leadCollectionEnabled) {
+                              console.log("Get Started button clicked - opening lead collection modal!");
+                              setShowLeadCollection(true);
+                            } else {
+                              console.log("Get Started button clicked but lead collection is disabled");
+                            }
                           } else {
                             console.log("Enroll button clicked - opening enrollment payment dialog!");
                             setEnrollmentDialogOpen(true);
@@ -903,11 +910,14 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                           // Check if this is a "Get Started" button (when payment is disabled)
                           const isGetStartedButton = catalogueData?.globalSettings?.payment?.enabled === false;
                           
-                          // If this is a "Get Started" button or payment is disabled, always open lead collection
+                          // If this is a "Get Started" button or payment is disabled, check if lead collection is enabled
                           if (isGetStartedButton || !showPayment) {
-                            console.log("Get Started button clicked - opening lead collection modal!");
-                            console.log("Setting showLeadCollection to true");
-                            setShowLeadCollection(true);
+                            if (leadCollectionEnabled) {
+                              console.log("Get Started button clicked - opening lead collection modal!");
+                              setShowLeadCollection(true);
+                            } else {
+                              console.log("Get Started button clicked but lead collection is disabled");
+                            }
                           } else {
                             console.log("Enroll button clicked - opening enrollment payment dialog!");
                             setEnrollmentDialogOpen(true);
@@ -966,7 +976,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       )}
 
       {/* Lead Collection Modal */}
-      {showLeadCollection && (
+      {showLeadCollection && catalogueData?.globalSettings?.leadCollection?.enabled && (
         <LeadCollectionModal
           isOpen={showLeadCollection}
           onClose={handleLeadCollectionClose}
@@ -984,7 +994,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             });
             
             return {
-              enabled: true, // Force enable when triggered by buttons
+              enabled: leadCollectionConfig?.enabled || false, // Use actual enabled value from JSON
               mandatory: leadCollectionConfig?.mandatory || false,
               inviteLink: leadCollectionConfig?.inviteLink || null,
               formStyle: leadCollectionConfig?.formStyle || {
@@ -1117,7 +1127,13 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           <button
             onClick={() => {
               console.log("[CourseDetailsPage] Mobile Get Started button clicked");
-              setShowLeadCollection(true);
+              const globalSettings = catalogueData?.globalSettings as any;
+              const leadCollectionConfig = globalSettings?.leadCollection;
+              if (leadCollectionConfig?.enabled) {
+                setShowLeadCollection(true);
+              } else {
+                console.log("[CourseDetailsPage] Lead collection is disabled, not showing modal");
+              }
             }}
             className="w-full px-4 py-2 text-white font-medium hover:opacity-90 rounded-md transition-colors"
             style={{

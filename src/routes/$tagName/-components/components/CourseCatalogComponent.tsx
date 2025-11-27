@@ -488,6 +488,38 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     );
   }, [priceRange, defaultPriceRange]);
 
+  // Check for level filter from sessionStorage on mount
+  useEffect(() => {
+    const levelFilter = sessionStorage.getItem('levelFilter');
+    if (levelFilter) {
+      // Set the level filter and clear it from sessionStorage after use
+      console.log('[CourseCatalogComponent] Applying level filter from sessionStorage:', levelFilter);
+      // Normalize the filter value to match the case in course data
+      // We'll find the actual case from the courses once they load
+      setSelectedLevels([levelFilter]);
+      sessionStorage.removeItem('levelFilter');
+    }
+  }, []);
+  
+  // Normalize selectedLevels to match actual level values from courses (case-insensitive matching)
+  useEffect(() => {
+    if (courses.length > 0 && selectedLevels.length > 0) {
+      const actualLevels = [...new Set(courses.map(course => course.level))];
+      const normalizedLevels = selectedLevels.map(selected => {
+        // Find the actual level value that matches (case-insensitive)
+        const matched = actualLevels.find(actual => 
+          actual?.toLowerCase() === selected?.toLowerCase()
+        );
+        return matched || selected; // Use matched value or keep original
+      });
+      
+      // Only update if there's a difference (to avoid infinite loop)
+      if (normalizedLevels.some((level, idx) => level !== selectedLevels[idx])) {
+        setSelectedLevels(normalizedLevels);
+      }
+    }
+  }, [courses, selectedLevels.length]); // Only run when courses load or selectedLevels count changes
+
   // Fetch courses from API
   useEffect(() => {
     const fetchCourses = async () => {
@@ -558,6 +590,23 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
         setCourses(transformedCourses);
         setFilteredCourses(transformedCourses);
+        
+        // Debug: Log available level values to help diagnose filtering
+        if (transformedCourses.length > 0) {
+          const uniqueLevels = [...new Set(transformedCourses.map(c => c.level || c.level_name))];
+          console.log('[CourseCatalogComponent] Available level values:', uniqueLevels);
+          // Log first course to see all available fields
+          if (transformedCourses[0]) {
+            console.log('[CourseCatalogComponent] Sample course fields:', {
+              level: transformedCourses[0].level,
+              level_name: transformedCourses[0].level_name,
+              allKeys: Object.keys(transformedCourses[0]).filter(k => 
+                k.toLowerCase().includes('buy') || 
+                k.toLowerCase().includes('rent') 
+              )
+            });
+          }
+        }
       } catch (error) {
         console.error("[CourseCatalogComponent] Error fetching courses:", error);
         setCourses([]);
@@ -585,7 +634,40 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
     // Apply level filter
     if (selectedLevels.length > 0) {
-      filtered = filtered.filter(course => selectedLevels.includes(course.level));
+      filtered = filtered.filter(course => {
+        // Check if any selected level matches the course's level field
+        const matchesLevel = selectedLevels.includes(course.level);
+        
+        // For Buy/Rent filters, also check level_name field directly from API
+        // since "Buy" and "Rent" might be stored in level_name
+        const isBuyRentFilter = selectedLevels.some(level => 
+          level === "Buy" || level === "Rent"
+        );
+        
+        if (isBuyRentFilter) {
+          // Check multiple possible fields where Buy/Rent might be stored
+          const levelName = (course.level_name || course.level || "").toString().trim();
+          const courseType = (course.type || course.package_type || "").toString().trim();
+          
+          const matchesBuyRent = selectedLevels.some(level => {
+            const filterValue = level.toString().trim();
+            return (
+              levelName.toLowerCase() === filterValue.toLowerCase() ||
+              courseType.toLowerCase() === filterValue.toLowerCase() ||
+              // Also check if any field in the course object contains Buy/Rent
+              Object.values(course).some(val => 
+                val && val.toString().toLowerCase() === filterValue.toLowerCase()
+              )
+            );
+          });
+          
+          if (matchesBuyRent) {
+            return true;
+          }
+        }
+        
+        return matchesLevel;
+      });
     }
 
     // Apply tag filter

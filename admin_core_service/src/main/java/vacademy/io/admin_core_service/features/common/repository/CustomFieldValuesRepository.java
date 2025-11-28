@@ -35,4 +35,12 @@ public interface CustomFieldValuesRepository extends JpaRepository<CustomFieldVa
             String sourceId,
             String type,
             String typeId);
+
+    /**
+     * Find custom field values by source type and list of source IDs
+     */
+    @Query("SELECT cfv FROM CustomFieldValues cfv WHERE cfv.sourceType = :sourceType AND cfv.sourceId IN :sourceIds")
+    List<CustomFieldValues> findBySourceTypeAndSourceIdIn(
+            @Param("sourceType") String sourceType,
+            @Param("sourceIds") List<String> sourceIds);
 }

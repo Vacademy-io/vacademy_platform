@@ -9,9 +9,6 @@ import vacademy.io.admin_core_service.features.audience.service.AudienceService;
 import vacademy.io.common.auth.config.PageConstants;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
-import java.util.List;
-import java.util.Map;
-
 /**
  * REST Controller for Audience Management
  * Endpoints for campaign creation, lead management, and reporting

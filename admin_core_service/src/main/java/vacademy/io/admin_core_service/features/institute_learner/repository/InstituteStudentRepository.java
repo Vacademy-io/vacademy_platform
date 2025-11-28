@@ -16,6 +16,14 @@ import java.util.Optional;
 @Repository
 public interface InstituteStudentRepository extends CrudRepository<Student, String> {
 
+    /**
+     * Find all distinct user IDs for a specific institute
+     */
+    @Query(value = "SELECT DISTINCT ssigm.user_id FROM student_session_institute_group_mapping ssigm " +
+           "WHERE ssigm.institute_id = :instituteId", 
+           nativeQuery = true)
+    List<String> findDistinctUserIdsByInstituteId(@Param("instituteId") String instituteId);
+
     @Query(value = "SELECT DISTINCT s.* FROM student s LEFT JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id "
         +
         "WHERE (:statuses IS NULL OR ssigm.status IN (:statuses)) " +

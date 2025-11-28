@@ -77,5 +77,35 @@ public interface AudienceRepository extends JpaRepository<Audience, String> {
      * Count campaigns by institute and status
      */
     Long countByInstituteIdAndStatus(String instituteId, String status);
+
+    /**
+     * Find all audience IDs for a specific institute
+     */
+    @Query("SELECT a.id FROM Audience a WHERE a.instituteId = :instituteId")
+    List<String> findAllAudienceIdsByInstituteId(@Param("instituteId") String instituteId);
+
+    /**
+     * Find audience IDs with filters for combined users API
+     */
+    @Query("""
+        SELECT a.id FROM Audience a
+        WHERE a.instituteId = :instituteId
+          AND (COALESCE(:campaignName, '') = '' OR 
+               LOWER(a.campaignName) LIKE LOWER(CONCAT('%', :campaignName, '%')))
+          AND (COALESCE(:status, '') = '' OR a.status = :status)
+          AND (COALESCE(:campaignType, '') = '' OR a.campaignType = :campaignType)
+          AND (:startDateFromProvided = false OR a.startDate IS NULL OR a.startDate >= :startDateFrom)
+          AND (:startDateToProvided = false OR a.startDate IS NULL OR a.startDate <= :startDateTo)
+    """)
+    List<String> findAudienceIdsWithFilters(
+            @Param("instituteId") String instituteId,
+            @Param("campaignName") String campaignName,
+            @Param("status") String status,
+            @Param("campaignType") String campaignType,
+            @Param("startDateFrom") Timestamp startDateFrom,
+            @Param("startDateFromProvided") boolean startDateFromProvided,
+            @Param("startDateTo") Timestamp startDateTo,
+            @Param("startDateToProvided") boolean startDateToProvided
+    );
 }
 

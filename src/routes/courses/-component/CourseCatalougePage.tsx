@@ -49,9 +49,24 @@ const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }
     const autoOpenLogin = urlParams.get('login') === 'true';
     const autoOpenDonation = urlParams.get('donation') === 'true';
 
+    const getSortPayload = (sort: string) => {
+        switch (sort) {
+            case "Newest":
+                return { createdAt: "DESC" };
+            case "Oldest":
+                return { createdAt: "ASC" };
+            // case "Popularity":
+            //     return { minPlanActualPrice: "ASC" };
+            // case "Rating":
+            //     return { rating: "DESC" };
+            default:
+                return { createdAt: "DESC" };
+        }
+    };
+
     //api call to store the courses details
 
-    const fetchPackages = async (search = "") => {
+const fetchPackages = async (search = "") => {
         try {
             const response = await axios.post(
                 urlCourseDetails,
@@ -63,6 +78,7 @@ const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }
                     tag: [],
                     min_percentage_completed: 0,
                     max_percentage_completed: 0,
+                    sort_columns: getSortPayload(sortOption),
                 },
                 {
                     params: {
@@ -108,6 +124,7 @@ const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }
                     tag: selectedTags,
                     min_percentage_completed: 0,
                     max_percentage_completed: 0,
+                    sort_columns: getSortPayload(sortOption),
                 },
                 {
                     params: {

@@ -104,7 +104,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         } else if (data.globalSettings.leadCollection.enabled && !hasSubmittedLeadCollection) {
           // Only show lead collection if no intro page or intro already seen, and form hasn't been submitted
           console.log("Setting showLeadCollection to true (no intro page or intro already seen)"  + data.globalSettings.leadCollection.enabled);
-          setShowLeadCollection(false);
+          setShowLeadCollection(true);
         }
       } catch (err) {
         setError("Failed to load course catalogue");
@@ -136,7 +136,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       console.log("[CourseCataloguePage] Received openLeadCollection event");
       // Only show lead collection if it's enabled in JSON
       if (catalogueData?.globalSettings.leadCollection.enabled) {
-        setShowLeadCollection(false);
+        setShowLeadCollection(true);
       } else {
         console.log("[CourseCataloguePage] Lead collection is disabled, ignoring openLeadCollection event");
       }
@@ -192,7 +192,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     const hasSubmittedLeadCollection = localStorage.getItem(leadCollectionSubmittedKey) === 'true';
     
     if (catalogueData?.globalSettings.leadCollection.enabled && !showLeadCollection && !hasSubmittedLeadCollection) {
-      setShowLeadCollection(false);
+      setShowLeadCollection(true);
     }
   };
 
@@ -351,7 +351,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
             <button
               onClick={() => {
                 console.log("[CourseCataloguePage] Mobile Get Started button clicked");
-                setShowLeadCollection(false);
+                setShowLeadCollection(true);
               }}
               className="w-full px-4 py-2 text-white font-medium hover:opacity-90 rounded-md transition-colors"
               style={{

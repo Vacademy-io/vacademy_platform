@@ -369,7 +369,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   useEffect(() => {
     const handleOpenLeadCollection = () => {
       console.log("[CourseDetailsPage] Received openLeadCollection event from HeaderComponent");
-      setShowLeadCollection(false);
+      setShowLeadCollection(true);
     };
 
     window.addEventListener('openLeadCollection', handleOpenLeadCollection);

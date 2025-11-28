@@ -54,7 +54,7 @@ export const BuyRentSectionComponent: React.FC<BuyRentSectionProps> = ({
       <div className="container mx-auto max-w-6xl">
         {/* Heading */}
         <div className="text-center mb-12">
-          <h2 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 mb-4">
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-4">
             {heading}
           </h2>
           <div className="flex items-center justify-center gap-2 text-gray-600">
@@ -103,9 +103,9 @@ export const BuyRentSectionComponent: React.FC<BuyRentSectionProps> = ({
               </h3>
 
               {/* Description */}
-              <p className="text-gray-600 text-lg mb-8 leading-relaxed">
+              {/* <p className="text-gray-600 text-lg mb-8 leading-relaxed">
                 Own your books forever. Build your personal library with our curated collection of premium titles.
-              </p>
+              </p> */}
 
               {/* Features List */}
               <ul className="space-y-3 mb-8">
@@ -188,9 +188,9 @@ export const BuyRentSectionComponent: React.FC<BuyRentSectionProps> = ({
               </h3>
 
               {/* Description */}
-              <p className="text-gray-600 text-lg mb-8 leading-relaxed">
+              {/* <p className="text-gray-600 text-lg mb-8 leading-relaxed">
                 Flexible reading options. Access books for a limited time at a fraction of the cost.
-              </p>
+              </p> */}
 
               {/* Features List */}
               <ul className="space-y-3 mb-8">

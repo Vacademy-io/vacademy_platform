@@ -15,6 +15,11 @@ import asyncio
 from io import BytesIO
 import httpx
 import json
+from .image_prompts import (
+    generate_banner_prompt,
+    generate_preview_prompt,
+    generate_media_prompt
+)
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +88,12 @@ class ImageGenerationService:
                 base_search_query = course_name
 
             # Generate banner image using Gemini with individual timeout
-            banner_prompt = f"Create a professional {image_style} banner image (16:9 aspect ratio) for a course titled '{course_name}' about {base_search_query}. {about_course[:200]}"
+            banner_prompt = generate_banner_prompt(
+                course_name=course_name,
+                base_search_query=base_search_query,
+                about_course=about_course,
+                image_style=image_style
+            )
             try:
                 banner_url = await asyncio.wait_for(
                     self._generate_and_upload_banner(
@@ -100,7 +110,12 @@ class ImageGenerationService:
                 banner_url = None
 
             # Generate preview image using Gemini with individual timeout (different prompt for variety)
-            preview_prompt = f"Create a {image_style} thumbnail preview image (16:9 aspect ratio) for course '{course_name}' about {base_search_query} showing key concepts. {about_course[:100]}"
+            preview_prompt = generate_preview_prompt(
+                course_name=course_name,
+                base_search_query=base_search_query,
+                about_course=about_course,
+                image_style=image_style
+            )
             try:
                 preview_url = await asyncio.wait_for(
                     self._generate_and_upload_preview(
@@ -117,7 +132,12 @@ class ImageGenerationService:
                 preview_url = None
 
             # Generate media image using Gemini with individual timeout (different prompt for variety)
-            media_prompt = f"Create a {image_style} media image (16:9 aspect ratio) for course '{course_name}' about {base_search_query} suitable for social media. {about_course[:150]}"
+            media_prompt = generate_media_prompt(
+                course_name=course_name,
+                base_search_query=base_search_query,
+                about_course=about_course,
+                image_style=image_style
+            )
             try:
                 media_url = await asyncio.wait_for(
                     self._generate_and_upload_media(

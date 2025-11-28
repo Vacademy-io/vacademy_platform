@@ -158,6 +158,10 @@ class CourseMetadata(BaseModel):
         default=None,
         description="Generated preview image S3 URL (if generate_images was true)"
     )
+    media_image_url: Optional[str] = Field(
+        default=None,
+        description="Generated media image S3 URL (if generate_images was true)"
+    )
 
 
 class CourseOutlineResponse(BaseModel):

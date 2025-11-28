@@ -110,11 +110,11 @@ class CourseOutlineGenerationService:
 
             # Generate images if requested
             if request.generation_options and request.generation_options.generate_images:
-                yield "[Generating...]\nCreating course banner and preview images..."
+                yield "[Generating...]\nCreating course banner, preview, and media images..."
 
                 try:
                     # Generate images (timeouts handled individually in image service)
-                    banner_url, preview_url = await self._image_service.generate_images(
+                    banner_url, preview_url, media_url = await self._image_service.generate_images(
                         course_name=outline_response.course_metadata.course_name,
                         about_course=outline_response.course_metadata.about_the_course_html,
                         course_depth=outline_response.course_metadata.course_depth,
@@ -126,6 +126,8 @@ class CourseOutlineGenerationService:
                         outline_response.course_metadata.banner_image_url = banner_url
                     if preview_url:
                         outline_response.course_metadata.preview_image_url = preview_url
+                    if media_url:
+                        outline_response.course_metadata.media_image_url = media_url
                 except Exception as e:
                     logger.warning(f"Image generation failed: {str(e)}, continuing without images")
 
@@ -139,10 +141,12 @@ class CourseOutlineGenerationService:
                 # Remove snake_case image URL fields if they exist
                 metadata_dict.pop('banner_image_url', None)
                 metadata_dict.pop('preview_image_url', None)
+                metadata_dict.pop('media_image_url', None)
 
                 # Add camelCase versions for frontend compatibility
                 metadata_dict["bannerImageUrl"] = getattr(outline_response.course_metadata, 'banner_image_url', None)
                 metadata_dict["previewImageUrl"] = getattr(outline_response.course_metadata, 'preview_image_url', None)
+                metadata_dict["mediaImageUrl"] = getattr(outline_response.course_metadata, 'media_image_url', None)
 
                 # Create the final response
                 final_response = {

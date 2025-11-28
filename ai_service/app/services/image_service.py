@@ -15,6 +15,11 @@ import asyncio
 from io import BytesIO
 import httpx
 import json
+from .image_prompts import (
+    generate_banner_prompt,
+    generate_preview_prompt,
+    generate_media_prompt
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +58,9 @@ class ImageGenerationService:
         about_course: str,
         course_depth: int,
         image_style: str = "professional"
-    ) -> Tuple[Optional[str], Optional[str]]:
+    ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """
-        Generate banner and preview images for a course.
+        Generate banner, preview, and media images for a course.
         
         Args:
             course_name: Name of the course
@@ -64,8 +69,8 @@ class ImageGenerationService:
             image_style: Style preference for images
         
         Returns:
-            Tuple of (banner_image_url, preview_image_url)
-            Returns (None, None) if generation fails or S3 is not configured
+            Tuple of (banner_image_url, preview_image_url, media_image_url)
+            Returns (None, None, None) if generation fails or S3 is not configured
         """
         try:
             logger.info(f"Generating images for course: {course_name}")
@@ -73,7 +78,7 @@ class ImageGenerationService:
             # If S3 is not configured, return None
             if not self._s3_client or not self._s3_bucket:
                 logger.warning("S3 client or bucket not configured. Skipping image generation.")
-                return None, None
+                return None, None, None
 
             # Get optimal search keyword from LLM for image search
             try:
@@ -83,7 +88,12 @@ class ImageGenerationService:
                 base_search_query = course_name
 
             # Generate banner image using Gemini with individual timeout
-            banner_prompt = f"Create a professional {image_style} banner image (1200x400px) for a course titled '{course_name}' about {base_search_query}. {about_course[:200]}"
+            banner_prompt = generate_banner_prompt(
+                course_name=course_name,
+                base_search_query=base_search_query,
+                about_course=about_course,
+                image_style=image_style
+            )
             try:
                 banner_url = await asyncio.wait_for(
                     self._generate_and_upload_banner(
@@ -100,7 +110,12 @@ class ImageGenerationService:
                 banner_url = None
 
             # Generate preview image using Gemini with individual timeout (different prompt for variety)
-            preview_prompt = f"Create a {image_style} thumbnail preview image (400x300px) for course '{course_name}' about {base_search_query} showing key concepts. {about_course[:100]}"
+            preview_prompt = generate_preview_prompt(
+                course_name=course_name,
+                base_search_query=base_search_query,
+                about_course=about_course,
+                image_style=image_style
+            )
             try:
                 preview_url = await asyncio.wait_for(
                     self._generate_and_upload_preview(
@@ -115,13 +130,35 @@ class ImageGenerationService:
             except Exception as e:
                 logger.error(f"Preview generation failed: {str(e)}")
                 preview_url = None
+
+            # Generate media image using Gemini with individual timeout (different prompt for variety)
+            media_prompt = generate_media_prompt(
+                course_name=course_name,
+                base_search_query=base_search_query,
+                about_course=about_course,
+                image_style=image_style
+            )
+            try:
+                media_url = await asyncio.wait_for(
+                    self._generate_and_upload_media(
+                        course_name=course_name,
+                        prompt=media_prompt
+                    ),
+                    timeout=15.0  # 15 seconds for media
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Media image generation timed out")
+                media_url = None
+            except Exception as e:
+                logger.error(f"Media image generation failed: {str(e)}")
+                media_url = None
             
-            logger.info(f"Successfully generated images. Banner: {banner_url}, Preview: {preview_url}")
-            return banner_url, preview_url
+            logger.info(f"Successfully generated images. Banner: {banner_url}, Preview: {preview_url}, Media: {media_url}")
+            return banner_url, preview_url, media_url
             
         except Exception as e:
             logger.error(f"Failed to generate images: {str(e)}")
-            return None, None
+            return None, None, None
 
     def _slugify(self, text: str) -> str:
         """Convert text to slug format (lowercase, dashes)"""
@@ -133,7 +170,7 @@ class ImageGenerationService:
         prompt: str
     ) -> Optional[str]:
         """
-        Generate banner image (1200x400px) using Gemini and upload to S3.
+        Generate banner image (16:9 aspect ratio) using Gemini and upload to S3.
 
         Args:
             course_name: Name of the course
@@ -178,7 +215,7 @@ class ImageGenerationService:
         prompt: str
     ) -> Optional[str]:
         """
-        Generate preview image (400x300px) using Gemini and upload to S3.
+        Generate preview image (16:9 aspect ratio) using Gemini and upload to S3.
 
         Args:
             course_name: Name of the course
@@ -216,6 +253,51 @@ class ImageGenerationService:
         except Exception as e:
             logger.error(f"Preview generation failed: {str(e)}")
             return None
+
+    async def _generate_and_upload_media(
+        self,
+        course_name: str,
+        prompt: str
+    ) -> Optional[str]:
+        """
+        Generate media image (16:9 aspect ratio) using Gemini and upload to S3.
+
+        Args:
+            course_name: Name of the course
+            prompt: Image generation prompt
+
+        Returns:
+            S3 URL of the uploaded media image or None
+        """
+        try:
+            logger.debug(f"Generating media image for: {course_name}")
+
+            # Generate image using Gemini
+            image_data = await self._call_image_generation_llm(prompt, 800, 800)
+            
+            if not image_data:
+                return None
+
+            # Upload to S3
+            slugified = self._slugify(course_name)
+            timestamp = int(time.time())
+            filename = f"course-ai/course_media_{slugified}_{timestamp}.jpg"
+
+            self._s3_client.put_object(
+                Bucket=self._s3_bucket,
+                Key=filename,
+                Body=image_data,
+                ContentType='image/jpeg'
+            )
+
+            s3_url = f"https://{self._s3_bucket}.s3.amazonaws.com/{filename}"
+            logger.info(f"Media image uploaded to S3: {s3_url}")
+
+            return s3_url
+                
+        except Exception as e:
+            logger.error(f"Media image generation failed: {str(e)}")
+            return None
     
     async def _call_image_generation_llm(self, prompt: str, width: int, height: int) -> Optional[bytes]:
         """
@@ -248,7 +330,13 @@ class ImageGenerationService:
                                     }
                                 ]
                             }
-                        ]
+                        ],
+                        "generationConfig": {
+                            "imageConfig": {
+                                "aspectRatio": "16:9"
+                            },
+                            "responseModalities": ["IMAGE"]
+                        }
                     },
                     timeout=60.0  # Increased timeout for image generation
                 )

@@ -83,7 +83,7 @@ class ImageGenerationService:
                 base_search_query = course_name
 
             # Generate banner image using Gemini with individual timeout
-            banner_prompt = f"Create a professional {image_style} banner image (1200x400px) for a course titled '{course_name}' about {base_search_query}. {about_course[:200]}"
+            banner_prompt = f"Create a professional {image_style} banner image (16:9 aspect ratio) for a course titled '{course_name}' about {base_search_query}. {about_course[:200]}"
             try:
                 banner_url = await asyncio.wait_for(
                     self._generate_and_upload_banner(
@@ -100,7 +100,7 @@ class ImageGenerationService:
                 banner_url = None
 
             # Generate preview image using Gemini with individual timeout (different prompt for variety)
-            preview_prompt = f"Create a {image_style} thumbnail preview image (400x300px) for course '{course_name}' about {base_search_query} showing key concepts. {about_course[:100]}"
+            preview_prompt = f"Create a {image_style} thumbnail preview image (16:9 aspect ratio) for course '{course_name}' about {base_search_query} showing key concepts. {about_course[:100]}"
             try:
                 preview_url = await asyncio.wait_for(
                     self._generate_and_upload_preview(
@@ -117,7 +117,7 @@ class ImageGenerationService:
                 preview_url = None
 
             # Generate media image using Gemini with individual timeout (different prompt for variety)
-            media_prompt = f"Create a {image_style} square media image (800x800px) for course '{course_name}' about {base_search_query} suitable for social media. {about_course[:150]}"
+            media_prompt = f"Create a {image_style} media image (16:9 aspect ratio) for course '{course_name}' about {base_search_query} suitable for social media. {about_course[:150]}"
             try:
                 media_url = await asyncio.wait_for(
                     self._generate_and_upload_media(
@@ -150,7 +150,7 @@ class ImageGenerationService:
         prompt: str
     ) -> Optional[str]:
         """
-        Generate banner image (1200x400px) using Gemini and upload to S3.
+        Generate banner image (16:9 aspect ratio) using Gemini and upload to S3.
 
         Args:
             course_name: Name of the course
@@ -195,7 +195,7 @@ class ImageGenerationService:
         prompt: str
     ) -> Optional[str]:
         """
-        Generate preview image (400x300px) using Gemini and upload to S3.
+        Generate preview image (16:9 aspect ratio) using Gemini and upload to S3.
 
         Args:
             course_name: Name of the course
@@ -240,7 +240,7 @@ class ImageGenerationService:
         prompt: str
     ) -> Optional[str]:
         """
-        Generate media image (800x800px) using Gemini and upload to S3.
+        Generate media image (16:9 aspect ratio) using Gemini and upload to S3.
 
         Args:
             course_name: Name of the course
@@ -310,7 +310,13 @@ class ImageGenerationService:
                                     }
                                 ]
                             }
-                        ]
+                        ],
+                        "generationConfig": {
+                            "imageConfig": {
+                                "aspectRatio": "16:9"
+                            },
+                            "responseModalities": ["IMAGE"]
+                        }
                     },
                     timeout=60.0  # Increased timeout for image generation
                 )

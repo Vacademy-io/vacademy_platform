@@ -114,5 +114,28 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
      * Check if a user has already submitted a response for this audience
      */
     boolean existsByAudienceIdAndUserId(String audienceId, String userId);
+
+    /**
+     * Find all distinct user IDs from audience responses for given audience IDs
+     */
+    @Query("SELECT DISTINCT ar.userId FROM AudienceResponse ar " +
+           "WHERE ar.audienceId IN :audienceIds AND ar.userId IS NOT NULL")
+    List<String> findDistinctUserIdsByAudienceIds(@Param("audienceIds") List<String> audienceIds);
+
+    /**
+     * Find all audience response IDs for given user IDs
+     */
+    @Query("SELECT ar.id FROM AudienceResponse ar WHERE ar.userId IN :userIds AND ar.userId IS NOT NULL")
+    List<String> findResponseIdsByUserIds(@Param("userIds") List<String> userIds);
+
+    /**
+     * Find all distinct user IDs from audience responses for given audience IDs and user IDs
+     * Used for filtering audience respondents by specific audiences
+     */
+    @Query("SELECT DISTINCT ar.userId FROM AudienceResponse ar " +
+           "WHERE ar.audienceId IN :audienceIds AND ar.userId IN :userIds AND ar.userId IS NOT NULL")
+    List<String> findDistinctUserIdsByAudienceIdsAndUserIds(
+            @Param("audienceIds") List<String> audienceIds,
+            @Param("userIds") List<String> userIds);
 }
 

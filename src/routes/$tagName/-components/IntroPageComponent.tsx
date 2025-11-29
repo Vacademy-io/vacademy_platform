@@ -119,7 +119,12 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
         onLogin();
         break;
       case 'openLeadCollection':
-        setShowLeadForm(true);
+        // Only show lead form if it's enabled in settings
+        if (leadCollectionSettings?.enabled) {
+          setShowLeadForm(true);
+        } else {
+          console.log("[IntroPageComponent] Lead collection is disabled, ignoring openLeadCollection action");
+        }
         break;
       default:
         onComplete();
@@ -315,7 +320,7 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
       ) : (
         /* Lead Collection Form - Inline */
         <div className="relative w-full flex-1 bg-white flex items-center justify-center p-8">
-          {leadCollectionSettings && instituteId && (
+          {leadCollectionSettings && leadCollectionSettings.enabled && instituteId && (
             <div className="w-full max-w-2xl">
               <div className="bg-white rounded-lg shadow-lg p-6">
                 <div className="flex justify-between items-center mb-6">

@@ -1,5 +1,9 @@
 // Updated to support layout configuration
 export interface GlobalSettings {
+  courseCatalogeType :{
+        enabled: false,
+         value: string
+    };
   mode: "light" | "dark";
   compactness: "small" | "medium" | "large";
   audience: "children" | "adults" | "all";
@@ -163,15 +167,30 @@ export interface BannerProps {
 export interface CourseCatalogProps {
   title: string;
   showFilters: boolean;
-  filtersConfig: Array<{
+  filtersConfig?: Array<{
     id: string;
     label: string;
     type: "dropdown" | "checkbox" | "range";
     field: string;
+    default?: {
+      min?: number;
+      max?: number;
+    };
   }>;
+  cartButtonConfig?: {
+    enabled?: boolean;
+    showAddToCartButton?: boolean;
+    showQuantitySelector?: boolean;
+    quantityMin?: number;
+  };
   render: {
     layout: "grid" | "list";
     cardFields: string[];
+    styles?: {
+      hoverEffect?: 'scale' | 'shadow' | string;
+      roundedEdges?: boolean;
+      backgroundColor?: string;
+    };
   };
 }
 
@@ -291,4 +310,34 @@ export interface FooterProps {
     }>;
   };
   bottomNote: string;
+}
+
+export interface CartComponentProps {
+  showItemImage?: boolean;
+  showItemTitle?: boolean;
+  showItemLevel?: boolean;
+  showQuantitySelector?: boolean;
+  quantityMin?: number;
+  showRemoveButton?: boolean;
+  showPrice?: boolean;
+  showEmptyState?: boolean;
+  emptyStateMessage?: string;
+  styles?: {
+    padding?: string;
+    roundedEdges?: boolean;
+    backgroundColor?: string;
+  };
+}
+
+export interface CartSummaryProps {
+  showSubtotal?: boolean;
+  showTaxes?: boolean;
+  showTotal?: boolean;
+  checkoutButtonEnabled?: boolean;
+  checkoutButtonLabel?: string;
+  styles?: {
+    padding?: string;
+    roundedEdges?: boolean;
+    backgroundColor?: string;
+  };
 }

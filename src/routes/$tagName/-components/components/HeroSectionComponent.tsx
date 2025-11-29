@@ -38,7 +38,20 @@ interface HeroSectionProps {
     instructor?: string;
   };
 }
-
+const isHeroButtonEnabled = (button?: { enabled?: boolean | string | number }) => {
+  if (!button) return false;
+  const { enabled } = button;
+  if (enabled === undefined || enabled === null) {
+    return true;
+  }
+  if (typeof enabled === "string") {
+    return enabled.toLowerCase() === "true";
+  }
+  if (typeof enabled === "number") {
+    return enabled !== 0;
+  }
+  return enabled === true;
+};
 export const HeroSectionComponent: React.FC<HeroSectionProps> = ({
   layout,
   backgroundImage,
@@ -67,6 +80,8 @@ export const HeroSectionComponent: React.FC<HeroSectionProps> = ({
   const heroImage = courseData?.previewImage || courseData?.bannerImage || right?.image || "";
   const heroImageAlt = right?.alt || courseData?.title || "Course preview";
   const heroBackgroundImage = backgroundImage;
+
+
 
     // Check if images are placeholders or invalid URLs
     const isHeroImagePlaceholder = !heroImage || 
@@ -215,9 +230,9 @@ const HeroSectionPlaceholder: React.FC<any> = ({
                     {heroDescription}
                   </p>
                 )}
-                {left?.button && left.button.enabled !== false && (
+                {isHeroButtonEnabled(left?.button) && (
                   <button
-                    onClick={() => handleButtonClick(left.button!)}
+                    onClick={() => handleButtonClick(left!.button!)}
                     className="text-white px-6 py-3 rounded-lg font-semibold transition-colors"
                     style={{
                       backgroundColor: left.button.backgroundColor || (domainRouting.instituteThemeCode ? `hsl(var(--primary))` : "#2563eb"),
@@ -255,9 +270,9 @@ const HeroSectionPlaceholder: React.FC<any> = ({
                     {heroDescription}
                   </p>
                 )}
-                {left?.button && left.button.enabled !== false && (
+                {isHeroButtonEnabled(left?.button) && (
                   <button
-                    onClick={() => handleButtonClick(left.button!)}
+                    onClick={() => handleButtonClick(left!.button!)}
                     className="text-white px-8 py-4 rounded-lg font-semibold text-lg transition-colors"
                     style={{
                       backgroundColor: left.button.backgroundColor || (domainRouting.instituteThemeCode ? `hsl(var(--primary))` : "#2563eb"),
@@ -303,7 +318,7 @@ const HeroSectionWithState: React.FC<any> = ({
   textAlign,
 }) => {
   const navigate = useNavigate();
-  
+ 
   // State for resolved URLs - only needed for valid images
   const [resolvedImageUrl, setResolvedImageUrl] = useState<string>("/api/placeholder/400/300");
 
@@ -401,9 +416,9 @@ const HeroSectionWithState: React.FC<any> = ({
                   {heroDescription}
                 </p>
                 )}
-                {left?.button && left.button.enabled !== false && (
+                {isHeroButtonEnabled(left?.button) && (
                   <button
-                    onClick={() => handleButtonClick(left.button!)}
+                    onClick={() => handleButtonClick(left!.button!)}
                     className="text-white px-6 py-3 rounded-lg font-semibold transition-colors"
                     style={{
                       backgroundColor: left.button.backgroundColor || (domainRouting.instituteThemeCode ? `hsl(var(--primary))` : "#2563eb"),
@@ -452,9 +467,9 @@ const HeroSectionWithState: React.FC<any> = ({
                   {heroDescription}
                 </p>
                 )}
-                {left?.button && left.button.enabled !== false && (
+                {isHeroButtonEnabled(left?.button) && (
                   <button
-                    onClick={() => handleButtonClick(left.button!)}
+                    onClick={() => handleButtonClick(left!.button!)}
                     className="text-white px-8 py-4 rounded-lg font-semibold text-lg transition-colors"
                     style={{
                       backgroundColor: left.button.backgroundColor || (domainRouting.instituteThemeCode ? `hsl(var(--primary))` : "#2563eb"),

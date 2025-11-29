@@ -348,7 +348,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 p-4">
           <div className="flex flex-col gap-3">
             {/* Get Started Button */}
-            <button
+            { !catalogueData?.globalSettings?.courseCatalogeType?.enabled  &&  <button
               onClick={() => {
                 console.log("[CourseCataloguePage] Mobile Get Started button clicked");
                 setShowLeadCollection(true);
@@ -359,7 +359,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
               }}
             >
               Get Started
-            </button>
+            </button>}
             
             {/* Login Text */}
             <div className="text-center">

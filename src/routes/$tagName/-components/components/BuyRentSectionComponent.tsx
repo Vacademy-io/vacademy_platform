@@ -19,7 +19,6 @@ interface BuyRentSectionProps {
 }
 
 export const BuyRentSectionComponent: React.FC<BuyRentSectionProps> = ({
-  heading = "Choose Your Reading Path",
   buy,
   rent,
   tagName,
@@ -54,12 +53,8 @@ export const BuyRentSectionComponent: React.FC<BuyRentSectionProps> = ({
       <div className="container mx-auto max-w-6xl">
         {/* Heading */}
         <div className="text-center mb-12">
-          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-4">
-            {heading}
-          </h2>
           <div className="flex items-center justify-center gap-2 text-gray-600">
-            <Sparkles className="h-5 w-5" />
-            <p className="text-lg sm:text-xl">Select the option that best fits your needs</p>
+            <Sparkles className="h-5 w-5" /><p className="text-lg sm:text-xl">Select the option that best fits your needs</p>
           </div>
         </div>
 

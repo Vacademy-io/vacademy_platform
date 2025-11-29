@@ -1,5 +1,9 @@
 // Updated to support layout configuration
 export interface GlobalSettings {
+  courseCatalogeType :{
+        enabled: false,
+         value: string
+    };
   mode: "light" | "dark";
   compactness: "small" | "medium" | "large";
   audience: "children" | "adults" | "all";

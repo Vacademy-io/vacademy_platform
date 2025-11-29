@@ -1169,7 +1169,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
       </div>
 
       {/* Floating Cart Button - Fixed at bottom right */}
-      {cartButtonConfig?.enabled && <div className="fixed bottom-6 right-6 z-50">
+      {cartButtonConfig?.enabled && <div className="fixed bottom-14 right-3 z-50">
         <Button
           onClick={() => navigate({ to: `/${tagName}/cart` })}
           className="h-12 w-12 rounded-full bg-primary hover:bg-primary-700 text-white shadow-lg flex items-center justify-center relative"

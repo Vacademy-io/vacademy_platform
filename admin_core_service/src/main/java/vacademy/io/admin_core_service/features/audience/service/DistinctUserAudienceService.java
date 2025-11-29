@@ -13,8 +13,10 @@ import vacademy.io.admin_core_service.features.audience.repository.AudienceRespo
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
 import vacademy.io.admin_core_service.features.common.entity.CustomFields;
+import vacademy.io.admin_core_service.features.common.entity.InstituteCustomField;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldRepository;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
+import vacademy.io.admin_core_service.features.common.repository.InstituteCustomFieldRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.common.auth.dto.UserDTO;
 
@@ -41,6 +43,9 @@ public class DistinctUserAudienceService {
 
     @Autowired
     private CustomFieldRepository customFieldRepository;
+
+    @Autowired
+    private InstituteCustomFieldRepository instituteCustomFieldRepository;
 
     @Autowired
     private AuthService authService;
@@ -131,7 +136,10 @@ public class DistinctUserAudienceService {
                 .collect(Collectors.toMap(UserDTO::getId, u -> u, (a, b) -> a));
 
         // Step 6: Fetch all custom fields for these users
-        Map<String, List<CustomFieldDTO>> userIdToCustomFields = fetchCustomFieldsForUsers(new ArrayList<>(allUserIds));
+        Map<String, List<CustomFieldDTO>> userIdToCustomFields = fetchCustomFieldsForUsers(
+                request.getInstituteId(), 
+                new ArrayList<>(allUserIds)
+        );
 
         // Step 7: Build response DTOs
         List<UserWithCustomFieldsDTO> users = new ArrayList<>();
@@ -184,27 +192,57 @@ public class DistinctUserAudienceService {
     }
 
     /**
-     * Fetch custom fields for all users
+     * Fetch custom fields for all users based on institute custom field definitions
+     * Returns ALL institute custom fields for each user (with null values if not set)
      */
-    private Map<String, List<CustomFieldDTO>> fetchCustomFieldsForUsers(List<String> userIds) {
+    private Map<String, List<CustomFieldDTO>> fetchCustomFieldsForUsers(String instituteId, List<String> userIds) {
         if (CollectionUtils.isEmpty(userIds)) {
             return new HashMap<>();
         }
 
-        Map<String, List<CustomFieldDTO>> userIdToCustomFields = new HashMap<>();
+        // Step 1: Fetch ALL active custom field definitions for the institute
+        List<Object[]> instituteCustomFieldsData = instituteCustomFieldRepository
+                .findAllActiveCustomFieldsWithDetailsByInstituteId(instituteId);
+        
+        logger.info("Found {} active custom field definitions for institute", instituteCustomFieldsData.size());
 
-        // Step 1: Fetch custom fields for institute users (source_type = 'USER', source_id = user_id)
+        // Build a template list of all custom fields (ordered and deduplicated by custom_field_id)
+        Map<String, CustomFieldDTO> uniqueCustomFieldsMap = new LinkedHashMap<>();
+        Map<String, CustomFields> customFieldIdToDefinition = new HashMap<>();
+        
+        for (Object[] data : instituteCustomFieldsData) {
+            InstituteCustomField icf = (InstituteCustomField) data[0];
+            CustomFields cf = (CustomFields) data[1];
+            
+            // Store the custom field definition
+            customFieldIdToDefinition.put(cf.getId(), cf);
+            
+            // Only add if not already present (deduplication by custom_field_id)
+            if (!uniqueCustomFieldsMap.containsKey(cf.getId())) {
+                CustomFieldDTO templateDTO = CustomFieldDTO.builder()
+                        .customFieldId(cf.getId())
+                        .fieldKey(cf.getFieldKey())
+                        .fieldName(cf.getFieldName())
+                        .fieldType(cf.getFieldType())
+                        .value(null)
+                        .build();
+                
+                uniqueCustomFieldsMap.put(cf.getId(), templateDTO);
+            }
+        }
+        
+        // Convert to ordered list
+        List<CustomFieldDTO> customFieldTemplate = new ArrayList<>(uniqueCustomFieldsMap.values());
+        logger.info("Built template with {} unique custom fields", customFieldTemplate.size());
+
+        // Step 2: Fetch actual custom field values for institute users (source_type = 'USER', source_id = user_id)
         List<CustomFieldValues> userCustomFieldValues = customFieldValuesRepository
                 .findBySourceTypeAndSourceIdIn("USER", userIds);
 
         logger.info("Found {} custom field values for institute users", userCustomFieldValues.size());
 
-        // Step 2: Fetch custom fields for audience responses
-        // For audience responses, we need to:
-        // - Get all audience_response IDs for these user_ids
-        // - Then get custom_field_values where source_type = 'AUDIENCE_RESPONSE' and source_id = response_id
+        // Step 3: Fetch custom fields for audience responses
         List<String> responseIds = audienceResponseRepository.findResponseIdsByUserIds(userIds);
-
         logger.info("Found {} audience response IDs for users", responseIds.size());
 
         List<CustomFieldValues> audienceCustomFieldValues = new ArrayList<>();
@@ -214,25 +252,7 @@ public class DistinctUserAudienceService {
             logger.info("Found {} custom field values for audience responses", audienceCustomFieldValues.size());
         }
 
-        // Combine both lists
-        List<CustomFieldValues> allCustomFieldValues = new ArrayList<>();
-        allCustomFieldValues.addAll(userCustomFieldValues);
-        allCustomFieldValues.addAll(audienceCustomFieldValues);
-
-        // Fetch custom field definitions
-        Set<String> customFieldIds = allCustomFieldValues.stream()
-                .map(CustomFieldValues::getCustomFieldId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-
-        Map<String, CustomFields> customFieldMap = new HashMap<>();
-        if (!customFieldIds.isEmpty()) {
-            List<CustomFields> customFields = customFieldRepository.findAllById(customFieldIds);
-            customFieldMap = customFields.stream()
-                    .collect(Collectors.toMap(CustomFields::getId, cf -> cf, (a, b) -> a));
-        }
-
-        // Create a map from response_id to user_id for audience responses
+        // Step 4: Create a map from response_id to user_id for audience responses
         Map<String, String> responseIdToUserId = new HashMap<>();
         if (!CollectionUtils.isEmpty(responseIds)) {
             List<vacademy.io.admin_core_service.features.audience.entity.AudienceResponse> responses = 
@@ -245,38 +265,57 @@ public class DistinctUserAudienceService {
                             (a, b) -> a));
         }
 
-        // Process custom field values
-        for (CustomFieldValues cfv : allCustomFieldValues) {
-            String userId;
-            
+        // Step 5: Build a map of userId -> customFieldId -> value
+        Map<String, Map<String, String>> userCustomFieldValueMap = new HashMap<>();
+        
+        // Process USER type custom field values
+        for (CustomFieldValues cfv : userCustomFieldValues) {
             if (CustomFieldValueSourceType.USER.name().equals(cfv.getSourceType())) {
-                userId = cfv.getSourceId();
-            } else if (CustomFieldValueSourceType.AUDIENCE_RESPONSE.name().equals(cfv.getSourceType())) {
-                userId = responseIdToUserId.get(cfv.getSourceId());
-                if (userId == null) {
-                    continue; // Skip if we can't map to a user
+                String userId = cfv.getSourceId();
+                userCustomFieldValueMap
+                        .computeIfAbsent(userId, k -> new HashMap<>())
+                        .put(cfv.getCustomFieldId(), cfv.getValue());
+            }
+        }
+        
+        // Process AUDIENCE_RESPONSE type custom field values
+        for (CustomFieldValues cfv : audienceCustomFieldValues) {
+            if (CustomFieldValueSourceType.AUDIENCE_RESPONSE.name().equals(cfv.getSourceType())) {
+                String userId = responseIdToUserId.get(cfv.getSourceId());
+                if (userId != null) {
+                    userCustomFieldValueMap
+                            .computeIfAbsent(userId, k -> new HashMap<>())
+                            .put(cfv.getCustomFieldId(), cfv.getValue());
                 }
-            } else {
-                continue; // Skip other source types
             }
-
-            CustomFields cf = customFieldMap.get(cfv.getCustomFieldId());
-            if (cf == null) {
-                continue;
-            }
-
-            CustomFieldDTO customFieldDTO = CustomFieldDTO.builder()
-                    .customFieldId(cf.getId())
-                    .fieldKey(cf.getFieldKey())
-                    .fieldName(cf.getFieldName())
-                    .fieldType(cf.getFieldType())
-                    .value(cfv.getValue())
-                    .build();
-
-            userIdToCustomFields.computeIfAbsent(userId, k -> new ArrayList<>()).add(customFieldDTO);
         }
 
-        logger.info("Grouped custom fields for {} users", userIdToCustomFields.size());
+        // Step 6: Build custom fields for each user using the template
+        Map<String, List<CustomFieldDTO>> userIdToCustomFields = new HashMap<>();
+        
+        for (String userId : userIds) {
+            List<CustomFieldDTO> userCustomFields = new ArrayList<>();
+            Map<String, String> userValues = userCustomFieldValueMap.getOrDefault(userId, new HashMap<>());
+            
+            // For each custom field in template, create a DTO with actual value or null
+            for (CustomFieldDTO template : customFieldTemplate) {
+                String value = userValues.get(template.getCustomFieldId());
+                
+                CustomFieldDTO customFieldDTO = CustomFieldDTO.builder()
+                        .customFieldId(template.getCustomFieldId())
+                        .fieldKey(template.getFieldKey())
+                        .fieldName(template.getFieldName())
+                        .fieldType(template.getFieldType())
+                        .value(value) // Will be null if not set
+                        .build();
+                
+                userCustomFields.add(customFieldDTO);
+            }
+            
+            userIdToCustomFields.put(userId, userCustomFields);
+        }
+
+        logger.info("Built custom fields for {} users with {} fields each", userIds.size(), customFieldTemplate.size());
         return userIdToCustomFields;
     }
 

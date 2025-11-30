@@ -213,4 +213,7 @@ public interface StudentSessionInstituteGroupMappingRepository
                         @Param("userId") String userId,
                         @Param("role") String role);
 
+    List<StudentSessionInstituteGroupMapping>findAllByStatus(String status);
+
+    List<StudentSessionInstituteGroupMapping>findByInstitute_IdAndStatus(String instituteId,String status);
 }

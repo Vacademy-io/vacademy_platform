@@ -4,7 +4,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO;
+import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
 import vacademy.io.admin_core_service.features.group.repository.PackageGroupMappingRepository;
+import vacademy.io.admin_core_service.features.institute.dto.InstituteSetupDTO;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.service.InstituteModuleService;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
@@ -46,6 +49,9 @@ public class InstituteInitManager {
 
         @Autowired
         private SlideService slideService;
+
+        @Autowired
+        private InstituteCustomFiledService instituteCustomFiledService;
 
         @Transactional
         public InstituteInfoDTO getInstituteDetails(String instituteId) {
@@ -145,6 +151,22 @@ public class InstituteInitManager {
                 }
 
                 return dto;
+        }
+
+        @Transactional
+        public InstituteSetupDTO getInstituteSetupDetails(String instituteId) {
+                // Get base institute details
+                InstituteInfoDTO instituteInfo = getInstituteDetails(instituteId);
+                
+                // Get active dropdown custom fields
+                List<CustomFieldDTO> dropdownCustomFields = instituteCustomFiledService
+                        .getActiveDropdownCustomFields(instituteId);
+                
+                // Build and return setup DTO
+                return InstituteSetupDTO.builder()
+                        .instituteInfo(instituteInfo)
+                        .dropdownCustomFields(dropdownCustomFields)
+                        .build();
         }
 
         public ResponseEntity<String> getInstituteIdOrSubDomain(String instituteId, String subdomain) {

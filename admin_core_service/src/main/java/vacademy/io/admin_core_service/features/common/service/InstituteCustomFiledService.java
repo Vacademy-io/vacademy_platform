@@ -9,6 +9,7 @@ import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDT
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDeleteRequestDTO;
 import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
 import vacademy.io.admin_core_service.features.common.enums.CustomFieldTypeEnum;
+import vacademy.io.admin_core_service.features.common.enums.FieldTypeEnum;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteCustomFieldSetupDTO;
 import vacademy.io.admin_core_service.features.common.entity.CustomFields;
@@ -456,5 +457,34 @@ public class InstituteCustomFiledService {
 
     public List<CustomFieldValues> updateOrCreateCustomFieldsValues(List<CustomFieldValues> response) {
         return customFieldValuesRepository.saveAll(response);
+    }
+
+    /**
+     * Get all active DROPDOWN type custom fields for an institute
+     */
+    public List<CustomFieldDTO> getActiveDropdownCustomFields(String instituteId) {
+        List<CustomFields> dropdownFields = customFieldRepository.findDropdownCustomFieldsByInstituteId(
+                instituteId,
+                FieldTypeEnum.DROPDOWN.name(),
+                StatusEnum.ACTIVE.name()
+        );
+
+        return dropdownFields.stream()
+                .map(field -> CustomFieldDTO.builder()
+                        .id(field.getId())
+                        .fieldKey(field.getFieldKey())
+                        .fieldName(field.getFieldName())
+                        .fieldType(field.getFieldType())
+                        .defaultValue(field.getDefaultValue())
+                        .config(field.getConfig())
+                        .formOrder(field.getFormOrder())
+                        .isMandatory(field.getIsMandatory())
+                        .isFilter(field.getIsFilter())
+                        .isSortable(field.getIsSortable())
+                        .isHidden(field.getIsHidden())
+                        .createdAt(new Timestamp(field.getCreatedAt().getTime()))
+                        .updatedAt(new Timestamp(field.getUpdatedAt().getTime()))
+                        .build())
+                .collect(Collectors.toList());
     }
 }

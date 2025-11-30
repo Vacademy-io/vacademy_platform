@@ -91,12 +91,12 @@ public class StudentFilterService {
 
     public Page<StudentDTO> getAllStudentWithFilter(List<String> statuses, List<String> gender, List<String> instituteIds, List<String> groupIds, List<String> packageSessionIds, Pageable pageable) {
 
-        // Ensure all lists are not null (pass null if empty to work with SQL IS NULL checks)
-        List<String> safeStatuses = (statuses == null || statuses.isEmpty()) ? null : statuses;
-        List<String> safeGender = (gender == null || gender.isEmpty()) ? null : gender;
-        List<String> safeInstituteIds = (instituteIds == null || instituteIds.isEmpty()) ? null : instituteIds;
-        List<String> safeGroupIds = (groupIds == null || groupIds.isEmpty()) ? null : groupIds;
-        List<String> safePackageSessionIds = (packageSessionIds == null || packageSessionIds.isEmpty()) ? null : packageSessionIds;
+        // Ensure all lists are not null
+        List<String> safeStatuses = (statuses != null) ? statuses : new ArrayList<>();
+        List<String> safeGender = (gender != null) ? gender : new ArrayList<>();
+        List<String> safeInstituteIds = (instituteIds != null) ? instituteIds : new ArrayList<>();
+        List<String> safeGroupIds = (groupIds != null) ? groupIds : new ArrayList<>();
+        List<String> safePackageSessionIds = (packageSessionIds != null) ? packageSessionIds : new ArrayList<>();
         return instituteStudentRepository.getAllStudentWithFilterRaw(safeStatuses, safeGender, safeInstituteIds, safeGroupIds, safePackageSessionIds, pageable).map(StudentDTO::new);
     }
 

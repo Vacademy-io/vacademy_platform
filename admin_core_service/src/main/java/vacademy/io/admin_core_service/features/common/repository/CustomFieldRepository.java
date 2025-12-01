@@ -109,7 +109,7 @@ public interface CustomFieldRepository extends JpaRepository<CustomFields, Strin
           WHERE icf.instituteId = :instituteId 
           AND icf.status = :status
       )
-      AND cf.fieldType = :fieldType 
+      AND UPPER(cf.fieldType) = UPPER(:fieldType) 
       AND cf.status = :status
       ORDER BY cf.formOrder ASC
       """)

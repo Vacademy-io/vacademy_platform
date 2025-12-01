@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.Optional;
 
 @Repository
-public interface InstituteStudentRepository extends CrudRepository<Student, String> {
+public interface InstituteStudentRepository extends CrudRepository<Student, String>, InstituteStudentRepositoryCustom {
 
     @Query(value = "SELECT DISTINCT s.* FROM student s LEFT JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id "
             +

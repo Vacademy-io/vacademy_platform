@@ -16,9 +16,10 @@ import { format } from 'date-fns';
 
 interface SubOrgLearnersComponentProps {
   adminMappings: AdminMappings[];
+  instituteDetails: any;
 }
 
-export function SubOrgLearnersComponent({ adminMappings }: SubOrgLearnersComponentProps) {
+export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: SubOrgLearnersComponentProps) {
   const [selectedPackageSession, setSelectedPackageSession] = useState<string>('');
   const [members, setMembers] = useState<StudentMapping[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -211,6 +212,29 @@ export function SubOrgLearnersComponent({ adminMappings }: SubOrgLearnersCompone
     return /^[a-z0-9_]+$/.test(username) && username === username.toLowerCase();
   };
 
+  // Get package session name from package session ID
+  const getPackageSessionName = (packageSessionId: string): string => {
+    if (!instituteDetails?.batches_for_sessions) {
+      return packageSessionId;
+    }
+
+    const batch = instituteDetails.batches_for_sessions.find(
+      (b: any) => b.id === packageSessionId
+    );
+
+    if (!batch) {
+      return packageSessionId;
+    }
+
+    const packageName = batch.package_dto?.package_name || '';
+    const levelName = batch.level?.level_name || '';
+    const sessionName = batch.session?.session_name || '';
+
+    // Format: "Package Name - Level Name - Session Name"
+    const parts = [packageName, levelName, sessionName].filter(Boolean);
+    return parts.length > 0 ? parts.join(' - ') : packageSessionId;
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'ACTIVE':
@@ -373,7 +397,7 @@ export function SubOrgLearnersComponent({ adminMappings }: SubOrgLearnersCompone
       </div>
 
       {/* Package Session Selector */}
-      {adminMappings.length > 1 && (
+      {adminMappings.length > 1 ? (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Select Package Session</CardTitle>
@@ -386,14 +410,25 @@ export function SubOrgLearnersComponent({ adminMappings }: SubOrgLearnersCompone
               <SelectContent>
                 {adminMappings.map((mapping) => (
                   <SelectItem key={mapping.package_session_id} value={mapping.package_session_id}>
-                    Package Session: {mapping.package_session_id}
+                    {getPackageSessionName(mapping.package_session_id)}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </CardContent>
         </Card>
-      )}
+      ) : adminMappings.length === 1 && selectedPackageSession ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Package Session</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-gray-700 font-medium">
+              {getPackageSessionName(selectedPackageSession)}
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* Members Table */}
       <Card>
@@ -404,6 +439,11 @@ export function SubOrgLearnersComponent({ adminMappings }: SubOrgLearnersCompone
                 <Users className="w-5 h-5" />
                 Learners ({members.length})
               </CardTitle>
+              {selectedPackageSession && (
+                <p className="text-sm text-gray-600 mt-1">
+                  {getPackageSessionName(selectedPackageSession)}
+                </p>
+              )}
               {selectedMembers.length > 0 && (
                 <p className="text-sm text-gray-600 mt-1">
                   {selectedMembers.length} learner{selectedMembers.length > 1 ? 's' : ''} selected

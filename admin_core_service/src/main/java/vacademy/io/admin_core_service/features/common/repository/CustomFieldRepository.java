@@ -105,11 +105,7 @@ public interface CustomFieldRepository extends JpaRepository<CustomFields, Strin
    * Keeps the most recent one based on created_at
    */
   @Query(value = """
-      SELECT DISTINCT ON (LOWER(cf.field_name)) 
-          cf.id, cf.field_key, cf.field_name, cf.field_type, 
-          cf.default_value, cf.config, cf.form_order, 
-          cf.is_mandatory, cf.is_filter, cf.is_sortable, cf.is_hidden,
-          cf.status, cf.created_at, cf.updated_at
+      SELECT DISTINCT ON (LOWER(cf.field_name)) cf.*
       FROM custom_fields cf
       WHERE cf.id IN (
           SELECT icf.custom_field_id FROM institute_custom_fields icf 

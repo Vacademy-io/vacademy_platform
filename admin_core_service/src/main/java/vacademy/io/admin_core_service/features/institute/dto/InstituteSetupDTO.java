@@ -7,8 +7,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO;
+import vacademy.io.admin_core_service.features.enroll_invite.enums.SubOrgRoles;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteInfoDTOForTableSetup;
-import vacademy.io.admin_core_service.features.institute_learner.enums.SubOrgUserType;
 
 import java.util.List;
 
@@ -19,6 +19,6 @@ import java.util.List;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class InstituteSetupDTO {
     private InstituteInfoDTOForTableSetup instituteInfoDTO;
-    private List <SubOrgUserType> learnerTypes;
+    private List <SubOrgRoles> subOrgRoles;
     private List<CustomFieldDTO> dropdownCustomFields;
 }

@@ -6,12 +6,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
+import vacademy.io.admin_core_service.features.enroll_invite.enums.SubOrgRoles;
 import vacademy.io.admin_core_service.features.group.repository.PackageGroupMappingRepository;
 import vacademy.io.admin_core_service.features.institute.dto.InstituteSetupDTO;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.service.InstituteModuleService;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteInfoDTOForTableSetup;
-import vacademy.io.admin_core_service.features.institute_learner.enums.SubOrgUserType;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
@@ -209,7 +209,7 @@ public class InstituteInitManager {
                 return InstituteSetupDTO.builder()
                         .instituteInfoDTO(instituteInfoDTOForTableSetup)
                         .dropdownCustomFields(dropdownCustomFields)
-                        .learnerTypes(List.of(SubOrgUserType.LEARNER, SubOrgUserType.ADMIN,SubOrgUserType.ROOT_ADMIN))
+                        .subOrgRoles(List.of(SubOrgRoles.LEARNER, SubOrgRoles.ADMIN,SubOrgRoles.ROOT_ADMIN))
                         .build();
         }
 

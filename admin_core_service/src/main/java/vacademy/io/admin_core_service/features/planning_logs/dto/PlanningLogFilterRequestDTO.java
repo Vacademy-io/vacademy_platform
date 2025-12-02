@@ -21,4 +21,5 @@ public class PlanningLogFilterRequestDTO {
         private List<String> entityIds; // packageSession IDs
         private List<String> subjectIds;
         private List<String> statuses;
+        private Boolean isSharedWithStudent;
 }

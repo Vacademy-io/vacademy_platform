@@ -17,4 +17,5 @@ public class PlanningLogUpdateDTO {
         private String contentHtml;
         private String commaSeparatedFileIds;
         private String status; // Can be set to "DELETED" to mark as deleted
+        private Boolean isSharedWithStudent;
 }

@@ -63,6 +63,9 @@ public class TeacherPlanningLog {
         @Column(name = "institute_id", nullable = false)
         private String instituteId;
 
+        @Column(name = "is_shared_with_student", nullable = false)
+        private Boolean isSharedWithStudent;
+
         @CreationTimestamp
         @Column(name = "created_at", nullable = false, updatable = false)
         private Timestamp createdAt;

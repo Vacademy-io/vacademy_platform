@@ -42,4 +42,6 @@ public class PlanningLogRequestDTO {
         private String subjectId;
 
         private String commaSeparatedFileIds; // Optional comma-separated file IDs
+
+        private Boolean isSharedWithStudent;
 }

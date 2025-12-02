@@ -367,7 +367,7 @@ public class SubOrgLearnerService {
     }
 
     @Transactional
-    public SubOrgTerminateResponseDTO terminateLearners(SubOrgTerminateRequestDTO request) {
+    public SubOrgTerminateResponseDTO terminateLearners(SubOrgTerminateRequestDTO request,CustomUserDetails userDetails) {
         log.info("Terminating learners for sub_org_id: {}, institute_id: {}, package_session_id: {}, user_count: {}",
                 request.getSubOrgId(), request.getInstituteId(), request.getPackageSessionId(), request.getUserIds().size());
 
@@ -391,6 +391,8 @@ public class SubOrgLearnerService {
                 request.getUserIds(),
                 LearnerSessionStatusEnum.TERMINATED.name()
         );
+
+        triggerTerminationWorkflow(request.getUserIds(),request.getInstituteId(),request.getPackageSessionId(),userDetails);
 
         log.info("Successfully terminated {} learners", terminatedCount);
 
@@ -471,7 +473,16 @@ public class SubOrgLearnerService {
                 .build();
     }
 
+    @Async
+    private void triggerTerminationWorkflow(List<String>userIds,String instituteId,String packageSessionId,CustomUserDetails userDetails){
+        List<UserDTO>userDTOS = authService.getUsersFromAuthServiceByUserIds(userIds);
+        UserDTO admin =  authService.getUsersFromAuthServiceByUserIds(List.of(userDetails.getUserId())).get(0);
+        for(UserDTO userDTO:userDTOS){
+            triggerEnrollmentWorkflow(instituteId,userDTO,packageSessionId,admin);
+        }
+    }
 
+    @Async
     public void triggerEnrollmentWorkflow(String instituteId, UserDTO userDTO,String packageSessionId,UserDTO adminDTO) {
         Map<String, Object> contextData = new HashMap<>();
         contextData.put("user", userDTO);

@@ -41,7 +41,7 @@ public class SubOrgLearnerController {
             @RequestBody SubOrgTerminateRequestDTO request,
             @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
 
-        SubOrgTerminateResponseDTO response = subOrgLearnerService.terminateLearners(request);
+        SubOrgTerminateResponseDTO response = subOrgLearnerService.terminateLearners(request,user);
 
         return ResponseEntity.ok(response);
     }

@@ -4,9 +4,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO;
+import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
+import vacademy.io.admin_core_service.features.enroll_invite.enums.SubOrgRoles;
 import vacademy.io.admin_core_service.features.group.repository.PackageGroupMappingRepository;
+import vacademy.io.admin_core_service.features.institute.dto.InstituteSetupDTO;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.service.InstituteModuleService;
+import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteInfoDTOForTableSetup;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
@@ -46,6 +51,9 @@ public class InstituteInitManager {
 
         @Autowired
         private SlideService slideService;
+
+        @Autowired
+        private InstituteCustomFiledService instituteCustomFiledService;
 
         @Transactional
         public InstituteInfoDTO getInstituteDetails(String instituteId) {
@@ -145,6 +153,64 @@ public class InstituteInitManager {
                 }
 
                 return dto;
+        }
+
+
+        private InstituteInfoDTOForTableSetup buildInstituteInfoDTOForTableSetup(String instituteId, boolean includePrivateFields) {
+                Institute institute = instituteRepository.findById(instituteId)
+                        .orElseThrow(() -> new VacademyException("Invalid Institute Id"));
+                InstituteInfoDTOForTableSetup idto=new InstituteInfoDTOForTableSetup();
+
+                String instId = institute.getId();
+                List<String> activeStatuses = List.of(PackageSessionStatusEnum.ACTIVE.name());
+
+                idto.setTags(packageRepository.findAllDistinctTagsByInstituteId(instId));
+                idto.setLevels(packageRepository.findDistinctLevelsByInstituteIdAndStatusIn(instId, activeStatuses)
+                        .stream().map(LevelDTO::new).toList());
+                idto.setPackageGroups(packageGroupMappingRepository.findAllByInstituteId(instId)
+                        .stream().map(obj -> obj.mapToDTO()).toList());
+
+                // OPTIMIZATION: Fetch all package sessions first, then batch query read times
+                List<PackageSession> packageSessions = packageSessionRepository.findPackageSessionsByInstituteId(instId,
+                        activeStatuses);
+
+                // Batch query to get all read times at once (eliminates N+1 query problem)
+                List<String> sessionIds = packageSessions.stream().map(PackageSession::getId).toList();
+                Map<String, Double> readTimeMap = slideService.calculateReadTimesForPackageSessions(sessionIds);
+
+                // Map package sessions to DTOs with read times from the batch result
+                idto.setBatchesForSessions(packageSessions.stream()
+                        .map(obj -> new PackageSessionDTO(obj,
+                                readTimeMap.getOrDefault(obj.getId(), 0.0).doubleValue()))
+                        .toList());
+
+                // Private fields that require additional queries
+                if (includePrivateFields) {
+                        idto.setGenders(Stream.of(Gender.values()).map(Enum::name).toList());
+                        idto.setStudentStatuses(List.of("ACTIVE", "INACTIVE"));
+                        idto.setSessionExpiryDays(List.of(30, 180, 360));
+                }
+
+                return idto;
+        }
+
+
+
+        @Transactional
+        public InstituteSetupDTO getInstituteSetupDetails(String instituteId) {
+
+                InstituteInfoDTOForTableSetup instituteInfoDTOForTableSetup=buildInstituteInfoDTOForTableSetup(instituteId,true);
+                
+                // Get active dropdown custom fields
+                List<CustomFieldDTO> dropdownCustomFields = instituteCustomFiledService
+                        .getActiveDropdownCustomFields(instituteId);
+                
+                // Build and return setup DTO
+                return InstituteSetupDTO.builder()
+                        .instituteInfoDTO(instituteInfoDTOForTableSetup)
+                        .dropdownCustomFields(dropdownCustomFields)
+                        .subOrgRoles(List.of(SubOrgRoles.LEARNER, SubOrgRoles.ADMIN,SubOrgRoles.ROOT_ADMIN))
+                        .build();
         }
 
         public ResponseEntity<String> getInstituteIdOrSubDomain(String instituteId, String subdomain) {

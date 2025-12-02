@@ -168,3 +168,5 @@ export const SUB_ORG_BASE = `${BASE_URL}/admin-core-service/sub-org/v1`;
 export const SUB_ORG_MEMBERS = `${SUB_ORG_BASE}/members`;
 export const SUB_ORG_ADD_MEMBER = `${SUB_ORG_BASE}/add-member`;
 export const SUB_ORG_TERMINATE_MEMBER = `${SUB_ORG_BASE}/terminate-member`;
+
+export const LIST_PLANNING_LOGS = `${BASE_URL}/admin-core-service/planning-logs/v1/list`;

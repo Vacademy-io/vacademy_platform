@@ -31,7 +31,7 @@ public class SubOrgLearnerController {
             @RequestBody SubOrgEnrollRequestDTO request,
             @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
 
-        SubOrgEnrollResponseDTO response = subOrgLearnerService.enrollLearnerToSubOrg(request);
+        SubOrgEnrollResponseDTO response = subOrgLearnerService.enrollLearnerToSubOrg(request,user);
 
         return ResponseEntity.ok(response);
     }

@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.learner.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -18,7 +19,10 @@ import vacademy.io.admin_core_service.features.institute_learner.repository.Stud
 import vacademy.io.admin_core_service.features.learner.dto.*;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Group;
 import vacademy.io.common.institute.entity.Institute;
@@ -40,7 +44,7 @@ public class SubOrgLearnerService {
     private final PackageSessionRepository packageSessionRepository;
     private final InstituteRepository instituteRepository;
     private final CustomFieldValueService customFieldValueService;
-
+    private final WorkflowTriggerService workflowTriggerService;
     @Transactional(readOnly = true)
     public SubOrgResponseDTO getUsersByPackageSessionAndSubOrg(
             String packageSessionId,
@@ -149,7 +153,7 @@ public class SubOrgLearnerService {
 
 
     @Transactional
-    public SubOrgEnrollResponseDTO enrollLearnerToSubOrg(SubOrgEnrollRequestDTO request) {
+    public SubOrgEnrollResponseDTO enrollLearnerToSubOrg(SubOrgEnrollRequestDTO request, CustomUserDetails admin) {
         log.info("Starting sub-org enrollment for package_session_id: {}, sub_org_id: {}",
                 request.getPackageSessionId(), request.getSubOrgId());
 
@@ -175,7 +179,7 @@ public class SubOrgLearnerService {
         mapping = mappingRepository.save(mapping);
 
         log.info("Created mapping with ID: {} for user: {}", mapping.getId(), user.getId());
-
+        UserDTO adminDTO = authService.getUsersFromAuthServiceByUserIds(List.of(admin.getUserId())).get(0);
         // 7. Save custom fields if provided
         if (request.getCustomFieldValues() != null && !request.getCustomFieldValues().isEmpty()) {
             customFieldValueService.addCustomFieldValue(
@@ -183,9 +187,17 @@ public class SubOrgLearnerService {
                     CustomFieldValueSourceTypeEnum.STUDENT_SESSION_INSTITUTE_GROUP_MAPPING.name(),
                     mapping.getId()
             );
+            customFieldValueService.addCustomFieldValue(
+                    request.getCustomFieldValues(),
+                    CustomFieldValueSourceTypeEnum.USER.name(),
+                    mapping.getId()
+            );
             log.info("Saved {} custom field values for mapping: {}",
                     request.getCustomFieldValues().size(), mapping.getId());
         }
+
+        triggerEnrollmentWorkflow(request.getInstituteId(),user,request.getPackageSessionId(),adminDTO);
+
 
         // 8. Build and return response
         return SubOrgEnrollResponseDTO.builder()
@@ -261,9 +273,9 @@ public class SubOrgLearnerService {
             log.info("Generated password for user with email: {}", request.getUser().getEmail());
         }
 
-        return authService.createOrGetExistingUserById(
+        return authService.createUserFromAuthService(
                 request.getUser(),
-                request.getInstituteId()
+                request.getInstituteId(),true
         );
     }
 
@@ -457,5 +469,14 @@ public class SubOrgLearnerService {
                 .commaSeparatedOrgRoles(mapping.getCommaSeparatedOrgRoles())
                 .subOrgDetails(subOrgDto)
                 .build();
+    }
+
+
+    public void triggerEnrollmentWorkflow(String instituteId, UserDTO userDTO,String packageSessionId,UserDTO adminDTO) {
+        Map<String, Object> contextData = new HashMap<>();
+        contextData.put("user", userDTO);
+        contextData.put("packageSessionIds", packageSessionId);
+        contextData.put("admin",adminDTO);
+        workflowTriggerService.handleTriggerEvents(WorkflowTriggerEvent.SUB_ORG_MEMBER_ENROLLMENT.name(),packageSessionId,instituteId,contextData);
     }
 }

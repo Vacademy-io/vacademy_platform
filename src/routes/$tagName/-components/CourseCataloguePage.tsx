@@ -37,6 +37,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   const [showIntroPage, setShowIntroPage] = useState(false);
   const [introCompleted, setIntroCompleted] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [isDesktop, setIsDesktop] = useState(false);
 
   // Check if user is authenticated and redirect to login if they are
   useEffect(() => {
@@ -67,6 +68,34 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
 
     checkAuthentication();
   }, [navigate]);
+
+  // Detect desktop viewport
+  useEffect(() => {
+    const checkIsDesktop = () => {
+      setIsDesktop(window.innerWidth >= 768); // md breakpoint
+    };
+
+    checkIsDesktop();
+    window.addEventListener('resize', checkIsDesktop);
+    return () => window.removeEventListener('resize', checkIsDesktop);
+  }, []);
+
+  // Apply global font settings only on desktop
+  useEffect(() => {
+    if (catalogueData?.globalSettings?.fonts?.enabled && isDesktop) {
+      const fonts = catalogueData.globalSettings.fonts;
+      const fontFamily = fonts.family || 'Poppins, sans-serif';
+      const fallback = fonts.fallback || 'Times New Roman';
+      const fontStack = `${fontFamily}, ${fallback}`;
+      
+      document.documentElement.style.setProperty('--app-font-family', fontStack);
+      document.body.style.fontFamily = fontStack;
+    } else if (!isDesktop) {
+      // Reset to default on mobile
+      document.documentElement.style.removeProperty('--app-font-family');
+      document.body.style.fontFamily = '';
+    }
+  }, [catalogueData, isDesktop]);
 
   // Fetch course catalogue data
   useEffect(() => {
@@ -241,8 +270,16 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     catalogueData: !!catalogueData
   });
 
+  // Get page padding from global settings, only apply on desktop
+  const pagePadding = catalogueData?.globalSettings?.layout?.pagePadding && isDesktop
+    ? catalogueData.globalSettings.layout.pagePadding
+    : undefined;
+
   return (
-    <div className="min-h-screen bg-white w-full pb-20 md:pb-0 pt-20 md:pt-0">
+    <div 
+      className="min-h-screen bg-white w-full pb-20 md:pb-0 pt-20 md:pt-0"
+      style={pagePadding ? { padding: pagePadding } : undefined}
+    >
       {/* Intro Page - Show first if enabled and not completed */}
       {showIntroPage && catalogueData?.introPage && (
         <IntroPageComponent
@@ -335,7 +372,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
             mandatory: catalogueData.globalSettings.leadCollection.mandatory,
             inviteLink: catalogueData.globalSettings.leadCollection.inviteLink,
             formStyle: catalogueData.globalSettings.leadCollection.formStyle,
-            fields: catalogueData.globalSettings.leadCollection.fields || []
+            fields: catalogueData.globalSettings.leadCollection.fields as any[] || []
           }}
           instituteId={instituteId}
           mandatory={catalogueData.globalSettings.leadCollection.mandatory}
@@ -348,7 +385,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 p-4">
           <div className="flex flex-col gap-3">
             {/* Get Started Button */}
-            { !catalogueData?.globalSettings?.courseCatalogeType?.enabled  &&  <button
+            { !(catalogueData?.globalSettings?.courseCatalogeType?.enabled ?? false) && <button
               onClick={() => {
                 console.log("[CourseCataloguePage] Mobile Get Started button clicked");
                 setShowLeadCollection(true);

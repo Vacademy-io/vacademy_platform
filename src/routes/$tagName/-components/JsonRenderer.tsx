@@ -49,6 +49,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             authLinks={props.authLinks}
             catalogueData={catalogueData}
             tagName={tagName}
+            styles={props.styles || component.styles}
           />
         );
       case "banner":
@@ -76,6 +77,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             {...props}
             catalogueData={catalogueData}
             tagName={tagName}
+            styles={component.styles}
           />
         );
       case "heroSection":

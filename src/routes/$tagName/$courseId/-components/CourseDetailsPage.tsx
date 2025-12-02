@@ -9,7 +9,7 @@ import { CourseCatalogueService } from "../../-services/course-catalogue-service
 import { CourseCatalogueData } from "../../-types/course-catalogue-types";
 import { CourseStructureDetails } from "../../-components/CourseStructureDetails"; // Course structure component
 import { EnrollmentPaymentDialog } from "../../-components/EnrollmentPaymentDialog";
-import { getBackendCourseDuration, formatMinutesHuman } from "@/utils/courseTime";
+import { getBackendCourseDuration } from "@/utils/courseTime";
 
 
 interface CourseDetailsPageProps {
@@ -128,6 +128,10 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
         // Set empty catalogue data as fallback
         setCatalogueData({
           globalSettings: {
+            courseCatalogeType: {
+              enabled: false,
+              value: ""
+            },
             mode: "light",
             compactness: "medium",
             audience: "all",

@@ -7,11 +7,32 @@ import { RouteMatcher } from "../../-services/route-matcher";
 import { CourseCatalogueData } from "../../-types/course-catalogue-types";
 import { useState, useEffect } from "react";
 
+// Hook to detect if we're on desktop (md breakpoint and above)
+const useIsDesktop = () => {
+  const [isDesktop, setIsDesktop] = useState(false);
+
+  useEffect(() => {
+    const checkIsDesktop = () => {
+      setIsDesktop(window.innerWidth >= 768); // md breakpoint
+    };
+
+    checkIsDesktop();
+    window.addEventListener('resize', checkIsDesktop);
+    return () => window.removeEventListener('resize', checkIsDesktop);
+  }, []);
+
+  return isDesktop;
+};
+
 export const HeaderComponent: React.FC<HeaderProps & {
   navigation?: Array<{ label: string; route: string; openInSameTab?: boolean }>;
   authLinks?: Array<{ label: string; route: string }>;
   catalogueData?: CourseCatalogueData;
   tagName?: string;
+  styles?: {
+    enabled?: boolean;
+    padding?: string;
+  };
 }> = ({
   logoUrl,
   menus,
@@ -20,10 +41,12 @@ export const HeaderComponent: React.FC<HeaderProps & {
   authLinks = [],
   catalogueData,
   tagName = "home",
+  styles,
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const domainRouting = useDomainRouting();
+  const isDesktop = useIsDesktop();
   const [instituteLogoUrl, setInstituteLogoUrl] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [mobileMenuRef, setMobileMenuRef] = useState<HTMLDivElement | null>(null);
@@ -172,9 +195,17 @@ export const HeaderComponent: React.FC<HeaderProps & {
   };
 
 
+  // Get padding from styles if enabled, only apply on desktop (md and above)
+  const headerPadding = (styles?.enabled ?? false) && styles?.padding && isDesktop
+    ? styles.padding 
+    : undefined;
+
   return (
     <header className="bg-white shadow-sm border-b w-full fixed top-0 left-0 right-0 z-50 md:relative">
-      <div className="w-full px-4 sm:px-6 lg:px-8">
+      <div 
+        className={headerPadding ? "w-full" : "w-full px-4 sm:px-6 lg:px-8"}
+        style={headerPadding ? { padding: headerPadding } : undefined}
+      >
         <div className="flex justify-between items-center h-20">
           {/* Institute Logo and Name */}
           <div className="flex items-center space-x-3 sm:space-x-4">

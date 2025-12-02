@@ -1,23 +1,28 @@
 // Updated to support layout configuration
 export interface GlobalSettings {
-  courseCatalogeType :{
-        enabled: false,
-         value: string
-    };
+  courseCatalogeType?: {
+    enabled: boolean;
+    value: string;
+  };
   mode: "light" | "dark";
   compactness: "small" | "medium" | "large";
   audience: "children" | "adults" | "all";
+  fonts?: {
+    enabled: boolean;
+    family: string;
+    fallback: string;
+  };
   leadCollection: {
     enabled: boolean;
     mandatory: boolean;
     inviteLink: string | null;
-    formStyle: {
+    formStyle?: {
       type: "single" | "multiStep";
       showProgress: boolean;
       progressType: "bar" | "dots" | "steps";
       transition: "slide" | "fade";
     };
-    fields: Array<{
+    fields: string[] | Array<{
       name: string;
       label: string;
       type: "text" | "email" | "tel" | "chips" | "dropdown";
@@ -46,6 +51,7 @@ export interface GlobalSettings {
     fields: string[];
   };
   layout?: {
+    pagePadding?: string;
     header?: {
       id: string;
       type: string;
@@ -53,6 +59,10 @@ export interface GlobalSettings {
       props: {
         logo?: string;
         title?: string;
+        styles?: {
+          enabled: boolean;
+          padding: string;
+        };
         navigation?: Array<{
           label: string;
           route: string;
@@ -68,13 +78,47 @@ export interface GlobalSettings {
       id: string;
       type: string;
       enabled: boolean;
+      styles?: {
+        enabled: boolean;
+        padding: string;
+      };
       props: {
         layout: "two-column" | "three-column" | "four-column";
         leftSection: {
           title: string;
           text: string;
+          socials?: Array<{
+            platform: string;
+            icon: string;
+            url: string;
+            openInSameTab?: boolean;
+          }>;
         };
-        rightSections: Array<{
+        rightSection1?: {
+          title: string;
+          links: Array<{
+            label: string;
+            route: string;
+            openInSameTab?: boolean;
+          }>;
+        };
+        rightSection2?: {
+          title: string;
+          links: Array<{
+            label: string;
+            route: string;
+            openInSameTab?: boolean;
+          }>;
+        };
+        rightSection3?: {
+          title: string;
+          links: Array<{
+            label: string;
+            route: string;
+            openInSameTab?: boolean;
+          }>;
+        };
+        rightSections?: Array<{
           title: string;
           links: Array<{
             label: string;

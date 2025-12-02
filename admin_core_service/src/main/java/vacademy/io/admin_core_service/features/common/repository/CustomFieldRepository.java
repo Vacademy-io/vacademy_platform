@@ -101,18 +101,25 @@ public interface CustomFieldRepository extends JpaRepository<CustomFields, Strin
 
   /**
    * Find all DROPDOWN custom fields for an institute that are ACTIVE
+   * Uses DISTINCT ON with LOWER(field_name) to return only one record per unique field name (case-insensitive)
+   * Keeps the most recent one based on created_at
    */
-  @Query("""
-      SELECT cf FROM CustomFields cf 
+  @Query(value = """
+      SELECT DISTINCT ON (LOWER(cf.field_name)) 
+          cf.id, cf.field_key, cf.field_name, cf.field_type, 
+          cf.default_value, cf.config, cf.form_order, 
+          cf.is_mandatory, cf.is_filter, cf.is_sortable, cf.is_hidden,
+          cf.status, cf.created_at, cf.updated_at
+      FROM custom_fields cf
       WHERE cf.id IN (
-          SELECT icf.customFieldId FROM InstituteCustomField icf 
-          WHERE icf.instituteId = :instituteId 
+          SELECT icf.custom_field_id FROM institute_custom_fields icf 
+          WHERE icf.institute_id = :instituteId 
           AND icf.status = :status
       )
-      AND UPPER(cf.fieldType) = UPPER(:fieldType) 
+      AND UPPER(cf.field_type) = UPPER(:fieldType) 
       AND cf.status = :status
-      ORDER BY cf.formOrder ASC
-      """)
+      ORDER BY LOWER(cf.field_name), cf.created_at DESC, cf.form_order ASC
+      """, nativeQuery = true)
   List<CustomFields> findDropdownCustomFieldsByInstituteId(
       @Param("instituteId") String instituteId, 
       @Param("fieldType") String fieldType,

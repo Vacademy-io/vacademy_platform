@@ -461,6 +461,7 @@ public class InstituteCustomFiledService {
 
     /**
      * Get all active DROPDOWN type custom fields for an institute
+     * Database query handles deduplication using DISTINCT ON
      */
     public List<CustomFieldDTO> getActiveDropdownCustomFields(String instituteId) {
         List<CustomFields> dropdownFields = customFieldRepository.findDropdownCustomFieldsByInstituteId(

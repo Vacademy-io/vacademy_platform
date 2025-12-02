@@ -285,7 +285,7 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
         whereClause.append("  ) ");
         whereClause.append(") ");
 
-        // Custom field filters - dynamic WHERE clauses
+        // Prepare parameters
         Map<String, Object> parameters = new HashMap<>();
         parameters.put("statuses", statuses);
         parameters.put("gender", gender);
@@ -339,7 +339,6 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
         nativeQuery.setFirstResult((int) pageable.getOffset());
         nativeQuery.setMaxResults(pageable.getPageSize());
 
-        @SuppressWarnings("unchecked")
         List<StudentListV2Projection> content = nativeQuery.getResultList();
 
         return new PageImpl<>(content, pageable, total);

@@ -44,4 +44,7 @@ public interface StudentListV2Projection {
     String getTypeId();
 
     String getDesiredLevelId();
+
+    String getSubOrgId();
+    String getSubOrgName();
 }

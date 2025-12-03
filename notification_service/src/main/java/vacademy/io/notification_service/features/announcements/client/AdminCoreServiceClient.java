@@ -101,21 +101,18 @@ public class AdminCoreServiceClient {
                 int pageNumber = 0;
 
                 while (hasMore) {
-                    String url = adminCoreServiceBaseUrl + "/admin-core-service/v1/students/by-package-sessions";
-
-                    // Create request body with single package session and pagination
-                    Map<String, Object> requestBody = new HashMap<>();
-                    requestBody.put("packageSessionIds", List.of(packageSessionId));
-                    requestBody.put("pageNumber", pageNumber);
-                    requestBody.put("pageSize", pageSize);
+                    String url = adminCoreServiceBaseUrl + "/admin-core-service/v1/students/by-package-session" +
+                            "?packageSessionId=" + packageSessionId +
+                            "&pageNumber=" + pageNumber +
+                            "&pageSize=" + pageSize;
 
                     HttpHeaders headers = new HttpHeaders();
                     headers.setContentType(MediaType.APPLICATION_JSON);
-                    HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+                    HttpEntity<String> entity = new HttpEntity<>(headers);
 
                     ResponseEntity<List<String>> response = restTemplate.exchange(
                             url,
-                            HttpMethod.POST,
+                            HttpMethod.GET,
                             entity,
                             new ParameterizedTypeReference<List<String>>() {}
                     );

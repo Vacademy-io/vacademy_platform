@@ -34,7 +34,7 @@ function ActivityLogsPage() {
 
   // Set navigation heading
   useEffect(() => {
-    setNavHeading("Activity Logs");
+    setNavHeading("Activities");
   }, [setNavHeading]);
 
   const { data, isLoading, error } = useListPlanningLogs({
@@ -70,7 +70,7 @@ function ActivityLogsPage() {
       <div className="space-y-2 p-2">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-semibold">Activity Logs</h2>
+          <h2 className="text-2xl font-semibold">Activities</h2>
           <Button
             variant="outline"
             size="sm"
@@ -105,7 +105,7 @@ function ActivityLogsPage() {
           </div>
         ) : error ? (
           <div className="py-8 text-center">
-            <p className="text-destructive">Failed to load activity logs</p>
+            <p className="text-destructive">Failed to load activities</p>
           </div>
         ) : viewMode === "table" ? (
           <PlanningLogsTable

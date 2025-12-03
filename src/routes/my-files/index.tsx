@@ -93,7 +93,7 @@ function RouteComponent() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
+      <div className="flex items-center justify-center w-full">
         <div className="text-muted-foreground">Loading files...</div>
       </div>
     );
@@ -101,7 +101,7 @@ function RouteComponent() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
+      <div className="flex items-center justify-center w-full">
         <div className="text-destructive">
           Error loading files. Please try again later.
         </div>
@@ -113,7 +113,7 @@ function RouteComponent() {
 
   if (files.length === 0) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
+      <div className="flex items-center justify-center w-full">
         <div className="text-center">
           <p className="text-muted-foreground text-lg">No files found</p>
           <p className="text-muted-foreground text-sm mt-2">
@@ -137,7 +137,7 @@ function RouteComponent() {
           <span className="hidden sm:inline ml-2">Back to Dashboard</span>
         </Button>
       </div>
-      
+
       {/* Table view for desktop */}
       <div className="hidden md:block border rounded-lg">
         <Table>
@@ -155,8 +155,12 @@ function RouteComponent() {
             {files.map((file) => (
               <TableRow key={file.id}>
                 <TableCell className="font-medium">{file.name}</TableCell>
-                <TableCell>{file.file_type==="Html" ? "Note" : file.file_type}</TableCell>
-                <TableCell className="capitalize">{file.media_type === "note" ? "Text" : file.media_type}</TableCell>
+                <TableCell>
+                  {file.file_type === "Html" ? "Note" : file.file_type}
+                </TableCell>
+                <TableCell className="capitalize">
+                  {file.media_type === "note" ? "Text" : file.media_type}
+                </TableCell>
                 <TableCell>{file.created_by}</TableCell>
                 <TableCell>{formatDate(file.created_at_iso)}</TableCell>
                 <TableCell className="text-right">
@@ -166,7 +170,9 @@ function RouteComponent() {
                         variant="outline"
                         size="sm"
                         onClick={() => handleViewClick(file)}
-                        title={file.file_type === "Url" ? "Open URL" : "View Note"}
+                        title={
+                          file.file_type === "Url" ? "Open URL" : "View Note"
+                        }
                       >
                         <Eye className="h-4 w-4" />
                         View
@@ -211,15 +217,19 @@ function RouteComponent() {
           >
             <div className="space-y-2">
               <h3 className="font-semibold text-lg break-words">{file.name}</h3>
-              
+
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div>
                   <span className="text-muted-foreground">Type:</span>
-                  <p className="font-medium">{file.file_type==="Html" ? "Note" : file.file_type}</p>
+                  <p className="font-medium">
+                    {file.file_type === "Html" ? "Note" : file.file_type}
+                  </p>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Media Type:</span>
-                  <p className="font-medium capitalize">{file.media_type === "note" ? "Text" : file.media_type}</p>
+                  <p className="font-medium capitalize">
+                    {file.media_type === "note" ? "Text" : file.media_type}
+                  </p>
                 </div>
               </div>
 

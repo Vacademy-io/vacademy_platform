@@ -34,7 +34,7 @@ function PlanningLogsPage() {
 
   // Set navigation heading
   useEffect(() => {
-    setNavHeading("Planning Logs");
+    setNavHeading("Plannings");
   }, [setNavHeading]);
 
   const { data, isLoading, error } = useListPlanningLogs({
@@ -67,10 +67,10 @@ function PlanningLogsPage() {
 
   return (
     <LayoutContainer>
-      <div className="container mx-auto space-y-4 p-6">
+      <div className="space-y-2 p-2">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-semibold">Planning Logs</h2>
+          <h2 className="text-2xl font-semibold">Plannings</h2>
           <Button
             variant="outline"
             size="sm"
@@ -101,7 +101,7 @@ function PlanningLogsPage() {
           </div>
         ) : error ? (
           <div className="py-8 text-center">
-            <p className="text-destructive">Failed to load planning logs</p>
+            <p className="text-destructive">Failed to load plannings</p>
           </div>
         ) : viewMode === "table" ? (
           <PlanningLogsTable

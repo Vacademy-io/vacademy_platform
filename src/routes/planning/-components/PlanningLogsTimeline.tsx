@@ -74,10 +74,10 @@ export default function PlanningLogsTimeline({
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
         <p className="text-lg font-medium text-muted-foreground">
-          No planning or activity logs shared with you yet
+          No planning or activities shared with you yet
         </p>
         <p className="mt-2 text-sm text-muted-foreground">
-          Your teachers will share planning and activity logs here
+          Your teachers will share planning and activities here
         </p>
       </div>
     );
@@ -104,15 +104,25 @@ export default function PlanningLogsTimeline({
         </div>
       ))}
 
-      {/* Load More Button */}
-      {currentPage < totalPages - 1 && (
-        <div className="flex justify-center pt-4">
-          <Button
-            variant="outline"
-            onClick={() => onPageChange(currentPage + 1)}
-          >
-            Load More
-          </Button>
+      {/* Pagination Buttons */}
+      {(currentPage > 0 || currentPage < totalPages - 1) && (
+        <div className="flex justify-center gap-3 pt-4">
+          {currentPage > 0 && (
+            <Button
+              variant="outline"
+              onClick={() => onPageChange(currentPage - 1)}
+            >
+              Previous Page
+            </Button>
+          )}
+          {currentPage < totalPages - 1 && (
+            <Button
+              variant="outline"
+              onClick={() => onPageChange(currentPage + 1)}
+            >
+              Load More
+            </Button>
+          )}
         </div>
       )}
     </div>

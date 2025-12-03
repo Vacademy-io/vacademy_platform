@@ -42,10 +42,10 @@ export default function PlanningLogsTable({
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
         <p className="text-lg font-medium text-muted-foreground">
-          No planning or activity logs shared with you yet
+          No planning or activities shared with you yet
         </p>
         <p className="mt-2 text-sm text-muted-foreground">
-          Your teachers will share planning and activity logs here
+          Your teachers will share planning and activities here
         </p>
       </div>
     );
@@ -57,10 +57,9 @@ export default function PlanningLogsTable({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Title</TableHead>
-              <TableHead>Type</TableHead>
               <TableHead>Interval</TableHead>
               <TableHead>Period</TableHead>
+              <TableHead>Title</TableHead>
               <TableHead>Created By</TableHead>
               <TableHead>Created At</TableHead>
               <TableHead className="text-right">Actions</TableHead>
@@ -69,14 +68,6 @@ export default function PlanningLogsTable({
           <TableBody>
             {data.map((log) => (
               <TableRow key={log.id}>
-                <TableCell className="font-medium">{log.title}</TableCell>
-                <TableCell>
-                  {log.log_type === "planning" ? (
-                    <Badge variant="default">Planning</Badge>
-                  ) : (
-                    <Badge variant="secondary">Activity</Badge>
-                  )}
-                </TableCell>
                 <TableCell>
                   <Badge variant="outline">
                     {formatIntervalType(log.interval_type)}
@@ -85,6 +76,7 @@ export default function PlanningLogsTable({
                 <TableCell>
                   {formatIntervalTypeId(log.interval_type_id)}
                 </TableCell>
+                <TableCell className="font-medium">{log.title}</TableCell>
                 <TableCell>{log.created_by}</TableCell>
                 <TableCell>
                   {new Date(log.created_at).toLocaleDateString("en-US", {

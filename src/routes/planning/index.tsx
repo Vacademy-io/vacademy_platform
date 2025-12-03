@@ -32,7 +32,7 @@ function PlanningPage() {
         <div>
           <h2 className="text-2xl font-semibold">Planning & Activity</h2>
           <p className="mt-2 text-muted-foreground">
-            View planning logs and activity logs shared by your teachers
+            View plannings and activities shared by your teachers
           </p>
         </div>
 
@@ -48,16 +48,16 @@ function PlanningPage() {
                   <BookOpen className="size-6 text-primary" />
                 </div>
                 <div>
-                  <CardTitle>Planning Logs</CardTitle>
+                  <CardTitle>Plannings</CardTitle>
                   <CardDescription>
-                    View planning logs from your teachers
+                    View plannings from your teachers
                   </CardDescription>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
               <Button variant="outline" className="w-full">
-                View Planning Logs
+                View Plannings
               </Button>
             </CardContent>
           </Card>
@@ -72,16 +72,16 @@ function PlanningPage() {
                   <ClipboardList className="size-6 text-secondary-foreground" />
                 </div>
                 <div>
-                  <CardTitle>Activity Logs</CardTitle>
+                  <CardTitle>Activities</CardTitle>
                   <CardDescription>
-                    View activity logs from your teachers
+                    View activities from your teachers
                   </CardDescription>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
               <Button variant="outline" className="w-full">
-                View Activity Logs
+                View activities
               </Button>
             </CardContent>
           </Card>

@@ -252,7 +252,9 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 up.payment_option_json AS "paymentOptionJson",
                 ssigm.destination_package_session_id AS "destinationPackageSessionId",
                 ssigm.user_plan_id AS "userPlanId",
-                up.enroll_invite_id AS "enrollInviteId"
+                up.enroll_invite_id AS "enrollInviteId",
+                ssigm.sub_org_id AS "subOrgId",
+                sub_org.name AS "subOrgName"
             FROM student s
             JOIN student_session_institute_group_mapping ssigm
                 ON s.user_id = ssigm.user_id
@@ -274,6 +276,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 ORDER BY pl.date DESC NULLS LAST
                 LIMIT 1
             ) last_pl ON TRUE
+            LEFT JOIN institutes sub_org
+                ON sub_org.id = ssigm.sub_org_id
             WHERE (:#{#statuses == null || #statuses.isEmpty()} = true OR ssigm.status IN (:statuses))
               AND (:#{#gender == null || #gender.isEmpty()} = true OR s.gender IN (:gender))
               AND (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm.institute_id IN (:instituteIds))
@@ -390,7 +394,9 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 up.payment_option_json AS "paymentOptionJson",
                 ssigm.destination_package_session_id AS "destinationPackageSessionId",
                 ssigm.user_plan_id AS "userPlanId",
-                up.enroll_invite_id AS "enrollInviteId"
+                up.enroll_invite_id AS "enrollInviteId",
+                ssigm.sub_org_id AS "subOrgId",
+                sub_org.name AS "subOrgName"
             FROM student s
             JOIN student_session_institute_group_mapping ssigm
                 ON s.user_id = ssigm.user_id
@@ -412,6 +418,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 ORDER BY pl.date DESC NULLS LAST
                 LIMIT 1
             ) last_pl ON TRUE
+            LEFT JOIN institutes sub_org
+                ON sub_org.id = ssigm.sub_org_id
             WHERE (
                 to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name)
                 OR s.full_name LIKE :name || '%'
@@ -442,7 +450,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                      s.parents_mobile_number, s.parents_email, s.linked_institute_name,
                      s.created_at, s.updated_at, s.face_file_id, s.parents_to_mother_mobile_number,
                      s.parents_to_mother_email, ssigm.institute_enrollment_number,
-                     ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id
+                     ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id,
+                     ssigm.sub_org_id, sub_org.name
             """, countQuery = """
             SELECT COUNT(DISTINCT s.id)
             FROM student s
@@ -672,7 +681,9 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 ssigm.destination_package_session_id AS "destinationPackageSessionId",
                 ssigm.user_plan_id AS "userPlanId",
                 up.enroll_invite_id AS "enrollInviteId",
-                ssigm.desired_level_id AS "desiredLevelId"
+                ssigm.desired_level_id AS "desiredLevelId",
+                ssigm.sub_org_id AS "subOrgId",
+                sub_org.name AS "subOrgName"
             FROM student s
             JOIN student_session_institute_group_mapping ssigm
                 ON s.user_id = ssigm.user_id
@@ -694,6 +705,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 ORDER BY pl.date DESC NULLS LAST
                 LIMIT 1
             ) last_pl ON TRUE
+            LEFT JOIN institutes sub_org
+                ON sub_org.id = ssigm.sub_org_id
             WHERE (:#{#statuses == null || #statuses.isEmpty()} = true OR ssigm.status IN (:statuses))
               AND (:#{#gender == null || #gender.isEmpty()} = true OR s.gender IN (:gender))
               AND (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm.institute_id IN (:instituteIds))
@@ -735,7 +748,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                      s.parents_mobile_number, s.parents_email, s.linked_institute_name,
                      s.created_at, s.updated_at, s.face_file_id, s.parents_to_mother_mobile_number,
                      s.parents_to_mother_email, ssigm.institute_enrollment_number,
-                     ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ssigm.desired_level_id
+                     ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ssigm.desired_level_id,
+                     ssigm.sub_org_id, sub_org.name
             """, countQuery = """
             SELECT COUNT(DISTINCT s.id)
             FROM student s
@@ -852,7 +866,9 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 ssigm.destination_package_session_id AS "destinationPackageSessionId",
                 ssigm.user_plan_id AS "userPlanId",
                 up.enroll_invite_id AS "enrollInviteId",
-                ssigm.desired_level_id AS "desiredLevelId"
+                ssigm.desired_level_id AS "desiredLevelId",
+                ssigm.sub_org_id AS "subOrgId",
+                sub_org.name AS "subOrgName"
             FROM student s
             JOIN student_session_institute_group_mapping ssigm
                 ON s.user_id = ssigm.user_id
@@ -874,6 +890,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 ORDER BY pl.date DESC NULLS LAST
                 LIMIT 1
             ) last_pl ON TRUE
+            LEFT JOIN institutes sub_org
+                ON sub_org.id = ssigm.sub_org_id
             WHERE (
                 (s.full_name IS NOT NULL AND s.full_name != '' AND s.full_name ILIKE '%' || :name || '%')
                 OR (s.username IS NOT NULL AND s.username != '' AND s.username ILIKE '%' || :name || '%')
@@ -930,7 +948,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                      s.parents_mobile_number, s.parents_email, s.linked_institute_name,
                      s.created_at, s.updated_at, s.face_file_id, s.parents_to_mother_mobile_number,
                      s.parents_to_mother_email, ssigm.institute_enrollment_number,
-                     ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ssigm.desired_level_id
+                     ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ssigm.desired_level_id,
+                     ssigm.sub_org_id, sub_org.name
             """, countQuery = """
             SELECT COUNT(DISTINCT s.id)
             FROM student s

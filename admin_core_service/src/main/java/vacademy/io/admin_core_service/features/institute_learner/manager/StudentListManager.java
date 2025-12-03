@@ -303,6 +303,10 @@ public class StudentListManager {
             dto.setCustomFields(parseCustomFields(mapper, p.getCustomFieldsJson()));
             dto.setEnrollInviteId(p.getEnrollInviteId());
             dto.setDesiredLevelId(p.getDesiredLevelId());
+
+            dto.setSubOrgId(p.getSubOrgId());
+            dto.setSubOrgName(p.getSubOrgName());
+            
             dtos.add(dto);
         }
 

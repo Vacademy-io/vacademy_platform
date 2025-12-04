@@ -12,8 +12,17 @@ import java.util.Optional;
 import java.time.LocalDateTime;
 
 public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
-    @Query("""
-                SELECT up FROM UserPlan up
+    @Query(value = """
+                SELECT DISTINCT up FROM UserPlan up
+                JOIN FETCH up.enrollInvite ei
+                LEFT JOIN FETCH up.paymentOption po
+                LEFT JOIN FETCH up.paymentPlan pp
+                WHERE up.userId = :userId
+                  AND ei.instituteId = :instituteId
+                  AND (:statuses IS NULL OR up.status IN :statuses)
+            """,
+            countQuery = """
+                SELECT COUNT(up) FROM UserPlan up
                 JOIN up.enrollInvite ei
                 WHERE up.userId = :userId
                   AND ei.instituteId = :instituteId

@@ -17,13 +17,19 @@ import java.util.List;
 @Setter
 @Entity
 @Table(name = "user_plan")
-public class UserPlan {
-
-    @Id
+public class UserPlan {    @Id
     @UuidGenerator
     private String id;
 
-    @Column(name = "user_id")
+    /**
+     * User ID - ALWAYS required and preserved for data integrity
+     * - For source=USER: The individual user who enrolled
+     * - For source=SUB_ORG: The individual learner within the sub-organization
+     * 
+     * This field is NEVER null, even for SUB_ORG enrollments.
+     * It ensures we can always track which user a plan belongs to.
+     */
+    @Column(name = "user_id", nullable = false)
     private String userId;
 
     // Foreign key + lazy mapping for PaymentPlan
@@ -66,14 +72,23 @@ public class UserPlan {
     private String paymentOptionJson;
 
     @Column(name = "status")
-    private String status;
-
-    @Column(name = "json_payment_details", columnDefinition = "TEXT")
+    private String status;    @Column(name = "json_payment_details", columnDefinition = "TEXT")
     private String jsonPaymentDetails;
 
+    /**
+     * Source of the UserPlan enrollment
+     * - USER: Individual user enrollment (direct purchase)
+     * - SUB_ORG: Sub-organization enrollment (organization manages the plan)
+     */
     @Column(name = "source", length = 50)
     private String source;
 
+    /**
+     * Sub-organization ID
+     * - Only populated when source=SUB_ORG
+     * - Represents the sub-organization that manages this plan
+     * - Used in conjunction with userId to track individual learners within organizations
+     */
     @Column(name = "sub_org_id", length = 255)
     private String subOrgId;
 

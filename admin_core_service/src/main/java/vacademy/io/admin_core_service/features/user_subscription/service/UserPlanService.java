@@ -3,6 +3,8 @@ package vacademy.io.admin_core_service.features.user_subscription.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -21,6 +23,7 @@ import vacademy.io.admin_core_service.features.notification.service.DynamicNotif
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.UserPlanDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.UserPlanFilterDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.SubOrgDetailsDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.*;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanSourceEnum;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
@@ -28,9 +31,10 @@ import vacademy.io.admin_core_service.features.user_subscription.repository.Paym
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.core.standard_classes.ListService;
+import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.Locale;
 
@@ -50,13 +54,14 @@ public class UserPlanService {
     public LearnerBatchEnrollService learnerBatchEnrollService;
 
     @Autowired
-    private PaymentLogRepository paymentLogRepository;
-
-    @Autowired
+    private PaymentLogRepository paymentLogRepository;    @Autowired
     private DynamicNotificationService dynamicNotificationService;
 
     @Autowired
     private AuthService authService;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.institute.repository.InstituteRepository instituteRepository;
 
     public UserPlan createUserPlan(String userId,
             PaymentPlan paymentPlan,
@@ -67,9 +72,7 @@ public class UserPlanService {
             String status) {
         return createUserPlan(userId, paymentPlan, appliedCouponDiscount, enrollInvite,
                 paymentOption, paymentInitiationRequestDTO, status, null, null);
-    }
-
-    public UserPlan createUserPlan(String userId,
+    }    public UserPlan createUserPlan(String userId,
             PaymentPlan paymentPlan,
             AppliedCouponDiscount appliedCouponDiscount,
             EnrollInvite enrollInvite,
@@ -81,20 +84,44 @@ public class UserPlanService {
         logger.info("Creating UserPlan for userId={}, status={}, source={}, subOrgId={}",
                 userId, status, source, subOrgId);
 
+        // Validate userId is always provided - critical for data integrity
+        if (!StringUtils.hasText(userId)) {
+            throw new IllegalArgumentException("UserId is required for creating UserPlan. Cannot be null or empty.");
+        }
+
         UserPlan userPlan = new UserPlan();
         userPlan.setStatus(status);
+        
+        // ALWAYS set userId - this is preserved for both USER and SUB_ORG sources
+        // For SUB_ORG: userId represents the individual learner in the sub-organization
+        // For USER: userId represents the individual user themselves
         userPlan.setUserId(userId);
+        logger.debug("UserPlan userId set to: {}", userId);
 
         // Set source and sub_org_id if provided
         if (source != null) {
             userPlan.setSource(source);
+            logger.debug("UserPlan source set to: {}", source);
         } else {
             // Default to USER if not specified
             userPlan.setSource(UserPlanSourceEnum.USER.name());
+            logger.debug("UserPlan source defaulted to: USER");
         }
 
+        // For SUB_ORG source, subOrgId must be provided
         if (subOrgId != null) {
             userPlan.setSubOrgId(subOrgId);
+            logger.debug("UserPlan subOrgId set to: {}", subOrgId);
+            
+            // Additional validation: if source is SUB_ORG, subOrgId should be present
+            if (UserPlanSourceEnum.SUB_ORG.name().equals(userPlan.getSource())) {
+                logger.info("Creating SUB_ORG UserPlan: userId={}, subOrgId={} - Both IDs preserved for data integrity", 
+                        userId, subOrgId);
+            }
+        } else if (source != null && UserPlanSourceEnum.SUB_ORG.name().equals(source)) {
+            // Warning: SUB_ORG source without subOrgId
+            logger.warn("Creating SUB_ORG UserPlan without subOrgId for userId={} - This may indicate a data issue", 
+                    userId);
         }
 
         setPaymentPlan(userPlan, paymentPlan);
@@ -216,8 +243,7 @@ public class UserPlanService {
                     "Enrollment is complete but notification failed.", userPlan.getId(), e);
             // Don't throw exception - enrollment is complete, notification is secondary
         }
-    }
-
+    }    @Cacheable(value = "userPlanWithPaymentLogs", key = "#userPlanId")
     public UserPlanDTO getUserPlanWithPaymentLogs(String userPlanId) {
         logger.info("Getting UserPlan with payment logs for ID: {}", userPlanId);
 
@@ -235,13 +261,12 @@ public class UserPlanService {
         return userPlanDTO;
     }
 
+    @Cacheable(value = "userPlanById", key = "#userPlanId")
     public UserPlan findById(String userPlanId) {
         logger.info("Finding UserPlan by ID: {}", userPlanId);
         return userPlanRepository.findById(userPlanId)
                 .orElseThrow(() -> new RuntimeException("UserPlan not found with ID: " + userPlanId));
-    }
-
-    private List<PaymentLogDTO> getPaymentLogsByUserPlanId(String userPlanId) {
+    }    private List<PaymentLogDTO> getPaymentLogsByUserPlanId(String userPlanId) {
         logger.info("Getting payment logs for user plan ID: {}", userPlanId);
 
         List<PaymentLog> paymentLogs = paymentLogRepository.findByUserPlanIdOrderByCreatedAtDesc(userPlanId);
@@ -254,7 +279,118 @@ public class UserPlanService {
         return paymentLogDTOs;
     }
 
+    @Cacheable(value = "userPlansByUser", key = "#userPlanFilterDTO.userId + ':' + #userPlanFilterDTO.instituteId + ':' + #pageNo + ':' + #pageSize + ':' + #userPlanFilterDTO.statuses + ':' + #userPlanFilterDTO.sortColumns")
+    public Page<UserPlanDTO> getUserPlansByUserIdAndInstituteId(int pageNo, int pageSize,
+            UserPlanFilterDTO userPlanFilterDTO) {
+        logger.info("Getting paginated UserPlans for userId={}, instituteId={}", userPlanFilterDTO.getUserId(),
+                userPlanFilterDTO.getInstituteId());
+        Sort thisSort = ListService.createSortObject(userPlanFilterDTO.getSortColumns());
+        Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);
+        List<String> status = userPlanFilterDTO.getStatuses();
+        if (status == null) {
+            status = List.of();
+        }
+        Page<UserPlan> userPlansPage = userPlanRepository.findByUserIdAndInstituteIdWithFilters(
+                userPlanFilterDTO.getUserId(), userPlanFilterDTO.getInstituteId(), status, pageable);
+
+        // Bulk fetch Institutes for all SUB_ORG plans
+        List<UserPlan> userPlans = userPlansPage.getContent();
+        Map<String, Institute> instituteMap = fetchInstitutes(userPlans);
+
+        return userPlansPage.map(userPlan -> mapToDTO(userPlan, instituteMap));
+    }
+
+    /**
+     * Fetch all Institutes in bulk for UserPlans with SUB_ORG source.
+     * This prevents N+1 query problem.
+     */
+    /**
+     * Fetch all Institutes in bulk for UserPlans with SUB_ORG source.
+     * This prevents N+1 query problem.
+     */
+    private Map<String, Institute> fetchInstitutes(List<UserPlan> userPlans) {
+        Set<String> subOrgIds = userPlans.stream()
+                .filter(up -> UserPlanSourceEnum.SUB_ORG.name().equals(up.getSource()))
+                .map(UserPlan::getSubOrgId)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toSet());
+
+        if (subOrgIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        logger.debug("Fetching {} institutes in bulk for subOrgIds: {}", subOrgIds.size(), subOrgIds);
+
+        // findAllById returns Iterable, convert it to List
+        Iterable<Institute> iterableInstitutes = instituteRepository.findAllById(subOrgIds);
+        List<Institute> institutes = new ArrayList<>();
+        iterableInstitutes.forEach(institutes::add);
+
+        return institutes.stream()
+                .collect(Collectors.toMap(
+                        Institute::getId,
+                        i -> i,
+                        (existing, replacement) -> existing
+                ));
+    }
+
+
+    /**
+     * Map UserPlan to DTO with Institute details from pre-fetched map.
+     * This version is used for bulk operations to avoid N+1 queries.
+     */
+    private UserPlanDTO mapToDTO(UserPlan userPlan, Map<String, Institute> instituteMap) {
+        // Fetch sub-org details from the pre-fetched map
+        SubOrgDetailsDTO subOrgDetails = null;
+        if (UserPlanSourceEnum.SUB_ORG.name().equals(userPlan.getSource()) &&
+                StringUtils.hasText(userPlan.getSubOrgId())) {
+            Institute institute = instituteMap.get(userPlan.getSubOrgId());
+            if (institute != null) {
+                subOrgDetails = SubOrgDetailsDTO.builder()
+                        .id(institute.getId())
+                        .name(institute.getInstituteName())
+                        .address(institute.getAddress())
+                        .build();
+            } else {
+                logger.warn("Institute not found in map for subOrgId={} in UserPlan ID={}",
+                        userPlan.getSubOrgId(), userPlan.getId());
+            }
+        }
+
+        return buildUserPlanDTO(userPlan, subOrgDetails);
+    }
+
+    /**
+     * Map UserPlan to DTO (individual fetch version).
+     * This version is used for single UserPlan operations.
+     */
     private UserPlanDTO mapToDTO(UserPlan userPlan) {
+        // Fetch sub-org details if source is SUB_ORG and subOrgId is present
+        SubOrgDetailsDTO subOrgDetails = null;
+        if (UserPlanSourceEnum.SUB_ORG.name().equals(userPlan.getSource()) &&
+                StringUtils.hasText(userPlan.getSubOrgId())) {
+            Optional<Institute> instituteOpt = instituteRepository.findById(userPlan.getSubOrgId());
+            if (instituteOpt.isPresent()) {
+                Institute institute = instituteOpt.get();
+                subOrgDetails = SubOrgDetailsDTO.builder()
+                        .id(institute.getId())
+                        .name(institute.getInstituteName())
+                        .address(institute.getAddress())
+                        .build();
+            } else {
+                logger.warn("Institute not found for subOrgId={} in UserPlan ID={}",
+                        userPlan.getSubOrgId(), userPlan.getId());
+            }
+        }
+
+        return buildUserPlanDTO(userPlan, subOrgDetails);
+    }
+
+    /**
+     * Build UserPlanDTO with all fields.
+     * Common logic extracted to avoid duplication.
+     */
+    private UserPlanDTO buildUserPlanDTO(UserPlan userPlan, SubOrgDetailsDTO subOrgDetails) {
         return UserPlanDTO.builder()
                 .id(userPlan.getId())
                 .userId(userPlan.getUserId())
@@ -266,6 +402,8 @@ public class UserPlanService {
                 .paymentOptionId(userPlan.getPaymentOptionId())
                 .paymentOptionJson(userPlan.getPaymentOptionJson())
                 .status(userPlan.getStatus())
+                .source(userPlan.getSource())
+                .subOrgDetails(subOrgDetails)
                 .createdAt(userPlan.getCreatedAt())
                 .updatedAt(userPlan.getUpdatedAt())
                 .enrollInvite(userPlan.getEnrollInvite().toEnrollInviteDTO())
@@ -280,25 +418,7 @@ public class UserPlanService {
                 .build();
     }
 
-    public Page<UserPlanDTO> getUserPlansByUserIdAndInstituteId(int pageNo, int pageSize,
-            UserPlanFilterDTO userPlanFilterDTO) {
-        logger.info("Getting paginated UserPlans for userId={}, instituteId={}", userPlanFilterDTO.getUserId(),
-                userPlanFilterDTO.getInstituteId());
-        Sort thisSort = ListService.createSortObject(userPlanFilterDTO.getSortColumns());
-        Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);
-        List<String> status = userPlanFilterDTO.getStatuses();
-        if (status == null) {
-            status = List.of();
-        }
-        Page<UserPlan> userPlansPage = userPlanRepository.findByUserIdAndInstituteIdWithFilters(
-                userPlanFilterDTO.getUserId(), userPlanFilterDTO.getInstituteId(), status, pageable);
-
-        return userPlansPage.map(userPlan -> {
-            UserPlanDTO userPlanDTO = mapToDTO(userPlan);
-            return userPlanDTO;
-        });
-    }
-
+    @CacheEvict(value = {"userPlanById", "userPlansByUser", "userPlanWithPaymentLogs"}, allEntries = true)
     public void updateUserPlanStatuses(List<String> userPlanIds, String status) {
         if (CollectionUtils.isEmpty(userPlanIds)) {
             throw new IllegalArgumentException("User plan ids must not be empty.");

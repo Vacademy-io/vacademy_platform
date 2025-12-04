@@ -306,6 +306,7 @@ public class StudentListManager {
 
             dto.setSubOrgId(p.getSubOrgId());
             dto.setSubOrgName(p.getSubOrgName());
+            dto.setCommaSeparatedOrgRoles(p.getCommaSeparatedOrgRoles());
             
             dtos.add(dto);
         }

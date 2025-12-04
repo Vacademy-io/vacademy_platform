@@ -14,6 +14,7 @@ import {
 } from "@/types/assessment";
 import { Storage } from "@capacitor/storage";
 import { safeJsonParse } from "@/utils/safe-json-parse";
+import { getAllSessionListFromStorage } from "@/services/studentDetails";
 
 export const getStoredDetails = async () => {
   const studentData = await Preferences.get({ key: "StudentDetails" });
@@ -75,6 +76,8 @@ export const fetchAssessmentData = async (
 ) => {
   try {
     const { student, institute } = await getStoredDetails();
+    const sessions = await getAllSessionListFromStorage();
+    const batchIds = sessions?.map((session) => session.id) || [];
     if (!student || !institute) {
       toast.error("Missing student or institute details.");
       return;
@@ -82,7 +85,7 @@ export const fetchAssessmentData = async (
 
     const requestBody = {
       name: "",
-      batch_ids: [student.package_session_id],
+      batch_ids: batchIds?.length > 0 ? batchIds : [student.package_session_id],
       user_ids: [student.user_id],
       tag_ids: [],
       assessment_types: [assessment_types],

@@ -303,13 +303,13 @@ public class AnnouncementService {
                         if ("CUSTOM_FIELD_FILTER".equals(r.getRecipientType())) {
                             try {
                                 // Store filters as JSON in recipientName field
-                                if (r.getFilters() == null || r.getFilters().isEmpty()) {
+                                if (r.getCustomFieldFilters() == null || r.getCustomFieldFilters().isEmpty()) {
                                     log.warn("CUSTOM_FIELD_FILTER recipient has no filters provided");
                                     recipient.setRecipientName("ERROR");
                                 } else {
-                                    String filtersJson = objectMapper.writeValueAsString(r.getFilters());
-                                    log.info("Serialized {} filters to JSON for CUSTOM_FIELD_FILTER: {}", 
-                                            r.getFilters().size(), filtersJson);
+                                    String filtersJson = objectMapper.writeValueAsString(r.getCustomFieldFilters());
+                                    log.info("Serialized {} filters to JSON for CUSTOM_FIELD_FILTER: {}",
+                                            r.getCustomFieldFilters().size(), filtersJson);
                                     recipient.setRecipientName(filtersJson);
                                 }
                                 // Use a placeholder ID or empty for CUSTOM_FIELD_FILTER

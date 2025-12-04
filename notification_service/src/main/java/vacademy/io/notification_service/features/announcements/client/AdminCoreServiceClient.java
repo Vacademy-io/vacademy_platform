@@ -383,41 +383,105 @@ public class AdminCoreServiceClient {
         }
 
         try {
-            String route = "/admin-core-service/internal/campaign/" + instituteId + "/" + audienceId + "/users";
+            // For scalability, fetch paginated results
+            Set<String> allUserIds = new HashSet<>();
+            int pageSize = 1000; // Fetch 1000 users at a time
+            boolean hasMore = true;
+            int pageNumber = 0;
 
-            log.debug("Calling INTERNAL URL: {}{}", adminCoreServiceBaseUrl, route);
+            while (hasMore) {
+                String route = "/admin-core-service/internal/campaign/" + instituteId + "/" + audienceId + "/users/paginated" +
+                        "?pageNumber=" + pageNumber + "&pageSize=" + pageSize;
 
-            // Use InternalClientUtils to automatically add clientName and Signature headers
-            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
-                    clientName,
-                    HttpMethod.GET.name(),
-                    adminCoreServiceBaseUrl,
-                    route,
-                    null
-            );
+                log.debug("Calling INTERNAL URL: {}{}", adminCoreServiceBaseUrl, route);
 
-            // Parse JSON body to List<String>
-            List<String> userIds;
-            String body = response.getBody();
-            if (body == null || body.isBlank()) {
-                userIds = new ArrayList<>();
-            } else {
-                ObjectMapper mapper = new ObjectMapper();
-                userIds = mapper.readValue(body, new TypeReference<List<String>>() {});
+                // Use InternalClientUtils to automatically add clientName and Signature headers
+                ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                        clientName,
+                        HttpMethod.GET.name(),
+                        adminCoreServiceBaseUrl,
+                        route,
+                        null
+                );
+
+                // Parse JSON body to List<String>
+                List<String> userIds;
+                String body = response.getBody();
+                if (body == null || body.isBlank()) {
+                    userIds = new ArrayList<>();
+                } else {
+                    ObjectMapper mapper = new ObjectMapper();
+                    userIds = mapper.readValue(body, new TypeReference<List<String>>() {});
+                }
+
+                if (userIds != null && !userIds.isEmpty()) {
+                    allUserIds.addAll(userIds);
+                    log.debug("Fetched page {}: {} converted users for campaign {}", pageNumber, userIds.size(), audienceId);
+
+                    // If we got a full page, there might be more
+                    hasMore = userIds.size() == pageSize;
+                } else {
+                    hasMore = false;
+                }
+
+                pageNumber++;
             }
 
-            if (userIds == null) {
-                userIds = new ArrayList<>();
-            }
-
-            log.info("Found {} converted users for campaign {} (institute: {})",
-                    userIds.size(), audienceId, instituteId);
-            return userIds;
+            List<String> result = new ArrayList<>(allUserIds);
+            log.info("Found {} total converted users for campaign {} (institute: {})",
+                    result.size(), audienceId, instituteId);
+            return result;
 
         } catch (Exception e) {
             log.error("Error calling admin-core service for converted users by campaign {} (institute: {})",
                     audienceId, instituteId, e);
             return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Centralized recipient resolution API - handles inclusions, exclusions, and custom field filters in one call
+     */
+    @Retryable(value = {RestClientException.class}, maxAttempts = 3, backoff = @Backoff(delay = 1000))
+    public vacademy.io.notification_service.features.announcements.dto.PaginatedUserIdResponse resolveRecipientsCentralized(
+            vacademy.io.notification_service.features.announcements.dto.CentralizedRecipientResolutionRequest request) {
+
+        log.debug("Calling centralized recipient resolution API for institute: {} with {} recipients",
+                request.getInstituteId(), request.getRecipients().size());
+
+        if (request.getInstituteId() == null || request.getInstituteId().isBlank() ||
+            request.getRecipients() == null || request.getRecipients().isEmpty()) {
+            return new vacademy.io.notification_service.features.announcements.dto.PaginatedUserIdResponse(
+                new ArrayList<>(), 0, 1000, 0, 0, false, false, true, true);
+        }
+
+        try {
+            String url = adminCoreServiceBaseUrl + "/admin-core-service/v1/recipient-resolution/centralized";
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<vacademy.io.notification_service.features.announcements.dto.CentralizedRecipientResolutionRequest> entity =
+                new HttpEntity<>(request, headers);
+
+            ResponseEntity<vacademy.io.notification_service.features.announcements.dto.PaginatedUserIdResponse> response =
+                restTemplate.exchange(url, HttpMethod.POST, entity,
+                    new ParameterizedTypeReference<vacademy.io.notification_service.features.announcements.dto.PaginatedUserIdResponse>() {});
+
+            vacademy.io.notification_service.features.announcements.dto.PaginatedUserIdResponse result = response.getBody();
+            if (result == null) {
+                return new vacademy.io.notification_service.features.announcements.dto.PaginatedUserIdResponse(
+                    new ArrayList<>(), request.getPageNumber(), request.getPageSize(), 0, 0, false, false, true, true);
+            }
+
+            log.debug("Centralized resolution returned {} users (page {}/{}, total: {})",
+                    result.getUserIds().size(), result.getPageNumber() + 1, result.getTotalPages(), result.getTotalElements());
+
+            return result;
+
+        } catch (Exception e) {
+            log.error("Error calling centralized recipient resolution API for institute: {}", request.getInstituteId(), e);
+            return new vacademy.io.notification_service.features.announcements.dto.PaginatedUserIdResponse(
+                new ArrayList<>(), request.getPageNumber(), request.getPageSize(), 0, 0, false, false, true, true);
         }
     }
 }

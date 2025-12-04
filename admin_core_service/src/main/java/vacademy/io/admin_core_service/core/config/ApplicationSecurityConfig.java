@@ -64,7 +64,9 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/v1/students/by-package-session",
             "/admin-core-service/v1/users/by-package-session-org-roles",
             "/admin-core-service/v1/users/by-custom-field-filters",
-            "/admin-core-service/v1/users/by-custom-field-filters/**"
+            "/admin-core-service/v1/users/by-custom-field-filters/**",
+            // Centralized recipient resolution API
+            "/admin-core-service/v1/recipient-resolution/centralized"
     };
     @Autowired
     JwtAuthFilter jwtAuthFilter;

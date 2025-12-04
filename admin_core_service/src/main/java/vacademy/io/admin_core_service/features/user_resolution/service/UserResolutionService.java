@@ -8,7 +8,6 @@ import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -62,31 +61,30 @@ public class UserResolutionService {
     @Transactional(readOnly = true)
     public List<String> getStudentUserIdsByPackageSessions(List<String> packageSessionIds) {
         log.debug("Resolving students for {} package sessions", packageSessionIds.size());
-
+        
         if (packageSessionIds == null || packageSessionIds.isEmpty()) {
             return List.of();
         }
-
+        
         try {
             Set<String> userIds = new HashSet<>(); // Use Set to avoid duplicates
-
+            
             // Get students for each package session
             for (String packageSessionId : packageSessionIds) {
                 List<String> studentIds = studentRepository.findDistinctUserIdsByPackageSessionAndStatus(
-                        packageSessionId,
+                        packageSessionId, 
                         List.of("ACTIVE") // Active status
                 );
                 userIds.addAll(studentIds);
             }
-
+            
             List<String> result = List.copyOf(userIds);
             log.debug("Found {} unique students across {} package sessions", result.size(), packageSessionIds.size());
             return result;
-
+            
         } catch (Exception e) {
             log.error("Error getting students by package sessions", e);
             throw new RuntimeException("Failed to get students by package sessions: " + e.getMessage(), e);
         }
     }
-
 }

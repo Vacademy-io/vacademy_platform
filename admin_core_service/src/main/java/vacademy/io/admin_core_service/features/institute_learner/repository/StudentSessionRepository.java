@@ -139,10 +139,6 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
             @Param("statusList") List<String> statusList
     );
 
-    /**
-     * Get paginated user IDs by package session and org roles - for notification service
-     */
-
     List<StudentSessionInstituteGroupMapping> findByDestinationPackageSession_IdInAndUserIdAndStatusIn(
             List<String> destinationPackageSessionIds,
             String userId,

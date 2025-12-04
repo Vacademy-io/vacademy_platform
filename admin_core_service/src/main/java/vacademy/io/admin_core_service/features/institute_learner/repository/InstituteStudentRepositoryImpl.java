@@ -72,7 +72,8 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
                 up.enroll_invite_id AS enrollInviteId,
                 ssigm.desired_level_id AS desiredLevelId,
                 ssigm.sub_org_id AS subOrgId,
-                sub_org.name AS subOrgName
+                sub_org.name AS subOrgName,
+                ssigm.comma_separated_org_roles AS commaSeparatedOrgRoles
             FROM student s
             JOIN student_session_institute_group_mapping ssigm
                 ON s.user_id = ssigm.user_id
@@ -124,7 +125,7 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
                      s.parents_to_mother_email, ssigm.institute_enrollment_number,
                      ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, 
                      ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ssigm.desired_level_id,
-                     ssigm.sub_org_id, sub_org.name
+                     ssigm.sub_org_id, sub_org.name, ssigm.comma_separated_org_roles
             """;
 
     @Override

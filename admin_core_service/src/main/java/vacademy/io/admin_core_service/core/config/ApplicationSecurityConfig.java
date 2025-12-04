@@ -61,8 +61,6 @@ public class ApplicationSecurityConfig {
             // communication
             "/admin-core-service/v1/faculty/by-package-sessions",
             "/admin-core-service/v1/students/by-package-sessions",
-            "/admin-core-service/v1/students/by-package-session",
-            "/admin-core-service/v1/users/by-package-session-org-roles",
             "/admin-core-service/v1/users/by-custom-field-filters",
             "/admin-core-service/v1/users/by-custom-field-filters/**",
             // Centralized recipient resolution API

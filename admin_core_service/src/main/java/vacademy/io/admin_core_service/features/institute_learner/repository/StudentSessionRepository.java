@@ -2,8 +2,6 @@ package vacademy.io.admin_core_service.features.institute_learner.repository;
 
 
 import jakarta.transaction.Transactional;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.CrudRepository;
@@ -144,41 +142,6 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
     /**
      * Get paginated user IDs by package session and org roles - for notification service
      */
-    @Query(value = """
-    SELECT DISTINCT s.user_id
-    FROM student_session_institute_group_mapping s
-    WHERE s.package_session_id = :packageSessionId
-      AND s.status IN (:statusList)
-      AND s.comma_separated_org_roles IS NOT NULL
-      AND s.comma_separated_org_roles != ''
-      AND EXISTS (
-        SELECT 1 FROM unnest(string_to_array(s.comma_separated_org_roles, ',')) AS role
-        WHERE trim(role) = ANY(string_to_array(:commaSeparatedOrgRoles, ','))
-      )
-    ORDER BY s.user_id
-    """, nativeQuery = true)
-    Page<String> findDistinctUserIdsByPackageSessionOrgRolesAndStatus(
-            @Param("packageSessionId") String packageSessionId,
-            @Param("commaSeparatedOrgRoles") String commaSeparatedOrgRoles,
-            @Param("statusList") List<String> statusList,
-            Pageable pageable
-    );
-
-    /**
-     * Get paginated user IDs by package session - for scalable student resolution
-     */
-    @Query(value = """
-    SELECT DISTINCT s.user_id
-    FROM student_session_institute_group_mapping s
-    WHERE s.package_session_id = :packageSessionId
-      AND s.status IN (:statusList)
-    ORDER BY s.user_id
-    """, nativeQuery = true)
-    Page<String> findDistinctUserIdsByPackageSessionAndStatus(
-            @Param("packageSessionId") String packageSessionId,
-            @Param("statusList") List<String> statusList,
-            Pageable pageable
-    );
 
     List<StudentSessionInstituteGroupMapping> findByDestinationPackageSession_IdInAndUserIdAndStatusIn(
             List<String> destinationPackageSessionIds,

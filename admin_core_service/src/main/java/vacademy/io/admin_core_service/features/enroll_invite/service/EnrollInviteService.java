@@ -208,6 +208,17 @@ public class EnrollInviteService {
         return buildFullEnrollInviteDTO(enrollInvite, instituteId);
     }
 
+    public boolean findDefaultEnrollInviteByPackageSessionId(String packageSessionId) {
+        EnrollInvite enrollInvite = repository.findLatestForPackageSessionWithFilters(
+                        packageSessionId,
+                        List.of(StatusEnum.ACTIVE.name()),
+                        List.of(EnrollInviteTag.DEFAULT.name()),
+                        List.of(StatusEnum.ACTIVE.name()))
+                .orElseThrow(() -> new VacademyException(
+                        "Default EnrollInvite not found for package session: " + packageSessionId));
+        return true;
+    }
+
     /**
      * Finds default EnrollInvite by package session ID without throwing exception
      * Returns Optional.empty() if no default enroll invite is found

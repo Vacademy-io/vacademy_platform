@@ -1528,6 +1528,9 @@ public class CourseApprovalService {
             // Get all ACTIVE package sessions for the course
             List<PackageSession> packageSessions = packageSessionRepository.findByPackageEntityId(course.getId());
             for(PackageSession packageSession : packageSessions){
+                if (!packageSession.getStatus().equalsIgnoreCase(PackageSessionStatusEnum.ACTIVE.name())){
+                    continue;
+                }
                 if (!checkDefaultEnrollInviteExists(packageSession.getId())){
                     defaultEnrollInviteService.createDefaultEnrollInvite(packageSession, instituteId);
                 }

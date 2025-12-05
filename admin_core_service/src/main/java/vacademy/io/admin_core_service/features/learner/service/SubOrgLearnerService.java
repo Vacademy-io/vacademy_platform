@@ -478,7 +478,11 @@ public class SubOrgLearnerService {
         List<UserDTO>userDTOS = authService.getUsersFromAuthServiceByUserIds(userIds);
         UserDTO admin =  authService.getUsersFromAuthServiceByUserIds(List.of(userDetails.getUserId())).get(0);
         for(UserDTO userDTO:userDTOS){
-            triggerEnrollmentWorkflow(instituteId,userDTO,packageSessionId,admin);
+            Map<String, Object> contextData = new HashMap<>();
+            contextData.put("user", userDTO);
+            contextData.put("packageSessionIds", packageSessionId);
+            contextData.put("admin",admin);
+            workflowTriggerService.handleTriggerEvents(WorkflowTriggerEvent.SUB_ORG_MEMBER_TERMINATION.name(),packageSessionId,instituteId,contextData);
         }
     }
 

@@ -22,6 +22,12 @@ import java.util.List;
 public class UserPlanDTO {
 
     private String id;
+    
+    /**
+     * User ID - Always present for both USER and SUB_ORG sources
+     * - For source=USER: The individual user who enrolled
+     * - For source=SUB_ORG: The individual learner within the sub-organization
+     */
     private String userId;
 
     private String paymentPlanId;
@@ -33,9 +39,18 @@ public class UserPlanDTO {
     private String enrollInviteId;
 
     private String paymentOptionId;
-    private String paymentOptionJson;
+    private String paymentOptionJson;    private String status;
 
-    private String status;
+    /**
+     * Source of the user plan: USER or SUB_ORG
+     */
+    private String source;
+
+    /**
+     * Sub-organization (Institute) details when source=SUB_ORG and subOrgId is not null
+     * Contains: id, name, address of the Institute
+     */
+    private SubOrgDetailsDTO subOrgDetails;
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

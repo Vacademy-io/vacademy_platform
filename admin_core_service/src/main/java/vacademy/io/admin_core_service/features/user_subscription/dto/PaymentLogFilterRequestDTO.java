@@ -27,10 +27,13 @@ public class PaymentLogFilterRequestDTO {
 
     private List<String> enrollInviteIds;
 
-    private List<String> paymentStatuses;
-
-    private Map<String, String> sortColumns;
+    private List<String> paymentStatuses;    private Map<String, String> sortColumns;
 
     private List<String> userPlanStatuses;
+
+    /**
+     * Filter by UserPlan source: List of sources (USER, SUB_ORG)
+     */
+    private List<String> sources;
 }
 

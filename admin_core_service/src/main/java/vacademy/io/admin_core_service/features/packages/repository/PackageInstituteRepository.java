@@ -10,4 +10,6 @@ import java.util.Optional;
 public interface PackageInstituteRepository extends JpaRepository<PackageInstitute, String> {
     @Query("SELECT pi FROM PackageInstitute pi WHERE pi.packageEntity.id = :packageId AND pi.instituteEntity.id = :instituteId")
     Optional<PackageInstitute> findByPackageIdAndInstituteId(@Param("packageId") String packageId, @Param("instituteId") String instituteId);
+
+    Optional<PackageInstitute> findTopByPackageEntity_IdOrderByCreatedAtDesc(String packageId);
 }

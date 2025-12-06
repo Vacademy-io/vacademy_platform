@@ -2,6 +2,8 @@ package vacademy.io.admin_core_service.features.institute_learner.repository;
 
 
 import jakarta.transaction.Transactional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.CrudRepository;
@@ -167,6 +169,73 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
         @Param("packageSessionId") String packageSessionId,
         @Param("instituteId") String instituteId,
         @Param("status") String status
-    );
+    );    /**
+     * Get student stats with user type classification (NEW_USER vs RETAINER) with pagination support
+     * Optimized query with LEFT JOIN for better performance
+     * Returns ONE ROW PER USER with GROUP BY
+     */
+    @Query(value = "WITH user_mappings AS ( " +
+            "    SELECT " +
+            "        curr.user_id, " +
+            "        ARRAY_AGG(DISTINCT curr.package_session_id) AS package_session_ids, " +
+            "        MAX(curr.comma_separated_org_roles) AS comma_separated_org_roles, " +
+            "        MIN(curr.created_at) AS created_at, " +
+            "        CASE " +
+            "            WHEN MAX(CASE WHEN prev.user_id IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN 'RETAINER' " +
+            "            ELSE 'NEW_USER' " +
+            "        END AS user_type " +
+            "    FROM student_session_institute_group_mapping curr " +
+            "    LEFT JOIN student_session_institute_group_mapping prev " +
+            "        ON prev.user_id = curr.user_id " +
+            "        AND prev.institute_id = :instituteId " +
+            "        AND prev.status = 'ACTIVE' " +
+            "        AND prev.created_at < :startDate " +
+            "    WHERE curr.institute_id = :instituteId " +
+            "        AND curr.status = 'ACTIVE' " +
+            "        AND curr.created_at BETWEEN :startDate AND :endDate " +
+            "        AND (:packageSessionSize = 0 OR curr.package_session_id IN (:packageSessionIds)) " +
+            "    GROUP BY curr.user_id " +
+            ") " +
+            "SELECT " +
+            "    um.user_id, " +
+            "    um.user_type, " +
+            "    um.package_session_ids, " +
+            "    um.comma_separated_org_roles, " +
+            "    um.created_at " +
+            "FROM user_mappings um " +
+            "WHERE (:userTypeSize = 0 OR um.user_type IN (:userTypes)) ",
 
+            countQuery = "WITH user_mappings AS ( " +
+                    "    SELECT " +
+                    "        curr.user_id, " +
+                    "        CASE " +
+                    "            WHEN MAX(CASE WHEN prev.user_id IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN 'RETAINER' " +
+                    "            ELSE 'NEW_USER' " +
+                    "        END AS user_type " +
+                    "    FROM student_session_institute_group_mapping curr " +
+                    "    LEFT JOIN student_session_institute_group_mapping prev " +
+                    "        ON prev.user_id = curr.user_id " +
+                    "        AND prev.institute_id = :instituteId " +
+                    "        AND prev.status = 'ACTIVE' " +
+                    "        AND prev.created_at < :startDate " +
+                    "    WHERE curr.institute_id = :instituteId " +
+                    "        AND curr.status = 'ACTIVE' " +
+                    "        AND curr.created_at BETWEEN :startDate AND :endDate " +
+                    "        AND (:packageSessionSize = 0 OR curr.package_session_id IN (:packageSessionIds)) " +
+                    "    GROUP BY curr.user_id " +
+                    ") " +
+                    "SELECT COUNT(*) " +
+                    "FROM user_mappings um " +
+                    "WHERE (:userTypeSize = 0 OR um.user_type IN (:userTypes)) ",
+            nativeQuery = true)
+    Page<Object[]> findUserStatsWithTypePaginated(
+            @Param("instituteId") String instituteId,
+            @Param("startDate") Date startDate,
+            @Param("endDate") Date endDate,
+            @Param("packageSessionIds") List<String> packageSessionIds,
+            @Param("packageSessionSize") int packageSessionSize,
+            @Param("userTypes") List<String> userTypes,
+            @Param("userTypeSize") int userTypeSize,
+            Pageable pageable
+    );
 }

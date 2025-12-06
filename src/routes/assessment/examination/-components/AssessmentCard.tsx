@@ -23,7 +23,10 @@ import {
 import { useState, useEffect } from "react";
 import dayjs from "dayjs";
 import { restartAssessment } from "../-utils.ts/useFetchRestartAssessment";
-import { storeAssessmentInfo, fetchPreviewData } from "../-utils.ts/useFetchAssessment";
+import {
+  storeAssessmentInfo,
+  fetchPreviewData,
+} from "../-utils.ts/useFetchAssessment";
 import { formatDuration } from "@/constants/helper";
 import { toast } from "sonner";
 
@@ -51,10 +54,10 @@ export const AssessmentCard = ({
   const [showSurveyConfirmDialog, setShowSurveyConfirmDialog] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
 
-
   const handleClosePopup = () => setShowPopup(false);
   const handleCloseRestartDialog = () => setShowRestartDialog(false);
-  const handleCloseSurveyConfirmDialog = () => setShowSurveyConfirmDialog(false);
+  const handleCloseSurveyConfirmDialog = () =>
+    setShowSurveyConfirmDialog(false);
 
   const handleSurveyConfirm = async () => {
     try {
@@ -90,12 +93,12 @@ export const AssessmentCard = ({
       const max_posible_attempts =
         assessmentInfo.user_attempts !== 0
           ? assessmentInfo.user_attempts
-          : (assessmentInfo.assessment_attempts ?? 1);
+          : assessmentInfo.assessment_attempts ?? 1;
       const total_given_attempts = assessmentInfo.created_attempts ?? 0;
 
       if ((max_posible_attempts ?? 1) > total_given_attempts) {
         storeAssessmentInfo(assessmentInfo);
-        
+
         // For Survey assessments, show confirmation dialog
         if (assessmentInfo.play_mode === "SURVEY") {
           setShowSurveyConfirmDialog(true);
@@ -109,7 +112,7 @@ export const AssessmentCard = ({
       }
     } else {
       storeAssessmentInfo(assessmentInfo);
-      
+
       // For Survey assessments, show confirmation dialog
       if (assessmentInfo.play_mode === "SURVEY") {
         setShowSurveyConfirmDialog(true);
@@ -172,9 +175,9 @@ export const AssessmentCard = ({
       const max_posible_attempts =
         assessmentInfo.user_attempts !== 0
           ? assessmentInfo.user_attempts
-          : (assessmentInfo.assessment_attempts ?? 1);
+          : assessmentInfo.assessment_attempts ?? 1;
       const total_given_attempts = assessmentInfo.created_attempts ?? 0;
-      
+
       if ((max_posible_attempts ?? 1) > total_given_attempts) {
         return "Join Assessment";
       } else {
@@ -182,6 +185,14 @@ export const AssessmentCard = ({
       }
     }
     return "Join Assessment";
+  };
+
+  const handleAttemptEligibility = () => {
+    const label = getButtonLabel();
+    if (label === "Ended") {
+      return true;
+    }
+    return false;
   };
 
   // const getButtonLabel = () => {
@@ -212,7 +223,10 @@ export const AssessmentCard = ({
 
   return (
     <>
-      <Card className="w-full p-4 sm:p-6 space-y-4 sm:space-y-6" onClick={handleOpen}>
+      <Card
+        className="w-full p-4 sm:p-6 space-y-4 sm:space-y-6"
+        onClick={handleOpen}
+      >
         <h2 className="text-base sm:text-sm lg:text-base font-semibold break-words">
           {assessmentInfo.name}
         </h2>
@@ -246,17 +260,18 @@ export const AssessmentCard = ({
                     </div>
                   </>
                 )}
-                {assessmentInfo.duration && assessmentInfo.play_mode !== "SURVEY" && (
-                  <div>
-                    Duration: {formatDuration(assessmentInfo.duration * 60)}
-                  </div>
-                )}
+                {assessmentInfo.duration &&
+                  assessmentInfo.play_mode !== "SURVEY" && (
+                    <div>
+                      Duration: {formatDuration(assessmentInfo.duration * 60)}
+                    </div>
+                  )}
                 <div>
                   Attempts: {assessmentInfo.created_attempts ?? 0} /{" "}
                   {assessmentInfo.user_attempts !== 0 &&
                   assessmentInfo.user_attempts !== null
                     ? assessmentInfo.user_attempts
-                    : (assessmentInfo.assessment_attempts ?? 0)}
+                    : assessmentInfo.assessment_attempts ?? 0}
                 </div>
               </div>
             )}
@@ -281,7 +296,7 @@ export const AssessmentCard = ({
                   buttonType="secondary"
                   className="w-full max-w-xs md:w-[200px] lg:w-[300px]"
                   onClick={handleAction}
-                  disabled={assessmentInfo.recent_attempt_status === "ENDED"}
+                  disabled={handleAttemptEligibility()}
                 >
                   {getButtonLabel()}
                 </MyButton>
@@ -301,9 +316,9 @@ export const AssessmentCard = ({
                         assessmentId: assessmentInfo.assessment_id,
                         attemptId: assessmentInfo.last_attempt_id ?? "",
                       },
-                      state: { 
+                      state: {
                         playMode: assessmentInfo.play_mode,
-                        assessmentInfo: assessmentInfo
+                        assessmentInfo: assessmentInfo,
                       } as any,
                     })
                   }
@@ -324,7 +339,8 @@ export const AssessmentCard = ({
             </DialogTitle>
           </DialogHeader>
           <DialogDescription className="text-gray-700">
-            The assessment is not live currently. You can appear for the assessment when it goes live.
+            The assessment is not live currently. You can appear for the
+            assessment when it goes live.
           </DialogDescription>
         </DialogContent>
       </Dialog>
@@ -369,16 +385,17 @@ export const AssessmentCard = ({
             <AlertDialogTitle>Start Survey</AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogDescription className="text-gray-700">
-            Are you ready to start filling out the survey? Once you begin, you can complete it at your own pace.
+            Are you ready to start filling out the survey? Once you begin, you
+            can complete it at your own pace.
           </AlertDialogDescription>
           <AlertDialogFooter className="flex justify-end gap-3 mt-4">
-            <MyButton buttonType="secondary" onClick={handleCloseSurveyConfirmDialog}>
+            <MyButton
+              buttonType="secondary"
+              onClick={handleCloseSurveyConfirmDialog}
+            >
               Cancel
             </MyButton>
-            <MyButton
-              buttonType="primary"
-              onClick={handleSurveyConfirm}
-            >
+            <MyButton buttonType="primary" onClick={handleSurveyConfirm}>
               Start Survey
             </MyButton>
           </AlertDialogFooter>

@@ -17,6 +17,7 @@ import { Route as SignupIndexRouteImport } from './routes/signup/index'
 import { Route as RegisterIndexRouteImport } from './routes/register/index'
 import { Route as ReferralIndexRouteImport } from './routes/referral/index'
 import { Route as PrivacyPolicyIndexRouteImport } from './routes/privacy-policy/index'
+import { Route as PlanningIndexRouteImport } from './routes/planning/index'
 import { Route as MyFilesIndexRouteImport } from './routes/my-files/index'
 import { Route as LogoutIndexRouteImport } from './routes/logout/index'
 import { Route as LoginIndexRouteImport } from './routes/login/index'
@@ -34,6 +35,8 @@ import { Route as UserProfileEditIndexRouteImport } from './routes/user-profile/
 import { Route as StudyLibraryLiveClassIndexRouteImport } from './routes/study-library/live-class/index'
 import { Route as StudyLibraryCoursesIndexRouteImport } from './routes/study-library/courses/index'
 import { Route as RegisterLiveClassIndexRouteImport } from './routes/register/live-class/index'
+import { Route as PlanningPlanningLogsIndexRouteImport } from './routes/planning/planning-logs/index'
+import { Route as PlanningActivityLogsIndexRouteImport } from './routes/planning/activity-logs/index'
 import { Route as LoginForgotPasswordIndexRouteImport } from './routes/login/forgot-password/index'
 import { Route as LiveClassGuestWaitingRoomIndexRouteImport } from './routes/live-class-guest/waiting-room/index'
 import { Route as LiveClassGuestEmbedIndexRouteImport } from './routes/live-class-guest/embed/index'
@@ -100,6 +103,11 @@ const ReferralIndexRoute = ReferralIndexRouteImport.update({
 const PrivacyPolicyIndexRoute = PrivacyPolicyIndexRouteImport.update({
   id: '/privacy-policy/',
   path: '/privacy-policy/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PlanningIndexRoute = PlanningIndexRouteImport.update({
+  id: '/planning/',
+  path: '/planning/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MyFilesIndexRoute = MyFilesIndexRouteImport.update({
@@ -190,6 +198,18 @@ const RegisterLiveClassIndexRoute = RegisterLiveClassIndexRouteImport.update({
   path: '/register/live-class/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PlanningPlanningLogsIndexRoute =
+  PlanningPlanningLogsIndexRouteImport.update({
+    id: '/planning/planning-logs/',
+    path: '/planning/planning-logs/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const PlanningActivityLogsIndexRoute =
+  PlanningActivityLogsIndexRouteImport.update({
+    id: '/planning/activity-logs/',
+    path: '/planning/activity-logs/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const LoginForgotPasswordIndexRoute =
   LoginForgotPasswordIndexRouteImport.update({
     id: '/login/forgot-password/',
@@ -364,6 +384,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginIndexRoute
   '/logout': typeof LogoutIndexRoute
   '/my-files': typeof MyFilesIndexRoute
+  '/planning': typeof PlanningIndexRoute
   '/privacy-policy': typeof PrivacyPolicyIndexRoute
   '/referral': typeof ReferralIndexRoute
   '/register': typeof RegisterIndexRoute
@@ -386,6 +407,8 @@ export interface FileRoutesByFullPath {
   '/live-class-guest/embed': typeof LiveClassGuestEmbedIndexRoute
   '/live-class-guest/waiting-room': typeof LiveClassGuestWaitingRoomIndexRoute
   '/login/forgot-password': typeof LoginForgotPasswordIndexRoute
+  '/planning/activity-logs': typeof PlanningActivityLogsIndexRoute
+  '/planning/planning-logs': typeof PlanningPlanningLogsIndexRoute
   '/register/live-class': typeof RegisterLiveClassIndexRoute
   '/study-library/courses': typeof StudyLibraryCoursesIndexRoute
   '/study-library/live-class': typeof StudyLibraryLiveClassIndexRoute
@@ -418,6 +441,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginIndexRoute
   '/logout': typeof LogoutIndexRoute
   '/my-files': typeof MyFilesIndexRoute
+  '/planning': typeof PlanningIndexRoute
   '/privacy-policy': typeof PrivacyPolicyIndexRoute
   '/referral': typeof ReferralIndexRoute
   '/register': typeof RegisterIndexRoute
@@ -440,6 +464,8 @@ export interface FileRoutesByTo {
   '/live-class-guest/embed': typeof LiveClassGuestEmbedIndexRoute
   '/live-class-guest/waiting-room': typeof LiveClassGuestWaitingRoomIndexRoute
   '/login/forgot-password': typeof LoginForgotPasswordIndexRoute
+  '/planning/activity-logs': typeof PlanningActivityLogsIndexRoute
+  '/planning/planning-logs': typeof PlanningPlanningLogsIndexRoute
   '/register/live-class': typeof RegisterLiveClassIndexRoute
   '/study-library/courses': typeof StudyLibraryCoursesIndexRoute
   '/study-library/live-class': typeof StudyLibraryLiveClassIndexRoute
@@ -473,6 +499,7 @@ export interface FileRoutesById {
   '/login/': typeof LoginIndexRoute
   '/logout/': typeof LogoutIndexRoute
   '/my-files/': typeof MyFilesIndexRoute
+  '/planning/': typeof PlanningIndexRoute
   '/privacy-policy/': typeof PrivacyPolicyIndexRoute
   '/referral/': typeof ReferralIndexRoute
   '/register/': typeof RegisterIndexRoute
@@ -495,6 +522,8 @@ export interface FileRoutesById {
   '/live-class-guest/embed/': typeof LiveClassGuestEmbedIndexRoute
   '/live-class-guest/waiting-room/': typeof LiveClassGuestWaitingRoomIndexRoute
   '/login/forgot-password/': typeof LoginForgotPasswordIndexRoute
+  '/planning/activity-logs/': typeof PlanningActivityLogsIndexRoute
+  '/planning/planning-logs/': typeof PlanningPlanningLogsIndexRoute
   '/register/live-class/': typeof RegisterLiveClassIndexRoute
   '/study-library/courses/': typeof StudyLibraryCoursesIndexRoute
   '/study-library/live-class/': typeof StudyLibraryLiveClassIndexRoute
@@ -529,6 +558,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/logout'
     | '/my-files'
+    | '/planning'
     | '/privacy-policy'
     | '/referral'
     | '/register'
@@ -551,6 +581,8 @@ export interface FileRouteTypes {
     | '/live-class-guest/embed'
     | '/live-class-guest/waiting-room'
     | '/login/forgot-password'
+    | '/planning/activity-logs'
+    | '/planning/planning-logs'
     | '/register/live-class'
     | '/study-library/courses'
     | '/study-library/live-class'
@@ -583,6 +615,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/logout'
     | '/my-files'
+    | '/planning'
     | '/privacy-policy'
     | '/referral'
     | '/register'
@@ -605,6 +638,8 @@ export interface FileRouteTypes {
     | '/live-class-guest/embed'
     | '/live-class-guest/waiting-room'
     | '/login/forgot-password'
+    | '/planning/activity-logs'
+    | '/planning/planning-logs'
     | '/register/live-class'
     | '/study-library/courses'
     | '/study-library/live-class'
@@ -637,6 +672,7 @@ export interface FileRouteTypes {
     | '/login/'
     | '/logout/'
     | '/my-files/'
+    | '/planning/'
     | '/privacy-policy/'
     | '/referral/'
     | '/register/'
@@ -659,6 +695,8 @@ export interface FileRouteTypes {
     | '/live-class-guest/embed/'
     | '/live-class-guest/waiting-room/'
     | '/login/forgot-password/'
+    | '/planning/activity-logs/'
+    | '/planning/planning-logs/'
     | '/register/live-class/'
     | '/study-library/courses/'
     | '/study-library/live-class/'
@@ -692,6 +730,7 @@ export interface RootRouteChildren {
   LoginIndexRoute: typeof LoginIndexRoute
   LogoutIndexRoute: typeof LogoutIndexRoute
   MyFilesIndexRoute: typeof MyFilesIndexRoute
+  PlanningIndexRoute: typeof PlanningIndexRoute
   PrivacyPolicyIndexRoute: typeof PrivacyPolicyIndexRoute
   ReferralIndexRoute: typeof ReferralIndexRoute
   RegisterIndexRoute: typeof RegisterIndexRoute
@@ -714,6 +753,8 @@ export interface RootRouteChildren {
   LiveClassGuestEmbedIndexRoute: typeof LiveClassGuestEmbedIndexRoute
   LiveClassGuestWaitingRoomIndexRoute: typeof LiveClassGuestWaitingRoomIndexRoute
   LoginForgotPasswordIndexRoute: typeof LoginForgotPasswordIndexRoute
+  PlanningActivityLogsIndexRoute: typeof PlanningActivityLogsIndexRoute
+  PlanningPlanningLogsIndexRoute: typeof PlanningPlanningLogsIndexRoute
   RegisterLiveClassIndexRoute: typeof RegisterLiveClassIndexRoute
   StudyLibraryCoursesIndexRoute: typeof StudyLibraryCoursesIndexRoute
   StudyLibraryLiveClassIndexRoute: typeof StudyLibraryLiveClassIndexRoute
@@ -789,6 +830,13 @@ declare module '@tanstack/react-router' {
       path: '/privacy-policy'
       fullPath: '/privacy-policy'
       preLoaderRoute: typeof PrivacyPolicyIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/planning/': {
+      id: '/planning/'
+      path: '/planning'
+      fullPath: '/planning'
+      preLoaderRoute: typeof PlanningIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/my-files/': {
@@ -908,6 +956,20 @@ declare module '@tanstack/react-router' {
       path: '/register/live-class'
       fullPath: '/register/live-class'
       preLoaderRoute: typeof RegisterLiveClassIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/planning/planning-logs/': {
+      id: '/planning/planning-logs/'
+      path: '/planning/planning-logs'
+      fullPath: '/planning/planning-logs'
+      preLoaderRoute: typeof PlanningPlanningLogsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/planning/activity-logs/': {
+      id: '/planning/activity-logs/'
+      path: '/planning/activity-logs'
+      fullPath: '/planning/activity-logs'
+      preLoaderRoute: typeof PlanningActivityLogsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login/forgot-password/': {
@@ -1116,6 +1178,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginIndexRoute: LoginIndexRoute,
   LogoutIndexRoute: LogoutIndexRoute,
   MyFilesIndexRoute: MyFilesIndexRoute,
+  PlanningIndexRoute: PlanningIndexRoute,
   PrivacyPolicyIndexRoute: PrivacyPolicyIndexRoute,
   ReferralIndexRoute: ReferralIndexRoute,
   RegisterIndexRoute: RegisterIndexRoute,
@@ -1138,6 +1201,8 @@ const rootRouteChildren: RootRouteChildren = {
   LiveClassGuestEmbedIndexRoute: LiveClassGuestEmbedIndexRoute,
   LiveClassGuestWaitingRoomIndexRoute: LiveClassGuestWaitingRoomIndexRoute,
   LoginForgotPasswordIndexRoute: LoginForgotPasswordIndexRoute,
+  PlanningActivityLogsIndexRoute: PlanningActivityLogsIndexRoute,
+  PlanningPlanningLogsIndexRoute: PlanningPlanningLogsIndexRoute,
   RegisterLiveClassIndexRoute: RegisterLiveClassIndexRoute,
   StudyLibraryCoursesIndexRoute: StudyLibraryCoursesIndexRoute,
   StudyLibraryLiveClassIndexRoute: StudyLibraryLiveClassIndexRoute,

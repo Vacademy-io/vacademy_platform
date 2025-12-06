@@ -68,8 +68,8 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
                         >
                             <option value="Newest">Newest First</option>
                             <option value="Oldest">Oldest First</option>
-                            <option value="Popularity">Most Popular</option>
-                            <option value="Rating">Highest Rated</option>
+                            {/* <option value="Popularity">Most Popular</option>
+                            <option value="Rating">Highest Rated</option> */}
                         </select>
                         <ChevronDown
                             size={16}

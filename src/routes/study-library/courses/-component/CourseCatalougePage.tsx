@@ -104,14 +104,20 @@ const CourseCatalougePage: React.FC = () => {
     // Version key to trigger fetch only when filters are explicitly applied
     const [filtersVersion, setFiltersVersion] = useState(0);
 
-    const getSortParam = (sort: string) =>
-        sort === "Newest"
-            ? "created_at,desc"
-            : sort === "Oldest"
-                ? "created_at,asc"
-                : sort === "Rating"
-                    ? "rating,desc"
-                    : "created_at,desc";
+    const getSortPayload = (sort: string) => {
+        switch (sort) {
+            case "Newest":
+                return { createdAt: "DESC" };
+            case "Oldest":
+                return { createdAt: "ASC" };
+            // case "Popularity":
+            //     return { minPlanActualPrice: "ASC" };
+            // case "Rating":
+            //     return { rating: "DESC" };
+            default:
+                return { createdAt: "DESC" };
+        }
+    };
 
     const fetchCoursesForTab = useCallback(async (tabType: "ALL" | "PROGRESS" | "COMPLETED") => {
         if (import.meta.env.DEV) {
@@ -139,13 +145,13 @@ const CourseCatalougePage: React.FC = () => {
                     min_percentage_completed: 0,
                     max_percentage_completed: 0,
                     type: tabType,
+                    sort_columns: getSortPayload(sortOption),
                 },
                 {
                     params: {
                         instituteId,
                         page: pageByTab[tabType],
                         size: pageSize,
-                        sortBy: getSortParam(sortOption),
                     },
                     headers: {
                         accept: "*/*",
@@ -182,13 +188,13 @@ const CourseCatalougePage: React.FC = () => {
                             tag: selectedTags,
                             min_percentage_completed: 0,
                             max_percentage_completed: 0,
+                            sort_columns: getSortPayload(sortOption),
                         },
                         {
                             params: {
                                 instituteId,
                                 page: pageByTab[tabType],
                                 size: pageSize,
-                                sortBy: getSortParam(sortOption),
                             },
                             headers: {
                                 accept: "*/*",

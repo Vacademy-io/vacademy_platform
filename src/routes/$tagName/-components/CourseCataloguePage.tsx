@@ -37,7 +37,6 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   const [showIntroPage, setShowIntroPage] = useState(false);
   const [introCompleted, setIntroCompleted] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  const [isDesktop, setIsDesktop] = useState(false);
 
   // Check if user is authenticated and redirect to login if they are
   useEffect(() => {
@@ -68,34 +67,6 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
 
     checkAuthentication();
   }, [navigate]);
-
-  // Detect desktop viewport
-  useEffect(() => {
-    const checkIsDesktop = () => {
-      setIsDesktop(window.innerWidth >= 768); // md breakpoint
-    };
-
-    checkIsDesktop();
-    window.addEventListener('resize', checkIsDesktop);
-    return () => window.removeEventListener('resize', checkIsDesktop);
-  }, []);
-
-  // Apply global font settings only on desktop
-  useEffect(() => {
-    if (catalogueData?.globalSettings?.fonts?.enabled && isDesktop) {
-      const fonts = catalogueData.globalSettings.fonts;
-      const fontFamily = fonts.family || 'Poppins, sans-serif';
-      const fallback = fonts.fallback || 'Times New Roman';
-      const fontStack = `${fontFamily}, ${fallback}`;
-      
-      document.documentElement.style.setProperty('--app-font-family', fontStack);
-      document.body.style.fontFamily = fontStack;
-    } else if (!isDesktop) {
-      // Reset to default on mobile
-      document.documentElement.style.removeProperty('--app-font-family');
-      document.body.style.fontFamily = '';
-    }
-  }, [catalogueData, isDesktop]);
 
   // Fetch course catalogue data
   useEffect(() => {
@@ -152,6 +123,37 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     }
   }, [instituteId, tagName]);
 
+  useEffect(() => {
+    const fonts = catalogueData?.globalSettings?.fonts;
+  
+    if (!fonts?.enabled || !fonts?.family) {
+      document.body.style.fontFamily =
+        "'Figtree', system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+      return;
+    }
+  
+    const fontFamily = fonts.family.trim();
+    const primaryFont = fontFamily.split(",")[0].replace(/['"]/g, "").trim();
+  
+    // Create Google Fonts link
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(
+      primaryFont
+    )}:wght@300;400;500;600;700&display=swap`;
+  
+    // Append link only once
+    if (!document.querySelector(`link[href="${link.href}"]`)) {
+      document.head.appendChild(link);
+    }
+  
+    // Apply font exactly as specified in JSON
+    document.body.style.fontFamily = fontFamily;
+    document.documentElement.style.setProperty("--app-font-family", fontFamily);
+    
+    console.log("[CourseCataloguePage] Applied font:", fontFamily, "Primary font:", primaryFont);
+  }, [catalogueData]);
+  
   // Apply institute theme
   useEffect(() => {
     if (instituteThemeCode) {
@@ -270,16 +272,8 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     catalogueData: !!catalogueData
   });
 
-  // Get page padding from global settings, only apply on desktop
-  const pagePadding = catalogueData?.globalSettings?.layout?.pagePadding && isDesktop
-    ? catalogueData.globalSettings.layout.pagePadding
-    : undefined;
-
   return (
-    <div 
-      className="min-h-screen bg-white w-full pb-20 md:pb-0 pt-20 md:pt-0"
-      style={pagePadding ? { padding: pagePadding } : undefined}
-    >
+    <div className="min-h-screen bg-white w-full pb-20 md:pb-0  md:pt-0">
       {/* Intro Page - Show first if enabled and not completed */}
       {showIntroPage && catalogueData?.introPage && (
         <IntroPageComponent
@@ -372,7 +366,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
             mandatory: catalogueData.globalSettings.leadCollection.mandatory,
             inviteLink: catalogueData.globalSettings.leadCollection.inviteLink,
             formStyle: catalogueData.globalSettings.leadCollection.formStyle,
-            fields: catalogueData.globalSettings.leadCollection.fields as any[] || []
+            fields: catalogueData.globalSettings.leadCollection.fields || []
           }}
           instituteId={instituteId}
           mandatory={catalogueData.globalSettings.leadCollection.mandatory}
@@ -399,7 +393,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
             </button>}
             
             {/* Login Text */}
-            <div className="text-center">
+            <div className="text-center ">
               <span
                 onClick={handleIntroLogin}
                 className="cursor-pointer text-sm transition-colors"
@@ -410,7 +404,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
                   e.currentTarget.style.opacity = '1';
                 }}
               >
-                <span className="text-black">Already have an account? </span>
+                <span className="text-black">Already have an account?</span>
                 <span 
                   className="underline"
                   style={{

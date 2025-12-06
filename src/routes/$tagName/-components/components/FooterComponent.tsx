@@ -1,34 +1,14 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { FooterProps } from "../../-types/course-catalogue-types";
 import { CourseCatalogueData } from "../../-types/course-catalogue-types";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { RouteMatcher } from "../../-services/route-matcher";
-
-// Hook to detect if we're on desktop (md breakpoint and above)
-const useIsDesktop = () => {
-  const [isDesktop, setIsDesktop] = useState(false);
-
-  useEffect(() => {
-    const checkIsDesktop = () => {
-      setIsDesktop(window.innerWidth >= 768); // md breakpoint
-    };
-
-    checkIsDesktop();
-    window.addEventListener('resize', checkIsDesktop);
-    return () => window.removeEventListener('resize', checkIsDesktop);
-  }, []);
-
-  return isDesktop;
-};
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export const FooterComponent: React.FC<FooterProps & {
   catalogueData?: CourseCatalogueData;
   tagName?: string;
-  styles?: {
-    enabled?: boolean;
-    padding?: string;
-  };
 }> = ({
   layout,
   leftSection,
@@ -40,13 +20,14 @@ export const FooterComponent: React.FC<FooterProps & {
   socialsSection,
   bottomNote,
   catalogueData,
-  tagName = "home",
-  styles,
+  tagName = "home"
 }) => {
   const navigate = useNavigate();
   const domainRouting = useDomainRouting();
-  const isDesktop = useIsDesktop();
+  const isMobile = useIsMobile();
   
+  // Check if footer styles.enabled is true
+  const isFooterStylesEnabled = !!(catalogueData?.globalSettings?.layout?.footer?.styles?.enabled);
   
   // Helper function to handle footer link navigation
   const handleLinkNavigation = (route: string, openInSameTab: boolean = false) => {
@@ -163,24 +144,18 @@ export const FooterComponent: React.FC<FooterProps & {
     }
   };
 
-  // Get padding from styles if enabled, only apply on desktop (md and above)
-  const footerPadding = (styles?.enabled ?? false) && styles?.padding && isDesktop
-    ? styles.padding 
-    : undefined;
-
   return (
     <footer
       className="text-gray-800"
       style={{
         backgroundColor: domainRouting.instituteThemeCode ?
           `hsl(var(--primary-200))` :
-          '#e5e7eb' // gray-200 fallback
+          '#e5e7eb' ,// gray-200 fallback,
+        ...(isFooterStylesEnabled && !isMobile ? { padding: '5px 80px 5px 100px' } : {}),
       }}
+      
     >
-      <div 
-        className="w-full py-12"
-        style={footerPadding ? { padding: footerPadding } : undefined}
-      >
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-12">
         <div className={`grid ${getGridCols()} gap-8 lg:gap-12`}>
           {/* Left Section - Company Info */}
           <div className={layout === "four-column" ? "" : ""}>

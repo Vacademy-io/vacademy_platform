@@ -3,9 +3,11 @@ import { useEffect, useState } from 'react';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { getUserId } from '@/constants/getUserId';
-import { BASE_URL } from '@/constants/urls';
+import { getInstituteId } from '@/constants/helper';
+import { urlInstituteDetails } from '@/constants/urls';
 import { checkAdminAccess, AdminMappings } from '@/services/sub-organization-learner-management';
 import { toast } from 'sonner';
+import axios from 'axios';
 import { SubOrgLearnersComponent } from './-components/SubOrgLearnersComponent';
 
 export const Route = createFileRoute('/sub-org-learners/')({
@@ -20,8 +22,8 @@ function SubOrgLearnersPage() {
   const { setNavHeading } = useNavHeadingStore();
   const [hasAccess, setHasAccess] = useState<boolean>(false);
   const [adminMappings, setAdminMappings] = useState<AdminMappings[]>([]);
+  const [instituteDetails, setInstituteDetails] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [debugInfo, setDebugInfo] = useState<string>('');
 
   useEffect(() => {
     setNavHeading('Sub-Organization Learner Management');
@@ -39,12 +41,41 @@ function SubOrgLearnersPage() {
           return;
         }
 
+        // Get current user's institute ID
+        const currentInstituteId = await getInstituteId();
+        if (!currentInstituteId) {
+          toast.error('Institute ID not found');
+          setHasAccess(false);
+          setIsLoading(false);
+          return;
+        }
+
+        // Check admin access
         const response = await checkAdminAccess(userId);
+        const allMappings = response.admin_mappings || [];
 
-        const mappings = response.admin_mappings || [];
+        // Filter mappings by current user's institute ID
+        const filteredMappings = allMappings.filter(
+          (mapping) => mapping.institute_id === currentInstituteId
+        );
 
-        setAdminMappings(mappings);
-        setHasAccess(mappings.length > 0);
+        if (filteredMappings.length === 0) {
+          setHasAccess(false);
+          setIsLoading(false);
+          return;
+        }
+
+        // Fetch institute details to get package session names
+        try {
+          const instituteResponse = await axios.get(`${urlInstituteDetails}/${currentInstituteId}`);
+          setInstituteDetails(instituteResponse.data);
+        } catch (error) {
+          console.error('Error fetching institute details:', error);
+          // Continue even if institute details fetch fails
+        }
+
+        setAdminMappings(filteredMappings);
+        setHasAccess(true);
       } catch (error) {
         console.error('Error checking admin access:', error);
         toast.error('Failed to check access permissions');
@@ -86,5 +117,5 @@ function SubOrgLearnersPage() {
     );
   }
 
-  return <SubOrgLearnersComponent adminMappings={adminMappings} />;
+  return <SubOrgLearnersComponent adminMappings={adminMappings} instituteDetails={instituteDetails} />;
 }

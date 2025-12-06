@@ -32,11 +32,43 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
   catalogueData,
 }) => {
   const renderComponent = (component: any) => {
-    const { type, props, id, enabled = true } = component;
+    const { type, props, id, enabled = true, showCondition } = component;
 
     // Check if component is enabled
     if (!enabled) {
       return null;
+    }
+
+    // Check conditional rendering based on showCondition
+    if (showCondition) {
+      const { field, value } = showCondition;
+      // Support nested field paths like "globalSettings.courseCatalogeType.enabled"
+      // If field starts with "globalSettings.", remove it since we already have globalSettings
+      const fieldPath = field.startsWith('globalSettings.') ? field.substring('globalSettings.'.length) : field;
+      const fieldParts = fieldPath.split('.');
+      let currentValue: any = globalSettings;
+      
+      for (const part of fieldParts) {
+        if (currentValue && typeof currentValue === 'object' && part in currentValue) {
+          currentValue = currentValue[part];
+        } else {
+          currentValue = undefined;
+          break;
+        }
+      }
+      
+      // Normalize boolean values for comparison (handle both boolean true and string "true")
+      const normalizedCurrentValue = typeof currentValue === 'boolean' ? currentValue : currentValue;
+      const normalizedExpectedValue = typeof value === 'boolean' ? value : (value === 'true' || value === true);
+      
+      
+      // Check if condition matches
+      if (normalizedCurrentValue !== normalizedExpectedValue) {
+        console.log(`[JsonRenderer] Component ${id} HIDDEN - condition not met`);
+        return null;
+      }
+      
+      console.log(`[JsonRenderer] Component ${id} SHOWN - condition met`);
     }
 
     switch (type) {
@@ -49,7 +81,6 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             authLinks={props.authLinks}
             catalogueData={catalogueData}
             tagName={tagName}
-            styles={props.styles || component.styles}
           />
         );
       case "banner":
@@ -77,12 +108,19 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             {...props}
             catalogueData={catalogueData}
             tagName={tagName}
-            styles={component.styles}
           />
         );
       case "heroSection":
         return <HeroSectionComponent key={id} {...props} courseData={courseData} />;
       case "mediaShowcase":
+      case "MediaShowcaseComponent":
+        console.log(`[JsonRenderer] Rendering MediaShowcaseComponent ${id}:`, {
+          layout: props?.layout,
+          slidesLength: props?.slides?.length,
+          autoplay: props?.autoplay,
+          autoplayInterval: props?.autoplayInterval,
+          hasSlides: !!props?.slides
+        });
         return <MediaShowcaseComponent key={id} {...props} />;
       case "statsHighlights":
         return <StatsHighlightsComponent key={id} {...props} />;

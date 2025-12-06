@@ -167,6 +167,38 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
     }
   }, [instituteId, tagName]);
 
+  // Apply font from JSON if fonts.enabled is true
+  useEffect(() => {
+    const fonts = catalogueData?.globalSettings?.fonts;
+  
+    if (!fonts?.enabled || !fonts?.family) {
+      document.body.style.fontFamily =
+        "'Figtree', system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+      return;
+    }
+  
+    const fontFamily = fonts.family.trim();
+    const primaryFont = fontFamily.split(",")[0].replace(/['"]/g, "").trim();
+  
+    // Create Google Fonts link
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(
+      primaryFont
+    )}:wght@300;400;500;600;700&display=swap`;
+  
+    // Append link only once
+    if (!document.querySelector(`link[href="${link.href}"]`)) {
+      document.head.appendChild(link);
+    }
+  
+    // Apply font exactly as specified in JSON
+    document.body.style.fontFamily = fontFamily;
+    document.documentElement.style.setProperty("--app-font-family", fontFamily);
+    
+    console.log("[CourseDetailsPage] Applied font:", fontFamily, "Primary font:", primaryFont);
+  }, [catalogueData]);
+  
   // Fetch course details
   useEffect(() => {
     const fetchCourseDetails = async () => {
@@ -1125,7 +1157,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       )}
 
       {/* Mobile Action Buttons - Fixed at bottom for course details page */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 p-4">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-blue border-t border-gray-200 p-4" >
         <div className="flex flex-col gap-3">
           {/* Get Started Button */}
           <button

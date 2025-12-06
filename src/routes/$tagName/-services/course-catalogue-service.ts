@@ -29,7 +29,8 @@ export class CourseCatalogueService {
     
     // Process line by line to remove comments more effectively
     const lines = repaired.split('\n');
-    const cleanedLines = lines.map((line) => {
+    const cleanedLines = lines.map((line, index) => {
+      const originalLine = line;
       // Remove // comments from each line, but be careful not to remove // that are inside strings
       let cleanedLine = line;
       
@@ -114,14 +115,14 @@ export class CourseCatalogueService {
             value: ""
           },
           mode: "light",
-          fonts: {
+          fonts : {
             enabled: false,
-            family: "Poppins, sans-serif",
-            fallback: "Times New Roman"
-          },
-          layout: {
-            pagePadding: "0 20px"
-          },
+            family : "Mulish, sans-serif",
+            fallback: "Mulish, sans-serif" 
+            },
+            styles: {
+            enabled : false,
+            },
           compactness: "medium",
           audience: "all",
           leadCollection: {
@@ -165,16 +166,12 @@ export class CourseCatalogueService {
       
       // Check for multiStep
       if (jsonString.match(/leadCollection[^}]*type[^}]*multiStep/gi)) {
-        if (aggressiveData.globalSettings.leadCollection.formStyle) {
-          aggressiveData.globalSettings.leadCollection.formStyle.type = "multiStep";
-        }
+        aggressiveData.globalSettings.leadCollection.formStyle.type = "multiStep";
       }
       
       // Check for showProgress
       if (jsonString.match(/leadCollection[^}]*showProgress[^}]*true/gi)) {
-        if (aggressiveData.globalSettings.leadCollection.formStyle) {
-          aggressiveData.globalSettings.leadCollection.formStyle.showProgress = true;
-        }
+        aggressiveData.globalSettings.leadCollection.formStyle.showProgress = true;
       }
       
       // Try to extract fields using a very flexible approach
@@ -238,10 +235,8 @@ export class CourseCatalogueService {
       
       if (extractedFields.length > 0) {
         aggressiveData.globalSettings.leadCollection.fields = extractedFields;
-        if (aggressiveData.globalSettings.leadCollection.formStyle) {
-          aggressiveData.globalSettings.leadCollection.formStyle.type = "multiStep";
-          aggressiveData.globalSettings.leadCollection.formStyle.showProgress = true;
-        }
+        aggressiveData.globalSettings.leadCollection.formStyle.type = "multiStep";
+        aggressiveData.globalSettings.leadCollection.formStyle.showProgress = true;
       }
       
       return aggressiveData;
@@ -272,14 +267,6 @@ export class CourseCatalogueService {
               value: ""
             },
             mode: "light",
-            fonts: {
-              enabled: false,
-              family: "Poppins, sans-serif",
-              fallback: "Times New Roman"
-            },
-            layout: {
-              pagePadding: "0 20px"
-            },
             compactness: "medium",
             audience: "all",
             leadCollection: {
@@ -303,6 +290,7 @@ export class CourseCatalogueService {
               provider: "razorpay",
               fields: []
             }
+            
           },
           pages: []
         };
@@ -334,16 +322,16 @@ export class CourseCatalogueService {
           const progressTypeMatch = formStyleStr.match(/"progressType"\s*:\s*"([^"]+)"/);
           const transitionMatch = formStyleStr.match(/"transition"\s*:\s*"([^"]+)"/);
           
-          if (typeMatch && basicData.globalSettings.leadCollection.formStyle) {
+          if (typeMatch) {
             basicData.globalSettings.leadCollection.formStyle.type = typeMatch[1] as 'single' | 'multiStep';
           }
-          if (showProgressMatch && basicData.globalSettings.leadCollection.formStyle) {
+          if (showProgressMatch) {
             basicData.globalSettings.leadCollection.formStyle.showProgress = showProgressMatch[1] === 'true';
           }
-          if (progressTypeMatch && basicData.globalSettings.leadCollection.formStyle) {
+          if (progressTypeMatch) {
             basicData.globalSettings.leadCollection.formStyle.progressType = progressTypeMatch[1] as 'bar' | 'dots' | 'steps';
           }
-          if (transitionMatch && basicData.globalSettings.leadCollection.formStyle) {
+          if (transitionMatch) {
             basicData.globalSettings.leadCollection.formStyle.transition = transitionMatch[1] as 'slide' | 'fade';
           }
         }
@@ -552,14 +540,6 @@ export class CourseCatalogueService {
           value: ""
         },
         mode: "light",
-        fonts: {
-          enabled: false,
-          family: "Poppins, sans-serif",
-          fallback: "Times New Roman"
-        },
-        layout: {
-          pagePadding: "0 20px"
-        },
         compactness: "medium",
         audience: "all",
         leadCollection: {

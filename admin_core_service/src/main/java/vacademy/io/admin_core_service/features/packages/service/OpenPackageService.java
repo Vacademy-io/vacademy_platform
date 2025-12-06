@@ -43,14 +43,13 @@ public class OpenPackageService {
             int pageSize) {
 
         Sort thisSort = ListService.createSortObject(learnerPackageFilterDTO.getSortColumns());
-        Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);
-
-        Page<PackageDetailProjection> learnerPackageDetail = null;
+        Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);        Page<PackageDetailProjection> learnerPackageDetail = null;
         if (StringUtils.hasText(learnerPackageFilterDTO.getSearchByName())){
             learnerPackageDetail= packageRepository.getCatalogPackageDetail(
                     learnerPackageFilterDTO.getSearchByName(),
                     instituteId,
                     List.of(PackageStatusEnum.ACTIVE.name()),
+                    learnerPackageFilterDTO.getPackageTypes(),
                     List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
                     List.of(LevelStatusEnum.ACTIVE.name()),
                     List.of(StatusEnum.ACTIVE.name()),
@@ -60,12 +59,12 @@ public class OpenPackageService {
                     List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                     List.of(ChapterStatus.ACTIVE.name()),
                     pageable
-            );
-        }else{
+            );        }else{
             learnerPackageDetail= packageRepository.getOpenCatalogPackageDetail(
                     instituteId,
                     learnerPackageFilterDTO.getLevelIds(),
                     List.of(PackageStatusEnum.ACTIVE.name()),
+                    learnerPackageFilterDTO.getPackageTypes(),
                     List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
                     learnerPackageFilterDTO.getFacultyIds(),
                     List.of(StatusEnum.ACTIVE.name()),
@@ -121,7 +120,7 @@ public class OpenPackageService {
                     projection.getLevelName(),
                     instructors,
                     projection.getLevelIds(),
-                    projection.getReadTimeInMinutes()
+                    projection.getReadTimeInMinutes(),projection.getPackageType()
             );
         }).toList();
 
@@ -174,7 +173,8 @@ public class OpenPackageService {
                 projection.getLevelName(),
                 instructors,
                 projection.getLevelIds(),
-                getReadTimeInMinutes(packageId)
+                getReadTimeInMinutes(packageId),
+                projection.getPackageType()
         );
 
         return dto;
@@ -190,9 +190,7 @@ public class OpenPackageService {
         Sort thisSort = ListService.createSortObject(learnerPackageFilterDTO.getSortColumns());
         Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);
 
-        Page<PackageDetailV2Projection> learnerPackageDetail;
-
-        if (StringUtils.hasText(learnerPackageFilterDTO.getSearchByName())) {
+        Page<PackageDetailV2Projection> learnerPackageDetail;        if (StringUtils.hasText(learnerPackageFilterDTO.getSearchByName())) {
             // Corrected the argument order and passed null for unused filters
             learnerPackageDetail = packageRepository.getCatalogPackageDetailV2(
                     learnerPackageFilterDTO.getSearchByName(),
@@ -201,6 +199,7 @@ public class OpenPackageService {
                     List.of(StatusEnum.ACTIVE.name()),   // facultyPackageSessionStatus
                     null, // tags - not used in searchByName
                     List.of(PackageStatusEnum.ACTIVE.name()),
+                    learnerPackageFilterDTO.getPackageTypes(),
                     List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
                     List.of(LevelStatusEnum.ACTIVE.name()),
                     List.of(StatusEnum.ACTIVE.name()),   // ratingStatuses
@@ -213,13 +212,13 @@ public class OpenPackageService {
                     List.of(StatusEnum.ACTIVE.name()),   // paymentOptionStatus
                     List.of(StatusEnum.ACTIVE.name()),   // paymentPlanStatus
                     pageable
-            );
-        } else {
+            );        } else {
             // Corrected getTag() to getTags() to match List<String> type
             learnerPackageDetail = packageRepository.getOpenCatalogPackageDetailV2(
                     instituteId,
                     learnerPackageFilterDTO.getLevelIds(),
                     List.of(PackageStatusEnum.ACTIVE.name()),
+                    learnerPackageFilterDTO.getPackageTypes(),
                     List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
                     learnerPackageFilterDTO.getFacultyIds(),
                     List.of(StatusEnum.ACTIVE.name()),   // facultyPackageSessionStatus
@@ -280,6 +279,7 @@ public class OpenPackageService {
                     projection.getLevelName(),
                     instructors,
                     projection.getReadTimeInMinutes(),
+                    projection.getPackageType(),
                     projection.getEnrollInviteId(),
                     projection.getPaymentOptionId(),
                     projection.getPaymentOptionType(),

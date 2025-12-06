@@ -23,6 +23,7 @@ public interface PackageDetailV2Projection {
     String getCourseHtmlDescriptionHtml();
     Double getRating();
     Long getReadTimeInMinutes();
+    String getPackageType();
 
     // New v2 fields
     String getPackageSessionId();

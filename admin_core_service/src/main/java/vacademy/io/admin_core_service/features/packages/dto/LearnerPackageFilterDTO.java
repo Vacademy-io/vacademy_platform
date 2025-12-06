@@ -14,6 +14,7 @@ public class LearnerPackageFilterDTO {
     private List<String>status;
     private List<String>levelIds;
     private List<String>facultyIds;
+    private List<String>packageTypes;
     private String searchByName;
     private List<String>tag;
     private double minPercentageCompleted;

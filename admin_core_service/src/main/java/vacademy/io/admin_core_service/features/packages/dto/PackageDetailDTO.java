@@ -31,8 +31,8 @@ public class PackageDetailDTO {
     private Double rating;
     private String packageSessionId;
     private String levelId;
-    private String levelName;
-    private List<UserDTO> instructors;
+    private String levelName;    private List<UserDTO> instructors;
     private List<String>levelIds;
     private Long readTimeInMinutes;
+    private String packageType;
 }

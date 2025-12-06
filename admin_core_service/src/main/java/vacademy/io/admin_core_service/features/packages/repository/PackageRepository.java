@@ -180,6 +180,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             p.comma_separated_tags AS commaSeparetedTags,
             p.course_depth AS courseDepth,
             p.course_html_description AS courseHtmlDescriptionHtml,
+            p.package_type AS packageType,
             p.created_at AS createdAt,
             
             /* 1. Progress Calculation (Removed DISTINCT to ensure accuracy) */
@@ -274,6 +275,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
             AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
             AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
             AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
             AND (
                 :#{#facultyIds == null || #facultyIds.isEmpty()} = true
@@ -327,6 +329,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
                     AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
                     AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                     AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                     AND (
                         :#{#facultyIds == null || #facultyIds.isEmpty()} = true
@@ -358,6 +361,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("instituteId") String instituteId,
             @Param("levelIds") List<String> levelIds,
             @Param("packageStatus") List<String> packageStatus,
+            @Param("packageTypes") List<String> packageTypes,
             @Param("packageSessionStatus") List<String> packageSessionStatus,
             @Param("learnerOperations") List<String> learnerOperations,
             @Param("facultyIds") List<String> facultyIds,
@@ -387,6 +391,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             p.comma_separated_tags AS commaSeparetedTags,
             p.course_depth AS courseDepth,
             p.course_html_description AS courseHtmlDescriptionHtml,
+            p.package_type AS packageType,
             p.created_at AS createdAt,
             
             COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
@@ -477,6 +482,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             AND (:userId IS NULL OR lo.user_id = :userId)
             AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
             AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
             AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
             AND (
                 :name IS NULL OR
@@ -514,6 +520,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     AND (:userId IS NULL OR lo.user_id = :userId)
                     AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
                     AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                     AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                     AND (
                         :name IS NULL OR
@@ -534,6 +541,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("name") String name,
             @Param("instituteId") String instituteId,
             @Param("packageStatus") List<String> packageStatus,
+            @Param("packageTypes") List<String> packageTypes,
             @Param("packageSessionStatus") List<String> packageSessionStatus,
             @Param("learnerOperations") List<String> learnerOperations,
             @Param("facultySubjectSessionStatus") List<String> facultySubjectSessionStatus,
@@ -560,6 +568,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     p.comma_separated_tags AS commaSeparetedTags,
                     p.course_depth AS courseDepth,
                     p.course_html_description AS courseHtmlDescriptionHtml,
+            p.package_type AS packageType,
                     p.created_at AS createdAt,
                     COALESCE((
                         SELECT AVG(r.points)
@@ -645,6 +654,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     p.is_course_published_to_catalaouge = true
                     AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
                     AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                     AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                     AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
                     AND (
@@ -679,6 +689,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     p.is_course_published_to_catalaouge = true
                     AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
                     AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                     AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                     AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
                     AND (
@@ -696,6 +707,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("name") String name,
             @Param("instituteId") String instituteId,
             @Param("packageStatus") List<String> packageStatus,
+            @Param("packageTypes") List<String> packageTypes,
             @Param("packageSessionStatus") List<String> packageSessionStatus,
             @Param("levelStatus") List<String> levelStatus,
             @Param("facultySubjectSessionStatus") List<String> facultySubjectSessionStatus,
@@ -721,6 +733,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             p.comma_separated_tags AS commaSeparetedTags,
             p.course_depth AS courseDepth,
             p.course_html_description AS courseHtmlDescriptionHtml,
+            p.package_type AS packageType,
             p.created_at AS createdAt,
             SUM(COALESCE(ps_read_time.total_read_time_minutes, 0)) AS readTimeInMinutes,
             
@@ -814,6 +827,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
         WHERE
             (:instituteId IS NULL OR pi.institute_id = :instituteId)
             AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
             AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
             AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
             AND (
@@ -861,6 +875,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 WHERE
                     (:instituteId IS NULL OR pi.institute_id = :instituteId)
                     AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                     AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                     AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
                     AND (
@@ -890,6 +905,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("userIds") List<String> userIds,
             @Param("instituteId") String instituteId,
             @Param("packageStatus") List<String> packageStatus,
+            @Param("packageTypes") List<String> packageTypes,
             @Param("packageSessionStatus") List<String> packageSessionStatus,
             @Param("levelStatus") List<String> levelStatus,
             @Param("facultySubjectSessionStatus") List<String> facultySubjectSessionStatus,
@@ -915,6 +931,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
         p.comma_separated_tags AS commaSeparetedTags,
         p.course_depth AS courseDepth,
         p.course_html_description AS courseHtmlDescriptionHtml,
+            p.package_type AS packageType,
         p.created_at AS createdAt,
 
         -- ✅ Fixed and filtered AVG logic
@@ -990,6 +1007,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.comma_separated_tags AS commaSeparetedTags,
                 p.course_depth AS courseDepth,
                 p.course_html_description AS courseHtmlDescriptionHtml,
+            p.package_type AS packageType,
                 p.created_at AS createdAt,
                 0.0 AS percentageCompleted,
 
@@ -1086,6 +1104,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
                 AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
                 AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                 AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                 AND (
                     :#{#facultyIds == null || #facultyIds.isEmpty()} = true
@@ -1132,6 +1151,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
             AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
             AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
             AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
             AND (
                 :#{#facultyIds == null || #facultyIds.isEmpty()} = true
@@ -1157,6 +1177,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("instituteId") String instituteId,
             @Param("levelIds") List<String> levelIds,
             @Param("packageStatus") List<String> packageStatus,
+            @Param("packageTypes") List<String> packageTypes,
             @Param("packageSessionStatus") List<String> packageSessionStatus,
             @Param("facultyIds") List<String> facultyIds,
             @Param("facultyPackageSessionStatus") List<String> facultyPackageSessionStatus,
@@ -1184,6 +1205,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     p.comma_separated_tags AS commaSeparetedTags,
                     p.course_depth AS courseDepth,
                     p.course_html_description AS courseHtmlDescriptionHtml,
+            p.package_type AS packageType,
                     p.created_at AS createdAt,
                     COALESCE((
                         SELECT AVG(r.points)
@@ -1276,6 +1298,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
                     AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
                     AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                     AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                     AND (
                         :#{#facultyIds == null || #facultyIds.isEmpty()} = true
@@ -1321,6 +1344,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
                     AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
                     AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                     AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                     AND (
                         :#{#facultyIds == null || #facultyIds.isEmpty()} = true
@@ -1346,6 +1370,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("instituteId") String instituteId,
             @Param("levelIds") List<String> levelIds,
             @Param("packageStatus") List<String> packageStatus,
+            @Param("packageTypes") List<String> packageTypes,
             @Param("packageSessionStatus") List<String> packageSessionStatus,
             @Param("facultyIds") List<String> facultyIds,
             @Param("facultyPackageSessionStatus") List<String> facultyPackageSessionStatus,
@@ -1372,6 +1397,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
         p.comma_separated_tags AS commaSeparetedTags,
         p.course_depth AS courseDepth,
         p.course_html_description AS courseHtmlDescriptionHtml,
+            p.package_type AS packageType,
         p.created_at AS createdAt,
         
         COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
@@ -1477,6 +1503,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
         (:instituteId IS NULL OR pi.institute_id = :instituteId)
         AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
         AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
         AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
         AND (
             :#{#facultyIds == null || #facultyIds.isEmpty()} = true
@@ -1534,6 +1561,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             (:instituteId IS NULL OR pi.institute_id = :instituteId)
             AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
             AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
             AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
             AND (
                 :#{#facultyIds == null || #facultyIds.isEmpty()} = true
@@ -1563,6 +1591,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("instituteId") String instituteId,
             @Param("levelIds") List<String> levelIds,
             @Param("packageStatus") List<String> packageStatus,
+            @Param("packageTypes") List<String> packageTypes,
             @Param("packageSessionStatus") List<String> packageSessionStatus,
             @Param("learnerOperations") List<String> learnerOperations,
             @Param("facultyIds") List<String> facultyIds,
@@ -1591,6 +1620,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
         p.comma_separated_tags AS commaSeparetedTags,
         p.course_depth AS courseDepth,
         p.course_html_description AS courseHtmlDescriptionHtml,
+            p.package_type AS packageType,
         p.created_at AS createdAt,
         
         COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
@@ -1696,6 +1726,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
     WHERE
       (:instituteId IS NULL OR pi.institute_id = :instituteId)
       AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
       AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
       AND (
           :name IS NULL OR
@@ -1733,6 +1764,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
     WHERE
       (:instituteId IS NULL OR pi.institute_id = :instituteId)
       AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
       AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
       AND (
           :name IS NULL OR
@@ -1750,6 +1782,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("name") String name,
             @Param("instituteId") String instituteId,
             @Param("packageStatus") List<String> packageStatus,
+            @Param("packageTypes") List<String> packageTypes,
             @Param("packageSessionStatus") List<String> packageSessionStatus,
             @Param("learnerOperations") List<String> learnerOperations,
             @Param("facultySubjectSessionStatus") List<String> facultySubjectSessionStatus,
@@ -1776,6 +1809,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             p.comma_separated_tags AS commaSeparatedTags,
             p.course_depth AS courseDepth,
             p.course_html_description AS courseHtmlDescriptionHtml,
+            p.package_type AS packageType,
             p.created_at AS createdAt,
             
             /* 1. Calculate Progress */
@@ -1869,6 +1903,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
             AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
             AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
             AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
             AND (
                 :#{#facultyIds == null || #facultyIds.isEmpty()} = true
@@ -1919,6 +1954,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
                     AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
                     AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                     AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                     AND (
                         :#{#facultyIds == null || #facultyIds.isEmpty()} = true
@@ -1947,6 +1983,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("instituteId") String instituteId,
             @Param("levelIds") List<String> levelIds,
             @Param("packageStatus") List<String> packageStatus,
+            @Param("packageTypes") List<String> packageTypes,
             @Param("packageSessionStatus") List<String> packageSessionStatus,
             @Param("learnerOperations") List<String> learnerOperations,
             @Param("facultyIds") List<String> facultyIds,
@@ -1974,6 +2011,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             p.comma_separated_tags AS commaSeparetedTags,
             p.course_depth AS courseDepth,
             p.course_html_description AS courseHtmlDescriptionHtml,
+            p.package_type AS packageType,
             p.created_at AS createdAt,
             
             COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
@@ -2065,6 +2103,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             AND (:userId IS NULL OR lo.user_id = :userId)
             AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
             AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
             AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
             AND (
                 :name IS NULL OR
@@ -2104,6 +2143,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         AND (:userId IS NULL OR lo.user_id = :userId)
                         AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
                         AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                         AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                         AND (
                             :name IS NULL OR
@@ -2121,6 +2161,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("name") String name,
             @Param("instituteId") String instituteId,
             @Param("packageStatus") List<String> packageStatus,
+            @Param("packageTypes") List<String> packageTypes,
             @Param("packageSessionStatus") List<String> packageSessionStatus,
             @Param("learnerOperations") List<String> learnerOperations,
             @Param("facultySubjectSessionStatus") List<String> facultySubjectSessionStatus,
@@ -2351,6 +2392,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
         p.comma_separated_tags AS commaSeparetedTags,
         p.course_depth AS courseDepth,
         p.course_html_description AS courseHtmlDescriptionHtml,
+            p.package_type AS packageType,
         ps.id AS packageSessionId,
         l.id AS levelId,
         l.level_name AS levelName,
@@ -2440,6 +2482,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
         p.is_course_published_to_catalaouge = true
         AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
         AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
         AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
         AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
         AND (:name IS NULL OR LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')))
@@ -2477,6 +2520,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
         p.is_course_published_to_catalaouge = true
         AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
         AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
         AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
         AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
         AND (:name IS NULL OR LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')))
@@ -2501,6 +2545,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("facultyPackageSessionStatus") List<String> facultyPackageSessionStatus,
             @Param("tags") List<String> tags,
             @Param("packageStatus") List<String> packageStatus,
+            @Param("packageTypes") List<String> packageTypes,
             @Param("packageSessionStatus") List<String> packageSessionStatus,
             @Param("levelStatus") List<String> levelStatus,
             @Param("ratingStatuses") List<String> ratingStatuses,
@@ -2551,6 +2596,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
         p.comma_separated_tags AS commaSeparetedTags,
         p.course_depth AS courseDepth,
         p.course_html_description AS courseHtmlDescriptionHtml,
+            p.package_type AS packageType,
         p.created_at AS createdAt,
         ps.id AS packageSessionId,
         l.id AS levelId,
@@ -2661,6 +2707,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
         AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
         AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
         AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
         AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
         AND (:#{#tags == null || #tags.isEmpty()} = true OR string_to_array(p.comma_separated_tags, ',') && CAST(ARRAY[:tags] AS text[]))
         AND (
@@ -2700,6 +2747,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
         AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
         AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
         AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+            AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
         AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
         AND (:#{#tags == null || #tags.isEmpty()} = true OR string_to_array(p.comma_separated_tags, ',') && CAST(ARRAY[:tags] AS text[]))
         AND (
@@ -2720,6 +2768,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("instituteId") String instituteId,
             @Param("levelIds") List<String> levelIds,
             @Param("packageStatus") List<String> packageStatus,
+            @Param("packageTypes") List<String> packageTypes,
             @Param("packageSessionStatus") List<String> packageSessionStatus,
             @Param("facultyIds") List<String> facultyIds,
             @Param("facultyPackageSessionStatus") List<String> facultyPackageSessionStatus,

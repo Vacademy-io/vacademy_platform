@@ -8,7 +8,9 @@ import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 
+import java.sql.Timestamp;
 import java.time.LocalDateTime;
+import java.util.Date;
 import java.util.List;
 
 @AllArgsConstructor
@@ -18,14 +20,14 @@ import java.util.List;
 @Entity
 @Table(name = "user_plan")
 public class UserPlan {    @Id
-    @UuidGenerator
-    private String id;
+@UuidGenerator
+private String id;
 
     /**
      * User ID - ALWAYS required and preserved for data integrity
      * - For source=USER: The individual user who enrolled
      * - For source=SUB_ORG: The individual learner within the sub-organization
-     * 
+     *
      * This field is NEVER null, even for SUB_ORG enrollments.
      * It ensures we can always track which user a plan belongs to.
      */
@@ -100,4 +102,10 @@ public class UserPlan {    @Id
 
     @OneToMany(mappedBy = "userPlan", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<PaymentLog> paymentLogs;
+
+    @Column(name = "start_date")
+    private Timestamp startDate;
+
+    @Column(name = "end_date")
+    private Timestamp endDate;
 }

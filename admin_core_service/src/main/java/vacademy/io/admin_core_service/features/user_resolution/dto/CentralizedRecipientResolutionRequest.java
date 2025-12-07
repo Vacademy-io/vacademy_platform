@@ -68,9 +68,11 @@ public class CentralizedRecipientResolutionRequest {
         @NoArgsConstructor
         public static class CustomFieldFilter {
 
-            private String fieldName;
+            private String customFieldId; // Preferred way to identify custom field
+            private String fieldName; // Fallback for backward compatibility
             private String fieldValue;
             private String operator = "equals"; // equals, contains, not_equals, etc.
         }
     }
 }
+

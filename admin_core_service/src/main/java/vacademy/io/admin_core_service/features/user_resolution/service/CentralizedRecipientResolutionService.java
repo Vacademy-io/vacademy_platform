@@ -32,6 +32,18 @@ public class CentralizedRecipientResolutionService {
         log.info("Starting centralized recipient resolution for institute: {} with {} recipients",
                 request.getInstituteId(), request.getRecipients().size());
 
+        // Debug: Log all recipients and their exclusions
+        for (CentralizedRecipientResolutionRequest.RecipientWithExclusions recipient : request.getRecipients()) {
+            log.info("Recipient: type={}, id={}, exclusions={}",
+                    recipient.getRecipientType(), recipient.getRecipientId(),
+                    recipient.getExclusions() != null ? recipient.getExclusions().size() : 0);
+            if (recipient.getExclusions() != null) {
+                for (var exclusion : recipient.getExclusions()) {
+                    log.info("  Exclusion: type={}, id={}", exclusion.getExclusionType(), exclusion.getExclusionId());
+                }
+            }
+        }
+
         try {
             // Build the main query with UNION of all recipient fragments
             String mainQuery = buildMainQuery(request);
@@ -236,29 +248,49 @@ public class CentralizedRecipientResolutionService {
      */
     private String applyExclusions(String baseQuery, List<CentralizedRecipientResolutionRequest.RecipientWithExclusions.Exclusion> exclusions) {
         if (exclusions == null || exclusions.isEmpty()) {
+            log.debug("No exclusions to apply");
             return baseQuery;
         }
 
-        StringBuilder query = new StringBuilder("SELECT DISTINCT base_query.user_id FROM (");
-        query.append(baseQuery).append(") as base_query ");
-        query.append("WHERE NOT EXISTS (");
+        log.info("Applying {} exclusions to base query", exclusions.size());
 
-        List<String> exclusionConditions = new ArrayList<>();
-        for (CentralizedRecipientResolutionRequest.RecipientWithExclusions.Exclusion exclusion : exclusions) {
-            String exclusionQuery = buildExclusionQuery(exclusion);
-            if (exclusionQuery != null) {
-                exclusionConditions.add("base_query.user_id IN (" + exclusionQuery + ")");
+        // For simple base queries, we can use NOT IN
+        // For complex queries with subqueries, we need a different approach
+        if (baseQuery.contains("SELECT DISTINCT") && !baseQuery.contains("(")) {
+            // Simple query like "SELECT DISTINCT user_id FROM table WHERE ..."
+            List<String> exclusionQueries = new ArrayList<>();
+            for (CentralizedRecipientResolutionRequest.RecipientWithExclusions.Exclusion exclusion : exclusions) {
+                String exclusionQuery = buildExclusionQuery(exclusion);
+                log.debug("Built exclusion query: {}", exclusionQuery);
+                if (exclusionQuery != null) {
+                    exclusionQueries.add(exclusionQuery);
+                }
+            }
+
+            if (!exclusionQueries.isEmpty()) {
+                String exclusionUnion = String.join(" UNION ", exclusionQueries);
+                return baseQuery + " AND user_id NOT IN (" + exclusionUnion + ")";
+            }
+        } else {
+            // Complex query with subqueries - use LEFT JOIN approach
+            log.debug("Using LEFT JOIN approach for complex query");
+            List<String> exclusionConditions = new ArrayList<>();
+            for (CentralizedRecipientResolutionRequest.RecipientWithExclusions.Exclusion exclusion : exclusions) {
+                String exclusionQuery = buildExclusionQuery(exclusion);
+                if (exclusionQuery != null) {
+                    exclusionConditions.add("SELECT user_id FROM (" + exclusionQuery + ") as excl_sub");
+                }
+            }
+
+            if (!exclusionConditions.isEmpty()) {
+                String exclusionUnion = String.join(" UNION ", exclusionConditions);
+                return "SELECT DISTINCT base_query.user_id FROM (" + baseQuery + ") as base_query " +
+                       "LEFT JOIN (" + exclusionUnion + ") as exclusions ON base_query.user_id = exclusions.user_id " +
+                       "WHERE exclusions.user_id IS NULL";
             }
         }
 
-        if (exclusionConditions.isEmpty()) {
-            return baseQuery; // No valid exclusions
-        }
-
-        query.append(String.join(" OR ", exclusionConditions));
-        query.append(")");
-
-        return query.toString();
+        return baseQuery;
     }
 
     /**
@@ -283,29 +315,48 @@ public class CentralizedRecipientResolutionService {
      * Build condition for custom field filter
      */
     private String buildCustomFieldCondition(CentralizedRecipientResolutionRequest.RecipientWithExclusions.CustomFieldFilter filter) {
+        String customFieldId = filter.getCustomFieldId();
         String fieldName = filter.getFieldName();
         String fieldValue = filter.getFieldValue();
         String operator = filter.getOperator() != null ? filter.getOperator().toLowerCase() : "equals";
 
-        if (fieldName == null || fieldValue == null) {
+        if (fieldValue == null) {
             return null;
         }
 
-        String escapedFieldName = fieldName.replace("'", "''");
+        // Use customFieldId if available (preferred), otherwise use fieldName
+        String fieldCondition;
         String escapedFieldValue = fieldValue.replace("'", "''");
+
+        if (customFieldId != null && !customFieldId.trim().isEmpty()) {
+            // Use custom field ID for more precise filtering
+            String escapedCustomFieldId = customFieldId.replace("'", "''");
+            fieldCondition = "cf.custom_field_id = '" + escapedCustomFieldId + "'";
+        } else if (fieldName != null && !fieldName.trim().isEmpty()) {
+            // Fallback to field name
+            String escapedFieldName = fieldName.replace("'", "''");
+            fieldCondition = "cf.field_name = '" + escapedFieldName + "'";
+        } else {
+            log.warn("Custom field filter missing both customFieldId and fieldName");
+            return null;
+        }
 
         switch (operator) {
             case "equals":
-                return "cf.field_name = '" + escapedFieldName + "' AND cf.field_value = '" + escapedFieldValue + "'";
+                return fieldCondition + " AND cf.field_value = '" + escapedFieldValue + "'";
             case "not_equals":
-                return "cf.field_name = '" + escapedFieldName + "' AND cf.field_value != '" + escapedFieldValue + "'";
+                return fieldCondition + " AND cf.field_value != '" + escapedFieldValue + "'";
             case "contains":
-                return "cf.field_name = '" + escapedFieldName + "' AND cf.field_value LIKE '%" + escapedFieldValue + "%'";
+                return fieldCondition + " AND cf.field_value LIKE '%" + escapedFieldValue + "%'";
             case "not_contains":
-                return "cf.field_name = '" + escapedFieldName + "' AND cf.field_value NOT LIKE '%" + escapedFieldValue + "%'";
+                return fieldCondition + " AND cf.field_value NOT LIKE '%" + escapedFieldValue + "%'";
+            case "startswith":
+                return fieldCondition + " AND cf.field_value LIKE '" + escapedFieldValue + "%'";
+            case "endswith":
+                return fieldCondition + " AND cf.field_value LIKE '%" + escapedFieldValue + "'";
             default:
-                log.warn("Unknown custom field operator: {}", operator);
-                return null;
+                log.warn("Unknown custom field operator: {}, defaulting to equals", operator);
+                return fieldCondition + " AND cf.field_value = '" + escapedFieldValue + "'";
         }
     }
 

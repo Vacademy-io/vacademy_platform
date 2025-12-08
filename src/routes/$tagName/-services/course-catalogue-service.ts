@@ -110,14 +110,26 @@ export class CourseCatalogueService {
       // Create a basic structure
       const aggressiveData: CourseCatalogueData = {
         globalSettings: {
+          courseCatalogeType: {
+            enabled: false,
+            value: ""
+          },
           mode: "light",
+          fonts : {
+            enabled: false,
+            family : "Mulish, sans-serif",
+            fallback: "Mulish, sans-serif" 
+            },
+            styles: {
+            enabled : false,
+            },
           compactness: "medium",
           audience: "all",
           leadCollection: {
             enabled: false,
             mandatory: false,
             inviteLink: null,
-            formStyle: {
+            formStyle : {
               type: "single",
               showProgress: false,
               progressType: "bar",
@@ -249,34 +261,40 @@ export class CourseCatalogueService {
       
       // Create a basic structure
       const basicData: CourseCatalogueData = {
-        globalSettings: {
-          mode: "light",
-          compactness: "medium",
-          audience: "all",
-          leadCollection: {
-            enabled: false,
-            mandatory: false,
-            inviteLink: null,
-            formStyle: {
-              type: "single",
-              showProgress: false,
-              progressType: "bar",
-              transition: "slide"
+          globalSettings: {
+            courseCatalogeType: {
+              enabled: false,
+              value: ""
             },
-            fields: []
+            mode: "light",
+            compactness: "medium",
+            audience: "all",
+            leadCollection: {
+              enabled: false,
+              mandatory: false,
+              inviteLink: null,
+              formStyle: {
+                type: "single",
+                showProgress: false,
+                progressType: "bar",
+                transition: "slide"
+              },
+              fields: []
+            },
+            enrquiry: {
+              enabled: true,
+              requirePayment: false
+            },
+            payment: {
+              enabled: true,
+              provider: "razorpay",
+              fields: []
+            }
+            
           },
-          enrquiry: {
-            enabled: true,
-            requirePayment: false
-          },
-          payment: {
-            enabled: true,
-            provider: "razorpay",
-            fields: []
-          }
-        },
-        pages: []
-      };
+          pages: []
+        };
+        
       
       // Try to extract leadCollection settings - use more flexible regex
       const leadCollectionMatch = jsonString.match(/"leadCollection"\s*:\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/);
@@ -517,6 +535,10 @@ export class CourseCatalogueService {
   private static getEmptyCatalogueData(): CourseCatalogueData {
     return {
       globalSettings: {
+        courseCatalogeType: {
+          enabled: false,
+          value: ""
+        },
         mode: "light",
         compactness: "medium",
         audience: "all",

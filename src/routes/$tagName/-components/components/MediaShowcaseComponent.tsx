@@ -1,10 +1,24 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect ,useMemo} from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 
 interface MediaItem {
   type: "image" | "video";
   url: string;
   caption: string;
+}
+
+interface Slide {
+  backgroundImage: string;
+  heading: string;
+  description: string;
+  button?: {
+    enabled: boolean;
+    text: string;
+    action: "navigate" | "enroll" | "openLeadCollection";
+    target: string;
+    backgroundColor?: string;
+  };
 }
 
 interface MediaItemComponentProps {
@@ -15,7 +29,6 @@ interface MediaItemComponentProps {
 const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEdges }) => {
   // Initialize with placeholder to prevent flickering
   const [resolvedUrl, setResolvedUrl] = useState<string>("/api/placeholder/400/300");
-  const [loading, setLoading] = useState(false);
   const [hasTriedLoading, setHasTriedLoading] = useState(false);
 
   useEffect(() => {
@@ -35,14 +48,12 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
           item.url === 'null' ||
           item.url === 'undefined') {
         if (isMounted) {
-          setLoading(false);
           setResolvedUrl("/api/placeholder/400/300");
           setHasTriedLoading(true);
         }
         return;
       }
 
-      setLoading(true);
       try {
         const url = await getPublicUrlWithoutLogin(item.url);
         if (isMounted) {
@@ -54,10 +65,6 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
         if (isMounted) {
           setResolvedUrl("/api/placeholder/400/300");
           setHasTriedLoading(true);
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
         }
       }
     };
@@ -117,36 +124,157 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
 };
 
 interface MediaShowcaseProps {
-  headerText: string;
-  description: string;
-  media: MediaItem[];
-  layout: "carousel" | "grid";
+  // Legacy props for backward compatibility
+  headerText?: string;
+  description?: string;
+  media?: MediaItem[];
+  layout?: "carousel" | "grid" | "slider";
   styles?: {
     backgroundColor?: string;
     roundedEdges?: boolean;
   };
+  // New slider props
+  slides?: Slide[];
+  autoplay?: boolean;
+  autoplayInterval?: number;
 }
 
 export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
   headerText,
   description,
   media,
-  layout,
+  layout = "carousel",
   styles = {},
+  slides,
+  autoplay = false,
+  autoplayInterval = 3000,
 }) => {
+  const navigate = useNavigate();
   const {
     backgroundColor = "#f0f9ff",
     roundedEdges = true,
   } = styles;
 
+  // Determine which format to use
+  const isSliderFormat = layout === "slider" && slides && slides.length > 0;
+  const mediaToUse = !isSliderFormat && media ? media : [];
+
+  // Debug logging
+  useEffect(() => {
+    console.log("[MediaShowcaseComponent] Component mounted/updated:", {
+      layout,
+      slidesLength: slides?.length,
+      isSliderFormat,
+      autoplay,
+      autoplayInterval,
+      hasSlides: !!slides,
+      slidesArray: slides
+    });
+  }, [layout, slides, isSliderFormat, autoplay, autoplayInterval]);
+
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [resolvedSlideImages, setResolvedSlideImages] = useState<{ [key: number]: string }>({});
+
+  // Reset currentIndex when slides change
+  useEffect(() => {
+    if (isSliderFormat && slides && slides.length > 0) {
+      setCurrentIndex(0);
+    }
+  }, [isSliderFormat, slides?.length]);
+
+  // Resolve slide background images
+  useEffect(() => {
+    if (!isSliderFormat || !slides || slides.length === 0) return;
+
+    const resolveImages = async () => {
+      const resolved: { [key: number]: string } = {};
+      
+      for (let i = 0; i < slides.length; i++) {
+        const slide = slides[i];
+        if (!slide.backgroundImage) continue;
+
+        // Check if it's a URL or file ID
+        if (slide.backgroundImage.startsWith('http://') || slide.backgroundImage.startsWith('https://')) {
+          resolved[i] = slide.backgroundImage;
+        } else {
+          try {
+            const url = await getPublicUrlWithoutLogin(slide.backgroundImage);
+            resolved[i] = url;
+          } catch (error) {
+            console.error(`Error loading slide ${i} image:`, error);
+            resolved[i] = slide.backgroundImage; // Fallback to original
+          }
+        }
+      }
+      
+      setResolvedSlideImages(resolved);
+    };
+
+    resolveImages();
+  }, [isSliderFormat, slides]);
+
+  // Autoplay functionality
+  useEffect(() => {
+    if (!isSliderFormat || !autoplay || !slides || slides.length <= 1) {
+      return;
+    }
+
+    console.log("[MediaShowcaseComponent] Starting autoplay:", {
+      autoplay,
+      autoplayInterval,
+      slidesLength: slides.length,
+      resolvedImagesCount: Object.keys(resolvedSlideImages).length
+    });
+
+    const interval = setInterval(() => {
+      setCurrentIndex((prev) => {
+        const next = (prev + 1) % slides.length;
+        console.log("[MediaShowcaseComponent] Autoplay advancing:", { prev, next });
+        return next;
+      });
+    }, autoplayInterval);
+
+    return () => {
+      console.log("[MediaShowcaseComponent] Clearing autoplay interval");
+      clearInterval(interval);
+    };
+  }, [isSliderFormat, autoplay, autoplayInterval, slides?.length]);
 
   const nextSlide = () => {
-    setCurrentIndex((prev) => (prev + 1) % media.length);
+    if (isSliderFormat && slides) {
+      setCurrentIndex((prev) => (prev + 1) % slides.length);
+    } else {
+      setCurrentIndex((prev) => (prev + 1) % mediaToUse.length);
+    }
   };
 
   const prevSlide = () => {
-    setCurrentIndex((prev) => (prev - 1 + media.length) % media.length);
+    if (isSliderFormat && slides) {
+      setCurrentIndex((prev) => (prev - 1 + slides.length) % slides.length);
+    } else {
+      setCurrentIndex((prev) => (prev - 1 + mediaToUse.length) % mediaToUse.length);
+    }
+  };
+
+  const handleButtonClick = (button: Slide['button']) => {
+    if (!button || !button.enabled) return;
+
+    switch (button.action) {
+      case "navigate":
+        if (button.target) {
+          navigate({ to: button.target });
+        }
+        break;
+      case "openLeadCollection":
+        window.dispatchEvent(new CustomEvent('openLeadCollection'));
+        break;
+      case "enroll":
+        // Handle enroll action if needed
+        console.log("Enroll action triggered");
+        break;
+      default:
+        break;
+    }
   };
 
   const renderMediaItem = (item: MediaItem, index: number) => {
@@ -159,6 +287,189 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
     );
   };
 
+  // Render slider format
+  if (isSliderFormat && slides && slides.length > 0) {
+    // Calculate transform: each slide takes 100/slides.length % of the container
+    // So to move to slide N, we move by N * (100/slides.length)%
+    const slideWidthPercent = 100 / slides.length;
+    const transformPercent = currentIndex * slideWidthPercent;
+    
+    console.log("[MediaShowcaseComponent] ✅ Rendering SLIDER format:", {
+      currentIndex,
+      slidesLength: slides.length,
+      resolvedImagesCount: Object.keys(resolvedSlideImages).length,
+      slideWidthPercent: slideWidthPercent.toFixed(2),
+      transformPercent: transformPercent.toFixed(2),
+      transform: `translateX(-${transformPercent.toFixed(2)}%)`,
+      containerWidth: `${slides.length * 100}%`,
+      slideWidth: `${slideWidthPercent.toFixed(2)}%`,
+      slides: slides.map((s, i) => ({
+        index: i,
+        heading: s.heading,
+        hasBackground: !!s.backgroundImage,
+        resolvedUrl: resolvedSlideImages[i] || s.backgroundImage
+      }))
+    });
+    
+    const sliderStyle = useMemo(() => ({
+      transform: `translateX(-${transformPercent}%)`,
+      width: `${slides.length * 100}%`,
+      display: 'flex',
+      transition: 'transform 500ms ease-in-out',
+      willChange: 'transform'
+    }), [currentIndex, slides.length, transformPercent]);
+    
+    
+    return (
+      <section className="w-full relative" style={{ width: '100%', overflow: 'hidden' }}>
+        <div 
+          className="relative overflow-hidden" 
+          style={{ 
+            height: "500px", 
+            width: "100%",
+            position: 'relative'
+          }}
+        >
+         <div className="flex h-full" style={sliderStyle}>
+
+            {slides.map((slide, index) => {
+              const backgroundUrl = resolvedSlideImages[index] || slide.backgroundImage || "/api/placeholder/1920/500";
+              
+              return (
+                <div
+                  key={index}
+                  className="flex-shrink-0 h-full relative"
+                  style={{
+                    width: `calc(100% / ${slides.length})`,
+                    minWidth: `calc(100% / ${slides.length})`,
+                    maxWidth: `calc(100% / ${slides.length})`,
+                    flexBasis: `calc(100% / ${slides.length})`,
+                    backgroundImage: backgroundUrl ? `url(${backgroundUrl})` : 'none',
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                    backgroundRepeat: "no-repeat",
+                    backgroundColor: backgroundUrl ? 'transparent' : '#1f2937',
+                    position: 'relative'
+                  }}
+                >
+                  {/* Overlay for better text readability */}
+                  <div 
+                    className="absolute inset-0" 
+                    style={{ 
+                      backgroundColor: 'rgba(0, 0, 0, 0.4)',
+                      zIndex: 1,
+                      pointerEvents: 'none'
+                    }}
+                  ></div>
+                  
+                  {/* Content */}
+                  <div 
+                    className="absolute inset-0 h-full w-full flex flex-col items-center justify-center text-center px-4 sm:px-6 lg:px-8"
+                    style={{ 
+                      zIndex: 10,
+                      pointerEvents: 'auto'
+                    }}
+                  >
+                    {slide.heading && (
+                      <h2 
+                        className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-4 max-w-4xl" 
+                        style={{ 
+                          textShadow: '2px 2px 8px rgba(0,0,0,0.9), 0 0 20px rgba(0,0,0,0.5)',
+                          lineHeight: '1.2'
+                        }}
+                      >
+                        {slide.heading}
+                      </h2>
+                    )}
+                    {slide.description && (
+                      <p 
+                        className="text-lg sm:text-xl text-white mb-6 max-w-2xl" 
+                        style={{ 
+                          textShadow: '1px 1px 6px rgba(0,0,0,0.9), 0 0 15px rgba(0,0,0,0.5)',
+                          lineHeight: '1.6'
+                        }}
+                      >
+                        {slide.description}
+                      </p>
+                    )}
+                    {slide.button && slide.button.enabled && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleButtonClick(slide.button);
+                        }}
+                        className="px-6 py-3 sm:px-8 sm:py-4 text-base sm:text-lg font-semibold text-white rounded-md hover:opacity-90 transition-opacity shadow-lg cursor-pointer"
+                        style={{
+                          backgroundColor: slide.button.backgroundColor || "#2563eb",
+                          zIndex: 20,
+                          position: 'relative'
+                        }}
+                      >
+                        {slide.button.text}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Navigation Buttons */}
+          {slides.length > 1 && (
+            <>
+              <button
+                onClick={prevSlide}
+                className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-white bg-opacity-80 hover:bg-opacity-100 text-gray-800 p-2 sm:p-3 rounded-full shadow-lg transition-all z-20"
+                aria-label="Previous slide"
+              >
+                <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <button
+                onClick={nextSlide}
+                className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-white bg-opacity-80 hover:bg-opacity-100 text-gray-800 p-2 sm:p-3 rounded-full shadow-lg transition-all z-20"
+                aria-label="Next slide"
+              >
+                <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </>
+          )}
+
+          {/* Dots Indicator */}
+          {slides.length > 1 && (
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-2 z-20">
+              {slides.map((_, index) => (
+                <button
+                  key={index}
+                  onClick={() => setCurrentIndex(index)}
+                  className={`w-2 h-2 sm:w-3 sm:h-3 rounded-full transition-all ${
+                    index === currentIndex
+                      ? "bg-white"
+                      : "bg-white bg-opacity-50 hover:bg-opacity-75"
+                  }`}
+                  aria-label={`Go to slide ${index + 1}`}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  // Render legacy format (carousel/grid)
+  console.log("[MediaShowcaseComponent] ⚠️ Rendering LEGACY format (not slider):", {
+    layout,
+    isSliderFormat,
+    hasSlides: !!slides,
+    slidesLength: slides?.length,
+    hasMedia: !!media,
+    mediaLength: media?.length
+  });
+  
   return (
     <section
       className={`w-full py-12 ${roundedEdges ? "rounded-lg" : ""}`}
@@ -166,14 +477,18 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
     >
       <div className="container mx-auto px-4">
         {/* Header */}
-        <div className="text-center mb-8">
-          <h2 className="text-3xl font-bold text-gray-900 mb-4">
-            {headerText}
-          </h2>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            {description}
-          </p>
-        </div>
+        {headerText && (
+          <div className="text-center mb-8">
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">
+              {headerText}
+            </h2>
+            {description && (
+              <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+                {description}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Media Content */}
         {layout === "carousel" ? (
@@ -183,7 +498,7 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
                 className="flex transition-transform duration-300 ease-in-out"
                 style={{ transform: `translateX(-${currentIndex * 100}%)` }}
               >
-                {media.map((item, index) => (
+                {mediaToUse.map((item, index) => (
                   <div key={index} className="w-full flex-shrink-0 px-2">
                     {renderMediaItem(item, index)}
                   </div>
@@ -192,7 +507,7 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
             </div>
 
             {/* Navigation Buttons */}
-            {media.length > 1 && (
+            {mediaToUse.length > 1 && (
               <>
                 <button
                   onClick={prevSlide}
@@ -214,9 +529,9 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
             )}
 
             {/* Dots Indicator */}
-            {media.length > 1 && (
+            {mediaToUse.length > 1 && (
               <div className="flex justify-center mt-4 space-x-2">
-                {media.map((_, index) => (
+                {mediaToUse.map((_, index) => (
                   <button
                     key={index}
                     onClick={() => setCurrentIndex(index)}
@@ -233,7 +548,7 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
         ) : (
           /* Grid Layout */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {media.map((item, index) => renderMediaItem(item, index))}
+            {mediaToUse.map((item, index) => renderMediaItem(item, index))}
           </div>
         )}
       </div>

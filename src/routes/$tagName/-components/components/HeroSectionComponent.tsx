@@ -446,7 +446,7 @@ const HeroSectionWithState: React.FC<any> = ({
                   <img
                   src={resolvedImageUrl || heroImage}
                     alt={heroImageAlt}
-                    className="max-w-full h-auto rounded-lg shadow-lg"
+                    className="max-w-full h-auto rounded-lg"
                     onError={() => {
                       // Don't show placeholder on error, just hide the image
                     }}

@@ -105,6 +105,39 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
     }
   }, [instituteId, tagName]);
 
+  // Apply font from JSON if fonts.enabled is true
+  useEffect(() => {
+    const fonts = catalogueData?.globalSettings?.fonts;
+
+    if (!fonts?.enabled || !fonts?.family) {
+      document.body.style.fontFamily =
+        "'Figtree', system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+      return;
+    }
+
+    const fontFamily = fonts.family.trim();
+    const primaryFont = fontFamily.split(",")[0].replace(/['"]/g, "").trim();
+
+    // Create Google Fonts link 
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(
+      primaryFont
+    )}:wght@300;400;500;600;700&display=swap`;
+
+    // Append link only once
+    if (!document.querySelector(`link[href="${link.href}"]`)) {
+      document.head.appendChild(link);
+    }
+
+    // Apply font exactly as specified in JSON
+    document.body.style.fontFamily = fontFamily;
+    document.documentElement.style.setProperty("--app-font-family", fontFamily);
+    
+    console.log("[CourseSubPage] Applied font:", fontFamily, "Primary font:", primaryFont);
+  }, [catalogueData]);
+
+
   // Apply institute theme
   useEffect(() => {
     if (instituteThemeCode) {
@@ -238,7 +271,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
 
 
   return (
-    <div className="min-h-screen bg-white w-full pb-20 md:pb-0 pt-20 md:pt-0">
+    <div className="min-h-screen bg-white w-full pb-20 md:pb-0  md:pt-0">
       {/* Intro Page - Show first if enabled and not completed */}
       {showIntroPage && catalogueData?.introPage && (
         <IntroPageComponent
@@ -296,6 +329,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
             globalSettings={catalogueData.globalSettings}
             instituteId={instituteId}
             tagName={tagName}
+            catalogueData={catalogueData}
           />
 
           {/* Footer from JSON globalSettings */}
@@ -340,7 +374,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 p-4">
           <div className="flex flex-col gap-3">
             {/* Get Started Button */}
-            {!catalogueData?.globalSettings?.courseCatalogeType?.enabled &&  <button
+            {!(catalogueData?.globalSettings?.courseCatalogeType?.enabled ?? false) && <button
               onClick={() => {
                 if (catalogueData?.globalSettings.leadCollection.enabled) {
                   setShowLeadCollection(true);
@@ -368,7 +402,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
                   e.currentTarget.style.opacity = '1';
                 }}
               >
-                <span className="text-black">Already have an account? </span>
+                <span className="text-black">Already have an account?</span>
                 <span
                   className="underline"
                   style={{

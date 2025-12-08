@@ -4,6 +4,7 @@ import { FooterProps } from "../../-types/course-catalogue-types";
 import { CourseCatalogueData } from "../../-types/course-catalogue-types";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { RouteMatcher } from "../../-services/route-matcher";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export const FooterComponent: React.FC<FooterProps & {
   catalogueData?: CourseCatalogueData;
@@ -23,7 +24,10 @@ export const FooterComponent: React.FC<FooterProps & {
 }) => {
   const navigate = useNavigate();
   const domainRouting = useDomainRouting();
+  const isMobile = useIsMobile();
   
+  // Check if footer styles.enabled is true
+  const isFooterStylesEnabled = !!(catalogueData?.globalSettings?.layout?.footer?.styles?.enabled);
   
   // Helper function to handle footer link navigation
   const handleLinkNavigation = (route: string, openInSameTab: boolean = false) => {
@@ -146,8 +150,10 @@ export const FooterComponent: React.FC<FooterProps & {
       style={{
         backgroundColor: domainRouting.instituteThemeCode ?
           `hsl(var(--primary-200))` :
-          '#e5e7eb' // gray-200 fallback
+          '#e5e7eb' ,// gray-200 fallback,
+        ...(isFooterStylesEnabled && !isMobile ? { padding: '5px 80px 5px 100px' } : {}),
       }}
+      
     >
       <div className="w-full px-4 sm:px-6 lg:px-8 py-12">
         <div className={`grid ${getGridCols()} gap-8 lg:gap-12`}>

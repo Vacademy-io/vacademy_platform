@@ -6,6 +6,9 @@ import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { RouteMatcher } from "../../-services/route-matcher";
 import { CourseCatalogueData } from "../../-types/course-catalogue-types";
 import { useState, useEffect } from "react";
+import { Search, ShoppingCart, X } from "lucide-react";
+import { useCartStore } from "@/stores/cart-store";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export const HeaderComponent: React.FC<HeaderProps & {
   navigation?: Array<{ label: string; route: string; openInSameTab?: boolean }>;
@@ -24,10 +27,23 @@ export const HeaderComponent: React.FC<HeaderProps & {
   const navigate = useNavigate();
   const location = useLocation();
   const domainRouting = useDomainRouting();
+  const { getItemCount } = useCartStore();
+  const isMobile = useIsMobile();
   const [instituteLogoUrl, setInstituteLogoUrl] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [mobileMenuRef, setMobileMenuRef] = useState<HTMLDivElement | null>(null);
   const [hamburgerButtonRef, setHamburgerButtonRef] = useState<HTMLButtonElement | null>(null);
+  const [isGenreDropdownOpen, setIsGenreDropdownOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchInputRef, setSearchInputRef] = useState<HTMLInputElement | null>(null);
+  const [searchBarRef, setSearchBarRef] = useState<HTMLDivElement | null>(null);
+  
+  // Calculate cart item count - this will automatically update when cart changes
+  const cartItemCount = getItemCount();
+  
+  // Check if header styles.enabled is true
+  const isHeaderStylesEnabled = !!(catalogueData?.globalSettings?.layout?.header?.styles?.enabled);
   const handleInstituteLogoClick = () => {
     if (domainRouting.homeIconClickRoute) {
       window.location.href = domainRouting.homeIconClickRoute;
@@ -50,6 +66,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
     loadInstituteLogo();
   }, [domainRouting.instituteLogoFileId]);
 
+
   // Handle outside click to close mobile menu
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -70,6 +87,75 @@ export const HeaderComponent: React.FC<HeaderProps & {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isMobileMenuOpen, mobileMenuRef, hamburgerButtonRef]);
+
+  // Handle outside click to close search bar
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (isSearchOpen && searchBarRef && !searchBarRef.contains(event.target as Node)) {
+        // Don't close if clicking on the search button
+        const target = event.target as HTMLElement;
+        if (target.closest('button[aria-label="Search"]')) {
+          return;
+        }
+        setIsSearchOpen(false);
+        setSearchTerm("");
+      }
+    };
+
+    if (isSearchOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isSearchOpen, searchBarRef]);
+
+  // Handle Escape key to close search
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && isSearchOpen) {
+        setIsSearchOpen(false);
+        setSearchTerm("");
+      }
+    };
+
+    if (isSearchOpen) {
+      document.addEventListener('keydown', handleEscape);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isSearchOpen]);
+
+  // Focus search input when search bar opens
+  useEffect(() => {
+    if (isSearchOpen && searchInputRef) {
+      searchInputRef.focus();
+    }
+  }, [isSearchOpen, searchInputRef]);
+
+  // Handle search submission
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchTerm.trim()) {
+      // Navigate to homepage with search term
+      const currentPath = location.pathname;
+      const pathSegments = currentPath.split('/').filter(Boolean);
+      const currentTagName = pathSegments[0] || tagName;
+      
+      // Store search term in sessionStorage for filtering
+      sessionStorage.setItem('searchTerm', searchTerm.trim());
+      
+      // Navigate to homepage
+      navigate({ to: `/${currentTagName}` });
+      
+      // Close search bar
+      setIsSearchOpen(false);
+      setSearchTerm("");
+    }
+  };
 
   // Helper function to check if a navigation item is active
   const isActiveRoute = (route: string, label: string) => {
@@ -172,12 +258,83 @@ export const HeaderComponent: React.FC<HeaderProps & {
   };
 
 
+  // Check if courseCatalogeType.enabled is true
+  const isCourseCatalogeTypeEnabled = !!(catalogueData?.globalSettings?.courseCatalogeType?.enabled);
+
+  // Check if we should hide search and cart icons
+  const shouldHideSearchAndCart = () => {
+    const currentPath = location.pathname.toLowerCase();
+    
+    // Hide on cart page
+    if (currentPath.includes('/cart')) {
+      return true;
+    }
+    
+    // Check if current page has buyRentSection component
+    if (catalogueData?.pages) {
+      const currentPathSegments = location.pathname.split('/').filter(Boolean);
+      const pageRoute = currentPathSegments.slice(1).join('/') || '';
+      
+      // Check all pages to see if any have buyRentSection
+      for (const page of catalogueData.pages) {
+        const pageRouteLower = (page.route || '').toLowerCase();
+        const pageIdLower = (page.id || '').toLowerCase();
+        
+        // Match by route or id
+        const isCurrentPage = pageRouteLower === pageRoute.toLowerCase() || 
+                             pageIdLower === pageRoute.toLowerCase() ||
+                             (pageRoute === '' && pageRouteLower === '');
+        
+        if (isCurrentPage && page.components) {
+          const hasBuyRentSection = page.components.some(
+            (component: any) => component.type === 'buyRentSection' && component.enabled !== false
+          );
+          if (hasBuyRentSection) {
+            return true;
+          }
+        }
+      }
+    }
+    
+    return false;
+  };
+
+  const hideSearchAndCart = shouldHideSearchAndCart();
+
   return (
-    <header className="bg-white shadow-sm border-b w-full fixed top-0 left-0 right-0 z-50 md:relative">
-      <div className="w-full px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-20">
+    <header className="relative bg-white shadow-sm border-b w-full fixed top-0 left-0 right-0 z-50 md:relative">
+      <div className={`w-full ${isHeaderStylesEnabled && !isMobile ? 'px-20' : 'px-4 sm:px-6 lg:px-8'}`}>
+        <div className={`flex items-center h-20 ${isCourseCatalogeTypeEnabled ? 'md:justify-between' : 'justify-between'}`}>
+          {/* Mobile menu button - Left side when courseCatalogeType.enabled is true */}
+          {isCourseCatalogeTypeEnabled && (
+            <button
+              ref={setHamburgerButtonRef}
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="md:hidden p-1.5 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 flex-shrink-0 transition-all duration-300 ease-in-out"
+              aria-label="Toggle menu"
+            >
+              <div className="relative w-5 h-5 flex flex-col justify-center items-center">
+                <span
+                  className={`absolute block h-0.5 w-5 bg-current transform transition-all duration-300 ease-in-out ${
+                    isMobileMenuOpen ? 'rotate-45 translate-y-0' : '-translate-y-1.5'
+                  }`}
+                />
+                <span
+                  className={`absolute block h-0.5 w-5 bg-current transform transition-all duration-300 ease-in-out ${
+                    isMobileMenuOpen ? 'opacity-0' : 'opacity-100'
+                  }`}
+                />
+                <span
+                  className={`absolute block h-0.5 w-5 bg-current transform transition-all duration-300 ease-in-out ${
+                    isMobileMenuOpen ? '-rotate-45 translate-y-0' : 'translate-y-1.5'
+                  }`}
+                />
+              </div>
+            </button>
+          )}
+
           {/* Institute Logo and Name */}
-          <div className="flex items-center space-x-3 sm:space-x-4">
+          <div className={`flex items-center space-x-3 sm:space-x-4 ${isCourseCatalogeTypeEnabled ? 'flex-1 md:flex-none justify-center md:justify-start' : ''}`}>
             {instituteLogoUrl && (
               <img
                 src={instituteLogoUrl}
@@ -219,9 +376,9 @@ export const HeaderComponent: React.FC<HeaderProps & {
           )}
 
           {/* Right side buttons */}
-          <div className="flex items-center space-x-2 sm:space-x-4">
-            {/* Mobile menu button */}
-            {navigation.length > 0 && (
+          <div className={`flex items-center space-x-2 sm:space-x-4 ${isCourseCatalogeTypeEnabled ? 'flex-shrink-0' : ''}`}>
+            {/* Mobile menu button - Right side when courseCatalogeType.enabled is false */}
+            {!isCourseCatalogeTypeEnabled && navigation.length > 0 && (
               <button
                 ref={setHamburgerButtonRef}
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -231,6 +388,39 @@ export const HeaderComponent: React.FC<HeaderProps & {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </button>
+            )}
+
+            {/* Search and Cart Icons - Only for hero section header */}
+            {isCourseCatalogeTypeEnabled && !hideSearchAndCart && (
+              <div className="flex items-center space-x-3 sm:space-x-4">
+                {/* Search Icon */}
+                <button
+                  onClick={() => setIsSearchOpen(!isSearchOpen)}
+                  className="p-2 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-all duration-200 ease-in-out"
+                  aria-label="Search"
+                >
+                  <Search className="w-5 h-5 sm:w-6 sm:h-6" />
+                </button>
+
+                {/* Cart Icon */}
+                <button
+                  onClick={() => {
+                    const currentPath = location.pathname;
+                    const pathSegments = currentPath.split('/').filter(Boolean);
+                    const currentTagName = pathSegments[0] || tagName;
+                    navigate({ to: `/${currentTagName}/cart` });
+                  }}
+                  className="relative p-2 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-all duration-200 ease-in-out"
+                  aria-label="Shopping Cart"
+                >
+                  <ShoppingCart className="w-5 h-5 sm:w-6 sm:h-6" />
+                  {cartItemCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center text-[10px] min-w-[20px]">
+                      {cartItemCount > 99 ? '99+' : cartItemCount}
+                    </span>
+                  )}
+                </button>
+              </div>
             )}
 
             {/* Auth Links - Hidden on mobile */}
@@ -271,10 +461,141 @@ export const HeaderComponent: React.FC<HeaderProps & {
         </div>
 
         {/* Mobile Navigation Menu */}
-        {isMobileMenuOpen && (navigation.length > 0 || authLinks.length > 0) && (
+        {isCourseCatalogeTypeEnabled ? (
+          // Enhanced menu for courseCatalogeType.enabled = true
           <div 
             ref={setMobileMenuRef}
-            className="md:hidden border-t border-gray-200 bg-white"
+            className={`md:hidden fixed top-20 left-0 right-0 z-[60] bg-white shadow-lg transition-all duration-500 ease-in-out ${
+              isMobileMenuOpen 
+                ? 'max-h-[500px] opacity-100 border-t border-gray-200' 
+                : 'max-h-0 opacity-0 border-t-0 pointer-events-none'
+            }`}
+          >
+            <div className={`transform transition-transform duration-500 ease-in-out ${
+              isMobileMenuOpen ? 'translate-y-0' : '-translate-y-full'
+            }`}>
+              <div className="px-4 pt-4 pb-6 space-y-2">
+                {/* Login */}
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    navigate({ to: '/login' });
+                  }}
+                  className="group relative w-full text-left px-5 py-3.5 rounded-xl text-base font-semibold text-white overflow-hidden transition-all duration-300 ease-in-out transform hover:scale-[1.02] hover:shadow-lg active:scale-[0.98]"
+                  style={{
+                    backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#2563eb'
+                  }}
+                >
+                  <span className="relative z-10 flex items-center justify-between">
+                    <span>Login</span>
+                    <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                    </svg>
+                  </span>
+                  <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity duration-300" />
+                </button>
+
+                {/* Customer Services */}
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    // Navigate to customer services or open support link
+                    const customerServiceLink = authLinks.find(link => 
+                      link.label.toLowerCase().includes('support') || 
+                      link.label.toLowerCase().includes('customer') ||
+                      link.route.includes('support') ||
+                      link.route.includes('customer')
+                    );
+                    if (customerServiceLink) {
+                      if (RouteMatcher.isExternalLink(customerServiceLink.route)) {
+                        window.open(customerServiceLink.route, '_blank', 'noopener,noreferrer');
+                      } else {
+                        navigate({ to: customerServiceLink.route });
+                      }
+                    } else {
+                      // Default customer service action - you can customize this
+                      window.open('https://chat.whatsapp.com/Kvh1fsDcL1GFCBrIveQ8q8', '_blank', 'noopener,noreferrer');
+                    }
+                  }}
+                  className="group w-full text-left px-5 py-3.5 rounded-xl text-base font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300 transition-all duration-300 ease-in-out transform hover:scale-[1.01] active:scale-[0.99]"
+                >
+                  <span className="flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" />
+                      </svg>
+                      Customer Services
+                    </span>
+                    <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </span>
+                </button>
+
+                {/* Genre Dropdown */}
+                <div className="relative">
+                  <button
+                    onClick={() => setIsGenreDropdownOpen(!isGenreDropdownOpen)}
+                    className="group w-full flex items-center justify-between px-5 py-3.5 rounded-xl text-base font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300 transition-all duration-300 ease-in-out transform hover:scale-[1.01] active:scale-[0.99]"
+                  >
+                    <span className="flex items-center gap-2">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                      </svg>
+                      Genre
+                    </span>
+                    <svg 
+                      className={`w-5 h-5 transform transition-all duration-300 ease-in-out ${
+                        isGenreDropdownOpen ? 'rotate-180' : ''
+                      }`}
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  
+                  <div 
+                    className={`overflow-hidden transition-all duration-500 ease-in-out ${
+                      isGenreDropdownOpen ? 'max-h-96 opacity-100 mt-2' : 'max-h-0 opacity-0 mt-0'
+                    }`}
+                  >
+                    <div className="bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                      {['Poetry', 'Drama', 'Fiction', 'Non-Fiction'].map((genre, index) => (
+                        <button
+                          key={index}
+                          onClick={() => {
+                            setIsMobileMenuOpen(false);
+                            setIsGenreDropdownOpen(false);
+                            // Set genre filter in sessionStorage
+                            sessionStorage.setItem('genreFilter', genre.toLowerCase());
+                            // Navigate to homepage with genre filter
+                            const currentPath = location.pathname;
+                            const pathSegments = currentPath.split('/').filter(Boolean);
+                            const currentTagName = pathSegments[0] || tagName;
+                            navigate({ to: `/${currentTagName}` });
+                          }}
+                          className="group w-full text-left px-6 py-3 text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-white border-b border-gray-100 last:border-b-0 transition-all duration-200 ease-in-out transform hover:translate-x-1"
+                        >
+                          <span className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-gray-400 group-hover:bg-blue-500 transition-colors duration-200" />
+                            {genre}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          // Original menu for courseCatalogeType.enabled = false
+          isMobileMenuOpen && (navigation.length > 0 || authLinks.length > 0) && (
+            <div 
+              ref={setMobileMenuRef}
+              className="md:hidden fixed top-20 left-0 right-0 z-[60] border-t border-gray-200 bg-white shadow-lg"
           >
             <div className="px-2 pt-2 pb-3 space-y-1">
               {/* Navigation Links */}
@@ -338,8 +659,49 @@ export const HeaderComponent: React.FC<HeaderProps & {
               )}
             </div>
           </div>
+          )
         )}
       </div>
+
+      {/* Search Bar - Only for hero section header */}
+      {isCourseCatalogeTypeEnabled && !hideSearchAndCart && isSearchOpen && (
+        <div 
+          ref={setSearchBarRef}
+          className="absolute top-full left-0 right-0 bg-white border-b border-gray-200 shadow-lg z-40"
+        >
+          <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <form onSubmit={handleSearch} className="relative max-w-2xl mx-auto">
+              <div className="relative flex items-center">
+                <Search className="absolute left-4 text-gray-400 w-5 h-5" />
+                <input
+                  ref={setSearchInputRef}
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search for books, courses, or topics..."
+                  className="w-full pl-12 pr-12 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base"
+                />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm("")}
+                    className="absolute right-12 text-gray-400 hover:text-gray-600 transition-colors"
+                    aria-label="Clear search"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  className="absolute right-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium"
+                >
+                  Search
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </header>
   );
 };

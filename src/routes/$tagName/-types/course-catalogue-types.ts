@@ -5,6 +5,15 @@ export interface GlobalSettings {
          value: string
     };
   mode: "light" | "dark";
+  fonts? : {
+    enabled?: boolean,
+    family?: string,
+    fallback?: string 
+    },
+    styles?: {
+    enabled?: boolean,
+    pagePadding?: string
+    },
   compactness: "small" | "medium" | "large";
   audience: "children" | "adults" | "all";
   leadCollection: {
@@ -50,6 +59,9 @@ export interface GlobalSettings {
       id: string;
       type: string;
       enabled: boolean;
+      styles?: {
+        enabled?: boolean;
+      };
       props: {
         logo?: string;
         title?: string;
@@ -68,6 +80,9 @@ export interface GlobalSettings {
       id: string;
       type: string;
       enabled: boolean;
+      styles?: {
+        enabled?: boolean;
+      };
       props: {
         layout: "two-column" | "three-column" | "four-column";
         leftSection: {
@@ -123,7 +138,7 @@ export interface IntroPage {
     };
   };
   actions: {
-    alignment: "top" | "center" | "bottom";
+    alignment: "top" | "center" | "bottom" | "right" | "left";
     buttons: Array<{
       label: string;
       action: "loadNextSection" | "navigateToLogin" | "openLeadCollection";

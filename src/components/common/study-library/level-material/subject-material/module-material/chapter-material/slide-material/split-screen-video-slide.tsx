@@ -176,7 +176,7 @@ export const SplitScreenVideoSlide: React.FC<SplitScreenVideoSlideProps> = ({
 
         {/* Split Screen Content */}
         <div className="flex-1 relative overflow-hidden" ref={containerRef}>
-          <div className="flex flex-col-reverse lg:flex-row h-full">
+          <div className="flex flex-col lg:flex-row h-full">
             {/* Left Panel - Embedded Content (Top on mobile, Left on desktop) */}
             <div
               className="relative overflow-hidden lg:border-r border-neutral-200"

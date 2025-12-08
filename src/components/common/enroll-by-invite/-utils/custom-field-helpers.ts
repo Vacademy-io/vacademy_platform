@@ -76,8 +76,10 @@ export const getFieldRenderType = (
 };
 
 /**
- * Parses dropdown options from config JSON string
- * Expected format: "[{\"id\":1,\"value\":\"Option 1\",\"label\":\"Option 1\"},{\"id\":2,\"value\":\"Option 2\",\"label\":\"Option 2\"}]"
+ * Parses dropdown options from config JSON string or comma-separated string
+ * Expected formats:
+ * - JSON array: "[{\"id\":1,\"value\":\"Option 1\",\"label\":\"Option 1\"},{\"id\":2,\"value\":\"Option 2\",\"label\":\"Option 2\"}]"
+ * - Comma-separated: "MALE,FEMALE,OTHER"
  */
 export const parseDropdownOptions = (
   config: string
@@ -89,6 +91,19 @@ export const parseDropdownOptions = (
       return [];
     }
 
+    const trimmedConfig = config.trim();
+    
+    // Check if config is a simple comma-separated string (not JSON)
+    // If it doesn't start with '[' or '{', treat it as comma-separated
+    if (!trimmedConfig.startsWith('[') && !trimmedConfig.startsWith('{')) {
+      // It's a comma-separated string like "MALE,FEMALE,OTHER"
+      return trimmedConfig.split(",").map((option, index) => ({
+        _id: index + 1,
+        value: option.trim(),
+        label: option.trim(),
+      }));
+    }
+
     // Parse JSON string
     const parsed = JSON.parse(config);
     // Ensure it's an array
@@ -97,8 +112,8 @@ export const parseDropdownOptions = (
       if (typeof parsed === "string") {
         return parsed.split(",").map((option, index) => ({
           _id: index + 1,
-          value: option,
-          label: option,
+          value: option.trim(),
+          label: option.trim(),
         }));
       }
       return [];
@@ -118,6 +133,19 @@ export const parseDropdownOptions = (
       config,
       error,
     });
+    // If JSON parsing fails, try treating it as comma-separated string
+    try {
+      const trimmedConfig = config.trim();
+      if (trimmedConfig.includes(',')) {
+        return trimmedConfig.split(",").map((option, index) => ({
+          _id: index + 1,
+          value: option.trim(),
+          label: option.trim(),
+        }));
+      }
+    } catch (fallbackError) {
+      console.error("parseDropdownOptions: Fallback parsing also failed", fallbackError);
+    }
     return [];
   }
 };

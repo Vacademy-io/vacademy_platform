@@ -84,6 +84,9 @@ class Settings(BaseSettings):
     # Google Generative AI Configuration (for Gemini image generation)
     gemini_api_key: Optional[str] = None
 
+    # YouTube API Configuration
+    youtube_api_key: Optional[str] = None
+
     model_config = SettingsConfigDict(env_file=None, extra="ignore")
 
     def build_sqlalchemy_url(self) -> str:

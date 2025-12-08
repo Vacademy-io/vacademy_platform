@@ -1,6 +1,7 @@
 import React, { useState, useEffect ,useMemo} from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
+import { useDomainRouting } from "@/hooks/use-domain-routing";
 
 interface MediaItem {
   type: "image" | "video";
@@ -150,6 +151,7 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
   autoplayInterval = 3000,
 }) => {
   const navigate = useNavigate();
+  const domainRouting = useDomainRouting();
   const {
     backgroundColor = "#f0f9ff",
     roundedEdges = true,
@@ -460,7 +462,7 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
                         }}
                         className="px-6 py-3 sm:px-8 sm:py-4 text-base sm:text-lg font-semibold text-white rounded-md hover:opacity-90 transition-opacity shadow-lg cursor-pointer"
                         style={{
-                          backgroundColor: slide.button.backgroundColor || "#2563eb",
+                          backgroundColor: slide.button.backgroundColor || (domainRouting.instituteThemeCode ? `hsl(var(--primary))` : "#2563eb"),
                           zIndex: 20,
                           position: 'relative'
                         }}

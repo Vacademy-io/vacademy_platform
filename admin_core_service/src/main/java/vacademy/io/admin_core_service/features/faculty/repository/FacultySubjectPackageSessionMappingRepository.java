@@ -11,6 +11,7 @@ import vacademy.io.admin_core_service.features.slide.entity.Option;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 public interface FacultySubjectPackageSessionMappingRepository extends JpaRepository<FacultySubjectPackageSessionMapping,String> {
 
@@ -112,4 +113,18 @@ public interface FacultySubjectPackageSessionMappingRepository extends JpaReposi
     List<String> findUserIdsByPackageSessionId(@Param("packageSessionId") String packageSessionId, @Param("activeStatuses") List<String> activeStatuses);
 
 //WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%')))
+
+    @Query("""
+    SELECT DISTINCT f.userId
+    FROM FacultySubjectPackageSessionMapping f
+    JOIN PackageSession ps ON ps.id = f.packageSessionId
+    JOIN PackageInstitute pi ON pi.packageEntity.id = ps.packageEntity.id
+    WHERE pi.instituteEntity.id = :instituteId
+      AND ps.status IN :statusList
+      AND f.status IN :statusList
+""")
+    Set<String> findUserIdsByFilters(
+            @Param("instituteId") String instituteId,
+            @Param("statusList") List<String> statusList
+    );
 }

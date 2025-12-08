@@ -99,5 +99,28 @@ public interface CustomFieldRepository extends JpaRepository<CustomFields, Strin
     // In CustomFieldRepository
     Optional<CustomFields> findTopByFieldKeyAndStatusOrderByCreatedAtDesc(String fieldKey, String status);
 
+  /**
+   * Find all DROPDOWN custom fields for an institute that are ACTIVE
+   * Uses DISTINCT ON with LOWER(field_name) to return only one record per unique field name (case-insensitive)
+   * Keeps the most recent one based on created_at
+   */
+  @Query(value = """
+      SELECT DISTINCT ON (LOWER(cf.field_name)) cf.*
+      FROM custom_fields cf
+      WHERE cf.id IN (
+          SELECT icf.custom_field_id FROM institute_custom_fields icf 
+          WHERE icf.institute_id = :instituteId 
+          AND icf.status = :status
+      )
+      AND UPPER(cf.field_type) = UPPER(:fieldType) 
+      AND cf.status = :status
+      ORDER BY LOWER(cf.field_name), cf.created_at DESC, cf.form_order ASC
+      """, nativeQuery = true)
+  List<CustomFields> findDropdownCustomFieldsByInstituteId(
+      @Param("instituteId") String instituteId, 
+      @Param("fieldType") String fieldType,
+      @Param("status") String status
+  );
+
 
 }

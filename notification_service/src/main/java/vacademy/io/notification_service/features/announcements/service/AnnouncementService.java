@@ -303,13 +303,13 @@ public class AnnouncementService {
                         if ("CUSTOM_FIELD_FILTER".equals(r.getRecipientType())) {
                             try {
                                 // Store filters as JSON in recipientName field
-                                if (r.getFilters() == null || r.getFilters().isEmpty()) {
+                                if (r.getCustomFieldFilters() == null || r.getCustomFieldFilters().isEmpty()) {
                                     log.warn("CUSTOM_FIELD_FILTER recipient has no filters provided");
                                     recipient.setRecipientName("ERROR");
                                 } else {
-                                    String filtersJson = objectMapper.writeValueAsString(r.getFilters());
-                                    log.info("Serialized {} filters to JSON for CUSTOM_FIELD_FILTER: {}", 
-                                            r.getFilters().size(), filtersJson);
+                                    String filtersJson = objectMapper.writeValueAsString(r.getCustomFieldFilters());
+                                    log.info("Serialized {} filters to JSON for CUSTOM_FIELD_FILTER: {}",
+                                            r.getCustomFieldFilters().size(), filtersJson);
                                     recipient.setRecipientName(filtersJson);
                                 }
                                 // Use a placeholder ID or empty for CUSTOM_FIELD_FILTER
@@ -321,18 +321,32 @@ public class AnnouncementService {
                                 recipient.setRecipientName("ERROR");
                             }
                         } else {
+                            // For inclusions, store exclusions as JSON in recipientName if present
+                            if (!isExclusion && r.getExclusions() != null && !r.getExclusions().isEmpty()) {
+                                try {
+                                    String exclusionsJson = objectMapper.writeValueAsString(r.getExclusions());
+                                    recipient.setRecipientName(exclusionsJson);
+                                    log.info("SUCCESS: Stored {} exclusions as JSON for recipient {}: {}", r.getExclusions().size(), r.getRecipientId(), exclusionsJson);
+                                } catch (Exception e) {
+                                    log.error("Error serializing exclusions for recipient {}", r.getRecipientId(), e);
+                                    recipient.setRecipientName(r.getRecipientName());
+                                }
+                            } else {
+                                recipient.setRecipientName(r.getRecipientName());
+                                log.debug("No exclusions for recipient {}, stored name: {}", r.getRecipientId(), r.getRecipientName());
+                            }
+
                             // For other types and exclusions, prefix the recipientId with "EXCLUDE:"
                             String recipientId = isExclusion ? "EXCLUDE:" + r.getRecipientId() : r.getRecipientId();
                             recipient.setRecipientId(recipientId);
-                            recipient.setRecipientName(r.getRecipientName());
                         }
                         return recipient;
                     })
                     .collect(Collectors.toList());
             recipientRepository.saveAll(recipientEntities);
-            log.debug("Saved {} {} for announcement: {}", 
-                    recipientEntities.size(), 
-                    isExclusion ? "exclusions" : "recipients", 
+            log.debug("Saved {} {} for announcement: {}",
+                    recipientEntities.size(),
+                    isExclusion ? "exclusions" : "recipients",
                     announcementId);
         }
     }

@@ -46,7 +46,7 @@ public class CreateAnnouncementRequest {
     @Valid
     private List<RecipientRequest> recipients;
     
-    // Exclusions (Optional - users to exclude from recipients)
+    // Exclusions moved to individual recipients - keeping for backward compatibility
     @Valid
     private List<RecipientRequest> exclusions;
     
@@ -83,21 +83,25 @@ public class CreateAnnouncementRequest {
     @AllArgsConstructor
     @NoArgsConstructor
     public static class RecipientRequest {
-        
+
         @NotBlank(message = "Recipient type is required")
-        @Pattern(regexp = "^(ROLE|USER|PACKAGE_SESSION|TAG|CUSTOM_FIELD_FILTER|AUDIENCE)$", message = "Recipient type must be one of: ROLE, USER, PACKAGE_SESSION, TAG, CUSTOM_FIELD_FILTER, AUDIENCE")
-        private String recipientType; // ROLE, USER, PACKAGE_SESSION, TAG, CUSTOM_FIELD_FILTER, AUDIENCE
-        
+        @Pattern(regexp = "^(ROLE|USER|PACKAGE_SESSION|PACKAGE_SESSION_COMMA_SEPARATED_ORG_ROLES|TAG|CUSTOM_FIELD_FILTER|AUDIENCE)$", message = "Recipient type must be one of: ROLE, USER, PACKAGE_SESSION, PACKAGE_SESSION_COMMA_SEPARATED_ORG_ROLES, TAG, CUSTOM_FIELD_FILTER, AUDIENCE")
+        private String recipientType; // ROLE, USER, PACKAGE_SESSION, PACKAGE_SESSION_COMMA_SEPARATED_ORG_ROLES, TAG, CUSTOM_FIELD_FILTER, AUDIENCE
+
         @NotBlank(message = "Recipient ID is required", groups = {RecipientRequest.StandardRecipient.class})
         private String recipientId;
-        
+
         @Size(max = 255, message = "Recipient name must not exceed 255 characters")
         private String recipientName;
-        
-        // Custom field filters (required when recipientType is CUSTOM_FIELD_FILTER)
+
+        // Custom field filters applied to this recipient (before exclusions)
         @Valid
-        private List<CustomFieldFilter> filters;
-        
+        private List<CustomFieldFilter> customFieldFilters;
+
+        // Exclusions for this recipient (applied after custom field filters)
+        @Valid
+        private List<Exclusion> exclusions;
+
         // Interface for validation groups
         public interface StandardRecipient {}
         public interface CustomFieldFilterRecipient {}
@@ -110,18 +114,35 @@ public class CreateAnnouncementRequest {
             // Custom field ID (preferred)
             @Size(max = 255, message = "Custom field ID must not exceed 255 characters")
             private String customFieldId;
-            
+
             // Deprecated: kept for backward compatibility
             @Size(max = 255, message = "Field name must not exceed 255 characters")
             private String fieldName;
-            
+
             @NotBlank(message = "Field value is required")
             @Size(max = 1000, message = "Field value must not exceed 1000 characters")
             private String fieldValue;
-            
+
             // Optional: operator type (equals, contains, startsWith, etc.)
             @Size(max = 50, message = "Operator must not exceed 50 characters")
             private String operator; // Default: "equals"
+        }
+
+        @Getter
+        @Setter
+        @AllArgsConstructor
+        @NoArgsConstructor
+        public static class Exclusion {
+
+            @NotBlank(message = "Exclusion type is required")
+            @Pattern(regexp = "^(ROLE|USER|PACKAGE_SESSION|PACKAGE_SESSION_COMMA_SEPARATED_ORG_ROLES|TAG|CUSTOM_FIELD_FILTER|AUDIENCE)$", message = "Exclusion type must be one of: ROLE, USER, PACKAGE_SESSION, PACKAGE_SESSION_COMMA_SEPARATED_ORG_ROLES, TAG, CUSTOM_FIELD_FILTER, AUDIENCE")
+            private String exclusionType;
+
+            private String exclusionId; // For USER, ROLE, PACKAGE_SESSION, etc.
+
+            // Custom field filters for this exclusion (optional)
+            @Valid
+            private List<CustomFieldFilter> customFieldFilters;
         }
     }
     

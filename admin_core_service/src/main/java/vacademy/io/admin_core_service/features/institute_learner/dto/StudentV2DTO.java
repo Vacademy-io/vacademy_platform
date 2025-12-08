@@ -55,4 +55,9 @@ public class StudentV2DTO {
     private String type;
     private String typeId;
     private String desiredLevelId;
+    
+    // Sub-org fields
+    private String subOrgId;
+    private String subOrgName;
+    private String commaSeparatedOrgRoles;
 }

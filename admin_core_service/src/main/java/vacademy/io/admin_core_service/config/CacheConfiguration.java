@@ -72,7 +72,24 @@ public class CacheConfiguration {
                                 caffeineCache3mBuilder().build());
                 CaffeineCache myFiles = new CaffeineCache(
                                 "myFiles",
-                                caffeineCache1mBuilder().build());
+                                caffeineCache1mBuilder().build());                // Planning Logs cache
+                CaffeineCache planningLogsList = new CaffeineCache(
+                                "planningLogsList",
+                                caffeineCache1mBuilder().build());                // Membership Details cache (user plan subscription details)
+                CaffeineCache membershipDetails = new CaffeineCache(
+                                "membershipDetails",
+                                caffeineCache2mBuilder().build());
+
+                // User Plan related caches
+                CaffeineCache userPlanById = new CaffeineCache(
+                                "userPlanById",
+                                caffeineCache2mBuilder().build());
+                CaffeineCache userPlansByUser = new CaffeineCache(
+                                "userPlansByUser",
+                                caffeineCache2mBuilder().build());
+                CaffeineCache userPlanWithPaymentLogs = new CaffeineCache(
+                                "userPlanWithPaymentLogs",
+                                caffeineCache2mBuilder().build());
 
                 cacheManager.setCaches(java.util.List.of(
                                 studyLibraryInit,
@@ -87,7 +104,12 @@ public class CacheConfiguration {
                                 learnerInfo,
                                 systemFileAccess,
                                 systemFileList,
-                                myFiles));
+                                myFiles,
+                                planningLogsList,
+                                membershipDetails,
+                                userPlanById,
+                                userPlansByUser,
+                                userPlanWithPaymentLogs));
 
                 return cacheManager;
         }

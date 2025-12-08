@@ -156,7 +156,7 @@ public class StudentListManager {
             enrichWithUserCredentials(content);
         }
 
-        return ResponseEntity.ok(buildResponse(content, page, pageSize));
+        return ResponseEntity.ok(buildResponse(content, page, pageSize, false));
     }
 
     private Pageable createPageable(StudentListFilter filter, int pageNo, int pageSize) {
@@ -165,52 +165,84 @@ public class StudentListManager {
     }
 
     private Page<StudentListV2Projection> fetchStudentPage(StudentListFilter filter, Pageable pageable) {
+        boolean hasCustomFieldFilters = filter.getCustomFieldFilters() != null && !filter.getCustomFieldFilters().isEmpty();
+        
         if (StringUtils.hasText(filter.getName())) {
-            return instituteStudentRepository.getAllStudentV2WithSearchRaw(
-                    filter.getName(),
-                    filter.getInstituteIds(),
-                    filter.getStatuses(),
-                    filter.getPaymentStatuses(),
-                    List.of(StatusEnum.ACTIVE.name()),
-                    filter.getSources(),
-                    filter.getTypes(),
-                    filter.getTypeIds(),
-                    filter.getDestinationPackageSessionIds(),
-                    filter.getLevelIds(),
-                    filter.getUsernames(),
-                    filter.getEmails(),
-                    filter.getMobileNumbers(),
-                    filter.getRegions(),
-                    filter.getSubOrgUserTypes(),
-                    pageable);
+            if (hasCustomFieldFilters) {
+                // Use custom repository method with custom field filters
+                return instituteStudentRepository.getAllStudentV2WithSearchAndCustomFieldFilters(
+                        filter.getName(),
+                        filter.getInstituteIds(),
+                        filter.getStatuses(),
+                        filter.getPaymentStatuses(),
+                        List.of(StatusEnum.ACTIVE.name()),
+                        filter.getSources(),
+                        filter.getTypes(),
+                        filter.getTypeIds(),
+                        filter.getDestinationPackageSessionIds(),
+                        filter.getLevelIds(),
+                        filter.getSubOrgUserTypes(),
+                        filter.getCustomFieldFilters(),
+                        pageable);
+            } else {
+                // Use existing @Query method
+                return instituteStudentRepository.getAllStudentV2WithSearchRaw(
+                        filter.getName(),
+                        filter.getInstituteIds(),
+                        filter.getStatuses(),
+                        filter.getPaymentStatuses(),
+                        List.of(StatusEnum.ACTIVE.name()),
+                        filter.getSources(),
+                        filter.getTypes(),
+                        filter.getTypeIds(),
+                        filter.getDestinationPackageSessionIds(),
+                        filter.getLevelIds(),
+                        filter.getSubOrgUserTypes(),
+                        pageable);
+            }
         }
 
         if (!filter.getInstituteIds().isEmpty()) {
-            return instituteStudentRepository.getAllStudentV2WithFilterRaw(
-                    filter.getStatuses(),
-                    filter.getGender(),
-                    filter.getInstituteIds(),
-                    filter.getGroupIds(),
-                    filter.getPackageSessionIds(),
-                    filter.getPaymentStatuses(),
-                    List.of(StatusEnum.ACTIVE.name()),
-                    filter.getSources(),
-                    filter.getTypes(),
-                    filter.getTypeIds(),
-                    filter.getDestinationPackageSessionIds(),
-                    filter.getLevelIds(),
-                    filter.getUsernames(),
-                    filter.getEmails(),
-                    filter.getMobileNumbers(),
-                    filter.getRegions(),
-                    filter.getSubOrgUserTypes(),
-                    pageable);
+            if (hasCustomFieldFilters) {
+                // Use custom repository method with custom field filters
+                return instituteStudentRepository.getAllStudentV2WithFilterAndCustomFieldFilters(
+                        filter.getStatuses(),
+                        filter.getGender(),
+                        filter.getInstituteIds(),
+                        filter.getGroupIds(),
+                        filter.getPackageSessionIds(),
+                        filter.getPaymentStatuses(),
+                        List.of(StatusEnum.ACTIVE.name()),
+                        filter.getSources(),
+                        filter.getTypes(),
+                        filter.getTypeIds(),
+                        filter.getDestinationPackageSessionIds(),
+                        filter.getLevelIds(),
+                        filter.getSubOrgUserTypes(),
+                        filter.getCustomFieldFilters(),
+                        pageable);
+            } else {
+                // Use existing @Query method
+                return instituteStudentRepository.getAllStudentV2WithFilterRaw(
+                        filter.getStatuses(),
+                        filter.getGender(),
+                        filter.getInstituteIds(),
+                        filter.getGroupIds(),
+                        filter.getPackageSessionIds(),
+                        filter.getPaymentStatuses(),
+                        List.of(StatusEnum.ACTIVE.name()),
+                        filter.getSources(),
+                        filter.getTypes(),
+                        filter.getTypeIds(),
+                        filter.getDestinationPackageSessionIds(),
+                        filter.getLevelIds(),
+                        filter.getSubOrgUserTypes(),
+                        pageable);
+            }
         }
 
         return null;
     }
-
-
 
     private List<StudentV2DTO> mapProjectionsToDTOs(List<StudentListV2Projection> projections) {
         List<StudentV2DTO> dtos = new ArrayList<>();
@@ -271,6 +303,11 @@ public class StudentListManager {
             dto.setCustomFields(parseCustomFields(mapper, p.getCustomFieldsJson()));
             dto.setEnrollInviteId(p.getEnrollInviteId());
             dto.setDesiredLevelId(p.getDesiredLevelId());
+
+            dto.setSubOrgId(p.getSubOrgId());
+            dto.setSubOrgName(p.getSubOrgName());
+            dto.setCommaSeparatedOrgRoles(p.getCommaSeparatedOrgRoles());
+            
             dtos.add(dto);
         }
 
@@ -323,7 +360,7 @@ public class StudentListManager {
     }
 
     private AllStudentV2Response buildResponse(List<StudentV2DTO> content, Page<StudentListV2Projection> page,
-            int pageSize) {
+            int pageSize, boolean unused) {
         if (page == null) {
             return AllStudentV2Response.builder()
                     .content(content)

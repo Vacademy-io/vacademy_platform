@@ -22,6 +22,7 @@ public class PlanningLogResponseDTO {
 
         private String id;
         private String createdByUserId;
+        private String createdBy;
         private String logType;
         private String entity;
         private String entityId;
@@ -34,6 +35,7 @@ public class PlanningLogResponseDTO {
         private String commaSeparatedFileIds;
         private String status;
         private String instituteId;
+        private Boolean isSharedWithStudent;
         private Timestamp createdAt;
         private Timestamp updatedAt;
 }

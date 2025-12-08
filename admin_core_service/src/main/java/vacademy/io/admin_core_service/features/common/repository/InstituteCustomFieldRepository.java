@@ -88,4 +88,11 @@ public interface InstituteCustomFieldRepository extends JpaRepository<InstituteC
     List<InstituteCustomField> findByInstituteIdAndTypeAndTypeIdAndStatusIn(String instituteId, String type, String typeId, List<String> status);
 
     List<InstituteCustomField> findByInstituteIdAndCustomFieldIdInAndStatusIn(String instituteId, List<String> list, List<String> status);
+
+    @Query("SELECT icf, cf FROM InstituteCustomField icf " +
+           "JOIN CustomFields cf ON cf.id = icf.customFieldId " +
+           "WHERE icf.instituteId = :instituteId " +
+           "AND icf.status = 'ACTIVE' " +
+           "ORDER BY cf.formOrder ASC")
+    List<Object[]> findAllActiveCustomFieldsWithDetailsByInstituteId(@Param("instituteId") String instituteId);
 }

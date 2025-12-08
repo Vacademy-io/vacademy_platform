@@ -16,12 +16,12 @@ import java.util.List;
 public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> {
 
     @Query("SELECT pl FROM PaymentLog pl WHERE pl.userPlan.id = :userPlanId ORDER BY pl.createdAt DESC")
-    List<PaymentLog> findByUserPlanIdOrderByCreatedAtDesc(@Param("userPlanId") String userPlanId);
-
-    @Query(value = """
-SELECT pl FROM PaymentLog pl
-JOIN pl.userPlan up
-JOIN up.enrollInvite ei
+    List<PaymentLog> findByUserPlanIdOrderByCreatedAtDesc(@Param("userPlanId") String userPlanId);    @Query(value = """
+SELECT DISTINCT pl FROM PaymentLog pl
+JOIN FETCH pl.userPlan up
+JOIN FETCH up.enrollInvite ei
+LEFT JOIN FETCH up.paymentOption po
+LEFT JOIN FETCH up.paymentPlan pp
 WHERE ei.instituteId = :instituteId
   AND pl.createdAt >= :startDate
   AND pl.createdAt <= :endDate
@@ -29,6 +29,8 @@ WHERE ei.instituteId = :instituteId
   AND (:#{#paymentStatuses == null || #paymentStatuses.isEmpty() ? 1 : 0} = 1 OR pl.paymentStatus IN (:paymentStatuses))
 
   AND (:#{#userPlanStatuses == null || #userPlanStatuses.isEmpty() ? 1 : 0} = 1 OR up.status IN (:userPlanStatuses))
+
+  AND (:#{#sources == null || #sources.isEmpty() ? 1 : 0} = 1 OR up.source IN (:sources))
 
   AND (:#{#enrollInviteIds == null || #enrollInviteIds.isEmpty() ? 1 : 0} = 1 OR ei.id IN (:enrollInviteIds))
 
@@ -50,6 +52,7 @@ WHERE ei.instituteId = :instituteId
   AND pl.createdAt <= :endDate
   AND (:#{#paymentStatuses == null || #paymentStatuses.isEmpty() ? 1 : 0} = 1 OR pl.paymentStatus IN (:paymentStatuses))
   AND (:#{#userPlanStatuses == null || #userPlanStatuses.isEmpty() ? 1 : 0} = 1 OR up.status IN (:userPlanStatuses))
+  AND (:#{#sources == null || #sources.isEmpty() ? 1 : 0} = 1 OR up.source IN (:sources))
   AND (:#{#enrollInviteIds == null || #enrollInviteIds.isEmpty() ? 1 : 0} = 1 OR ei.id IN (:enrollInviteIds))
   AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty() ? 1 : 0} = 1 OR EXISTS (
         SELECT 1
@@ -65,6 +68,7 @@ WHERE ei.instituteId = :instituteId
         @Param("endDate") LocalDateTime endDate,
         @Param("paymentStatuses") List<String> paymentStatuses,
         @Param("userPlanStatuses") List<String> userPlanStatuses,
+        @Param("sources") List<String> sources,
         @Param("enrollInviteIds") List<String> enrollInviteIds,
         @Param("packageSessionIds") List<String> packageSessionIds,
         Pageable pageable);

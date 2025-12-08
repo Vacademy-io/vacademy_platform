@@ -102,7 +102,7 @@ public class LearnerPortalAccessService {
             baseUrl = defaultLearnerPortalUrl;
         }
 
-        return String.format("%s?accessToken=%s&refreshToken=%s&instituteId=%s",
+        return String.format("%s/login?sso=true&accessToken=%s&refreshToken=%s&instituteId=%s",
             baseUrl,
             userWithJwtDTO.getAccessToken(),
             userWithJwtDTO.getRefreshToken(),

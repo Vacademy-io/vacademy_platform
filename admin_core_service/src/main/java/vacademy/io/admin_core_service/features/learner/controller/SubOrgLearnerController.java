@@ -31,7 +31,7 @@ public class SubOrgLearnerController {
             @RequestBody SubOrgEnrollRequestDTO request,
             @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
 
-        SubOrgEnrollResponseDTO response = subOrgLearnerService.enrollLearnerToSubOrg(request);
+        SubOrgEnrollResponseDTO response = subOrgLearnerService.enrollLearnerToSubOrg(request,user);
 
         return ResponseEntity.ok(response);
     }
@@ -41,7 +41,7 @@ public class SubOrgLearnerController {
             @RequestBody SubOrgTerminateRequestDTO request,
             @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
 
-        SubOrgTerminateResponseDTO response = subOrgLearnerService.terminateLearners(request);
+        SubOrgTerminateResponseDTO response = subOrgLearnerService.terminateLearners(request,user);
 
         return ResponseEntity.ok(response);
     }

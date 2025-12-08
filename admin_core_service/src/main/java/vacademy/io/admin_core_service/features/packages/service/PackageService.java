@@ -49,15 +49,14 @@ public class PackageService {
             int pageSize) {
 
         Sort thisSort = ListService.createSortObject(learnerPackageFilterDTO.getSortColumns());
-        Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);
-
-        Page<PackageDetailProjection> learnerPackageDetail = null;
+        Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);        Page<PackageDetailProjection> learnerPackageDetail = null;
         if (StringUtils.hasText(learnerPackageFilterDTO.getSearchByName())) {
             learnerPackageDetail = packageRepository.getCatalogPackageDetail(
                     learnerPackageFilterDTO.getSearchByName(),
                     learnerPackageFilterDTO.getFacultyIds(),
                     instituteId,
                     List.of(PackageStatusEnum.ACTIVE.name()),
+                    learnerPackageFilterDTO.getPackageTypes(),
                     List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
                     List.of(LevelStatusEnum.ACTIVE.name()),
                     List.of(StatusEnum.ACTIVE.name()),
@@ -67,12 +66,12 @@ public class PackageService {
                     List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                     List.of(ChapterStatus.ACTIVE.name()),
                     pageable
-            );
-        } else {
+            );        } else {
             learnerPackageDetail = packageRepository.getCatalogPackageDetail(
                     instituteId,
                     learnerPackageFilterDTO.getLevelIds(),
                     List.of(PackageStatusEnum.ACTIVE.name()),
+                    learnerPackageFilterDTO.getPackageTypes(),
                     List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
                     learnerPackageFilterDTO.getFacultyIds(),
                     List.of(StatusEnum.ACTIVE.name()),
@@ -128,7 +127,7 @@ public class PackageService {
                     projection.getLevelName(),
                     instructors,
                     projection.getLevelIds(),
-                    projection.getReadTimeInMinutes()
+                    projection.getReadTimeInMinutes(),projection.getPackageType()
             );
         }).toList();
 
@@ -181,7 +180,8 @@ public class PackageService {
                 projection.getLevelName(),
                 instructors,
                 projection.getLevelIds(),
-                projection.getReadTimeInMinutes()
+                projection.getReadTimeInMinutes(),
+                projection.getPackageType()
         );
 
         return dto;

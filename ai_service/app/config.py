@@ -15,8 +15,11 @@ def _load_env_file() -> None:
     Files later in the list override earlier ones.
     """
     app_env = os.getenv("APP_ENV", "stage")
+
     # Load base .env first, then env-specific to allow overrides
-    load_dotenv(dotenv_path=os.path.join(os.getcwd(), ".env"), override=False)
+    base_env = os.path.join(os.getcwd(), ".env")
+    load_dotenv(dotenv_path=base_env, override=False)
+
     env_specific = os.path.join(os.getcwd(), f".env.{app_env}")
     if os.path.exists(env_specific):
         load_dotenv(dotenv_path=env_specific, override=True)
@@ -61,6 +64,25 @@ class Settings(BaseSettings):
     db_max_overflow: int = 10
     db_pool_timeout_seconds: int = 30
     db_pool_recycle_seconds: int = 1800  # 30 minutes
+
+    # LLM Configuration - Using OpenRouter (your working API key)
+    llm_base_url: str = "https://openrouter.ai/api/v1/chat/completions"
+    llm_api_key: Optional[str] = None  # Your OpenRouter API key (sk-or-v1-...)
+    llm_default_model: str = "google/gemini-2.5-pro"  # Gemini 2.5 Pro (default from media-service)
+    # Alternative working models:
+    # llm_default_model: str = "openai/gpt-4o-mini"  # Good balance
+    # llm_default_model: str = "google/gemini-pro"  # Google's model
+    # llm_default_model: str = "meta-llama/llama-3.2-3b-instruct"  # Smaller llama
+    llm_timeout_seconds: float = 60.0
+
+    # S3 Configuration (for generated course images)
+    s3_aws_access_key: Optional[str] = None
+    s3_aws_access_secret: Optional[str] = None
+    s3_aws_region: Optional[str] = None
+    aws_bucket_name: Optional[str] = None
+
+    # Google Generative AI Configuration (for Gemini image generation)
+    gemini_api_key: Optional[str] = None
 
     model_config = SettingsConfigDict(env_file=None, extra="ignore")
 

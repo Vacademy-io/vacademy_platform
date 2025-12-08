@@ -73,4 +73,17 @@ public class PlanningLogController {
 
                 return ResponseEntity.ok(response);
         }
+
+        @GetMapping("/generate-interval-type-id")
+        public ResponseEntity<String> generateIntervalTypeId(
+                        @RequestParam String intervalType,
+                        @RequestParam String dateYYYYMMDD) {
+
+                log.info("GET /admin-core-service/planning-logs/v1/generate-interval-type-id - IntervalType: {}, DateString: {}",
+                                intervalType, dateYYYYMMDD);
+
+                String intervalTypeId = planningLogService.generateIntervalTypeId(intervalType, dateYYYYMMDD);
+
+                return ResponseEntity.ok(intervalTypeId);
+        }
 }

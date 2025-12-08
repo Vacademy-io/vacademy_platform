@@ -19,15 +19,20 @@ import vacademy.io.admin_core_service.features.planning_logs.dto.PlanningLogResp
 import vacademy.io.admin_core_service.features.planning_logs.dto.PlanningLogUpdateDTO;
 import vacademy.io.admin_core_service.features.planning_logs.entity.TeacherPlanningLog;
 import vacademy.io.admin_core_service.features.planning_logs.repository.TeacherPlanningLogRepository;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -35,6 +40,7 @@ import java.util.regex.Pattern;
 public class PlanningLogService {
 
         private final TeacherPlanningLogRepository planningLogRepository;
+        private final AuthService authService;
 
         private static final String STATUS_ACTIVE = "ACTIVE";
         private static final String LOG_TYPE_PLANNING = "planning";
@@ -84,6 +90,9 @@ public class PlanningLogService {
                                 .commaSeparatedFileIds(request.getCommaSeparatedFileIds())
                                 .status(STATUS_ACTIVE)
                                 .instituteId(instituteId)
+                                .isSharedWithStudent(request.getIsSharedWithStudent() != null
+                                                ? request.getIsSharedWithStudent()
+                                                : false)
                                 .build();
 
                 // Save to database
@@ -91,8 +100,8 @@ public class PlanningLogService {
 
                 log.info("Successfully created planning log with ID: {}", savedLog.getId());
 
-                // Convert to response DTO
-                return mapToResponseDTO(savedLog);
+                // Convert to response DTO (created_by will be null for create operations)
+                return mapToResponseDTO(savedLog, null);
         }
 
         private void validateLogType(String logType) {
@@ -170,10 +179,11 @@ public class PlanningLogService {
                 }
         }
 
-        private PlanningLogResponseDTO mapToResponseDTO(TeacherPlanningLog entity) {
+        private PlanningLogResponseDTO mapToResponseDTO(TeacherPlanningLog entity, String createdBy) {
                 return PlanningLogResponseDTO.builder()
                                 .id(entity.getId())
                                 .createdByUserId(entity.getCreatedByUserId())
+                                .createdBy(createdBy)
                                 .logType(entity.getLogType())
                                 .entity(entity.getEntity())
                                 .entityId(entity.getEntityId())
@@ -186,6 +196,7 @@ public class PlanningLogService {
                                 .commaSeparatedFileIds(entity.getCommaSeparatedFileIds())
                                 .status(entity.getStatus())
                                 .instituteId(entity.getInstituteId())
+                                .isSharedWithStudent(entity.getIsSharedWithStudent())
                                 .createdAt(entity.getCreatedAt())
                                 .updatedAt(entity.getUpdatedAt())
                                 .build();
@@ -249,6 +260,8 @@ public class PlanningLogService {
                                                 || filter.getSubjectIds().contains(log.getSubjectId()))
                                 .filter(log -> isFilterEmpty(filter.getStatuses())
                                                 || filter.getStatuses().contains(log.getStatus()))
+                                .filter(log -> filter.getIsSharedWithStudent() == null
+                                                || filter.getIsSharedWithStudent().equals(log.getIsSharedWithStudent()))
                                 .toList();
 
                 // Apply pagination
@@ -259,9 +272,36 @@ public class PlanningLogService {
                                 ? filteredLogs.subList(start, end)
                                 : new ArrayList<>();
 
+                // Get unique user IDs from paginated logs
+                List<String> userIds = paginatedLogs.stream()
+                                .map(TeacherPlanningLog::getCreatedByUserId)
+                                .distinct()
+                                .collect(Collectors.toList());
+
+                // Fetch user details from auth service
+                Map<String, String> userIdToNameMap = new HashMap<>();
+                if (!userIds.isEmpty()) {
+                        try {
+                                List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(userIds);
+                                userIdToNameMap = users.stream()
+                                                .collect(Collectors.toMap(
+                                                                UserDTO::getId,
+                                                                userDto -> userDto.getFullName() != null
+                                                                                ? userDto.getFullName()
+                                                                                : "Unknown",
+                                                                (existing, replacement) -> existing));
+                        } catch (Exception e) {
+                                log.error("Error fetching user details from auth service: {}", e.getMessage());
+                        }
+                }
+
+                // Final map for use in lambda
+                final Map<String, String> userNameMap = userIdToNameMap;
+
                 // Convert to DTOs
                 List<PlanningLogResponseDTO> responseDTOs = paginatedLogs.stream()
-                                .map(this::mapToResponseDTO)
+                                .map(log -> mapToResponseDTO(log,
+                                                userNameMap.getOrDefault(log.getCreatedByUserId(), "Unknown")))
                                 .toList();
 
                 log.info("Found {} planning logs after filtering, returning page {} with {} items",
@@ -306,12 +346,57 @@ public class PlanningLogService {
                 if (updateDTO.getStatus() != null) {
                         planningLog.setStatus(updateDTO.getStatus());
                 }
+                if (updateDTO.getIsSharedWithStudent() != null) {
+                        planningLog.setIsSharedWithStudent(updateDTO.getIsSharedWithStudent());
+                }
 
                 // Save updated entity
                 TeacherPlanningLog updatedLog = planningLogRepository.save(planningLog);
 
                 log.info("Successfully updated planning log: {}", logId);
 
-                return mapToResponseDTO(updatedLog);
+                // Convert to response DTO (created_by will be null for update operations)
+                return mapToResponseDTO(updatedLog, null);
+        }
+
+        public String generateIntervalTypeId(String intervalType, String dateStr) {
+                LocalDate date;
+                try {
+                        date = LocalDate.parse(dateStr, DateTimeFormatter.ISO_LOCAL_DATE);
+                } catch (DateTimeParseException e) {
+                        throw new IllegalArgumentException("Invalid date format. Expected YYYY-MM-DD");
+                }
+
+                switch (intervalType) {
+                        case INTERVAL_DAILY:
+                                return date.toString();
+
+                        case INTERVAL_WEEKLY:
+                                // YYYY_D0X (Day of week, 1-7)
+                                return String.format("%d_D0%d", date.getYear(), date.getDayOfWeek().getValue());
+
+                        case INTERVAL_MONTHLY:
+                                // YYYY_MM_W0X (Week of month)
+                                // WeekFields.of(Locale.getDefault()).weekOfMonth() might be locale dependent.
+                                // Using a simple calculation: (day - 1) / 7 + 1
+                                int weekOfMonth = (date.getDayOfMonth() - 1) / 7 + 1;
+                                // Cap at 5? The regex allows 1-5.
+                                if (weekOfMonth > 5)
+                                        weekOfMonth = 5;
+                                return String.format("%d_%02d_W0%d", date.getYear(), date.getMonthValue(), weekOfMonth);
+
+                        case INTERVAL_YEARLY_MONTH:
+                                // YYYY_MXX (Month, 01-12)
+                                return String.format("%d_M%02d", date.getYear(), date.getMonthValue());
+
+                        case INTERVAL_YEARLY_QUARTER:
+                                // YYYY_Q0X (Quarter, 1-4)
+                                int quarter = (date.getMonthValue() - 1) / 3 + 1;
+                                return String.format("%d_Q0%d", date.getYear(), quarter);
+
+                        default:
+                                throw new IllegalArgumentException(
+                                                "Invalid interval_type. Must be one of: daily, weekly, monthly, yearly_month, yearly_quarter");
+                }
         }
 }

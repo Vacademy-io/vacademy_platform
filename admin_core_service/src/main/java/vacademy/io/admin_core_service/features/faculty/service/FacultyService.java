@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.course.dto.AddFacultyToCourseDTO;
 import vacademy.io.admin_core_service.features.faculty.dto.*;
 import vacademy.io.admin_core_service.features.faculty.entity.FacultySubjectPackageSessionMapping;
@@ -253,6 +254,11 @@ public class FacultyService {
 
     private String determineStatus(AddFacultyToCourseDTO dto) {
         return StringUtils.hasText(dto.getStatus()) ? dto.getStatus() : FacultyStatusEnum.ACTIVE.name();
+    }
+
+    public List<UserDTO>findFacultyByFilters(String instituteId) {
+        Set<String>userIds = facultyRepository.findUserIdsByFilters(instituteId, List.of(StatusEnum.ACTIVE.name()));
+        return authService.getUsersFromAuthServiceByUserIds(userIds.stream().toList());
     }
 
 }

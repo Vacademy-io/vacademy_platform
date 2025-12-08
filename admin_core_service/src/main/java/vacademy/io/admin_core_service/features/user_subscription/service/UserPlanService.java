@@ -518,7 +518,7 @@ public class UserPlanService {
     @Cacheable(
             value = "membershipDetails",
             key = "#filterDTO.instituteId + '_' + #pageNo + '_' + #pageSize + '_' + " +
-                    "#filterDTO.startDate + '_' + #filterDTO.endDate + '_' + " +
+                    "#filterDTO.startDateInUtc + '_' + #filterDTO.endDateInUtc + '_' + " +
                     "(#filterDTO.membershipStatuses != null ? #filterDTO.membershipStatuses.toString() : 'null') + '_' + " +
                     "(#filterDTO.sortOrder != null ? #filterDTO.sortOrder.toString() : 'null')",
             unless = "#result == null || #result.isEmpty()"

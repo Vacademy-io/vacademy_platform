@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.institute.entity.Template;
 import vacademy.io.admin_core_service.features.institute.repository.TemplateRepository;
@@ -20,7 +21,6 @@ import vacademy.io.common.notification.dto.AttachmentNotificationDTO;
 import vacademy.io.common.notification.dto.AttachmentUsersDTO;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -422,7 +422,7 @@ public class SendEmailNodeHandler implements NodeHandler {
                 String cacheKey = instituteId + ":" + templateName + ":EMAIL";
                 final String finalInstituteId = instituteId;
                 Template template = templateCache.computeIfAbsent(cacheKey, k ->
-                    templateRepository.findByInstituteIdAndNameAndType(finalInstituteId, templateName, "EMAIL")
+                    templateRepository.findByInstituteIdAndNameAndTypeAndStatus(finalInstituteId, templateName, "EMAIL", StatusEnum.ACTIVE.name())
                         .orElse(null)
                 );
 
@@ -508,7 +508,7 @@ public class SendEmailNodeHandler implements NodeHandler {
                 final String finalTemplateName = templateName;
 
                 Template template = templateCache.computeIfAbsent(cacheKey, k ->
-                    templateRepository.findByInstituteIdAndNameAndType(finalInstituteId, finalTemplateName, "EMAIL")
+                    templateRepository.findByInstituteIdAndNameAndTypeAndStatus(finalInstituteId, finalTemplateName, "EMAIL",StatusEnum.ACTIVE.name())
                         .orElse(null)
                 );
 

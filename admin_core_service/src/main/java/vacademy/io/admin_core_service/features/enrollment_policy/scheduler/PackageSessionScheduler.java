@@ -13,7 +13,7 @@ public class PackageSessionScheduler {
 
     private final PackageSessionEnrolmentService enrolmentService;
 
-    @Scheduled(cron = "0 0 1 * * ?") // Runs daily at 1:00 AM
+// Runs daily at 1:00 AM
     public void processPackageSessionExpiries() {
         log.info("Starting PackageSessionScheduler job...");
         try {

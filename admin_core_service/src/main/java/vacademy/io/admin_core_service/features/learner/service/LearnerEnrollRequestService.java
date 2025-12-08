@@ -23,14 +23,17 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanS
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentOptionService;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentPlanService;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
+import vacademy.io.admin_core_service.features.enrollment_policy.service.ReenrollmentGapValidationService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollRequestDTO;
 import vacademy.io.common.common.dto.CustomFieldValueDTO;
+import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
+import java.text.SimpleDateFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -68,6 +71,9 @@ public class LearnerEnrollRequestService {
 
     @Autowired
     private PackageSessionRepository packageSessionRepository;
+
+    @Autowired
+    private ReenrollmentGapValidationService reenrollmentGapValidationService;
 
     @Transactional
     public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
@@ -114,6 +120,54 @@ public class LearnerEnrollRequestService {
                             log.warn("SubOrg creation returned null, falling back to USER source");
                         }
                     }
+                }
+            }
+        }
+
+        // Validate re-enrollment gap before creating UserPlan
+        List<PackageSession> packageSessions = packageSessionRepository
+                .findPackageSessionsByIds(enrollDTO.getPackageSessionIds());
+
+        ReenrollmentGapValidationService.GapValidationResult gapValidationResult = reenrollmentGapValidationService
+                .validateGapForPackageSessions(
+                        learnerEnrollRequestDTO.getUser().getId(),
+                        learnerEnrollRequestDTO.getInstituteId(),
+                        packageSessions,
+                        new java.util.Date());
+
+        // Handle validation results
+        boolean isSinglePackageSession = enrollDTO.getPackageSessionIds().size() == 1;
+
+        if (!gapValidationResult.isAllowed()) {
+            // Some or all package sessions are blocked
+            if (isSinglePackageSession) {
+                // Single package session - throw error with retry date
+                ReenrollmentGapValidationService.GapBlockedPackageSession blocked = gapValidationResult
+                        .getBlockedPackageSessions().get(0);
+                String retryDateStr = new SimpleDateFormat("yyyy-MM-dd").format(blocked.getRetryDate());
+                throw new VacademyException(
+                        String.format("You can retry operation on %s", retryDateStr));
+            } else {
+                // Multiple package sessions - check if at least one is allowed
+                if (gapValidationResult.getAllowedPackageSessionIds().isEmpty()) {
+                    // All are blocked - throw error
+                    // Find the earliest retry date
+                    java.util.Date earliestRetryDate = gapValidationResult.getBlockedPackageSessions().stream()
+                            .map(ReenrollmentGapValidationService.GapBlockedPackageSession::getRetryDate)
+                            .min(java.util.Date::compareTo)
+                            .orElse(new java.util.Date());
+                    String retryDateStr = new SimpleDateFormat("yyyy-MM-dd").format(earliestRetryDate);
+                    throw new VacademyException(
+                            String.format("You can retry operation on %s", retryDateStr));
+                } else {
+                    // At least one is allowed - filter out blocked ones
+                    log.info("Filtering out {} blocked package sessions due to gap violation. " +
+                            "Proceeding with {} allowed package sessions.",
+                            gapValidationResult.getBlockedPackageSessions().size(),
+                            gapValidationResult.getAllowedPackageSessionIds().size());
+
+                    // Update enrollDTO to only include allowed package sessions
+                    enrollDTO.setPackageSessionIds(gapValidationResult.getAllowedPackageSessionIds());
                 }
             }
         }

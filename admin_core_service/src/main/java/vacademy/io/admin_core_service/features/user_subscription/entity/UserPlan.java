@@ -9,6 +9,7 @@ import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 
 import java.time.LocalDateTime;
+import java.util.Date;
 import java.util.List;
 
 @AllArgsConstructor
@@ -76,6 +77,14 @@ public class UserPlan {
 
     @Column(name = "sub_org_id", length = 255)
     private String subOrgId;
+
+    @Temporal(TemporalType.TIMESTAMP)
+    @Column(name = "start_date")
+    private Date startDate;
+
+    @Temporal(TemporalType.TIMESTAMP)
+    @Column(name = "end_date")
+    private Date endDate;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;

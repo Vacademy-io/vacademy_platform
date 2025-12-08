@@ -189,8 +189,7 @@ public interface StudentSessionInstituteGroupMappingRepository
                         @Param("userIds") List<String> userIds,
                         @Param("status") String status);
 
-
-                        // only active package sessions
+        // only active package sessions
         @Query("SELECT DISTINCT m.packageSession.id " +
                         "FROM StudentSessionInstituteGroupMapping m " +
                         "JOIN m.packageSession ps " +
@@ -213,7 +212,58 @@ public interface StudentSessionInstituteGroupMappingRepository
                         @Param("userId") String userId,
                         @Param("role") String role);
 
-    List<StudentSessionInstituteGroupMapping>findAllByStatus(String status);
+        List<StudentSessionInstituteGroupMapping> findAllByStatus(String status);
 
-    List<StudentSessionInstituteGroupMapping>findByInstitute_IdAndStatus(String instituteId,String status);
+        List<StudentSessionInstituteGroupMapping> findByInstitute_IdAndStatus(String instituteId, String status);
+
+        // Find all mappings for sub-org and package session
+        @Query("SELECT m FROM StudentSessionInstituteGroupMapping m " +
+                        "WHERE m.subOrg.id = :subOrgId " +
+                        "AND m.packageSession.id = :packageSessionId " +
+                        "AND m.status = 'ACTIVE'")
+        List<StudentSessionInstituteGroupMapping> findAllBySubOrgAndPackageSession(
+                        @Param("subOrgId") String subOrgId,
+                        @Param("packageSessionId") String packageSessionId);
+
+        /**
+         * Finds all ACTIVE mappings for a given UserPlan.
+         * Used for processing enrollment expiry based on UserPlan.
+         */
+        @Query("SELECT m FROM StudentSessionInstituteGroupMapping m " +
+                        "WHERE m.userPlanId = :userPlanId " +
+                        "AND m.status = 'ACTIVE'")
+        List<StudentSessionInstituteGroupMapping> findAllByUserPlanIdAndStatusActive(
+                        @Param("userPlanId") String userPlanId);
+
+        // Native query version
+        @Query(value = "SELECT DISTINCT m.user_id " +
+                        "FROM student_session_institute_group_mapping m, " +
+                        "unnest(string_to_array(m.comma_separated_org_roles, ',')) AS role_value " +
+                        "WHERE m.sub_org_id = :subOrgId " +
+                        "AND m.package_session_id = :packageSessionId " +
+                        "AND m.status = 'ACTIVE' " +
+                        "AND LOWER(role_value) = LOWER(:role)", nativeQuery = true)
+        List<String> findAdminUserIdsForSubOrg(
+                        @Param("subOrgId") String subOrgId,
+                        @Param("packageSessionId") String packageSessionId,
+                        @Param("role") String role);
+
+        /**
+         * Finds one admin mapping per (subOrgId, packageSessionId) combination.
+         * Returns only ACTIVE mappings where the user has ADMIN role.
+         * Uses DISTINCT ON to get one mapping per sub-org + package session.
+         */
+        @Query(value = """
+                        SELECT DISTINCT ON (m.sub_org_id, m.package_session_id) m.*
+                        FROM student_session_institute_group_mapping m,
+                        unnest(string_to_array(m.comma_separated_org_roles, ',')) AS role_value
+                        WHERE m.sub_org_id IS NOT NULL
+                        AND m.status = 'ACTIVE'
+                        AND m.institute_id = :instituteId
+                        AND LOWER(role_value) = LOWER(:role)
+                        ORDER BY m.sub_org_id, m.package_session_id, m.enrolled_date DESC
+                        """, nativeQuery = true)
+        List<StudentSessionInstituteGroupMapping> findOneAdminMappingPerSubOrg(
+                        @Param("instituteId") String instituteId,
+                        @Param("role") String role);
 }

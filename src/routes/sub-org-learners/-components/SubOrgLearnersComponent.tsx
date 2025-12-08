@@ -27,6 +27,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
   const [selectedPackageSession, setSelectedPackageSession] = useState<string>('');
   const [members, setMembers] = useState<StudentMapping[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
 
@@ -113,6 +114,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
       return;
     }
 
+    setIsAdding(true);
     try {
       const memberData: AddMemberRequest = {
         user: {
@@ -150,6 +152,8 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
       loadMembers(); // Refresh the list
     } catch (error) {
       console.error('Error adding member:', error);
+    } finally {
+      setIsAdding(false);
     }
   };
 
@@ -475,11 +479,11 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                   </Popover>
                 </div>
                 <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4">
-                  <Button variant="outline" onClick={() => setIsAddModalOpen(false)} className="w-full sm:w-auto">
+                  <Button variant="outline" onClick={() => setIsAddModalOpen(false)} className="w-full sm:w-auto" disabled={isAdding}>
                     Cancel
                   </Button>
-                  <Button onClick={handleAddMember} className="w-full sm:w-auto">
-                    Add Learner
+                  <Button onClick={handleAddMember} className="w-full sm:w-auto" disabled={isAdding}>
+                    {isAdding ? 'Adding...' : 'Add Learner'}
                   </Button>
                 </div>
               </div>

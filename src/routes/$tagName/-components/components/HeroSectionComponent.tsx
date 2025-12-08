@@ -38,11 +38,14 @@ interface HeroSectionProps {
     instructor?: string;
   };
 }
+// Centralized enabled check - defaults to false if not provided
+// Only returns true if enabled is explicitly true (boolean or string "true")
 const isHeroButtonEnabled = (button?: { enabled?: boolean | string | number }) => {
   if (!button) return false;
   const { enabled } = button;
+  // Default to false if not provided (consistent with JsonRenderer)
   if (enabled === undefined || enabled === null) {
-    return true;
+    return false;
   }
   if (typeof enabled === "string") {
     return enabled.toLowerCase() === "true";

@@ -260,6 +260,11 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
   // Check if courseCatalogeType.enabled is true
   const isCourseCatalogeTypeEnabled = !!(catalogueData?.globalSettings?.courseCatalogeType?.enabled);
+  
+  // Check if logo from JSON should be used (when courseCatalogeType.enabled is true and layout.header.props.logo exists)
+  const jsonLogoUrl = isCourseCatalogeTypeEnabled && catalogueData?.globalSettings?.layout?.header?.props?.logo
+    ? catalogueData.globalSettings.layout.header.props.logo
+    : null;
 
   // Check if we should hide search and cart icons
   const shouldHideSearchAndCart = () => {
@@ -287,7 +292,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
         
         if (isCurrentPage && page.components) {
           const hasBuyRentSection = page.components.some(
-            (component: any) => component.type === 'buyRentSection' && component.enabled !== false
+            (component: any) => component.type === 'buyRentSection' && (component.enabled === true || component.enabled === "true")
           );
           if (hasBuyRentSection) {
             return true;
@@ -335,20 +340,36 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
           {/* Institute Logo and Name */}
           <div className={`flex items-center space-x-3 sm:space-x-4 ${isCourseCatalogeTypeEnabled ? 'flex-1 md:flex-none justify-center md:justify-start' : ''}`}>
-            {instituteLogoUrl && (
+            {/* Show JSON logo in rectangular format if courseCatalogeType.enabled is true and logo exists */}
+            {jsonLogoUrl ? (
               <img
-                src={instituteLogoUrl}
-                alt="Institute Logo"
+                src={jsonLogoUrl}
+                alt="Logo"
                 onClick={domainRouting.homeIconClickRoute ? handleInstituteLogoClick : undefined}
-                className={`h-12 w-12 sm:h-14 sm:w-14 rounded-full object-cover${domainRouting.homeIconClickRoute ? " cursor-pointer" : ""}`}
+                className={`h-12 sm:h-14 w-auto object-contain rounded-lg shadow-sm transition-all duration-300 hover:scale-105${domainRouting.homeIconClickRoute ? " cursor-pointer" : ""}`}
+
                 onError={(e) => {
                   e.currentTarget.style.display = "none";
                 }}
               />
+            ) : (
+              <>
+                {instituteLogoUrl && (
+                  <img
+                    src={instituteLogoUrl}
+                    alt="Institute Logo"
+                    onClick={domainRouting.homeIconClickRoute ? handleInstituteLogoClick : undefined}
+                    className={`h-12 w-12 sm:h-14 sm:w-14 rounded-full object-cover${domainRouting.homeIconClickRoute ? " cursor-pointer" : ""}`}
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                    }}
+                  />
+                )}
+                <div className="text-base sm:text-xl font-semibold text-gray-900 truncate">
+                  {domainRouting.instituteName || "Learning Platform"}
+                </div>
+              </>
             )}
-            <div className="text-base sm:text-xl font-semibold text-gray-900 truncate">
-              {domainRouting.instituteName || "Learning Platform"}
-            </div>
           </div>
 
           {/* Navigation Menu */}

@@ -117,11 +117,7 @@ export class CourseCatalogueService {
           mode: "light",
           fonts : {
             enabled: false,
-            family : "Mulish, sans-serif",
-            fallback: "Mulish, sans-serif" 
-            },
-            styles: {
-            enabled : false,
+            family : "Mulish, sans-serif"
             },
           compactness: "medium",
           audience: "all",

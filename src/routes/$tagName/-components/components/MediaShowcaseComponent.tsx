@@ -182,36 +182,78 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
     }
   }, [isSliderFormat, slides?.length]);
 
-  // Resolve slide background images
+  // Resolve slide background images in parallel for better performance
   useEffect(() => {
     if (!isSliderFormat || !slides || slides.length === 0) return;
 
     const resolveImages = async () => {
       const resolved: { [key: number]: string } = {};
       
-      for (let i = 0; i < slides.length; i++) {
-        const slide = slides[i];
-        if (!slide.backgroundImage) continue;
+      // Load all images in parallel instead of sequentially
+      const imagePromises = slides.map(async (slide, i) => {
+        if (!slide.backgroundImage) return { index: i, url: null };
 
-        // Check if it's a URL or file ID
+        // Check if it's already a URL
         if (slide.backgroundImage.startsWith('http://') || slide.backgroundImage.startsWith('https://')) {
-          resolved[i] = slide.backgroundImage;
-        } else {
-          try {
-            const url = await getPublicUrlWithoutLogin(slide.backgroundImage);
-            resolved[i] = url;
-          } catch (error) {
-            console.error(`Error loading slide ${i} image:`, error);
-            resolved[i] = slide.backgroundImage; // Fallback to original
-          }
+          return { index: i, url: slide.backgroundImage };
         }
-      }
+
+        // Resolve file ID to URL
+        try {
+          const url = await getPublicUrlWithoutLogin(slide.backgroundImage);
+          return { index: i, url };
+        } catch (error) {
+          console.error(`Error loading slide ${i} image:`, error);
+          return { index: i, url: slide.backgroundImage }; // Fallback to original
+        }
+      });
+
+      // Wait for all images to resolve in parallel
+      const results = await Promise.all(imagePromises);
+      results.forEach(({ index, url }) => {
+        if (url) {
+          resolved[index] = url;
+        }
+      });
       
       setResolvedSlideImages(resolved);
+
+      // Preload images into browser cache for smoother transitions
+      results.forEach(({ url }) => {
+        if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+          const img = new Image();
+          img.src = url;
+        }
+      });
     };
 
     resolveImages();
   }, [isSliderFormat, slides]);
+
+  // Preload adjacent slide images for smoother transitions
+  useEffect(() => {
+    if (!isSliderFormat || !slides || slides.length === 0 || Object.keys(resolvedSlideImages).length === 0) return;
+
+    // Preload next and previous slide images
+    const preloadImage = (url: string) => {
+      if (!url || url.includes('/api/placeholder/')) return;
+      const img = new Image();
+      img.src = url;
+    };
+
+    const nextIndex = (currentIndex + 1) % slides.length;
+    const prevIndex = (currentIndex - 1 + slides.length) % slides.length;
+
+    // Preload next slide
+    if (resolvedSlideImages[nextIndex]) {
+      preloadImage(resolvedSlideImages[nextIndex]);
+    }
+
+    // Preload previous slide
+    if (resolvedSlideImages[prevIndex]) {
+      preloadImage(resolvedSlideImages[prevIndex]);
+    }
+  }, [currentIndex, resolvedSlideImages, isSliderFormat, slides?.length]);
 
   // Autoplay functionality
   useEffect(() => {
@@ -311,12 +353,15 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
       }))
     });
     
-    const sliderStyle = useMemo(() => ({
+    const sliderStyle = useMemo((): React.CSSProperties => ({
       transform: `translateX(-${transformPercent}%)`,
       width: `${slides.length * 100}%`,
       display: 'flex',
-      transition: 'transform 500ms ease-in-out',
-      willChange: 'transform'
+      transition: 'transform 500ms cubic-bezier(0.4, 0, 0.2, 1)', // Smoother easing
+      willChange: 'transform',
+      backfaceVisibility: 'hidden', // Prevent flickering
+      WebkitBackfaceVisibility: 'hidden', // Safari support
+      perspective: '1000px' // Enable 3D transforms for better performance
     }), [currentIndex, slides.length, transformPercent]);
     
     
@@ -327,7 +372,9 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
           style={{ 
             height: "500px", 
             width: "100%",
-            position: 'relative'
+            position: 'relative',
+            willChange: 'contents', // Optimize for animations
+            transform: 'translateZ(0)' // Force GPU acceleration
           }}
         >
          <div className="flex h-full" style={sliderStyle}>
@@ -338,20 +385,33 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
               return (
                 <div
                   key={index}
-                  className="flex-shrink-0 h-full relative"
+                  className="flex-shrink-0 h-full relative overflow-hidden"
                   style={{
                     width: `calc(100% / ${slides.length})`,
                     minWidth: `calc(100% / ${slides.length})`,
                     maxWidth: `calc(100% / ${slides.length})`,
                     flexBasis: `calc(100% / ${slides.length})`,
-                    backgroundImage: backgroundUrl ? `url(${backgroundUrl})` : 'none',
-                    backgroundSize: "cover",
-                    backgroundPosition: "center",
-                    backgroundRepeat: "no-repeat",
-                    backgroundColor: backgroundUrl ? 'transparent' : '#1f2937',
+                    backgroundColor: '#1f2937',
                     position: 'relative'
                   }}
                 >
+                  {/* Use actual img tag for better performance and preloading */}
+                  <img
+                    src={backgroundUrl}
+                    alt={slide.heading || `Slide ${index + 1}`}
+                    className="absolute inset-0 w-full h-full object-cover"
+                    style={{
+                      objectFit: 'cover',
+                      objectPosition: 'center',
+                      willChange: 'transform',
+                      backfaceVisibility: 'hidden',
+                      transform: 'translateZ(0)' // Force GPU acceleration
+                    }}
+                    loading={index === 0 ? "eager" : "lazy"} // Eager load first slide, lazy load others
+                    onError={(e) => {
+                      e.currentTarget.src = "/api/placeholder/1920/500";
+                    }}
+                  />
                   {/* Overlay for better text readability */}
                   <div 
                     className="absolute inset-0" 

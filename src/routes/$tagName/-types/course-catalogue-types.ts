@@ -7,12 +7,7 @@ export interface GlobalSettings {
   mode: "light" | "dark";
   fonts? : {
     enabled?: boolean,
-    family?: string,
-    fallback?: string 
-    },
-    styles?: {
-    enabled?: boolean,
-    pagePadding?: string
+    family?: string
     },
   compactness: "small" | "medium" | "large";
   audience: "children" | "adults" | "all";

@@ -26,7 +26,7 @@ function SubOrgLearnersPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    setNavHeading('Sub-Organization Learner Management');
+    setNavHeading('Practise Member Management');
   }, [setNavHeading]);
 
   useEffect(() => {

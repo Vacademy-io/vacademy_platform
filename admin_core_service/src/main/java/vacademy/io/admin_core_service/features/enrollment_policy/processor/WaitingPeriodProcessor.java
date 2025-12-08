@@ -34,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Component
@@ -55,98 +56,138 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
     @Transactional
     public void process(EnrolmentContext context) {
         long daysPastExpiry = context.getDaysPastExpiry();
+        UserPlan userPlan = context.getUserPlan();
+        
+        if (userPlan == null) {
+            log.warn("No UserPlan found in context");
+            return;
+        }
 
-            // Check if this is a SUB_ORG UserPlan
-            String userPlanId = context.getMapping().getUserPlanId();
-            boolean isSubOrg = false;
-            String subOrgId = null;
-            String packageSessionId = context.getMapping().getPackageSession().getId();
-            UserPlan userPlan = null;
+        boolean isSubOrg = context.isSubOrg();
+        String subOrgId = context.getSubOrgId();
+        List<StudentSessionInstituteGroupMapping> allMappings = context.getMappings();
+        
+        if (allMappings == null || allMappings.isEmpty()) {
+            log.warn("No mappings found for UserPlan: {}", userPlan.getId());
+            return;
+        }
 
-            if (StringUtils.hasText(userPlanId)) {
-                userPlan = userPlanService.findById(userPlanId);
-                if (userPlan != null && UserPlanSourceEnum.SUB_ORG.name().equals(userPlan.getSource())
-                        && StringUtils.hasText(userPlan.getSubOrgId())) {
-                    isSubOrg = true;
-                    subOrgId = userPlan.getSubOrgId();
-                }
+        // Handle ON_EXPIRY_DATE_REACHED trigger (exactly on expiry date - daysPastExpiry == 0)
+        if (daysPastExpiry == 0) {
+            // Check if at least one package session policy allows auto-renewal
+            boolean shouldAttemptPayment = allMappings.stream()
+                .map(StudentSessionInstituteGroupMapping::getPackageSession)
+                .filter(ps -> ps != null && ps.getId() != null)
+                .map(ps -> context.getPolicyForPackageSession(ps.getId()))
+                .filter(policy -> policy != null)
+                .anyMatch(policy -> paymentRenewalCheckService.shouldAttemptPayment(userPlan, policy));
+
+            if (shouldAttemptPayment) {
+                // Process payment once for all mappings
+                String packageSessionId = allMappings.get(0).getPackageSession().getId();
+                processPaymentOnExpiry(context, userPlan, isSubOrg, subOrgId, packageSessionId);
+            } else {
+                // Payment not attempted (no policy allows auto-renewal, or FREE/DONATION/ONE_TIME)
+                log.info("Payment not attempted for UserPlan: {} (no policy allows auto-renewal)", userPlan.getId());
+                handleNonRenewableExpiry(context, userPlan, subOrgId, isSubOrg);
+            }
+        }
+
+        // Process notifications based on each mapping's policy
+        processNotifications(context, daysPastExpiry);
+    }
+
+    /**
+     * Process notifications based on each mapping's policy.
+     * For SUB_ORG: Send ONE notification to ROOT_ADMIN (context.user is already ROOT_ADMIN)
+     * For Individual: Send notification to the user
+     */
+    private void processNotifications(EnrolmentContext context, long daysPastExpiry) {
+        if (context.isSubOrg()) {
+            // For SUB_ORG: Send one consolidated notification to ROOT_ADMIN
+            processSubOrgNotifications(context, daysPastExpiry);
+        } else {
+            // For Individual: Process notifications per mapping's policy
+            processIndividualNotifications(context, daysPastExpiry);
+        }
+    }
+
+    /**
+     * Send ONE notification to ROOT_ADMIN for all mappings
+     */
+    private void processSubOrgNotifications(EnrolmentContext context, long daysPastExpiry) {
+        // Check if any policy has notifications for this day
+        for (Map.Entry<String, EnrollmentPolicySettingsDTO> entry : context.getPoliciesByPackageSessionId().entrySet()) {
+            EnrollmentPolicySettingsDTO policy = entry.getValue();
+            
+            if (policy.getNotifications() == null) {
+                continue;
             }
 
-            // Handle ON_EXPIRY_DATE_REACHED trigger (exactly on expiry date -
-            // daysPastExpiry == 0)
-            if (daysPastExpiry == 0 && userPlan != null) {
-                // Use mappings from context (already fetched, no DB call needed)
-                List<StudentSessionInstituteGroupMapping> allMappings = context.getAllMappings();
-                if (allMappings == null || allMappings.isEmpty()) {
-                    log.warn("No mappings found in context for UserPlan: {}", userPlan.getId());
-                    return;
-                }
+            List<NotificationPolicyDTO> notifications = policy.getNotifications().stream()
+                .filter(n -> shouldSendNotification(n, daysPastExpiry))
+                .toList();
 
-                // Only process payment when handling the first mapping for this UserPlan
-                // This ensures payment is attempted only once per UserPlan
-                boolean isFirstMapping = allMappings.get(0).getId().equals(context.getMapping().getId());
-                
-                if (isFirstMapping) {
-                    // Check if at least one package session policy allows auto-renewal
-                    boolean shouldAttemptPayment = false;
-                    // Check if any mapping's policy allows auto-renewal
-                    for (StudentSessionInstituteGroupMapping mappingItem : allMappings) {
-                        String policyJson = mappingItem.getPackageSession() != null
-                                ? mappingItem.getPackageSession().getEnrollmentPolicySettings()
-                                : null;
-                        if (policyJson != null && !policyJson.isBlank()) {
-                            try {
-                                vacademy.io.admin_core_service.features.enrollment_policy.dto.EnrollmentPolicySettingsDTO policy = objectMapper
-                                        .readValue(policyJson,
-                                                vacademy.io.admin_core_service.features.enrollment_policy.dto.EnrollmentPolicySettingsDTO.class);
-                                if (paymentRenewalCheckService.shouldAttemptPayment(userPlan, policy)) {
-                                    shouldAttemptPayment = true;
-                                    break; // Found at least one policy that allows payment
-                                }
-                            } catch (Exception e) {
-                                log.debug("Failed to parse policy for mapping: {}", mappingItem.getId(), e);
-                            }
-                        }
+            if (!notifications.isEmpty()) {
+                // Send to ROOT_ADMIN (context.user is already ROOT_ADMIN)
+                for (NotificationPolicyDTO notification : notifications) {
+                    try {
+                        sendChannelNotifications(context, notification);
+                        log.info("Sent notification to ROOT_ADMIN for SubOrg: {}", context.getSubOrgId());
+                    } catch (Exception e) {
+                        log.error("Error sending notification to ROOT_ADMIN", e);
                     }
+                }
+                break; // Send once, not per policy
+            }
+        }
+    }
 
-                    if (shouldAttemptPayment) {
-                        // Process payment once for all mappings (batch processing)
-                        // Payment is attempted only once per UserPlan (when processing first mapping)
-                        processPaymentOnExpiry(context, userPlan, isSubOrg, subOrgId, packageSessionId);
-                    } else {
-                        // Payment not attempted (no policy allows auto-renewal, or
-                        // FREE/DONATION/ONE_TIME)
-                        // Just mark UserPlan as EXPIRED and send notifications
-                        log.info(
-                                "Payment not attempted for UserPlan: {} (no policy allows auto-renewal or PaymentOption type)",
-                                userPlan.getId());
-                        handleNonRenewableExpiry(context, userPlan, subOrgId, packageSessionId, isSubOrg);
-                    }
-                } else {
-                    // Not the first mapping - payment already processed, skip payment logic
-                    log.debug("Skipping payment processing for mapping {} - already processed for UserPlan {}",
-                            context.getMapping().getId(), userPlan.getId());
+    /**
+     * Send notifications per mapping's policy for individual users
+     */
+    private void processIndividualNotifications(EnrolmentContext context, long daysPastExpiry) {
+        for (StudentSessionInstituteGroupMapping mapping : context.getMappings()) {
+            String packageSessionId = mapping.getPackageSession().getId();
+            EnrollmentPolicySettingsDTO policy = context.getPolicyForPackageSession(packageSessionId);
+            
+            if (policy == null || policy.getNotifications() == null) {
+                continue;
+            }
+
+            List<NotificationPolicyDTO> notifications = policy.getNotifications().stream()
+                .filter(n -> shouldSendNotification(n, daysPastExpiry))
+                .toList();
+
+            for (NotificationPolicyDTO notification : notifications) {
+                try {
+                    sendChannelNotifications(context, notification);
+                } catch (Exception e) {
+                    log.error("Error sending notification for mapping: {}", mapping.getId(), e);
                 }
             }
+        }
+    }
 
-            // Process notifications
-            List<NotificationPolicyDTO> notificationsToProcess = findNotificationsToProcess(context, daysPastExpiry);
-
-            if (notificationsToProcess.isEmpty()) {
-                return;
-            }
-
-            // Send notifications
-            // Context already has the correct user set:
-            // - For SubOrg: ROOT_ADMIN (set in PackageSessionEnrolmentService)
-            // - For Individual: Individual user (set in PackageSessionEnrolmentService)
-            // No need to fetch again, just use the context as-is
-            sendNotificationsToUser(context, notificationsToProcess);
+    /**
+     * Check if notification should be sent for this day
+     */
+    private boolean shouldSendNotification(NotificationPolicyDTO notification, long daysPastExpiry) {
+        if (NotificationTriggerType.ON_EXPIRY_DATE_REACHED.equals(notification.getTrigger())) {
+            return daysPastExpiry == 0;
+        }
+        if (NotificationTriggerType.DURING_WAITING_PERIOD.equals(notification.getTrigger())) {
+            return notification.getSendEveryNDays() != null 
+                && notification.getSendEveryNDays() > 0
+                && daysPastExpiry > 0
+                && daysPastExpiry % notification.getSendEveryNDays() == 0;
+        }
+        return false;
     }
 
     /**
      * Processes payment on expiry date (ON_EXPIRY_DATE_REACHED).
-     * Payment is attempted only once per UserPlan (when processing first mapping).
+     * Payment is attempted only once per UserPlan.
      * 
      * ⚠️ IMPORTANT: This method ONLY initiates payment and waits for webhook.
      * NO date extensions or status updates happen here.
@@ -429,40 +470,36 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
     }
 
     /**
-     * Handles expiry for non-renewable payment options (FREE, DONATION, ONE_TIME)
-     * or when auto-renewal is disabled.
-     * Sends notifications and marks UserPlan as EXPIRED, but keeps mappings ACTIVE
-     * during waiting period.
+     * Handles expiry for non-renewable payment options
      */
     private void handleNonRenewableExpiry(EnrolmentContext context, UserPlan userPlan,
-            String subOrgId, String packageSessionId, boolean isSubOrg) {
+            String subOrgId, boolean isSubOrg) {
         log.info("Handling non-renewable expiry for UserPlan: {} (SUB_ORG: {})",
                 userPlan.getId(), isSubOrg);
 
-        // Mark UserPlan as EXPIRED, but keep mappings ACTIVE during waiting period
         markUserPlanAsExpired(userPlan);
 
         if (isSubOrg && StringUtils.hasText(subOrgId)) {
-            // Send notifications to ROOT_ADMIN
-            notifyAdminsOfExpiry(subOrgId, packageSessionId, context);
+            notifyAdminsOfExpiry(context);
         }
-        // For individual users, notifications will be handled by the notification
-        // processing below
+    }
+
+    // Remove old signature - replaced with one above
+    @Deprecated
+    private void handleNonRenewableExpiry(EnrolmentContext context, UserPlan userPlan,
+            String subOrgId, String packageSessionId, boolean isSubOrg) {
+        handleNonRenewableExpiry(context, userPlan, subOrgId, isSubOrg);
     }
 
     /**
-     * Notifies ROOT_ADMIN of expiry (for non-renewable or auto-renewal disabled
-     * cases).
-     * Context already has ROOT_ADMIN set, so just use it directly.
+     * Notifies ROOT_ADMIN of expiry (for non-renewable or auto-renewal disabled cases).
      */
-    private void notifyAdminsOfExpiry(String subOrgId, String packageSessionId, EnrolmentContext context) {
+    private void notifyAdminsOfExpiry(EnrolmentContext context) {
         try {
-            // Context already has ROOT_ADMIN set (from PackageSessionEnrolmentService)
-            // No need to fetch again
             sendExpiryNotificationsToAdmins(context);
-            log.info("Sent expiry notifications to ROOT_ADMIN for sub-org: {}", subOrgId);
+            log.info("Sent expiry notifications to ROOT_ADMIN for sub-org: {}", context.getSubOrgId());
         } catch (Exception e) {
-            log.error("Error notifying ROOT_ADMIN of expiry for sub-org: {}", subOrgId, e);
+            log.error("Error notifying ROOT_ADMIN of expiry for sub-org: {}", context.getSubOrgId(), e);
         }
     }
 
@@ -496,11 +533,16 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
      * Sends expiry notifications to admins.
      */
     private void sendExpiryNotificationsToAdmins(EnrolmentContext context) {
-        if (context.getPolicy().getNotifications() == null) {
+        // Get any policy (they all have similar notification settings)
+        EnrollmentPolicySettingsDTO policy = context.getPoliciesByPackageSessionId().values().stream()
+            .findFirst()
+            .orElse(null);
+            
+        if (policy == null || policy.getNotifications() == null) {
             return;
         }
 
-        List<NotificationPolicyDTO> expiryNotifications = context.getPolicy().getNotifications().stream()
+        List<NotificationPolicyDTO> expiryNotifications = policy.getNotifications().stream()
                 .filter(p -> NotificationTriggerType.ON_EXPIRY_DATE_REACHED.equals(p.getTrigger()))
                 .toList();
 
@@ -529,7 +571,6 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
     private void sendNotificationsToUser(EnrolmentContext context, List<NotificationPolicyDTO> notifications) {
         for (NotificationPolicyDTO notification : notifications) {
             try {
-                log.info("Processing waiting-period notification for mapping: {}", context.getMapping().getId());
                 // Send all channel notifications for this policy
                 sendChannelNotifications(context, notification);
             } catch (Exception e) {
@@ -584,7 +625,16 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
     }
 
     private List<NotificationPolicyDTO> findNotificationsToProcess(EnrolmentContext context, long daysPastExpiry) {
-        return context.getPolicy().getNotifications().stream()
+        // Get any policy to check notifications
+        EnrollmentPolicySettingsDTO policy = context.getPoliciesByPackageSessionId().values().stream()
+            .findFirst()
+            .orElse(null);
+            
+        if (policy == null || policy.getNotifications() == null) {
+            return List.of();
+        }
+        
+        return policy.getNotifications().stream()
                 .filter(p -> {
                     // Handle ON_EXPIRY_DATE_REACHED trigger (exactly on expiry date)
                     if (NotificationTriggerType.ON_EXPIRY_DATE_REACHED.equals(p.getTrigger())) {
@@ -703,50 +753,5 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
                         List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
                         List.of(PackageStatusEnum.ACTIVE.name()))
                 .orElseThrow(() -> new VacademyException("No Invited package session found"));
-    }
-
-    private void processMapping(StudentSessionInstituteGroupMapping mapping, EnrollmentPolicySettingsDTO policy) {
-        try {
-            // Calculate the end of waiting period
-            Date waitingPeriodEnd = calculateWaitingPeriodEnd(mapping, policy);
-            
-            if (waitingPeriodEnd == null) {
-                log.warn("No waiting period defined for mapping: {}", mapping.getId());
-                return;
-            }
-            
-            Date now = new Date();
-            
-            // Check if waiting period has ended
-            if (now.after(waitingPeriodEnd)) {
-                log.info("Waiting period ended for mapping: {}, moving to EXPIRED", mapping.getId());
-                moveToExpired(mapping);
-            } else {
-                log.debug("Mapping {} still in waiting period until: {}", mapping.getId(), waitingPeriodEnd);
-            }
-        } catch (Exception e) {
-            log.error("Error processing mapping: {}", mapping.getId(), e);
-        }
-    }
-
-    private Date calculateWaitingPeriodEnd(StudentSessionInstituteGroupMapping mapping, EnrollmentPolicySettingsDTO
-            policy) {
-        if (mapping.getExpiryDate() == null) {
-            return null;
-        }
-        
-        Integer waitingPeriodDays = policy.getOnExpiry() != null ? policy.getOnExpiry().getWaitingPeriodInDays() : null;
-        if (waitingPeriodDays == null || waitingPeriodDays <= 0) {
-            return null;
-        }
-        
-        return addDaysToDate(mapping.getExpiryDate(), waitingPeriodDays);
-    }
-
-    private void moveToExpired(StudentSessionInstituteGroupMapping mapping) {
-        mapping.setStatus(LearnerSessionStatusEnum.TERMINATED.name());
-        mappingRepository.save(mapping);
-        createInvitedEntry(mapping);
-        log.info("Moved mapping {} to EXPIRED and created INVITED entry", mapping.getId());
     }
 }

@@ -34,7 +34,15 @@ public class EmailNotificationService implements INotificationService {
 
     @Override
     public void sendNotification(EnrolmentContext context, NotificationPolicyDTO policy) {
-        String instituteId = context.getMapping().getInstitute().getId();
+        // Get instituteId from first mapping (all belong to same UserPlan/Institute)
+        String instituteId = context.getMappings() != null && !context.getMappings().isEmpty()
+            ? context.getMappings().get(0).getInstitute().getId()
+            : null;
+            
+        if (instituteId == null) {
+            log.warn("No institute ID found in context, skipping EMAIL notification");
+            return;
+        }
 
         if (policy.getNotifications() == null || policy.getNotifications().isEmpty()) {
             log.warn("No channel notifications configured in policy for trigger: {}", policy.getTrigger());
@@ -56,9 +64,6 @@ public class EmailNotificationService implements INotificationService {
         }
     }
 
-    /**
-     * Sends email notification for a specific channel configuration.
-     */
     private void sendEmailForChannel(EnrolmentContext context, String instituteId,
             vacademy.io.admin_core_service.features.enrollment_policy.dto.ChannelNotificationDTO channelNotification) {
         String templateName = channelNotification.getTemplateName();
@@ -108,11 +113,11 @@ public class EmailNotificationService implements INotificationService {
             return;
         }
 
-        sendEmailNotification(context, userDTO, recipientEmail, subject, body);
+        sendEmailNotification(context, userDTO, recipientEmail, subject, body, instituteId);
     }
 
     private void sendEmailNotification(EnrolmentContext context, UserDTO userDTO,
-            String recipientEmail, String subject, String body) {
+            String recipientEmail, String subject, String body, String instituteId) {
         log.info("--- SENDING EMAIL ---");
         log.info("TO: {}", recipientEmail);
         log.info("SUBJECT: {}", subject);
@@ -131,8 +136,13 @@ public class EmailNotificationService implements INotificationService {
 
         Map<String, String> dynamicParams = new HashMap<>();
         dynamicParams.put("learner_name", userDTO.getFullName());
-        dynamicParams.put("course_name",
-                enrollmentTemplateService.formatCourseName(context.getMapping().getPackageSession()));
+        
+        // Get course name from first mapping (all belong to same UserPlan)
+        String courseName = context.getMappings() != null && !context.getMappings().isEmpty()
+            ? enrollmentTemplateService.formatCourseName(context.getMappings().get(0).getPackageSession())
+            : "Your Course";
+        dynamicParams.put("course_name", courseName);
+        
         dynamicParams.put("expiry_date", context.getEndDate() != null
                 ? new java.text.SimpleDateFormat("yyyy-MM-dd").format(context.getEndDate())
                 : "N/A");
@@ -140,7 +150,7 @@ public class EmailNotificationService implements INotificationService {
         notificationToUserDTO.setPlaceholders(dynamicParams);
 
         notificationDTO.setUsers(List.of(notificationToUserDTO));
-        notificationService.sendEmailToUsers(notificationDTO, context.getMapping().getInstitute().getId());
+        notificationService.sendEmailToUsers(notificationDTO, instituteId);
     }
 
     /**
@@ -155,7 +165,12 @@ public class EmailNotificationService implements INotificationService {
         String learnerName = userDTO != null && StringUtils.hasText(userDTO.getFullName())
                 ? userDTO.getFullName()
                 : "Learner";
-        String courseName = enrollmentTemplateService.formatCourseName(context.getMapping().getPackageSession());
+        
+        // Get course name from first mapping (all belong to same UserPlan)
+        String courseName = context.getMappings() != null && !context.getMappings().isEmpty()
+            ? enrollmentTemplateService.formatCourseName(context.getMappings().get(0).getPackageSession())
+            : "Your Course";
+        
         String expiryDate = context.getEndDate() != null
                 ? new java.text.SimpleDateFormat("yyyy-MM-dd").format(context.getEndDate())
                 : "N/A";

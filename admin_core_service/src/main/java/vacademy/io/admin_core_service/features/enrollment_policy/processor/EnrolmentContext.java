@@ -13,31 +13,29 @@ import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 
+/**
+ * UserPlan-centric enrollment context.
+ * Carries ALL data for a UserPlan and its associated mappings in a single pass.
+ */
 @Getter
 @Builder
 public class EnrolmentContext {
-    private final StudentSessionInstituteGroupMapping mapping; // Current mapping being processed
-    private final EnrollmentPolicySettingsDTO policy; // Policy for current mapping
-    private final UserDTO user;
-    private final UserPlan userPlan;
-    private final List<StudentSessionInstituteGroupMapping> allMappings; // All ACTIVE mappings for this UserPlan
+    // UserPlan-level data
+    private final UserPlan userPlan;  // The UserPlan being processed
+    private final List<StudentSessionInstituteGroupMapping> mappings;  // ALL mappings for this UserPlan (was allMappings)
+    private final Map<String, EnrollmentPolicySettingsDTO> policiesByPackageSessionId;  // Package session ID → Policy
+    
+    // User context
+    private final UserDTO user;  // ROOT_ADMIN for SUB_ORG, individual user for Individual
 
     public Date getStartDate() {
-        // Use UserPlan startDate if available, otherwise fallback to mapping
-        // enrolledDate
-        if (userPlan != null && userPlan.getStartDate() != null) {
-            return userPlan.getStartDate();
-        }
-        return mapping != null ? mapping.getEnrolledDate() : null;
+      return   userPlan.getStartDate();
     }
 
     public Date getEndDate() {
-        // Use UserPlan endDate if available, otherwise fallback to mapping expiryDate
-        if (userPlan != null && userPlan.getEndDate() != null) {
-            return userPlan.getEndDate();
-        }
-        return mapping != null ? mapping.getExpiryDate() : null;
+        return userPlan.getEndDate();
     }
 
     public UserDTO getUser() {
@@ -69,9 +67,42 @@ public class EnrolmentContext {
     }
 
     public Integer getWaitingPeriod() {
-        if (policy.getOnExpiry() == null || policy.getOnExpiry().getWaitingPeriodInDays() == null) {
-            return 0;
-        }
-        return policy.getOnExpiry().getWaitingPeriodInDays();
+        // Return the MAXIMUM waiting period among all policies
+        // This gives users the longest grace period if different package sessions have different settings
+        return policiesByPackageSessionId.values().stream()
+            .filter(p -> p.getOnExpiry() != null && p.getOnExpiry().getWaitingPeriodInDays() != null)
+            .map(p -> p.getOnExpiry().getWaitingPeriodInDays())
+            .max(Integer::compareTo)
+            .orElse(0);
+    }
+    
+    /**
+     * Get policy for a specific package session
+     */
+    public EnrollmentPolicySettingsDTO getPolicyForPackageSession(String packageSessionId) {
+        return policiesByPackageSessionId != null ? policiesByPackageSessionId.get(packageSessionId) : null;
+    }
+    
+    /**
+     * Check if this is a SUB_ORG UserPlan
+     */
+    public boolean isSubOrg() {
+        return userPlan != null 
+            && "SUB_ORG".equals(userPlan.getSource()) 
+            && userPlan.getSubOrgId() != null;
+    }
+    
+    /**
+     * Get SubOrg ID if this is a SUB_ORG UserPlan
+     */
+    public String getSubOrgId() {
+        return isSubOrg() ? userPlan.getSubOrgId() : null;
+    }
+
+    /**
+     * Get all mappings (replaces getAllMappings())
+     */
+    public List<StudentSessionInstituteGroupMapping> getAllMappings() {
+        return mappings;
     }
 }

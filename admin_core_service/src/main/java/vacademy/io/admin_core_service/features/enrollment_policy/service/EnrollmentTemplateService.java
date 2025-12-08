@@ -131,7 +131,10 @@ public class EnrollmentTemplateService {
 
         // Course name - format: levelName (if not DEFAULT) + packageName + sessionName
         // (if not DEFAULT)
-        String courseName = formatCourseName(context.getMapping().getPackageSession());
+        // Get from first mapping (all mappings belong to same UserPlan)
+        String courseName = context.getMappings() != null && !context.getMappings().isEmpty()
+            ? formatCourseName(context.getMappings().get(0).getPackageSession())
+            : "Course";
         placeholders.put("course_name", courseName);
 
         // Expiry date

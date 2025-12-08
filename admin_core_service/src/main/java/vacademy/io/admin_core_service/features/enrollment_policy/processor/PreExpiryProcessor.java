@@ -47,7 +47,6 @@ public class PreExpiryProcessor implements IEnrolmentPolicyProcessor {
     private void sendNotificationsToUser(EnrolmentContext context, List<NotificationPolicyDTO> notifications) {
         for (NotificationPolicyDTO notification : notifications) {
             try {
-                log.info("Processing pre-expiry notification for mapping: {}", context.getMapping().getId());
                 // Send all channel notifications for this policy
                 sendChannelNotifications(context, notification);
             } catch (Exception e) {
@@ -102,7 +101,17 @@ public class PreExpiryProcessor implements IEnrolmentPolicyProcessor {
     }
 
     private List<NotificationPolicyDTO> findNotificationsToProcess(EnrolmentContext context, long daysUntilExpiry) {
-        return context.getPolicy().getNotifications().stream()
+        // Get any policy to check notifications (they all have similar settings for pre-expiry)
+        vacademy.io.admin_core_service.features.enrollment_policy.dto.EnrollmentPolicySettingsDTO policy = 
+            context.getPoliciesByPackageSessionId().values().stream()
+                .findFirst()
+                .orElse(null);
+                
+        if (policy == null || policy.getNotifications() == null) {
+            return List.of();
+        }
+        
+        return policy.getNotifications().stream()
                 .filter(p -> NotificationTriggerType.BEFORE_EXPIRY.equals(p.getTrigger()))
                 .filter(p -> p.getDaysBefore() != null && p.getDaysBefore() == daysUntilExpiry)
                 .collect(Collectors.toList());

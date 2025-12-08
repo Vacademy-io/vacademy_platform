@@ -148,48 +148,49 @@ public class PackageSessionEnrolmentService {
             return;
         }
 
-        // Process each mapping with its own package session policy
-        // Each package session has its own enrollment policy, so we need to get policy
-        // per mapping
-        // Pass all mappings to context to avoid repeated DB calls
+        // Build policy map for all mappings (ONE TIME for the entire UserPlan)
+        Map<String, EnrollmentPolicySettingsDTO> policiesByPackageSessionId = new java.util.HashMap<>();
         for (StudentSessionInstituteGroupMapping mapping : activeMappings) {
-            try {
-                // Get policy from this mapping's package session
-                String policyJson = mapping.getPackageSession() != null
-                        ? mapping.getPackageSession().getEnrollmentPolicySettings()
-                        : null;
-
-                if (policyJson == null || policyJson.isBlank()) {
-                    log.warn("Skipping mapping {}: No enrollmentPolicySettings JSON found in package session",
-                            mapping.getId());
-                    continue;
+            if (mapping.getPackageSession() != null && mapping.getPackageSession().getId() != null) {
+                String policyJson = mapping.getPackageSession().getEnrollmentPolicySettings();
+                if (policyJson != null && !policyJson.isBlank()) {
+                    try {
+                        EnrollmentPolicySettingsDTO policy = parsePolicy(policyJson, mapping.getId());
+                        if (policy != null) {
+                            policiesByPackageSessionId.put(mapping.getPackageSession().getId(), policy);
+                        }
+                    } catch (Exception e) {
+                        log.debug("Failed to parse policy for mapping: {}", mapping.getId(), e);
+                    }
                 }
-
-                EnrollmentPolicySettingsDTO policy = parsePolicy(policyJson, mapping.getId());
-                if (policy == null) {
-                    log.warn("Failed to parse policy for mapping: {}", mapping.getId());
-                    continue;
-                }
-
-                // Create context with this mapping's specific policy and all mappings
-                // All mappings are passed to avoid repeated DB calls
-                EnrolmentContext context = EnrolmentContext.builder()
-                        .mapping(mapping) // Current mapping being processed
-                        .policy(policy) // Policy for current mapping
-                        .user(representativeUser)
-                        .userPlan(userPlan) // Pass UserPlan so dates come from UserPlan
-                        .allMappings(activeMappings) // All ACTIVE mappings for this UserPlan
-                        .build();
-
-                processorFactory.getProcessor(context)
-                        .ifPresent(processor -> processor.process(context));
-            } catch (Exception e) {
-                log.error("Failed to process mapping {} for UserPlan: {}", mapping.getId(), userPlan.getId(), e);
             }
         }
+        
+        if (policiesByPackageSessionId.isEmpty()) {
+            log.warn("No valid policies found for UserPlan: {}, skipping", userPlan.getId());
+            return;
+        }
+
+        // Create ONE context for the entire UserPlan (not per-mapping)
+        EnrolmentContext context = EnrolmentContext.builder()
+                .userPlan(userPlan)
+                .mappings(activeMappings) // All ACTIVE mappings for this UserPlan
+                .policiesByPackageSessionId(policiesByPackageSessionId)
+                .user(representativeUser)
+                .build();
+
+        // Process ONCE per UserPlan (not per mapping)
+        processorFactory.getProcessor(context)
+                .ifPresent(processor -> {
+                    try {
+                        processor.process(context);
+                        log.info("Successfully processed UserPlan: {}", userPlan.getId());
+                    } catch (Exception e) {
+                        log.error("Failed to process UserPlan: {}", userPlan.getId(), e);
+                    }
+                });
 
         // Note: UserPlan status changes (to EXPIRED) are handled by processors
-        // after complete processing is done
     }
 
     /**

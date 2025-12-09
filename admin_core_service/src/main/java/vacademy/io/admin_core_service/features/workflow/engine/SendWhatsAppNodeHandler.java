@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.institute.entity.Template;
 import vacademy.io.admin_core_service.features.institute.repository.TemplateRepository;
 import vacademy.io.admin_core_service.features.notification.dto.WhatsappRequest;
@@ -139,7 +140,7 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
                         // 3. Fetch Template (from cache or DB)
                         String cacheKey = instituteId + ":" + templateName;
                         Template template = templateCache.computeIfAbsent(cacheKey, k ->
-                            templateRepository.findByInstituteIdAndNameAndType(instituteId, templateName, "WHATSAPP")
+                            templateRepository.findByInstituteIdAndNameAndTypeAndStatus(instituteId, templateName, "WHATSAPP", StatusEnum.ACTIVE.name())
                                 .orElseThrow(() -> new VacademyException("Template not found with name: " + templateName + " for institute: " + instituteId))
                         );
 

@@ -63,32 +63,27 @@ public class UserPlanService {
     private vacademy.io.admin_core_service.features.institute.repository.InstituteRepository instituteRepository;
 
     public UserPlan createUserPlan(String userId,
-                                   PaymentPlan paymentPlan,
-                                   AppliedCouponDiscount appliedCouponDiscount,
-                                   EnrollInvite enrollInvite,
-                                   PaymentOption paymentOption,
-                                   PaymentInitiationRequestDTO paymentInitiationRequestDTO,
-                                   String status) {
+            PaymentPlan paymentPlan,
+            AppliedCouponDiscount appliedCouponDiscount,
+            EnrollInvite enrollInvite,
+            PaymentOption paymentOption,
+            PaymentInitiationRequestDTO paymentInitiationRequestDTO,
+            String status) {
         return createUserPlan(userId, paymentPlan, appliedCouponDiscount, enrollInvite,
                 paymentOption, paymentInitiationRequestDTO, status, null, null);
     }
 
     public UserPlan createUserPlan(String userId,
-                                   PaymentPlan paymentPlan,
-                                   AppliedCouponDiscount appliedCouponDiscount,
-                                   EnrollInvite enrollInvite,
-                                   PaymentOption paymentOption,
-                                   PaymentInitiationRequestDTO paymentInitiationRequestDTO,
-                                   String status,
-                                   String source,
-                                   String subOrgId) {
+            PaymentPlan paymentPlan,
+            AppliedCouponDiscount appliedCouponDiscount,
+            EnrollInvite enrollInvite,
+            PaymentOption paymentOption,
+            PaymentInitiationRequestDTO paymentInitiationRequestDTO,
+            String status,
+            String source,
+            String subOrgId) {
         logger.info("Creating UserPlan for userId={}, status={}, source={}, subOrgId={}",
                 userId, status, source, subOrgId);
-
-        // Validate userId is always provided - critical for data integrity
-        if (!StringUtils.hasText(userId)) {
-            throw new IllegalArgumentException("UserId is required for creating UserPlan. Cannot be null or empty.");
-        }
 
         UserPlan userPlan = new UserPlan();
         userPlan.setStatus(status);
@@ -123,6 +118,18 @@ public class UserPlanService {
             // Warning: SUB_ORG source without subOrgId
             logger.warn("Creating SUB_ORG UserPlan without subOrgId for userId={} - This may indicate a data issue",
                     userId);
+        }
+
+        // Set source and sub_org_id if provided
+        if (source != null) {
+            userPlan.setSource(source);
+        } else {
+            // Default to USER if not specified
+            userPlan.setSource(UserPlanSourceEnum.USER.name());
+        }
+
+        if (subOrgId != null) {
+            userPlan.setSubOrgId(subOrgId);
         }
 
         setPaymentPlan(userPlan, paymentPlan);

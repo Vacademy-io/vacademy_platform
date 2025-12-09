@@ -3,9 +3,7 @@ package vacademy.io.admin_core_service.features.payments.manager;
 import com.stripe.Stripe;
 import com.stripe.exception.StripeException;
 import com.stripe.model.*;
-import com.stripe.param.PaymentIntentCreateParams;
-import com.stripe.param.PaymentMethodAttachParams;
-import com.stripe.param.PaymentMethodListParams;
+import com.stripe.param.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -75,8 +73,7 @@ public class StripePaymentManager implements PaymentServiceStrategy {
             attachPaymentMethodIfNeeded(stripeRequestDTO.getCustomerId(), stripeRequestDTO.getPaymentMethodId());
             if (!StringUtils.hasText(stripeRequestDTO.getReturnUrl())){
                 stripeRequestDTO.setReturnUrl("https://vacademy.io");
-            }
-            // Step 3: Create and Confirm the PaymentIntent in one go
+            }            // Step 3: Create and Confirm the PaymentIntent in one go
             PaymentIntentCreateParams params = PaymentIntentCreateParams.builder()
                     .setAmount(amountInCents)
                     .setCurrency(request.getCurrency().toLowerCase())
@@ -88,6 +85,7 @@ public class StripePaymentManager implements PaymentServiceStrategy {
                     .setDescription(request.getDescription() != null ? request.getDescription() : "No description")
                     .putMetadata("orderId", request.getOrderId())
                     .putMetadata("instituteId", request.getInstituteId())
+                    .putMetadata("payment_type", request.getPaymentType() != null ? request.getPaymentType().name() : "INITIAL")
                     .setReceiptEmail((StringUtils.hasText(request.getEmail()) ? request.getEmail() : user.getEmail()))
                     .build();
 
@@ -155,13 +153,6 @@ public class StripePaymentManager implements PaymentServiceStrategy {
             return null;
         }
     }
-
-    // --- Private Helper Methods ---
-
-    /**
-     * ✅ NEW: Builds the final response DTO from a PaymentIntent object.
-     */
-    // In your payment processing service (e.g., StripePaymentManager)
 
     private PaymentResponseDTO buildPaymentResponseFromIntent(PaymentIntent paymentIntent) {
         Map<String, Object> responseData = new HashMap<>();

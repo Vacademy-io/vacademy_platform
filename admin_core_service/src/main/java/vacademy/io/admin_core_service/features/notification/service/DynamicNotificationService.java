@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationTemplateVariables;
+import vacademy.io.admin_core_service.features.notification.dto.WatiConfig;
 import vacademy.io.admin_core_service.features.notification.entity.NotificationEventConfig;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationEventType;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationSourceType;
@@ -33,6 +34,7 @@ public class DynamicNotificationService {
     private final SendUniqueLinkService sendUniqueLinkService;
     private final LearnerInvitationLinkService learnerInvitationLinkService;
     private final InstituteService instituteService;
+    private final WatiContactAttributeService watiContactAttributeService;
 
     /**
      * Send dynamic notifications based on event and package session
@@ -239,6 +241,9 @@ public class DynamicNotificationService {
                     .themeColor(themeColor)
                     .build();
 
+            // Update WATI contact attributes if configured
+            updateWatiContactAttributes(institute, user);
+
             // Process each configuration
             for (NotificationEventConfig config : configs) {
                 sendNotificationByType(config, instituteId, user, templateVars, enrollInvite);
@@ -248,6 +253,54 @@ public class DynamicNotificationService {
             log.error("Error sending referral invitation notification for institute: {}", 
                     instituteId, e);
             throw new VacademyException("Failed to send referral invitation notification: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Update WATI contact attributes with user referral code
+     */
+    private void updateWatiContactAttributes(Institute institute, UserDTO user) {
+        try {
+            // Extract WATI configuration from institute settings
+            WatiConfig watiConfig = watiContactAttributeService.extractWatiConfig(institute);
+            
+            if (watiConfig == null) {
+                log.debug("No WATI configuration found for institute: {}, skipping contact attribute update", 
+                        institute.getId());
+                return;
+            }
+
+            // Get user's referral code
+            String referralCode = learnerInvitationLinkService.getRefFromUserCoupon(user.getId());
+            
+            if (referralCode == null || referralCode.isEmpty()) {
+                log.warn("No referral code found for user: {}, skipping WATI contact attribute update", 
+                        user.getId());
+                return;
+            }
+
+            // Build template variables map
+            java.util.Map<String, Object> templateVarsMap = new java.util.HashMap<>();
+            templateVarsMap.put("refCode", referralCode);
+            templateVarsMap.put("userName", user.getUsername());
+            templateVarsMap.put("userEmail", user.getEmail());
+            templateVarsMap.put("userMobile", user.getMobileNumber());
+            templateVarsMap.put("userFullName", user.getFullName());
+            templateVarsMap.put("userId", user.getId());
+            templateVarsMap.put("instituteName", institute.getInstituteName());
+            templateVarsMap.put("instituteId", institute.getId());
+
+            // Update contact attributes in WATI
+            watiContactAttributeService.updateContactAttributes(
+                    watiConfig, 
+                    user.getMobileNumber(), 
+                    templateVarsMap
+            );
+
+        } catch (Exception e) {
+            // Log error but don't fail the entire notification process
+            log.error("Error updating WATI contact attributes for user: {} in institute: {}", 
+                    user.getId(), institute.getId(), e);
         }
     }
 

@@ -266,4 +266,6 @@ public interface StudentSessionInstituteGroupMappingRepository
         List<StudentSessionInstituteGroupMapping> findOneAdminMappingPerSubOrg(
                         @Param("instituteId") String instituteId,
                         @Param("role") String role);
+
+    List<StudentSessionInstituteGroupMapping> findByUserIdAndPackageSessionIdAndInstituteIdAndStatusAndSourceAndType(String userId,String packageSessionId,String instituteId,String status,String source,String type);
 }

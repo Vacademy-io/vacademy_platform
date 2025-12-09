@@ -55,22 +55,22 @@ public class FinalExpiryProcessor implements IEnrolmentPolicyProcessor {
     private final PaymentRenewalCheckService paymentRenewalCheckService;
 
     // ThreadLocal caches to prevent duplicate payment attempts and extensions
-    private static final ThreadLocal<Map<String, PaymentAttemptResult>> paymentAttemptCache = 
-        ThreadLocal.withInitial(HashMap::new);
-    private static final ThreadLocal<Map<String, Boolean>> userPlanExtendedCache = 
-        ThreadLocal.withInitial(HashMap::new);
+    private static final ThreadLocal<Map<String, PaymentAttemptResult>> paymentAttemptCache =
+            ThreadLocal.withInitial(HashMap::new);
+    private static final ThreadLocal<Map<String, Boolean>> userPlanExtendedCache =
+            ThreadLocal.withInitial(HashMap::new);
 
     @Override
     @Transactional
     public void process(EnrolmentContext context) {
         try {
             UserPlan userPlan = context.getUserPlan();
-            
+
             if (userPlan == null) {
                 log.warn("UserPlan not found in context");
                 return;
             }
-            
+
             long daysPastExpiry = context.getDaysPastExpiry();
             Integer waitingPeriod = context.getWaitingPeriod();
 
@@ -79,13 +79,13 @@ public class FinalExpiryProcessor implements IEnrolmentPolicyProcessor {
                 return; // Still in waiting period
             }
 
-            log.info("Waiting period ended ({} days), processing final expiry for UserPlan: {}", 
+            log.info("Waiting period ended ({} days), processing final expiry for UserPlan: {}",
                     waitingPeriod, userPlan.getId());
 
             boolean isSubOrg = context.isSubOrg();
 
             if (isSubOrg) {
-                log.info("Processing SUB_ORG expiry for UserPlan: {}, SubOrg: {}", 
+                log.info("Processing SUB_ORG expiry for UserPlan: {}, SubOrg: {}",
                         userPlan.getId(), context.getSubOrgId());
                 handleSubOrgExpiry(context, userPlan);
             } else {
@@ -101,48 +101,42 @@ public class FinalExpiryProcessor implements IEnrolmentPolicyProcessor {
     private void handleSubOrgExpiry(EnrolmentContext context, UserPlan userPlan) {
         String subOrgId = context.getSubOrgId();
         List<StudentSessionInstituteGroupMapping> allSubOrgMappings = context.getMappings();
-        
+
         if (allSubOrgMappings == null || allSubOrgMappings.isEmpty()) {
             log.warn("No mappings found for UserPlan: {}", userPlan.getId());
             return;
         }
-        
+
         String packageSessionId = allSubOrgMappings.get(0).getPackageSession().getId();
-        
-        // ... existing payment logic using allSubOrgMappings...
+
+        // NO PAYMENT ATTEMPT HERE - Payment is only attempted in WaitingPeriodProcessor
+        // After waiting period ends, just move to INVITED and EXPIRE UserPlan
+        log.info("Waiting period ended. Moving all mappings to INVITED and marking UserPlan as EXPIRED for SubOrg: {}", subOrgId);
+        notifyAdminsOfExpiry(subOrgId, packageSessionId, context);
+        moveAllMappingsToInvitedAndExpireUserPlan(allSubOrgMappings, userPlan);
     }
-    
+
     private void handleIndividualUserExpiry(EnrolmentContext context, UserPlan userPlan) {
         List<StudentSessionInstituteGroupMapping> mappings = context.getMappings();
         if (mappings == null || mappings.isEmpty()) {
             log.warn("No mappings found for UserPlan: {}", userPlan.getId());
             return;
         }
-        
-        StudentSessionInstituteGroupMapping mapping = mappings.get(0); // Get first mapping
-        
-        // Get policy for this mapping
-        String packageSessionId = mapping.getPackageSession().getId();
-        vacademy.io.admin_core_service.features.enrollment_policy.dto.EnrollmentPolicySettingsDTO policy = 
-            context.getPolicyForPackageSession(packageSessionId);
-            
-        if (policy == null) {
-            log.warn("No policy found for package session: {}", packageSessionId);
-            return;
-        }
-        
-        boolean shouldAttemptPayment = paymentRenewalCheckService.shouldAttemptPayment(userPlan, policy);
-        
-        // ... existing payment logic...
+
+        // NO PAYMENT ATTEMPT HERE - Payment is only attempted in WaitingPeriodProcessor
+        // After waiting period ends, just move to INVITED and EXPIRE UserPlan
+        log.info("Waiting period ended. Moving mappings to INVITED and marking UserPlan as EXPIRED for UserPlan: {}", userPlan.getId());
+        sendExpiryNotificationsToUser(context);
+        moveAllMappingsToInvitedAndExpireUserPlan(mappings, userPlan);
     }
-    
+
     private void sendExpiryNotificationsToUser(EnrolmentContext context) {
         // Get any policy for notification settings
-        vacademy.io.admin_core_service.features.enrollment_policy.dto.EnrollmentPolicySettingsDTO policy = 
-            context.getPoliciesByPackageSessionId().values().stream()
-                .findFirst()
-                .orElse(null);
-                
+        vacademy.io.admin_core_service.features.enrollment_policy.dto.EnrollmentPolicySettingsDTO policy =
+                context.getPoliciesByPackageSessionId().values().stream()
+                        .findFirst()
+                        .orElse(null);
+
         if (policy == null || policy.getNotifications() == null) {
             return;
         }
@@ -159,7 +153,7 @@ public class FinalExpiryProcessor implements IEnrolmentPolicyProcessor {
             }
         }
     }
-    
+
     private void sendExpiryNotificationsToAdmins(EnrolmentContext context) {
         // Same as sendExpiryNotificationsToUser - get policy from map
         sendExpiryNotificationsToUser(context);
@@ -203,5 +197,186 @@ public class FinalExpiryProcessor implements IEnrolmentPolicyProcessor {
         }
     }
 
-    // ... existing code for other methods...
+    /**
+     * Moves all ACTIVE mappings to INVITED and marks UserPlan as EXPIRED.
+     * Only processes mappings whose expiryDate has been reached (not future dates).
+     * Soft deletes ACTIVE mapping (marks as TERMINATED) and creates/updates INVITED mapping.
+     */
+    private void moveAllMappingsToInvitedAndExpireUserPlan(List<StudentSessionInstituteGroupMapping> mappings, UserPlan userPlan) {
+        log.info("Moving {} mappings to INVITED after waiting period ended", mappings.size());
+
+        Date today = new Date();
+        int processedCount = 0;
+
+        for (StudentSessionInstituteGroupMapping mapping : mappings) {
+            // Skip if mapping has future expiryDate
+            if (mapping.getExpiryDate() != null && mapping.getExpiryDate().after(today)) {
+                log.info("Skipping mapping {} - expiryDate {} is in the future",
+                        mapping.getId(), mapping.getExpiryDate());
+                continue;
+            }
+
+            try {
+                // Check if INVITED mapping already exists
+                StudentSessionInstituteGroupMapping existingInvited = findExistingInvitedMapping(mapping);
+
+                if (existingInvited != null) {
+                    // Update existing INVITED mapping
+                    log.info("Updating existing INVITED mapping {} for expired mapping {}",
+                            existingInvited.getId(), mapping.getId());
+                    updateInvitedMapping(existingInvited, mapping);
+                } else {
+                    // Create new INVITED mapping
+                    log.info("Creating new INVITED mapping for expired mapping {}", mapping.getId());
+                    createInvitedEntry(mapping);
+                }
+
+                // Soft delete ACTIVE mapping (mark as TERMINATED)
+                mapping.setStatus(LearnerSessionStatusEnum.TERMINATED.name());
+                mappingRepository.save(mapping);
+                log.info("Marked mapping {} as TERMINATED", mapping.getId());
+
+                processedCount++;
+            } catch (Exception e) {
+                log.error("Failed to process mapping {} to INVITED", mapping.getId(), e);
+            }
+        }
+
+        // Mark UserPlan as EXPIRED (only after waiting period)
+        userPlan.setStatus(UserPlanStatusEnum.EXPIRED.name());
+        userPlanRepository.save(userPlan);
+
+        log.info("Processed {} out of {} mappings. UserPlan {} marked as EXPIRED",
+                processedCount, mappings.size(), userPlan.getId());
+    }
+
+    /**
+     * Finds existing INVITED mapping for the same user, package session, and institute.
+     */
+    private StudentSessionInstituteGroupMapping findExistingInvitedMapping(StudentSessionInstituteGroupMapping originalMapping) {
+        try {
+            // Get INVITED package session for the original package session
+            PackageSession invitedPackageSession = getInvitedPackageSession(originalMapping.getPackageSession());
+
+            // Find INVITED mapping with source=EXPIRED, typeId=original package session ID
+            List<StudentSessionInstituteGroupMapping> existingMappings = mappingRepository
+                    .findByUserIdAndPackageSessionIdAndInstituteIdAndStatusAndSourceAndType(
+                            originalMapping.getUserId(),
+                            invitedPackageSession.getId(),
+                            originalMapping.getInstitute().getId(),
+                            LearnerSessionStatusEnum.INVITED.name(),
+                            LearnerSessionSourceEnum.EXPIRED.name(),
+                            LearnerSessionTypeEnum.PACKAGE_SESSION.name()
+                    );
+
+            if (existingMappings != null && !existingMappings.isEmpty()) {
+                // Return first match
+                return existingMappings.get(0);
+            }
+
+            return null;
+        } catch (Exception e) {
+            log.error("Error finding existing INVITED mapping for {}", originalMapping.getId(), e);
+            return null;
+        }
+    }
+
+    /**
+     * Updates existing INVITED mapping with new dates.
+     */
+    private void updateInvitedMapping(StudentSessionInstituteGroupMapping invitedMapping,
+                                      StudentSessionInstituteGroupMapping originalMapping) {
+        // Update enrolledDate to current date
+        invitedMapping.setEnrolledDate(new Date());
+
+        // Update typeId to point to the expired package session
+        invitedMapping.setTypeId(originalMapping.getPackageSession().getId());
+
+        // Update destinationPackageSession
+        invitedMapping.setDestinationPackageSession(originalMapping.getPackageSession());
+
+        // Copy UserPlanId
+        invitedMapping.setUserPlanId(originalMapping.getUserPlanId());
+
+        // Copy sub-org info if exists
+        if (originalMapping.getSubOrg() != null) {
+            invitedMapping.setSubOrg(originalMapping.getSubOrg());
+        }
+        if (StringUtils.hasText(originalMapping.getCommaSeparatedOrgRoles())) {
+            invitedMapping.setCommaSeparatedOrgRoles(originalMapping.getCommaSeparatedOrgRoles());
+        }
+
+        mappingRepository.save(invitedMapping);
+        log.info("Updated INVITED mapping: {} with new enrolledDate and typeId from expired mapping: {}",
+                invitedMapping.getId(), originalMapping.getId());
+    }
+
+    /**
+     * Creates new INVITED entry for an expired mapping.
+     */
+    private StudentSessionInstituteGroupMapping createInvitedEntry(StudentSessionInstituteGroupMapping mapping) {
+        StudentSessionInstituteGroupMapping invited = new StudentSessionInstituteGroupMapping();
+
+        invited.setUserId(mapping.getUserId());
+        invited.setInstituteEnrolledNumber(mapping.getInstituteEnrolledNumber());
+        invited.setEnrolledDate(new Date());
+        invited.setStatus(LearnerSessionStatusEnum.INVITED.name());
+
+        invited.setGroup(mapping.getGroup());
+        invited.setInstitute(mapping.getInstitute());
+        invited.setPackageSession(getInvitedPackageSession(mapping.getPackageSession()));
+        invited.setDestinationPackageSession(mapping.getPackageSession());
+
+        // Set type, typeId, and source
+        invited.setUserPlanId(mapping.getUserPlanId());
+        invited.setType(LearnerSessionTypeEnum.PACKAGE_SESSION.name());
+        invited.setTypeId(mapping.getPackageSession().getId()); // Original expired package session ID
+        invited.setSource(LearnerSessionSourceEnum.EXPIRED.name());
+        invited.setDesiredLevelId(mapping.getDesiredLevelId());
+        invited.setDesiredPackageId(mapping.getDesiredPackageId());
+        invited.setAutomatedCompletionCertificateFileId(mapping.getAutomatedCompletionCertificateFileId());
+
+        // Copy sub-org if exists
+        if (mapping.getSubOrg() != null) {
+            invited.setSubOrg(mapping.getSubOrg());
+        }
+        if (StringUtils.hasText(mapping.getCommaSeparatedOrgRoles())) {
+            invited.setCommaSeparatedOrgRoles(mapping.getCommaSeparatedOrgRoles());
+        }
+
+        mappingRepository.save(invited);
+        log.info("Created INVITED entry for expired mapping: {}, typeId set to original package session ID: {}",
+                invited.getId(), mapping.getPackageSession().getId());
+        return invited;
+    }
+
+    /**
+     * Gets the INVITED package session for a given ACTIVE package session.
+     * INVITED package session is identified by levelId="INVITED" and sessionId="INVITED".
+     */
+    private PackageSession getInvitedPackageSession(PackageSession activePackageSession) {
+
+        return packageSessionRepository
+                .findInvitedPackageSessionForPackage(
+                        activePackageSession.getId(),
+                        "INVITED", // levelId
+                        "INVITED", // sessionId
+                        List.of(PackageSessionStatusEnum.INVITED.name()),
+                        List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                        List.of(PackageStatusEnum.ACTIVE.name()))
+                .orElseThrow(() -> new VacademyException(
+                        "No INVITED package session found for package: " + activePackageSession.getId() +
+                                " (levelId=INVITED, sessionId=INVITED)"));
+    }
+
+    private void notifyAdminsOfExpiry(String subOrgId, String packageSessionId, EnrolmentContext context) {
+        try {
+            sendExpiryNotificationsToUser(context);
+            log.info("Sent expiry notifications to ROOT_ADMIN for sub-org: {}", subOrgId);
+        } catch (Exception e) {
+            log.error("Error notifying ROOT_ADMIN of expiry for sub-org: {}", subOrgId, e);
+        }
+    }
+
+    // ...existing code for notifications...
 }

@@ -570,14 +570,12 @@ public class EnrollInviteService {
         List<String> activeStatuses = List.of(StatusEnum.ACTIVE.name());
 
         // Get enroll invites using the complex join query
-        List<EnrollInvite> enrollInvites = repository.findEnrollInvitesByUserIdAndInstituteIdWithActiveStatuses(
+        List<EnrollInvite> enrollInvites = repository.findDefaultEnrollInvitesForStudent(
             userId,
             instituteId,
             activeStatuses, // SSIGM statuses
-            activeStatuses, // UserPlan statuses
             activeStatuses, // EnrollInvite statuses
-            activeStatuses, // PackageSessionMapping statuses
-            activeStatuses  // PaymentOption statuses
+            activeStatuses
         );
 
 

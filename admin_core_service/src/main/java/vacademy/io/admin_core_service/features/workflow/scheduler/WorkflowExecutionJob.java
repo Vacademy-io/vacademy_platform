@@ -6,7 +6,9 @@ import org.quartz.Job;
 import org.quartz.JobExecutionContext;
 import org.quartz.JobExecutionException;
 import org.quartz.CronExpression;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
+import vacademy.io.admin_core_service.features.workflow.entity.WorkflowExecution;
 import vacademy.io.admin_core_service.features.workflow.entity.WorkflowSchedule;
 import vacademy.io.admin_core_service.features.workflow.service.IdempotencyService;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowEngineService;
@@ -52,11 +54,11 @@ public class WorkflowExecutionJob implements Job {
                 try {
                     String idempotencyKey = generateIdempotencyKey(schedule);
 
-                    idempotencyService.markAsProcessing(idempotencyKey, schedule.getWorkflowId(), schedule.getId());
+                    WorkflowExecution workflowExecution =  idempotencyService.markAsProcessing(idempotencyKey, schedule.getWorkflowId(), schedule.getId());
 
                     log.info("Executing workflow schedule: {} - {}", schedule.getId(), schedule.getWorkflowId());
 
-                    Map<String, Object> result = executeWorkflowFromSchedule(schedule);
+                    Map<String, Object> result = executeWorkflowFromSchedule(schedule,workflowExecution);
 
                     idempotencyService.markAsCompleted(idempotencyKey, result);
 
@@ -71,7 +73,9 @@ public class WorkflowExecutionJob implements Job {
                             updatedSchedule.getNextRunAt());
                     }
 
-                } catch (Exception e) {
+                }catch (DataIntegrityViolationException e){
+                    log.error("Data integrity violation while executing workflow schedule: {}", schedule.getId());
+                }catch (Exception e) {
                     log.error("Error executing workflow schedule: {}", schedule.getId(), e);
                     String idempotencyKey = generateIdempotencyKey(schedule);
                     idempotencyService.markAsFailed(idempotencyKey, e.getMessage());
@@ -82,7 +86,7 @@ public class WorkflowExecutionJob implements Job {
         }
     }
 
-    private Map<String, Object> executeWorkflowFromSchedule(WorkflowSchedule schedule) {
+    private Map<String, Object> executeWorkflowFromSchedule(WorkflowSchedule schedule,WorkflowExecution workflowExecution) {
         try {
             Map<String, Object> initialContext = new HashMap<>();
             if (schedule.getInitialContext() != null) {
@@ -91,7 +95,7 @@ public class WorkflowExecutionJob implements Job {
             initialContext.put("scheduleId", schedule.getId());
             initialContext.put("scheduleName", schedule.getWorkflowId());
             initialContext.put("executionTime", Instant.now().toEpochMilli());
-
+            initialContext.put("executionId",workflowExecution.getId());
             log.info("Starting workflow execution for schedule: {} with workflow: {}",
                 schedule.getId(), schedule.getWorkflowId());
 

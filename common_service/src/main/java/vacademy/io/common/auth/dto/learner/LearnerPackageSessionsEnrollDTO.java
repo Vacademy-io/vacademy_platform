@@ -6,7 +6,7 @@ import lombok.Data;
 import vacademy.io.common.common.dto.CustomFieldValueDTO;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 
-
+import java.util.Date;
 import java.util.List;
 
 @Data
@@ -15,8 +15,8 @@ public class LearnerPackageSessionsEnrollDTO {
     private List<String> packageSessionIds;
     private String planId;
     private String paymentOptionId;
-    private String enrollInviteId;
-    private ReferRequestDTO referRequest;
+    private String enrollInviteId;    private ReferRequestDTO referRequest;
     private PaymentInitiationRequestDTO paymentInitiationRequest;
     private List<CustomFieldValueDTO>customFieldValues;
+    private Date startDate;
 }

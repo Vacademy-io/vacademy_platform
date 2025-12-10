@@ -70,7 +70,7 @@ public class UserPlanService {
                                    PaymentInitiationRequestDTO paymentInitiationRequestDTO,
                                    String status) {
         return createUserPlan(userId, paymentPlan, appliedCouponDiscount, enrollInvite,
-                paymentOption, paymentInitiationRequestDTO, status, null, null);
+                paymentOption, paymentInitiationRequestDTO, status, null, null, null);
     }
 
     public UserPlan createUserPlan(String userId,
@@ -81,7 +81,8 @@ public class UserPlanService {
                                    PaymentInitiationRequestDTO paymentInitiationRequestDTO,
                                    String status,
                                    String source,
-                                   String subOrgId) {
+                                   String subOrgId,
+                                   Date startDate) {
         logger.info("Creating UserPlan for userId={}, status={}, source={}, subOrgId={}",
                 userId, status, source, subOrgId);
 
@@ -123,17 +124,27 @@ public class UserPlanService {
             // Warning: SUB_ORG source without subOrgId
             logger.warn("Creating SUB_ORG UserPlan without subOrgId for userId={} - This may indicate a data issue",
                     userId);
-        }
-
-        setPaymentPlan(userPlan, paymentPlan);
+        }        setPaymentPlan(userPlan, paymentPlan);
         setAppliedCouponDiscount(userPlan, appliedCouponDiscount);
         setEnrollInvite(userPlan, enrollInvite);
         setPaymentOption(userPlan, paymentOption);
 
         // --- Logic to calculate and set Start and End Dates ---
         // --- Date Logic with Timestamp ---
-        long currentTimeMillis = System.currentTimeMillis();
-        userPlan.setStartDate(new Timestamp(currentTimeMillis));
+        // Validate startDate is not in the future
+        Date effectiveStartDate = startDate;
+        if (effectiveStartDate != null) {
+            Date currentDate = new Date();
+            if (effectiveStartDate.after(currentDate)) {
+                throw new IllegalArgumentException("Start date cannot be in the future");
+            }
+        } else {
+            // Default to current date if startDate not provided
+            effectiveStartDate = new Date();
+        }
+        
+        long startTimeMillis = effectiveStartDate.getTime();
+        userPlan.setStartDate(new Timestamp(startTimeMillis));
 
         Integer validityDays = null;
         if (paymentPlan != null && paymentPlan.getValidityInDays() != null) {
@@ -145,7 +156,7 @@ public class UserPlanService {
         if (validityDays != null) {
             // Add days to milliseconds: days * 24 * 60 * 60 * 1000
             long validityMillis = validityDays * 24L * 60L * 60L * 1000L;
-            userPlan.setEndDate(new Timestamp(currentTimeMillis + validityMillis));
+            userPlan.setEndDate(new Timestamp(startTimeMillis + validityMillis));
         }
         // -----------------------------------------------------
 

@@ -507,7 +507,7 @@ public class SubOrgLearnerService {
                 .map(result -> AdminDetailsDTO.builder()
                         .userId((String) result[0])
                         .name((String) result[1])
-                        .role("ADMIN")
+                        .role(SubOrgRoles.ADMIN.name())
                         .build())
                 .collect(Collectors.toList());
 

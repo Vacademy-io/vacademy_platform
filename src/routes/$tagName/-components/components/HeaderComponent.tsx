@@ -24,6 +24,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
   catalogueData,
   tagName = "home",
 }) => {
+  const [togle, settogle] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const domainRouting = useDomainRouting();
@@ -49,7 +50,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
       window.location.href = domainRouting.homeIconClickRoute;
     }
   };
-
+  
   // Load institute logo
   useEffect(() => {
     const loadInstituteLogo = async () => {
@@ -275,6 +276,20 @@ export const HeaderComponent: React.FC<HeaderProps & {
       return true;
     }
     
+    // Hide on book/course details page (pattern: /$tagName/$courseId)
+    // Check if path has format: /tagName/courseId where courseId looks like an ID (numeric or UUID)
+    const pathSegments = location.pathname.split('/').filter(Boolean);
+    if (pathSegments.length >= 2) {
+      const potentialCourseId = pathSegments[1];
+      // Check if it looks like a course ID (numeric or UUID)
+      const isNumeric = /^\d+$/.test(potentialCourseId);
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(potentialCourseId);
+      if (isNumeric || isUUID) {
+        // This is likely a course/book details page
+        return true;
+      }
+    }
+    
     // Check if current page has buyRentSection component
     if (catalogueData?.pages) {
       const currentPathSegments = location.pathname.split('/').filter(Boolean);
@@ -307,7 +322,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
   const hideSearchAndCart = shouldHideSearchAndCart();
 
   return (
-    <header className="relative bg-white shadow-sm border-b w-full fixed top-0 left-0 right-0 z-50 md:relative">
+    <header className="fixed top-0 left-0 right-0 z-50 bg-white shadow-sm border-b w-full">
       <div className={`w-full ${isHeaderStylesEnabled && !isMobile ? 'px-20' : 'px-4 sm:px-6 lg:px-8'}`}>
         <div className={`flex items-center h-20 ${isCourseCatalogeTypeEnabled ? 'md:justify-between' : 'justify-between'}`}>
           {/* Mobile menu button - Left side when courseCatalogeType.enabled is true */}
@@ -416,7 +431,16 @@ export const HeaderComponent: React.FC<HeaderProps & {
               <div className="flex items-center space-x-3 sm:space-x-4">
                 {/* Search Icon */}
                 <button
-                  onClick={() => setIsSearchOpen(!isSearchOpen)}
+                  onClick={() => {
+                    const newToggleState = !togle;
+                    settogle(newToggleState);
+                    // Dispatch custom event to open search bar in BookCatalogueComponent
+                    window.dispatchEvent(new CustomEvent('toggleSearchBar', { 
+                      detail: { isOpen: newToggleState } 
+                    }));
+                    // Also store in sessionStorage for persistence
+                    sessionStorage.setItem('searchBarOpen', String(newToggleState));
+                  }}
                   className="p-2 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-all duration-200 ease-in-out"
                   aria-label="Search"
                 >
@@ -685,44 +709,6 @@ export const HeaderComponent: React.FC<HeaderProps & {
       </div>
 
       {/* Search Bar - Only for hero section header */}
-      {isCourseCatalogeTypeEnabled && !hideSearchAndCart && isSearchOpen && (
-        <div 
-          ref={setSearchBarRef}
-          className="absolute top-full left-0 right-0 bg-white border-b border-gray-200 shadow-lg z-40"
-        >
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            <form onSubmit={handleSearch} className="relative max-w-2xl mx-auto">
-              <div className="relative flex items-center">
-                <Search className="absolute left-4 text-gray-400 w-5 h-5" />
-                <input
-                  ref={setSearchInputRef}
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search for books, courses, or topics..."
-                  className="w-full pl-12 pr-12 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base"
-                />
-                {searchTerm && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchTerm("")}
-                    className="absolute right-12 text-gray-400 hover:text-gray-600 transition-colors"
-                    aria-label="Clear search"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                )}
-                <button
-                  type="submit"
-                  className="absolute right-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium"
-                >
-                  Search
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </header>
   );
 };

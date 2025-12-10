@@ -271,7 +271,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
 
 
   return (
-    <div className="min-h-screen bg-white w-full pb-20 md:pb-0  md:pt-0">
+    <div className="min-h-screen bg-white w-full pb-20 md:pb-0 pt-20">
       {/* Intro Page - Show first if enabled and not completed */}
       {showIntroPage && catalogueData?.introPage && (
         <IntroPageComponent

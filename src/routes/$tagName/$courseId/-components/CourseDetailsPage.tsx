@@ -354,8 +354,12 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           packageSessionId: packageSessionId || course.package_session_id || courseId, // Use passed packageSessionId or fallback to API response
           enrollInviteId: enrollInviteId || course.enroll_invite_id, // Use passed enrollInviteId or fallback to API response
           levelId: course.level_id, // Add levelId from API response
-          courseId: course.course_id || courseId // Add courseId from API response or use the route param
-        };
+          courseId: course.course_id || courseId, // Add courseId from API response or use the route param
+          // Preserve raw HTML fields for BookDetailsComponent
+          course_html_description_html: course.course_html_description || course.course_html_description_html || "",
+          about_the_course_html: course.about_the_course || course.about_the_course_html || "",
+          comma_separeted_tags: course.tags || course.comma_separeted_tags || ""
+        } as any;
         
         setCourseData(courseData);
         
@@ -482,6 +486,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
               globalSettings={catalogueData.globalSettings}
               instituteId={instituteId}
               tagName={tagName}
+              catalogueData={catalogueData}
             />
           )}
           
@@ -503,7 +508,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
 
       {/* Course Content */}
-      <div className="py-8 sm:py-12 bg-gray-50 w-full">
+      {(catalogueData?.globalSettings as any)?.courseCatalogeType?.enabled !== true && <div className="pt-28 pb-8 sm:pb-12 bg-gray-50 w-full">
         <div className="w-full px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
             {/* Main Content */}
@@ -994,7 +999,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             </div>
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* Footer from JSON globalSettings */}
       {catalogueData && (catalogueData.globalSettings as any).layout?.footer && (catalogueData.globalSettings as any).layout?.footer?.enabled !== false && (
@@ -1157,7 +1162,8 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       )}
 
       {/* Mobile Action Buttons - Fixed at bottom for course details page */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-blue border-t border-gray-200 p-4" >
+      { (catalogueData?.globalSettings as any)?.courseCatalogeType?.enabled !== true && (
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-blue border-t border-gray-200 p-4" >
         <div className="flex flex-col gap-3">
           {/* Get Started Button */}
           <button
@@ -1180,7 +1186,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           </button>
           
           {/* Login Text */}
-          <div className="text-center">
+          <div className="text-center border-gray-200">
             <span
               onClick={() => navigate({ to: '/login' })}
               className="cursor-pointer text-sm transition-colors"
@@ -1203,7 +1209,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             </span>
           </div>
         </div>
-      </div>
+      </div>)}
     </div>
   );
 };

@@ -13,6 +13,8 @@ import { TestimonialSectionComponent } from "./components/TestimonialSectionComp
 import { CartComponent } from "./components/CartComponent";
 import { CartSummaryComponent } from "./components/CartSummaryComponent";
 import { BuyRentSectionComponent } from "./components/BuyRentSectionComponent";
+import { BookCatalogueComponent } from "./components/BookCatalogueComponent";
+import { BookDetailsComponent } from "./components/BookDetailsComponent";
 
 interface JsonRendererProps {
   page: Page;
@@ -47,7 +49,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
       const fieldPath = field.startsWith('globalSettings.') ? field.substring('globalSettings.'.length) : field;
       const fieldParts = fieldPath.split('.');
       let currentValue: any = globalSettings;
-      
+
       for (const part of fieldParts) {
         if (currentValue && typeof currentValue === 'object' && part in currentValue) {
           currentValue = currentValue[part];
@@ -56,18 +58,18 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
           break;
         }
       }
-      
+
       // Normalize boolean values for comparison (handle both boolean true and string "true")
       const normalizedCurrentValue = typeof currentValue === 'boolean' ? currentValue : currentValue;
       const normalizedExpectedValue = typeof value === 'boolean' ? value : (value === 'true' || value === true);
-      
-      
+
+
       // Check if condition matches
       if (normalizedCurrentValue !== normalizedExpectedValue) {
         console.log(`[JsonRenderer] Component ${id} HIDDEN - condition not met`);
         return null;
       }
-      
+
       console.log(`[JsonRenderer] Component ${id} SHOWN - condition met`);
     }
 
@@ -95,9 +97,27 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             tagName={tagName}
           />
         );
+      case "bookCatalogue":
+        return (
+          <BookCatalogueComponent
+            key={id}
+            {...props}
+            instituteId={instituteId}
+            globalSettings={globalSettings}
+            tagName={tagName}
+          />
+        );
       case "courseDetails":
         // Skip course details component - it shows hardcoded data after footer
         return null;
+      case "bookDetails":
+        return (
+          <BookDetailsComponent
+            key={id}
+            {...props}
+            courseData={courseData}
+          />
+        );
       case "courseRecommendations":
         // Skip course recommendations component - user doesn't want "you may also like" section
         return null;

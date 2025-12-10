@@ -227,9 +227,7 @@ public class LearnerEnrollRequestService {
             userPlanStatus = UserPlanStatusEnum.PENDING_FOR_PAYMENT.name();
         } else {
             userPlanStatus = UserPlanStatusEnum.ACTIVE.name();
-        }
-
-        return userPlanService.createUserPlan(
+        }        return userPlanService.createUserPlan(
                 userId,
                 paymentPlan,
                 null, // coupon can be handled later if needed
@@ -238,7 +236,8 @@ public class LearnerEnrollRequestService {
                 enrollDTO.getPaymentInitiationRequest(),
                 userPlanStatus,
                 source,
-                subOrgId);
+                subOrgId,
+                enrollDTO.getStartDate());
     }
 
     private LearnerEnrollResponseDTO enrollLearnerToBatch(

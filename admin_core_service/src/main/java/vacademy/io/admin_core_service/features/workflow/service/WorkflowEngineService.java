@@ -15,10 +15,6 @@ import vacademy.io.admin_core_service.features.workflow.repository.WorkflowNodeM
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowRepository;
 import vacademy.io.admin_core_service.features.workflow.spel.SpelEvaluator;
 
-import vacademy.io.admin_core_service.features.workflow.entity.WorkflowExecution;
-import vacademy.io.admin_core_service.features.workflow.enums.WorkflowExecutionStatus;
-import vacademy.io.admin_core_service.features.workflow.repository.WorkflowExecutionRepository;
-import java.time.Instant;
 import java.util.*;
 
 @Slf4j
@@ -32,7 +28,6 @@ public class WorkflowEngineService {
     private final NodeHandlerRegistry nodeHandlerRegistry;
     private final SpelEvaluator spelEvaluator;
     private final ObjectMapper objectMapper;
-    private final WorkflowExecutionRepository workflowExecutionRepository;
 
     public Map<String, Object> run(String workflowId, Map<String, Object> seedContext) {
         try {
@@ -54,16 +49,6 @@ public class WorkflowEngineService {
             }
             ctx.put("workflowId", workflowId);
             ctx.put("instituteId", wf.getInstituteId());
-
-            // Create execution record
-            WorkflowExecution execution = new WorkflowExecution();
-            execution.setWorkflow(wf);
-            execution.setIdempotencyKey(UUID.randomUUID().toString());
-            execution.setStatus(WorkflowExecutionStatus.PROCESSING);
-            execution.setStartedAt(Instant.now());
-            execution = workflowExecutionRepository.save(execution);
-            String executionId = execution.getId();
-            ctx.put("executionId", executionId);
 
             // Index by node ID for routing convenience
             Map<String, WorkflowNodeMapping> byNodeId = new HashMap<>();
@@ -122,13 +107,14 @@ public class WorkflowEngineService {
                 String effectiveConfig = mergeConfig(tmpl.getConfigJson(), current.getOverrideConfig());
                 String nodeType = tmpl.getNodeType();
                 log.info("Node type: {}, effective config: {}", nodeType, effectiveConfig);
-                ctx.put("currentNodeId", currentNodeId);
+
                 // Use registry for O(1) lookup
                 NodeHandler handler = nodeHandlerRegistry.getHandler(nodeType);
                 if (handler != null) {
                     try {
                         log.info("Executing handler: {} for node: {}", handler.getClass().getSimpleName(),
                                 current.getId());
+                        ctx.put("currentNodeId", currentNodeId);
                         Map<String, Object> changes = handler.handle(ctx, effectiveConfig, templateById, guard);
                         if (changes != null && !changes.isEmpty()) {
                             ctx.putAll(changes);
@@ -148,7 +134,12 @@ public class WorkflowEngineService {
 
                 if (nextNodeIds == null || nextNodeIds.isEmpty()) {
                     log.info("Path execution completed at node: {}", current.getId());
+                    // =================== FIX START ===================
+                    // This was the bug. A 'break' here would terminate the entire workflow
+                    // if one parallel branch ended, even if other branches were still on the stack.
+                    // 'continue' allows the loop to proceed with other nodes on the stack.
                     continue;
+                    // =================== FIX END =====================
                 }
 
                 // Push next nodes to stack in reverse order so they execute in correct order
@@ -177,12 +168,7 @@ public class WorkflowEngineService {
 
             if (guard >= 500) {
                 log.warn("Workflow execution stopped due to loop guard limit: {}", workflowId);
-                execution.setStatus(WorkflowExecutionStatus.FAILED);
-            } else {
-                execution.setStatus(WorkflowExecutionStatus.COMPLETED);
             }
-            execution.setCompletedAt(Instant.now());
-            workflowExecutionRepository.save(execution);
 
             return ctx;
 

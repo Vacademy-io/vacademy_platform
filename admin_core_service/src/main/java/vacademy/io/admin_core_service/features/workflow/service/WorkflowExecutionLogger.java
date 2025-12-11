@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,7 +35,7 @@ public class WorkflowExecutionLogger {
     /**
      * Starts logging for a node execution.
      * Creates a log entry with RUNNING status.
-     * 
+     *
      * @param workflowExecutionId The workflow execution ID
      * @param nodeTemplateId      The node template ID
      * @param nodeType            The node type
@@ -88,7 +90,7 @@ public class WorkflowExecutionLogger {
 
     /**
      * Completes a node execution log with success status.
-     * 
+     *
      * @param logId         The log ID
      * @param outputContext Output context/data from the node
      * @param detailsObject Detailed execution information (node-specific DTO)
@@ -112,7 +114,7 @@ public class WorkflowExecutionLogger {
 
     /**
      * Completes a node execution log with partial success status.
-     * 
+     *
      * @param logId         The log ID
      * @param outputContext Output context/data from the node
      * @param detailsObject Detailed execution information including failures
@@ -129,7 +131,7 @@ public class WorkflowExecutionLogger {
 
     /**
      * Marks a node execution as failed.
-     * 
+     *
      * @param logId         The log ID
      * @param errorMessage  Error message
      * @param errorType     Error type/category
@@ -147,7 +149,7 @@ public class WorkflowExecutionLogger {
 
     /**
      * Marks a node execution as skipped (due to conditional execution).
-     * 
+     *
      * @param logId  The log ID
      * @param reason Reason for skipping
      */
@@ -181,7 +183,7 @@ public class WorkflowExecutionLogger {
     /**
      * Updates a running node execution with progress information.
      * Useful for long-running operations like large iterations.
-     * 
+     *
      * @param logId        The log ID
      * @param progressInfo Progress information
      */
@@ -224,6 +226,7 @@ public class WorkflowExecutionLogger {
     /**
      * Internal method to complete node execution with specific status.
      */
+    @CacheEvict(value = { "executionLogs", "nodeLogs" }, allEntries = true)
     private void completeNodeExecutionWithStatus(
             String logId,
             ExecutionLogStatus status,
@@ -264,6 +267,7 @@ public class WorkflowExecutionLogger {
         }
     }
 
+    @Cacheable(value = "executionLogs", key = "#executionId")
     public List<vacademy.io.admin_core_service.features.workflow.dto.WorkflowExecutionLogDTO> getLogsByExecutionId(
             String executionId) {
         return executionLogRepository.findByWorkflowExecutionIdOrderByCreatedAtAsc(executionId)
@@ -287,6 +291,7 @@ public class WorkflowExecutionLogger {
                 .collect(java.util.stream.Collectors.toList());
     }
 
+    @Cacheable(value = "nodeLogs", key = "#executionId + '_' + #nodeId")
     public List<vacademy.io.admin_core_service.features.workflow.dto.WorkflowExecutionLogDTO> getLogsByExecutionIdAndNodeId(
             String executionId, String nodeId) {
         return executionLogRepository.findByWorkflowExecutionIdAndNodeTemplateId(executionId, nodeId)

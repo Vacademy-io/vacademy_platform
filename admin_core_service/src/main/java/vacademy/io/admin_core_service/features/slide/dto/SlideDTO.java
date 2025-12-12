@@ -23,4 +23,5 @@ public class SlideDTO {
     private QuizSlideDTO quizSlide;
     private Boolean isLoaded = false;
     private String parentId;
+    private String dripConditionJson;
 }

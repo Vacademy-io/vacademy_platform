@@ -42,43 +42,42 @@ public class OpenPackageService {
                         int pageNo,
                         int pageSize) {
 
-                Sort thisSort = ListService.createSortObject(learnerPackageFilterDTO.getSortColumns());
-                Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);
-
-                Page<PackageDetailProjection> learnerPackageDetail = null;
-                if (StringUtils.hasText(learnerPackageFilterDTO.getSearchByName())) {
-                        learnerPackageDetail = packageRepository.getCatalogPackageDetail(
-                                        learnerPackageFilterDTO.getSearchByName(),
-                                        instituteId,
-                                        List.of(PackageStatusEnum.ACTIVE.name()),
-                                        List.of(PackageSessionStatusEnum.ACTIVE.name(),
-                                                        PackageSessionStatusEnum.HIDDEN.name()),
-                                        List.of(LevelStatusEnum.ACTIVE.name()),
-                                        List.of(StatusEnum.ACTIVE.name()),
-                                        List.of(StatusEnum.ACTIVE.name()),
-                                        List.of(QuestionStatusEnum.ACTIVE.name()),
-                                        List.of(QuestionStatusEnum.ACTIVE.name()),
-                                        List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
-                                        List.of(ChapterStatus.ACTIVE.name()),
-                                        pageable);
-                } else {
-                        learnerPackageDetail = packageRepository.getOpenCatalogPackageDetail(
-                                        instituteId,
-                                        learnerPackageFilterDTO.getLevelIds(),
-                                        List.of(PackageStatusEnum.ACTIVE.name()),
-                                        List.of(PackageSessionStatusEnum.ACTIVE.name(),
-                                                        PackageSessionStatusEnum.HIDDEN.name()),
-                                        learnerPackageFilterDTO.getFacultyIds(),
-                                        List.of(StatusEnum.ACTIVE.name()),
-                                        learnerPackageFilterDTO.getTag(),
-                                        List.of(LevelStatusEnum.ACTIVE.name()),
-                                        List.of(StatusEnum.ACTIVE.name()),
-                                        List.of(QuestionStatusEnum.ACTIVE.name()),
-                                        List.of(QuestionStatusEnum.ACTIVE.name()),
-                                        List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
-                                        List.of(ChapterStatus.ACTIVE.name()),
-                                        pageable);
-                }
+        Sort thisSort = ListService.createSortObject(learnerPackageFilterDTO.getSortColumns());
+        Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);        Page<PackageDetailProjection> learnerPackageDetail = null;
+        if (StringUtils.hasText(learnerPackageFilterDTO.getSearchByName())){
+            learnerPackageDetail= packageRepository.getCatalogPackageDetail(
+                    learnerPackageFilterDTO.getSearchByName(),
+                    instituteId,
+                    List.of(PackageStatusEnum.ACTIVE.name()),
+                    learnerPackageFilterDTO.getPackageTypes(),
+                    List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                    List.of(LevelStatusEnum.ACTIVE.name()),
+                    List.of(StatusEnum.ACTIVE.name()),
+                    List.of(StatusEnum.ACTIVE.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                    List.of(ChapterStatus.ACTIVE.name()),
+                    pageable
+            );        }else{
+            learnerPackageDetail= packageRepository.getOpenCatalogPackageDetail(
+                    instituteId,
+                    learnerPackageFilterDTO.getLevelIds(),
+                    List.of(PackageStatusEnum.ACTIVE.name()),
+                    learnerPackageFilterDTO.getPackageTypes(),
+                    List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                    learnerPackageFilterDTO.getFacultyIds(),
+                    List.of(StatusEnum.ACTIVE.name()),
+                    learnerPackageFilterDTO.getTag(),
+                    List.of(LevelStatusEnum.ACTIVE.name()),
+                    List.of(StatusEnum.ACTIVE.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                    List.of(ChapterStatus.ACTIVE.name()),
+                    pageable
+            );
+        }
 
                 // Get all instructor userIds
                 List<String> instructorIds = learnerPackageDetail.getContent().stream()
@@ -101,29 +100,30 @@ public class OpenPackageService {
                                         .filter(Objects::nonNull)
                                         .collect(Collectors.toList());
 
-                        return new PackageDetailDTO(
-                                        projection.getId(),
-                                        projection.getPackageName(),
-                                        projection.getThumbnailFileId(),
-                                        projection.getIsCoursePublishedToCatalaouge(),
-                                        projection.getCoursePreviewImageMediaId(),
-                                        projection.getCourseBannerMediaId(),
-                                        projection.getCourseMediaId(),
-                                        projection.getWhyLearnHtml(),
-                                        projection.getWhoShouldLearnHtml(),
-                                        projection.getAboutTheCourseHtml(),
-                                        projection.getCommaSeparetedTags(),
-                                        projection.getCourseDepth(),
-                                        projection.getCourseHtmlDescriptionHtml(),
-                                        projection.getPercentageCompleted(),
-                                        projection.getRating(),
-                                        projection.getPackageSessionId(),
-                                        projection.getLevelId(),
-                                        projection.getLevelName(),
-                                        instructors,
-                                        projection.getLevelIds(),
-                                        projection.getReadTimeInMinutes());
-                }).toList();
+            return new PackageDetailDTO(
+                    projection.getId(),
+                    projection.getPackageName(),
+                    projection.getThumbnailFileId(),
+                    projection.getIsCoursePublishedToCatalaouge(),
+                    projection.getCoursePreviewImageMediaId(),
+                    projection.getCourseBannerMediaId(),
+                    projection.getCourseMediaId(),
+                    projection.getWhyLearnHtml(),
+                    projection.getWhoShouldLearnHtml(),
+                    projection.getAboutTheCourseHtml(),
+                    projection.getCommaSeparetedTags(),
+                    projection.getCourseDepth(),
+                    projection.getCourseHtmlDescriptionHtml(),
+                    projection.getPercentageCompleted(),
+                    projection.getRating(),
+                    projection.getPackageSessionId(),
+                    projection.getLevelId(),
+                    projection.getLevelName(),
+                    instructors,
+                    projection.getLevelIds(),
+                    projection.getReadTimeInMinutes(),projection.getPackageType()
+            );
+        }).toList();
 
                 return new PageImpl<>(dtos, pageable, learnerPackageDetail.getTotalElements());
         }
@@ -156,28 +156,30 @@ public class OpenPackageService {
                                 .filter(Objects::nonNull)
                                 .collect(Collectors.toList());
 
-                PackageDetailDTO dto = new PackageDetailDTO(
-                                projection.getId(),
-                                projection.getPackageName(),
-                                projection.getThumbnailFileId(),
-                                projection.getIsCoursePublishedToCatalaouge(),
-                                projection.getCoursePreviewImageMediaId(),
-                                projection.getCourseBannerMediaId(),
-                                projection.getCourseMediaId(),
-                                projection.getWhyLearnHtml(),
-                                projection.getWhoShouldLearnHtml(),
-                                projection.getAboutTheCourseHtml(),
-                                projection.getCommaSeparetedTags(),
-                                projection.getCourseDepth(),
-                                projection.getCourseHtmlDescriptionHtml(),
-                                projection.getPercentageCompleted(),
-                                projection.getRating(),
-                                projection.getPackageSessionId(),
-                                projection.getLevelId(),
-                                projection.getLevelName(),
-                                instructors,
-                                projection.getLevelIds(),
-                                getReadTimeInMinutes(packageId));
+        PackageDetailDTO dto = new PackageDetailDTO(
+                projection.getId(),
+                projection.getPackageName(),
+                projection.getThumbnailFileId(),
+                projection.getIsCoursePublishedToCatalaouge(),
+                projection.getCoursePreviewImageMediaId(),
+                projection.getCourseBannerMediaId(),
+                projection.getCourseMediaId(),
+                projection.getWhyLearnHtml(),
+                projection.getWhoShouldLearnHtml(),
+                projection.getAboutTheCourseHtml(),
+                projection.getCommaSeparetedTags(),
+                projection.getCourseDepth(),
+                projection.getCourseHtmlDescriptionHtml(),
+                projection.getPercentageCompleted(),
+                projection.getRating(),
+                projection.getPackageSessionId(),
+                projection.getLevelId(),
+                projection.getLevelName(),
+                instructors,
+                projection.getLevelIds(),
+                getReadTimeInMinutes(packageId),
+                projection.getPackageType()
+        );
 
                 return dto;
         }
@@ -192,53 +194,52 @@ public class OpenPackageService {
                 Sort thisSort = ListService.createSortObject(learnerPackageFilterDTO.getSortColumns());
                 Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);
 
-                Page<PackageDetailV2Projection> learnerPackageDetail;
-
-                if (StringUtils.hasText(learnerPackageFilterDTO.getSearchByName())) {
-                        // Corrected the argument order and passed null for unused filters
-                        learnerPackageDetail = packageRepository.getCatalogPackageDetailV2(
-                                        learnerPackageFilterDTO.getSearchByName(),
-                                        instituteId,
-                                        null, // facultyIds - not used in searchByName
-                                        List.of(StatusEnum.ACTIVE.name()), // facultyPackageSessionStatus
-                                        null, // tags - not used in searchByName
-                                        List.of(PackageStatusEnum.ACTIVE.name()),
-                                        List.of(PackageSessionStatusEnum.ACTIVE.name(),
-                                                        PackageSessionStatusEnum.HIDDEN.name()),
-                                        List.of(LevelStatusEnum.ACTIVE.name()),
-                                        List.of(StatusEnum.ACTIVE.name()), // ratingStatuses
-                                        List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
-                                        List.of(ChapterStatus.ACTIVE.name()),
-                                        List.of(StatusEnum.ACTIVE.name()), // assignmentQuestionStatusList
-                                        List.of(StatusEnum.ACTIVE.name()), // questionStatusList
-                                        List.of(StatusEnum.ACTIVE.name()), // enrollInviteStatus
-                                        List.of(StatusEnum.ACTIVE.name()), // psliStatus
-                                        List.of(StatusEnum.ACTIVE.name()), // paymentOptionStatus
-                                        List.of(StatusEnum.ACTIVE.name()), // paymentPlanStatus
-                                        pageable);
-                } else {
-                        // Corrected getTag() to getTags() to match List<String> type
-                        learnerPackageDetail = packageRepository.getOpenCatalogPackageDetailV2(
-                                        instituteId,
-                                        learnerPackageFilterDTO.getLevelIds(),
-                                        List.of(PackageStatusEnum.ACTIVE.name()),
-                                        List.of(PackageSessionStatusEnum.ACTIVE.name(),
-                                                        PackageSessionStatusEnum.HIDDEN.name()),
-                                        learnerPackageFilterDTO.getFacultyIds(),
-                                        List.of(StatusEnum.ACTIVE.name()), // facultyPackageSessionStatus
-                                        learnerPackageFilterDTO.getTag(), // Corrected from getTag()
-                                        List.of(LevelStatusEnum.ACTIVE.name()),
-                                        List.of(StatusEnum.ACTIVE.name()), // ratingStatuses
-                                        List.of(StatusEnum.ACTIVE.name()), // assignmentQuestionStatusList
-                                        List.of(StatusEnum.ACTIVE.name()), // questionStatusList
-                                        List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
-                                        List.of(ChapterStatus.ACTIVE.name()),
-                                        List.of(StatusEnum.ACTIVE.name()), // enrollInviteStatus
-                                        List.of(StatusEnum.ACTIVE.name()), // psliStatus
-                                        List.of(StatusEnum.ACTIVE.name()), // paymentOptionStatus
-                                        List.of(StatusEnum.ACTIVE.name()), // paymentPlanStatus
-                                        pageable);
-                }
+        Page<PackageDetailV2Projection> learnerPackageDetail;        if (StringUtils.hasText(learnerPackageFilterDTO.getSearchByName())) {
+            // Corrected the argument order and passed null for unused filters
+            learnerPackageDetail = packageRepository.getCatalogPackageDetailV2(
+                    learnerPackageFilterDTO.getSearchByName(),
+                    instituteId,
+                    null, // facultyIds - not used in searchByName
+                    List.of(StatusEnum.ACTIVE.name()),   // facultyPackageSessionStatus
+                    null, // tags - not used in searchByName
+                    List.of(PackageStatusEnum.ACTIVE.name()),
+                    learnerPackageFilterDTO.getPackageTypes(),
+                    List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                    List.of(LevelStatusEnum.ACTIVE.name()),
+                    List.of(StatusEnum.ACTIVE.name()),   // ratingStatuses
+                    List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                    List.of(ChapterStatus.ACTIVE.name()),
+                    List.of(StatusEnum.ACTIVE.name()),   // assignmentQuestionStatusList
+                    List.of(StatusEnum.ACTIVE.name()),   // questionStatusList
+                    List.of(StatusEnum.ACTIVE.name()),   // enrollInviteStatus
+                    List.of(StatusEnum.ACTIVE.name()),   // psliStatus
+                    List.of(StatusEnum.ACTIVE.name()),   // paymentOptionStatus
+                    List.of(StatusEnum.ACTIVE.name()),   // paymentPlanStatus
+                    pageable
+            );        } else {
+            // Corrected getTag() to getTags() to match List<String> type
+            learnerPackageDetail = packageRepository.getOpenCatalogPackageDetailV2(
+                    instituteId,
+                    learnerPackageFilterDTO.getLevelIds(),
+                    List.of(PackageStatusEnum.ACTIVE.name()),
+                    learnerPackageFilterDTO.getPackageTypes(),
+                    List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                    learnerPackageFilterDTO.getFacultyIds(),
+                    List.of(StatusEnum.ACTIVE.name()),   // facultyPackageSessionStatus
+                    learnerPackageFilterDTO.getTag(),   // Corrected from getTag()
+                    List.of(LevelStatusEnum.ACTIVE.name()),
+                    List.of(StatusEnum.ACTIVE.name()),   // ratingStatuses
+                    List.of(StatusEnum.ACTIVE.name()),   // assignmentQuestionStatusList
+                    List.of(StatusEnum.ACTIVE.name()),   // questionStatusList
+                    List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                    List.of(ChapterStatus.ACTIVE.name()),
+                    List.of(StatusEnum.ACTIVE.name()),   // enrollInviteStatus
+                    List.of(StatusEnum.ACTIVE.name()),   // psliStatus
+                    List.of(StatusEnum.ACTIVE.name()),   // paymentOptionStatus
+                    List.of(StatusEnum.ACTIVE.name()),   // paymentPlanStatus
+                    pageable
+            );
+        }
 
                 // Get all instructor userIds
                 List<String> instructorIds = learnerPackageDetail.getContent().stream()
@@ -261,34 +262,36 @@ public class OpenPackageService {
                                         .filter(Objects::nonNull)
                                         .collect(Collectors.toList());
 
-                        return new PackageDetailV2DTO(
-                                        projection.getId(),
-                                        projection.getPackageName(),
-                                        projection.getThumbnailFileId(),
-                                        projection.getIsCoursePublishedToCatalaouge(),
-                                        projection.getCoursePreviewImageMediaId(),
-                                        projection.getCourseBannerMediaId(),
-                                        projection.getCourseMediaId(),
-                                        projection.getWhyLearnHtml(),
-                                        projection.getWhoShouldLearnHtml(),
-                                        projection.getAboutTheCourseHtml(),
-                                        projection.getCommaSeparetedTags(),
-                                        projection.getCourseDepth(),
-                                        projection.getCourseHtmlDescriptionHtml(),
-                                        null, // percentageCompleted (not in projection yet)
-                                        projection.getRating(),
-                                        projection.getPackageSessionId(),
-                                        projection.getLevelId(),
-                                        projection.getLevelName(),
-                                        instructors,
-                                        projection.getReadTimeInMinutes(),
-                                        projection.getEnrollInviteId(),
-                                        projection.getPaymentOptionId(),
-                                        projection.getPaymentOptionType(),
-                                        null, // Corrected: paymentOptionStatus is not in the projection
-                                        projection.getMinPlanActualPrice(),
-                                        projection.getCurrency());
-                }).toList();
+            return new PackageDetailV2DTO(
+                    projection.getId(),
+                    projection.getPackageName(),
+                    projection.getThumbnailFileId(),
+                    projection.getIsCoursePublishedToCatalaouge(),
+                    projection.getCoursePreviewImageMediaId(),
+                    projection.getCourseBannerMediaId(),
+                    projection.getCourseMediaId(),
+                    projection.getWhyLearnHtml(),
+                    projection.getWhoShouldLearnHtml(),
+                    projection.getAboutTheCourseHtml(),
+                    projection.getCommaSeparetedTags(),
+                    projection.getCourseDepth(),
+                    projection.getCourseHtmlDescriptionHtml(),
+                    null, // percentageCompleted (not in projection yet)
+                    projection.getRating(),
+                    projection.getPackageSessionId(),
+                    projection.getLevelId(),
+                    projection.getLevelName(),
+                    instructors,
+                    projection.getReadTimeInMinutes(),
+                    projection.getPackageType(),
+                    projection.getEnrollInviteId(),
+                    projection.getPaymentOptionId(),
+                    projection.getPaymentOptionType(),
+                    null, // Corrected: paymentOptionStatus is not in the projection
+                    projection.getMinPlanActualPrice(),
+                    projection.getCurrency()
+            );
+        }).toList();
 
                 return new PageImpl<>(dtos, pageable, learnerPackageDetail.getTotalElements());
         }

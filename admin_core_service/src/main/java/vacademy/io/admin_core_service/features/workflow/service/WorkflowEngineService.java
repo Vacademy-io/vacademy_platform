@@ -114,6 +114,7 @@ public class WorkflowEngineService {
                     try {
                         log.info("Executing handler: {} for node: {}", handler.getClass().getSimpleName(),
                                 current.getId());
+                        ctx.put("currentNodeId", currentNodeId);
                         Map<String, Object> changes = handler.handle(ctx, effectiveConfig, templateById, guard);
                         if (changes != null && !changes.isEmpty()) {
                             ctx.putAll(changes);

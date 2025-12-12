@@ -321,18 +321,32 @@ public class AnnouncementService {
                                 recipient.setRecipientName("ERROR");
                             }
                         } else {
+                            // For inclusions, store exclusions as JSON in recipientName if present
+                            if (!isExclusion && r.getExclusions() != null && !r.getExclusions().isEmpty()) {
+                                try {
+                                    String exclusionsJson = objectMapper.writeValueAsString(r.getExclusions());
+                                    recipient.setRecipientName(exclusionsJson);
+                                    log.info("SUCCESS: Stored {} exclusions as JSON for recipient {}: {}", r.getExclusions().size(), r.getRecipientId(), exclusionsJson);
+                                } catch (Exception e) {
+                                    log.error("Error serializing exclusions for recipient {}", r.getRecipientId(), e);
+                                    recipient.setRecipientName(r.getRecipientName());
+                                }
+                            } else {
+                                recipient.setRecipientName(r.getRecipientName());
+                                log.debug("No exclusions for recipient {}, stored name: {}", r.getRecipientId(), r.getRecipientName());
+                            }
+
                             // For other types and exclusions, prefix the recipientId with "EXCLUDE:"
                             String recipientId = isExclusion ? "EXCLUDE:" + r.getRecipientId() : r.getRecipientId();
                             recipient.setRecipientId(recipientId);
-                            recipient.setRecipientName(r.getRecipientName());
                         }
                         return recipient;
                     })
                     .collect(Collectors.toList());
             recipientRepository.saveAll(recipientEntities);
-            log.debug("Saved {} {} for announcement: {}", 
-                    recipientEntities.size(), 
-                    isExclusion ? "exclusions" : "recipients", 
+            log.debug("Saved {} {} for announcement: {}",
+                    recipientEntities.size(),
+                    isExclusion ? "exclusions" : "recipients",
                     announcementId);
         }
     }

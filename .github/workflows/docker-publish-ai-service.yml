@@ -63,6 +63,7 @@ jobs:
               S3_AWS_REGION=${{ secrets.S3_AWS_REGION }} \
               AWS_BUCKET_NAME=${{ secrets.AWS_S3_PUBLIC_BUCKET }} \
               GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
+              YOUTUBE_API_KEY=${{ secrets.YOUTUBE_API_KEY }} \
               LLM_DEFAULT_MODEL=google/gemini-2.5-flash
             kubectl rollout restart deployment "$DEPLOYMENT_NAME" --namespace "$NAMESPACE"
           else

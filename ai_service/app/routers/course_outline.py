@@ -8,7 +8,11 @@ from typing import Optional
 
 from ..config import get_settings
 from ..dependencies import get_course_outline_service
-from ..schemas.course_outline import CourseOutlineRequest, CourseOutlineResponse, CourseUserPromptRequest
+from ..schemas.course_outline import (
+    CourseOutlineRequest, 
+    CourseOutlineResponse, 
+    CourseUserPromptRequest
+)
 from ..services.course_outline_service import CourseOutlineGenerationService
 
 

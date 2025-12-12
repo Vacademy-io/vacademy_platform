@@ -1,0 +1,2 @@
+ALTER TABLE package
+ADD COLUMN package_type VARCHAR(50) DEFAULT 'COURSE';

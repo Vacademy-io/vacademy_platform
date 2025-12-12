@@ -7,6 +7,7 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.system_files.dto.*;
 import vacademy.io.admin_core_service.features.system_files.entity.EntityAccess;
@@ -36,6 +37,7 @@ public class SystemFileService {
         private final EntityAccessRepository entityAccessRepository;
         private final AuthService authService;
         private final StudentSessionInstituteGroupMappingRepository studentSessionInstituteGroupMappingRepository;
+        private final InstituteStudentRepository instituteStudentRepository;
 
         @Transactional
         public SystemFileAddResponseDTO addSystemFile(SystemFileRequestDTO request, String instituteId,
@@ -73,9 +75,10 @@ public class SystemFileService {
                 accessList.add(createEntityAccess(savedSystemFile.getId(), AccessTypeEnum.edit.name(),
                                 AccessLevelEnum.user.name(), user.getUserId()));
 
-                // Add view access
+                // Process view access (convert usernames to userIds if needed)
                 if (request.getViewAccess() != null && !request.getViewAccess().isEmpty()) {
-                        for (AccessDTO accessDTO : request.getViewAccess()) {
+                        List<AccessDTO> processedViewAccess = processAccessDTOs(request.getViewAccess(), instituteId);
+                        for (AccessDTO accessDTO : processedViewAccess) {
                                 validateAccessLevel(accessDTO.getLevel());
                                 accessList.add(createEntityAccess(savedSystemFile.getId(),
                                                 AccessTypeEnum.view.name(), accessDTO.getLevel(),
@@ -83,9 +86,10 @@ public class SystemFileService {
                         }
                 }
 
-                // Add edit access
+                // Process edit access (convert usernames to userIds if needed)
                 if (request.getEditAccess() != null && !request.getEditAccess().isEmpty()) {
-                        for (AccessDTO accessDTO : request.getEditAccess()) {
+                        List<AccessDTO> processedEditAccess = processAccessDTOs(request.getEditAccess(), instituteId);
+                        for (AccessDTO accessDTO : processedEditAccess) {
                                 validateAccessLevel(accessDTO.getLevel());
                                 accessList.add(createEntityAccess(savedSystemFile.getId(),
                                                 AccessTypeEnum.edit.name(), accessDTO.getLevel(),
@@ -135,6 +139,83 @@ public class SystemFileService {
                 } catch (IllegalArgumentException e) {
                         throw new IllegalArgumentException("Invalid access level: " + level +
                                         ". Must be one of: user, batch, institute, role");
+                }
+        }
+
+        /**
+         * Process access DTOs to convert usernames to userIds for user-level access
+         */
+        private List<AccessDTO> processAccessDTOs(List<AccessDTO> accessDTOs, String instituteId) {
+                List<AccessDTO> processedDTOs = new ArrayList<>();
+                List<String> usernamesToConvert = new ArrayList<>();
+
+                // First pass: collect usernames that need conversion
+                for (AccessDTO accessDTO : accessDTOs) {
+                        if ("user".equals(accessDTO.getLevel()) && accessDTO.getLevelId() != null) {
+                                // Check if levelId looks like a username (not a UUID)
+                                if (!isValidUUID(accessDTO.getLevelId())) {
+                                        usernamesToConvert.add(accessDTO.getLevelId());
+                                }
+                        }
+                }
+
+                // Convert usernames to userIds
+                Map<String, String> usernameToUserIdMap = new HashMap<>();
+                if (!usernamesToConvert.isEmpty()) {
+                        // Query each username individually for accurate mapping
+                        for (String username : usernamesToConvert) {
+                                List<String> singleUserId = instituteStudentRepository.findUserIdsByUsernames(List.of(username));
+                                if (!singleUserId.isEmpty()) {
+                                        usernameToUserIdMap.put(username, singleUserId.get(0));
+                                        log.debug("Converted username '{}' to userId '{}'", username, singleUserId.get(0));
+                                } else {
+                                        log.warn("Could not find userId for username '{}', skipping access", username);
+                                }
+                        }
+                }
+
+                // Second pass: create processed DTOs with converted IDs
+                for (AccessDTO accessDTO : accessDTOs) {
+                        AccessDTO processedDTO = new AccessDTO();
+                        processedDTO.setLevel(accessDTO.getLevel());
+
+                        if ("user".equals(accessDTO.getLevel()) && accessDTO.getLevelId() != null) {
+                                String convertedId = usernameToUserIdMap.get(accessDTO.getLevelId());
+                                if (convertedId != null) {
+                                        processedDTO.setLevelId(convertedId);
+                                        log.debug("Using converted userId '{}' for access level", convertedId);
+                                } else if (isValidUUID(accessDTO.getLevelId())) {
+                                        // It's already a valid UUID, use as-is
+                                        processedDTO.setLevelId(accessDTO.getLevelId());
+                                        log.debug("Using provided userId '{}' for access level", accessDTO.getLevelId());
+                                } else {
+                                        // Skip this access entry if conversion failed and it's not a valid UUID
+                                        log.warn("Skipping access for invalid identifier '{}'", accessDTO.getLevelId());
+                                        continue;
+                                }
+                        } else {
+                                // For non-user levels, use levelId as-is
+                                processedDTO.setLevelId(accessDTO.getLevelId());
+                        }
+
+                        processedDTOs.add(processedDTO);
+                }
+
+                return processedDTOs;
+        }
+
+        /**
+         * Check if a string is a valid UUID format
+         */
+        private boolean isValidUUID(String str) {
+                if (str == null || str.length() != 36) {
+                        return false;
+                }
+                try {
+                        java.util.UUID.fromString(str);
+                        return true;
+                } catch (IllegalArgumentException e) {
+                        return false;
                 }
         }
 

@@ -8,12 +8,10 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteDTO;
 
+import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.List;
 
-/**
- * Data Transfer Object for UserPlan entity.
- */
 @Data
 @Builder
 @NoArgsConstructor
@@ -22,14 +20,7 @@ import java.util.List;
 public class UserPlanDTO {
 
     private String id;
-    
-    /**
-     * User ID - Always present for both USER and SUB_ORG sources
-     * - For source=USER: The individual user who enrolled
-     * - For source=SUB_ORG: The individual learner within the sub-organization
-     */
     private String userId;
-
     private String paymentPlanId;
     private String planJson;
 
@@ -39,23 +30,22 @@ public class UserPlanDTO {
     private String enrollInviteId;
 
     private String paymentOptionId;
-    private String paymentOptionJson;    private String status;
+    private String paymentOptionJson;
 
-    /**
-     * Source of the user plan: USER or SUB_ORG
-     */
+    private String status;
     private String source;
 
-    /**
-     * Sub-organization (Institute) details when source=SUB_ORG and subOrgId is not null
-     * Contains: id, name, address of the Institute
-     */
     private SubOrgDetailsDTO subOrgDetails;
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
-    private List<PaymentLogDTO>paymentLogs;
+    // --- Added Date Fields ---
+    private Timestamp startDate;
+    private Timestamp endDate;
+    // -------------------------
+
+    private List<PaymentLogDTO> paymentLogs;
 
     private EnrollInviteDTO enrollInvite;
 

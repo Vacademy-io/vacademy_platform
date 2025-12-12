@@ -4,11 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import vacademy.io.admin_core_service.features.user_subscription.dto.UserPlanDTO;
-import vacademy.io.admin_core_service.features.user_subscription.dto.UserPlanFilterDTO;
-import vacademy.io.admin_core_service.features.user_subscription.dto.UserPlanStatusUpdateRequestDTO;
-import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogFilterRequestDTO;
-import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogWithUserPlanDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.*;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
 import vacademy.io.common.auth.config.PageConstants;
@@ -62,5 +58,20 @@ public class UserPlanController {
 
         userPlanService.updateUserPlanStatuses(request.getUserPlanIds(), request.getStatus());
         return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/membership-details")
+    public ResponseEntity<Page<MembershipDetailsDTO>> getMembershipDetails(
+            @RequestParam(required = false, defaultValue = "0") int pageNo,
+            @RequestParam(required = false, defaultValue = "10") int pageSize,
+            @RequestBody MembershipFilterDTO filterDTO,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+
+        // Ensure institute ID is set (security check could be added here to ensure user belongs to institute)
+        if (filterDTO.getInstituteId() == null) {
+            // Fallback or Error depending on logic, assuming usually passed in body or derived
+        }
+
+        return ResponseEntity.ok(userPlanService.getMembershipDetails(filterDTO, pageNo, pageSize));
     }
 }

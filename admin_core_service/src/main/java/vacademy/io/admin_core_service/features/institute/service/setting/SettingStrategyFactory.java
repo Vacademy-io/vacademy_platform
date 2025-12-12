@@ -1,18 +1,24 @@
 package vacademy.io.admin_core_service.features.institute.service.setting;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.stereotype.Component;
+import vacademy.io.admin_core_service.features.course_settings.service.DripConditionService;
 import vacademy.io.admin_core_service.features.institute.enums.SettingKeyEnums;
 import vacademy.io.common.institute.entity.Institute;
 
 import java.util.HashMap;
 import java.util.Map;
 
-
-
+@Component
 public class SettingStrategyFactory {
 
     private final Map<String, IInstituteSettingStrategy> strategies = new HashMap<>();
+    private final DripConditionService dripConditionService;
 
-    public SettingStrategyFactory() {
+    @Autowired
+    public SettingStrategyFactory(@Lazy DripConditionService dripConditionService) {
+        this.dripConditionService = dripConditionService;
         strategies.put(SettingKeyEnums.NAMING_SETTING.name(), new NameSettingStrategy());
         strategies.put(SettingKeyEnums.CERTIFICATE_SETTING.name(), new CertificateSettingStrategy());
         strategies.put(SettingKeyEnums.CUSTOM_FIELD_SETTING.name(), new CustomFieldSettingStrategy());
@@ -24,19 +30,21 @@ public class SettingStrategyFactory {
         IInstituteSettingStrategy strategy = strategies.get(key);
         if (strategy == null) {
             // Fall back to generic strategy for unknown keys
-            strategy = new GenericSettingStrategy();
-            strategy.setKey(key);
+            GenericSettingStrategy genericStrategy = new GenericSettingStrategy();
+            genericStrategy.setDripConditionService(dripConditionService);
+            genericStrategy.setKey(key);
+            return genericStrategy;
         }
         return strategy;
     }
 
-    public String buildNewSettingAndGetSettingJsonString(Institute institute, Object settingRequest, String key){
+    public String buildNewSettingAndGetSettingJsonString(Institute institute, Object settingRequest, String key) {
         IInstituteSettingStrategy strategy = getStrategy(key);
         return strategy.buildInstituteSetting(institute, settingRequest);
     }
 
-    public String rebuildOldSettingAndGetSettingJsonString(Institute institute, Object settingRequest, String key){
+    public String rebuildOldSettingAndGetSettingJsonString(Institute institute, Object settingRequest, String key) {
         IInstituteSettingStrategy strategy = getStrategy(key);
-        return strategy.rebuildInstituteSetting(institute, settingRequest,key);
+        return strategy.rebuildInstituteSetting(institute, settingRequest, key);
     }
 }

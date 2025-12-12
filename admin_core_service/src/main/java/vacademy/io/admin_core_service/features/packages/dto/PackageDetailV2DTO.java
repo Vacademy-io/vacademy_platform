@@ -32,6 +32,7 @@ public class PackageDetailV2DTO {
     private String packageSessionId;
     private String levelId;
     private String levelName;
+    private String dripConditionJson;
     private List<UserDTO> instructors;
     private Long readTimeInMinutes;
     private String packageType;

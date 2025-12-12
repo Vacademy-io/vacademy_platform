@@ -47,6 +47,9 @@ public class Chapter {
     @Column(name = "created_by_user_id")
     private String createdByUserId;
 
+    @Column(name = "drip_condition_json", columnDefinition = "TEXT")
+    private String dripConditionJson;
+
     public Chapter(ChapterDTO chapterDTO) {
         if (chapterDTO.getId() != null) {
             this.id = chapterDTO.getId();
@@ -74,6 +77,7 @@ public class Chapter {
         chapterDTO.setDescription(description);
         chapterDTO.setStatus(status);
         chapterDTO.setParentId(parentId);
+        chapterDTO.setDripConditionJson(dripConditionJson);
         return chapterDTO;
     }
 

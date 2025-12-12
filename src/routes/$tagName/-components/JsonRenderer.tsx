@@ -11,7 +11,6 @@ import { MediaShowcaseComponent } from "./components/MediaShowcaseComponent";
 import { StatsHighlightsComponent } from "./components/StatsHighlightsComponent";
 import { TestimonialSectionComponent } from "./components/TestimonialSectionComponent";
 import { CartComponent } from "./components/CartComponent";
-import { CartSummaryComponent } from "./components/CartSummaryComponent";
 import { BuyRentSectionComponent } from "./components/BuyRentSectionComponent";
 import { BookCatalogueComponent } from "./components/BookCatalogueComponent";
 import { BookDetailsComponent } from "./components/BookDetailsComponent";
@@ -147,9 +146,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
       case "testimonialSection":
         return <TestimonialSectionComponent key={id} {...props} />;
       case "cartComponent":
-        return <CartComponent key={id} {...props} />;
-      case "cartSummary":
-        return <CartSummaryComponent key={id} {...props} />;
+        return <CartComponent key={id} {...props} instituteId={instituteId} />;
       case "buyRentSection":
         return <BuyRentSectionComponent key={id} {...props} tagName={tagName} />;
       default:

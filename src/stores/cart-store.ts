@@ -15,6 +15,13 @@ export interface CartItem {
   [key: string]: any; // Allow additional fields
 }
 
+export interface MembershipPlan {
+  id: string;
+  title: string;
+  price: number;
+  numberOfBooks?: number; // Number of books allowed in the plan
+}
+
 interface CartStore {
   items: CartItem[];
   addItem: (item: Omit<CartItem, 'quantity'>) => void;
@@ -24,9 +31,13 @@ interface CartStore {
   getTotal: () => number;
   getItemCount: () => number;
   getItemByEnrollInviteId: (enrollInviteId: string) => CartItem | undefined;
+  membershipPlan: MembershipPlan | null;
+  setMembershipPlan: (plan: MembershipPlan | null) => void;
 }
 
+
 const STORAGE_KEY = 'cart_items';
+const PLAN_STORAGE_KEY = 'cart_plan';
 
 // Load cart from storage
 const loadCartFromStorage = async (): Promise<CartItem[]> => {
@@ -41,6 +52,18 @@ const loadCartFromStorage = async (): Promise<CartItem[]> => {
   return [];
 };
 
+const loadPlanFromStorage = async (): Promise<MembershipPlan | null> => {
+  try {
+    const stored = await Preferences.get({ key: PLAN_STORAGE_KEY });
+    if (stored.value) {
+      return JSON.parse(stored.value);
+    }
+  } catch (error) {
+    console.error('[CartStore] Error loading plan from storage:', error);
+  }
+  return null;
+};
+
 // Save cart to storage
 const saveCartToStorage = async (items: CartItem[]) => {
   try {
@@ -51,10 +74,23 @@ const saveCartToStorage = async (items: CartItem[]) => {
   } catch (error) {
     console.error('[CartStore] Error saving cart to storage:', error);
   }
+}
+
+
+const savePlanToStorage = async (plan: MembershipPlan | null) => {
+  try {
+    await Preferences.set({
+      key: PLAN_STORAGE_KEY,
+      value: JSON.stringify(plan),
+    });
+  } catch (error) {
+    console.error('[CartStore] Error saving plan to storage:', error);
+  }
 };
 
 export const useCartStore = create<CartStore>((set, get) => ({
   items: [],
+  membershipPlan: null,
 
   addItem: (item) => {
     // Use enrollInviteId as the unique identifier
@@ -115,13 +151,22 @@ export const useCartStore = create<CartStore>((set, get) => ({
   clearCart: () => {
     set({ items: [] });
     saveCartToStorage([]);
+    set({ membershipPlan: null });
+    savePlanToStorage(null);
+  },
+
+  setMembershipPlan: (plan) => {
+    set({ membershipPlan: plan });
+    savePlanToStorage(plan);
   },
 
   getTotal: () => {
-    return get().items.reduce(
+    const itemTotal = get().items.reduce(
       (total, item) => total + item.price * item.quantity,
       0
     );
+    const planPrice = get().membershipPlan?.price || 0;
+    return itemTotal + planPrice;
   },
 
   getItemCount: () => {
@@ -137,5 +182,8 @@ export const useCartStore = create<CartStore>((set, get) => ({
 if (typeof window !== 'undefined') {
   loadCartFromStorage().then((items) => {
     useCartStore.setState({ items });
+  });
+  loadPlanFromStorage().then((plan) => {
+    useCartStore.setState({ membershipPlan: plan });
   });
 }

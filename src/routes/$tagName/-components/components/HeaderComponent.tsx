@@ -324,7 +324,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-white shadow-sm border-b w-full">
       <div className={`w-full ${isHeaderStylesEnabled && !isMobile ? 'px-20' : 'px-4 sm:px-6 lg:px-8'}`}>
-        <div className={`flex items-center h-20 ${isCourseCatalogeTypeEnabled ? 'md:justify-between' : 'justify-between'}`}>
+        <div className={`flex items-center pt-2 pb-2 h-19 ${isCourseCatalogeTypeEnabled ? 'md:justify-between' : 'justify-between'}`}>
           {/* Mobile menu button - Left side when courseCatalogeType.enabled is true */}
           {isCourseCatalogeTypeEnabled && (
             <button
@@ -361,7 +361,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                 src={jsonLogoUrl}
                 alt="Logo"
                 onClick={domainRouting.homeIconClickRoute ? handleInstituteLogoClick : undefined}
-                className={`h-12 sm:h-14 w-auto object-contain rounded-lg shadow-sm transition-all duration-300 hover:scale-105${domainRouting.homeIconClickRoute ? " cursor-pointer" : ""}`}
+                className={`h-10 sm:h-20 w-auto object-contain rounded-lg shadow-sm transition-all duration-300 hover:scale-105${domainRouting.homeIconClickRoute ? " cursor-pointer" : ""}`}
 
                 onError={(e) => {
                   e.currentTarget.style.display = "none";

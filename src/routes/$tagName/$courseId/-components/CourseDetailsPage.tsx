@@ -57,6 +57,10 @@ interface CourseData {
   enrollInviteId?: string;
   levelId?: string;
   courseId?: string;
+  course_banner_media_id?: string;
+  comma_separeted_tags?: string;
+  course_html_description_html?: string;
+  about_the_course_html?: string;
 }
 
 export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
@@ -96,14 +100,14 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
     }
 
     const globalSettings = catalogueData.globalSettings as any;
-    
+
     // Find course details page styling
     const detailsPage = globalSettings.pages?.find((page: any) => page.id === "details");
     return detailsPage?.components?.[0]?.style?.card || { hover: { shadow: true, scale: 1.05 } };
   };
   const [showLeadCollection, setShowLeadCollection] = useState(false);
   const [catalogueData, setCatalogueData] = useState<CourseCatalogueData | null>(null);
-  
+
   // Debug catalogue data changes
   useEffect(() => {
     console.log("[CourseDetailsPage] Catalogue data loaded:", !!catalogueData);
@@ -170,42 +174,42 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   // Apply font from JSON if fonts.enabled is true
   useEffect(() => {
     const fonts = catalogueData?.globalSettings?.fonts;
-  
+
     if (!fonts?.enabled || !fonts?.family) {
       document.body.style.fontFamily =
         "'Figtree', system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
       return;
     }
-  
+
     const fontFamily = fonts.family.trim();
     const primaryFont = fontFamily.split(",")[0].replace(/['"]/g, "").trim();
-  
+
     // Create Google Fonts link
     const link = document.createElement("link");
     link.rel = "stylesheet";
     link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(
       primaryFont
     )}:wght@300;400;500;600;700&display=swap`;
-  
+
     // Append link only once
     if (!document.querySelector(`link[href="${link.href}"]`)) {
       document.head.appendChild(link);
     }
-  
+
     // Apply font exactly as specified in JSON
     document.body.style.fontFamily = fontFamily;
     document.documentElement.style.setProperty("--app-font-family", fontFamily);
-    
+
     console.log("[CourseDetailsPage] Applied font:", fontFamily, "Primary font:", primaryFont);
   }, [catalogueData]);
-  
+
   // Fetch course details
   useEffect(() => {
     const fetchCourseDetails = async () => {
       try {
         setIsLoading(true);
         console.log("[CourseDetailsPage] Fetching course details for:", { courseId, tagName, instituteId });
-        
+
         // First, fetch course details from /init API to get full course information
         const initResponse = await axios.get(`${import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_BASE_URL || "https://backend-stage.vacademy.io"}/admin-core-service/open/v1/learner-study-library/init`, {
           params: {
@@ -222,7 +226,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
         // Find the course in the init response
         const initData = initResponse.data;
         const courseResponse = initData.find((item: any) => item.course.id === courseId);
-        
+
         if (!courseResponse) {
           console.log("[CourseDetailsPage] Course not found in init response");
           setError("Course not found.");
@@ -251,13 +255,13 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           course_depth: course.course_depth,
           is_course_published_to_catalaouge: course.is_course_published_to_catalaouge
         });
-        
+
         console.log("[CourseDetailsPage] Props from search API:", {
           enrollInviteId,
           packageSessionId
         });
-        
-        
+
+
         // Use banner image from props if available, otherwise use API fields (raw media IDs)
         let thumbnailUrl = "/api/placeholder/800/400";
         if (bannerImage) {
@@ -284,19 +288,19 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
         // Extract learning outcomes from HTML content
         const extractLearningOutcomes = (htmlContent: string) => {
           if (!htmlContent) return ["Learn practical skills", "Apply knowledge in real projects", "Gain industry insights"];
-          
+
           // Try to extract bullet points or list items
           const listItems = htmlContent.match(/<li[^>]*>(.*?)<\/li>/g);
           if (listItems && listItems.length > 0) {
             return listItems.map(item => parseHtmlContent(item));
           }
-          
+
           // Try to extract content between <strong> tags
           const strongItems = htmlContent.match(/<strong[^>]*>(.*?)<\/strong>/g);
           if (strongItems && strongItems.length > 0) {
             return strongItems.map(item => parseHtmlContent(item));
           }
-          
+
           // Fallback to splitting by sentences
           return parseHtmlContent(htmlContent).split('.').filter(s => s.trim().length > 10).slice(0, 5);
         };
@@ -334,7 +338,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           learningOutcomes: extractLearningOutcomes(course.who_should_learn || course.why_learn),
           requirements: [
             "Basic computer skills",
-            "Internet connection", 
+            "Internet connection",
             "Motivation to learn"
           ],
           whoShouldLearn: parseHtmlContent(course.who_should_learn) || "Anyone interested in learning this subject",
@@ -355,14 +359,15 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           enrollInviteId: enrollInviteId || course.enroll_invite_id, // Use passed enrollInviteId or fallback to API response
           levelId: course.level_id, // Add levelId from API response
           courseId: course.course_id || courseId, // Add courseId from API response or use the route param
+          course_banner_media_id: course.course_banner_media_id || "", // Explicitly pass the banner ID for BookDetailsComponent
           // Preserve raw HTML fields for BookDetailsComponent
           course_html_description_html: course.course_html_description || course.course_html_description_html || "",
           about_the_course_html: course.about_the_course || course.about_the_course_html || "",
           comma_separeted_tags: course.tags || course.comma_separeted_tags || ""
         } as any;
-        
+
         setCourseData(courseData);
-        
+
         // Debug: Log the courseData that was set
         console.log("[CourseDetailsPage] CourseData set with values:", {
           levelId: courseData.levelId,
@@ -371,15 +376,15 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           levelIdFromAPI: course.level_id,
           courseIdFromAPI: course.course_id
         });
-        
+
         // Check if lead collection should be shown based on JSON configuration
         const globalSettings = catalogueData?.globalSettings as any;
         const leadCollectionConfig = globalSettings?.leadCollection;
-        
+
         // Check if form has already been submitted
         const leadCollectionSubmittedKey = `leadCollectionSubmitted_${instituteId}_${tagName}`;
         const hasSubmittedLeadCollection = localStorage.getItem(leadCollectionSubmittedKey) === 'true';
-        
+
         if (leadCollectionConfig?.enabled && !hasSubmittedLeadCollection) {
           setTimeout(() => {
             setShowLeadCollection(true);
@@ -413,7 +418,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
     };
 
     window.addEventListener('openLeadCollection', handleOpenLeadCollection);
-    
+
     return () => {
       window.removeEventListener('openLeadCollection', handleOpenLeadCollection);
     };
@@ -471,7 +476,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           <p className="text-gray-600">Please wait while we load the course information.</p>
         </div>
       )}
-      
+
       {catalogueData && (
         <>
           {/* Header from JSON globalSettings */}
@@ -489,7 +494,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
               catalogueData={catalogueData}
             />
           )}
-          
+
           {/* Render details page components from JSON */}
           {catalogueData.pages
             ?.filter(page => page.id === "details" || page.route === "course-details")
@@ -558,11 +563,10 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                             {[1, 2, 3, 4, 5].map((star) => (
                               <svg
                                 key={star}
-                                className={`w-3 h-3 ${
-                                  star <= Math.floor(courseData.rating)
+                                className={`w-3 h-3 ${star <= Math.floor(courseData.rating)
                                     ? "text-yellow-400"
                                     : "text-gray-300"
-                                }`}
+                                  }`}
                                 fill="currentColor"
                                 viewBox="0 0 20 20"
                               >
@@ -612,19 +616,19 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                           const globalSettings = catalogueData?.globalSettings as any;
                           const leadCollectionConfig = globalSettings?.leadCollection;
                           const paymentConfig = globalSettings?.payment;
-                          
+
                           // Check if payment is explicitly disabled (showPayment=false)
                           const showPayment = paymentConfig?.enabled === true;
                           const leadCollectionEnabled = leadCollectionConfig?.enabled;
-                          
+
                           console.log("Payment config:", paymentConfig);
                           console.log("Lead collection config:", leadCollectionConfig);
                           console.log("Show payment:", showPayment);
                           console.log("Lead collection enabled:", leadCollectionEnabled);
-                          
+
                           // Check if this is a "Get Started" button (when payment is disabled)
                           const isGetStartedButton = catalogueData?.globalSettings?.payment?.enabled === false;
-                          
+
                           // If this is a "Get Started" button or payment is disabled, check if lead collection is enabled
                           if (isGetStartedButton || !showPayment) {
                             if (leadCollectionEnabled) {
@@ -640,8 +644,8 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                         }}
                         className="w-full text-white py-3 px-4 rounded-lg text-sm font-semibold transition-all duration-200 transform shadow-lg"
                         style={{
-                          backgroundColor: domainRouting.instituteThemeCode ? 
-                            `hsl(var(--primary))` : 
+                          backgroundColor: domainRouting.instituteThemeCode ?
+                            `hsl(var(--primary))` :
                             '#3b82f6'
                         }}
                         onMouseEnter={(e) => {
@@ -653,7 +657,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                           e.currentTarget.style.boxShadow = '0 4px 15px rgba(0,0,0,0.1)';
                         }}
                       >
-                        {catalogueData?.globalSettings?.payment?.enabled !== false 
+                        {catalogueData?.globalSettings?.payment?.enabled !== false
                           ? (courseData.price === 0 ? "Enroll for Free" : "Enroll Now")
                           : "Get Started"
                         }
@@ -865,12 +869,12 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                     <div className="space-y-3">
                       {/* Price - Only show if payment is enabled */}
                       {catalogueData?.globalSettings?.payment?.enabled !== false && (
-                      <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-primary-50 to-primary-100 rounded-lg border border-primary-200">
-                        <span className="text-xs font-medium text-primary-700">Price</span>
-                        <span className="text-lg font-bold text-primary-800">
-                          {courseData.price === 0 ? "Free" : `$${courseData.price}`}
-                        </span>
-                      </div>
+                        <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-primary-50 to-primary-100 rounded-lg border border-primary-200">
+                          <span className="text-xs font-medium text-primary-700">Price</span>
+                          <span className="text-lg font-bold text-primary-800">
+                            {courseData.price === 0 ? "Free" : `$${courseData.price}`}
+                          </span>
+                        </div>
                       )}
 
                       {/* Rating */}
@@ -881,11 +885,10 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                             {[1, 2, 3, 4, 5].map((star) => (
                               <svg
                                 key={star}
-                                className={`w-3 h-3 ${
-                                  star <= Math.floor(courseData.rating)
+                                className={`w-3 h-3 ${star <= Math.floor(courseData.rating)
                                     ? "text-yellow-400"
                                     : "text-gray-300"
-                                }`}
+                                  }`}
                                 fill="currentColor"
                                 viewBox="0 0 20 20"
                               >
@@ -931,26 +934,26 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
                     {/* Enroll Button with JSON Styling */}
                     <div className="mt-4">
-                      <button 
+                      <button
                         onClick={() => {
                           console.log("[CourseDetailsPage] Enroll button clicked!");
                           // Check if payment is disabled and lead collection is enabled
                           const globalSettings = catalogueData?.globalSettings as any;
                           const leadCollectionConfig = globalSettings?.leadCollection;
                           const paymentConfig = globalSettings?.payment;
-                          
+
                           // Check if payment is explicitly disabled (showPayment=false)
                           const showPayment = paymentConfig?.enabled === true;
                           const leadCollectionEnabled = leadCollectionConfig?.enabled;
-                          
+
                           console.log("Payment config:", paymentConfig);
                           console.log("Lead collection config:", leadCollectionConfig);
                           console.log("Show payment:", showPayment);
                           console.log("Lead collection enabled:", leadCollectionEnabled);
-                          
+
                           // Check if this is a "Get Started" button (when payment is disabled)
                           const isGetStartedButton = catalogueData?.globalSettings?.payment?.enabled === false;
-                          
+
                           // If this is a "Get Started" button or payment is disabled, check if lead collection is enabled
                           if (isGetStartedButton || !showPayment) {
                             if (leadCollectionEnabled) {
@@ -966,28 +969,28 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                         }}
                         className="w-full text-white py-3 px-4 rounded-lg text-sm font-semibold transition-all duration-200 transform shadow-lg"
                         style={{
-                          backgroundColor: domainRouting.instituteThemeCode ? 
-                            `hsl(var(--primary))` : 
+                          backgroundColor: domainRouting.instituteThemeCode ?
+                            `hsl(var(--primary))` :
                             '#3b82f6',
                           transform: getCardStyling().hover?.scale ? `scale(${getCardStyling().hover.scale})` : 'scale(1)',
                           boxShadow: getCardStyling().hover?.shadow ? '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)' : '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
                         }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = domainRouting.instituteThemeCode ? 
-                            `hsl(var(--primary))` : 
+                          e.currentTarget.style.backgroundColor = domainRouting.instituteThemeCode ?
+                            `hsl(var(--primary))` :
                             '#2563eb';
                           e.currentTarget.style.opacity = '0.9';
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = domainRouting.instituteThemeCode ? 
-                            `hsl(var(--primary))` : 
+                          e.currentTarget.style.backgroundColor = domainRouting.instituteThemeCode ?
+                            `hsl(var(--primary))` :
                             '#3b82f6';
                           e.currentTarget.style.opacity = '1';
                         }}
                       >
                         🎓 Enroll Now
                       </button>
-                      
+
                       <div className="text-xs text-gray-500 text-center mt-2">
                         Click to register for this course
                       </div>
@@ -1025,7 +1028,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           settings={(() => {
             const globalSettings = catalogueData?.globalSettings as any;
             const leadCollectionConfig = globalSettings?.leadCollection;
-            
+
             console.log("Lead collection settings being passed:", {
               catalogueData,
               globalSettings,
@@ -1033,7 +1036,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
               fields: leadCollectionConfig?.fields,
               formStyle: leadCollectionConfig?.formStyle
             });
-            
+
             return {
               enabled: leadCollectionConfig?.enabled || false, // Use actual enabled value from JSON
               mandatory: leadCollectionConfig?.mandatory || false,
@@ -1115,12 +1118,12 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
               const { fetchAndStoreStudentDetails } = await import('@/services/studentDetails');
               const { getStudentDisplaySettings } = await import('@/services/student-display-settings');
               const { identifyUser } = await import('@/lib/analytics');
-              
+
               await setTokenInStorage(TokenKey.accessToken, tokens.accessToken);
               await setTokenInStorage(TokenKey.refreshToken, tokens.refreshToken);
               await Preferences.set({ key: "instituteId", value: instituteId });
               await Preferences.set({ key: "InstituteId", value: instituteId });
-              
+
               // Decode token to get user data (same as SessionLoginForm.tsx)
               const tokenData = getTokenDecodedData(tokens.accessToken);
               const userId = tokenData?.user;
@@ -1147,7 +1150,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                   console.error("Error fetching student details:", error);
                 }
               }
-              
+
               console.log('[CourseDetailsPage] All APIs called successfully, redirecting to /study-library/courses');
               window.location.href = '/study-library/courses';
             } catch (error) {
@@ -1162,54 +1165,54 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       )}
 
       {/* Mobile Action Buttons - Fixed at bottom for course details page */}
-      { (catalogueData?.globalSettings as any)?.courseCatalogeType?.enabled !== true && (
+      {(catalogueData?.globalSettings as any)?.courseCatalogeType?.enabled !== true && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-blue border-t border-gray-200 p-4" >
-        <div className="flex flex-col gap-3">
-          {/* Get Started Button */}
-          <button
-            onClick={() => {
-              console.log("[CourseDetailsPage] Mobile Get Started button clicked");
-              const globalSettings = catalogueData?.globalSettings as any;
-              const leadCollectionConfig = globalSettings?.leadCollection;
-              if (leadCollectionConfig?.enabled) {
-                setShowLeadCollection(true);
-              } else {
-                console.log("[CourseDetailsPage] Lead collection is disabled, not showing modal");
-              }
-            }}
-            className="w-full px-4 py-2 text-white font-medium hover:opacity-90 rounded-md transition-colors"
-            style={{
-              backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
-            }}
-          >
-            Get Started
-          </button>
-          
-          {/* Login Text */}
-          <div className="text-center border-gray-200">
-            <span
-              onClick={() => navigate({ to: '/login' })}
-              className="cursor-pointer text-sm transition-colors"
-              onMouseEnter={(e) => {
-                e.currentTarget.style.opacity = '0.8';
+          <div className="flex flex-col gap-3">
+            {/* Get Started Button */}
+            <button
+              onClick={() => {
+                console.log("[CourseDetailsPage] Mobile Get Started button clicked");
+                const globalSettings = catalogueData?.globalSettings as any;
+                const leadCollectionConfig = globalSettings?.leadCollection;
+                if (leadCollectionConfig?.enabled) {
+                  setShowLeadCollection(true);
+                } else {
+                  console.log("[CourseDetailsPage] Lead collection is disabled, not showing modal");
+                }
               }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.opacity = '1';
+              className="w-full px-4 py-2 text-white font-medium hover:opacity-90 rounded-md transition-colors"
+              style={{
+                backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
               }}
             >
-              <span className="text-black">Already have an account? </span>
-              <span 
-                className="underline"
-                style={{
-                  color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+              Get Started
+            </button>
+
+            {/* Login Text */}
+            <div className="text-center border-gray-200">
+              <span
+                onClick={() => navigate({ to: '/login' })}
+                className="cursor-pointer text-sm transition-colors"
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.opacity = '0.8';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.opacity = '1';
                 }}
               >
-                Login
+                <span className="text-black">Already have an account? </span>
+                <span
+                  className="underline"
+                  style={{
+                    color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                  }}
+                >
+                  Login
+                </span>
               </span>
-            </span>
+            </div>
           </div>
-        </div>
-      </div>)}
+        </div>)}
     </div>
   );
 };

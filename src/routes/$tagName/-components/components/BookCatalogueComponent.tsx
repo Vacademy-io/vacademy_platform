@@ -7,8 +7,6 @@ import { Button } from "@/components/ui/button";
 import {
   Search,
   ShoppingCart,
-  Plus,
-  Minus,
   Filter,
   ChevronUp,
   ChevronDown,
@@ -119,37 +117,48 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { addItem, getItemByEnrollInviteId, updateQuantity, removeItem } =
+  const { addItem, getItemByEnrollInviteId } =
     useCartStore();
 
-    const [courses, setCourses] = useState<Course[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [searchTerm, setSearchTerm] = useState("");
-    const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
-    const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
-    const [priceRange, setPriceRange] = useState<{ min?: number; max?: number } | null>(null);
-    const [togle, settogle] = useState(false);
-    
-    // Listen for search bar toggle events from HeaderComponent
-    useEffect(() => {
-        // Check sessionStorage on mount
-        const storedState = sessionStorage.getItem('searchBarOpen');
-        if (storedState === 'true') {
-            settogle(true);
-        }
-        
-        // Listen for custom event from HeaderComponent
-        const handleToggleSearchBar = (event: CustomEvent) => {
-            const isOpen = event.detail?.isOpen ?? false;
-            settogle(isOpen);
-        };
-        
-        window.addEventListener('toggleSearchBar', handleToggleSearchBar as EventListener);
-        
-        return () => {
-            window.removeEventListener('toggleSearchBar', handleToggleSearchBar as EventListener);
-        };
-    }, []);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
+  const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
+  const [priceRange, setPriceRange] = useState<{ min?: number; max?: number } | null>(null);
+  const [togle, settogle] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-focus when search bar opens
+  useEffect(() => {
+    if (togle && searchInputRef.current) {
+      // Small timeout to ensure the transition has started/element is visible
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 50);
+    }
+  }, [togle]);
+
+  // Listen for search bar toggle events from HeaderComponent
+  useEffect(() => {
+    // Check sessionStorage on mount
+    const storedState = sessionStorage.getItem('searchBarOpen');
+    if (storedState === 'true') {
+      settogle(true);
+    }
+
+    // Listen for custom event from HeaderComponent
+    const handleToggleSearchBar = (event: CustomEvent) => {
+      const isOpen = event.detail?.isOpen ?? false;
+      settogle(isOpen);
+    };
+
+    window.addEventListener('toggleSearchBar', handleToggleSearchBar as EventListener);
+
+    return () => {
+      window.removeEventListener('toggleSearchBar', handleToggleSearchBar as EventListener);
+    };
+  }, []);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -241,7 +250,8 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
             id: c.id || c.packageId,
             title: c.package_name || "Untitled Book",
             description: textContent,
-            thumbnail: c.course_preview_image_media_id || c.course_banner_media_id || "/api/placeholder/300/400",
+            dataset: c,
+            thumbnail: c.course_banner_media_id || "/api/placeholder/300/400",
             price: c.min_plan_actual_price || 0,
             type: c.package_type || "Book",
             level: c.level_name || "General",
@@ -260,7 +270,14 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
           } as Course;
         });
 
-        setCourses(transformed);
+        // Filter out duplicates based on ID
+        const uniqueCourses = Array.from(
+          new Map<string, Course>(
+            transformed.map((item: Course) => [item.id, item] as [string, Course])
+          ).values()
+        );
+
+        setCourses(uniqueCourses);
       } catch (e) {
         console.error("Error fetching books", e);
         setCourses([]);
@@ -276,26 +293,39 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
   const filteredCourses = useMemo(() => {
     let result = [...courses];
 
+    // Filter by package_type: Only show items with package_type === "COURSE"
+    result = result.filter((c) => {
+      const packageType = c.package_type || c.type || "";
+      return packageType === "COURSE";
+    });
+
     // Fast search: Search in package_name, author/instructor name, and textContent (pre-processed)
     if (searchTerm && searchTerm.trim()) {
       const searchLower = searchTerm.trim().toLowerCase();
       result = result.filter((c) => {
-        // Search in package_name (pre-lowercased during transformation)
-        const packageName = c.package_name || "";
-        // Search in textContent (pre-processed and lowercased during transformation)
-        const textContent = c.textContent || "";
-        // Search in author/instructor name (pre-lowercased during transformation)
-        
-        return packageName.includes(searchLower) || 
-               textContent.includes(searchLower) ;
+        // Search strictly in package_name and course_html_description_html (via textContent)
+        // Ensure case-insensitivity because 'package_name' might be mixed case from API
+        const packageName = (c.package_name || "").toLowerCase();
+        // textContent is already lowercased during transformation
+        const htmlDescription = c.textContent || "";
+
+        return packageName.includes(searchLower) || htmlDescription.includes(searchLower);
       });
     }
 
     // Genre filter
     if (selectedGenres.length > 0) {
       result = result.filter((c) => {
-        const tags = c.comma_separeted_tags?.split(",").map((t: string) => t.trim()) || [];
-        return selectedGenres.some((g) => tags.includes(g));
+        if (!c.comma_separeted_tags) return false;
+
+        // Split, trim, lowercase, and remove empty tags from the book's tags
+        const bookTags = c.comma_separeted_tags
+          .split(",")
+          .map((t: string) => t.trim().toLowerCase())
+          .filter((t: string) => t.length > 0);
+
+        // Check if any selected genre (normalized) exists in the book's tags
+        return selectedGenres.some((g) => bookTags.includes(g.trim().toLowerCase()));
       });
     }
 
@@ -356,20 +386,22 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
 
   // Render
   return (
-    <div className="w-full bg-gray-50 min-h-screen pb-20 pt-20">
+    <div className="w-full bg-gray-50 min-h-screen pb-20 pt-14">
       {/* 1. Header Section with Title and Search */}
-      <div className="bg-white shadow-sm sticky top-20 z-20 p-0 m-0 leading-none">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-0 border-b  border-gray-200">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4 py-0">
+      {/* 1. Header Section with Title and Search */}
+      <div className="p-0 leading-none sticky top-14 z-40 bg-gray-50/95 backdrop-blur-sm shadow-sm transition-all duration-300">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-0 pt-0 border-b  border-gray-200">
+          <div className="flex flex-col md:flex-row justify-between items-center ">
             <div className="w-full md:w-auto">
               <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
             </div>
 
             {/* SEARCH BAR (added) */}
-            { togle && <div className="w-full border-gray-400 py-0">
-              <div className="relative">
+            <div className={`w-full overflow-hidden transition-all duration-300 ease-in-out px-2 origin-top ${togle ? "max-h-20 opacity-100 py-2" : "max-h-0 opacity-0 py-0"}`}>
+              <div className="relative border-gray-400">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
                 <input
+                  ref={searchInputRef}
                   type="text"
                   placeholder="Search books..."
                   value={searchTerm}
@@ -386,7 +418,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                       // ignore storage errors (private mode etc)
                     }
                   }}
-                  className="w-full pl-10 pr-10 py-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white"
+                  className="w-full pl-10 pr-10 py-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white shadow-lg"
                 />
                 {searchTerm && (
                   <button
@@ -399,13 +431,18 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                   </button>
                 )}
               </div>
-            </div>}
+            </div>
           </div>
+        </div>
+      </div>
+
+      <div className="bg-white border-b border-gray-100 z-10 relative">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-0">
 
           {/* 2. Enhanced Genres UI - Horizontal Scrollable Chips */}
           {genres.length > 0 && (
-            <div className="mt-4">
-              <div className="flex font-bold flex-col gap-2">
+            <div className="mt-0">
+              <div className="flex font-bold flex-col gap-1">
                 <div className="flex items-center justify-between ">
                   <h2 className="text-lg font-bold text-gray-800 tracking-tight">Browse by Genre</h2>
                   {selectedGenres.length > 0 && (
@@ -417,7 +454,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                     </button>
                   )}
                 </div>
-                <div className="flex gap-3 overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0 p-0">
+                <div className="flex gap-3 overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0 pb-2">
                   {genres.map((genre: string) => {
                     const isSelected = selectedGenres.includes(genre);
                     return (
@@ -452,7 +489,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
       </div>
 
       {/* 3. Book Grid */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
         {isLoading ? (
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-8">
             {[...Array(10)].map((_, i) => (
@@ -463,19 +500,18 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
           <div className="text-gray-400 text-xl font-medium mb-4">No books found matching your criteria.</div>
         ) : (
           <>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-y-10 gap-x-8">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-y-4 gap-x-4">
               {paginatedCourses.map((book) => {
-                const cartItem = book.enrollInviteId ? getItemByEnrollInviteId(book.enrollInviteId) : undefined;
 
                 return (
                   <div
                     key={book.id}
-                    className="group relative flex flex-col cursor-pointer perspective-1000   border shadow-2xl rounded-xl"
+                    className="group relative flex flex-col cursor-pointer perspective-1000   rounded-xl"
 
                     onClick={() => handleBookClick(book)}
                   >
                     {/* Book Cover */}
-                    <div className="relative aspect-[9/16] rounded-2xl overflow-hidden shadow-lg transition-all duration-500 ease-out group-hover:shadow-2xl group-hover:shadow-primary-900/20 group-hover:-translate-y-2 ring-1 ring-black/5">
+                    <div className="relative aspect-[9/16] rounded-xl overflow-hidden shadow-lg transition-all duration-500 ease-out group-hover:-translate-y-2 ring-1 ring-black/5">
                       <CourseImage previewImageUrl={book.thumbnail} alt={book.title} className="w-full h-full object-cover transform transition-transform duration-700 group-hover:scale-110" />
 
                       {/* Bottom Gradient Overlay - Only visible on hover */}
@@ -484,50 +520,36 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                       {/* Quick Action Overlay - Slides up from bottom on hover */}
                       {cartButtonConfig?.enabled !== false && (
                         <div className="cart-button-overlay absolute bottom-0 left-0 right-0 p-4 transform translate-y-full group-hover:translate-y-0 transition-all duration-500 ease-out z-10">
-                          {/* Add to Cart / Quantity Logic inside the card hover */}
+                          {/* Add to Cart Logic */}
                           <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
-                            {cartItem && cartButtonConfig?.showQuantitySelector !== false ? (
-                              <div className="flex items-center gap-2 bg-white backdrop-blur-md rounded-full shadow-2xl ring-2 ring-white/50">
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-9 w-9 rounded-full hover:bg-red-50 hover:text-red-600 active:bg-red-100 active:scale-95 transition-all duration-200"
-                                  onClick={() => book.enrollInviteId && updateQuantity(book.enrollInviteId, cartItem.quantity - 1)}
-                                  style={{ touchAction: "manipulation" }}
-                                >
-                                  <Minus className="h-4 w-4" />
-                                </Button>
-                                <span className="text-sm font-bold w-8 text-center text-gray-900 min-w-[2rem]">{cartItem.quantity}</span>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-9 w-9 rounded-full hover:bg-green-50 hover:text-green-600 active:bg-green-100 active:scale-95 transition-all duration-200"
-                                  onClick={() => book.enrollInviteId && updateQuantity(book.enrollInviteId, cartItem.quantity + 1)}
-                                  style={{ touchAction: "manipulation" }}
-                                >
-                                  <Plus className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            ) : (
-                              <Button
-                                className="w-full bg-white text-gray-900 text-sm font-medium shadow-xl hover:bg-primary-50 hover:text-primary-700 active:bg-primary-100 active:scale-95 transition-all duration-300 transform py-2 rounded-lg border border-gray-200"
-                                onClick={() => book.enrollInviteId && addItem({
-                                  id: book.id,
-                                  title: book.title,
-                                  price: book.price,
-                                  image: book.thumbnail,
-                                  level: book.level,
-                                  packageSessionId: book.packageSessionId,
-                                  enrollInviteId: book.enrollInviteId,
-                                  levelId: book.levelId,
-                                  courseId: book.courseId,
-                                })}
-                                style={{ touchAction: "manipulation" }}
-                              >
-                                <ShoppingCart className="h-4 w-4 mr-2" />
-                                Add to Cart
-                              </Button>
-                            )}
+                            <Button
+                              className=" px-6 w-full bg-white text-gray-900 text-sm font-medium shadow-xl hover:bg-primary-50 hover:text-primary-700 active:bg-primary-100 active:scale-95 transition-all duration-300 transform py-2 rounded-lg border border-gray-200"
+                              onClick={() => {
+                                if (book.enrollInviteId) {
+                                  const existingItem = getItemByEnrollInviteId(book.enrollInviteId);
+                                  if (existingItem) {
+                                    toast.info("This item is already in the cart", { duration: 2000 });
+                                  } else {
+                                    addItem({
+                                      id: book.id,
+                                      title: book.title,
+                                      price: book.price,
+                                      image: book.thumbnail,
+                                      level: book.level,
+                                      packageSessionId: book.packageSessionId,
+                                      enrollInviteId: book.enrollInviteId,
+                                      levelId: book.levelId,
+                                      courseId: book.courseId,
+                                    });
+                                    toast.success("Added to cart", { duration: 2000 });
+                                  }
+                                }
+                              }}
+                              style={{ touchAction: "manipulation" }}
+                            >
+                              <ShoppingCart className="h-4 w-4 mr-2" />
+                              Add to Cart
+                            </Button>
                           </div>
                         </div>
                       )}
@@ -556,8 +578,20 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                           })()}
                         </span>
                         {render.cardFields.includes("price") && (
-                          <div className="text-lg font-extrabold text-gray-900 tracking-tight">
-                            {book.price === 0 ? <span className="text-green-600">Free</span> : `₹${book.price}`}
+                          <div className="flex flex-col items-end gap-1">
+                            {/* Tags display */}
+                            {book.comma_separeted_tags && (
+                              <div className="flex flex-wrap justify-end gap-1 max-w-[120px]">
+                                {book.comma_separeted_tags.split(',').filter(t => t.trim()).slice(0, 2).map((tag, i) => (
+                                  <span key={i} className="text-[10px] font-medium text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100 line-clamp-1">
+                                    {tag.trim()}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {/* <div className="text-lg font-extrabold text-gray-900 tracking-tight">
+                              {book.price === 0 ? <span className="text-green-600">Free</span> : `₹${book.price}`}
+                            </div> */}
                           </div>
                         )}
                       </div>
@@ -583,14 +617,14 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                   </button>
 
                   {/* Page numbers */}
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 ">
                     {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
                       const showPage = page === 1 || page === totalPages || (page >= currentPage - 1 && page <= currentPage + 1);
 
                       if (!showPage) {
                         if (page === currentPage - 2 || page === currentPage + 2) {
                           return (
-                            <span key={page} className="px-2 text-gray-400">...</span>
+                            <span key={page} className="px-2 ">...</span>
                           );
                         }
                         return null;
@@ -600,7 +634,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                         <button
                           key={page}
                           onClick={() => goToPage(page)}
-                          className={`min-w-[40px] px-3 py-2 rounded-lg font-medium transition-all duration-200 ${currentPage === page ? "bg-primary-600 text-white shadow-md" : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 hover:border-gray-400 active:scale-95"}`}
+                          className={`min-w-[40px] px-3 py-2 rounded-lg font-medium transition-all duration-200 ${currentPage === page ? "bg-primary-600 text-gray-400 shadow-md" : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 hover:border-gray-400 active:scale-95"}`}
                           style={{ touchAction: "manipulation" }}
                           aria-label={`Go to page ${page}`}
                           aria-current={currentPage === page ? "page" : undefined}

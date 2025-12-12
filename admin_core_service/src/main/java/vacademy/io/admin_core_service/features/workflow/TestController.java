@@ -15,16 +15,20 @@ import java.util.Map;
 @RequestMapping("/admin-core-service/open/test")
 public class TestController {
     @Autowired
-    private WorkflowExecutionJob workflowExecutionJob;
+    private WorkflowEngineService workflowEngineService;
 
     @GetMapping
-    public void test() throws JobExecutionException {
-        workflowExecutionJob.execute(null);
+    public void test() {
+        workflowEngineService.run("wf_ld_group_sync",Map.of("user",getUser()));
     }
 
     public UserDTO getUser(){
         UserDTO userDTO = new UserDTO();
-        userDTO.setEmail("punit@vidyayatan.com");
+        userDTO.setEmail("puni1@an.om");
+        userDTO.setUsername("pufb121");
+        userDTO.setFullName("Rahufaie r3");
+        userDTO.setMobileNumber("125687890");
+        userDTO.setPassword("kjnjfg");
         return userDTO;
     }
 }

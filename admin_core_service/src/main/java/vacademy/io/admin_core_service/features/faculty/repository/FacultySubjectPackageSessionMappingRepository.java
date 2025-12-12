@@ -122,6 +122,7 @@ public interface FacultySubjectPackageSessionMappingRepository extends JpaReposi
     WHERE pi.instituteEntity.id = :instituteId
       AND ps.status IN :statusList
       AND f.status IN :statusList
+      AND ps.packageEntity.status IN :statusList
 """)
     Set<String> findUserIdsByFilters(
             @Param("instituteId") String instituteId,

@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.workflow.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
@@ -32,6 +33,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
     private final SessionScheduleRepository sessionScheduleRepository;
     private final LiveSessionParticipantRepository liveSessionParticipantRepository;
     private final LiveSessionRepository liveSessionRepository;
+    private final InstituteSettingService instituteSettingService;
 
     @Override
     public Map<String, Object> execute(String prebuiltKey, Map<String, Object> params) {
@@ -52,6 +54,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return createLiveSession(params);
             case "checkStudentIsPresentInPackageSession":
                 return isAlreadyPresentInGivenPackageSession(params);
+            case "fetchInstituteSetting":
+                return fetchInstituteSetting(params);
             default:
                 log.warn("Unknown prebuilt query key: {}", prebuiltKey);
                 return Map.of("error", "Unknown query key: " + prebuiltKey);
@@ -635,6 +639,27 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             // Otherwise, the student is not a member in this package.
             // Return a map indicating they are not a member.
             return Map.of("isAlreadyPresentInPackageSession", false);
+        }
+    }
+
+    private Map<String, Object> fetchInstituteSetting(Map<String, Object> params) {
+        try {
+            String instituteId = (String) params.get("instituteId");
+            String settingKey = (String) params.get("settingKey");
+
+            if (instituteId == null || settingKey == null) {
+                return Map.of("error", "Missing instituteId or settingKey");
+            }
+
+            // Fetch data using your existing service
+            Object settingData = instituteSettingService.getSettingByInstituteIdAndKey(instituteId, settingKey);
+
+            // Wrap in a map key so it's accessible as #ctx['lmsSettings']
+            return Map.of("lmsConfig", settingData);
+
+        } catch (Exception e) {
+            log.error("Error executing fetchInstituteSetting", e);
+            return Map.of("error", e.getMessage());
         }
     }
 }

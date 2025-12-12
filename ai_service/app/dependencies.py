@@ -10,6 +10,8 @@ from .services.course_outline_service import CourseOutlineGenerationService
 from .services.parser import CourseOutlineParser
 from .services.prompt_builder import CourseOutlinePromptBuilder
 from .services.image_service import ImageGenerationService
+from .services.content_generation_service import ContentGenerationService
+from .services.youtube_service import YouTubeService
 from .config import get_settings
 
 
@@ -63,6 +65,25 @@ def get_image_service() -> ImageGenerationService:
 
 
 @lru_cache(maxsize=1)
+def get_youtube_service() -> YouTubeService:
+    """
+    Singleton YouTubeService for the application.
+    """
+    settings = get_settings()
+    return YouTubeService(api_key=settings.youtube_api_key)
+
+
+@lru_cache(maxsize=1)
+def get_content_generation_service() -> ContentGenerationService:
+    """
+    Singleton ContentGenerationService for the application.
+    """
+    llm_client = get_llm_client()
+    youtube_service = get_youtube_service()
+    return ContentGenerationService(llm_client=llm_client, youtube_service=youtube_service)
+
+
+@lru_cache(maxsize=1)
 def get_course_outline_service() -> CourseOutlineGenerationService:
     """
     High-level service dependency that wires up all collaborators.
@@ -72,12 +93,14 @@ def get_course_outline_service() -> CourseOutlineGenerationService:
     prompt_builder = CourseOutlinePromptBuilder()
     parser = CourseOutlineParser()
     image_service = get_image_service()
+    content_generation_service = get_content_generation_service()
     return CourseOutlineGenerationService(
         llm_client=llm_client,
         metadata_port=metadata_port,
         prompt_builder=prompt_builder,
         parser=parser,
         image_service=image_service,
+        content_generation_service=content_generation_service,
     )
 
 

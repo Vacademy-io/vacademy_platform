@@ -494,4 +494,31 @@ public class SubOrgLearnerService {
         contextData.put("admin",adminDTO);
         workflowTriggerService.handleTriggerEvents(WorkflowTriggerEvent.SUB_ORG_MEMBER_ENROLLMENT.name(),packageSessionId,instituteId,contextData);
     }
+
+    @Transactional(readOnly = true)
+    public SubOrgAdminsResponseDTO getSubOrgAdmins(String userId, String packageSessionId, String subOrgId) {
+        log.info("Fetching admins for packageSessionId: {}, subOrgId: {}", packageSessionId, subOrgId);
+
+        // Query the database for admins
+        List<Object[]> adminResults = mappingRepository.findAdminsByPackageSessionAndSubOrg(packageSessionId, subOrgId, userId);
+
+        // Map results to DTOs
+        List<AdminDetailsDTO> admins = adminResults.stream()
+                .map(result -> AdminDetailsDTO.builder()
+                        .userId((String) result[0])
+                        .name((String) result[1])
+                        .role(SubOrgRoles.ADMIN.name())
+                        .build())
+                .collect(Collectors.toList());
+
+        log.info("Found {} admins for packageSessionId: {}, subOrgId: {}", admins.size(), packageSessionId, subOrgId);
+
+        return SubOrgAdminsResponseDTO.builder()
+                .userId(userId)
+                .packageSessionId(packageSessionId)
+                .subOrgId(subOrgId)
+                .admins(admins)
+                .totalAdmins(admins.size())
+                .build();
+    }
 }

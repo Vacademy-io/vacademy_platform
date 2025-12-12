@@ -213,4 +213,21 @@ public interface StudentSessionInstituteGroupMappingRepository
                         @Param("userId") String userId,
                         @Param("role") String role);
 
+        // Find all admins for a specific package session and sub-org
+        @Query(value = """
+                        SELECT ssigm.user_id AS user_id,
+                               s.full_name AS full_name,
+                               ssigm.comma_separated_org_roles AS roles
+                        FROM student_session_institute_group_mapping ssigm
+                        JOIN student s ON s.user_id = ssigm.user_id
+                        WHERE ssigm.package_session_id = :packageSessionId
+                          AND ssigm.sub_org_id = :subOrgId
+                          AND ssigm.comma_separated_org_roles LIKE '%ADMIN%'
+                          AND ssigm.user_id != :userId
+                        """, nativeQuery = true)
+        List<Object[]> findAdminsByPackageSessionAndSubOrg(
+                        @Param("packageSessionId") String packageSessionId,
+                        @Param("subOrgId") String subOrgId,
+                        @Param("userId") String userId);
+
 }

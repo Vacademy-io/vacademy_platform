@@ -34,9 +34,7 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
     private ReferralBenefitOrchestrator referralBenefitOrchestrator;
 
     @Autowired
-    private AuthService authService;
-
-    @Override
+    private AuthService authService;    @Override
     public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
             LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
             String instituteId,
@@ -44,6 +42,11 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
             PaymentOption paymentOption,
             UserPlan userPlan,
             Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
+        // Use startDate from DTO if provided, otherwise default to current date
+        Date enrollmentDate = learnerPackageSessionsEnrollDTO.getStartDate() != null 
+                ? learnerPackageSessionsEnrollDTO.getStartDate() 
+                : new Date();
+        
         List<InstituteStudentDetails> instituteStudentDetails = new ArrayList<>();
         if (paymentOption.isRequireApproval()) {
             String status = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();
@@ -66,7 +69,7 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
                         invitedPackageSession.get().getId(),
                         null,
                         status,
-                        new Date(),
+                        enrollmentDate,
                         null,
                         enrollInvite.getLearnerAccessDays() != null ? enrollInvite.getLearnerAccessDays().toString()
                                 : null,
@@ -80,7 +83,7 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
             List<String> packageSessionIds = learnerPackageSessionsEnrollDTO.getPackageSessionIds();
             for (String packageSessionId : packageSessionIds) {
                 InstituteStudentDetails instituteStudentDetail = new InstituteStudentDetails(instituteId,
-                        packageSessionId, null, status, new Date(), null,
+                        packageSessionId, null, status, enrollmentDate, null,
                         (accessDays != null ? accessDays.toString() : null), null, userPlan.getId(), null, null);
                 instituteStudentDetails.add(instituteStudentDetail);
             }

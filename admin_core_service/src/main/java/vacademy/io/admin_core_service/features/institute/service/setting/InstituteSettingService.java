@@ -633,4 +633,8 @@ public class InstituteSettingService {
         return "Certificate Template Updated Successfully!";
     }
 
+    public Object getSettingByInstituteIdAndKey(String instituteId,String settingKey){
+        Institute institute = instituteRepository.findById(instituteId).orElseThrow(() -> new VacademyException("Institute Not Found"));
+        return getSettingData(institute,settingKey);
+    }
 }

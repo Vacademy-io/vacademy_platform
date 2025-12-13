@@ -639,6 +639,10 @@ public class UserPlanService {
     }
 
     public Pageable createPageable(int page, int size, Map<String, String> sortCols) {
+        if (sortCols != null && sortCols.containsKey("calculated_end_date")) {
+            String direction = sortCols.remove("calculated_end_date");
+            sortCols.put("end_date", direction);
+        }
         Sort sort = ListService.createSortObject(sortCols);
         return PageRequest.of(page, size, sort);
     }

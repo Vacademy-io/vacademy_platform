@@ -68,6 +68,7 @@ POST /admin-core-service/v1/user-plan/membership-details?pageNo=0&pageSize=10
   "start_date_in_utc": "2024-12-06T02:18:03.116Z",
   "end_date_in_utc": "2025-12-06T02:18:03.116Z",
   "membership_statuses": ["ABOUT_TO_END", "ENDED"],
+  "package_session_ids": ["session-uuid-1", "session-uuid-2"],
   "institute_id": "dd9b9687-56ee-467a-9fc4-8c5835eae7f9",
   "sort_order": {
     "end_date": "desc",

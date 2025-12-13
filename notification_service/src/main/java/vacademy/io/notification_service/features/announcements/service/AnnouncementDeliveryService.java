@@ -274,7 +274,8 @@ public class AnnouncementDeliveryService {
             if (message.getMediumType() != null && message.getMediumType() != MediumType.WHATSAPP) continue; // skip others
             try {
                 String resolvedUsername = resolveUsernameById(message.getUserId());
-                if (userAnnouncementPreferenceService.isWhatsAppUnsubscribed(message.getUserId(), announcement.getInstituteId())) {
+                String userPhone = resolveUserPhone(message.getUserId());
+                if (userAnnouncementPreferenceService.isWhatsAppUnsubscribed(message.getUserId(), announcement.getInstituteId(),userPhone)) {
                     message.setMediumType(MediumType.WHATSAPP);
                     message.setStatus(MessageStatus.FAILED);
                     message.setErrorMessage("User unsubscribed from WhatsApp notifications");
@@ -290,7 +291,6 @@ public class AnnouncementDeliveryService {
                 message.setSentAt(LocalDateTime.now());
                 
                 // Get user phone - this would need to be resolved from user service
-                String userPhone = resolveUserPhone(message.getUserId());
                 if (userPhone != null) {
                     // Prepare dynamic values with user-specific data
                     Map<String, String> userSpecificValues = prepareDynamicValues(dynamicValues, message, announcement, content);

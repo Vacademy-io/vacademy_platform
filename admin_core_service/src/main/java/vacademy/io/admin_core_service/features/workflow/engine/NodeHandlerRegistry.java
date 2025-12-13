@@ -70,6 +70,9 @@ public class NodeHandlerRegistry {
         } else if (handler instanceof HttpRequestNodeHandler) { // Check for the new handler
             return NodeType.HTTP_REQUEST.name();
         }
+        else if (handler instanceof CombotNodeHandler) {
+            return NodeType.COMBOT.name();
+        }
 
         log.warn("Attempting dynamic type resolution for handler: {}", handler.getClass().getSimpleName());
         for (NodeType type : NodeType.values()) {

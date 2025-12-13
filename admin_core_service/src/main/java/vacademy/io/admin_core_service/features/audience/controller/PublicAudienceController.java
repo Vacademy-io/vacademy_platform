@@ -36,6 +36,17 @@ public class PublicAudienceController {
         return ResponseEntity.ok(responseId);
     }
 
+    /**
+     * Submit a lead from website form with workflow integration (v2)
+     * POST /open/v1/audience/lead/submit/v2
+     * Email sending is handled by workflow engine
+     */
+    @PostMapping("/lead/submit/v2")
+    public ResponseEntity<String> submitLeadV2(@RequestBody SubmitLeadRequestDTO requestDTO) {
+        String responseId = audienceService.submitLeadV2(requestDTO);
+        return ResponseEntity.ok(responseId);
+    }
+
     @GetMapping("/campaign/{instituteId}/{audienceId}")
     public ResponseEntity<AudienceDTO> getCampaign(
             @PathVariable String instituteId,

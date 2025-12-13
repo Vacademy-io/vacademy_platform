@@ -22,6 +22,17 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
     // Debug method: Find any EMAIL logs for a recipient (for debugging)
     Optional<NotificationLog> findTopByChannelIdAndNotificationTypeOrderByNotificationDateDesc(
             String channelId, String notificationType);
+
+    Optional<NotificationLog> findTopByNotificationTypeAndSourceIdOrderByNotificationDateDesc(
+            String notificationType,
+            String sourceId
+    );
+
+    Optional<NotificationLog> findTopByChannelIdAndSenderBusinessChannelIdAndNotificationTypeOrderByNotificationDateDesc(
+            String channelId,               // User's Phone Number
+            String senderBusinessChannelId, // Institute's WhatsApp Number ID
+            String notificationType         // "WHATSAPP_OUTGOING"
+    );
             
     // Debug method: Find any logs for a recipient (for debugging)
     Optional<NotificationLog> findTopByChannelIdOrderByNotificationDateDesc(String channelId);

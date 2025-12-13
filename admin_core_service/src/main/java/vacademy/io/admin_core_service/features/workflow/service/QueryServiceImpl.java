@@ -3,6 +3,11 @@ package vacademy.io.admin_core_service.features.workflow.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
+import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
+import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
+import vacademy.io.admin_core_service.features.common.entity.CustomFields;
+import vacademy.io.admin_core_service.features.common.repository.CustomFieldRepository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
@@ -15,12 +20,16 @@ import vacademy.io.admin_core_service.features.live_session.entity.SessionSchedu
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSessionParticipants;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
+
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 
 import java.sql.Timestamp;
 import java.sql.Time;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -32,6 +41,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
     private final SessionScheduleRepository sessionScheduleRepository;
     private final LiveSessionParticipantRepository liveSessionParticipantRepository;
     private final LiveSessionRepository liveSessionRepository;
+    private final AudienceResponseRepository audienceResponseRepository;
+    private final CustomFieldRepository customFieldRepository;
 
     @Override
     public Map<String, Object> execute(String prebuiltKey, Map<String, Object> params) {
@@ -52,6 +63,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return createLiveSession(params);
             case "checkStudentIsPresentInPackageSession":
                 return isAlreadyPresentInGivenPackageSession(params);
+            case "getAudienceResponsesByDayDifference":
+                return getAudienceResponsesByDayDifference(params);
             default:
                 log.warn("Unknown prebuilt query key: {}", prebuiltKey);
                 return Map.of("error", "Unknown query key: " + prebuiltKey);
@@ -636,6 +649,93 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             // Return a map indicating they are not a member.
             return Map.of("isAlreadyPresentInPackageSession", false);
         }
+    }
+
+// Dependencies required in QueryServiceImpl:
+    // @Autowired private AudienceResponseRepository audienceResponseRepository;
+    // @Autowired private CustomFieldValuesRepository customFieldValuesRepository;
+    // @Autowired private CustomFieldRepository customFieldRepository;
+
+    private Map<String, Object> getAudienceResponsesByDayDifference(Map<String, Object> params) {
+        String instituteId = (String) params.get("instituteId");
+        String audienceId = (String) params.get("audienceId");
+        Integer daysAgo = (Integer) params.get("daysAgo");
+
+        // Validate all required params
+        if (instituteId == null || daysAgo == null || audienceId == null) {
+            throw new RuntimeException("Missing parameters: instituteId, audienceId, or daysAgo");
+        }
+
+        // 1. Calculate Date Range (Yesterday 00:00 to 23:59)
+        LocalDateTime startLocal = LocalDateTime.now().minusDays(daysAgo).with(LocalTime.MIN);
+        LocalDateTime endLocal = LocalDateTime.now().minusDays(daysAgo).with(LocalTime.MAX);
+
+        Timestamp startDate = Timestamp.valueOf(startLocal);
+        Timestamp endDate = Timestamp.valueOf(endLocal);
+
+        // 2. Fetch Leads (Using the specific Audience repository method)
+        List<AudienceResponse> responses = audienceResponseRepository.findLeadsByAudienceAndDateRange(
+                instituteId, audienceId, startDate, endDate
+        );
+
+        if (responses.isEmpty()) {
+            return Map.of("leads", Collections.emptyList());
+        }
+
+        // --- START CUSTOM FIELD FETCHING LOGIC ---
+
+        // 3. Extract Response IDs to bulk fetch values
+        List<String> responseIds = responses.stream().map(AudienceResponse::getId).toList();
+
+        // 4. Fetch Custom Field Values (The actual data: "9198...", "Rahul")
+        // This queries the 'custom_field_values' table
+        List<CustomFieldValues> cfValues = customFieldValuesRepository.findBySourceTypeAndSourceIdIn(
+                "AUDIENCE_RESPONSE", responseIds
+        );
+
+        // 5. Fetch Field Definitions (To resolve "cf_123" -> "phone number")
+        // This queries the 'custom_fields' table to get human-readable keys
+        Set<String> customFieldIds = cfValues.stream()
+                .map(CustomFieldValues::getCustomFieldId)
+                .collect(Collectors.toSet());
+
+        Map<String, String> fieldIdToName = customFieldRepository.findAllById(customFieldIds).stream()
+                .collect(Collectors.toMap(
+                        CustomFields::getId,
+                        // Normalize key to lowercase for easy access in SpEL (e.g., "Phone Number" -> "phone number")
+                        cf -> cf.getFieldName().toLowerCase(),
+                        (k1, k2) -> k1
+                ));
+
+        // 6. Group values by Response ID
+        // Result structure: { "resp_id_1": { "phone number": "999...", "name": "Rahul" } }
+        Map<String, Map<String, String>> responseDataMap = new HashMap<>();
+        for (CustomFieldValues cfv : cfValues) {
+            String fieldName = fieldIdToName.getOrDefault(cfv.getCustomFieldId(), cfv.getCustomFieldId());
+            responseDataMap
+                    .computeIfAbsent(cfv.getSourceId(), k -> new HashMap<>())
+                    .put(fieldName, cfv.getValue());
+        }
+
+        // 7. Build Final List for Workflow
+        List<Map<String, Object>> leads = new ArrayList<>();
+        for (AudienceResponse ar : responses) {
+            Map<String, Object> lead = new HashMap<>();
+            lead.put("id", ar.getId());
+            lead.put("userId", ar.getUserId());
+            lead.put("createdAt", ar.getCreatedAt());
+
+            // Merge custom fields into the lead map
+            // This is what makes #this['phone number'] work in your TRANSFORM node
+            Map<String, String> fields = responseDataMap.getOrDefault(ar.getId(), new HashMap<>());
+            lead.putAll(fields);
+
+            leads.add(lead);
+        }
+
+        // --- END CUSTOM FIELD FETCHING LOGIC ---
+
+        return Map.of("leads", leads);
     }
 }
 

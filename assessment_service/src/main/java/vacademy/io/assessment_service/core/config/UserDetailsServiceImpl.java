@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -22,11 +23,9 @@ import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 
-
 @Slf4j
 @Component
 public class UserDetailsServiceImpl implements UserDetailsService {
-
 
     @Value(value = "${spring.application.name}")
     String clientName;
@@ -36,6 +35,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
     private InternalClientUtils internalClientUtils;
 
     @Override
+    @Cacheable(value = "userDetails", key = "#username")
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         log.debug("Entering in loadUserByUsername Method...");
 

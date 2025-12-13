@@ -50,8 +50,10 @@ Implemented in all services that call the user details endpoint:
 - **Location**: `{service}/src/main/java/vacademy/io/{service}/config/CacheConfiguration.java`
 - **Cache Provider**: Caffeine
 - **TTL**: 5 minutes (300 seconds)
-- **Max Size**: 10,000 entries
+- **Max Size**: 10,000 entries (notification, media, assessment, community); 500 entries (admin_core)
 - **Features**: Statistics recording enabled
+
+**Note**: `admin_core_service` already had an existing `CacheConfiguration` with multiple named caches. The `userDetails` cache was added to the existing configuration rather than creating a new file.
 
 ```java
 @Configuration
@@ -240,7 +242,7 @@ Subsequent calls (within 5 min): ~10-50ms (cache hit)
 
 ### admin_core_service
 - `pom.xml` - Already had cache dependencies
-- `core/config/CacheConfiguration.java` - Created
+- `config/CacheConfiguration.java` - **Modified** (added userDetails cache to existing config)
 - `core/config/UserDetailsServiceImpl.java` - Added @Cacheable
 
 ## Important Notes

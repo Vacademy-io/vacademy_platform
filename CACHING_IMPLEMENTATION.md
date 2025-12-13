@@ -222,7 +222,7 @@ Subsequent calls (within 5 min): ~10-50ms (cache hit)
 
 ### notification_service
 - `pom.xml` - Added cache dependencies
-- `config/CacheConfiguration.java` - Created
+- `features/announcements/config/CacheConfig.java` - **Modified** (upgraded to Caffeine and added userDetails cache)
 - `config/UserDetailsRestServiceImpl.java` - Added @Cacheable
 
 ### media_service
@@ -245,6 +245,7 @@ Subsequent calls (within 5 min): ~10-50ms (cache hit)
 - `config/CacheConfiguration.java` - **Modified** (added userDetails cache to existing config)
 - `core/config/UserDetailsServiceImpl.java` - Added @Cacheable
 
+**Note**: Both `notification_service` and `admin_core_service` already had existing cache configurations. Instead of creating new files, the `userDetails` cache was added to their existing cache managers. Additionally, `notification_service` was upgraded from `ConcurrentMapCacheManager` (no TTL) to Caffeine-based caching with proper TTL support.
 ## Important Notes
 
 1. **Consistency**: User details are cached for 5 minutes. If user details are updated in the auth service, changes may take up to 5 minutes to propagate to client services.

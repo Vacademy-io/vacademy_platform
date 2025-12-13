@@ -17,4 +17,5 @@ public class MembershipDetailsDTO {
     private UserDTO userDetails;
     private String membershipStatus; // ENDED, ABOUT_TO_END, LIFETIME
     private Timestamp calculatedEndDate;
+    private java.util.List<PackageSessionLiteDTO> packageSessions;
 }

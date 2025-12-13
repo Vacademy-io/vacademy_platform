@@ -83,6 +83,7 @@ POST /admin-core-service/v1/user-plan/membership-details?pageNo=0&pageSize=10
 | `startDateInUtc` | `start_date_in_utc` | string (ISO 8601) | No | Filter plans with end date >= this date (UTC timezone) |
 | `endDateInUtc` | `end_date_in_utc` | string (ISO 8601) | No | Filter plans with end date <= this date (UTC timezone) |
 | `membershipStatuses` | `membership_statuses` | array of strings | No | Filter by membership status. Valid values: `["ENDED", "ABOUT_TO_END", "LIFETIME"]` |
+| `packageSessionIds` | `package_session_ids` | array of strings | No | Filter by Package Session IDs |
 | `instituteId` | `institute_id` | string (UUID) | **Yes** | Institute ID to filter memberships |
 | `sortOrder` | `sort_order` | object | No | Sorting configuration (key: field name, value: "asc" or "desc") |
 
@@ -148,7 +149,17 @@ POST /admin-core-service/v1/user-plan/membership-details?pageNo=0&pageSize=10
         "last_login_time": "2024-12-05T08:30:00.000+00:00"
       },
       "membership_status": "ABOUT_TO_END",
-      "calculated_end_date": "2025-12-01T00:00:00.000+00:00"
+      "calculated_end_date": "2025-12-01T00:00:00.000+00:00",
+      "package_sessions": [
+        {
+          "id": "session-uuid-1",
+          "session_name": "Fall 2024",
+          "package_name": "Premium Course",
+          "level_name": "Level 1",
+          "start_time": "2024-09-01T00:00:00.000+00:00",
+          "status": "ACTIVE"
+        }
+      ]
     }
   ],
   "pageable": {

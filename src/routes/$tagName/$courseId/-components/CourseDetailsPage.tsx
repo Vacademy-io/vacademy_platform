@@ -1166,7 +1166,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
       {/* Mobile Action Buttons - Fixed at bottom for course details page */}
       {(catalogueData?.globalSettings as any)?.courseCatalogeType?.enabled !== true && (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-blue border-t border-gray-200 p-4" >
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 p-4" >
           <div className="flex flex-col gap-3">
             {/* Get Started Button */}
             <button

@@ -22,10 +22,10 @@ interface CourseImageProps {
 
 const CourseImage: React.FC<CourseImageProps> = ({ previewImageUrl, alt, className }) => {
   // Check if this is a placeholder or invalid URL
-  const isPlaceholder = !previewImageUrl || 
-    previewImageUrl === null || 
+  const isPlaceholder = !previewImageUrl ||
+    previewImageUrl === null ||
     previewImageUrl === undefined ||
-    previewImageUrl.includes('/api/placeholder/') || 
+    previewImageUrl.includes('/api/placeholder/') ||
     previewImageUrl.trim() === '' ||
     previewImageUrl === 'null' ||
     previewImageUrl === 'undefined';
@@ -50,11 +50,11 @@ const CourseImageWithState: React.FC<CourseImageProps> = ({ previewImageUrl, alt
     const load = async () => {
       setLoadingImage(true);
       setImageError(false);
-      
+
       try {
-       // console.log("[CourseImage] Calling getPublicUrlWithoutLogin with:", previewImageUrl);
+        // console.log("[CourseImage] Calling getPublicUrlWithoutLogin with:", previewImageUrl);
         const url = await getPublicUrlWithoutLogin(previewImageUrl);
-       // console.log("[CourseImage] Got URL from API:", url);
+        // console.log("[CourseImage] Got URL from API:", url);
         if (isMounted) {
           if (url) {
             setCourseImageUrl(url);
@@ -78,7 +78,7 @@ const CourseImageWithState: React.FC<CourseImageProps> = ({ previewImageUrl, alt
     };
 
     load();
-    
+
     return () => {
       isMounted = false;
     };
@@ -102,24 +102,24 @@ const CourseImageWithState: React.FC<CourseImageProps> = ({ previewImageUrl, alt
 
   return (
     <div className="aspect-w-16 aspect-h-9">
-        <img
+      <img
         src={courseImageUrl}
-          alt={alt}
-          className={className}
-          loading="lazy"
-          onError={() => {
-            // Don't show placeholder on error, just hide the component
-            setImageError(true);
-            setCourseImageUrl("");
-          }}
-          onLoad={(e) => {
-            e.currentTarget.style.opacity = '1';
-          }}
-          style={{ 
-            opacity: 1, 
-            transition: 'opacity 0.3s ease'
-          }}
-        />
+        alt={alt}
+        className={className}
+        loading="lazy"
+        onError={() => {
+          // Don't show placeholder on error, just hide the component
+          setImageError(true);
+          setCourseImageUrl("");
+        }}
+        onLoad={(e) => {
+          e.currentTarget.style.opacity = '1';
+        }}
+        style={{
+          opacity: 1,
+          transition: 'opacity 0.3s ease'
+        }}
+      />
     </div>
   );
 };
@@ -189,9 +189,8 @@ const FilterSection: React.FC<FilterSectionProps> = ({
         {itemsToDisplay.map((item) => (
           <label
             key={item.id}
-            className={`flex items-center text-gray-600 hover:text-gray-800 ${
-              disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
-            }`}
+            className={`flex items-center text-gray-600 hover:text-gray-800 ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+              }`}
           >
             <input
               type="checkbox"
@@ -209,11 +208,10 @@ const FilterSection: React.FC<FilterSectionProps> = ({
         <button
           onClick={() => setIsExpanded(!isExpanded)}
           disabled={disabled}
-          className={`text-sm mt-2 flex items-center gap-1 ${
-            disabled
+          className={`text-sm mt-2 flex items-center gap-1 ${disabled
               ? "text-gray-400 cursor-not-allowed"
               : "text-blue-600 hover:text-blue-800"
-          }`}
+            }`}
         >
           {isExpanded ? (
             <>
@@ -330,7 +328,7 @@ const CartControls: React.FC<{
       </Button>
     );
   }
-  
+
   // Don't render anything if both are disabled
   return null;
 };
@@ -347,7 +345,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 }) => {
   const navigate = useNavigate();
   const { addItem, getItemByEnrollInviteId, updateQuantity, removeItem, getItemCount } = useCartStore();
-  
+
   // Debug: Log cartButtonConfig to help diagnose issues
   useEffect(() => {
     console.log('[CourseCatalogComponent] cartButtonConfig:', cartButtonConfig);
@@ -358,22 +356,22 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [sortOption, setSortOption] = useState("Newest");
-  
+
   // Filter states
   const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedInstructors, setSelectedInstructors] = useState<string[]>([]);
-  
+
   // Mobile filter state
   const [isMobileFilterExpanded, setIsMobileFilterExpanded] = useState(false);
-  
+
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6;
-  
+
   // Enrollment dialog state
   // Removed enrollment dialog state - all enrollment happens on details page
-  
+
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const cardFieldsSet = useMemo(
@@ -399,22 +397,22 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     if (cartButtonConfig?.enabled === false) {
       return false;
     }
-    
+
     // Priority 2: If "cart_actions" is in cardFields, always show (highest priority)
     if (displayCartActions) {
       return true;
     }
-    
+
     // Priority 3: If cartButtonConfig exists (even if enabled is not explicitly set), show it
     if (cartButtonConfig) {
       return true;
     }
-    
+
     // Priority 4: If "quantity" is in cardFields (backward compatibility), show it
     if (displayQuantity) {
       return true;
     }
-    
+
     // Default: don't show if nothing is configured
     return false;
   }, [cartButtonConfig, displayCartActions, displayQuantity]);
@@ -500,19 +498,19 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
       sessionStorage.removeItem('levelFilter');
     }
   }, []);
-  
+
   // Normalize selectedLevels to match actual level values from courses (case-insensitive matching)
   useEffect(() => {
     if (courses.length > 0 && selectedLevels.length > 0) {
       const actualLevels = [...new Set(courses.map(course => course.level))];
       const normalizedLevels = selectedLevels.map(selected => {
         // Find the actual level value that matches (case-insensitive)
-        const matched = actualLevels.find(actual => 
+        const matched = actualLevels.find(actual =>
           actual?.toLowerCase() === selected?.toLowerCase()
         );
         return matched || selected; // Use matched value or keep original
       });
-      
+
       // Only update if there's a difference (to avoid infinite loop)
       if (normalizedLevels.some((level, idx) => level !== selectedLevels[idx])) {
         setSelectedLevels(normalizedLevels);
@@ -547,50 +545,50 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
         // Transform API response to Course interface
         const apiCourses = response.data?.content || response.data || [];
-        
+
         if (apiCourses.length > 0) {
           // Check for enroll_invite_id in the first course
         }
         const transformedCourses: Course[] = apiCourses.map((course: any) => {
-            // Get the raw media ID (same priority as study library)
-            const thumbnailField = course.course_preview_image_media_id || course.course_banner_media_id || course.thumbnail_file_id;
-            const thumbnailUrl = thumbnailField || "/api/placeholder/300/200";
+          // Get the raw media ID (same priority as study library)
+          const thumbnailField = course.course_preview_image_media_id || course.course_banner_media_id || course.thumbnail_file_id;
+          const thumbnailUrl = thumbnailField || "/api/placeholder/300/200";
 
-            // Parse HTML content safely
-            const parseHtmlContent = (htmlString: string) => {
-              if (!htmlString) return "";
-              return htmlString.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
-            };
+          // Parse HTML content safely
+          const parseHtmlContent = (htmlString: string) => {
+            if (!htmlString) return "";
+            return htmlString.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+          };
 
-            // Get pricing from search API response
-            // For course catalog, we use min_plan_actual_price from search API
-            // This should already be the minimum price from all available plans
-            const finalPrice = course.min_plan_actual_price || 0;
-            const isFree = finalPrice === 0;
-            
+          // Get pricing from search API response
+          // For course catalog, we use min_plan_actual_price from search API
+          // This should already be the minimum price from all available plans
+          const finalPrice = course.min_plan_actual_price || 0;
+          const isFree = finalPrice === 0;
 
-            return {
-              id: course.id || course.packageId,
-              title: course.package_name || "Untitled Course",
-              description: parseHtmlContent(course.course_html_description_html) || "No description available",
-              thumbnail: thumbnailUrl,
-              bannerImage: thumbnailUrl, // Use the same image as banner for details page
-              price: finalPrice,
-              type: course.package_type || course.type || "General",
-              level: course.level_name || "Beginner",
-              instructor: course.instructors?.[0]?.full_name || "Unknown Instructor",
-              duration: course.estimated_duration || course.duration || "Unknown Duration",
-              rating: course.rating || 0,
-              packageSessionId: course.package_session_id,
-              enrollInviteId: course.enroll_invite_id, // Use real enroll_invite_id from API
-              // Add all other fields from the API response for dynamic filtering
-              ...course
-            };
-          });
+
+          return {
+            id: course.id || course.packageId,
+            title: course.package_name || "Untitled Course",
+            description: parseHtmlContent(course.course_html_description_html) || "No description available",
+            thumbnail: thumbnailUrl,
+            bannerImage: thumbnailUrl, // Use the same image as banner for details page
+            price: finalPrice,
+            type: course.package_type || course.type || "General",
+            level: course.level_name || "Beginner",
+            instructor: course.instructors?.[0]?.full_name || "Unknown Instructor",
+            duration: course.estimated_duration || course.duration || "Unknown Duration",
+            rating: course.rating || 0,
+            packageSessionId: course.package_session_id,
+            enrollInviteId: course.enroll_invite_id, // Use real enroll_invite_id from API
+            // Add all other fields from the API response for dynamic filtering
+            ...course
+          };
+        });
 
         setCourses(transformedCourses);
         setFilteredCourses(transformedCourses);
-        
+
         // Debug: Log available level values to help diagnose filtering
         if (transformedCourses.length > 0) {
           const uniqueLevels = [...new Set(transformedCourses.map(c => c.level || c.level_name))];
@@ -600,9 +598,9 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
             console.log('[CourseCatalogComponent] Sample course fields:', {
               level: transformedCourses[0].level,
               level_name: transformedCourses[0].level_name,
-              allKeys: Object.keys(transformedCourses[0]).filter(k => 
-                k.toLowerCase().includes('buy') || 
-                k.toLowerCase().includes('rent') 
+              allKeys: Object.keys(transformedCourses[0]).filter(k =>
+                k.toLowerCase().includes('buy') ||
+                k.toLowerCase().includes('rent')
               )
             });
           }
@@ -637,35 +635,35 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
       filtered = filtered.filter(course => {
         // Check if any selected level matches the course's level field
         const matchesLevel = selectedLevels.includes(course.level);
-        
+
         // For Buy/Rent filters, also check level_name field directly from API
         // since "Buy" and "Rent" might be stored in level_name
-        const isBuyRentFilter = selectedLevels.some(level => 
+        const isBuyRentFilter = selectedLevels.some(level =>
           level === "Buy" || level === "Rent"
         );
-        
+
         if (isBuyRentFilter) {
           // Check multiple possible fields where Buy/Rent might be stored
           const levelName = (course.level_name || course.level || "").toString().trim();
           const courseType = (course.type || course.package_type || "").toString().trim();
-          
+
           const matchesBuyRent = selectedLevels.some(level => {
             const filterValue = level.toString().trim();
             return (
               levelName.toLowerCase() === filterValue.toLowerCase() ||
               courseType.toLowerCase() === filterValue.toLowerCase() ||
               // Also check if any field in the course object contains Buy/Rent
-              Object.values(course).some(val => 
+              Object.values(course).some(val =>
                 val && val.toString().toLowerCase() === filterValue.toLowerCase()
               )
             );
           });
-          
+
           if (matchesBuyRent) {
             return true;
           }
         }
-        
+
         return matchesLevel;
       });
     }
@@ -781,11 +779,11 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     if (course.level) {
       searchParams.set('level', course.level);
     }
-    
-    navigate({ 
+
+    navigate({
       to: `/${tagName}/${course.id}`,
-      search: searchParams.toString() ? { 
-        enrollInviteId: course.enrollInviteId, 
+      search: searchParams.toString() ? {
+        enrollInviteId: course.enrollInviteId,
         packageSessionId: course.packageSessionId,
         bannerImage: course.bannerImage,
         level: course.level
@@ -800,8 +798,8 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     name: toTitleCase(level)
   }));
 
-  const tags = [...new Set(courses.flatMap(course => 
-    course.comma_separeted_tags?.split(',').map((tag :string)=> tag.trim()) || []
+  const tags = [...new Set(courses.flatMap(course =>
+    course.comma_separeted_tags?.split(',').map((tag: string) => tag.trim()) || []
   ))].map(tag => ({
     id: tag,
     name: tag
@@ -1032,15 +1030,13 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
               {paginatedCourses.map((course, index) => (
                 <div
                   key={`${course.id}-${index}-${currentPage}`}
-                  className={`bg-white rounded-lg shadow-md overflow-hidden cursor-pointer transition-all duration-300 ${
-                    render?.styles?.hoverEffect === 'scale' 
-                      ? 'hover:scale-105 hover:shadow-lg' 
-                      : render?.styles?.hoverEffect === 'shadow' 
-                      ? 'hover:shadow-lg' 
-                      : 'hover:shadow-lg'
-                  } ${
-                    render?.styles?.roundedEdges ? 'rounded-lg' : 'rounded-none'
-                  }`}
+                  className={`bg-white rounded-lg shadow-md overflow-hidden cursor-pointer transition-all duration-300 ${render?.styles?.hoverEffect === 'scale'
+                      ? 'hover:scale-105 hover:shadow-lg'
+                      : render?.styles?.hoverEffect === 'shadow'
+                        ? 'hover:shadow-lg'
+                        : 'hover:shadow-lg'
+                    } ${render?.styles?.roundedEdges ? 'rounded-lg' : 'rounded-none'
+                    }`}
                   style={{
                     backgroundColor: render?.styles?.backgroundColor || '#ffffff'
                   }}
@@ -1048,13 +1044,13 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                 >
                   {/* Course Thumbnail */}
                   {displayImage && (
-                    <CourseImage 
+                    <CourseImage
                       previewImageUrl={course.thumbnail}
                       alt={course.title}
                       className="w-full h-48 object-cover"
                     />
                   )}
-                  
+
                   <div className="p-4 sm:p-6">
                     {/* Course Title */}
                     {displayTitle && (
@@ -1062,14 +1058,14 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                         {course.title}
                       </h3>
                     )}
-                    
+
                     {/* Course Description */}
                     {displayDescription && (
                       <p className="text-sm sm:text-base text-gray-600 mb-4 line-clamp-2 sm:line-clamp-3">
                         {course.description}
                       </p>
                     )}
-                    
+
                     {/* Course Info */}
                     <div className="flex flex-col gap-3">
                       <div className="flex flex-col gap-3">
@@ -1081,7 +1077,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                             </span>
                           )}
 
-                        
+
                         </div>
 
                         {/* Badges */}
@@ -1098,20 +1094,20 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                               </span>
                             )}
 
-                               {/* Add to Cart Button or Quantity Controls */}
-                          {shouldShowCartControls && (
-                            <div className="flex-shrink-0">
-                              <CartControls
-                                course={course}
-                                globalSettings={globalSettings}
-                                cartButtonConfig={cartButtonConfig}
-                                addItem={addItem}
-                                getItemByEnrollInviteId={getItemByEnrollInviteId}
-                                updateQuantity={updateQuantity}
-                                removeItem={removeItem}
-                              />
-                            </div>
-                          )}
+                            {/* Add to Cart Button or Quantity Controls */}
+                            {shouldShowCartControls && (
+                              <div className="flex-shrink-0">
+                                <CartControls
+                                  course={course}
+                                  globalSettings={globalSettings}
+                                  cartButtonConfig={cartButtonConfig}
+                                  addItem={addItem}
+                                  getItemByEnrollInviteId={getItemByEnrollInviteId}
+                                  updateQuantity={updateQuantity}
+                                  removeItem={removeItem}
+                                />
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -1139,21 +1135,20 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                   >
                     Previous
                   </Button>
-                  
+
                   {[...Array(totalPages)].map((_, i) => (
                     <Button
                       key={i + 1}
                       onClick={() => setCurrentPage(i + 1)}
-                      className={`px-3 py-2 ${
-                        currentPage === i + 1 
-                          ? 'bg-primary-600 text-white' 
+                      className={`px-3 py-2 ${currentPage === i + 1
+                          ? 'bg-primary-600 text-white'
                           : 'bg-white text-gray-700 hover:bg-gray-50'
-                      }`}
+                        }`}
                     >
                       {i + 1}
                     </Button>
                   ))}
-                  
+
                   <Button
                     onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                     disabled={currentPage === totalPages}

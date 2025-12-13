@@ -37,6 +37,10 @@ export const BuyRentSectionComponent: React.FC<BuyRentSectionProps> = ({
   const handleCardClick = (levelFilterValue: string) => {
     if (levelFilterValue) {
       sessionStorage.setItem("levelFilter", levelFilterValue);
+      // Dispatch custom event to notify all components about levelFilter change
+      window.dispatchEvent(new CustomEvent('levelFilterChanged', { 
+        detail: { levelFilter: levelFilterValue } 
+      }));
     }
     navigate({
       to: `/${currentTagName}` as any,

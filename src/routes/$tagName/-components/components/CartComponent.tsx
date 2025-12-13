@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useCartStore, CartItem } from "@/stores/cart-store";
 import { CartComponentProps } from "../../-types/course-catalogue-types";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
@@ -22,23 +22,48 @@ export const CartComponent: React.FC<CartComponentProps> = ({
   instituteId, // Accept instituteId prop
 }) => {
 
-  const { items, removeItem, updateQuantity, membershipPlan, getItemCount, getTotal } = useCartStore();
+  const { items, removeItem, updateQuantity, membershipPlan, getItemCount, getTotal, syncCart } = useCartStore();
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [isRentMode, setIsRentMode] = useState(false);
   const [membershipPlans, setMembershipPlans] = useState<MembershipPlan[]>([]);
   const [isLoadingPlans, setIsLoadingPlans] = useState(false);
 
   useEffect(() => {
-    // Check for Rent mode in session storage
-    const levelFilter = sessionStorage.getItem("levelFilter");
-    console.log("[CartComponent] Checking levelFilter:", levelFilter);
-    if (levelFilter && levelFilter.includes("Rent")) {
-      console.log("[CartComponent] Rent mode ACTIVATED");
-      setIsRentMode(true);
-    } else {
-      console.log("[CartComponent] Rent mode NOT activated");
-    }
-  }, []);
+    // Check for Rent mode in session storage and sync cart
+    const checkLevelFilter = () => {
+      const levelFilter = sessionStorage.getItem("levelFilter");
+      console.log("[CartComponent] Checking levelFilter:", levelFilter);
+      const isRent = !!(levelFilter && levelFilter.includes("Rent"));
+      setIsRentMode(isRent);
+      // Sync cart when mode changes
+      syncCart();
+    };
+
+    checkLevelFilter();
+
+    // Listen for storage changes
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'levelFilter') {
+        checkLevelFilter();
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+
+    // Listen for custom events
+    const handleLevelFilterChange = () => {
+      checkLevelFilter();
+    };
+    window.addEventListener('levelFilterChanged', handleLevelFilterChange);
+
+    // Also check periodically (for same-tab changes)
+    const interval = setInterval(checkLevelFilter, 500);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('levelFilterChanged', handleLevelFilterChange);
+    };
+  }, [syncCart]);
 
   // Fetch membership plans when in Rent mode
   useEffect(() => {
@@ -73,25 +98,35 @@ export const CartComponent: React.FC<CartComponentProps> = ({
     fetchMembershipPlans();
   }, [isRentMode, instituteId]);
 
+  // Cache for fetched images to prevent repeated API calls
+  const fetchedImagesRef = useRef<Set<string>>(new Set());
+
   // Load images for all cart items
   useEffect(() => {
     const loadImages = async () => {
-      const urlMap: Record<string, string> = {};
+      // Create a list of promises to fetch images in parallel, but only for those not yet fetched
+      const promises = items.map(async (item) => {
+        const itemId = item.enrollInviteId || item.id;
 
-      for (const item of items) {
+        // Skip if invalid ID or already fetched
+        if (!itemId || fetchedImagesRef.current.has(itemId)) return;
+
+        // Mark as fetched immediately to prevent duplicate calls
+        fetchedImagesRef.current.add(itemId);
+
         if (item.image && item.image !== "/api/placeholder/300/200") {
           try {
             const url = await getPublicUrlWithoutLogin(item.image);
             if (url && item.enrollInviteId) {
-              urlMap[item.enrollInviteId] = url;
+              setImageUrls(prev => ({ ...prev, [item.enrollInviteId!]: url }));
             }
           } catch (error) {
-            console.error(`[CartComponent] Error loading image for item ${item.enrollInviteId || item.id}:`, error);
+            console.error(`[CartComponent] Error loading image for item ${itemId}:`, error);
           }
         }
-      }
+      });
 
-      setImageUrls(urlMap);
+      await Promise.all(promises);
     };
 
     if (items.length > 0) {
@@ -99,12 +134,14 @@ export const CartComponent: React.FC<CartComponentProps> = ({
     }
   }, [items]);
 
-  const handleQuantityChange = (enrollInviteId: string, newQuantity: number) => {
-    updateQuantity(enrollInviteId, newQuantity);
+  const handleQuantityChange = async (enrollInviteId: string, newQuantity: number) => {
+    await updateQuantity(enrollInviteId, newQuantity);
+    window.dispatchEvent(new CustomEvent('cartUpdated'));
   };
 
-  const handleRemove = (enrollInviteId: string) => {
-    removeItem(enrollInviteId);
+  const handleRemove = async (enrollInviteId: string) => {
+    await removeItem(enrollInviteId);
+    window.dispatchEvent(new CustomEvent('cartUpdated'));
   };
 
   const padding = styles.padding || "10px";
@@ -190,7 +227,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
           ) : membershipPlans.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {membershipPlans.map((plan) => (
-                <MembershipPlanCard key={plan.id} plan={plan} itemCount={items.length} />
+                <MembershipPlanCard key={plan.id} plan={plan} />
               ))}
             </div>
           ) : (
@@ -203,11 +240,6 @@ export const CartComponent: React.FC<CartComponentProps> = ({
         {/* Subtotal, Total and Checkout Button Section */}
         {items.length > 0 && (
           <div className="mt-5 bg-gray-50 rounded-lg p-3 sm:p-4 border border-gray-200">
-            {/* Subtotal */}
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-sm text-gray-600">Subtotal</span>
-              <span className="text-sm sm:text-base font-semibold text-gray-900">₹{getTotal().toFixed(2)}</span>
-            </div>
 
             {/* Total */}
             <div className="flex justify-between items-center pt-3 border-t border-gray-200 mb-3">
@@ -228,18 +260,18 @@ export const CartComponent: React.FC<CartComponentProps> = ({
 
                 // Get total number of books in cart
                 const totalBooksInCart = getItemCount();
+                // Fixed number of books allowed: 3
+                const fixedBooksAllowed = 3;
 
-                // Check if plan has a book limit and if cart exceeds it
-                if (membershipPlan.numberOfBooks !== undefined && membershipPlan.numberOfBooks !== null) {
-                  if (totalBooksInCart > membershipPlan.numberOfBooks) {
-                    toast.error(
-                      `Selected books (${totalBooksInCart}) exceed your plan limit (${membershipPlan.numberOfBooks}). Please remove some books or select a different plan.`,
-                      {
-                        duration: 4000,
-                      }
-                    );
-                    return;
-                  }
+                // Check if cart exceeds the fixed book limit
+                if (totalBooksInCart > fixedBooksAllowed) {
+                  toast.error(
+                    "You had more then the desired number of books",
+                    {
+                      duration: 4000,
+                    }
+                  );
+                  return;
                 }
 
                 // All validations passed - proceed to checkout
@@ -258,7 +290,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
     );
   }
 
-  // STANDARD LAYOUT (Vertical List)
+  // STANDARD LAYOUT (Vertical List) - For Buy mode
   return (
     <div
       className={`w-full ${roundedEdges} space-y-4`}
@@ -280,6 +312,31 @@ export const CartComponent: React.FC<CartComponentProps> = ({
           quantityMin={quantityMin}
         />
       ))}
+
+      {/* Checkout Button for Buy mode */}
+      {items.length > 0 && !isRentMode && (
+        <div className="mt-5 bg-gray-50 rounded-lg p-3 sm:p-4 border border-gray-200">
+          {/* Total */}
+          <div className="flex justify-between items-center pt-3 border-t border-gray-200 mb-3">
+            <span className="text-base sm:text-lg font-semibold text-gray-900">Total</span>
+            <span className="text-base sm:text-lg font-bold text-gray-900">₹{getTotal().toFixed(2)}</span>
+          </div>
+
+          {/* Checkout Button */}
+          <Button
+            onClick={() => {
+              // All validations passed - proceed to checkout
+              console.log("[CartComponent] Proceeding to checkout with items:", items);
+              toast.success("Proceeding to checkout...", { duration: 2000 });
+              // Implement your checkout flow here
+            }}
+            className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-sm sm:text-base py-2.5 sm:py-3 rounded-lg shadow-md transition-all duration-200 active:scale-[0.98]"
+            size="lg"
+          >
+            Checkout
+          </Button>
+        </div>
+      )}
     </div>
   );
 };
@@ -445,37 +502,38 @@ const CartItemCard: React.FC<CartItemCardProps> = ({
 // Membership Plan Card Component - Compact Mobile-First Design
 interface MembershipPlanCardProps {
   plan: MembershipPlan;
-  itemCount: number;
 }
 
-const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan, itemCount }) => {
+const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan }) => {
   const { setMembershipPlan, membershipPlan } = useCartStore();
   const isSelected = membershipPlan?.id === plan.id;
 
   const handleSelectPlan = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const numberOfBooks = plan.number_of_books || plan.books_allowed || plan.max_books || null;
+    // Fixed number of books: 3
+    const fixedNumberOfBooks = 3;
     setMembershipPlan({
       id: plan.id,
       title: plan.package_name,
       price: plan.min_plan_actual_price,
-      numberOfBooks: typeof numberOfBooks === 'number' ? numberOfBooks : undefined,
+      numberOfBooks: fixedNumberOfBooks,
     });
   };
 
   // Extract fields - handle various possible field names
   const planName = plan.package_name || "Plan";
-  const numberOfBooks = plan.number_of_books || plan.books_allowed || plan.max_books || itemCount || "Unlimited";
+  // Fixed number of books: 3
+  const numberOfBooks = 3;
   const description = plan.description || plan.package_description || "Premium subscription plan";
   const price = plan.min_plan_actual_price || 0;
-  const currencySymbol =  '₹';
+  const currencySymbol = '₹';
 
   return (
     <div
       className={`
         rounded-lg p-2.5 sm:p-3 border-2 transition-all duration-200 cursor-pointer active:scale-[0.97] hover:scale-[1.01]
-        ${isSelected 
-          ? 'bg-primary-50 border-primary-500 shadow-md' 
+        ${isSelected
+          ? 'bg-primary-50 border-primary-500 shadow-md'
           : 'bg-white border-gray-200 hover:border-primary-300 hover:shadow-sm'
         }
       `}
@@ -503,7 +561,7 @@ const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan, itemCount
           <div className="flex items-center gap-1 flex-shrink-0">
             <span className="text-xs text-gray-500">Books:</span>
             <span className="text-xs font-semibold text-gray-700">
-              {typeof numberOfBooks === 'number' ? numberOfBooks : numberOfBooks}
+              {numberOfBooks}
             </span>
           </div>
         </div>
@@ -513,7 +571,7 @@ const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan, itemCount
           className={`
             w-full mt-2 py-2 px-2 rounded-md text-xs sm:text-sm font-semibold transition-all duration-200 active:scale-95
             ${isSelected
-              ? 'bg-primary-600 text-white shadow-sm hover:bg-primary-700'
+              ? 'bg-primary-600 text-blue font-bold shadow-sm hover:bg-primary-700'
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }
           `}

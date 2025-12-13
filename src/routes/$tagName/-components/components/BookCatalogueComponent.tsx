@@ -13,6 +13,8 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  Plus,
+  Minus,
 } from "lucide-react";
 import { toTitleCase } from "@/lib/utils";
 import { useCartStore, CartItem } from "@/stores/cart-store";
@@ -117,8 +119,46 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { addItem, getItemByEnrollInviteId } =
+  const { addItem, getItemByEnrollInviteId, updateQuantity, getCartMode, syncCart } =
     useCartStore();
+
+  // Get current cart mode
+  const [cartMode, setCartMode] = useState<'buy' | 'rent'>(() => getCartMode());
+
+  // Sync cart when levelFilter changes
+  useEffect(() => {
+    const checkLevelFilter = () => {
+      const levelFilter = sessionStorage.getItem('levelFilter') || '';
+      const newMode = levelFilter.includes('Rent') ? 'rent' : 'buy';
+      if (newMode !== cartMode) {
+        setCartMode(newMode);
+        syncCart();
+      }
+    };
+
+    checkLevelFilter();
+    const interval = setInterval(checkLevelFilter, 500); // Check every 500ms
+
+    // Listen for storage changes
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'levelFilter') {
+        checkLevelFilter();
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+
+    // Listen for custom events
+    const handleLevelFilterChange = () => {
+      checkLevelFilter();
+    };
+    window.addEventListener('levelFilterChanged', handleLevelFilterChange);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('levelFilterChanged', handleLevelFilterChange);
+    };
+  }, [cartMode, syncCart]);
 
   const [courses, setCourses] = useState<Course[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -511,45 +551,92 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                     onClick={() => handleBookClick(book)}
                   >
                     {/* Book Cover */}
-                    <div className="relative aspect-[9/16] rounded-xl overflow-hidden shadow-lg transition-all duration-500 ease-out group-hover:-translate-y-2 ring-1 ring-black/5">
-                      <CourseImage previewImageUrl={book.thumbnail} alt={book.title} className="w-full h-full object-cover transform transition-transform duration-700 group-hover:scale-110" />
+                    <div className="relative aspect-[9/16] rounded-xl overflow-hidden shadow-lg transition-all duration-500 ease-out md:group-hover:-translate-y-2 ring-1 ring-black/5">
+                      <CourseImage previewImageUrl={book.thumbnail} alt={book.title} className="w-full h-full object-cover transform transition-transform duration-700 md:group-hover:scale-110" />
 
                       {/* Bottom Gradient Overlay - Only visible on hover */}
-                      <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black/70 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 ease-in-out pointer-events-none" />
+                      <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black/70 via-black/40 to-transparent opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-500 ease-in-out pointer-events-none" />
 
                       {/* Quick Action Overlay - Slides up from bottom on hover */}
                       {cartButtonConfig?.enabled !== false && (
-                        <div className="cart-button-overlay absolute bottom-0 left-0 right-0 p-4 transform translate-y-full group-hover:translate-y-0 transition-all duration-500 ease-out z-10">
+                        <div className="cart-button-overlay absolute bottom-0 left-0 right-0 p-4 transform translate-y-0 md:translate-y-full md:group-hover:translate-y-0 transition-all duration-500 ease-out z-10">
                           {/* Add to Cart Logic */}
                           <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
-                            <Button
-                              className=" px-6 w-full bg-white text-gray-900 text-sm font-medium shadow-xl hover:bg-primary-50 hover:text-primary-700 active:bg-primary-100 active:scale-95 transition-all duration-300 transform py-2 rounded-lg border border-gray-200"
-                              onClick={() => {
-                                if (book.enrollInviteId) {
-                                  const existingItem = getItemByEnrollInviteId(book.enrollInviteId);
-                                  if (existingItem) {
-                                    toast.info("This item is already in the cart", { duration: 2000 });
-                                  } else {
-                                    addItem({
-                                      id: book.id,
-                                      title: book.title,
-                                      price: book.price,
-                                      image: book.thumbnail,
-                                      level: book.level,
-                                      packageSessionId: book.packageSessionId,
-                                      enrollInviteId: book.enrollInviteId,
-                                      levelId: book.levelId,
-                                      courseId: book.courseId,
-                                    });
-                                    toast.success("Added to cart", { duration: 2000 });
-                                  }
-                                }
-                              }}
-                              style={{ touchAction: "manipulation" }}
-                            >
-                              <ShoppingCart className="h-4 w-4 mr-2" />
-                              Add to Cart
-                            </Button>
+                            {(() => {
+                              const existingItem = book.enrollInviteId ? getItemByEnrollInviteId(book.enrollInviteId) : null;
+                              const isBuyMode = cartMode === 'buy';
+
+                              // Show counter for Buy mode if item exists
+                              if (isBuyMode && existingItem) {
+                                return (
+                                  <div className="flex items-center gap-1 border border-gray-200 rounded-lg bg-white shadow-xl">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 hover:bg-gray-100 active:bg-gray-200 rounded-l-lg transition-all duration-150"
+                                      onClick={async () => {
+                                        if (book.enrollInviteId) {
+                                          await updateQuantity(book.enrollInviteId, existingItem.quantity - 1);
+                                          window.dispatchEvent(new CustomEvent('cartUpdated'));
+                                        }
+                                      }}
+                                      disabled={!book.enrollInviteId}
+                                    >
+                                      <Minus className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <span className="w-8 text-center text-xs font-semibold text-gray-700">{existingItem.quantity}</span>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 hover:bg-gray-100 active:bg-gray-200 rounded-r-lg transition-all duration-150"
+                                      onClick={async () => {
+                                        if (book.enrollInviteId) {
+                                          await updateQuantity(book.enrollInviteId, existingItem.quantity + 1);
+                                          window.dispatchEvent(new CustomEvent('cartUpdated'));
+                                        }
+                                      }}
+                                      disabled={!book.enrollInviteId}
+                                    >
+                                      <Plus className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </div>
+                                );
+                              }
+
+                              // Show Add to Cart button
+                              return (
+                                <Button
+                                  className="px-6 w-full bg-white text-gray-900 text-sm font-medium shadow-xl hover:bg-primary-50 hover:text-primary-700 active:bg-primary-100 active:scale-95 transition-all duration-300 transform py-2 rounded-lg border border-gray-200"
+                                  onClick={async () => {
+                                    if (book.enrollInviteId) {
+                                      const existing = getItemByEnrollInviteId(book.enrollInviteId);
+                                      if (existing && !isBuyMode) {
+                                        toast.info("This item is already in the cart", { duration: 2000 });
+                                      } else {
+                                        await addItem({
+                                          id: book.id,
+                                          title: book.title,
+                                          price: book.price,
+                                          image: book.thumbnail,
+                                          level: book.level,
+                                          packageSessionId: book.packageSessionId,
+                                          enrollInviteId: book.enrollInviteId,
+                                          levelId: book.levelId,
+                                          courseId: book.courseId,
+                                        });
+                                        // Dispatch event to update cart count in header
+                                        window.dispatchEvent(new CustomEvent('cartUpdated'));
+                                        toast.success("Added to cart", { duration: 2000 });
+                                      }
+                                    }
+                                  }}
+                                  style={{ touchAction: "manipulation" }}
+                                >
+                                  <ShoppingCart className="h-4 w-4 mr-2" />
+                                  Add to Cart
+                                </Button>
+                              );
+                            })()}
                           </div>
                         </div>
                       )}

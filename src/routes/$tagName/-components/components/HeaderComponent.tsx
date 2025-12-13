@@ -28,7 +28,12 @@ export const HeaderComponent: React.FC<HeaderProps & {
   const navigate = useNavigate();
   const location = useLocation();
   const domainRouting = useDomainRouting();
-  const { getItemCount } = useCartStore();
+  const { getItemCountByMode, items, syncCart } = useCartStore();
+  const [cartItemCount, setCartItemCount] = useState(0);
+  const [currentMode, setCurrentMode] = useState<'buy' | 'rent'>(() => {
+    const levelFilter = sessionStorage.getItem('levelFilter') || '';
+    return levelFilter.includes('Rent') ? 'rent' : 'buy';
+  });
   const isMobile = useIsMobile();
   const [instituteLogoUrl, setInstituteLogoUrl] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -40,8 +45,71 @@ export const HeaderComponent: React.FC<HeaderProps & {
   const [searchInputRef, setSearchInputRef] = useState<HTMLInputElement | null>(null);
   const [searchBarRef, setSearchBarRef] = useState<HTMLDivElement | null>(null);
   
-  // Calculate cart item count - this will automatically update when cart changes
-  const cartItemCount = getItemCount();
+  // Calculate cart item count based on current mode (Buy or Rent)
+  useEffect(() => {
+    const updateCartCount = async () => {
+      const levelFilter = sessionStorage.getItem('levelFilter') || '';
+      const isRentMode = levelFilter.includes('Rent');
+      const mode = isRentMode ? 'rent' : 'buy';
+      
+      // Update current mode if changed
+      if (mode !== currentMode) {
+        setCurrentMode(mode);
+        // Sync cart when mode changes
+        await syncCart();
+      }
+      
+      // Get count for the current mode from storage (most accurate)
+      const count = await getItemCountByMode(mode);
+      setCartItemCount(count);
+    };
+    
+    updateCartCount();
+    
+    // Listen for cart changes and levelFilter changes
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'levelFilter' || e.key?.startsWith('cart_items_')) {
+        updateCartCount();
+      }
+    };
+    
+    // Listen for custom events
+    const handleCartUpdate = () => {
+      updateCartCount();
+    };
+    
+    const handleCartUpdated = () => {
+      updateCartCount();
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('levelFilterChanged', handleCartUpdate);
+    window.addEventListener('cartUpdated', handleCartUpdated);
+    window.addEventListener('cartSynced', handleCartUpdated);
+    
+    // Also check periodically for same-tab changes
+    const interval = setInterval(updateCartCount, 500);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('levelFilterChanged', handleCartUpdate);
+      window.removeEventListener('cartUpdated', handleCartUpdated);
+      window.removeEventListener('cartSynced', handleCartUpdated);
+    };
+  }, [getItemCountByMode, syncCart, currentMode]);
+  
+  // Also update count when items change (reactive to store updates)
+  useEffect(() => {
+    const updateCountFromStore = async () => {
+      const levelFilter = sessionStorage.getItem('levelFilter') || '';
+      const isRentMode = levelFilter.includes('Rent');
+      const mode = isRentMode ? 'rent' : 'buy';
+      const count = await getItemCountByMode(mode);
+      setCartItemCount(count);
+    };
+    updateCountFromStore();
+  }, [items, getItemCountByMode]);
   
   // Check if header styles.enabled is true
   const isHeaderStylesEnabled = !!(catalogueData?.globalSettings?.layout?.header?.styles?.enabled);
@@ -510,7 +578,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
           // Enhanced menu for courseCatalogeType.enabled = true
           <div 
             ref={setMobileMenuRef}
-            className={`md:hidden fixed top-20 left-0 right-0 z-[60] bg-white shadow-lg transition-all duration-500 ease-in-out ${
+            className={`md:hidden fixed top-[60px] left-0 right-0 z-[60] bg-white shadow-lg transition-all duration-500 ease-in-out ${
               isMobileMenuOpen 
                 ? 'max-h-[500px] opacity-100 border-t border-gray-200' 
                 : 'max-h-0 opacity-0 border-t-0 pointer-events-none'
@@ -519,7 +587,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
             <div className={`transform transition-transform duration-500 ease-in-out ${
               isMobileMenuOpen ? 'translate-y-0' : '-translate-y-full'
             }`}>
-              <div className="px-4 pt-4 pb-6 space-y-2">
+              <div className="px-4 pt-2 pb-6 space-y-0">
                 {/* Login */}
                 <button
                   onClick={() => {
@@ -578,7 +646,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                 </button>
 
                 {/* Genre Dropdown */}
-                <div className="relative">
+                {/* <div className="relative">
                   <button
                     onClick={() => setIsGenreDropdownOpen(!isGenreDropdownOpen)}
                     className="group w-full flex items-center justify-between px-5 py-3.5 rounded-xl text-base font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300 transition-all duration-300 ease-in-out transform hover:scale-[1.01] active:scale-[0.99]"
@@ -631,7 +699,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       ))}
                     </div>
                   </div>
-                </div>
+                </div> */}
               </div>
             </div>
           </div>
@@ -640,9 +708,9 @@ export const HeaderComponent: React.FC<HeaderProps & {
           isMobileMenuOpen && (navigation.length > 0 || authLinks.length > 0) && (
             <div 
               ref={setMobileMenuRef}
-              className="md:hidden fixed top-20 left-0 right-0 z-[60] border-t border-gray-200 bg-white shadow-lg"
+              className="md:hidden fixed top-[76px] left-0 right-0 z-[60] border-t border-gray-200 bg-white shadow-lg"
           >
-            <div className="px-2 pt-2 pb-3 space-y-1">
+            <div className="px-2 pt-1 pb-3 space-y-1">
               {/* Navigation Links */}
               {navigation.map((item, index) => {
                 const isActive = isActiveRoute(item.route, item.label);

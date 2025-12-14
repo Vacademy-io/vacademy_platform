@@ -57,6 +57,12 @@ public class InstructorCopilotLog {
     @Column(name = "video_json", columnDefinition = "TEXT")
     private String videoJson;
 
+    @Column(name = "package_session_id")
+    private String packageSessionId;
+
+    @Column(name = "subject_id")
+    private String subjectId;
+
     @Column(name = "status", nullable = false, length = 20)
     private String status;
 

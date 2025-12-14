@@ -47,7 +47,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private UserService userService;
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+            throws ServletException, IOException {
         // Retrieve Authorization header from the request
         final String authHeader = request.getHeader("Authorization");
         final String instituteId = request.getHeader("clientId");
@@ -79,13 +80,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             if (usernameWithInstituteId != null && authentication == null) {
 
                 boolean isTokenExpired = jwtService.isTokenExpired(jwt);
-                if (isTokenExpired) throw new ExpiredTokenException("Expired Token");
+                if (isTokenExpired)
+                    throw new ExpiredTokenException("Expired Token");
 
                 // Track authentication attempt
                 long startTime = System.currentTimeMillis();
 
                 // Load user details using user email
-                CustomUserDetails userDetails = (CustomUserDetails) userDetailsService.loadUserByUsername(usernameWithInstituteId);
+                CustomUserDetails userDetails = (CustomUserDetails) userDetailsService
+                        .loadUserByUsername(usernameWithInstituteId);
 
                 // Pass User ID with request
                 request.setAttribute("user", userDetails);
@@ -93,7 +96,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 // Validate the JWT token using user details and JwtService
                 if (jwtService.isTokenValid(jwt, userDetails)) {
                     // Create an authentication token with user details and authorities
-                    UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(userDetails, null, // As JWT based, no password needed
+                    UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(userDetails,
+                            null, // As JWT based, no password needed
                             userDetails.getAuthorities());
 
                     // Set request details on the token
@@ -101,7 +105,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
                     // Set the authentication object in SecurityContextHolder
                     SecurityContextHolder.getContext().setAuthentication(authToken);
-                    if (userService != null){
+                    if (userService != null) {
                         userService.updateLastLoginTimeForUser(userDetails.getUserId());
                     }
                     // Track successful JWT authentication activity
@@ -113,26 +117,24 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                             String endpoint = request.getRequestURI();
 
                             userActivityTrackingService.logUserActivity(
-                                userDetails.getUserId(),
-                                instituteId,
-                                serviceName,
-                                endpoint,
-                                "JWT_AUTHENTICATION",
-                                sessionToken,
-                                ipAddress,
-                                userAgent,
-                                200,
-                                responseTime
-                            );
+                                    userDetails.getUserId(),
+                                    instituteId,
+                                    serviceName,
+                                    endpoint,
+                                    "JWT_AUTHENTICATION",
+                                    sessionToken,
+                                    ipAddress,
+                                    userAgent,
+                                    200,
+                                    responseTime);
 
                             // Create or update session
                             userActivityTrackingService.createOrUpdateSession(
-                                userDetails.getUserId(),
-                                instituteId,
-                                sessionToken,
-                                ipAddress,
-                                userAgent
-                            );
+                                    userDetails.getUserId(),
+                                    instituteId,
+                                    sessionToken,
+                                    ipAddress,
+                                    userAgent);
 
                         } catch (Exception e) {
                             log.debug("Error tracking JWT authentication activity: {}", e.getMessage());
@@ -149,7 +151,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             throw new VacademyException(exception.getMessage());
         }
     }
-
 
     void addUserActivity(String userId, String origin, String route, String clientIp) {
         try {
@@ -191,4 +192,3 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     }
 
 }
-

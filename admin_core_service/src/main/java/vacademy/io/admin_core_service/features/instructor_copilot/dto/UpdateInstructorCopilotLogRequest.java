@@ -21,4 +21,6 @@ public class UpdateInstructorCopilotLogRequest {
     private String slidesJson;
     private String videoJson;
     private String status;
+    private String packageSessionId;
+    private String subjectId;
 }

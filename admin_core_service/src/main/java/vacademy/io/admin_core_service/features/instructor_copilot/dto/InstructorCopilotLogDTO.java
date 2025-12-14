@@ -29,6 +29,8 @@ public class InstructorCopilotLogDTO {
     private String slidesJson;
     private String videoJson;
     private String status;
+    private String packageSessionId;
+    private String subjectId;
     private Timestamp createdAt;
     private Timestamp updatedAt;
 
@@ -46,6 +48,8 @@ public class InstructorCopilotLogDTO {
         this.slidesJson = log.getSlidesJson();
         this.videoJson = log.getVideoJson();
         this.status = log.getStatus();
+        this.packageSessionId = log.getPackageSessionId();
+        this.subjectId = log.getSubjectId();
         this.createdAt = log.getCreatedAt();
         this.updatedAt = log.getUpdatedAt();
     }

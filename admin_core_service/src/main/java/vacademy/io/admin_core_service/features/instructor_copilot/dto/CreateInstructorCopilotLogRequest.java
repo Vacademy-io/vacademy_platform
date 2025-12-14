@@ -12,4 +12,6 @@ import lombok.NoArgsConstructor;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class CreateInstructorCopilotLogRequest {
     private String transcriptJson;
+    private String packageSessionId;
+    private String subjectId;
 }

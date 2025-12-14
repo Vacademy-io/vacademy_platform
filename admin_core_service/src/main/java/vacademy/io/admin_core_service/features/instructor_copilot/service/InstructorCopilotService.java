@@ -34,6 +34,8 @@ public class InstructorCopilotService {
                 .instituteId(instituteId)
                 .createdByUserId(userId)
                 .transcriptJson(request.getTranscriptJson())
+                .packageSessionId(request.getPackageSessionId())
+                .subjectId(request.getSubjectId())
                 .status("ACTIVE")
                 .build();
 
@@ -108,6 +110,10 @@ public class InstructorCopilotService {
             log.setVideoJson(request.getVideoJson());
         if (request.getStatus() != null)
             log.setStatus(request.getStatus());
+        if (request.getPackageSessionId() != null)
+            log.setPackageSessionId(request.getPackageSessionId());
+        if (request.getSubjectId() != null)
+            log.setSubjectId(request.getSubjectId());
 
         log = repository.save(log);
         return new InstructorCopilotLogDTO(log);

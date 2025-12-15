@@ -11,6 +11,7 @@ import vacademy.io.notification_service.features.announcements.enums.MediumType;
 import vacademy.io.notification_service.features.announcements.enums.MessageStatus;
 import vacademy.io.notification_service.features.announcements.enums.ModeType;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Repository
@@ -37,6 +38,52 @@ public interface RecipientMessageRepository extends JpaRepository<RecipientMessa
     long countByAnnouncementId(String announcementId);
     
     long countByAnnouncementIdAndStatus(String announcementId, MessageStatus status);
+    
+    long countByAnnouncementIdAndMediumType(String announcementId, MediumType mediumType);
+    
+    // Paginated queries for batch processing (memory optimization)
+    Page<RecipientMessage> findByAnnouncementIdAndStatusAndMediumType(
+        String announcementId, 
+        MessageStatus status, 
+        MediumType mediumType,
+        Pageable pageable
+    );
+    
+    // Recovery/restart queries
+    
+    /**
+     * Find messages by status created after a certain date (for auto-recovery)
+     */
+    List<RecipientMessage> findByStatusAndCreatedAtAfter(MessageStatus status, LocalDateTime createdAfter);
+    
+    /**
+     * Find stuck SENT messages (sent before cutoff but not delivered)
+     */
+    @Query("SELECT rm FROM RecipientMessage rm WHERE rm.status = :status AND rm.sentAt < :cutoff AND rm.sentAt IS NOT NULL AND rm.deliveredAt IS NULL")
+    List<RecipientMessage> findByStatusAndSentAtBefore(
+        @Param("status") MessageStatus status,
+        @Param("cutoff") LocalDateTime cutoff
+    );
+    
+    /**
+     * Find stuck SENT messages for a specific announcement
+     */
+    @Query("SELECT rm FROM RecipientMessage rm WHERE rm.announcementId = :announcementId AND rm.status = :status AND rm.sentAt < :cutoff AND rm.sentAt IS NOT NULL AND rm.deliveredAt IS NULL")
+    List<RecipientMessage> findByAnnouncementIdAndStatusAndSentAtBefore(
+        @Param("announcementId") String announcementId,
+        @Param("status") MessageStatus status,
+        @Param("cutoff") LocalDateTime cutoff
+    );
+    
+    /**
+     * Find stuck SENT messages created after a certain date (for auto-recovery)
+     */
+    @Query("SELECT rm FROM RecipientMessage rm WHERE rm.status = :status AND rm.sentAt < :sentCutoff AND rm.sentAt IS NOT NULL AND rm.deliveredAt IS NULL AND rm.createdAt > :createdAfter")
+    List<RecipientMessage> findByStatusAndSentAtBeforeAndCreatedAtAfter(
+        @Param("status") MessageStatus status,
+        @Param("sentCutoff") LocalDateTime sentCutoff,
+        @Param("createdAfter") LocalDateTime createdAfter
+    );
 
     // Utility finder for SSE event filtering/routing
     List<RecipientMessage> findByAnnouncementIdAndUserId(String announcementId, String userId);

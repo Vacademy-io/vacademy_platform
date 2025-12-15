@@ -304,6 +304,7 @@ public class PracticeMemberKeapMigrationService {
         userDTO.setUsername(data.getEmail());
         userDTO.setMobileNumber(data.getPhone());
         userDTO.setPassword(generateRandomPassword());
+        userDTO.setRoles(List.of("STUDENT"));
         return authService.createUserFromAuthService(userDTO, DEFAULT_PARENT_INSTITUTE_ID, false);
     }
 

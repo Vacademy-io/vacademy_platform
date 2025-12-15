@@ -21,6 +21,19 @@ import { ModulesWithChaptersProvider } from "@/providers/study-library/modules-w
 import { useSlides, Slide } from "@/hooks/study-library/use-slides";
 import { useStudyLibraryStore } from "@/stores/study-library/use-study-library-store";
 import { useModulesWithChaptersStore } from "@/stores/study-library/use-modules-with-chapters-store";
+import { useDripConditionStore } from "@/stores/study-library/drip-conditions-store";
+import { useDripConditions } from "@/hooks/use-drip-conditions";
+import {
+  evaluateDripCondition,
+  type LearnerProgressData,
+} from "@/utils/drip-conditions";
+import {
+  shouldFilterItem,
+  isItemLocked,
+} from "@/components/drip-conditions/helpers";
+import { useQuery } from "@tanstack/react-query";
+import { GET_COURSE_DETAILS } from "@/constants/urls";
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import FeedbackPage from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/FeedbackPage";
 import { FiEdit } from "react-icons/fi";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
@@ -62,10 +75,68 @@ function Slides() {
 
   useSidebar();
   const navigate = useNavigate();
-  const { setItems, setActiveItem, activeItem } = useContentStore();
+  const { setItems, setActiveItem, activeItem, setSlideEvaluations } =
+    useContentStore();
   const { slides } = useSlides(chapterId || "");
   const { studyLibraryData } = useStudyLibraryStore();
   const { modulesWithChaptersData } = useModulesWithChaptersStore();
+
+  // Get drip conditions from store or fetch from API
+  const {
+    getDripCondition,
+    setDripCondition,
+    clearDripCondition,
+    isDrippingEnable,
+  } = useDripConditionStore();
+
+  const storedDripCondition = courseId ? getDripCondition(courseId) : null;
+
+  // Fetch drip condition from API if not in store
+  const { data: courseDetails } = useQuery({
+    queryKey: ["course-details", courseId],
+    queryFn: async () => {
+      const response = await authenticatedAxiosInstance({
+        method: "GET",
+        url: GET_COURSE_DETAILS,
+        params: {
+          packageId: courseId,
+        },
+      });
+      return response.data;
+    },
+    enabled: !!courseId && !storedDripCondition, // Only fetch if not in store
+    staleTime: 3600000, // 1 hour
+  });
+
+  // Save fetched drip condition to store
+  useEffect(() => {
+    if (courseDetails?.drip_condition_json && courseId) {
+      const dripCondition =
+        courseDetails.drip_condition_json ||
+        courseDetails.dripConditionJson ||
+        courseDetails.drip_condition ||
+        courseDetails.dripCondition;
+
+      if (dripCondition) {
+        clearDripCondition(courseId); // Clear before setting
+        setDripCondition(courseId, dripCondition);
+      }
+    }
+  }, [courseDetails, courseId, setDripCondition, clearDripCondition]);
+
+  // Use stored or fetched drip condition
+  const dripConditionJson =
+    storedDripCondition ||
+    courseDetails?.drip_condition_json ||
+    courseDetails?.dripConditionJson ||
+    courseDetails?.drip_condition ||
+    courseDetails?.dripCondition ||
+    null;
+
+  const { condition: slideCondition } = useDripConditions(
+    dripConditionJson,
+    "slide"
+  );
 
   useEffect(() => {
     if (slides?.length) {
@@ -84,10 +155,50 @@ function Slides() {
         progress_marker: 0,
       };
 
-      const slidesWithFeedback = [...slides, feedbackSlide];
+      // Apply drip conditions to filter slides
+      let accessibleSlides = slides;
+      const evaluations: Record<string, any> = {};
+
+      if (slideCondition) {
+        // Build prerequisite completions map from all slides
+        const prerequisiteCompletions: Record<string, number> = {};
+        slides.forEach((slide) => {
+          prerequisiteCompletions[slide.id] = slide.percentage_completed || 0;
+        });
+
+        // Evaluate drip conditions for each slide
+        accessibleSlides = slides.filter((slide, index) => {
+          const previousSlide = index > 0 ? slides[index - 1] : null;
+          const progressData: LearnerProgressData = {
+            percentageCompleted: slide.percentage_completed || 0,
+            previousItemId: previousSlide?.id,
+            previousItemCompletion: previousSlide?.percentage_completed || 0,
+            itemIndex: index,
+            prerequisiteCompletions,
+          };
+
+          const evaluation = isDrippingEnable
+            ? evaluateDripCondition(slideCondition, progressData)
+            : {
+                isAccessible: true,
+                isLocked: false,
+                isHidden: false,
+                unlockMessage: null,
+              };
+          evaluations[slide.id] = evaluation; // Store evaluation for this slide
+          const shouldHide = shouldFilterItem(evaluation);
+
+          return !shouldHide; // Keep slide if not hidden
+        });
+
+        // Store evaluations for all accessible slides
+        setSlideEvaluations(evaluations);
+      }
+
+      const slidesWithFeedback = [...accessibleSlides, feedbackSlide];
       setItems(slidesWithFeedback);
 
-      const completion = calculateOverallCompletion(slides);
+      const completion = calculateOverallCompletion(accessibleSlides);
 
       // Priority 1: If course is 100% completed
       if (completion === 100) {
@@ -111,6 +222,44 @@ function Slides() {
       if (slideId) {
         const targetSlide = slidesWithFeedback.find((s) => s.id === slideId);
         if (targetSlide) {
+          // Check if the target slide is locked
+          const slideIndex = accessibleSlides.findIndex(
+            (s) => s.id === slideId
+          );
+          if (slideIndex !== -1 && slideCondition) {
+            // Build prerequisite completions map
+            const prerequisiteCompletions: Record<string, number> = {};
+            slides.forEach((slide) => {
+              prerequisiteCompletions[slide.id] =
+                slide.percentage_completed || 0;
+            });
+
+            const previousSlide =
+              slideIndex > 0 ? accessibleSlides[slideIndex - 1] : null;
+            const progressData: LearnerProgressData = {
+              percentageCompleted: targetSlide.percentage_completed || 0,
+              previousItemId: previousSlide?.id,
+              previousItemCompletion: previousSlide?.percentage_completed || 0,
+              itemIndex: slideIndex,
+              prerequisiteCompletions,
+            };
+
+            const evaluation = isDrippingEnable
+              ? evaluateDripCondition(slideCondition, progressData)
+              : {
+                  isAccessible: true,
+                  isLocked: false,
+                  isHidden: false,
+                  unlockMessage: null,
+                };
+            const locked = isItemLocked(evaluation);
+
+            if (locked) {
+              setActiveItem(slidesWithFeedback[0]);
+              return;
+            }
+          }
+
           setActiveItem(targetSlide);
           return;
         }
@@ -119,7 +268,17 @@ function Slides() {
       // Priority 3: Default to first slide
       setActiveItem(slidesWithFeedback[0]);
     }
-  }, [slides, slideId, setActiveItem, setItems, courseId, chapterId]);
+  }, [
+    slides,
+    slideId,
+    setActiveItem,
+    setItems,
+    courseId,
+    chapterId,
+    slideCondition,
+    setSlideEvaluations,
+    isDrippingEnable,
+  ]);
 
   const handleSubjectRoute = useCallback(() => {
     navigate({
@@ -134,8 +293,6 @@ function Slides() {
       search: { courseId, subjectId, moduleId, chapterId },
     });
   }, [navigate, courseId, subjectId, moduleId, chapterId]);
-
-  // gotoSlide removed (unused)
 
   const [moduleName, setModuleName] = useState("");
   const [chapterName, setChapterName] = useState("");
@@ -178,8 +335,8 @@ function Slides() {
 
           setHomeIconClickRoute(
             institute.home_icon_click_route ??
-            institute.homeIconClickRoute ??
-            null
+              institute.homeIconClickRoute ??
+              null
           );
 
           // Get institute logo
@@ -307,7 +464,6 @@ function Slides() {
     <div className="flex flex-col h-full bg-white border-r border-gray-100/50">
       {/* --- Header Section: Title & Breadcrumbs --- */}
       <div className="flex-none p-4 space-y-4 border-b border-dashed border-gray-200 bg-white/50 backdrop-blur-sm z-10">
-
         {/* Course Info Row */}
         <div className="flex items-start gap-3">
           <div className="flex-shrink-0 w-8 h-8 rounded-lg border border-gray-200 p-1 bg-white shadow-sm flex items-center justify-center text-primary-600">
@@ -315,8 +471,12 @@ function Slides() {
               <img
                 src={instituteLogoUrl}
                 alt="Institute"
-                onClick={homeIconClickRoute ? handleInstituteLogoClick : undefined}
-                className={`max-w-full max-h-full object-contain ${homeIconClickRoute ? "cursor-pointer" : ""}`}
+                onClick={
+                  homeIconClickRoute ? handleInstituteLogoClick : undefined
+                }
+                className={`max-w-full max-h-full object-contain ${
+                  homeIconClickRoute ? "cursor-pointer" : ""
+                }`}
               />
             ) : (
               <GraduationCap size={16} weight="duotone" />
@@ -336,7 +496,10 @@ function Slides() {
 
         {/* Minimal Breadcrumbs */}
         {showLearningPath && (
-          <div className="flex items-center text-xs text-gray-500 font-medium overflow-hidden" id="slides-breadcrumb-row">
+          <div
+            className="flex items-center text-xs text-gray-500 font-medium overflow-hidden"
+            id="slides-breadcrumb-row"
+          >
             <div className="flex items-center gap-1.5 flex-wrap truncate">
               {/* Subject */}
               <button
@@ -373,10 +536,16 @@ function Slides() {
                 </PopoverTrigger>
                 <PopoverContent className="w-64 p-2" align="end">
                   <div className="flex flex-col gap-1 text-xs">
-                    <button onClick={handleSubjectRoute} className="text-left px-2 py-1.5 hover:bg-gray-50 rounded">
+                    <button
+                      onClick={handleSubjectRoute}
+                      className="text-left px-2 py-1.5 hover:bg-gray-50 rounded"
+                    >
                       {toTitleCase(subjectName || "Subject")}
                     </button>
-                    <button onClick={handleModuleRoute} className="text-left px-2 py-1.5 hover:bg-gray-50 rounded">
+                    <button
+                      onClick={handleModuleRoute}
+                      className="text-left px-2 py-1.5 hover:bg-gray-50 rounded"
+                    >
                       {toTitleCase(moduleName || "Module")}
                     </button>
                     <span className="px-2 py-1.5 font-semibold bg-gray-50 rounded text-primary-700">
@@ -400,7 +569,6 @@ function Slides() {
       {/* --- Footer: Progress & Actions --- */}
       {slides && slides.length > 0 && (
         <div className="flex-none p-4 border-t border-gray-100 bg-white space-y-3 z-10 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.02)]">
-
           {/* Next Chapter Button (Compact) */}
           {nextChapter && (
             <button
@@ -434,7 +602,12 @@ function Slides() {
             <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
               <div
                 className="h-full bg-primary-500 rounded-full transition-all duration-500 ease-out relative"
-                style={{ width: `${Math.min(calculateOverallCompletion(slides), 100)}%` }}
+                style={{
+                  width: `${Math.min(
+                    calculateOverallCompletion(slides),
+                    100
+                  )}%`,
+                }}
               >
                 <div className="absolute inset-0 bg-white/20 animate-pulse-slow py-0.5" />
               </div>
@@ -464,9 +637,10 @@ function Slides() {
               className={`
                 w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold
                 transition-all duration-200 border border-transparent
-                ${activeItem?.id === "feedback-slide"
-                  ? "bg-primary-50 text-primary-700 border-primary-200"
-                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:border-gray-200"
+                ${
+                  activeItem?.id === "feedback-slide"
+                    ? "bg-primary-50 text-primary-700 border-primary-200"
+                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:border-gray-200"
                 }
               `}
             >
@@ -499,8 +673,9 @@ function Slides() {
                 onClick={
                   homeIconClickRoute ? handleInstituteLogoClick : undefined
                 }
-                className={`max-w-full max-h-full object-contain${homeIconClickRoute ? " cursor-pointer" : ""
-                  }`}
+                className={`max-w-full max-h-full object-contain${
+                  homeIconClickRoute ? " cursor-pointer" : ""
+                }`}
                 style={{
                   width: "auto",
                   height: "auto",
@@ -567,27 +742,27 @@ function Slides() {
               <h1 className="text-sm font-bold text-gray-900 truncate">
                 {subjectName && moduleName && chapterName
                   ? `${truncateString(
-                    toTitleCase(subjectName),
-                    window.innerWidth < 768
-                      ? 8
-                      : window.innerWidth < 1024
+                      toTitleCase(subjectName),
+                      window.innerWidth < 768
+                        ? 8
+                        : window.innerWidth < 1024
                         ? 12
                         : 18
-                  )} • ${truncateString(
-                    toTitleCase(moduleName),
-                    window.innerWidth < 768
-                      ? 8
-                      : window.innerWidth < 1024
+                    )} • ${truncateString(
+                      toTitleCase(moduleName),
+                      window.innerWidth < 768
+                        ? 8
+                        : window.innerWidth < 1024
                         ? 12
                         : 18
-                  )} • ${truncateString(
-                    toTitleCase(chapterName),
-                    window.innerWidth < 768
-                      ? 10
-                      : window.innerWidth < 1024
+                    )} • ${truncateString(
+                      toTitleCase(chapterName),
+                      window.innerWidth < 768
+                        ? 10
+                        : window.innerWidth < 1024
                         ? 15
                         : 25
-                  )}`
+                    )}`
                   : "Course Details"}
               </h1>
             </div>

@@ -20,13 +20,15 @@ import { Preferences } from "@capacitor/preferences";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import type { StudentAllCoursesTabId } from "@/types/student-display-settings";
 import { useDripConditionStore } from "@/stores/study-library/drip-conditions-store";
+import { parseDripConditions } from "@/services/getIsDrippingEnable";
 
 const CourseCatalougePage: React.FC = () => {
   const [allowLeanersToCreateCourses, setAllowLeanersToCreateCourses] =
     useState<boolean>(false);
 
   const { setInstituteData, setInstructors } = useCatalogStore();
-  const { setDripCondition, clearDripCondition } = useDripConditionStore();
+  const { setDripCondition, clearDripCondition, setIsDrippingEnable } =
+    useDripConditionStore();
   const [selectedTab, setSelectedTab] = useState("PROGRESS");
   const [visibleTabs, setVisibleTabs] = useState<
     { value: "ALL" | "PROGRESS" | "COMPLETED"; label?: string }[]
@@ -181,21 +183,11 @@ const CourseCatalougePage: React.FC = () => {
             if (course.id && course.drip_condition_json) {
               // Clear old condition first to ensure fresh data
               clearDripCondition(course.id);
-              console.log("settings ->", course.drip_condition_json);
               setDripCondition(course.id, course.drip_condition_json);
             } else if (course.id && !course.drip_condition_json) {
               // Clear drip condition if not present in API response
               clearDripCondition(course.id);
             }
-          });
-        }
-
-        if (import.meta.env.DEV) {
-          console.debug("[Catalog] fetch success", {
-            tabType,
-            content: data.content.length,
-            totalPages: data.totalPages,
-            number: data.number,
           });
         }
       } catch {
@@ -412,10 +404,16 @@ const CourseCatalougePage: React.FC = () => {
         settingsJsonData.setting.COURSE_SETTING.data.permissions
           .allowLearnersToCreateCourses
       );
+
+      // Enable/disable drip conditions based on institute settings
+      const { isDrippingEnable } = parseDripConditions(
+        parsedInstituteDetails.institute_settings_json
+      );
+      setIsDrippingEnable(isDrippingEnable);
     };
 
     fetchInstituteDetails();
-  }, []);
+  }, [setIsDrippingEnable]);
 
   return (
     <div className="min-h-screen">

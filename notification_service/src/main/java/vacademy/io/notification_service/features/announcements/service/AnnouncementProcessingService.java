@@ -2,6 +2,7 @@ package vacademy.io.notification_service.features.announcements.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.notification_service.features.announcements.entity.Announcement;
@@ -12,6 +13,7 @@ import vacademy.io.notification_service.features.announcements.enums.ModeType;
 import vacademy.io.notification_service.features.announcements.repository.*;
 import vacademy.io.notification_service.features.announcements.enums.EventType;
 import vacademy.io.notification_service.features.announcements.dto.AnnouncementEvent;
+import vacademy.io.notification_service.features.announcements.event.AnnouncementDeliveryEvent;
 
 import java.util.ArrayList;
 
@@ -27,8 +29,8 @@ public class AnnouncementProcessingService {
     private final RecipientMessageRepository recipientMessageRepository;
     private final AnnouncementMediumRepository announcementMediumRepository;
     private final RecipientResolutionService recipientResolutionService;
-    private final AnnouncementDeliveryService deliveryService;
     private final AnnouncementEventService eventService;
+    private final ApplicationEventPublisher eventPublisher;
     
     // Mode-specific repositories for checking configured modes
     private final AnnouncementSystemAlertRepository systemAlertRepository;
@@ -77,8 +79,8 @@ public class AnnouncementProcessingService {
             // 2. Create recipient messages for each mode
             createRecipientMessages(announcement, userIds);
             
-            // 3. Deliver via configured mediums
-            deliveryService.deliverAnnouncement(announcementId);
+            // 3. Publish event to trigger async delivery AFTER transaction commits
+            eventPublisher.publishEvent(new AnnouncementDeliveryEvent(this, announcementId));
 
             // 3b. Emit SSE for new announcement to recipients
             try {

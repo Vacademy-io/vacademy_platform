@@ -26,7 +26,7 @@ public class CombotNodeHandler implements NodeHandler {
     private final SpelEvaluator spelEvaluator;
     private final RestTemplate restTemplate = new RestTemplate();
 
-    @Value("${notification.service.url:http://localhost:8076}")
+    @Value("${notification.server.baseurl:http://localhost:8076}")
     private String notificationServiceUrl;
 
     @Override

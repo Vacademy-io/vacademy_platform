@@ -220,23 +220,20 @@ export function UsernameLogin({
                             }) => (
                                 <FormItem>
                                     <FormControl>
-                                        <div className="relative">
+                                        <div className="flex flex-col gap-1">
+                                            <Label className="text-subtitle font-regular">
+                                                Username<span className="text-danger-600">*</span>
+                                            </Label>
                                             <MyInput
-                                                inputType="text"
-                                                inputPlaceholder="Enter your username"
-                                                input={value}
-                                                onChangeFunction={onChange}
-                                                error={
-                                                    form.formState.errors
-                                                        .username?.message
-                                                }
-                                                required
-                                                size="large"
-                                                label="Username"
-                                                {...field}
-                                                className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
+                                            inputType="text"
+                                            inputPlaceholder="Enter your username"
+                                            input={value}
+                                            onChangeFunction={onChange}
+                                            error={form.formState.errors.username?.message}
+                                            size="large"
+                                            {...field}
+                                            className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
                                             />
-                                            <User className="absolute right-3 bottom-3 w-4 h-4 text-gray-400" />
                                         </div>
                                     </FormControl>
                                 </FormItem>

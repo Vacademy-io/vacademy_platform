@@ -222,18 +222,29 @@ export function UsernameLogin({
                                     <FormControl>
                                         <div className="flex flex-col gap-1">
                                             <Label className="text-subtitle font-regular">
-                                                Username<span className="text-danger-600">*</span>
+                                                Username
+                                                <span className="text-subtitle text-danger-600">*</span>
                                             </Label>
-                                            <MyInput
-                                            inputType="text"
-                                            inputPlaceholder="Enter your username"
-                                            input={value}
-                                            onChangeFunction={onChange}
-                                            error={form.formState.errors.username?.message}
-                                            size="large"
-                                            {...field}
-                                            className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
-                                            />
+
+                                            <div className="relative">
+                                                <Input
+                                                    type="text"
+                                                    placeholder="Enter your username"
+                                                    value={value}
+                                                    onChange={onChange}
+                                                    required
+                                                    {...field}
+                                                    className="h-10 py-2 px-3 text-subtitle w-full border-gray-200
+                                                        focus:border-gray-300 focus:ring-0 focus-visible:ring-0
+                                                        rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white
+                                                        font-normal pr-10 text-neutral-600 shadow-none
+                                                        placeholder:text-body placeholder:font-regular
+                                                        hover:border-primary-200 focus:border-primary-500"
+                                                />
+
+                                                {/* User icon */}
+                                                <User className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                            </div>
                                         </div>
                                     </FormControl>
                                 </FormItem>

@@ -478,7 +478,11 @@ public class SubOrgLearnerService {
         List<UserDTO>userDTOS = authService.getUsersFromAuthServiceByUserIds(userIds);
         UserDTO admin =  authService.getUsersFromAuthServiceByUserIds(List.of(userDetails.getUserId())).get(0);
         for(UserDTO userDTO:userDTOS){
-            triggerEnrollmentWorkflow(instituteId,userDTO,packageSessionId,admin);
+            Map<String, Object> contextData = new HashMap<>();
+            contextData.put("user", userDTO);
+            contextData.put("packageSessionIds", packageSessionId);
+            contextData.put("admin",admin);
+            workflowTriggerService.handleTriggerEvents(WorkflowTriggerEvent.SUB_ORG_MEMBER_TERMINATION.name(),packageSessionId,instituteId,contextData);
         }
     }
 
@@ -489,5 +493,32 @@ public class SubOrgLearnerService {
         contextData.put("packageSessionIds", packageSessionId);
         contextData.put("admin",adminDTO);
         workflowTriggerService.handleTriggerEvents(WorkflowTriggerEvent.SUB_ORG_MEMBER_ENROLLMENT.name(),packageSessionId,instituteId,contextData);
+    }
+
+    @Transactional(readOnly = true)
+    public SubOrgAdminsResponseDTO getSubOrgAdmins(String userId, String packageSessionId, String subOrgId) {
+        log.info("Fetching admins for packageSessionId: {}, subOrgId: {}", packageSessionId, subOrgId);
+
+        // Query the database for admins
+        List<Object[]> adminResults = mappingRepository.findAdminsByPackageSessionAndSubOrg(packageSessionId, subOrgId, userId);
+
+        // Map results to DTOs
+        List<AdminDetailsDTO> admins = adminResults.stream()
+                .map(result -> AdminDetailsDTO.builder()
+                        .userId((String) result[0])
+                        .name((String) result[1])
+                        .role(SubOrgRoles.ADMIN.name())
+                        .build())
+                .collect(Collectors.toList());
+
+        log.info("Found {} admins for packageSessionId: {}, subOrgId: {}", admins.size(), packageSessionId, subOrgId);
+
+        return SubOrgAdminsResponseDTO.builder()
+                .userId(userId)
+                .packageSessionId(packageSessionId)
+                .subOrgId(subOrgId)
+                .admins(admins)
+                .totalAdmins(admins.size())
+                .build();
     }
 }

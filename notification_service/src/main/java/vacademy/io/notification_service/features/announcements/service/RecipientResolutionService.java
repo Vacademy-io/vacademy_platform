@@ -15,6 +15,10 @@ import vacademy.io.notification_service.features.announcements.service.resolver.
 
 import java.util.*;
 import java.util.stream.Collectors;
+import vacademy.io.notification_service.features.announcements.dto.CentralizedRecipientResolutionRequest;
+import vacademy.io.notification_service.features.announcements.dto.PaginatedUserIdResponse;
+import vacademy.io.notification_service.features.announcements.dto.CreateAnnouncementRequest;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
 @RequiredArgsConstructor
@@ -26,14 +30,72 @@ public class RecipientResolutionService {
     private final AnnouncementRepository announcementRepository;
     private final RecipientResolverRegistry resolverRegistry;
     private final CustomFieldFilterRecipientResolver customFieldFilterResolver;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * Resolves announcement recipients (roles, users, package_sessions, tags) to actual user IDs
      * Ensures deduplication and handles exclusions (identified by "EXCLUDE:" prefix in recipientId)
+     * Uses centralized API for better performance and scalability
      */
     public List<String> resolveRecipientsToUsers(String announcementId) {
         log.info("Resolving recipients for announcement: {}", announcementId);
-        
+
+        try {
+            // Try to use centralized resolution first
+            return resolveRecipientsToUsersCentralized(announcementId);
+        } catch (Exception e) {
+            log.warn("Centralized recipient resolution failed for announcement {}, falling back to legacy method", announcementId, e);
+            // Fallback to legacy method
+            return resolveRecipientsToUsersLegacy(announcementId);
+        }
+    }
+
+    /**
+     * New centralized resolution method - uses admin-core-service centralized API
+     */
+    private List<String> resolveRecipientsToUsersCentralized(String announcementId) {
+        log.debug("Using centralized recipient resolution for announcement: {}", announcementId);
+
+        // Fetch announcement to get institute ID
+        Announcement announcement = announcementRepository.findById(announcementId)
+            .orElseThrow(() -> new RuntimeException("Announcement not found: " + announcementId));
+
+        // Fetch all recipients
+        List<AnnouncementRecipient> allRecipients = recipientRepository.findByAnnouncementId(announcementId);
+
+        // Build centralized request
+        CentralizedRecipientResolutionRequest request = buildCentralizedRequest(announcement, allRecipients);
+
+        // Call centralized API with pagination to get all users
+        List<String> allUserIds = new ArrayList<>();
+        int pageSize = 1000; // Match the default page size
+
+        while (true) {
+            request.setPageNumber(allUserIds.size() / pageSize);
+            request.setPageSize(pageSize);
+
+            PaginatedUserIdResponse response = adminCoreServiceClient.resolveRecipientsCentralized(request);
+
+            if (response.getUserIds() != null) {
+                allUserIds.addAll(response.getUserIds());
+            }
+
+            // Check if we have all pages
+            if (!response.isHasNext() || response.getUserIds() == null || response.getUserIds().size() < pageSize) {
+                break;
+            }
+        }
+
+        log.info("Centralized resolution completed for announcement {}: {} unique users", announcementId, allUserIds.size());
+        return allUserIds;
+    }
+
+    /**
+     * Legacy resolution method - kept as fallback
+     */
+    private List<String> resolveRecipientsToUsersLegacy(String announcementId) {
+        log.debug("Using legacy recipient resolution for announcement: {}", announcementId);
+
         // Fetch all recipients and separate inclusions from exclusions based on prefix
         List<AnnouncementRecipient> allRecipients = recipientRepository.findByAnnouncementId(announcementId);
         List<AnnouncementRecipient> recipients = allRecipients.stream()
@@ -42,41 +104,194 @@ public class RecipientResolutionService {
         List<AnnouncementRecipient> exclusions = allRecipients.stream()
                 .filter(AnnouncementRecipient::isExclusion)
                 .toList();
-        
+
         Announcement announcement = null;
         String announcementInstituteId = null;
         try {
             announcement = announcementRepository.findById(announcementId)
-                    .orElse(null);
+                .orElse(null);
             if (announcement != null) {
                 announcementInstituteId = announcement.getInstituteId();
             }
         } catch (Exception e) {
             log.warn("Failed to fetch announcement {} while resolving recipients", announcementId, e);
         }
-        
+
         // Step 1: Resolve all included recipients
         Set<String> includedUserIds = resolveRecipientList(recipients, announcementInstituteId, "inclusions");
         log.info("Resolved {} inclusion recipients to {} unique users", recipients.size(), includedUserIds.size());
-        
+
         // Step 2: Resolve all excluded recipients
         Set<String> excludedUserIds = new HashSet<>();
         if (!exclusions.isEmpty()) {
             excludedUserIds = resolveRecipientList(exclusions, announcementInstituteId, "exclusions");
             log.info("Resolved {} exclusion recipients to {} unique users", exclusions.size(), excludedUserIds.size());
-            
+
             // Step 3: Remove excluded users from included users
             int beforeExclusion = includedUserIds.size();
             includedUserIds.removeAll(excludedUserIds);
             int afterExclusion = includedUserIds.size();
-            log.info("Applied exclusions: {} users removed, {} users remaining", 
+            log.info("Applied exclusions: {} users removed, {} users remaining",
                     (beforeExclusion - afterExclusion), afterExclusion);
         }
-        
+
         List<String> finalUserList = new ArrayList<>(includedUserIds);
         log.info("Final resolved recipients for announcement {}: {} unique users", announcementId, finalUserList.size());
-        
+
         return finalUserList;
+    }
+
+    /**
+     * Build centralized request from announcement recipients
+     * Now supports custom field filters and exclusions per recipient
+     * Pre-resolves USER recipients (handles both user IDs and emails)
+     */
+    private CentralizedRecipientResolutionRequest buildCentralizedRequest(Announcement announcement, List<AnnouncementRecipient> allRecipients) {
+        CentralizedRecipientResolutionRequest request = new CentralizedRecipientResolutionRequest();
+        request.setInstituteId(announcement.getInstituteId());
+        request.setPageNumber(0);
+        request.setPageSize(1000);
+
+        // Group recipients by their logical grouping - each recipient can now have custom field filters and exclusions
+        List<CentralizedRecipientResolutionRequest.RecipientWithExclusions> recipientsWithExclusions = new ArrayList<>();
+
+        // For now, we'll treat each announcement recipient as a separate centralized recipient
+        // In the future, this could be optimized to group related recipients
+        for (AnnouncementRecipient recipient : allRecipients) {
+            if (!recipient.isExclusion()) {
+                // This is an inclusion recipient
+                CentralizedRecipientResolutionRequest.RecipientWithExclusions recipientWithExclusions =
+                    new CentralizedRecipientResolutionRequest.RecipientWithExclusions();
+
+                recipientWithExclusions.setRecipientType(recipient.getRecipientType().name());
+                String actualRecipientId = recipient.getActualRecipientId();
+
+                // Pre-resolve USER recipients (handles both user IDs and emails)
+                if ("USER".equals(recipient.getRecipientType().name())) {
+                    // Use the resolver to handle email -> user ID conversion
+                    Optional<RecipientResolver> userResolverOpt = resolverRegistry.getResolver("USER");
+                    if (userResolverOpt.isPresent()) {
+                        try {
+                            Set<String> resolvedUserIds = userResolverOpt.get().resolve(actualRecipientId, announcement.getInstituteId());
+                            if (!resolvedUserIds.isEmpty()) {
+                                // For USER type, we need to create separate recipients for each resolved user ID
+                                for (String resolvedUserId : resolvedUserIds) {
+                                    CentralizedRecipientResolutionRequest.RecipientWithExclusions userRecipient =
+                                        new CentralizedRecipientResolutionRequest.RecipientWithExclusions();
+                                    userRecipient.setRecipientType("USER");
+                                    userRecipient.setRecipientId(resolvedUserId);
+                                    // USER recipients don't support exclusions in the centralized system
+                                    recipientsWithExclusions.add(userRecipient);
+                                }
+                                continue; // Skip adding the original recipient
+                            }
+                        } catch (Exception e) {
+                            log.error("Error pre-resolving USER recipient {}: {}", actualRecipientId, e);
+                            // Fall back to original ID
+                        }
+                    }
+                }
+
+                recipientWithExclusions.setRecipientId(actualRecipientId);
+
+                // TODO: Add custom field filters from announcement payload (when available)
+                // For now, we'll handle basic recipient types without custom field filters
+                // recipientWithExclusions.setCustomFieldFilters(...);
+
+                // Check if exclusions are stored as JSON in recipientName
+                if (recipient.getRecipientName() != null && !recipient.getRecipientName().isEmpty()) {
+                    log.debug("Checking recipientName for exclusions: '{}' for recipient: {}", recipient.getRecipientName(), actualRecipientId);
+                    try {
+                        // Try to deserialize exclusions from JSON
+                        List<CreateAnnouncementRequest.RecipientRequest.Exclusion> storedExclusions =
+                            objectMapper.readValue(recipient.getRecipientName(),
+                                objectMapper.getTypeFactory().constructCollectionType(List.class,
+                                    CreateAnnouncementRequest.RecipientRequest.Exclusion.class));
+
+                        if (!storedExclusions.isEmpty()) {
+                            List<CentralizedRecipientResolutionRequest.RecipientWithExclusions.Exclusion> exclusions = new ArrayList<>();
+
+                            for (CreateAnnouncementRequest.RecipientRequest.Exclusion excl : storedExclusions) {
+                                // Pre-resolve USER exclusions (convert emails to user IDs)
+                                String exclusionId = excl.getExclusionId();
+                                boolean skipExclusion = false;
+
+                                if ("USER".equals(excl.getExclusionType()) && exclusionId.contains("@")) {
+                                    try {
+                                        // Use the same resolver to convert email to user ID
+                                        Optional<RecipientResolver> userResolverOpt = resolverRegistry.getResolver("USER");
+                                        if (userResolverOpt.isPresent()) {
+                                            Set<String> resolvedUserIds = userResolverOpt.get().resolve(exclusionId, announcement.getInstituteId());
+                                            if (!resolvedUserIds.isEmpty()) {
+                                                exclusionId = resolvedUserIds.iterator().next(); // Take first resolved user ID
+                                                log.debug("Pre-resolved USER exclusion email {} to user ID: {}", excl.getExclusionId(), exclusionId);
+                                            } else {
+                                                log.warn("Could not resolve USER exclusion email {} to user ID, skipping exclusion", excl.getExclusionId());
+                                                skipExclusion = true;
+                                            }
+                                        }
+                                    } catch (Exception e) {
+                                        log.error("Error pre-resolving USER exclusion {}: {}", exclusionId, e);
+                                        skipExclusion = true;
+                                    }
+                                }
+
+                                if (!skipExclusion) {
+                                    CentralizedRecipientResolutionRequest.RecipientWithExclusions.Exclusion centralizedExcl =
+                                        new CentralizedRecipientResolutionRequest.RecipientWithExclusions.Exclusion();
+                                    centralizedExcl.setExclusionType(excl.getExclusionType());
+                                    centralizedExcl.setExclusionId(exclusionId);
+                                    log.debug("Added exclusion: type={}, id={}", excl.getExclusionType(), exclusionId);
+
+                                    // Convert custom field filters if present
+                                    if (excl.getCustomFieldFilters() != null && !excl.getCustomFieldFilters().isEmpty()) {
+                                        List<CentralizedRecipientResolutionRequest.RecipientWithExclusions.CustomFieldFilter> cffList =
+                                            excl.getCustomFieldFilters().stream()
+                                                .map(cff -> {
+                                                    CentralizedRecipientResolutionRequest.RecipientWithExclusions.CustomFieldFilter centralizedCff =
+                                                        new CentralizedRecipientResolutionRequest.RecipientWithExclusions.CustomFieldFilter();
+                                                    // centralizedCff.setCustomFieldId(cff.getCustomFieldId()); // Temporarily commented until admin-core restart
+                                                    centralizedCff.setFieldName(cff.getFieldName());
+                                                    centralizedCff.setFieldValue(cff.getFieldValue());
+                                                    centralizedCff.setOperator(cff.getOperator());
+                                                    return centralizedCff;
+                                                })
+                                                .toList();
+                                        centralizedExcl.setCustomFieldFilters(cffList);
+                                    }
+
+                                    exclusions.add(centralizedExcl);
+                                }
+                            }
+
+                            recipientWithExclusions.setExclusions(exclusions);
+                            log.info("SUCCESS: Deserialized {} exclusions from JSON for recipient: {} (sending to admin-core)", exclusions.size(), actualRecipientId);
+                        } else {
+                            log.debug("Parsed JSON but found no exclusions for recipient: {}", actualRecipientId);
+                        }
+                    } catch (Exception e) {
+                        // Not JSON exclusions, this is just a regular recipient name - no exclusions
+                        log.debug("Recipient name '{}' is not JSON exclusions, no exclusions applied for recipient: {} (error: {})", recipient.getRecipientName(), actualRecipientId, e.getMessage());
+                    }
+                } else {
+                    log.debug("No recipientName found for recipient: {}", actualRecipientId);
+                }
+
+                recipientsWithExclusions.add(recipientWithExclusions);
+            }
+        }
+
+        // If no inclusions found, add a default empty recipient to avoid empty list
+        if (recipientsWithExclusions.isEmpty()) {
+            CentralizedRecipientResolutionRequest.RecipientWithExclusions emptyRecipient =
+                new CentralizedRecipientResolutionRequest.RecipientWithExclusions();
+            emptyRecipient.setRecipientType("USER");
+            emptyRecipient.setRecipientId("nonexistent");
+            recipientsWithExclusions.add(emptyRecipient);
+        }
+
+        request.setRecipients(recipientsWithExclusions);
+        return request;
     }
     
     /**

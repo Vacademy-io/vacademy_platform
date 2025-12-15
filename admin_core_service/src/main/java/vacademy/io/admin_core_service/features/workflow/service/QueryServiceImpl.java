@@ -3,11 +3,6 @@ package vacademy.io.admin_core_service.features.workflow.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
-import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
-import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
-import vacademy.io.admin_core_service.features.common.entity.CustomFields;
-import vacademy.io.admin_core_service.features.common.repository.CustomFieldRepository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
@@ -20,16 +15,12 @@ import vacademy.io.admin_core_service.features.live_session.entity.SessionSchedu
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSessionParticipants;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
-
-import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 
 import java.sql.Timestamp;
 import java.sql.Time;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -41,6 +32,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
     private final SessionScheduleRepository sessionScheduleRepository;
     private final LiveSessionParticipantRepository liveSessionParticipantRepository;
     private final LiveSessionRepository liveSessionRepository;
+    private final InstituteSettingService instituteSettingService;
     private final AudienceResponseRepository audienceResponseRepository;
     private final CustomFieldRepository customFieldRepository;
 
@@ -63,6 +55,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return createLiveSession(params);
             case "checkStudentIsPresentInPackageSession":
                 return isAlreadyPresentInGivenPackageSession(params);
+            case "fetchInstituteSetting":
+                return fetchInstituteSetting(params);
             case "getAudienceResponsesByDayDifference":
                 return getAudienceResponsesByDayDifference(params);
             default:
@@ -736,6 +730,27 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
         // --- END CUSTOM FIELD FETCHING LOGIC ---
 
         return Map.of("leads", leads);
+    }
+
+    private Map<String, Object> fetchInstituteSetting(Map<String, Object> params) {
+        try {
+            String instituteId = (String) params.get("instituteId");
+            String settingKey = (String) params.get("settingKey");
+
+            if (instituteId == null || settingKey == null) {
+                return Map.of("error", "Missing instituteId or settingKey");
+            }
+
+            // Fetch data using your existing service
+            Object settingData = instituteSettingService.getSettingByInstituteIdAndKey(instituteId, settingKey);
+
+            // Wrap in a map key so it's accessible as #ctx['lmsSettings']
+            return Map.of("lmsConfig", settingData);
+
+        } catch (Exception e) {
+            log.error("Error executing fetchInstituteSetting", e);
+            return Map.of("error", e.getMessage());
+        }
     }
 }
 

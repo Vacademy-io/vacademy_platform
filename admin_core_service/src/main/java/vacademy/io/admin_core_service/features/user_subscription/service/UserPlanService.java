@@ -3,6 +3,8 @@ package vacademy.io.admin_core_service.features.user_subscription.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -15,12 +17,11 @@ import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.service.PackageSessionEnrollInviteToPaymentOptionService;
+import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption; // Added
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerBatchEnrollService;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationEventType;
 import vacademy.io.admin_core_service.features.notification.service.DynamicNotificationService;
-import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogDTO;
-import vacademy.io.admin_core_service.features.user_subscription.dto.UserPlanDTO;
-import vacademy.io.admin_core_service.features.user_subscription.dto.UserPlanFilterDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.*;
 import vacademy.io.admin_core_service.features.user_subscription.entity.*;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanSourceEnum;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
@@ -28,9 +29,12 @@ import vacademy.io.admin_core_service.features.user_subscription.repository.Paym
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.core.standard_classes.ListService;
+import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 
-import java.util.List;
+import java.sql.Timestamp;
+import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.Locale;
 
@@ -51,12 +55,14 @@ public class UserPlanService {
 
     @Autowired
     private PaymentLogRepository paymentLogRepository;
-
     @Autowired
     private DynamicNotificationService dynamicNotificationService;
 
     @Autowired
     private AuthService authService;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.institute.repository.InstituteRepository instituteRepository;
 
     public UserPlan createUserPlan(String userId,
             PaymentPlan paymentPlan,
@@ -66,7 +72,7 @@ public class UserPlanService {
             PaymentInitiationRequestDTO paymentInitiationRequestDTO,
             String status) {
         return createUserPlan(userId, paymentPlan, appliedCouponDiscount, enrollInvite,
-                paymentOption, paymentInitiationRequestDTO, status, null, null);
+                paymentOption, paymentInitiationRequestDTO, status, null, null, null);
     }
 
     public UserPlan createUserPlan(String userId,
@@ -77,30 +83,85 @@ public class UserPlanService {
             PaymentInitiationRequestDTO paymentInitiationRequestDTO,
             String status,
             String source,
-            String subOrgId) {
+            String subOrgId,
+            Date startDate) {
         logger.info("Creating UserPlan for userId={}, status={}, source={}, subOrgId={}",
                 userId, status, source, subOrgId);
 
+        // Validate userId is always provided - critical for data integrity
+        if (!StringUtils.hasText(userId)) {
+            throw new IllegalArgumentException("UserId is required for creating UserPlan. Cannot be null or empty.");
+        }
+
         UserPlan userPlan = new UserPlan();
         userPlan.setStatus(status);
+
+        // ALWAYS set userId - this is preserved for both USER and SUB_ORG sources
+        // For SUB_ORG: userId represents the individual learner in the sub-organization
+        // For USER: userId represents the individual user themselves
         userPlan.setUserId(userId);
+        logger.debug("UserPlan userId set to: {}", userId);
 
         // Set source and sub_org_id if provided
         if (source != null) {
             userPlan.setSource(source);
+            logger.debug("UserPlan source set to: {}", source);
         } else {
             // Default to USER if not specified
             userPlan.setSource(UserPlanSourceEnum.USER.name());
+            logger.debug("UserPlan source defaulted to: USER");
         }
 
+        // For SUB_ORG source, subOrgId must be provided
         if (subOrgId != null) {
             userPlan.setSubOrgId(subOrgId);
-        }
+            logger.debug("UserPlan subOrgId set to: {}", subOrgId);
 
+            // Additional validation: if source is SUB_ORG, subOrgId should be present
+            if (UserPlanSourceEnum.SUB_ORG.name().equals(userPlan.getSource())) {
+                logger.info("Creating SUB_ORG UserPlan: userId={}, subOrgId={} - Both IDs preserved for data integrity",
+                        userId, subOrgId);
+            }
+        } else if (source != null && UserPlanSourceEnum.SUB_ORG.name().equals(source)) {
+            // Warning: SUB_ORG source without subOrgId
+            logger.warn("Creating SUB_ORG UserPlan without subOrgId for userId={} - This may indicate a data issue",
+                    userId);
+        }
         setPaymentPlan(userPlan, paymentPlan);
         setAppliedCouponDiscount(userPlan, appliedCouponDiscount);
         setEnrollInvite(userPlan, enrollInvite);
         setPaymentOption(userPlan, paymentOption);
+
+        // --- Logic to calculate and set Start and End Dates ---
+        // --- Date Logic with Timestamp ---
+        // Validate startDate is not in the future
+        Date effectiveStartDate = startDate;
+        if (effectiveStartDate != null) {
+            Date currentDate = new Date();
+            if (effectiveStartDate.after(currentDate)) {
+                throw new IllegalArgumentException("Start date cannot be in the future");
+            }
+        } else {
+            // Default to current date if startDate not provided
+            effectiveStartDate = new Date();
+        }
+
+        long startTimeMillis = effectiveStartDate.getTime();
+        userPlan.setStartDate(new Timestamp(startTimeMillis));
+
+        Integer validityDays = null;
+        if (paymentPlan != null && paymentPlan.getValidityInDays() != null) {
+            validityDays = paymentPlan.getValidityInDays();
+        } else if (enrollInvite != null && enrollInvite.getLearnerAccessDays() != null) {
+            validityDays = enrollInvite.getLearnerAccessDays();
+        }
+
+        if (validityDays != null) {
+            // Add days to milliseconds: days * 24 * 60 * 60 * 1000
+            long validityMillis = validityDays * 24L * 60L * 60L * 1000L;
+            userPlan.setEndDate(new Timestamp(startTimeMillis + validityMillis));
+        }
+        // -----------------------------------------------------
 
         String paymentJson = JsonUtil.toJson(paymentInitiationRequestDTO);
         userPlan.setJsonPaymentDetails(paymentJson);
@@ -218,6 +279,7 @@ public class UserPlanService {
         }
     }
 
+    @Cacheable(value = "userPlanWithPaymentLogs", key = "#userPlanId")
     public UserPlanDTO getUserPlanWithPaymentLogs(String userPlanId) {
         logger.info("Getting UserPlan with payment logs for ID: {}", userPlanId);
 
@@ -235,6 +297,7 @@ public class UserPlanService {
         return userPlanDTO;
     }
 
+    @Cacheable(value = "userPlanById", key = "#userPlanId")
     public UserPlan findById(String userPlanId) {
         logger.info("Finding UserPlan by ID: {}", userPlanId);
         return userPlanRepository.findById(userPlanId)
@@ -254,32 +317,7 @@ public class UserPlanService {
         return paymentLogDTOs;
     }
 
-    private UserPlanDTO mapToDTO(UserPlan userPlan) {
-        return UserPlanDTO.builder()
-                .id(userPlan.getId())
-                .userId(userPlan.getUserId())
-                .paymentPlanId(userPlan.getPaymentPlanId())
-                .planJson(userPlan.getPlanJson())
-                .appliedCouponDiscountId(userPlan.getAppliedCouponDiscountId())
-                .appliedCouponDiscountJson(userPlan.getAppliedCouponDiscountJson())
-                .enrollInviteId(userPlan.getEnrollInviteId())
-                .paymentOptionId(userPlan.getPaymentOptionId())
-                .paymentOptionJson(userPlan.getPaymentOptionJson())
-                .status(userPlan.getStatus())
-                .createdAt(userPlan.getCreatedAt())
-                .updatedAt(userPlan.getUpdatedAt())
-                .enrollInvite(userPlan.getEnrollInvite().toEnrollInviteDTO())
-                .paymentPlanDTO(
-                        (userPlan.getPaymentPlan() != null ? userPlan.getPaymentPlan().mapToPaymentPlanDTO() : null))
-                .paymentOption(
-                        (userPlan.getPaymentOption() != null ? userPlan.getPaymentOption().mapToPaymentOptionDTO()
-                                : null))
-                .paymentLogs((userPlan.getPaymentLogs() != null
-                        ? userPlan.getPaymentLogs().stream().map(PaymentLog::mapToDTO).collect(Collectors.toList())
-                        : List.of()))
-                .build();
-    }
-
+    @Cacheable(value = "userPlansByUser", key = "#userPlanFilterDTO.userId + ':' + #userPlanFilterDTO.instituteId + ':' + #pageNo + ':' + #pageSize + ':' + #userPlanFilterDTO.statuses + ':' + #userPlanFilterDTO.sortColumns")
     public Page<UserPlanDTO> getUserPlansByUserIdAndInstituteId(int pageNo, int pageSize,
             UserPlanFilterDTO userPlanFilterDTO) {
         logger.info("Getting paginated UserPlans for userId={}, instituteId={}", userPlanFilterDTO.getUserId(),
@@ -293,12 +331,181 @@ public class UserPlanService {
         Page<UserPlan> userPlansPage = userPlanRepository.findByUserIdAndInstituteIdWithFilters(
                 userPlanFilterDTO.getUserId(), userPlanFilterDTO.getInstituteId(), status, pageable);
 
-        return userPlansPage.map(userPlan -> {
-            UserPlanDTO userPlanDTO = mapToDTO(userPlan);
-            return userPlanDTO;
-        });
+        // Bulk fetch Institutes for all SUB_ORG plans
+        List<UserPlan> userPlans = userPlansPage.getContent();
+        Map<String, Institute> instituteMap = fetchInstitutes(userPlans);
+
+        return userPlansPage.map(userPlan -> mapToDTO(userPlan, instituteMap));
     }
 
+    /**
+     * Fetch all Institutes in bulk for UserPlans with SUB_ORG source.
+     * This prevents N+1 query problem.
+     */
+    private Map<String, Institute> fetchInstitutes(List<UserPlan> userPlans) {
+        Set<String> subOrgIds = userPlans.stream()
+                .filter(up -> UserPlanSourceEnum.SUB_ORG.name().equals(up.getSource()))
+                .map(UserPlan::getSubOrgId)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toSet());
+
+        if (subOrgIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        logger.debug("Fetching {} institutes in bulk for subOrgIds: {}", subOrgIds.size(), subOrgIds);
+
+        // findAllById returns Iterable, convert it to List
+        Iterable<Institute> iterableInstitutes = instituteRepository.findAllById(subOrgIds);
+        List<Institute> institutes = new ArrayList<>();
+        iterableInstitutes.forEach(institutes::add);
+
+        return institutes.stream()
+                .collect(Collectors.toMap(
+                        Institute::getId,
+                        i -> i,
+                        (existing, replacement) -> existing));
+    }
+
+    /**
+     * Map UserPlan to DTO with Institute details from pre-fetched map.
+     * This version is used for bulk operations to avoid N+1 queries.
+     */
+    private UserPlanDTO mapToDTO(UserPlan userPlan, Map<String, Institute> instituteMap) {
+        // Fetch sub-org details from the pre-fetched map
+        SubOrgDetailsDTO subOrgDetails = null;
+        if (UserPlanSourceEnum.SUB_ORG.name().equals(userPlan.getSource()) &&
+                StringUtils.hasText(userPlan.getSubOrgId())) {
+            Institute institute = instituteMap.get(userPlan.getSubOrgId());
+            if (institute != null) {
+                subOrgDetails = SubOrgDetailsDTO.builder()
+                        .id(institute.getId())
+                        .name(institute.getInstituteName())
+                        .address(institute.getAddress())
+                        .build();
+            } else {
+                logger.warn("Institute not found in map for subOrgId={} in UserPlan ID={}",
+                        userPlan.getSubOrgId(), userPlan.getId());
+            }
+        }
+
+        return buildUserPlanDTO(userPlan, subOrgDetails);
+    }
+
+    /**
+     * Map UserPlan to DTO (individual fetch version).
+     * This version is used for single UserPlan operations.
+     */
+    private UserPlanDTO mapToDTO(UserPlan userPlan) {
+        // Fetch sub-org details if source is SUB_ORG and subOrgId is present
+        SubOrgDetailsDTO subOrgDetails = null;
+        if (UserPlanSourceEnum.SUB_ORG.name().equals(userPlan.getSource()) &&
+                StringUtils.hasText(userPlan.getSubOrgId())) {
+            Optional<Institute> instituteOpt = instituteRepository.findById(userPlan.getSubOrgId());
+            if (instituteOpt.isPresent()) {
+                Institute institute = instituteOpt.get();
+                subOrgDetails = SubOrgDetailsDTO.builder()
+                        .id(institute.getId())
+                        .name(institute.getInstituteName())
+                        .address(institute.getAddress())
+                        .build();
+            } else {
+                logger.warn("Institute not found for subOrgId={} in UserPlan ID={}",
+                        userPlan.getSubOrgId(), userPlan.getId());
+            }
+        }
+
+        return buildUserPlanDTO(userPlan, subOrgDetails);
+    }
+
+    /**
+     * Build UserPlanDTO with all fields.
+     * Common logic extracted to avoid duplication.
+     */
+    private UserPlanDTO buildUserPlanDTO(UserPlan userPlan, SubOrgDetailsDTO subOrgDetails) {
+        return UserPlanDTO.builder()
+                .id(userPlan.getId())
+                .userId(userPlan.getUserId())
+                .paymentPlanId(userPlan.getPaymentPlanId())
+                .planJson(userPlan.getPlanJson())
+                .appliedCouponDiscountId(userPlan.getAppliedCouponDiscountId())
+                .appliedCouponDiscountJson(userPlan.getAppliedCouponDiscountJson())
+                .enrollInviteId(userPlan.getEnrollInviteId())
+                .paymentOptionId(userPlan.getPaymentOptionId())
+                .paymentOptionJson(userPlan.getPaymentOptionJson())
+                .status(userPlan.getStatus())
+                .source(userPlan.getSource())
+                .subOrgDetails(subOrgDetails)
+                .createdAt(userPlan.getCreatedAt())
+                .updatedAt(userPlan.getUpdatedAt())
+                .startDate(userPlan.getStartDate())
+                .endDate(userPlan.getEndDate())
+                .enrollInvite(userPlan.getEnrollInvite().toEnrollInviteDTO())
+                .paymentPlanDTO(
+                        (userPlan.getPaymentPlan() != null ? userPlan.getPaymentPlan().mapToPaymentPlanDTO() : null))
+                .paymentOption(
+                        (userPlan.getPaymentOption() != null ? userPlan.getPaymentOption().mapToPaymentOptionDTO()
+                                : null))
+                .paymentLogs((userPlan.getPaymentLogs() != null
+                        ? userPlan.getPaymentLogs().stream().map(PaymentLog::mapToDTO).collect(Collectors.toList())
+                        : List.of()))
+                .build();
+    }
+
+    /**
+     * Map UserPlan to DTO WITHOUT payment logs (optimized for membership details).
+     * This method avoids loading payment logs for better performance.
+     */
+    private UserPlanDTO mapToDTOWithoutPaymentLogs(UserPlan userPlan) {
+        // Fetch sub-org details if source is SUB_ORG and subOrgId is present
+        SubOrgDetailsDTO subOrgDetails = null;
+        if (UserPlanSourceEnum.SUB_ORG.name().equals(userPlan.getSource()) &&
+                StringUtils.hasText(userPlan.getSubOrgId())) {
+            Optional<Institute> instituteOpt = instituteRepository.findById(userPlan.getSubOrgId());
+            if (instituteOpt.isPresent()) {
+                Institute institute = instituteOpt.get();
+                subOrgDetails = SubOrgDetailsDTO.builder()
+                        .id(institute.getId())
+                        .name(institute.getInstituteName())
+                        .address(institute.getAddress())
+                        .build();
+            } else {
+                logger.warn("Institute not found for subOrgId={} in UserPlan ID={}",
+                        userPlan.getSubOrgId(), userPlan.getId());
+            }
+        }
+
+        // Build DTO without payment logs
+        return UserPlanDTO.builder()
+                .id(userPlan.getId())
+                .userId(userPlan.getUserId())
+                .paymentPlanId(userPlan.getPaymentPlanId())
+                .planJson(userPlan.getPlanJson())
+                .appliedCouponDiscountId(userPlan.getAppliedCouponDiscountId())
+                .appliedCouponDiscountJson(userPlan.getAppliedCouponDiscountJson())
+                .enrollInviteId(userPlan.getEnrollInviteId())
+                .paymentOptionId(userPlan.getPaymentOptionId())
+                .paymentOptionJson(userPlan.getPaymentOptionJson())
+                .status(userPlan.getStatus())
+                .source(userPlan.getSource())
+                .subOrgDetails(subOrgDetails)
+                .createdAt(userPlan.getCreatedAt())
+                .updatedAt(userPlan.getUpdatedAt())
+                .startDate(userPlan.getStartDate())
+                .endDate(userPlan.getEndDate())
+                .enrollInvite(
+                        userPlan.getEnrollInvite() != null ? userPlan.getEnrollInvite().toEnrollInviteDTO() : null)
+                .paymentPlanDTO(
+                        (userPlan.getPaymentPlan() != null ? userPlan.getPaymentPlan().mapToPaymentPlanDTO() : null))
+                .paymentOption(
+                        (userPlan.getPaymentOption() != null ? userPlan.getPaymentOption().mapToPaymentOptionDTO()
+                                : null))
+                .paymentLogs(List.of()) // Empty list - no payment logs loaded
+                .build();
+    }
+
+    @CacheEvict(value = { "userPlanById", "userPlansByUser", "userPlanWithPaymentLogs",
+            "membershipDetails" }, allEntries = true)
     public void updateUserPlanStatuses(List<String> userPlanIds, String status) {
         if (CollectionUtils.isEmpty(userPlanIds)) {
             throw new IllegalArgumentException("User plan ids must not be empty.");
@@ -322,5 +529,121 @@ public class UserPlanService {
 
         userPlans.forEach(plan -> plan.setStatus(normalizedStatus));
         userPlanRepository.saveAll(userPlans);
+    }
+
+    /**
+     * Get membership details with caching and optimizations.
+     * - Uses caching to reduce database load
+     * - Avoids loading payment logs for better performance
+     * - Fetches only necessary associations
+     */
+    @Cacheable(value = "membershipDetails", key = "#filterDTO.instituteId + '_' + #pageNo + '_' + #pageSize + '_' + " +
+            "#filterDTO.startDateInUtc + '_' + #filterDTO.endDateInUtc + '_' + " +
+            "(#filterDTO.membershipStatuses != null ? #filterDTO.membershipStatuses.toString() : 'null') + '_' + " +
+            "(#filterDTO.packageSessionIds != null ? #filterDTO.packageSessionIds.toString() : 'null') + '_' + " +
+            "(#filterDTO.sortOrder != null ? #filterDTO.sortOrder.toString() : 'null')", unless = "#result == null || #result.isEmpty()")
+    public Page<MembershipDetailsDTO> getMembershipDetails(MembershipFilterDTO filterDTO, int pageNo, int pageSize) {
+        Pageable pageable = createPageable(pageNo, pageSize, filterDTO.getSortOrder());
+
+        // 1. Fetch Data with Dynamic Status Calculation
+        Page<Object[]> results = userPlanRepository.findMembershipDetailsWithDynamicStatus(
+                filterDTO.getInstituteId(),
+                filterDTO.getStartDateInUtc(),
+                filterDTO.getEndDateInUtc(),
+                filterDTO.getMembershipStatuses(),
+                filterDTO.getPackageSessionIds(),
+                pageable);
+
+        // 2. Extract User Plan IDs to fetch entities in bulk
+        List<Object[]> content = results.getContent();
+        List<String> userPlanIds = content.stream()
+                .map(row -> (String) row[0]) // row[0] is the user_plan.id (String)
+                .collect(Collectors.toList());
+
+        // 3. Fetch UserPlan entities by IDs WITHOUT payment logs (optimized)
+        Map<String, UserPlan> userPlanMap = new HashMap<>();
+        if (!userPlanIds.isEmpty()) {
+            List<UserPlan> userPlans = userPlanRepository.findByIdsWithoutPaymentLogs(userPlanIds);
+            userPlanMap = userPlans.stream()
+                    .collect(Collectors.toMap(UserPlan::getId, Function.identity()));
+        }
+
+        // 4. Extract User IDs from fetched UserPlan entities
+        Set<String> userIds = userPlanMap.values().stream()
+                .map(UserPlan::getUserId)
+                .collect(Collectors.toSet());
+
+        // 5. Fetch User DTOs from Auth Service
+        Map<String, UserDTO> userMap = new HashMap<>();
+        if (!userIds.isEmpty()) {
+            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(new ArrayList<>(userIds));
+            userMap = users.stream().collect(Collectors.toMap(UserDTO::getId, Function.identity()));
+        }
+
+        // 6. Fetch Package Sessions
+        Set<String> enrollInviteIds = userPlanMap.values().stream()
+                .map(UserPlan::getEnrollInviteId)
+                .collect(Collectors.toSet());
+
+        Map<String, List<PackageSessionLiteDTO>> sessionMap = new HashMap<>();
+        if (!enrollInviteIds.isEmpty()) {
+            List<PackageSessionLearnerInvitationToPaymentOption> mappings = packageSessionEnrollInviteToPaymentOptionService
+                    .findByEnrollInviteIdsWithPackageSession(new ArrayList<>(enrollInviteIds));
+
+            Map<String, List<PackageSessionLearnerInvitationToPaymentOption>> grouped = mappings.stream()
+                    .filter(m -> m.getPaymentOption() != null)
+                    .collect(Collectors.groupingBy(m -> m.getPaymentOption().getId()));
+
+            sessionMap = grouped.entrySet().stream().collect(Collectors.toMap(
+                    Map.Entry::getKey,
+                    entry -> entry.getValue().stream().map(m -> {
+                        vacademy.io.common.institute.entity.session.PackageSession ps = m.getPackageSession();
+                        return PackageSessionLiteDTO.builder()
+                                .id(ps.getId())
+                                .sessionName(ps.getSession() != null ? ps.getSession().getSessionName() : null)
+                                .packageName(
+                                        ps.getPackageEntity() != null ? ps.getPackageEntity().getPackageName() : null)
+                                .levelName(ps.getLevel() != null ? ps.getLevel().getLevelName() : null)
+                                .startTime(ps.getStartTime())
+                                .status(ps.getStatus())
+                                .build();
+                    }).collect(Collectors.toList())));
+        }
+
+        // 7. Map to MembershipDetailsDTO (without payment logs)
+        Map<String, UserPlan> finalUserPlanMap = userPlanMap;
+        Map<String, UserDTO> finalUserMap = userMap;
+        Map<String, List<PackageSessionLiteDTO>> finalSessionMap = sessionMap;
+
+        return results.map(row -> {
+            String userPlanId = (String) row[0]; // user_plan.id
+            String dynamicStatus = (String) row[1]; // computedStatus
+            Timestamp endDate = (Timestamp) row[2]; // actualEndDate
+
+            UserPlan userPlan = finalUserPlanMap.get(userPlanId);
+            if (userPlan == null) {
+                throw new RuntimeException("UserPlan not found for id: " + userPlanId);
+            }
+
+            // Map to DTO without payment logs
+            UserPlanDTO userPlanDTO = mapToDTOWithoutPaymentLogs(userPlan);
+
+            return MembershipDetailsDTO.builder()
+                    .userPlan(userPlanDTO)
+                    .userDetails(finalUserMap.get(userPlan.getUserId()))
+                    .membershipStatus(dynamicStatus)
+                    .calculatedEndDate(endDate)
+                    .packageSessions(finalSessionMap.getOrDefault(userPlan.getPaymentOptionId(), List.of()))
+                    .build();
+        });
+    }
+
+    public Pageable createPageable(int page, int size, Map<String, String> sortCols) {
+        if (sortCols != null && sortCols.containsKey("calculated_end_date")) {
+            String direction = sortCols.remove("calculated_end_date");
+            sortCols.put("end_date", direction);
+        }
+        Sort sort = ListService.createSortObject(sortCols);
+        return PageRequest.of(page, size, sort);
     }
 }

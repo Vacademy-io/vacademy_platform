@@ -144,27 +144,25 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
             @Param("inviteCode") String inviteCode);
 
     @Query(value = """
-        SELECT DISTINCT ei.*
-        FROM enroll_invite ei
-        INNER JOIN user_plan up ON up.enroll_invite_id = ei.id
-        INNER JOIN student_session_institute_group_mapping ssigm ON ssigm.user_plan_id = up.id
-        INNER JOIN package_session_learner_invitation_to_payment_option pslipo ON pslipo.enroll_invite_id = ei.id
-        INNER JOIN payment_option po ON po.id = pslipo.payment_option_id
-        WHERE ssigm.user_id = :userId
-          AND ssigm.institute_id = :instituteId
-          AND ssigm.status IN (:ssigmActiveStatuses)
-          AND up.status IN (:userPlanActiveStatuses)
-          AND ei.status IN (:enrollInviteActiveStatuses)
-          AND pslipo.status IN (:packageSessionMappingActiveStatuses)
-          AND po.status IN (:paymentOptionActiveStatuses)
-    """, nativeQuery = true)
-    List<EnrollInvite> findEnrollInvitesByUserIdAndInstituteIdWithActiveStatuses(
-        @Param("userId") String userId,
-        @Param("instituteId") String instituteId,
-        @Param("ssigmActiveStatuses") List<String> ssigmActiveStatuses,
-        @Param("userPlanActiveStatuses") List<String> userPlanActiveStatuses,
-        @Param("enrollInviteActiveStatuses") List<String> enrollInviteActiveStatuses,
-        @Param("packageSessionMappingActiveStatuses") List<String> packageSessionMappingActiveStatuses,
-        @Param("paymentOptionActiveStatuses") List<String> paymentOptionActiveStatuses
+    SELECT DISTINCT ei.*
+    FROM enroll_invite ei
+    INNER JOIN package_session_learner_invitation_to_payment_option pslipo
+        ON pslipo.enroll_invite_id = ei.id
+    INNER JOIN student_session_institute_group_mapping ssigm
+        ON ssigm.package_session_id = pslipo.package_session_id
+    WHERE ssigm.user_id = :userId
+      AND ssigm.institute_id = :instituteId
+      AND ssigm.status IN (:ssigmActiveStatuses)
+      AND pslipo.status IN (:packageSessionMappingActiveStatuses)
+      AND ei.status IN (:enrollInviteActiveStatuses)
+      AND ei.tag = 'DEFAULT'
+    ORDER BY ei.created_at DESC
+""", nativeQuery = true)
+    List<EnrollInvite> findDefaultEnrollInvitesForStudent(
+            @Param("userId") String userId,
+            @Param("instituteId") String instituteId,
+            @Param("ssigmActiveStatuses") List<String> ssigmActiveStatuses,
+            @Param("enrollInviteActiveStatuses") List<String> enrollInviteActiveStatuses,
+            @Param("packageSessionMappingActiveStatuses") List<String> packageSessionMappingActiveStatuses
     );
 }

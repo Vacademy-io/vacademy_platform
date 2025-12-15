@@ -7,6 +7,7 @@ public enum NodeType {
     TRIGGER,
     ROUTER,
     SEND_EMAIL,
+    SEND_WHATSAPP,
     HTTP_REQUEST,
     COMBOT
 }

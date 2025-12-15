@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.course.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
@@ -9,7 +10,13 @@ import vacademy.io.admin_core_service.features.chapter.entity.ChapterPackageSess
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterRepository;
 import vacademy.io.admin_core_service.features.chapter.service.ChapterManager;
+import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.course.dto.TeacherCourseDetailDTO;
+import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
+import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
+import vacademy.io.admin_core_service.features.enroll_invite.service.DefaultEnrollInviteService;
+import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInviteService;
+import vacademy.io.admin_core_service.features.enroll_invite.service.PackageSessionEnrollInviteToPaymentOptionService;
 import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.faculty.entity.FacultySubjectPackageSessionMapping;
 import vacademy.io.admin_core_service.features.module.entity.ModuleChapterMapping;
@@ -19,6 +26,7 @@ import vacademy.io.admin_core_service.features.module.repository.ModuleRepositor
 import vacademy.io.admin_core_service.features.module.repository.SubjectModuleMappingRepository;
 import vacademy.io.admin_core_service.features.module.service.ModuleManager;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
+import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageInstituteRepository;
@@ -66,11 +74,11 @@ public class CourseApprovalService {
     private final ModuleManager moduleManager;
     private final SlideService slideService;
     private final SubjectService subjectService;
-    private final ChapterToSlidesRepository chapterToSlidesRepository;
-    private final PackageInstituteRepository packageInstituteRepository;
+    private final ChapterToSlidesRepository chapterToSlidesRepository;    private final PackageInstituteRepository packageInstituteRepository;
     private final InstituteRepository instituteRepository;
+    private final DefaultEnrollInviteService defaultEnrollInviteService;
     private final ObjectMapper objectMapper = new ObjectMapper();
-
+    private final EnrollInviteService enrollInviteService;
     /**
      * Create a temporary copy of a published course for teacher editing
      */
@@ -166,16 +174,16 @@ public class CourseApprovalService {
                 .orElseThrow(() -> new VacademyException("Course not found"));
 
         validateCourseForApproval(tempCourse);
-
+        PackageInstitute packageInstitute = packageInstituteRepository.findTopByPackageEntity_IdOrderByCreatedAtDesc(tempCourseId).orElse(null);
         String result;
         if (tempCourse.getOriginalCourseId() != null) {
             // Editing existing course - merge changes
-            result = mergeChangesIntoOriginal(tempCourse);
+            result = mergeChangesIntoOriginal(tempCourse,packageInstitute);
               // Clean up temp course
             deleteTempCourse(tempCourse);
         } else {
             // New course - publish as active
-            result = publishNewCourse(tempCourse);
+            result = publishNewCourse(tempCourse,packageInstitute);
         }
       
 
@@ -892,12 +900,10 @@ public class CourseApprovalService {
         
         log.info("Copied {} faculty assignments from {} to {}", 
                 tempAssignments.size(), originalPackageSession.getId(), tempPackageSession.getId());
-    }
-
-    /**
+    }    /**
      * Merge changes from temp course into original published course
      */
-    private String mergeChangesIntoOriginal(PackageEntity tempCourse) {
+    private String mergeChangesIntoOriginal(PackageEntity tempCourse,PackageInstitute packageInstitute) {
         PackageEntity originalCourse = packageRepository.findById(tempCourse.getOriginalCourseId())
                 .orElseThrow(() -> new VacademyException("Original course not found"));
 
@@ -910,6 +916,9 @@ public class CourseApprovalService {
 
         // Copy any new package-institute linkages from temp to original
         copyPackageInstituteLinkages(tempCourse, originalCourse);
+
+        // Create default enroll invites for all package sessions (handles new and existing)
+        createDefaultEnrollInvitesForCourse(originalCourse,packageInstitute);
 
         appendAuditLog(originalCourse, "UPDATE", tempCourse.getCreatedByUserId(),
                 "Merged changes from temp course " + tempCourse.getId(), null);
@@ -1364,12 +1373,14 @@ public class CourseApprovalService {
                 // TODO: Implement soft deletion according to business rules
             }
         }
-    }
-
-    private String publishNewCourse(PackageEntity tempCourse) {
+    }    private String publishNewCourse(PackageEntity tempCourse,PackageInstitute packageInstitute) {
         tempCourse.setStatus(PackageStatusEnum.ACTIVE.name());
         tempCourse.setOriginalCourseId(null); // Clear temp relationship
         packageRepository.save(tempCourse);
+        
+        // Create default enroll invites for all package sessions
+        createDefaultEnrollInvitesForCourse(tempCourse,packageInstitute);
+        
         appendAuditLog(tempCourse, "PUBLISH", tempCourse.getCreatedByUserId(), "Published new course", null);
         return "New course published successfully";
     }
@@ -1502,5 +1513,53 @@ public class CourseApprovalService {
 
         public List<Map<String, Object>> getAuditLogs() { return auditLogs; }
         public void setAuditLogs(List<Map<String, Object>> auditLogs) { this.auditLogs = auditLogs; }
+    }    /**
+     * Create default enroll invites for all ACTIVE package sessions of a course
+     * This method checks if a default enroll invite already exists before creating a new one
+     */
+
+    @Async
+    private void createDefaultEnrollInvitesForCourse(PackageEntity course,PackageInstitute packageInstitute) {
+        if (packageInstitute == null){
+            return;
+        }
+        String instituteId = packageInstitute.getInstituteEntity().getId();
+        try {
+            // Get all ACTIVE package sessions for the course
+            List<PackageSession> packageSessions = packageSessionRepository.findByPackageEntityId(course.getId());
+            for(PackageSession packageSession : packageSessions){
+                if (!packageSession.getStatus().equalsIgnoreCase(PackageSessionStatusEnum.ACTIVE.name())){
+                    continue;
+                }
+                if (!checkDefaultEnrollInviteExists(packageSession.getId())){
+                    defaultEnrollInviteService.createDefaultEnrollInvite(packageSession, instituteId);
+                }
+            }
+
+        } catch (Exception e) {
+            // Log error but don't fail the course approval process
+            log.error("Error creating default enroll invites for course {}: {}", 
+                    course.getId(), e.getMessage(), e);
+        }
     }
-} 
+    
+    /**
+     * Check if a default enroll invite already exists for a package session
+     * Uses the repository method to find active default enroll invites
+     */
+    private boolean checkDefaultEnrollInviteExists(String packageSessionId) {
+        try {
+            // Try to find existing default enroll invite using the repository method
+            // This uses the same logic as EnrollInviteService.findDefaultEnrollInviteByPackageSessionId
+            enrollInviteService.findDefaultEnrollInviteByPackageSessionId(
+                    packageSessionId);
+            
+            // If we reach here, the invite exists
+            return true;
+            
+        } catch (Exception e) {
+            // If exception is thrown, it means the invite doesn't exist
+            return false;
+        }
+    }
+}

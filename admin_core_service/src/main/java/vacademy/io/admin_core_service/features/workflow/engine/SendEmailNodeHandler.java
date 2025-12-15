@@ -15,12 +15,14 @@ import vacademy.io.admin_core_service.features.workflow.dto.ForEachConfigDTO;
 import vacademy.io.admin_core_service.features.workflow.dto.SendEmailNodeDTO;
 import vacademy.io.admin_core_service.features.workflow.entity.NodeTemplate;
 import vacademy.io.admin_core_service.features.workflow.spel.SpelEvaluator;
-// --- Import Attachment DTOs for the ATTACHMENT_EMAIL operation ---
 import vacademy.io.common.notification.dto.AttachmentNotificationDTO;
 import vacademy.io.common.notification.dto.AttachmentUsersDTO;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowExecutionLogger;
+import vacademy.io.admin_core_service.features.workflow.enums.ExecutionLogStatus;
+import vacademy.io.admin_core_service.features.workflow.enums.NodeType;
+import vacademy.io.admin_core_service.features.workflow.dto.execution_log.EmailExecutionDetails;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -31,6 +33,7 @@ public class SendEmailNodeHandler implements NodeHandler {
     private final SpelEvaluator spelEvaluator;
     private final NotificationService notificationService;
     private final TemplateRepository templateRepository;
+    private final WorkflowExecutionLogger executionLogger;
     private final Map<String, Template> templateCache = new HashMap<>();
 
     @Override
@@ -40,12 +43,28 @@ public class SendEmailNodeHandler implements NodeHandler {
 
     @Override
     public Map<String, Object> handle(Map<String, Object> context,
-                                      String nodeConfigJson,
-                                      Map<String, NodeTemplate> nodeTemplates,
-                                      int countProcessed) {
+            String nodeConfigJson,
+            Map<String, NodeTemplate> nodeTemplates,
+            int countProcessed) {
 
         log.info("SendEmailNodeHandler.handle() invoked.");
+
+        String workflowExecutionId = (String) context.get("executionId");
+        String nodeId = (String) context.get("currentNodeId");
+
+        // Start logging
+        // Start logging
+        String logId = null;
+        long startTime = System.currentTimeMillis();
+        if (workflowExecutionId != null && nodeId != null) {
+            logId = executionLogger.startNodeExecution(workflowExecutionId, nodeId, NodeType.SEND_EMAIL,
+                    context);
+        }
+
         Map<String, Object> changes = new HashMap<>();
+        int processedCount = 0;
+        int skippedCount = 0;
+        int failedCount = 0;
 
         String instituteId = (String) context.get("instituteId");
         if (!StringUtils.hasText(instituteId)) {
@@ -54,6 +73,11 @@ public class SendEmailNodeHandler implements NodeHandler {
                 log.warn("SendEmailNode missing 'instituteId' from context");
                 changes.put("status", "error");
                 changes.put("error", "Missing 'instituteId' from context");
+
+                if (logId != null) {
+                    executionLogger.completeNodeExecution(logId, ExecutionLogStatus.FAILED, null,
+                            "Missing 'instituteId' from context");
+                }
                 return changes;
             }
         }
@@ -66,6 +90,11 @@ public class SendEmailNodeHandler implements NodeHandler {
                 log.warn("SendEmailNode missing 'on' expression");
                 changes.put("status", "error");
                 changes.put("error", "Missing 'on' expression");
+
+                if (logId != null) {
+                    executionLogger.completeNodeExecution(logId, ExecutionLogStatus.FAILED, null,
+                            "Missing 'on' expression");
+                }
                 return changes;
             }
 
@@ -73,6 +102,19 @@ public class SendEmailNodeHandler implements NodeHandler {
             if (listObj == null) {
                 log.warn("No list found for expression: {}", onExpression);
                 changes.put("status", "no_items_found");
+
+                if (logId != null) {
+                    EmailExecutionDetails details = EmailExecutionDetails.builder()
+                            .inputContext(executionLogger.sanitizeContext(context))
+                            .outputContext(executionLogger.sanitizeContext(changes))
+                            .successCount(0)
+                            .failureCount(0)
+                            .skippedCount(0)
+                            .executionTimeMs(System.currentTimeMillis() - startTime)
+                            .build();
+                    executionLogger.completeNodeExecution(logId, ExecutionLogStatus.SUCCESS, details,
+                            null);
+                }
                 return changes;
             }
 
@@ -85,6 +127,11 @@ public class SendEmailNodeHandler implements NodeHandler {
                 log.warn("Expression '{}' did not evaluate to a list: {}", onExpression, listObj.getClass());
                 changes.put("status", "error");
                 changes.put("error", "Expression did not evaluate to a list");
+
+                if (logId != null) {
+                    executionLogger.completeNodeExecution(logId, ExecutionLogStatus.FAILED, null,
+                            "Expression did not evaluate to a list");
+                }
                 return changes;
             }
 
@@ -92,12 +139,15 @@ public class SendEmailNodeHandler implements NodeHandler {
 
             // 1. Create all individual email "requests" (raw data maps)
             List<Map<String, Object>> allEmailRequests = new ArrayList<>();
+            List<EmailExecutionDetails.FailedEmail> failedEmails = new ArrayList<>();
+
             for (Object item : items) {
                 Map<String, Object> itemContext = new HashMap<>(context);
-                itemContext.put("item", item); // 'item' is now the recipient email (for attachment) or user map (for regular)
+                itemContext.put("item", item); // 'item' is now the recipient email (for attachment) or user map (for
+                                               // regular)
 
                 List<Map<String, Object>> itemRequests = processForEachOperation(sendEmailNodeDTO.getForEach(),
-                    itemContext, item);
+                        itemContext, item, failedEmails);
                 if (itemRequests != null && !itemRequests.isEmpty()) {
                     allEmailRequests.addAll(itemRequests);
                 }
@@ -112,18 +162,27 @@ public class SendEmailNodeHandler implements NodeHandler {
 
                 // Deduplication set
                 Set<String> sentLog = new HashSet<>();
-                int processedCount = 0;
-                int skippedCount = 0;
                 List<String> emailResults = new ArrayList<>();
+
+                // Map to store original items for failure tracking
+                Map<String, Object> recipientToItemMap = new HashMap<>();
 
                 for (Map<String, Object> request : allEmailRequests) {
                     String recipient = (String) request.get("recipient");
                     String subject = (String) request.get("subject");
                     String type = (String) request.getOrDefault("type", "REGULAR");
+                    Object originalItem = request.get("_originalItem");
 
                     if (recipient == null || recipient.isBlank()) {
                         log.warn("Skipping email request, recipient is null or blank.");
                         skippedCount++;
+                        failedEmails.add(EmailExecutionDetails.FailedEmail.builder()
+                                .recipientEmail(recipient)
+                                .errorMessage("Recipient is null or blank")
+                                .errorType("VALIDATION_ERROR")
+                                .failureReason("SKIPPED")
+                                .itemData(originalItem)
+                                .build());
                         continue;
                     }
 
@@ -132,10 +191,22 @@ public class SendEmailNodeHandler implements NodeHandler {
                     if (sentLog.contains(dedupeKey)) {
                         log.warn("Duplicate email request for {} with subject ''{}''. Skipping.", recipient, subject);
                         skippedCount++;
+                        failedEmails.add(EmailExecutionDetails.FailedEmail.builder()
+                                .recipientEmail(recipient)
+                                .errorMessage("Duplicate request")
+                                .errorType("DUPLICATE")
+                                .failureReason("SKIPPED")
+                                .itemData(originalItem)
+                                .build());
                         continue; // Already added this user for this template
                     }
                     sentLog.add(dedupeKey);
                     // --- End Deduplication ---
+
+                    // Store item for failure tracking
+                    if (originalItem != null) {
+                        recipientToItemMap.put(recipient, originalItem);
+                    }
 
                     processedCount++;
 
@@ -149,16 +220,15 @@ public class SendEmailNodeHandler implements NodeHandler {
                         // Group by subject + body + attachmentName
                         String groupingKey = subject + "||" + body + "||" + attachmentName;
 
-                        AttachmentNotificationDTO batchDTO = attachmentBatchMap.computeIfAbsent(groupingKey, k ->
-                            AttachmentNotificationDTO.builder()
-                                .subject(subject)
-                                .body(body)
-                                .notificationType("EMAIL")
-                                .source("WORKFLOW")
-                                .sourceId("send_attachment_email_batch")
-                                .users(new ArrayList<>())
-                                .build()
-                        );
+                        AttachmentNotificationDTO batchDTO = attachmentBatchMap.computeIfAbsent(groupingKey,
+                                k -> AttachmentNotificationDTO.builder()
+                                        .subject(subject)
+                                        .body(body)
+                                        .notificationType("EMAIL")
+                                        .source("WORKFLOW")
+                                        .sourceId("send_attachment_email_batch")
+                                        .users(new ArrayList<>())
+                                        .build());
 
                         AttachmentUsersDTO userDTO = new AttachmentUsersDTO();
                         userDTO.setChannelId(recipient);
@@ -207,6 +277,27 @@ public class SendEmailNodeHandler implements NodeHandler {
                     } catch (Exception e) {
                         log.error("Error sending regular email batch request", e);
                         emailResults.add("ERROR: Batch send failed (regular) - " + e.getMessage());
+
+                        // Handle failures for all users in these batches
+                        for (NotificationDTO batch : finalBatchList) {
+                            if (batch.getUsers() != null) {
+                                for (NotificationToUserDTO user : batch.getUsers()) {
+                                    String recipient = user.getChannelId();
+                                    Object originalItem = recipientToItemMap.get(recipient);
+
+                                    failedEmails.add(EmailExecutionDetails.FailedEmail.builder()
+                                            .recipientEmail(recipient)
+                                            .errorMessage("Batch send failed: " + e.getMessage())
+                                            .errorType("BATCH_SEND_ERROR")
+                                            .failureReason("FAILED")
+                                            .itemData(originalItem)
+                                            .build());
+
+                                    failedCount++;
+                                    processedCount--; // Decrement as it failed
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -220,39 +311,99 @@ public class SendEmailNodeHandler implements NodeHandler {
                     } catch (Exception e) {
                         log.error("Error sending attachment email batch request", e);
                         emailResults.add("ERROR: Batch send failed (attachment) - " + e.getMessage());
+
+                        // Handle failures for all users in these batches
+                        for (AttachmentNotificationDTO batch : finalAttachmentList) {
+                            if (batch.getUsers() != null) {
+                                for (AttachmentUsersDTO user : batch.getUsers()) {
+                                    String recipient = user.getChannelId();
+                                    Object originalItem = recipientToItemMap.get(recipient);
+
+                                    failedEmails.add(EmailExecutionDetails.FailedEmail.builder()
+                                            .recipientEmail(recipient)
+                                            .errorMessage("Batch send failed: " + e.getMessage())
+                                            .errorType("BATCH_SEND_ERROR")
+                                            .failureReason("FAILED")
+                                            .itemData(originalItem)
+                                            .build());
+
+                                    failedCount++;
+                                    processedCount--; // Decrement as it failed
+                                }
+                            }
+                        }
                     }
                 }
 
                 if (regularBatchMap.isEmpty() && attachmentBatchMap.isEmpty()) {
                     log.info("No valid, non-duplicate email requests to send.");
                     changes.put("status", "no_requests_sent");
-                    return changes;
+                } else {
+                    changes.put("email_requests_processed", processedCount);
+                    changes.put("email_requests_skipped", skippedCount);
+                    changes.put("regular_batches_sent", regularBatchMap.size());
+                    changes.put("attachment_batches_sent", attachmentBatchMap.size());
+                    changes.put("email_results", emailResults);
+                    changes.put("status", "emails_sent");
+                    log.info("Successfully processed {} email requests.", processedCount);
                 }
-
-                changes.put("email_requests_processed", processedCount);
-                changes.put("email_requests_skipped", skippedCount);
-                changes.put("regular_batches_sent", regularBatchMap.size());
-                changes.put("attachment_batches_sent", attachmentBatchMap.size());
-                changes.put("email_results", emailResults);
-                changes.put("status", "emails_sent");
-                log.info("Successfully processed {} email requests.", processedCount);
 
             } else {
                 changes.put("status", "no_requests_created");
             }
             // --- BATCHING LOGIC END ---
 
+            // Complete logging with success
+            if (logId != null) {
+                EmailExecutionDetails details = EmailExecutionDetails.builder()
+                        // Minimize data: do not store full context
+                        .inputContext(null)
+                        .outputContext(null)
+                        .successCount(processedCount)
+                        .failureCount(failedCount + failedEmails.size()) // Add individual failures
+                        .skippedCount(skippedCount)
+                        .failedEmails(failedEmails) // Add the list
+                        .executionTimeMs(System.currentTimeMillis() - startTime)
+                        .build();
+
+                // If we have failures or skips, use PARTIAL_SUCCESS or FAILED
+                ExecutionLogStatus status = (failedCount > 0 || !failedEmails.isEmpty() || skippedCount > 0)
+                        ? ExecutionLogStatus.PARTIAL_SUCCESS
+                        : ExecutionLogStatus.SUCCESS;
+
+                // If everything failed/skipped, use FAILED (unless we want to call it
+                // PARTIAL_SUCCESS for skips)
+                // User said "skipped at least one ... partially skipped".
+                // So if we have skips, we use PARTIAL_SUCCESS.
+                // Only if we have NO success AND NO skips (but failures), we use FAILED.
+                // Wait, if processedCount == 0 and skippedCount > 0, it's PARTIAL_SUCCESS (or
+                // maybe just SKIPPED/FAILED).
+                // Let's stick to: if (processedCount == 0 && skippedCount == 0 && (failedCount
+                // > 0 || !failedEmails.isEmpty())) -> FAILED
+                if (processedCount == 0 && skippedCount == 0 && (failedCount > 0 || !failedEmails.isEmpty())) {
+                    status = ExecutionLogStatus.FAILED;
+                }
+
+                executionLogger.completeNodeExecution(logId, status, details, null);
+            }
+
         } catch (Exception e) {
             log.error("Error handling SendEmail node", e);
             changes.put("status", "error");
             changes.put("error", e.getMessage());
+
+            // Log failure
+            if (logId != null) {
+                executionLogger.completeNodeExecution(logId, ExecutionLogStatus.FAILED, null,
+                        e.getMessage());
+            }
         }
 
         return changes;
     }
 
     private List<Map<String, Object>> processForEachOperation(ForEachConfigDTO forEachConfig,
-                                                              Map<String, Object> itemContext, Object item) {
+            Map<String, Object> itemContext, Object item, List<EmailExecutionDetails.FailedEmail> failedEmails) {
         if (forEachConfig == null) {
             log.warn("No forEach configuration found in SendEmail node");
             return Collections.emptyList();
@@ -262,20 +413,20 @@ public class SendEmailNodeHandler implements NodeHandler {
 
         // --- NEW: Handle ATTACHMENT_EMAIL operation ---
         if ("ATTACHMENT_EMAIL".equalsIgnoreCase(operation)) {
-            return processAttachmentEmailOperation(forEachConfig, itemContext, item);
+            return processAttachmentEmailOperation(forEachConfig, itemContext, item, failedEmails);
         }
 
         if ("SWITCH".equalsIgnoreCase(operation)) {
-            return processSwitchOperation(forEachConfig, itemContext, item);
+            return processSwitchOperation(forEachConfig, itemContext, item, failedEmails);
         }
 
         // Default to regular email
-        return processRegularEmailOperation(forEachConfig, itemContext, item);
+        return processRegularEmailOperation(forEachConfig, itemContext, item, failedEmails);
     }
 
     // --- NEW: Method to handle regular email (template or hardcoded) ---
     private List<Map<String, Object>> processRegularEmailOperation(ForEachConfigDTO forEachConfig,
-                                                                   Map<String, Object> itemContext, Object item) {
+            Map<String, Object> itemContext, Object item, List<EmailExecutionDetails.FailedEmail> failedEmails) {
         String emailDataExpr = forEachConfig.getEval();
         if (emailDataExpr == null || emailDataExpr.isBlank()) {
             log.warn("SEND_EMAIL forEach missing 'eval' expression for email data");
@@ -289,16 +440,21 @@ public class SendEmailNodeHandler implements NodeHandler {
                 return Collections.emptyList();
             }
 
-            return processEmailDataAndCreateRequests(emailDataObj, itemContext, "REGULAR");
+            return processEmailDataAndCreateRequests(emailDataObj, itemContext, "REGULAR", failedEmails, item);
         } catch (Exception e) {
             log.error("Error processing regular email forEach operation for item: {}", item, e);
+            failedEmails.add(EmailExecutionDetails.FailedEmail.builder()
+                    .itemData(item)
+                    .errorMessage(e.getMessage())
+                    .errorType("REGULAR_EMAIL_PROCESSING_ERROR")
+                    .build());
             return Collections.emptyList();
         }
     }
 
     // --- NEW: Method to handle attachment email ---
     private List<Map<String, Object>> processAttachmentEmailOperation(ForEachConfigDTO forEachConfig,
-                                                                      Map<String, Object> itemContext, Object item) {
+            Map<String, Object> itemContext, Object item, List<EmailExecutionDetails.FailedEmail> failedEmails) {
         String emailDataExpr = forEachConfig.getEval();
         if (emailDataExpr == null || emailDataExpr.isBlank()) {
             log.warn("ATTACHMENT_EMAIL forEach missing 'eval' expression");
@@ -320,7 +476,8 @@ public class SendEmailNodeHandler implements NodeHandler {
                 Object data = ((List) emailDataObj).get(0);
                 if (data instanceof Map) {
                     // --- MODIFIED: Pass itemContext ---
-                    Map<String, Object> request = createAttachmentEmailRequest(recipientEmail, (Map<String, Object>) data, itemContext);
+                    Map<String, Object> request = createAttachmentEmailRequest(recipientEmail,
+                            (Map<String, Object>) data, itemContext, failedEmails, item);
                     if (request != null) {
                         return List.of(request);
                     }
@@ -329,12 +486,17 @@ public class SendEmailNodeHandler implements NodeHandler {
             return Collections.emptyList();
         } catch (Exception e) {
             log.error("Error processing attachment email forEach operation for item: {}", item, e);
+            failedEmails.add(EmailExecutionDetails.FailedEmail.builder()
+                    .itemData(item)
+                    .errorMessage(e.getMessage())
+                    .errorType("ATTACHMENT_EMAIL_PROCESSING_ERROR")
+                    .build());
             return Collections.emptyList();
         }
     }
 
     private List<Map<String, Object>> processSwitchOperation(ForEachConfigDTO forEachConfig,
-                                                             Map<String, Object> itemContext, Object item) {
+            Map<String, Object> itemContext, Object item, List<EmailExecutionDetails.FailedEmail> failedEmails) {
         try {
             String onExpr = forEachConfig.getOn();
             if (onExpr == null || onExpr.isBlank()) {
@@ -357,27 +519,35 @@ public class SendEmailNodeHandler implements NodeHandler {
                 }
             }
             // A switch operation implies a regular email
-            return processEmailDataAndCreateRequests(selectedCase, itemContext, "REGULAR");
+            return processEmailDataAndCreateRequests(selectedCase, itemContext, "REGULAR", failedEmails, item);
         } catch (Exception e) {
             log.error("Error processing SWITCH operation for item: {}", item, e);
+            failedEmails.add(EmailExecutionDetails.FailedEmail.builder()
+                    .itemData(item)
+                    .errorMessage(e.getMessage())
+                    .errorType("SWITCH_OPERATION_ERROR")
+                    .build());
             return Collections.emptyList();
         }
     }
 
     private List<Map<String, Object>> processEmailDataAndCreateRequests(Object emailDataObj,
-                                                                        Map<String, Object> itemContext, String type) {
+            Map<String, Object> itemContext, String type, List<EmailExecutionDetails.FailedEmail> failedEmails,
+            Object originalItem) {
         List<Map<String, Object>> requests = new ArrayList<>();
         try {
             if (emailDataObj instanceof List) {
                 List<?> emailDataList = (List<?>) emailDataObj;
                 for (Object emailData : emailDataList) {
-                    Map<String, Object> request = createEmailRequest(emailData, itemContext, type);
+                    Map<String, Object> request = createEmailRequest(emailData, itemContext, type, failedEmails,
+                            originalItem);
                     if (request != null) {
                         requests.add(request);
                     }
                 }
             } else if (emailDataObj instanceof Map) {
-                Map<String, Object> request = createEmailRequest(emailDataObj, itemContext, type);
+                Map<String, Object> request = createEmailRequest(emailDataObj, itemContext, type, failedEmails,
+                        originalItem);
                 if (request != null) {
                     requests.add(request);
                 }
@@ -393,7 +563,9 @@ public class SendEmailNodeHandler implements NodeHandler {
     /**
      * --- MODIFIED: Added template support ---
      */
-    private Map<String, Object> createAttachmentEmailRequest(String recipientEmail, Map<String, Object> emailData, Map<String, Object> itemContext) {
+    private Map<String, Object> createAttachmentEmailRequest(String recipientEmail, Map<String, Object> emailData,
+            Map<String, Object> itemContext, List<EmailExecutionDetails.FailedEmail> failedEmails,
+            Object originalItem) {
         try {
             Map<String, Object> request = new HashMap<>();
             request.put("type", "ATTACHMENT_EMAIL");
@@ -416,18 +588,29 @@ public class SendEmailNodeHandler implements NodeHandler {
 
                 if (!StringUtils.hasText(instituteId) || !StringUtils.hasText(templateName)) {
                     log.warn("Skipping attachment template email. Missing instituteId or templateName.");
+                    failedEmails.add(EmailExecutionDetails.FailedEmail.builder()
+                            .itemData(originalItem)
+                            .errorMessage("Missing instituteId or templateName")
+                            .errorType("MISSING_TEMPLATE_INFO")
+                            .failureReason("SKIPPED")
+                            .build());
                     return null;
                 }
 
                 String cacheKey = instituteId + ":" + templateName + ":EMAIL";
                 final String finalInstituteId = instituteId;
-                Template template = templateCache.computeIfAbsent(cacheKey, k ->
-                    templateRepository.findByInstituteIdAndNameAndType(finalInstituteId, templateName, "EMAIL")
-                        .orElse(null)
-                );
+                Template template = templateCache.computeIfAbsent(cacheKey,
+                        k -> templateRepository.findByInstituteIdAndNameAndType(finalInstituteId, templateName, "EMAIL")
+                                .orElse(null));
 
                 if (template == null) {
                     log.warn("Email template not found: {} for institute: {}", templateName, instituteId);
+                    failedEmails.add(EmailExecutionDetails.FailedEmail.builder()
+                            .itemData(originalItem)
+                            .errorMessage("Email template not found: " + templateName)
+                            .errorType("TEMPLATE_NOT_FOUND")
+                            .failureReason("SKIPPED")
+                            .build());
                     return null;
                 }
 
@@ -452,19 +635,33 @@ public class SendEmailNodeHandler implements NodeHandler {
             }
 
             request.put("placeholders", finalVars);
+            request.put("_originalItem", originalItem); // Store for failure tracking
             return request;
 
         } catch (Exception e) {
             log.error("Error creating attachment email request", e);
+            failedEmails.add(EmailExecutionDetails.FailedEmail.builder()
+                    .itemData(originalItem)
+                    .errorMessage(e.getMessage())
+                    .errorType("ATTACHMENT_EMAIL_CREATION_ERROR")
+                    .failureReason("FAILED")
+                    .build());
             return null;
         }
     }
 
-    private Map<String, Object> createEmailRequest(Object emailData, Map<String, Object> itemContext, String type) {
+    private Map<String, Object> createEmailRequest(Object emailData, Map<String, Object> itemContext, String type,
+            List<EmailExecutionDetails.FailedEmail> failedEmails, Object originalItem) {
         try {
             Object userDetailsObj = itemContext.get("item");
             if (userDetailsObj == null) {
                 log.warn("No user details (item) found in context");
+                failedEmails.add(EmailExecutionDetails.FailedEmail.builder()
+                        .itemData(originalItem)
+                        .errorMessage("No user details (item) found in context")
+                        .errorType("MISSING_USER_DETAILS")
+                        .failureReason("SKIPPED")
+                        .build());
                 return null;
             }
 
@@ -475,11 +672,23 @@ public class SendEmailNodeHandler implements NodeHandler {
             String emailAddress = extractEmailAddress(userDetails, itemContext.get("item"));
             if (emailAddress == null || emailAddress.isBlank()) {
                 log.warn("No email address found for user: {}", userDetailsObj);
+                failedEmails.add(EmailExecutionDetails.FailedEmail.builder()
+                        .itemData(originalItem)
+                        .errorMessage("No email address found for user")
+                        .errorType("MISSING_EMAIL_ADDRESS")
+                        .failureReason("SKIPPED")
+                        .build());
                 return null;
             }
 
             if (!(emailData instanceof Map)) {
                 log.warn("Email data is not a map: {}", emailData);
+                failedEmails.add(EmailExecutionDetails.FailedEmail.builder()
+                        .itemData(originalItem)
+                        .errorMessage("Email data is not a map")
+                        .errorType("INVALID_EMAIL_DATA")
+                        .failureReason("SKIPPED")
+                        .build());
                 return null;
             }
 
@@ -500,6 +709,12 @@ public class SendEmailNodeHandler implements NodeHandler {
 
                 if (!StringUtils.hasText(instituteId) || !StringUtils.hasText(templateName)) {
                     log.warn("Skipping template email. Missing instituteId or templateName.");
+                    failedEmails.add(EmailExecutionDetails.FailedEmail.builder()
+                            .itemData(originalItem)
+                            .errorMessage("Missing instituteId or templateName")
+                            .errorType("MISSING_TEMPLATE_INFO")
+                            .failureReason("SKIPPED")
+                            .build());
                     return null;
                 }
 
@@ -507,13 +722,19 @@ public class SendEmailNodeHandler implements NodeHandler {
                 final String finalInstituteId = instituteId;
                 final String finalTemplateName = templateName;
 
-                Template template = templateCache.computeIfAbsent(cacheKey, k ->
-                    templateRepository.findByInstituteIdAndNameAndType(finalInstituteId, finalTemplateName, "EMAIL")
-                        .orElse(null)
-                );
+                Template template = templateCache.computeIfAbsent(cacheKey,
+                        k -> templateRepository
+                                .findByInstituteIdAndNameAndType(finalInstituteId, finalTemplateName, "EMAIL")
+                                .orElse(null));
 
                 if (template == null) {
                     log.warn("Email template not found: {} for institute: {}", templateName, instituteId);
+                    failedEmails.add(EmailExecutionDetails.FailedEmail.builder()
+                            .itemData(originalItem)
+                            .errorMessage("Email template not found: " + templateName)
+                            .errorType("TEMPLATE_NOT_FOUND")
+                            .failureReason("SKIPPED")
+                            .build());
                     return null;
                 }
 
@@ -541,6 +762,12 @@ public class SendEmailNodeHandler implements NodeHandler {
 
                 if (subject == null || body == null) {
                     log.warn("Email data missing subject or body");
+                    failedEmails.add(EmailExecutionDetails.FailedEmail.builder()
+                            .itemData(originalItem)
+                            .errorMessage("Email data missing subject or body")
+                            .errorType("MISSING_SUBJECT_OR_BODY")
+                            .failureReason("SKIPPED")
+                            .build());
                     return null;
                 }
 
@@ -561,13 +788,26 @@ public class SendEmailNodeHandler implements NodeHandler {
                 request.put("placeholders", placeholders);
             } else {
                 log.warn("Email data is missing 'templateName' or 'subject'");
+                failedEmails.add(EmailExecutionDetails.FailedEmail.builder()
+                        .itemData(originalItem)
+                        .errorMessage("Email data is missing 'templateName' or 'subject'")
+                        .errorType("INVALID_EMAIL_CONFIG")
+                        .failureReason("SKIPPED")
+                        .build());
                 return null;
             }
 
+            request.put("_originalItem", originalItem); // Store for failure tracking
             return request;
 
         } catch (Exception e) {
             log.error("Error creating email request", e);
+            failedEmails.add(EmailExecutionDetails.FailedEmail.builder()
+                    .itemData(originalItem)
+                    .errorMessage(e.getMessage())
+                    .errorType("EMAIL_CREATION_ERROR")
+                    .failureReason("FAILED")
+                    .build());
             return null;
         }
     }
@@ -603,8 +843,8 @@ public class SendEmailNodeHandler implements NodeHandler {
         // If 'item' wasn't an email, check the userDetailsMap
         if (userDetailsMap != null) {
             String[] possibleFields = {
-                "email", "emailAddress", "email_address",
-                "userEmail", "user_email", "mail", "channelId"
+                    "email", "emailAddress", "email_address",
+                    "userEmail", "user_email", "mail", "channelId"
             };
 
             for (String field : possibleFields) {

@@ -39,6 +39,8 @@ public interface SlideDetailProjection {
 
     Integer getSlideOrder(); // Added slide order field
 
+    String getDripConditionJson();
+
     String getPublishedUrl();
 
     String getPublishedData();

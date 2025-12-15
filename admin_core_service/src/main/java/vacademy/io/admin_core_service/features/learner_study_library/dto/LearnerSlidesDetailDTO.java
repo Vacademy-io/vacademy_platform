@@ -23,4 +23,7 @@ public class LearnerSlidesDetailDTO {
     private QuizSlideDTO quizSlide;
     private Double percentageCompleted;
     private Long progressMarker;
+    private Object dripCondition;
+    private Boolean isLocked;
+    private Boolean isHidden;
 }

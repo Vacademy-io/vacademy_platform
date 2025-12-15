@@ -55,5 +55,16 @@ public class SubOrgLearnerController {
 
         return ResponseEntity.ok(response);
     }
+    @GetMapping("/sub-org-admins")
+    public ResponseEntity<SubOrgAdminsResponseDTO> getSubOrgAdmins(
+            @RequestParam("userId") String userId,
+            @RequestParam("packageSessionId") String packageSessionId,
+            @RequestParam("subOrgId") String subOrgId,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
+
+        SubOrgAdminsResponseDTO response = subOrgLearnerService.getSubOrgAdmins(userId, packageSessionId, subOrgId);
+
+        return ResponseEntity.ok(response);
+    }
     
 }

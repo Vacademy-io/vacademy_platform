@@ -24,7 +24,8 @@ public class LearnerChapterDetailsDTO {
     private Integer assignmentSlideCount;
     private Integer surveySlideCount;
     private Integer unknownCount;
-    private List<LearnerSlidesDetailDTO>learnerSlidesDetails;
+    private List<LearnerSlidesDetailDTO> learnerSlidesDetails;
+    private Object dripCondition;
+    private Boolean isLocked;
+    private Boolean isHidden;
 }
-
-

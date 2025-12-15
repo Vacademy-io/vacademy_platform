@@ -12,10 +12,15 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Cache configuration for application-level caching.
- * 
+ *
  * Currently configured caches:
  * - studyLibraryInit: Caches study library initialization data (TTL: 20
  * seconds)
+ * - executionLogs: Caches workflow execution logs by execution ID (TTL: 5
+ * minutes)
+ * - nodeLogs: Caches workflow node logs by execution ID + node ID (TTL: 5
+ * minutes)
+ * - timeRangeLogs: Caches workflow logs by time range (TTL: 5 minutes)
  */
 @Configuration
 @EnableCaching
@@ -72,12 +77,41 @@ public class CacheConfiguration {
                                 caffeineCache3mBuilder().build());
                 CaffeineCache myFiles = new CaffeineCache(
                                 "myFiles",
-                                caffeineCache1mBuilder().build());
-
-                // Planning Logs cache
+                                caffeineCache1mBuilder().build()); // Planning Logs cache
                 CaffeineCache planningLogsList = new CaffeineCache(
                                 "planningLogsList",
-                                caffeineCache1mBuilder().build());
+                                caffeineCache1mBuilder().build()); // Membership Details cache (user plan subscription
+                // details)
+                CaffeineCache membershipDetails = new CaffeineCache(
+                                "membershipDetails",
+                                caffeineCache2mBuilder().build());
+
+                // User Plan related caches
+                CaffeineCache userPlanById = new CaffeineCache(
+                                "userPlanById",
+                                caffeineCache2mBuilder().build());
+                CaffeineCache userPlansByUser = new CaffeineCache(
+                                "userPlansByUser",
+                                caffeineCache2mBuilder().build());
+                CaffeineCache userPlanWithPaymentLogs = new CaffeineCache(
+                                "userPlanWithPaymentLogs",
+                                caffeineCache2mBuilder().build());
+
+                // Workflow Execution Log caches (5 minutes TTL)
+                CaffeineCache executionLogs = new CaffeineCache(
+                                "executionLogs",
+                                caffeineCache5mBuilder().build());
+                CaffeineCache nodeLogs = new CaffeineCache(
+                                "nodeLogs",
+                                caffeineCache5mBuilder().build());
+                CaffeineCache timeRangeLogs = new CaffeineCache(
+                                "timeRangeLogs",
+                                caffeineCache5mBuilder().build());
+
+                // User Details cache (5 minutes TTL) - for caching auth service calls
+                CaffeineCache userDetails = new CaffeineCache(
+                                "userDetails",
+                                caffeineCache5mBuilder().build());
 
                 cacheManager.setCaches(java.util.List.of(
                                 studyLibraryInit,
@@ -93,7 +127,15 @@ public class CacheConfiguration {
                                 systemFileAccess,
                                 systemFileList,
                                 myFiles,
-                                planningLogsList));
+                                planningLogsList,
+                                membershipDetails,
+                                userPlanById,
+                                userPlansByUser,
+                                userPlanWithPaymentLogs,
+                                executionLogs,
+                                nodeLogs,
+                                timeRangeLogs,
+                                userDetails));
 
                 return cacheManager;
         }

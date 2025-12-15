@@ -171,7 +171,7 @@ public class EnrollInviteService {
     }
 
     public Page<EnrollInviteWithSessionsProjection> getEnrollInvitesByInstituteIdAndFilters(String instituteId,
-            EnrollInviteFilterDTO enrollInviteFilterDTO, int pageNo, int pageSize) {
+                                                                                            EnrollInviteFilterDTO enrollInviteFilterDTO, int pageNo, int pageSize) {
         Sort sortColumns = ListService.createSortObject(enrollInviteFilterDTO.getSortColumns());
         Pageable pageable = PageRequest.of(pageNo, pageSize, sortColumns);
         if (StringUtils.hasText(enrollInviteFilterDTO.getSearchName())) {
@@ -199,20 +199,31 @@ public class EnrollInviteService {
 
     public EnrollInviteDTO findDefaultEnrollInviteByPackageSessionId(String packageSessionId, String instituteId) {
         EnrollInvite enrollInvite = repository.findLatestForPackageSessionWithFilters(
-                packageSessionId,
-                List.of(StatusEnum.ACTIVE.name()),
-                List.of(EnrollInviteTag.DEFAULT.name()),
-                List.of(StatusEnum.ACTIVE.name()))
+                        packageSessionId,
+                        List.of(StatusEnum.ACTIVE.name()),
+                        List.of(EnrollInviteTag.DEFAULT.name()),
+                        List.of(StatusEnum.ACTIVE.name()))
                 .orElseThrow(() -> new VacademyException(
                         "Default EnrollInvite not found for package session: " + packageSessionId));
         return buildFullEnrollInviteDTO(enrollInvite, instituteId);
+    }
+
+    public boolean findDefaultEnrollInviteByPackageSessionId(String packageSessionId) {
+        EnrollInvite enrollInvite = repository.findLatestForPackageSessionWithFilters(
+                        packageSessionId,
+                        List.of(StatusEnum.ACTIVE.name()),
+                        List.of(EnrollInviteTag.DEFAULT.name()),
+                        List.of(StatusEnum.ACTIVE.name()))
+                .orElseThrow(() -> new VacademyException(
+                        "Default EnrollInvite not found for package session: " + packageSessionId));
+        return true;
     }
 
     /**
      * Finds default EnrollInvite by package session ID without throwing exception
      * Returns Optional.empty() if no default enroll invite is found
      * This method only maps basic fields to avoid LazyInitializationException
-     * 
+     *
      * @param packageSessionId The package session ID
      * @param instituteId The institute ID
      * @return Optional containing EnrollInviteDTO with basic fields if found, empty otherwise
@@ -223,7 +234,7 @@ public class EnrollInviteService {
                 List.of(StatusEnum.ACTIVE.name()),
                 List.of(EnrollInviteTag.DEFAULT.name()),
                 List.of(StatusEnum.ACTIVE.name()));
-        
+
         return enrollInviteOptional.map(enrollInvite -> buildBasicEnrollInviteDTO(enrollInvite));
     }
 
@@ -240,7 +251,7 @@ public class EnrollInviteService {
     }
 
     public List<EnrollInviteDTO> findEnrollInvitesByReferralOptionIds(List<String> referralOptionIds,
-            String instituteId) {
+                                                                      String instituteId) {
         List<PackageSessionEnrollInvitePaymentOptionPlanToReferralOption> referralMappings = packageSessionEnrollInvitePaymentOptionPlanToReferralOptionService
                 .findByReferralOptionIds(referralOptionIds);
 
@@ -284,7 +295,7 @@ public class EnrollInviteService {
     }
 
     private EnrollInviteDTO buildFullEnrollInviteDTO(EnrollInvite enrollInvite, String instituteId,
-            List<PackageSessionLearnerInvitationToPaymentOption> mappings) {
+                                                     List<PackageSessionLearnerInvitationToPaymentOption> mappings) {
         EnrollInviteDTO dto = enrollInvite.toEnrollInviteDTO();
 
         // 1. Fetch and set Custom Fields
@@ -559,21 +570,19 @@ public class EnrollInviteService {
         List<String> activeStatuses = List.of(StatusEnum.ACTIVE.name());
 
         // Get enroll invites using the complex join query
-        List<EnrollInvite> enrollInvites = repository.findEnrollInvitesByUserIdAndInstituteIdWithActiveStatuses(
-            userId,
-            instituteId,
-            activeStatuses, // SSIGM statuses
-            activeStatuses, // UserPlan statuses
-            activeStatuses, // EnrollInvite statuses
-            activeStatuses, // PackageSessionMapping statuses
-            activeStatuses  // PaymentOption statuses
+        List<EnrollInvite> enrollInvites = repository.findDefaultEnrollInvitesForStudent(
+                userId,
+                instituteId,
+                activeStatuses, // SSIGM statuses
+                activeStatuses, // EnrollInvite statuses
+                activeStatuses
         );
 
 
         // Convert to DTOs and populate additional data
         return enrollInvites.stream()
-            .map(this::convertToEnrollInviteDTO)
-            .collect(Collectors.toList());
+                .map(this::convertToEnrollInviteDTO)
+                .collect(Collectors.toList());
     }
 
     /**
@@ -587,7 +596,7 @@ public class EnrollInviteService {
     /**
      * Builds a basic EnrollInviteDTO with only essential fields to avoid LazyInitializationException
      * This method is safe to use outside of transaction context
-     * 
+     *
      * @param enrollInvite The EnrollInvite entity
      * @return EnrollInviteDTO with basic fields populated
      */

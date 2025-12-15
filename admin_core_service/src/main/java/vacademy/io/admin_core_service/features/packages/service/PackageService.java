@@ -50,7 +50,6 @@ public class PackageService {
 
         Sort thisSort = ListService.createSortObject(learnerPackageFilterDTO.getSortColumns());
         Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);
-
         Page<PackageDetailProjection> learnerPackageDetail = null;
         if (StringUtils.hasText(learnerPackageFilterDTO.getSearchByName())) {
             learnerPackageDetail = packageRepository.getCatalogPackageDetail(
@@ -58,6 +57,7 @@ public class PackageService {
                     learnerPackageFilterDTO.getFacultyIds(),
                     instituteId,
                     List.of(PackageStatusEnum.ACTIVE.name()),
+                    learnerPackageFilterDTO.getPackageTypes(),
                     List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
                     List.of(LevelStatusEnum.ACTIVE.name()),
                     List.of(StatusEnum.ACTIVE.name()),
@@ -66,13 +66,13 @@ public class PackageService {
                     List.of(QuestionStatusEnum.ACTIVE.name()),
                     List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                     List.of(ChapterStatus.ACTIVE.name()),
-                    pageable
-            );
+                    pageable);
         } else {
             learnerPackageDetail = packageRepository.getCatalogPackageDetail(
                     instituteId,
                     learnerPackageFilterDTO.getLevelIds(),
                     List.of(PackageStatusEnum.ACTIVE.name()),
+                    learnerPackageFilterDTO.getPackageTypes(),
                     List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
                     learnerPackageFilterDTO.getFacultyIds(),
                     List.of(StatusEnum.ACTIVE.name()),
@@ -83,8 +83,7 @@ public class PackageService {
                     List.of(QuestionStatusEnum.ACTIVE.name()),
                     List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                     List.of(ChapterStatus.ACTIVE.name()),
-                    pageable
-            );
+                    pageable);
         }
 
         // Get all instructor userIds
@@ -126,20 +125,22 @@ public class PackageService {
                     projection.getPackageSessionId(),
                     projection.getLevelId(),
                     projection.getLevelName(),
+                    projection.getDripConditionJson(),
                     instructors,
                     projection.getLevelIds(),
-                    projection.getReadTimeInMinutes()
-            );
+                    projection.getReadTimeInMinutes(),
+                    projection.getPackageType());
         }).toList();
 
         return new PageImpl<>(dtos, pageable, learnerPackageDetail.getTotalElements());
     }
 
     public PackageDetailDTO getPackageDetailById(
-            String packageId
-    ) {
-        Optional<PackageDetailProjection> optionalProjection =
-                packageRepository.getPackageDetailByIdWithSessionAndFacultyStatus(packageId, List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()), List.of(FacultyStatusEnum.ACTIVE.name()), List.of(StatusEnum.ACTIVE.name()));
+            String packageId) {
+        Optional<PackageDetailProjection> optionalProjection = packageRepository
+                .getPackageDetailByIdWithSessionAndFacultyStatus(packageId,
+                        List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                        List.of(FacultyStatusEnum.ACTIVE.name()), List.of(StatusEnum.ACTIVE.name()));
 
         if (optionalProjection.isEmpty()) {
             throw new VacademyException("Package not found");
@@ -179,26 +180,28 @@ public class PackageService {
                 projection.getPackageSessionId(),
                 projection.getLevelId(),
                 projection.getLevelName(),
+                projection.getDripConditionJson(),
                 instructors,
                 projection.getLevelIds(),
-                projection.getReadTimeInMinutes()
-        );
+                projection.getReadTimeInMinutes(),
+                projection.getPackageType());
 
         return dto;
     }
 
     public void addOrUpdatePackage(AddCourseDTO addCourseDTO, String instituteId, CustomUserDetails userDetails) {
         PackageEntity packageEntity;
-        
+
         // Set created_by_user_id from user context if not already set in DTO
         if (!StringUtils.hasText(addCourseDTO.getCreatedByUserId()) && userDetails != null) {
             addCourseDTO.setCreatedByUserId(userDetails.getId());
         }
-        
+
         if (addCourseDTO.getNewCourse()) {
             packageEntity = getCourse(addCourseDTO, instituteId);
         } else {
-            packageEntity = packageRepository.findById(addCourseDTO.getId()).orElseThrow(() -> new VacademyException("Package not found"));
+            packageEntity = packageRepository.findById(addCourseDTO.getId())
+                    .orElseThrow(() -> new VacademyException("Package not found"));
             updateCourse(addCourseDTO, packageEntity);
         }
         for (AddNewSessionDTO addNewSessionDTO : addCourseDTO.getSessions()) {
@@ -207,41 +210,42 @@ public class PackageService {
     }
 
     public PackageEntity getCourse(AddCourseDTO addCourseDTO, String instituteId) {
-        Optional<PackageEntity> optionalPackageEntity = packageRepository.findTopByPackageNameAndSessionStatusAndInstitute(addCourseDTO.getCourseName(),
-                List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
-                List.of(PackageStatusEnum.ACTIVE.name(), PackageStatusEnum.DRAFT.name()), 
-                instituteId);
+        Optional<PackageEntity> optionalPackageEntity = packageRepository
+                .findTopByPackageNameAndSessionStatusAndInstitute(addCourseDTO.getCourseName(),
+                        List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                        List.of(PackageStatusEnum.ACTIVE.name(), PackageStatusEnum.DRAFT.name()),
+                        instituteId);
         if (optionalPackageEntity.isPresent()) {
             return optionalPackageEntity.get();
         }
         PackageEntity packageEntity = new PackageEntity();
         packageEntity.setPackageName(addCourseDTO.getCourseName());
         packageEntity.setThumbnailFileId(addCourseDTO.getThumbnailFileId());
-        
+
         // Set status - default to DRAFT for teacher approval workflow
         if (StringUtils.hasText(addCourseDTO.getStatus())) {
             packageEntity.setStatus(addCourseDTO.getStatus());
         } else {
             packageEntity.setStatus(PackageStatusEnum.ACTIVE.name());
         }
-        
+
         // Set created by user ID for teacher approval workflow
         if (StringUtils.hasText(addCourseDTO.getCreatedByUserId())) {
             packageEntity.setCreatedByUserId(addCourseDTO.getCreatedByUserId());
         }
-        
+
         // Set original course ID if this is a copy
         if (StringUtils.hasText(addCourseDTO.getOriginalCourseId())) {
             packageEntity.setOriginalCourseId(addCourseDTO.getOriginalCourseId());
         }
-        
+
         // Set version number
         if (addCourseDTO.getVersionNumber() != null) {
             packageEntity.setVersionNumber(addCourseDTO.getVersionNumber());
         } else {
             packageEntity.setVersionNumber(1); // Default version
         }
-        
+
         packageEntity.setIsCoursePublishedToCatalaouge(addCourseDTO.getIsCoursePublishedToCatalaouge());
         packageEntity.setCoursePreviewImageMediaId(addCourseDTO.getCoursePreviewImageMediaId());
         packageEntity.setCourseBannerMediaId(addCourseDTO.getCourseBannerMediaId());

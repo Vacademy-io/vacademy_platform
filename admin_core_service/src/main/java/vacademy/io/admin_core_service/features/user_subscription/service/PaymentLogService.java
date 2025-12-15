@@ -15,15 +15,18 @@ import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogF
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogWithUserPlanDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOptionDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentPlanDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.SubOrgDetailsDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum;
+import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanSourceEnum;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
@@ -50,13 +53,14 @@ public class PaymentLogService {
     public UserPlanService userPlanService;
 
     @Autowired
-    public PaymentNotificatonService paymentNotificatonService;
-
-    @Autowired
+    public PaymentNotificatonService paymentNotificatonService;    @Autowired
     private AuthService authService;
 
     @Autowired
     private UserPlanRepository userPlanRepository;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.institute.repository.InstituteRepository instituteRepository;
 
     public String createPaymentLog(String userId, double paymentAmount, String vendor, String vendorId, String currency,
                                    UserPlan userPlan) {
@@ -294,22 +298,20 @@ public class PaymentLogService {
         validateFilter(filterDTO);
 
         Sort sort = resolveSort(filterDTO);
-        Pageable pageable = PageRequest.of(pageNo, pageSize, sort);
-
-        List<String> paymentStatuses = safeList(filterDTO.getPaymentStatuses());
+        Pageable pageable = PageRequest.of(pageNo, pageSize, sort);        List<String> paymentStatuses = safeList(filterDTO.getPaymentStatuses());
         List<String> enrollInviteIds = safeList(filterDTO.getEnrollInviteIds());
         List<String> packageSessionIds = safeList(filterDTO.getPackageSessionIds());
         List<String> userPlanStatuses = safeList(filterDTO.getUserPlanStatuses());
+        List<String> sources = safeList(filterDTO.getSources());
 
         LocalDateTime startDate = resolveStartDate(filterDTO);
-        LocalDateTime endDate = resolveEndDate(filterDTO);
-
-        Page<PaymentLog> paymentLogsPage = paymentLogRepository.findPaymentLogIdsWithFilters(
+        LocalDateTime endDate = resolveEndDate(filterDTO);        Page<PaymentLog> paymentLogsPage = paymentLogRepository.findPaymentLogIdsWithFilters(
             filterDTO.getInstituteId(),
             startDate,
             endDate,
             paymentStatuses,
             userPlanStatuses,
+            sources,
             enrollInviteIds,
             packageSessionIds,
             pageable
@@ -317,9 +319,10 @@ public class PaymentLogService {
 
         List<PaymentLog> paymentLogs = paymentLogsPage.getContent();
         Map<String, UserDTO> userMap = fetchUsers(paymentLogs);
+        Map<String, Institute> instituteMap = fetchInstitutes(paymentLogs);
 
         List<PaymentLogWithUserPlanDTO> content = paymentLogs.stream()
-            .map(pl -> mapEntityToDTO(pl, userMap))
+            .map(pl -> mapEntityToDTO(pl, userMap, instituteMap))
             .collect(Collectors.toList());
 
         return new PageImpl<>(content, pageable, paymentLogsPage.getTotalElements());
@@ -355,9 +358,7 @@ public class PaymentLogService {
         return filterDTO.getEndDateInUtc() != null
             ? filterDTO.getEndDateInUtc()
             : LocalDateTime.now();
-    }
-
-    private Map<String, UserDTO> fetchUsers(List<PaymentLog> paymentLogs) {
+    }    private Map<String, UserDTO> fetchUsers(List<PaymentLog> paymentLogs) {
         Set<String> userIds = paymentLogs.stream()
             .map(PaymentLog::getUserId)
             .filter(Objects::nonNull)
@@ -378,7 +379,35 @@ public class PaymentLogService {
             ));
     }
 
-    private PaymentLogWithUserPlanDTO mapEntityToDTO(PaymentLog paymentLog, Map<String, UserDTO> userMap) {
+    private Map<String, Institute> fetchInstitutes(List<PaymentLog> paymentLogs) {
+        Set<String> subOrgIds = paymentLogs.stream()
+                .map(PaymentLog::getUserPlan)
+                .filter(Objects::nonNull)
+                .filter(up -> UserPlanSourceEnum.SUB_ORG.name().equals(up.getSource()))
+                .map(UserPlan::getSubOrgId)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toSet());
+
+        if (subOrgIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        log.debug("Fetching {} institutes in bulk for subOrgIds: {}", subOrgIds.size(), subOrgIds);
+
+        // Convert Iterable to List
+        Iterable<Institute> iterable = instituteRepository.findAllById(subOrgIds);
+        List<Institute> institutes = new ArrayList<>();
+        iterable.forEach(institutes::add);
+
+        return institutes.stream()
+                .collect(Collectors.toMap(
+                        Institute::getId,
+                        i -> i,
+                        (existing, replacement) -> existing
+                ));
+    }
+
+    private PaymentLogWithUserPlanDTO mapEntityToDTO(PaymentLog paymentLog, Map<String, UserDTO> userMap, Map<String, Institute> instituteMap) {
         PaymentLogDTO paymentLogDTO = paymentLog.mapToDTO();
 
         UserPlanDTO userPlanDTO = null;
@@ -394,6 +423,23 @@ public class PaymentLogService {
                 paymentPlanDTO = userPlan.getPaymentPlan().mapToPaymentPlanDTO();
             }
 
+            // Fetch sub-org details from the pre-fetched map
+            SubOrgDetailsDTO subOrgDetails = null;
+            if (UserPlanSourceEnum.SUB_ORG.name().equals(userPlan.getSource()) && 
+                StringUtils.hasText(userPlan.getSubOrgId())) {
+                Institute institute = instituteMap.get(userPlan.getSubOrgId());
+                if (institute != null) {
+                    subOrgDetails = SubOrgDetailsDTO.builder()
+                            .id(institute.getId())
+                            .name(institute.getInstituteName())
+                            .address(institute.getAddress())
+                            .build();
+                } else {
+                    log.warn("Institute not found in map for subOrgId={} in UserPlan ID={}", 
+                            userPlan.getSubOrgId(), userPlan.getId());
+                }
+            }
+
             userPlanDTO = UserPlanDTO.builder()
                 .id(userPlan.getId())
                 .userId(userPlan.getUserId())
@@ -403,6 +449,8 @@ public class PaymentLogService {
                 .enrollInviteId(userPlan.getEnrollInviteId())
                 .paymentOptionId(userPlan.getPaymentOptionId())
                 .status(userPlan.getStatus())
+                .source(userPlan.getSource())
+                .subOrgDetails(subOrgDetails)
                 .createdAt(userPlan.getCreatedAt())
                 .updatedAt(userPlan.getUpdatedAt())
                 .paymentLogs(null)

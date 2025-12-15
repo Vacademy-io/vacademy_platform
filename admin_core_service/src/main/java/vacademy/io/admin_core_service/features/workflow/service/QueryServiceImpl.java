@@ -654,10 +654,6 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
         }
     }
 
-// Dependencies required in QueryServiceImpl:
-    // @Autowired private AudienceResponseRepository audienceResponseRepository;
-    // @Autowired private CustomFieldValuesRepository customFieldValuesRepository;
-    // @Autowired private CustomFieldRepository customFieldRepository;
 
     private Map<String, Object> getAudienceResponsesByDayDifference(Map<String, Object> params) {
         String instituteId = (String) params.get("instituteId");

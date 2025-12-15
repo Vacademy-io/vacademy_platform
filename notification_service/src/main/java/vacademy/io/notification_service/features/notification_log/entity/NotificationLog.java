@@ -51,4 +51,11 @@ public class NotificationLog {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    // Add to your existing NotificationLog class
+    @Column(name = "sender_business_channel_id")
+    private String senderBusinessChannelId;
+
+    @Column(name = "message_payload", columnDefinition = "TEXT")
+    private String messagePayload;
 }

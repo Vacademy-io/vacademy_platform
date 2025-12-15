@@ -299,35 +299,46 @@ export default function EditProfile() {
 
   return (
     <FormProvider {...methods}>
-      <div className="bg-white rounded-lg w-full max-w-md mx-auto shadow-lg sm:max-w-md md:max-w-lg lg:max-w-xl">
-        <div className="p-4 flex items-center justify-between border-b">
-          <h1 className="text-lg font-medium text-primary-500">Edit Profile</h1>
-          <button onClick={handleCancel} className="text-gray-500">
-            <X size={20} weight="bold" />
-          </button>
-        </div>
+      <div className="min-h-screen bg-gray-50/50 p-4 md:p-8 pb-20 md:pb-8">
+        <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          {/* Header */}
+          <div className="p-6 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
+            <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <Pencil className="w-5 h-5 text-primary-500" />
+              Edit Profile
+            </h1>
+            <button
+              onClick={handleCancel}
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-500"
+            >
+              <X size={24} />
+            </button>
+          </div>
 
-        <form onSubmit={handleSubmit} className="p-4 space-y-6">
-          {/* Profile Image with Dropdown Menu */}
-          <div className="flex justify-center mb-4">
-            <div className="relative">
-              {profileImageUrl ? (
-                <img
-                  src={profileImageUrl || "/placeholder.svg"}
-                  alt="Profile Photo"
-                  className="h-24 w-24 rounded-full object-cover"
-                />
-              ) : (
-                <div className="h-24 w-24 rounded-full bg-gray-200 flex items-center justify-center">
-                  <User size={40} className="text-gray-400" />
+          <form onSubmit={handleSubmit} className="p-6 md:p-8 space-y-8">
+            {/* Profile Image Section */}
+            <div className="flex flex-col items-center">
+              <div className="relative group">
+                <div className="h-28 w-28 rounded-full border-4 border-white shadow-md overflow-hidden bg-gray-100 flex items-center justify-center">
+                  {profileImageUrl ? (
+                    <img
+                      src={profileImageUrl || "/placeholder.svg"}
+                      alt="Profile"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <User size={48} className="text-gray-400" />
+                  )}
+                  {isUploading && (
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-2 border-white border-t-transparent"></div>
+                    </div>
+                  )}
                 </div>
-              )}
 
-              {/* DropdownMenu */}
-              <div className="absolute bottom-0 right-0">
                 <DropdownMenu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
                   <DropdownMenuTrigger asChild>
-                    <button className="p-1 rounded-md bg-gray-100 border border-gray-400">
+                    <button type="button" className="absolute bottom-1 right-1 p-2 rounded-full bg-primary-500 text-white shadow-lg hover:bg-primary-600 transition-colors border-2 border-white">
                       <Pencil className="w-4 h-4" />
                     </button>
                   </DropdownMenuTrigger>
@@ -336,7 +347,7 @@ export default function EditProfile() {
                       onSelect={(e) => {
                         e.preventDefault();
                         document.getElementById("profile-upload")?.click();
-                        setIsMenuOpen(false); // Close dropdown after file picker triggered
+                        setIsMenuOpen(false);
                       }}
                     >
                       Upload New
@@ -345,10 +356,11 @@ export default function EditProfile() {
                       onSelect={(e) => {
                         e.preventDefault();
                         handleRemoveProfileImage();
-                        setIsMenuOpen(false); // Close dropdown after remove
+                        setIsMenuOpen(false);
                       }}
+                      className="text-red-600"
                     >
-                      Remove
+                      Remove Photo
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -360,344 +372,317 @@ export default function EditProfile() {
                   accept="image/*"
                   onChange={(e) => {
                     handleProfileImageChange(e);
-                    setIsMenuOpen(false); // Close dropdown after file is selected
+                    setIsMenuOpen(false);
                   }}
                 />
               </div>
+              <p className="mt-3 text-sm text-gray-500">Allowed *.jpeg, *.jpg, *.png, *.gif</p>
+            </div>
 
-              {isUploading && (
-                <div className="absolute inset-0 bg-black bg-opacity-50 rounded-full flex items-center justify-center">
-                  <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-white"></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {/* Left Column */}
+              <div className="space-y-8">
+                {/* General Details */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-lg font-semibold text-gray-900 border-b pb-2">
+                    <User size={20} className="text-primary-500" weight="bold" />
+                    <h3>General Details</h3>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="full_name" className="text-xs uppercase font-medium text-gray-500">
+                        Full Name*
+                      </Label>
+                      <Input
+                        id="full_name"
+                        value={formData.full_name}
+                        onChange={(e) => handleChange("full_name", e.target.value)}
+                        placeholder="Enter your full name"
+                        required
+                        className="h-11 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="gender" className="text-xs uppercase font-medium text-gray-500">
+                        Gender*
+                      </Label>
+                      <Select
+                        value={formData.gender}
+                        onValueChange={(value) => handleChange("gender", value)}
+                      >
+                        <SelectTrigger className="h-11 bg-gray-50 border-gray-200 focus:bg-white transition-colors">
+                          <SelectValue placeholder="Select gender" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Male">Male</SelectItem>
+                          <SelectItem value="Female">Female</SelectItem>
+                          <SelectItem value="Other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
+                      <div className="space-y-2">
+                        <Label htmlFor="institute_name" className="text-xs uppercase font-medium text-gray-500">
+                          College/School Name
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            id="institute_name"
+                            value={formData.institute_name}
+                            onChange={(e) => handleChange("institute_name", e.target.value)}
+                            placeholder="Enter institute name"
+                            className="h-11 pl-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                          />
+                          <GraduationCap
+                            size={18}
+                            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
-          </div>
 
-          {/* General Details */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
-              <User size={18} weight="bold" />
-              <h3>General Details</h3>
+                {/* Contact Information */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-lg font-semibold text-gray-900 border-b pb-2">
+                    <EnvelopeSimple size={20} className="text-secondary-500" weight="bold" />
+                    <h3>Contact Information</h3>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="contact_number" className="text-xs uppercase font-medium text-gray-500">
+                        Mobile Number*
+                      </Label>
+                      <PhoneInputField
+                        label=""
+                        name="contact_number"
+                        placeholder="Enter mobile number"
+                        control={methods.control}
+                        value={formData.contact_number}
+                        country="in"
+                        onChange={(value) => handleChange("contact_number", value)}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="email" className="text-xs uppercase font-medium text-gray-500">
+                        Email*
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          id="email"
+                          type="email"
+                          value={formData.email}
+                          onChange={(e) => handleChange("email", e.target.value)}
+                          placeholder="Enter email address"
+                          required
+                          className="h-11 pl-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                        />
+                        <EnvelopeSimple
+                          size={18}
+                          className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column */}
+              <div className="space-y-8">
+                {/* Location Details */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-lg font-semibold text-gray-900 border-b pb-2">
+                    <MapPin size={20} className="text-tertiary-500" weight="bold" />
+                    <h3>Location Details</h3>
+                  </div>
+
+                  {showForInstitutes([HOLISTIC_INSTITUTE_ID]) ? (
+                    <div className="space-y-2">
+                      <Label htmlFor="country" className="text-xs uppercase font-medium text-gray-500">
+                        Country
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          id="country"
+                          value={formData.country}
+                          onChange={(e) => handleChange("country", e.target.value)}
+                          placeholder="Enter country"
+                          className="h-11 pl-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                        />
+                        <GlobeSimple
+                          size={18}
+                          className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="address_line" className="text-xs uppercase font-medium text-gray-500">
+                          Address Line 1
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            id="address_line"
+                            value={formData.address_line}
+                            onChange={(e) => handleChange("address_line", e.target.value)}
+                            placeholder="Enter address"
+                            className="h-11 pl-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                          />
+                          <Buildings
+                            size={18}
+                            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="city" className="text-xs uppercase font-medium text-gray-500">
+                            City/Village
+                          </Label>
+                          <Input
+                            id="city"
+                            value={formData?.city || ""}
+                            onChange={(e) => handleChange("city", e.target.value)}
+                            className="h-11 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="state" className="text-xs uppercase font-medium text-gray-500">
+                            State
+                          </Label>
+                          <Input
+                            id="state"
+                            value={formData.state}
+                            onChange={(e) => handleChange("state", e.target.value)}
+                            className="h-11 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="pin_code" className="text-xs uppercase font-medium text-gray-500">
+                          Pincode
+                        </Label>
+                        <Input
+                          id="pin_code"
+                          value={formData.pin_code}
+                          onChange={(e) => handleChange("pin_code", e.target.value)}
+                          className="h-11 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Parent Details */}
+                {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 text-lg font-semibold text-gray-900 border-b pb-2">
+                      <Users size={20} className="text-gray-500" weight="bold" />
+                      <h3>Guardian Details</h3>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="father_name" className="text-xs uppercase font-medium text-gray-500">
+                          Father's Name
+                        </Label>
+                        <Input
+                          id="father_name"
+                          value={formData.father_name}
+                          onChange={(e) => handleChange("father_name", e.target.value)}
+                          className="h-11 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="mother_name" className="text-xs uppercase font-medium text-gray-500">
+                          Mother's Name
+                        </Label>
+                        <Input
+                          id="mother_name"
+                          value={formData.mother_name}
+                          onChange={(e) => handleChange("mother_name", e.target.value)}
+                          className="h-11 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="parents_email" className="text-xs uppercase font-medium text-gray-500">
+                        Guardian's Email
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          id="parents_email"
+                          type="email"
+                          value={formData.parents_email}
+                          onChange={(e) => handleChange("parents_email", e.target.value)}
+                          className="h-11 pl-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                        />
+                        <EnvelopeSimple
+                          size={18}
+                          className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="parents_mobile_number" className="text-xs uppercase font-medium text-gray-500">
+                        Guardian's Mobile
+                      </Label>
+                      <PhoneInputField
+                        label=""
+                        name="parents_mobile_number"
+                        placeholder="Enter mobile number"
+                        control={methods.control}
+                        value={formData.parents_mobile_number}
+                        country="in"
+                        onChange={(value) => handleChange("parents_mobile_number", value)}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="full_name" className="text-xs">
-                Full Name*
-              </Label>
-              <Input
-                id="full_name"
-                value={formData.full_name}
-                onChange={(e) => handleChange("full_name", e.target.value)}
-                placeholder="Enter your full name"
-                required
-                className="h-10 text-sm"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="gender" className="text-xs">
-                Gender*
-              </Label>
-              <Select
-                value={formData.gender}
-                onValueChange={(value) => handleChange("gender", value)}
+            {/* Actions */}
+            <div className="pt-6 border-t border-gray-100 flex items-center justify-end gap-3 sticky bottom-0 bg-white p-4 -mx-6 -mb-6 md:p-0 md:m-0 md:static">
+              <MyButton
+                type="button"
+                scale="medium"
+                buttonType="secondary"
+                layoutVariant="default"
+                onClick={handleCancel}
               >
-                <SelectTrigger className="h-10 text-sm">
-                  <SelectValue placeholder="Select gender" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Male">Male</SelectItem>
-                  <SelectItem value="Female">Female</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
-              <div className="space-y-2">
-                <Label htmlFor="institute_name" className="text-xs">
-                  College/School Name
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="institute_name"
-                    value={formData.institute_name}
-                    onChange={(e) =>
-                      handleChange("institute_name", e.target.value)
-                    }
-                    placeholder="Enter college/school name"
-                    className="h-10 text-sm pl-9"
-                  />
-                  <GraduationCap
-                    size={18}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Contact Information */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="text-gray-500"
+                Cancel
+              </MyButton>
+              <MyButton
+                type="submit"
+                scale="medium"
+                buttonType="primary"
+                layoutVariant="default"
+                disabled={isLoading}
               >
-                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
-              </svg>
-              <h3>Contact Information</h3>
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save Changes"
+                )}
+              </MyButton>
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="contact_number" className="text-xs">
-                Mobile Number*
-              </Label>
-              <PhoneInputField
-                label=""
-                name="contact_number"
-                placeholder="Enter mobile number"
-                control={methods.control}
-                value={formData.contact_number}
-                country="in"
-                onChange={(value) => handleChange("contact_number", value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-xs">
-                Email*
-              </Label>
-              <div className="relative">
-                <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => handleChange("email", e.target.value)}
-                  placeholder="Enter email address"
-                  required
-                  className="h-10 text-sm pl-9"
-                />
-                <EnvelopeSimple
-                  size={18}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Location Details */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
-              <MapPin size={18} weight="bold" />
-              <h3>Location Details</h3>
-            </div>
-            {showForInstitutes([HOLISTIC_INSTITUTE_ID]) ? (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="address_line" className="text-xs">
-                    Country
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      id="country"
-                      value={formData.country}
-                      onChange={(e) => handleChange("country", e.target.value)}
-                      placeholder="Enter country"
-                      className="h-10 text-sm pl-9"
-                    />
-                    <GlobeSimple
-                      size={18}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"
-                    />
-                  </div>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="address_line" className="text-xs">
-                    Address Line 1
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      id="address_line"
-                      value={formData.address_line}
-                      onChange={(e) =>
-                        handleChange("address_line", e.target.value)
-                      }
-                      placeholder="Enter address"
-                      className="h-10 text-sm pl-9"
-                    />
-                    <Buildings
-                      size={18}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="city" className="text-xs">
-                      City/Village
-                    </Label>
-                    <Input
-                      id="city"
-                      value={formData?.city || ""}
-                      onChange={(e) => handleChange("city", e.target.value)}
-                      placeholder="Enter city/village"
-                      className="h-10 text-sm"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="state" className="text-xs">
-                      State
-                    </Label>
-                    <Input
-                      id="state"
-                      value={formData.state}
-                      onChange={(e) => handleChange("state", e.target.value)}
-                      placeholder="Enter state"
-                      className="h-10 text-sm"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="pin_code" className="text-xs">
-                    Pincode
-                  </Label>
-                  <Input
-                    id="pin_code"
-                    value={formData.pin_code}
-                    onChange={(e) => handleChange("pin_code", e.target.value)}
-                    placeholder="Enter pincode"
-                    className="h-10 text-sm"
-                  />
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Parent/Guardian's Details */}
-          {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
-                <Users size={18} weight="bold" />
-                <h3>Parent/Guardian's Details</h3>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="father_name" className="text-xs">
-                    Father/Male Guardian's Name
-                  </Label>
-                  <Input
-                    id="father_name"
-                    value={formData.father_name}
-                    onChange={(e) =>
-                      handleChange("father_name", e.target.value)
-                    }
-                    placeholder="Enter father's name"
-                    className="h-10 text-sm"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="mother_name" className="text-xs">
-                    Mother/Female Guardian's Name
-                  </Label>
-                  <Input
-                    id="mother_name"
-                    value={formData.mother_name}
-                    onChange={(e) =>
-                      handleChange("mother_name", e.target.value)
-                    }
-                    placeholder="Enter mother's name"
-                    className="h-10 text-sm"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="parents_email" className="text-xs">
-                  Parent/Guardian's Email
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="parents_email"
-                    type="email"
-                    value={formData.parents_email}
-                    onChange={(e) =>
-                      handleChange("parents_email", e.target.value)
-                    }
-                    placeholder="Enter parent's email"
-                    className="h-10 text-sm pl-9"
-                  />
-                  <EnvelopeSimple
-                    size={18}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="parents_mobile_number" className="text-xs">
-                  Parent/Guardian's Mobile Number
-                </Label>
-                <PhoneInputField
-                  label=""
-                  name="parents_mobile_number"
-                  placeholder="Enter parent's mobile number"
-                  control={methods.control}
-                  value={formData.parents_mobile_number}
-                  country="in"
-                  onChange={(value) =>
-                    handleChange("parents_mobile_number", value)
-                  }
-                />
-              </div>
-            </div>
-          )}
-
-          <div className="pt-4 flex justify-between">
-            <MyButton
-              type="button"
-              scale="medium"
-              buttonType="secondary"
-              layoutVariant="default"
-              onClick={handleCancel}
-            >
-              Back
-            </MyButton>
-            <MyButton
-              type="submit"
-              scale="medium"
-              buttonType="primary"
-              layoutVariant="default"
-              className="test-sm"
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Saving...
-                </>
-              ) : (
-                "Save Changes"
-              )}
-            </MyButton>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
     </FormProvider>
   );

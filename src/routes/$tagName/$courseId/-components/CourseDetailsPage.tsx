@@ -513,7 +513,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
 
       {/* Course Content */}
-      {(catalogueData?.globalSettings as any)?.courseCatalogeType?.enabled !== true && <div className="pt-28 pb-8 sm:pb-12 bg-gray-50 w-full">
+      {(catalogueData?.globalSettings as any)?.courseCatalogeType?.enabled !== true && <div className="py-8 sm:py-12 bg-gray-50 w-full">
         <div className="w-full px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
             {/* Main Content */}

@@ -708,7 +708,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
           isMobileMenuOpen && (navigation.length > 0 || authLinks.length > 0) && (
             <div 
               ref={setMobileMenuRef}
-              className="md:hidden fixed top-[76px] left-0 right-0 z-[60] border-t border-gray-200 bg-white shadow-lg"
+              className="md:hidden fixed top-[60px] left-0 right-0 z-[60] border-t border-gray-200 bg-white shadow-lg"
           >
             <div className="px-2 pt-1 pb-3 space-y-1">
               {/* Navigation Links */}

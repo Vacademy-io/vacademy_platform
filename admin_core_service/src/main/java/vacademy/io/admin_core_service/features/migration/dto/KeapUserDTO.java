@@ -49,24 +49,8 @@ public class KeapUserDTO {
     @JsonProperty("start_date")
     private Date startDate;
 
-    public Date getStartDate() {
-        return startDate;
-    }
-
-    public void setStartDate(Date startDate) {
-        this.startDate = startDate;
-    }
-
     @JsonProperty("next_bill_date")
     private Date nextBillDate; // Can be null if cancelled/expired
-
-    public Date getNextBillDate() {
-        return nextBillDate;
-    }
-
-    public void setNextBillDate(Date nextBillDate) {
-        this.nextBillDate = nextBillDate;
-    }
 
     @JsonProperty("status")
     private String status; // Active, Inactive
@@ -82,6 +66,9 @@ public class KeapUserDTO {
 
     @JsonProperty("Job Type")
     private String jobType;
+    
+    @JsonProperty("Phone Type")
+    private String phoneType;
 
     @JsonProperty("practice_role")
     private String practiceRole;

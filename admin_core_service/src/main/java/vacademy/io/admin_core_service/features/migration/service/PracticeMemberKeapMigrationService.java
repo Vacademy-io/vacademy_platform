@@ -78,7 +78,7 @@ public class PracticeMemberKeapMigrationService {
     private static final String DEFAULT_PARENT_INSTITUTE_ID = "0bd9421e-2e74-4cfb-bbee-03bc09845bc6"; // The main org
     private static final String PAYMENT_OPTION_ID = "aee3fc07-7b65-4020-a6d5-7669520bd4a5";
     private static final String DEFAULT_PAYMENT_PLAN_ID = "e589191d-cd78-4f54-88b9-4796006cf5a9";
-    private static final String DEFAULT_ENROLL_INVITE = "aac8ac89-b9c8-4a2c-be77-ab46a1ba286a";
+    private static final String DEFAULT_ENROLL_INVITE = "65b9dcc7-aef5-484e-81dc-292b36f0ea2f";
     private static final String INSTITUTE_PAYMENT_GATEWAY_MAPPING_ID = "ewway";
     private static final String PACKAGE_SESSION_ID = "8886af95-1337-458d-8dbd-74eca2f11cec";
 

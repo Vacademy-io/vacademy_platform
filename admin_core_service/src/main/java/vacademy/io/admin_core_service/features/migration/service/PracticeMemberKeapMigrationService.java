@@ -249,7 +249,7 @@ public class PracticeMemberKeapMigrationService {
         ObjectMapper mapper = new ObjectMapper();
         ObjectNode paymentInitiationRequest = mapper.createObjectNode();
         paymentInitiationRequest.put("amount", data.getAmount());
-        paymentInitiationRequest.put("currency", data.getCurrency());
+        paymentInitiationRequest.put("currency", "aud");
         paymentInitiationRequest.put("description", "Migration Import - Practice");
         paymentInitiationRequest.put("charge_automatically", true);
         paymentInitiationRequest.put("institute_id", parentInstitute.getId()); // Linked to Parent for billing

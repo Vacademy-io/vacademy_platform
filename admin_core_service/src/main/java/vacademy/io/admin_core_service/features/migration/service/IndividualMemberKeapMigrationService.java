@@ -308,7 +308,7 @@ public class IndividualMemberKeapMigrationService {
         // Construct PaymentInitiationRequestDTO structure directly
         ObjectNode paymentInitiationRequest = mapper.createObjectNode();
         paymentInitiationRequest.put("amount", data.getAmount());
-        paymentInitiationRequest.put("currency", data.getCurrency());
+        paymentInitiationRequest.put("currency", "aud");
         paymentInitiationRequest.put("description", "Migration Import");
         paymentInitiationRequest.put("charge_automatically", true);
         paymentInitiationRequest.put("institute_id", DEFAULT_INSTITUTE_ID);

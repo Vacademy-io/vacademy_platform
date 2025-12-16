@@ -7,7 +7,7 @@ import {
   NotePencil,
   Users,
 } from "@phosphor-icons/react";
-import { Files, Password, UserCircle, UserCircleMinus } from "phosphor-react";
+import { Files, Password, UserCircle, UserCircleMinus } from "@phosphor-icons/react";
 import { NamingSettingsType } from "@/services/fetchAndStoreInstituteDetails";
 import { NAMING_SETTINGS_KEY } from "@/types/naming-settings";
 

@@ -5,7 +5,7 @@ import { MyButton } from "@/components/design-system/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Lock } from "lucide-react";
 import { SiStripe } from "react-icons/si";
-import { EnvelopeSimple } from "phosphor-react";
+import { EnvelopeSimple } from "@phosphor-icons/react";
 import { Loader2, CheckCircle, CreditCard } from "lucide-react";
 import { Preferences } from "@capacitor/preferences";
 import {

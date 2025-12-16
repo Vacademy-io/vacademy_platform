@@ -6,7 +6,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { truncateString } from "@/lib/reusable/truncateString";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { toTitleCase } from "@/lib/utils";
-import { CaretLeft, BookOpen, GraduationCap, CaretRight } from "phosphor-react";
+import { CaretLeft, BookOpen, GraduationCap, CaretRight } from "@phosphor-icons/react";
 import { SlideMaterial } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/slide-material";
 import {
   ChapterSidebarSlides,

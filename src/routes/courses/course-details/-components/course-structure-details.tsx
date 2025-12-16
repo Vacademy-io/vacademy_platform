@@ -12,7 +12,7 @@ import {
   PresentationChart,
   TreeStructure,
   FolderOpen,
-} from "phosphor-react";
+} from "@phosphor-icons/react";
 import {
   Collapsible,
   CollapsibleContent,

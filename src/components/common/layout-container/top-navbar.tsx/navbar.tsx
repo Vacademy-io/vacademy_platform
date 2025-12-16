@@ -14,7 +14,7 @@ import {
     TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
-import { Student } from "phosphor-react";
+import { Student } from "@phosphor-icons/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { handleFetchUserRoleDetails } from "@/routes/study-library/courses/-services/institute-details";
 import { DashboardLoader } from "@/components/core/dashboard-loader";

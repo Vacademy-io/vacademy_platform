@@ -22,7 +22,7 @@ import {
   FileText,
   PresentationChart,
   FolderOpen,
-} from "phosphor-react";
+} from "@phosphor-icons/react";
 import { Steps } from "@phosphor-icons/react";
 import {
   Collapsible,

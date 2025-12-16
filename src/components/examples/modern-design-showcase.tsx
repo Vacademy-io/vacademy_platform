@@ -20,7 +20,7 @@ import {
   Gear,
   TrendUp,
   Download
-} from 'phosphor-react';
+} from '@phosphor-icons/react';
 
 /**
  * Modern Design System Showcase

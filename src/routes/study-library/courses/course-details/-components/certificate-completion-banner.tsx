@@ -1,4 +1,4 @@
-import { GraduationCap, Download, Eye } from "phosphor-react";
+import { GraduationCap, Download, Eye } from "@phosphor-icons/react";
 import { toTitleCase } from "@/lib/utils";
 import { MyButton } from "@/components/design-system/button";
 

@@ -1,6 +1,6 @@
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { BookOpenText, PlayCircle  } from "@phosphor-icons/react";
-import { CheckCircle } from "phosphor-react";
+import { CheckCircle } from "@phosphor-icons/react";
 import { Chapter } from "@/stores/study-library/use-modules-with-chapters-store";
 import { CompletionStatusComponent } from "@/components/common/completion-status-component";
 import { toTitleCase } from "@/lib/utils";

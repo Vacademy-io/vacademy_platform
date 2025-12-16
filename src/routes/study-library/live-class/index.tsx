@@ -21,7 +21,7 @@ import {
   ArrowSquareOut,
   X,
   FunnelSimple,
-} from "phosphor-react";
+} from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

@@ -74,8 +74,10 @@ public class MigrationValidator {
 
         if (roles.stream().anyMatch("ROOT_ADMIN"::equalsIgnoreCase)) {
             validateMandatory(record, "Practice Name", error);
+            validateMandatory(record, "Token", error); // Token mandatory for ROOT_ADMIN
         } else if (roles.stream().anyMatch(r -> "ADMIN".equalsIgnoreCase(r) || "LEARNER".equalsIgnoreCase(r))) {
             validateMandatory(record, "ROOT_ADMIN_ID", error);
+            // Token is OPTIONAL for ADMIN/LEARNER
         }
 
         validateMandatory(record, "PRACTICE_ROLE", error);
@@ -83,7 +85,6 @@ public class MigrationValidator {
         validateMandatory(record, "Currency", error);
         validateMandatory(record, "Status", error);
         validateMandatory(record, "NextBillDate", error);
-        validateMandatory(record, "Token", error);
 
         // Regex Validation
         validateRegex(record, "Email", EMAIL_PATTERN, "Invalid Email format", error);
@@ -253,8 +254,10 @@ public class MigrationValidator {
 
         if (roles.stream().anyMatch("ROOT_ADMIN"::equalsIgnoreCase)) {
             validateMandatory(record, "Practice Name", error);
+            validateMandatory(record, "Token", error); // Token mandatory for ROOT_ADMIN
         } else if (roles.stream().anyMatch(r -> "ADMIN".equalsIgnoreCase(r) || "LEARNER".equalsIgnoreCase(r))) {
             validateMandatory(record, "ROOT_ADMIN_ID", error);
+            // Token is OPTIONAL for ADMIN/LEARNER
         }
 
         validateMandatory(record, "PRACTICE_ROLE", error);
@@ -262,7 +265,6 @@ public class MigrationValidator {
         validateMandatory(record, "Currency", error);
         validateMandatory(record, "Status", error);
         validateMandatory(record, "NextBillDate", error);
-        validateMandatory(record, "Token", error);
 
         // Regex Validation
         validateRegex(record, "Email", EMAIL_PATTERN, "Invalid Email format", error);
@@ -300,8 +302,10 @@ public class MigrationValidator {
 
         if (roles.stream().anyMatch("ROOT_ADMIN"::equalsIgnoreCase)) {
             validateMandatory(record, "Practice Name", error);
+            validateMandatory(record, "Token", error); // Token mandatory for ROOT_ADMIN
         } else if (roles.stream().anyMatch(r -> "ADMIN".equalsIgnoreCase(r) || "LEARNER".equalsIgnoreCase(r))) {
             validateMandatory(record, "ROOT_ADMIN_ID", error);
+            // Token is OPTIONAL for ADMIN/LEARNER
         }
 
         validateMandatory(record, "PRACTICE_ROLE", error);
@@ -309,7 +313,6 @@ public class MigrationValidator {
         validateMandatory(record, "Currency", error);
         validateMandatory(record, "Status", error);
         validateMandatory(record, "NextBillDate", error);
-        validateMandatory(record, "Token", error);
 
         // Regex Validation
         validateRegex(record, "Email", EMAIL_PATTERN, "Invalid Email format", error);
@@ -455,14 +458,15 @@ public class MigrationValidator {
             // City, State, PostalCode are OPTIONAL
             if (roles.stream().anyMatch("ROOT_ADMIN"::equalsIgnoreCase)) {
                 validateMandatory(user.getPracticeName(), "Practice Name", error);
+                validateMandatory(user.getEwayToken(), "Token", error); // Token mandatory for ROOT_ADMIN
             } else if (roles.stream().anyMatch(r -> "ADMIN".equalsIgnoreCase(r) || "LEARNER".equalsIgnoreCase(r))) {
                 validateMandatory(user.getRootAdminId(), "ROOT_ADMIN_ID", error);
+                // Token is OPTIONAL for ADMIN/LEARNER
             }
             validateMandatory(user.getPracticeRole(), "PRACTICE_ROLE", error);
             validateMandatory(user.getStartDate(), "StartDate", error);
             validateMandatory(user.getStatus(), "Status", error);
             validateMandatory(user.getNextBillDate(), "NextBillDate", error);
-            validateMandatory(user.getEwayToken(), "Token", error);
             validateEnum(user.getStatus(), "Status", Arrays.asList("ACTIVE"), error);
         } else if ("PRACTICE_ACTIVE_CANCELLED".equals(recordType)) {
             validateMandatory(user.getFirstName(), "FirstName", error);
@@ -471,14 +475,15 @@ public class MigrationValidator {
             // City, State, PostalCode are OPTIONAL
             if (roles.stream().anyMatch("ROOT_ADMIN"::equalsIgnoreCase)) {
                 validateMandatory(user.getPracticeName(), "Practice Name", error);
+                validateMandatory(user.getEwayToken(), "Token", error); // Token mandatory for ROOT_ADMIN
             } else if (roles.stream().anyMatch(r -> "ADMIN".equalsIgnoreCase(r) || "LEARNER".equalsIgnoreCase(r))) {
                 validateMandatory(user.getRootAdminId(), "ROOT_ADMIN_ID", error);
+                // Token is OPTIONAL for ADMIN/LEARNER
             }
             validateMandatory(user.getPracticeRole(), "PRACTICE_ROLE", error);
             validateMandatory(user.getStartDate(), "StartDate", error);
             validateMandatory(user.getStatus(), "Status", error);
             validateMandatory(user.getNextBillDate(), "NextBillDate", error);
-            validateMandatory(user.getEwayToken(), "Token", error);
             validateEnum(user.getStatus(), "Status", Arrays.asList("CANCELLED", "CANCLED"), error);
         } else if ("EXPIRED_PRACTICE".equals(recordType)) {
             validateMandatory(user.getFirstName(), "FirstName", error);
@@ -504,14 +509,15 @@ public class MigrationValidator {
             // City, State, PostalCode are OPTIONAL
             if (roles.stream().anyMatch("ROOT_ADMIN"::equalsIgnoreCase)) {
                 validateMandatory(user.getPracticeName(), "Practice Name", error);
+                validateMandatory(user.getEwayToken(), "Token", error); // Token mandatory for ROOT_ADMIN
             } else if (roles.stream().anyMatch(r -> "ADMIN".equalsIgnoreCase(r) || "LEARNER".equalsIgnoreCase(r))) {
                 validateMandatory(user.getRootAdminId(), "ROOT_ADMIN_ID", error);
+                // Token is OPTIONAL for ADMIN/LEARNER
             }
             validateMandatory(user.getPracticeRole(), "PRACTICE_ROLE", error);
             validateMandatory(user.getStartDate(), "StartDate", error);
             validateMandatory(user.getStatus(), "Status", error);
             validateMandatory(user.getNextBillDate(), "NextBillDate", error);
-            validateMandatory(user.getEwayToken(), "Token", error);
             validateEnum(user.getStatus(), "Status", Arrays.asList("ACTIVE", "CANCELLED", "CANCLED"), error);
         }
 

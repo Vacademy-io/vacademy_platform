@@ -17,7 +17,7 @@ public class TestController {
 
     @GetMapping
     public void test() {
-        workflowEngineService.run("wf_ld_group_sync",Map.of("user",getUser()));
+        workflowEngineService.run("test_tash",Map.of("user",getUser()));
     }
 
     public UserDTO getUser(){

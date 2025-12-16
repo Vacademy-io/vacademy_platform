@@ -88,15 +88,23 @@ public class SubOrgLearnerService {
 
         // Build list of student mappings with user details
         List<StudentMappingWithUserDTO> studentMappings = new ArrayList<>();
+        String instituteIdFromMapping = null;
         for (Object[] row : mappingData) {
             StudentMappingWithUserDTO mapping = buildStudentMappingWithUser(row, userMap);
             if (mapping != null) {
                 studentMappings.add(mapping);
+                // Extract institute_id from the mapping (row[7])
+                if (instituteIdFromMapping == null && row[7] != null) {
+                    instituteIdFromMapping = (String) row[7];
+                }
             }
         }
 
         // Fetch and populate custom fields for all users (filtered by institute's active custom fields)
-        enrichStudentMappingsWithCustomFields(studentMappings, subOrgId);
+        // Use institute_id from student_session_institute_group_mapping, not sub_org_id
+        if (instituteIdFromMapping != null) {
+            enrichStudentMappingsWithCustomFields(studentMappings, instituteIdFromMapping);
+        }
 
         // Build sub-org details
         SubOrgDetailsDTO subOrgDetails = buildSubOrgDetails(subOrg);
@@ -289,18 +297,20 @@ public class SubOrgLearnerService {
         UserDTO adminDTO = authService.getUsersFromAuthServiceByUserIds(List.of(admin.getUserId())).get(0);
         // 7. Save custom fields if provided
         if (request.getCustomFieldValues() != null && !request.getCustomFieldValues().isEmpty()) {
+            // Save custom fields for the mapping entity
             customFieldValueService.addCustomFieldValue(
                     request.getCustomFieldValues(),
                     CustomFieldValueSourceTypeEnum.STUDENT_SESSION_INSTITUTE_GROUP_MAPPING.name(),
                     mapping.getId()
             );
+            // Save custom fields for the user entity (using user.getId() not mapping.getId())
             customFieldValueService.addCustomFieldValue(
                     request.getCustomFieldValues(),
                     CustomFieldValueSourceTypeEnum.USER.name(),
-                    mapping.getId()
+                    user.getId()
             );
-            log.info("Saved {} custom field values for mapping: {}",
-                    request.getCustomFieldValues().size(), mapping.getId());
+            log.info("Saved {} custom field values for mapping: {} and user: {}",
+                    request.getCustomFieldValues().size(), mapping.getId(), user.getId());
         }
 
         triggerEnrollmentWorkflow(request.getInstituteId(),user,request.getPackageSessionId(),adminDTO);

@@ -70,7 +70,7 @@ public class ExternalHttpRequestStrategy implements HttpRequestStrategy {
             }
 
             Object requestBody = null;
-            if (cfg.getBody() != null && method != HttpMethod.GET && method != HttpMethod.DELETE) {
+            if (cfg.getBody() != null && method != HttpMethod.GET) {
                 requestBody = httpHelperUtils.evaluateBodyExpressions(cfg.getBody(), context);
             }
 

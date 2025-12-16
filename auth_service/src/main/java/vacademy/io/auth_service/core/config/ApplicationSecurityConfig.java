@@ -106,7 +106,10 @@ public class ApplicationSecurityConfig {
     @Order(1)
     public SecurityFilterChain oAuth2SecurityFilterChain(HttpSecurity http) throws Exception {
         http
-                .securityMatcher("/auth-service/oauth2/**", "/auth-service/login/**")
+                // Match OAuth2 paths - both with and without /auth-service prefix
+                // The authorization starts at /auth-service/oauth2/authorization/google
+                // But Google redirects back to /login/oauth2/code/google (no prefix)
+                .securityMatcher("/auth-service/oauth2/**", "/auth-service/login/**", "/login/**")
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session

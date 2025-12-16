@@ -7,6 +7,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+
+import vacademy.io.common.media.dto.FileDetailsDTO;
 import vacademy.io.media_service.dto.PreSignedUrlRequest;
 import vacademy.io.media_service.dto.PreSignedUrlResponse;
 import vacademy.io.media_service.exceptions.FileDownloadException;
@@ -48,6 +50,17 @@ public class PublicFileController {
 
         return ResponseEntity.ok().headers(headers).body(url);
     }
+
+    @GetMapping("/get-details/id")
+    public ResponseEntity<FileDetailsDTO> getFileDetailsById(@RequestParam String fileId, @RequestParam Integer expiryDays) throws FileDownloadException {
+        FileDetailsDTO fileDetailsDTO = fileService.getFileDetailsWithExpiryAndId(fileId, expiryDays);
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
+        String etag = "W/\"" + fileId + ":" + expiryDays + "\"";
+        headers.setETag(etag);
+        return ResponseEntity.ok().headers(headers).body(fileDetailsDTO);
+    }
+
 
     @PutMapping("/upload-file")
     public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile file) {

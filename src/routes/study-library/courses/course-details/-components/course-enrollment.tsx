@@ -1,4 +1,4 @@
-import { GraduationCap } from "phosphor-react";
+import { GraduationCap } from "@phosphor-icons/react";
 import {
     Select,
     SelectContent,

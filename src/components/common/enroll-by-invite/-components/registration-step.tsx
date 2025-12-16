@@ -7,7 +7,7 @@ import PhoneInputField from "@/components/design-system/phone-input-field";
 import SelectField from "@/components/design-system/select-field";
 import { MyInput } from "@/components/design-system/input";
 import { MyButton } from "@/components/design-system/button";
-import { Calendar, CreditCard, Globe } from "phosphor-react";
+import { Calendar, CreditCard, Globe } from "@phosphor-icons/react";
 import { getDefaultPlanFromPaymentsData, PaymentPlan } from "../-utils/helper";
 import { SubscriptionPlanSection } from "./subscription-plan-sections";
 import { OneTimePlanSection } from "./onetime-plan-section";

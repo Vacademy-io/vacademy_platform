@@ -7,7 +7,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Loader2, Lock } from "lucide-react";
-import { EnvelopeSimple } from "phosphor-react";
+import { EnvelopeSimple } from "@phosphor-icons/react";
 import { SiStripe } from "react-icons/si";
 import { Preferences } from "@capacitor/preferences";
 import {

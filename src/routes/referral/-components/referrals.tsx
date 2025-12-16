@@ -22,7 +22,7 @@ import {
   useGetReferrerBenefits,
 } from "../-services/get-referral-benefits";
 import { format } from "date-fns";
-import { ArrowSquareOut, User } from "phosphor-react";
+import { ArrowSquareOut, User } from "@phosphor-icons/react";
 import { useState } from "react";
 import {
   BenefitType,

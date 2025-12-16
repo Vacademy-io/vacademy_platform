@@ -1,5 +1,5 @@
 import { useRouter } from "@tanstack/react-router";
-import { CaretLeft } from "phosphor-react";
+import { CaretLeft } from "@phosphor-icons/react";
 import { toTitleCase } from "@/lib/utils";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";

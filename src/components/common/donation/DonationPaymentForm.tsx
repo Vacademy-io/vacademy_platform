@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { LockSimple } from "phosphor-react";
+import { LockSimple } from "@phosphor-icons/react";
 import { SiStripe } from "react-icons/si";
 import { MyButton } from "@/components/design-system/button";
 import { DonationSummary } from "./DonationSummary";

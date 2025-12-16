@@ -13,7 +13,7 @@ import {
   Question,
   ClipboardText,
   Exam,
-} from "phosphor-react";
+} from "@phosphor-icons/react";
 import {
   Collapsible,
   CollapsibleContent,

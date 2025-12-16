@@ -4,7 +4,7 @@ import {
   Folder,
   ChalkboardTeacher,
   TrendUp,
-} from "phosphor-react";
+} from "@phosphor-icons/react";
 import { Steps } from "@phosphor-icons/react";
 import { useEffect } from "react";
 import { MyButton } from "@/components/design-system/button";

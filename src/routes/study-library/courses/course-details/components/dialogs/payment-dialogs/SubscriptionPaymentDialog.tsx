@@ -4,7 +4,7 @@ import { Cross2Icon } from "@radix-ui/react-icons";
 import { MyButton } from "@/components/design-system/button";
 import { Lock } from "lucide-react";
 import { SiStripe } from "react-icons/si";
-import { EnvelopeSimple } from "phosphor-react";
+import { EnvelopeSimple } from "@phosphor-icons/react";
 import { Loader2, CreditCard } from "lucide-react";
 import {
   formatCurrency,

@@ -8,7 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Copy, Share } from "phosphor-react";
+import { Copy, Share } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { useGetEnrollInvites } from "../-services/get-enroll-invites";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";

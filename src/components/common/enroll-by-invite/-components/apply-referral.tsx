@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { VERIFY_COUPON_URL } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { AxiosResponse } from "axios";
-import { Check, Tag, X } from "phosphor-react";
+import { Check, Tag, X } from "@phosphor-icons/react";
 import { useState } from "react";
 import { ReferRequest } from "../-services/enroll-invite-services";
 

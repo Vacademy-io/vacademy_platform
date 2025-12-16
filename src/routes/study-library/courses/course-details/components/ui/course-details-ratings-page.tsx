@@ -2,7 +2,7 @@ import {
     Star,
     ChatCircle,
     TrendUp,
-} from "phosphor-react";
+} from "@phosphor-icons/react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { MyPagination } from "@/components/design-system/pagination";
 import { AxiosError } from "axios";

@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
-import React, { StrictMode, useEffect } from "react";
+import React, { StrictMode, lazy, Suspense } from "react";
 import ReactDOM from "react-dom/client";
 import * as Sentry from "@sentry/react";
 import RootErrorComponent from "./components/core/deafult-error";
@@ -13,85 +13,70 @@ import { SidebarProvider } from "./components/ui/sidebar";
 import { routeTree } from "./routeTree.gen";
 import "./i18n";
 import { Toaster } from "./components/ui/sonner";
-import { usePushNotifications } from "./hooks/usePushNotifications";
-import { initializeAnalytics, identifyUser } from "./lib/analytics";
-import { getDecodedAccessTokenFromStorage } from "@/lib/auth/sessionUtility";
 
-// Initialize Amplitude analytics
-initializeAnalytics();
+// Initialize Sentry immediately (synchronous import, but deferred init)
+Sentry.init({
+  dsn: "https://a642c065e30cd6f8f486700238323c24@o4510261002043392.ingest.us.sentry.io/4510346395320320",
+  enableLogs: true,
+  integrations: [Sentry.consoleLoggingIntegration({ levels: ["error"] })],
+});
 
-// Attempt to identify returning user on app start
-(async () => {
+// Lazy load analytics initialization (deferred to after first paint)
+const initAnalytics = async () => {
+  const { initializeAnalytics, identifyUser } = await import("./lib/analytics");
+  const { getDecodedAccessTokenFromStorage } = await import("@/lib/auth/sessionUtility");
+
+  initializeAnalytics();
+
   try {
     const decoded = await getDecodedAccessTokenFromStorage();
     const uid = decoded?.user;
     if (uid) {
       identifyUser(uid, { username: decoded?.username, email: decoded?.email });
     }
-  } catch {}
-})();
+  } catch { }
+};
 
-const queryClient = new QueryClient();
+// Initialize analytics after initial render using requestIdleCallback
+const initializeServices = () => {
+  if ('requestIdleCallback' in window) {
+    (window as unknown as { requestIdleCallback: (cb: () => void) => void }).requestIdleCallback(() => {
+      initAnalytics();
+    });
+  } else {
+    setTimeout(() => {
+      initAnalytics();
+    }, 2000);
+  }
+};
 
-Sentry.init({
-  dsn: "https://a642c065e30cd6f8f486700238323c24@o4510261002043392.ingest.us.sentry.io/4510346395320320",
-  // Enable logs to be sent to Sentry
-  enableLogs: true,
-  integrations: [Sentry.consoleLoggingIntegration({ levels: ["error"] })],
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Optimize query behavior
+      staleTime: 1000 * 60 * 5, // 5 minutes
+      gcTime: 1000 * 60 * 30, // 30 minutes (was: cacheTime, renamed in v5)
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
 });
 
-// Notification initialization wrapper
-const NotificationInitializer = ({
-  children,
-}: {
-  children: React.ReactNode;
-}) => {
-  // Initialize push notifications when app starts
-  usePushNotifications();
+// Lazy load push notification hook to avoid Firebase initialization blocking render
+const LazyNotificationInitializer = lazy(() =>
+  import("./components/lazy/NotificationInitializer").then(mod => ({
+    default: mod.NotificationInitializer
+  }))
+);
 
-  // Listen for messages forwarded by the service worker
-  useEffect(() => {
-    if (typeof window === "undefined" || !("serviceWorker" in navigator))
-      return;
-
-    type SwForwardedMessage = {
-      type?: string;
-      payload?: {
-        messageId?: string;
-        notification?: { title?: string; body?: string };
-        data?: Record<string, unknown>;
-      };
-    };
-
-    const handleSwMessage = (event: MessageEvent<SwForwardedMessage>) => {
-      const data = event.data as SwForwardedMessage;
-      if (!data || data.type !== "FCM_BACKGROUND_MESSAGE") return;
-
-      // Convert to app notification shape and dispatch to store
-      import("./services/push-notifications/push-notification-service").then(
-        ({ pushNotificationService }) => {
-          const payload = data.payload || {};
-          const title =
-            payload?.notification?.title ||
-            payload?.data?.title ||
-            "New notification";
-          const body = payload?.notification?.body || payload?.data?.body || "";
-          const id = payload?.messageId || String(Date.now());
-          pushNotificationService.dispatch({
-            title,
-            body,
-            id,
-            data: payload?.data || {},
-          } as unknown as import("@capacitor/push-notifications").PushNotificationSchema);
-        }
-      );
-    };
-
-    navigator.serviceWorker.addEventListener("message", handleSwMessage);
-    return () =>
-      navigator.serviceWorker.removeEventListener("message", handleSwMessage);
-  }, []);
-  return <>{children}</>;
+// Fallback wrapper for notifications
+const NotificationWrapper = ({ children }: { children: React.ReactNode }) => {
+  return (
+    <Suspense fallback={null}>
+      <LazyNotificationInitializer />
+      {children}
+    </Suspense>
+  );
 };
 
 // Create a new router instance
@@ -103,6 +88,9 @@ const router = createRouter({
   defaultNotFoundComponent: RootNotFoundComponent,
   defaultErrorComponent: RootErrorComponent,
   defaultPendingComponent: RootPendingComponent,
+  // Enable preloading for better perceived performance
+  defaultPreload: "intent",
+  defaultPreloadStaleTime: 0,
 });
 
 // Register the router instance for type safety
@@ -116,17 +104,21 @@ declare module "@tanstack/react-router" {
 const rootElement = document.getElementById("root")!;
 if (!rootElement.innerHTML) {
   const root = ReactDOM.createRoot(rootElement);
+
+  // Initialize analytics after first paint
+  initializeServices();
+
   root.render(
     <StrictMode>
       <ModeThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
         <ColorThemeProvider>
           <QueryClientProvider client={queryClient}>
-            <NotificationInitializer>
+            <NotificationWrapper>
               <SidebarProvider>
                 <RouterProvider router={router} />
                 <Toaster />
               </SidebarProvider>
-            </NotificationInitializer>
+            </NotificationWrapper>
           </QueryClientProvider>
         </ColorThemeProvider>
       </ModeThemeProvider>

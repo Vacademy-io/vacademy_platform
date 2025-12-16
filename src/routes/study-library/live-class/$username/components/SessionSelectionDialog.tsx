@@ -13,7 +13,7 @@ import {
   MapPin,
   ArrowSquareOut,
   WarningCircle,
-} from "phosphor-react";
+} from "@phosphor-icons/react";
 import {
   formatSessionTimeInUserTimezone,
   getTimezoneDisplayInfo,

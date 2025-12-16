@@ -1,7 +1,21 @@
 import type React from "react";
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, lazy, Suspense } from "react";
 import { FileX } from "@phosphor-icons/react";
-import { ExcalidrawViewer } from "./ExcalidrawViewer";
+
+// Lazy load ExcalidrawViewer (3.7MB) - only load when presentation slide is viewed
+const ExcalidrawViewer = lazy(() =>
+  import("./ExcalidrawViewer").then(mod => ({ default: mod.ExcalidrawViewer }))
+);
+
+// Loading fallback for Excalidraw
+const ExcalidrawLoadingFallback = () => (
+  <div className="flex items-center justify-center w-full h-[80vh] bg-gray-50 rounded-lg border border-gray-200">
+    <div className="flex flex-col items-center space-y-3">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <p className="text-sm text-gray-600 font-medium">Loading presentation viewer...</p>
+    </div>
+  </div>
+);
 import { Slide } from '@/hooks/study-library/use-slides';
 import { usePresentationTrackingStore } from "@/stores/study-library/presentation-tracking-store";
 import { usePresentationSync } from "@/hooks/study-library/usePresentationSync";
@@ -65,7 +79,7 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({ slide }) => {
   // Handle user activity to reset inactivity timer
   const handleUserActivity = useCallback(() => {
     lastActivityTimeRef.current = Date.now();
-    
+
     if (inactivityTimeoutRef.current) {
       clearTimeout(inactivityTimeoutRef.current);
     }
@@ -85,7 +99,7 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({ slide }) => {
     setVerificationCountdown(59);
     setShowVerification(true);
 
-         // const startTime = Date.now(); // Future use for response time tracking
+    // const startTime = Date.now(); // Future use for response time tracking
 
     // Countdown timer
     const countdownInterval = setInterval(() => {
@@ -95,12 +109,12 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({ slide }) => {
           setShowVerification(false);
           setMissedAnswerCount(count => count + 1);
           setIsPaused(true);
-          
+
           setTimeout(() => {
             setIsPaused(false);
             handleUserActivity();
           }, 2000);
-          
+
           return 0;
         }
         return prev - 1;
@@ -114,12 +128,12 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({ slide }) => {
   const handleVerificationClick = useCallback((clickedIndex: number) => {
     const endTime = Date.now();
     const responseTime = endTime - (Date.now() - verificationCountdown * 1000);
-    
-         const targetNumber = Math.max(...verificationNumbers.filter((_, i) => i !== 0 || 
-       (verificationNumbers[0] !== verificationNumbers[1] && verificationNumbers[0] !== verificationNumbers[2])));
-    
+
+    const targetNumber = Math.max(...verificationNumbers.filter((_, i) => i !== 0 ||
+      (verificationNumbers[0] !== verificationNumbers[1] && verificationNumbers[0] !== verificationNumbers[2])));
+
     const isCorrect = verificationNumbers[clickedIndex] === targetNumber;
-    
+
     if (isCorrect) {
       setResponseTimesArray(prev => [...prev, responseTime]);
       setAnsweredTimeArray(prev => [...prev, Math.round(responseTime / 1000)]);
@@ -130,7 +144,7 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({ slide }) => {
     if (verificationTimerRef.current) {
       clearTimeout(verificationTimerRef.current);
     }
-    
+
     setShowVerification(false);
     handleUserActivity();
   }, [verificationNumbers, verificationCountdown, handleUserActivity]);
@@ -140,7 +154,7 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({ slide }) => {
     const handleVisibilityChange = () => {
       const isHidden = document.hidden;
       setIsTabHidden(isHidden);
-      
+
       if (isHidden) {
         setTabSwitchCount(count => count + 1);
       } else {
@@ -182,7 +196,7 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({ slide }) => {
             end_time_in_millis: now,
             duration,
           });
-          
+
           sessionStartTime.current = new Date(); // Reset session start time
         }
       }
@@ -196,81 +210,81 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({ slide }) => {
     };
   }, [fileId, isPaused, isTabHidden, handleUserActivity]);
 
-     // Update activity tracking data
-   useEffect(() => {
-     if (!fileId) return;
+  // Update activity tracking data
+  useEffect(() => {
+    if (!fileId) return;
 
-     totalViewingTimeRef.current = viewSessions.current.reduce(
-       (total, session) => total + session.duration,
-       0
-     );
+    totalViewingTimeRef.current = viewSessions.current.reduce(
+      (total, session) => total + session.duration,
+      0
+    );
 
-     const activityData = {
-       slide_id: activeItem?.id || "",
-       activity_id: activityId.current,
-       source: "PRESENTATION" as const,
-       source_id: fileId || "",
-       start_time: startTime.current,
-       end_time: getISTTime(),
-       start_time_in_millis: startTimeInMillis.current,
-       end_time_in_millis: getEpochTimeInMillis(),
-       duration: elapsedTime.toString(),
-       view_sessions: viewSessions.current,
-       total_viewing_time: totalViewingTimeRef.current,
-       sync_status: "STALE" as const,
-       current_session_start_time_in_millis: sessionStartTime.current.getTime(),
-       new_activity: isFirstView,
-       concentration_score: {
-         id: activityId.current,
-         concentration_score: 0,
-         tab_switch_count: tabSwitchCount,
-         pause_count: missedAnswerCount,
-         wrong_answer_count: wrongAnswerCount,
-         answer_times_in_seconds: answeredTimeArray,
-       },
-     };
+    const activityData = {
+      slide_id: activeItem?.id || "",
+      activity_id: activityId.current,
+      source: "PRESENTATION" as const,
+      source_id: fileId || "",
+      start_time: startTime.current,
+      end_time: getISTTime(),
+      start_time_in_millis: startTimeInMillis.current,
+      end_time_in_millis: getEpochTimeInMillis(),
+      duration: elapsedTime.toString(),
+      view_sessions: viewSessions.current,
+      total_viewing_time: totalViewingTimeRef.current,
+      sync_status: "STALE" as const,
+      current_session_start_time_in_millis: sessionStartTime.current.getTime(),
+      new_activity: isFirstView,
+      concentration_score: {
+        id: activityId.current,
+        concentration_score: 0,
+        tab_switch_count: tabSwitchCount,
+        pause_count: missedAnswerCount,
+        wrong_answer_count: wrongAnswerCount,
+        answer_times_in_seconds: answeredTimeArray,
+      },
+    };
 
-     console.log("💾 [PresentationViewer] Adding activity to store:", {
-       slideId: activityData.slide_id,
-       activityId: activityData.activity_id,
-       isFirstView: isFirstView,
-       viewSessions: viewSessions.current.length,
-       elapsedTime
-     });
+    console.log("💾 [PresentationViewer] Adding activity to store:", {
+      slideId: activityData.slide_id,
+      activityId: activityData.activity_id,
+      isFirstView: isFirstView,
+      viewSessions: viewSessions.current.length,
+      elapsedTime
+    });
 
-     addActivity(activityData, !isFirstView);
+    addActivity(activityData, !isFirstView);
 
-     // Immediately sync data when presentation is first viewed to set progress to 100%
-     if (isFirstView) {
-       console.log("🎯 [PresentationViewer] First view detected, triggering immediate sync");
-       
-       // Create an initial view session for immediate tracking
-       if (viewSessions.current.length === 0) {
-         const now = getEpochTimeInMillis();
-         viewSessions.current.push({
-           id: uuidv4(),
-           start_time: new Date().toISOString(),
-           end_time: new Date().toISOString(),
-           start_time_in_millis: now,
-           end_time_in_millis: now,
-           duration: 1, // Minimal duration for initial view
-         });
-         console.log("📊 [PresentationViewer] Created initial view session for immediate tracking");
-       }
-       
-       setIsFirstView(false);
-       // Trigger immediate sync for first-time viewing (reduced delay for promptness)
-       setTimeout(() => {
-         console.log("⏰ [PresentationViewer] Executing immediate sync after delay");
-         syncPresentationTrackingData()
-           .then(() => {
-             console.log("✅ [PresentationViewer] Immediate sync completed successfully");
-           })
-           .catch((error) => {
-             console.error("❌ [PresentationViewer] Immediate sync failed:", error);
-           });
-       }, 500); // Reduced to 500ms for faster response
-     }
+    // Immediately sync data when presentation is first viewed to set progress to 100%
+    if (isFirstView) {
+      console.log("🎯 [PresentationViewer] First view detected, triggering immediate sync");
+
+      // Create an initial view session for immediate tracking
+      if (viewSessions.current.length === 0) {
+        const now = getEpochTimeInMillis();
+        viewSessions.current.push({
+          id: uuidv4(),
+          start_time: new Date().toISOString(),
+          end_time: new Date().toISOString(),
+          start_time_in_millis: now,
+          end_time_in_millis: now,
+          duration: 1, // Minimal duration for initial view
+        });
+        console.log("📊 [PresentationViewer] Created initial view session for immediate tracking");
+      }
+
+      setIsFirstView(false);
+      // Trigger immediate sync for first-time viewing (reduced delay for promptness)
+      setTimeout(() => {
+        console.log("⏰ [PresentationViewer] Executing immediate sync after delay");
+        syncPresentationTrackingData()
+          .then(() => {
+            console.log("✅ [PresentationViewer] Immediate sync completed successfully");
+          })
+          .catch((error) => {
+            console.error("❌ [PresentationViewer] Immediate sync failed:", error);
+          });
+      }, 500); // Reduced to 500ms for faster response
+    }
   }, [
     elapsedTime,
     fileId,
@@ -284,21 +298,21 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({ slide }) => {
     isFirstView,
   ]);
 
-     // Sync data periodically
-   useEffect(() => {
-     const syncInterval = setInterval(() => {
-       console.log("🔄 [PresentationViewer] Periodic sync triggered");
-       syncPresentationTrackingData()
-         .then(() => {
-           console.log("✅ [PresentationViewer] Periodic sync completed");
-         })
-         .catch((error) => {
-           console.error("❌ [PresentationViewer] Periodic sync failed:", error);
-         });
-     }, 60000); // Sync every minute
+  // Sync data periodically
+  useEffect(() => {
+    const syncInterval = setInterval(() => {
+      console.log("🔄 [PresentationViewer] Periodic sync triggered");
+      syncPresentationTrackingData()
+        .then(() => {
+          console.log("✅ [PresentationViewer] Periodic sync completed");
+        })
+        .catch((error) => {
+          console.error("❌ [PresentationViewer] Periodic sync failed:", error);
+        });
+    }, 60000); // Sync every minute
 
-     return () => clearInterval(syncInterval);
-   }, [syncPresentationTrackingData]);
+    return () => clearInterval(syncInterval);
+  }, [syncPresentationTrackingData]);
 
   // If fileId is undefined, show error state
   if (!fileId) {
@@ -335,10 +349,10 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({ slide }) => {
                   <span className="text-primary-500">
                     {Math.max(
                       ...verificationNumbers.filter(
-                                                 (_, i) =>
-                           i !== 0 ||
-                           (verificationNumbers[0] !== verificationNumbers[1] &&
-                             verificationNumbers[0] !== verificationNumbers[2])
+                        (_, i) =>
+                          i !== 0 ||
+                          (verificationNumbers[0] !== verificationNumbers[1] &&
+                            verificationNumbers[0] !== verificationNumbers[2])
                       )
                     )}
                   </span>{" "}
@@ -379,7 +393,9 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({ slide }) => {
         </div>
       )}
 
-      <ExcalidrawViewer fileId={fileId} />
+      <Suspense fallback={<ExcalidrawLoadingFallback />}>
+        <ExcalidrawViewer fileId={fileId} />
+      </Suspense>
     </div>
   );
 };

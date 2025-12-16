@@ -1,5 +1,5 @@
 import { H1 } from "@/components/design-system/typography";
-import { BookOpen } from "phosphor-react";
+import { BookOpen } from "@phosphor-icons/react";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { MyButton } from "@/components/design-system/button";

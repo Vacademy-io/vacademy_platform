@@ -5,7 +5,7 @@ import BoringAvatar from "boring-avatars";
 import { useRouter } from "@tanstack/react-router";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import LocalStorageUtils from "@/utils/localstorage";
-import { Star } from "phosphor-react";
+import { Star } from "@phosphor-icons/react";
 import { ProgressBar } from "@/components/ui/custom-progress-bar";
 import { toTitleCase } from "@/lib/utils";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils.ts";

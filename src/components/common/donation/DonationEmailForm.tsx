@@ -1,5 +1,5 @@
 import React from "react";
-import { EnvelopeSimple } from "phosphor-react";
+import { EnvelopeSimple } from "@phosphor-icons/react";
 import { DonationSummary } from "./DonationSummary";
 
 interface DonationEmailFormProps {

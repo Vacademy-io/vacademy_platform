@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { createFileRoute } from "@tanstack/react-router";
-import { Copy } from "phosphor-react";
+import { Copy } from "@phosphor-icons/react";
 import { useEffect } from "react";
 import { toast } from "sonner";
 import { useGetCoupons } from "./-services/get-coupon";

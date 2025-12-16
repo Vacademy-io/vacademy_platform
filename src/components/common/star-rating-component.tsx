@@ -1,4 +1,4 @@
-import { Star, StarHalf } from "phosphor-react";
+import { Star, StarHalf } from "@phosphor-icons/react";
 
 interface StarRatingProps {
     score: number;

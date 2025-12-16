@@ -37,7 +37,7 @@ import {
   Calendar,
   Play,
   Bell,
-} from "phosphor-react";
+} from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { MyButton } from "@/components/design-system/button";
 import { Badge } from "@/components/ui/badge";

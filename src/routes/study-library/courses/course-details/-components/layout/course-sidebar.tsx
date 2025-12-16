@@ -16,7 +16,7 @@ import {
     Exam,
     Terminal,
     File,
-} from "phosphor-react";
+} from "@phosphor-icons/react";
 import { Steps } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";

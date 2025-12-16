@@ -1,6 +1,6 @@
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { useRouter } from "@tanstack/react-router";
-import { CaretLeft } from "phosphor-react";
+import { CaretLeft } from "@phosphor-icons/react";
 import { useEffect } from "react";
 import { Modules } from "./modules";
 import { useModulesWithChaptersStore } from "@/stores/study-library/use-modules-with-chapters-store";

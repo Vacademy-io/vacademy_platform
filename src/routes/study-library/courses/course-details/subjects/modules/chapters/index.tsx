@@ -4,7 +4,7 @@ import { ChapterMaterial } from "@/components/common/study-library/level-materia
 import { useEffect, useState } from "react";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { getSubjectName } from "@/utils/study-library/get-name-by-id/getSubjectNameById";
-import { CaretLeft } from "phosphor-react";
+import { CaretLeft } from "@phosphor-icons/react";
 import { ChapterSidebarComponent } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/chapter-sidebar-component";
 import { InitStudyLibraryProvider } from "@/providers/study-library/init-study-library-provider";
 import { ModulesWithChaptersProvider } from "@/providers/study-library/modules-with-chapters-provider";

@@ -1,5 +1,5 @@
 import { Card } from "@/components/ui/card";
-import { Check, X } from "phosphor-react";
+import { Check, X } from "@phosphor-icons/react";
 import { PaymentPlan } from "../-utils/helper";
 import { cn } from "@/lib/utils";
 import { SelectedPayment } from "./types";

@@ -3,7 +3,7 @@ import {
     File,
     GraduationCap,
     ChalkboardTeacher,
-} from "phosphor-react";
+} from "@phosphor-icons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { extractTextFromHTML } from "@/components/common/helper";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";

@@ -11,7 +11,6 @@ export default defineConfig({
         TanStackRouterVite(),
         viteReact(),
         svgr({ include: "**/*.svg" }),
-        // ...,
     ],
     resolve: {
         alias: {
@@ -26,17 +25,76 @@ export default defineConfig({
     build: {
         // Optimize build for memory usage
         chunkSizeWarningLimit: 1000,
+        // Disable source maps for smaller builds
+        sourcemap: false,
         rollupOptions: {
             output: {
-                manualChunks: {
-                    vendor: ["react", "react-dom"],
-                    router: ["@tanstack/react-router"],
-                    ui: [
-                        "@radix-ui/react-dialog",
-                        "@radix-ui/react-dropdown-menu",
-                    ],
+                // Conservative chunking strategy - only split truly independent heavy libs
+                manualChunks: (id) => {
+                    // Firebase - can be safely split as it's dynamically imported
+                    if (id.includes('firebase/') || id.includes('@firebase/')) {
+                        return 'firebase';
+                    }
+
+                    // Excalidraw - huge, must be separate for lazy loading
+                    if (id.includes('@excalidraw/')) {
+                        return 'excalidraw';
+                    }
+
+                    // Monaco Editor - large, for code editor feature
+                    if (id.includes('@monaco-editor/') || id.includes('monaco-editor')) {
+                        return 'monaco-editor';
+                    }
+
+                    // PDF Viewer - large, for PDF viewing feature  
+                    if (id.includes('@react-pdf-viewer/')) {
+                        return 'pdf-viewer';
+                    }
+
+                    // Pyodide - Python runtime, for code execution
+                    if (id.includes('pyodide')) {
+                        return 'pyodide';
+                    }
+
+                    // Quill editor - rich text editing
+                    if (id.includes('react-quill') || id.includes('quill')) {
+                        return 'quill-editor';
+                    }
+
+                    // KaTeX - math rendering
+                    if (id.includes('katex')) {
+                        return 'katex';
+                    }
+
+                    // Charts libraries - for dashboard
+                    if (id.includes('recharts') ||
+                        id.includes('echarts') ||
+                        id.includes('@nivo/') ||
+                        id.includes('@visx/')) {
+                        return 'charts';
+                    }
+
+                    // Don't split React, Radix, or other core UI libs - keep them together
+                    // This prevents forwardRef and other React primitive issues
                 },
             },
         },
+    },
+    // Optimize dependency pre-bundling
+    optimizeDeps: {
+        include: [
+            'react',
+            'react-dom',
+            '@tanstack/react-router',
+            '@tanstack/react-query',
+            'zustand',
+            'axios',
+            'clsx',
+            'tailwind-merge',
+        ],
+        exclude: [
+            '@excalidraw/excalidraw',
+            'pyodide',
+        ],
     },
 });

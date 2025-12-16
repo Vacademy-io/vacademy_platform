@@ -1,5 +1,5 @@
 import { Input } from "@/components/ui/input";
-import { MagnifyingGlass, XCircle } from "phosphor-react";
+import { MagnifyingGlass, XCircle } from "@phosphor-icons/react";
 
 interface ScheduleTestSearchComponent {
     onSearch: (searchValue: string) => void;

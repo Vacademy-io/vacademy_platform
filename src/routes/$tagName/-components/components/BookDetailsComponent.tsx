@@ -241,7 +241,7 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                             // Show Add to Cart button
                             return (
                                 <Button
-                                    className="w-min-[40px] sm:w-auto bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-sm sm:text-base py-2.5 px-6 rounded-lg shadow-md transform transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
+                                    className="w-min-[40px] sm:w-auto bg-primary-400 hover:bg-primary-500 active:bg-primary-500 text-white font-semibold text-sm sm:text-base py-2.5 px-6 rounded-lg shadow-md transform transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
                                     onClick={async () => {
                                         if (courseData.enrollInviteId) {
                                             const existing = getItemByEnrollInviteId(courseData.enrollInviteId);

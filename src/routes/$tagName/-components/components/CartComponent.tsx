@@ -279,7 +279,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
                 toast.success("Proceeding to checkout...", { duration: 2000 });
                 // Implement your checkout flow here
               }}
-              className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-sm sm:text-base py-2.5 sm:py-3 rounded-lg shadow-md transition-all duration-200 active:scale-[0.98]"
+              className="w-full bg-primary-400 hover:bg-primary-500 active:bg-primary-500 text-white font-semibold text-sm sm:text-base py-2.5 sm:py-3 rounded-lg shadow-md transition-all duration-200 active:scale-[0.98]"
               size="lg"
             >
               Checkout
@@ -330,7 +330,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
               toast.success("Proceeding to checkout...", { duration: 2000 });
               // Implement your checkout flow here
             }}
-            className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-sm sm:text-base py-2.5 sm:py-3 rounded-lg shadow-md transition-all duration-200 active:scale-[0.98]"
+            className="w-full bg-primary-400 hover:bg-primary-500 active:bg-primary-500 text-white font-semibold text-sm sm:text-base py-2.5 sm:py-3 rounded-lg shadow-md transition-all duration-200 active:scale-[0.98]"
             size="lg"
           >
             Checkout

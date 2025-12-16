@@ -183,14 +183,14 @@ public class UserAnnouncementPreferenceService {
     }
 
     @Transactional(readOnly = true)
-    public boolean isWhatsAppUnsubscribed(String userId, String instituteId) {
+    public boolean isWhatsAppUnsubscribed(String userId, String instituteId,String userPhone) {
         if (!StringUtils.hasText(userId) || !StringUtils.hasText(instituteId)) {
             return false;
         }
         String normalizedUserId = normalizeUserId(userId);
         String normalizedInstituteId = normalizeInstituteId(instituteId);
         return preferenceRepository.findByUserIdAndInstituteIdAndChannelAndSourceIdentifier(
-                normalizedUserId, normalizedInstituteId, AnnouncementChannel.WHATSAPP, DEFAULT_SOURCE_IDENTIFIER
+                normalizedUserId, normalizedInstituteId, AnnouncementChannel.WHATSAPP, userPhone
         ).filter(UserAnnouncementSetting::isUnsubscribed).isPresent();
     }
 
@@ -353,6 +353,44 @@ public class UserAnnouncementPreferenceService {
             throw new ValidationException("Unable to resolve user ID for username: " + username);
         }
         return normalizeUserId(user.getId());
+    }
+
+    /**
+     * NEW METHOD: Manually set WhatsApp subscription status by User ID
+     */
+    @Transactional
+    public void setWhatsAppSubscriptionStatus(String userId, String instituteId, boolean unsubscribed,String userPhone) {
+        if (!StringUtils.hasText(userId) || !StringUtils.hasText(instituteId)) {
+            log.warn("Cannot set WhatsApp preference: missing userId or instituteId");
+            return;
+        }
+
+        String normalizedUserId = normalizeUserId(userId);
+        String normalizedInstituteId = normalizeInstituteId(instituteId);
+
+        preferenceRepository.findByUserIdAndInstituteIdAndChannelAndSourceIdentifier(
+                        normalizedUserId, normalizedInstituteId, AnnouncementChannel.WHATSAPP, userPhone)
+                .ifPresentOrElse(existing -> {
+                    if (existing.isUnsubscribed() != unsubscribed) {
+                        existing.setUnsubscribed(unsubscribed);
+                        existing.setUnsubscribedAt(unsubscribed ? LocalDateTime.now() : null);
+                        existing.setInstituteId(normalizedInstituteId);
+                        preferenceRepository.save(existing);
+                        log.info("User {} WhatsApp preference updated: unsubscribed={}", userId, unsubscribed);
+                    }
+                }, () -> {
+                    if (unsubscribed) {
+                        UserAnnouncementSetting setting = new UserAnnouncementSetting();
+                        setting.setUserId(normalizedUserId);
+                        setting.setInstituteId(normalizedInstituteId);
+                        setting.setChannel(AnnouncementChannel.WHATSAPP);
+                        setting.setSourceIdentifier(userPhone);
+                        setting.setUnsubscribed(true);
+                        setting.setUnsubscribedAt(LocalDateTime.now());
+                        preferenceRepository.save(setting);
+                        log.info("User {} unsubscribed from WhatsApp", userId);
+                    }
+                });
     }
 }
 

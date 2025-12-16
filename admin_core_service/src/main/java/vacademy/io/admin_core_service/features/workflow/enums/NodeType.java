@@ -8,5 +8,6 @@ public enum NodeType {
     ROUTER,
     SEND_EMAIL,
     SEND_WHATSAPP,
-    HTTP_REQUEST
+    HTTP_REQUEST,
+    COMBOT
 }

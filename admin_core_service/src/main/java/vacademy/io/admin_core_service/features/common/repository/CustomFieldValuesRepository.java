@@ -43,4 +43,11 @@ public interface CustomFieldValuesRepository extends JpaRepository<CustomFieldVa
     List<CustomFieldValues> findBySourceTypeAndSourceIdIn(
             @Param("sourceType") String sourceType,
             @Param("sourceIds") List<String> sourceIds);
+
+    /**
+     * Find custom field values by phone number value
+     * Returns all records where value matches the phone number (for phone lookup)
+     */
+    @Query("SELECT cfv FROM CustomFieldValues cfv WHERE cfv.value = :phoneNumber ORDER BY cfv.createdAt DESC")
+    List<CustomFieldValues> findByPhoneNumber(@Param("phoneNumber") String phoneNumber);
 }

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Preferences } from "@capacitor/preferences";
 import { X } from "@phosphor-icons/react";
-import { Separator } from "@/components/ui/separator";
+
 import { Student } from "@/types/user/user-detail";
 import { MyButton } from "@/components/design-system/button";
 import { getPublicUrl } from "@/services/upload_file";
@@ -109,10 +109,10 @@ export default function ProfilePage() {
           // Try to get fallback data from institute batches
           try {
             const { value: fallbackValue } = await Preferences.get({ key: "instituteBatchesForSessions" });
-            
+
             if (fallbackValue) {
               const fallbackData = JSON.parse(fallbackValue);
-              
+
               if (Array.isArray(fallbackData) && fallbackData.length > 0) {
                 const fallbackCourse = fallbackData[0];
                 const fallbackCourseDetails = {
@@ -196,9 +196,9 @@ export default function ProfilePage() {
             setIsLoading(false);
             return;
           }
-          
+
           setStudentData(studentDetails);
-          
+
           if (studentDetails.face_file_id) {
             try {
               const institute_logo = await getPublicUrl(
@@ -235,242 +235,221 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="bg-white pb-12 rounded-lg w-full mx-auto shadow-lg md:max-w-lg lg:max-w-xl">
-      {" "}
-      {/* Header */}
-      <div className="p-3 flex items-center justify-between border-b sticky top-0 bg-white z-10">
-        <h1 className="text-lg font-medium text-primary-500">
-          Profile Details
-        </h1>
-        <button onClick={handleClose} className="text-gray-500">
-          <X size={20} weight="bold" />
-        </button>
-      </div>
-      {/* Profile Info */}
-      <div className="p-6 flex flex-col items-center md:flex-row md:items-start md:gap-6">
-        {/* {imageUrl && (
-          <img
-            src={imageUrl}
-            alt="Profile Photo"
-            className="h-24 w-24 rounded-full object-cover"
-          />
-        )} */}
-        {imageUrl ? (
-          <img
-            src={imageUrl}
-            alt="Profile Photo"
-            className="h-24 w-24 rounded-full object-cover"
-          />
-        ) : (
-          <div className="h-24 w-24 rounded-full bg-gray-200 flex items-center justify-center">
-            <User size={40} className="text-gray-400" />
-          </div>
-        )}
-        <div className="text-center md:text-left">
-          <h2 className="text-xl font-medium mb-2">
-            {studentData?.full_name || "Student Name"}
-          </h2>
-          <div className="flex gap-1 ">
-            <h3 className="text-sm font-medium">Username:</h3>
-            <p className="text-sm text-gray-500">{studentData?.username}</p>
-          </div>
-        </div>
-      </div>
-      <Separator className="my-4" />
-      {/* Badges */}
-      {/* <div className="p-6">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-medium">Badges</span>
-          <span className="text-sm font-medium">2</span>
-        </div>
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-6 mb-4">
-          <div className="bg-orange-50 rounded-lg p-3 flex flex-col items-center">
-            <Trophy className="text-orange-500 mb-1" size={24} weight="fill" />
-            <span className="text-xs text-gray-600 text-center">
-              Elite Scholar
-            </span>
-          </div>
-          <div className="bg-orange-50 rounded-lg p-3 flex flex-col items-center">
-            <Trophy className="text-orange-500 mb-1" size={24} weight="fill" />
-            <span className="text-xs text-gray-600 text-center">
-              Curious Learner
-            </span>
-          </div>
-        </div>
-      </div>
-      <Separator className="my-4" /> */}
-      {/* Coins */}
-      {/* <div className="p-6">
-        <div className="flex items-center mb-3">
-          <span className="text-sm font-medium">Coins</span>
-          <div className="ml-auto flex items-center">
-            <span className="text-sm font-medium mr-2">350</span>
-            <div className="bg-yellow-100 p-1 rounded">
-              <Coins className="text-yellow-500" size={16} weight="fill" />
+    <div className="min-h-screen bg-gray-50/50 pb-24 md:pb-8">
+      {/* Header Section */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-30">
+        <div className="w-full py-4 px-4">
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={handleClose}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-600 md:hidden"
+              >
+                <X size={24} />
+              </button>
+              <h1 className="text-xl md:text-2xl font-bold text-gray-900">My Profile</h1>
+            </div>
+            <div className="hidden md:flex gap-3">
+              <MyButton
+                type="button"
+                scale="medium"
+                buttonType="secondary"
+                layoutVariant="default"
+                onClick={handleClose}
+              >
+                Back to Dashboard
+              </MyButton>
+              {permissions.canEditProfile && (
+                <MyButton
+                  type="button"
+                  scale="medium"
+                  buttonType="primary"
+                  layoutVariant="default"
+                  onClick={handleEditProfile}
+                >
+                  Edit Profile
+                </MyButton>
+              )}
             </div>
           </div>
         </div>
       </div>
-      <Separator className="my-4" /> */}
-      {/* Session Expiry */}
-      <div className="p-6">{studentData && SessionExpiry({ studentData })}</div>
-      <Separator className="my-4" />
-      {/* General Details */}
-      <div className="p-6">
-        <div className="flex items-center gap-2 mb-3">
-          <h3 className="text-sm font-medium">General Details</h3>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="flex justify-between">
-            <span className="text-xs text-gray-500">
-              {getTerminology(ContentTerms.Course, SystemTerms.Course)}:
-            </span>
-            <span className="text-xs">
-              {toTitleCase(courseDetails?.packageName || "N/A")}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-xs text-gray-500">
-              {getTerminology(ContentTerms.Session, SystemTerms.Session)}:
-            </span>
-            <span className="text-xs">
-              {toTitleCase(courseDetails?.sessionName || "N/A")}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-xs text-gray-500">
-              {getTerminology(ContentTerms.Level, SystemTerms.Level)}:
-            </span>
-            <span className="text-xs">
-              {toTitleCase(courseDetails?.levelName || "N/A")}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-xs text-gray-500">Enrollment No.:</span>
-            <span className="text-xs">
-              {studentData?.institute_enrollment_id || "N/A"}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-xs text-gray-500">Gender:</span>
-            <span className="text-xs">{studentData?.gender || "N/A"}</span>
-          </div>
-          {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
-            <div className="flex justify-between">
-              <span className="text-xs text-gray-500">
-                College/School Name:
-              </span>
-              <span className="text-xs">
-                {studentData?.linked_institute_name || "N/A"}
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
-      <Separator className="my-4" />
-      {/* Contact Information */}
-      <div className="p-6">
-        <div className="flex items-center gap-2 mb-3">
-          <h3 className="text-sm font-medium">Contact Information</h3>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="flex justify-between">
-            <span className="text-xs text-gray-500">Mobile No.:</span>
-            <span className="text-xs">
-              {studentData?.mobile_number || "N/A"}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-xs text-gray-500">Email ID:</span>
-            <span className="text-xs">{studentData?.email || "N/A"}</span>
-          </div>
-        </div>
-        <Separator className="my-4" />
 
-        {/* Location Details */}
-        <div className="p-6"></div>
-        <div className="flex items-center gap-2 mb-3">
-          <h3 className="text-sm font-medium">Location Details</h3>
+      {/* Main Content */}
+      <div className="w-full py-6 md:py-8 px-4">
+        <div className="w-full">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6">
+            {/* Left Column - Profile Summary */}
+            <div className="lg:col-span-4 xl:col-span-3 space-y-4 md:space-y-6">
+              {/* Profile Card */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="p-6 flex flex-col items-center">
+                  {/* Profile Image */}
+                  <div className="mb-4">
+                    {imageUrl ? (
+                      <img
+                        src={imageUrl}
+                        alt="Profile"
+                        className="h-32 w-32 rounded-full object-cover shadow-lg border-4 border-gray-100"
+                      />
+                    ) : (
+                      <div className="h-32 w-32 rounded-full bg-gray-100 flex items-center justify-center shadow-lg border-4 border-gray-200 text-gray-400">
+                        <User size={48} />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* User Info */}
+                  <div className="text-center w-full">
+                    <h2 className="text-xl font-bold text-gray-900">{studentData?.full_name || "Student Name"}</h2>
+                    <p className="text-sm text-gray-500 mt-1">@{studentData?.username || "username"}</p>
+
+                    <div className="mt-4 flex flex-wrap justify-center gap-2">
+                      <div className="px-3 py-1 bg-primary-50 text-primary-700 rounded-full text-xs font-medium border border-primary-200">
+                        Student
+                      </div>
+                      {studentData?.gender && (
+                        <div className="px-3 py-1 bg-gray-50 text-gray-600 rounded-full text-xs font-medium border border-gray-200">
+                          {studentData.gender}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Session Expiry */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <h3 className="text-sm font-semibold text-gray-900 mb-4">Membership Status</h3>
+                {studentData && SessionExpiry({ studentData })}
+              </div>
+            </div>
+
+            {/* Right Column - Details */}
+            <div className="lg:col-span-8 xl:col-span-9 space-y-4 md:space-y-6">
+              {/* Academic Journey Card */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 md:p-8">
+                <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
+                  <span className="w-1 h-6 bg-primary-500 rounded-full"></span>
+                  Academic Journey
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                      {getTerminology(ContentTerms.Course, SystemTerms.Course)}
+                    </p>
+                    <p className="text-base font-medium text-gray-900">{toTitleCase(courseDetails?.packageName || "N/A")}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                      {getTerminology(ContentTerms.Session, SystemTerms.Session)}
+                    </p>
+                    <p className="text-base font-medium text-gray-900">{toTitleCase(courseDetails?.sessionName || "N/A")}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                      {getTerminology(ContentTerms.Level, SystemTerms.Level)}
+                    </p>
+                    <p className="text-base font-medium text-gray-900">{toTitleCase(courseDetails?.levelName || "N/A")}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Enrollment No.</p>
+                    <p className="text-base font-medium text-gray-900">{studentData?.institute_enrollment_id || "N/A"}</p>
+                  </div>
+                  {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
+                    <div className="sm:col-span-2">
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">College/School Name</p>
+                      <p className="text-base font-medium text-gray-900">{studentData?.linked_institute_name || "N/A"}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Contact & Location Card */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 md:p-8">
+                <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
+                  <span className="w-1 h-6 bg-secondary-500 rounded-full"></span>
+                  Contact & Location
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Mobile Number</p>
+                    <p className="text-base font-medium text-gray-900">{studentData?.mobile_number || "N/A"}</p>
+                  </div>
+                  <div className="sm:col-span-2 xl:col-span-1">
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Email Address</p>
+                    <p className="text-base font-medium text-gray-900 break-words">{studentData?.email || "N/A"}</p>
+                  </div>
+
+                  {showForInstitutes([HOLISTIC_INSTITUTE_ID]) ? (
+                    <div className="sm:col-span-2 pt-6 border-t border-gray-100">
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Country</p>
+                      <p className="text-base font-medium text-gray-900">{studentData?.country || "N/A"}</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="sm:col-span-2 xl:col-span-3 pt-6 border-t border-gray-100">
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Address</p>
+                        <p className="text-base font-medium text-gray-900">{studentData?.address_line || "N/A"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">City/Village</p>
+                        <p className="text-base font-medium text-gray-900">{studentData?.city || "N/A"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">State</p>
+                        <p className="text-base font-medium text-gray-900">{studentData?.region || "N/A"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Pincode</p>
+                        <p className="text-base font-medium text-gray-900">{studentData?.pin_code || "N/A"}</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Guardian Info Card */}
+              {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 md:p-8">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
+                    <span className="w-1 h-6 bg-tertiary-500 rounded-full"></span>
+                    Guardian Details
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Father/Male Guardian</p>
+                      <p className="text-base font-medium text-gray-900">{studentData?.father_name || "N/A"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Mother/Female Guardian</p>
+                      <p className="text-base font-medium text-gray-900">{studentData?.mother_name || "N/A"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Guardian's Email</p>
+                      <p className="text-base font-medium text-gray-900 break-words">{studentData?.parents_email || "N/A"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Guardian's Mobile</p>
+                      <p className="text-base font-medium text-gray-900">{studentData?.parents_mobile_number || "N/A"}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-        {showForInstitutes([HOLISTIC_INSTITUTE_ID]) ? (
-          <div className="flex justify-between">
-            <span className="text-xs text-gray-500">Country:</span>
-            <span className="text-xs">{studentData?.country || "N/A"}</span>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex justify-between">
-              <span className="text-xs text-gray-500">Address Line 1:</span>
-              <span className="text-xs">
-                {studentData?.address_line || "N/A"}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-xs text-gray-500">City/Village:</span>
-              <span className="text-xs">{studentData?.city || "N/A"}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-xs text-gray-500">State:</span>
-              <span className="text-xs">{studentData?.region || "N/A"}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-xs text-gray-500">Pincode:</span>
-              <span className="text-xs">{studentData?.pin_code || "N/A"}</span>
-            </div>
-          </div>
-        )}
       </div>
-      <Separator className="my-4" />
-      {/* Parent/Guardian's Details */}
-      {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
-        <div className="p-6">
-          <div className="flex items-center gap-2 mb-3">
-            <h3 className="text-sm font-medium">Parent/Guardian's Details</h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex justify-between">
-              <span className="text-xs text-gray-500">
-                Father/Male Guardian's Name:
-              </span>
-              <span className="text-xs">
-                {studentData?.father_name || "N/A"}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-xs text-gray-500">
-                Mother/Female Guardian's Name:
-              </span>
-              <span className="text-xs">
-                {studentData?.mother_name || "N/A"}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-xs text-gray-500">
-                Parent/Guardian's Email:
-              </span>
-              <span className="text-xs">
-                {studentData?.parents_email || "N/A"}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-xs text-gray-500">
-                Parent/Guardian's Mobile Number:
-              </span>
-              <span className="text-xs">
-                {studentData?.parents_mobile_number || "N/A"}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Edit Profile Button - Only show if user has permission */}
+
+      {/* Mobile Fixed Bottom Bar */}
       {permissions.canEditProfile && (
-        <div className="p-2  flex justify-center fixed bottom-0 left-0 w-full bg-white ">
+        <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 z-40">
           <MyButton
-            type="submit"
+            type="button"
             scale="large"
-            buttonType="secondary"
+            buttonType="primary"
             layoutVariant="default"
+            className="w-full"
             onClick={handleEditProfile}
           >
             Edit Profile

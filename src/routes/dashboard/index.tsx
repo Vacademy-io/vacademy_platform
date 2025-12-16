@@ -46,7 +46,7 @@ import { SessionDetails } from "../study-library/live-class/-types/types";
 import { useMarkAttendance } from "../study-library/live-class/-hooks/useMarkAttendance";
 import { SessionStreamingServiceType } from "../register/live-class/-types/enum";
 import { toast } from "sonner";
-import { Howl } from "howler";
+
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
@@ -138,11 +138,10 @@ const StatCard = ({
 
         <div className="flex items-center justify-between mb-2 sm:mb-3 md:mb-5">
           <div
-            className={`stat-card-icon p-1.5 sm:p-2 md:p-3 ${
-              document.documentElement.classList.contains("ui-vibrant")
+            className={`stat-card-icon p-1.5 sm:p-2 md:p-3 ${document.documentElement.classList.contains("ui-vibrant")
                 ? "pastel-bg-blue"
                 : "bg-primary-100"
-            } rounded-md sm:rounded-lg text-primary-600 group-hover:scale-110 transition-transform duration-300 shadow-sm`}
+              } rounded-md sm:rounded-lg text-primary-600 group-hover:scale-110 transition-transform duration-300 shadow-sm`}
           >
             {/* Swap icon to playful Tabler in vibrant mode */}
             {document.documentElement.classList.contains("ui-vibrant") ? (
@@ -210,9 +209,8 @@ const ContinueLearningCard = ({
       <Card className="continue-learning-card relative overflow-hidden border-0 bg-white shadow-sm hover:shadow-lg transition-all duration-500">
         <CardContent className="p-4 sm:p-6 md:p-8 text-center">
           <div
-            className={`w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 ${
-              hasVibrant ? "pastel-bg-teal" : "bg-primary-100"
-            } rounded-md sm:rounded-lg flex items-center justify-center mx-auto mb-2 sm:mb-3 md:mb-4`}
+            className={`w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 ${hasVibrant ? "pastel-bg-teal" : "bg-primary-100"
+              } rounded-md sm:rounded-lg flex items-center justify-center mx-auto mb-2 sm:mb-3 md:mb-4`}
           >
             <Target
               weight="duotone"
@@ -249,9 +247,8 @@ const ContinueLearningCard = ({
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 md:gap-4">
           <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
             <div
-              className={`p-1.5 sm:p-2 ${
-                hasVibrant ? "pastel-bg-teal" : "bg-primary-100"
-              } rounded-lg flex-shrink-0`}
+              className={`p-1.5 sm:p-2 ${hasVibrant ? "pastel-bg-teal" : "bg-primary-100"
+                } rounded-lg flex-shrink-0`}
             >
               <Play
                 weight="duotone"
@@ -295,9 +292,8 @@ const ContinueLearningCard = ({
             >
               <div className="flex-shrink-0">
                 <div
-                  className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 ${
-                    hasVibrant ? "pastel-bg-yellow" : "bg-primary-100"
-                  } rounded-lg flex items-center justify-center`}
+                  className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 ${hasVibrant ? "pastel-bg-yellow" : "bg-primary-100"
+                    } rounded-lg flex items-center justify-center`}
                 >
                   <span className="text-primary-600 font-semibold text-xs">
                     {index + 1}
@@ -315,17 +311,15 @@ const ContinueLearningCard = ({
               </div>
               <div className="flex-shrink-0">
                 <div
-                  className={`w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 bg-gray-100 rounded-full flex items-center justify-center ${
-                    hasVibrant ? "pastel-bg-pink" : "group-hover:bg-primary-100"
-                  } transition-colors duration-300`}
+                  className={`w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 bg-gray-100 rounded-full flex items-center justify-center ${hasVibrant ? "pastel-bg-pink" : "group-hover:bg-primary-100"
+                    } transition-colors duration-300`}
                 >
                   <ChevronRight
                     size={10}
-                    className={`${
-                      hasVibrant
+                    className={`${hasVibrant
                         ? "text-slate-800"
                         : "text-gray-400 group-hover:text-primary-600"
-                    } sm:w-3 sm:h-3`}
+                      } sm:w-3 sm:h-3`}
                   />
                 </div>
               </div>
@@ -369,9 +363,7 @@ export function DashboardComponent() {
     !!document.documentElement?.classList?.contains("ui-vibrant");
   const isVibrant = rootHasVibrant || uiType === "vibrant";
 
-  // Lightweight sound cues
-  const popSound = new Howl({ src: ["/sounds/pop.mp3"], volume: 0.3 });
-  const dingSound = new Howl({ src: ["/sounds/ding.mp3"], volume: 0.35 });
+
 
   // Add weekly attendance query
   const { data: weeklyAttendance, isLoading: isLoadingAttendance } =
@@ -401,7 +393,7 @@ export function DashboardComponent() {
           navigate({ to: route as never, replace: true });
         }
       })
-      .catch(() => {});
+      .catch(() => { });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -418,11 +410,7 @@ export function DashboardComponent() {
   const handleResumeClick = (slide: DashboardSlide) => {
     // Track lesson resumed
     trackLessonStarted(slide.slide_id, slide.slide_title, slide.subject_id);
-    try {
-      if (isVibrant) popSound.play();
-    } catch (e) {
-      void e;
-    }
+
     track("Resume Learning", {
       slideId: slide.slide_id,
       slideTitle: slide.slide_title,
@@ -453,7 +441,7 @@ export function DashboardComponent() {
 
   useEffect(() => {
     // Force-refresh Student Display Settings on dashboard mount to update local cache
-    getStudentDisplaySettings(true).catch(() => {});
+    getStudentDisplaySettings(true).catch(() => { });
 
     const fetchBatchId = async () => {
       try {
@@ -657,18 +645,14 @@ export function DashboardComponent() {
         });
 
         // Track successful live session join
-        try {
-          if (isVibrant) dingSound.play();
-        } catch (e) {
-          void e;
-        }
+
         track("Live Session Joined Successfully", {
           sessionId: session.session_id,
           sessionTitle: session.title,
           streamingType: session.session_streaming_service_type,
           joinMethod:
             session.session_streaming_service_type ===
-            SessionStreamingServiceType.EMBED
+              SessionStreamingServiceType.EMBED
               ? "embed"
               : "external_link",
         });
@@ -705,9 +689,8 @@ export function DashboardComponent() {
 
   return (
     <div
-      className={`min-h-screen bg-white dark:bg-neutral-950 relative overflow-hidden w-full dashboard-container smooth-scroll ${
-        isVibrant ? "ui-vibrant" : ""
-      }`}
+      className={`min-h-screen bg-white dark:bg-neutral-950 relative overflow-hidden w-full dashboard-container smooth-scroll ${isVibrant ? "ui-vibrant" : ""
+        }`}
     >
       <Helmet>
         <title>
@@ -1117,64 +1100,63 @@ export function DashboardComponent() {
                     <div className="flex items-center justify-center gap-1 sm:gap-2">
                       {isLoadingAttendance
                         ? // Loading state
-                          ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(
-                            (day) => (
-                              <div
-                                key={day}
-                                className="flex flex-col items-center space-y-1 p-1.5 sm:p-2 md:p-3 bg-white rounded-md sm:rounded-lg border border-gray-200 min-w-0 flex-1"
-                              >
-                                <div className="w-3.5 h-3.5 bg-gray-200 rounded-full animate-pulse"></div>
-                                <span className="text-xs font-medium text-gray-600 truncate">
-                                  {day}
-                                </span>
-                              </div>
-                            )
+                        ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(
+                          (day) => (
+                            <div
+                              key={day}
+                              className="flex flex-col items-center space-y-1 p-1.5 sm:p-2 md:p-3 bg-white rounded-md sm:rounded-lg border border-gray-200 min-w-0 flex-1"
+                            >
+                              <div className="w-3.5 h-3.5 bg-gray-200 rounded-full animate-pulse"></div>
+                              <span className="text-xs font-medium text-gray-600 truncate">
+                                {day}
+                              </span>
+                            </div>
                           )
+                        )
                         : // Real attendance data
-                          (weeklyAttendance?.days || []).map((dayData) => {
-                            let Icon = Hourglass;
-                            let colorClass = "text-gray-400";
+                        (weeklyAttendance?.days || []).map((dayData) => {
+                          let Icon = Hourglass;
+                          let colorClass = "text-gray-400";
 
-                            switch (dayData.status) {
-                              case "PRESENT":
-                                Icon = CheckCircle;
-                                colorClass = "text-success-500";
-                                break;
-                              case "ABSENT":
-                                Icon = XCircle;
-                                colorClass = "text-danger-500";
-                                break;
-                              case "PENDING":
-                                Icon = Hourglass;
-                                colorClass = "text-warning-500";
-                                break;
-                              case "NO_CLASS":
-                                Icon = Clock;
-                                colorClass = "text-gray-400";
-                                break;
-                            }
+                          switch (dayData.status) {
+                            case "PRESENT":
+                              Icon = CheckCircle;
+                              colorClass = "text-success-500";
+                              break;
+                            case "ABSENT":
+                              Icon = XCircle;
+                              colorClass = "text-danger-500";
+                              break;
+                            case "PENDING":
+                              Icon = Hourglass;
+                              colorClass = "text-warning-500";
+                              break;
+                            case "NO_CLASS":
+                              Icon = Clock;
+                              colorClass = "text-gray-400";
+                              break;
+                          }
 
-                            return (
-                              <div
-                                key={dayData.day}
-                                className={`flex flex-col items-center space-y-1 p-1.5 sm:p-2 md:p-3 bg-white rounded-md sm:rounded-lg border border-gray-200 min-w-0 flex-1 ${
-                                  dayData.status === "PENDING" ||
+                          return (
+                            <div
+                              key={dayData.day}
+                              className={`flex flex-col items-center space-y-1 p-1.5 sm:p-2 md:p-3 bg-white rounded-md sm:rounded-lg border border-gray-200 min-w-0 flex-1 ${dayData.status === "PENDING" ||
                                   dayData.status === "NO_CLASS"
-                                    ? "opacity-60"
-                                    : ""
+                                  ? "opacity-60"
+                                  : ""
                                 }`}
-                              >
-                                <Icon
-                                  size={14}
-                                  className={colorClass}
-                                  weight="duotone"
-                                />
-                                <span className="text-xs font-medium text-gray-600 truncate">
-                                  {dayData.day}
-                                </span>
-                              </div>
-                            );
-                          })}
+                            >
+                              <Icon
+                                size={14}
+                                className={colorClass}
+                                weight="duotone"
+                              />
+                              <span className="text-xs font-medium text-gray-600 truncate">
+                                {dayData.day}
+                              </span>
+                            </div>
+                          );
+                        })}
                     </div>
                   </CardContent>
                 </Card>

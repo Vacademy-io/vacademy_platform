@@ -2,11 +2,11 @@ import { LayoutContainer } from "@/components/common/layout-container/layout-con
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ChevronRightIcon, ChevronDownIcon } from "@radix-ui/react-icons";
 import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { truncateString } from "@/lib/reusable/truncateString";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { toTitleCase } from "@/lib/utils";
-import { CaretLeft, BookOpen, GraduationCap } from "phosphor-react";
+import { CaretLeft, BookOpen, GraduationCap, CaretRight } from "phosphor-react";
 import { SlideMaterial } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/slide-material";
 import {
   ChapterSidebarSlides,
@@ -21,8 +21,20 @@ import { ModulesWithChaptersProvider } from "@/providers/study-library/modules-w
 import { useSlides, Slide } from "@/hooks/study-library/use-slides";
 import { useStudyLibraryStore } from "@/stores/study-library/use-study-library-store";
 import { useModulesWithChaptersStore } from "@/stores/study-library/use-modules-with-chapters-store";
+import { useDripConditionStore } from "@/stores/study-library/drip-conditions-store";
+import { useDripConditions } from "@/hooks/use-drip-conditions";
+import {
+  evaluateDripCondition,
+  type LearnerProgressData,
+} from "@/utils/drip-conditions";
+import {
+  shouldFilterItem,
+  isItemLocked,
+} from "@/components/drip-conditions/helpers";
+import { useQuery } from "@tanstack/react-query";
+import { GET_COURSE_DETAILS } from "@/constants/urls";
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import FeedbackPage from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/FeedbackPage";
-import { MyButton } from "@/components/design-system/button";
 import { FiEdit } from "react-icons/fi";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { Preferences } from "@capacitor/preferences";
@@ -61,12 +73,70 @@ function Slides() {
   const { courseId, subjectId, moduleId, chapterId, slideId, sessionId } =
     Route.useSearch();
 
-  const { open } = useSidebar();
+  useSidebar();
   const navigate = useNavigate();
-  const { setItems, setActiveItem, activeItem } = useContentStore();
+  const { setItems, setActiveItem, activeItem, setSlideEvaluations } =
+    useContentStore();
   const { slides } = useSlides(chapterId || "");
   const { studyLibraryData } = useStudyLibraryStore();
   const { modulesWithChaptersData } = useModulesWithChaptersStore();
+
+  // Get drip conditions from store or fetch from API
+  const {
+    getDripCondition,
+    setDripCondition,
+    clearDripCondition,
+    isDrippingEnable,
+  } = useDripConditionStore();
+
+  const storedDripCondition = courseId ? getDripCondition(courseId) : null;
+
+  // Fetch drip condition from API if not in store
+  const { data: courseDetails } = useQuery({
+    queryKey: ["course-details", courseId],
+    queryFn: async () => {
+      const response = await authenticatedAxiosInstance({
+        method: "GET",
+        url: GET_COURSE_DETAILS,
+        params: {
+          packageId: courseId,
+        },
+      });
+      return response.data;
+    },
+    enabled: !!courseId && !storedDripCondition, // Only fetch if not in store
+    staleTime: 3600000, // 1 hour
+  });
+
+  // Save fetched drip condition to store
+  useEffect(() => {
+    if (courseDetails?.drip_condition_json && courseId) {
+      const dripCondition =
+        courseDetails.drip_condition_json ||
+        courseDetails.dripConditionJson ||
+        courseDetails.drip_condition ||
+        courseDetails.dripCondition;
+
+      if (dripCondition) {
+        clearDripCondition(courseId); // Clear before setting
+        setDripCondition(courseId, dripCondition);
+      }
+    }
+  }, [courseDetails, courseId, setDripCondition, clearDripCondition]);
+
+  // Use stored or fetched drip condition
+  const dripConditionJson =
+    storedDripCondition ||
+    courseDetails?.drip_condition_json ||
+    courseDetails?.dripConditionJson ||
+    courseDetails?.drip_condition ||
+    courseDetails?.dripCondition ||
+    null;
+
+  const { condition: slideCondition } = useDripConditions(
+    dripConditionJson,
+    "slide"
+  );
 
   useEffect(() => {
     if (slides?.length) {
@@ -85,10 +155,50 @@ function Slides() {
         progress_marker: 0,
       };
 
-      const slidesWithFeedback = [...slides, feedbackSlide];
+      // Apply drip conditions to filter slides
+      let accessibleSlides = slides;
+      const evaluations: Record<string, any> = {};
+
+      if (slideCondition) {
+        // Build prerequisite completions map from all slides
+        const prerequisiteCompletions: Record<string, number> = {};
+        slides.forEach((slide) => {
+          prerequisiteCompletions[slide.id] = slide.percentage_completed || 0;
+        });
+
+        // Evaluate drip conditions for each slide
+        accessibleSlides = slides.filter((slide, index) => {
+          const previousSlide = index > 0 ? slides[index - 1] : null;
+          const progressData: LearnerProgressData = {
+            percentageCompleted: slide.percentage_completed || 0,
+            previousItemId: previousSlide?.id,
+            previousItemCompletion: previousSlide?.percentage_completed || 0,
+            itemIndex: index,
+            prerequisiteCompletions,
+          };
+
+          const evaluation = isDrippingEnable
+            ? evaluateDripCondition(slideCondition, progressData)
+            : {
+                isAccessible: true,
+                isLocked: false,
+                isHidden: false,
+                unlockMessage: null,
+              };
+          evaluations[slide.id] = evaluation; // Store evaluation for this slide
+          const shouldHide = shouldFilterItem(evaluation);
+
+          return !shouldHide; // Keep slide if not hidden
+        });
+
+        // Store evaluations for all accessible slides
+        setSlideEvaluations(evaluations);
+      }
+
+      const slidesWithFeedback = [...accessibleSlides, feedbackSlide];
       setItems(slidesWithFeedback);
 
-      const completion = calculateOverallCompletion(slides);
+      const completion = calculateOverallCompletion(accessibleSlides);
 
       // Priority 1: If course is 100% completed
       if (completion === 100) {
@@ -112,6 +222,44 @@ function Slides() {
       if (slideId) {
         const targetSlide = slidesWithFeedback.find((s) => s.id === slideId);
         if (targetSlide) {
+          // Check if the target slide is locked
+          const slideIndex = accessibleSlides.findIndex(
+            (s) => s.id === slideId
+          );
+          if (slideIndex !== -1 && slideCondition) {
+            // Build prerequisite completions map
+            const prerequisiteCompletions: Record<string, number> = {};
+            slides.forEach((slide) => {
+              prerequisiteCompletions[slide.id] =
+                slide.percentage_completed || 0;
+            });
+
+            const previousSlide =
+              slideIndex > 0 ? accessibleSlides[slideIndex - 1] : null;
+            const progressData: LearnerProgressData = {
+              percentageCompleted: targetSlide.percentage_completed || 0,
+              previousItemId: previousSlide?.id,
+              previousItemCompletion: previousSlide?.percentage_completed || 0,
+              itemIndex: slideIndex,
+              prerequisiteCompletions,
+            };
+
+            const evaluation = isDrippingEnable
+              ? evaluateDripCondition(slideCondition, progressData)
+              : {
+                  isAccessible: true,
+                  isLocked: false,
+                  isHidden: false,
+                  unlockMessage: null,
+                };
+            const locked = isItemLocked(evaluation);
+
+            if (locked) {
+              setActiveItem(slidesWithFeedback[0]);
+              return;
+            }
+          }
+
           setActiveItem(targetSlide);
           return;
         }
@@ -120,7 +268,17 @@ function Slides() {
       // Priority 3: Default to first slide
       setActiveItem(slidesWithFeedback[0]);
     }
-  }, [slides, slideId, setActiveItem, setItems, courseId, chapterId]);
+  }, [
+    slides,
+    slideId,
+    setActiveItem,
+    setItems,
+    courseId,
+    chapterId,
+    slideCondition,
+    setSlideEvaluations,
+    isDrippingEnable,
+  ]);
 
   const handleSubjectRoute = useCallback(() => {
     navigate({
@@ -136,37 +294,6 @@ function Slides() {
     });
   }, [navigate, courseId, subjectId, moduleId, chapterId]);
 
-  const gotoSlide = useCallback(
-    (targetSlideId: string) => {
-      const targetSlide = slides?.find((s: Slide) => s.id === targetSlideId);
-      if (targetSlide) {
-        setActiveItem(targetSlide);
-        navigate({
-          to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
-          search: {
-            courseId,
-            subjectId,
-            moduleId,
-            chapterId,
-            slideId: targetSlideId,
-            sessionId,
-          },
-          replace: true,
-        });
-      }
-    },
-    [
-      slides,
-      setActiveItem,
-      navigate,
-      courseId,
-      subjectId,
-      moduleId,
-      chapterId,
-      sessionId,
-    ]
-  );
-
   const [moduleName, setModuleName] = useState("");
   const [chapterName, setChapterName] = useState("");
   const [subjectName, setSubjectName] = useState("");
@@ -176,7 +303,7 @@ function Slides() {
   const [homeIconClickRoute, setHomeIconClickRoute] = useState<string | null>(
     null
   );
-  const truncatedChapterName = truncateString(chapterName || "", 12);
+  // truncatedChapterName removed (unused)
   const handleInstituteLogoClick = useCallback(() => {
     if (homeIconClickRoute) {
       window.location.href = homeIconClickRoute;
@@ -279,298 +406,250 @@ function Slides() {
     });
   }, []);
 
+  const nextChapter = useMemo(() => {
+    if (!modulesWithChaptersData?.length) return null;
+
+    const currentModIndex = modulesWithChaptersData.findIndex(
+      (m) => m.module.id === moduleId
+    );
+    if (currentModIndex === -1) return null;
+
+    const currentMod = modulesWithChaptersData[currentModIndex];
+    if (!currentMod?.chapters) return null;
+
+    const currentChapIndex = currentMod.chapters.findIndex(
+      (c) => c.id === chapterId
+    );
+    if (currentChapIndex === -1) return null;
+
+    // Check next in same module
+    if (currentChapIndex + 1 < currentMod.chapters.length) {
+      return {
+        module: currentMod.module,
+        chapter: currentMod.chapters[currentChapIndex + 1],
+      };
+    }
+
+    // Check start of next module
+    if (currentModIndex + 1 < modulesWithChaptersData.length) {
+      const nextMod = modulesWithChaptersData[currentModIndex + 1];
+      if (nextMod.chapters?.length > 0) {
+        return {
+          module: nextMod.module,
+          chapter: nextMod.chapters[0],
+        };
+      }
+    }
+
+    return null;
+  }, [modulesWithChaptersData, moduleId, chapterId]);
+
+  const handleNextChapter = useCallback(() => {
+    if (nextChapter) {
+      navigate({
+        to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
+        search: {
+          courseId,
+          subjectId,
+          moduleId: nextChapter.module.id,
+          chapterId: nextChapter.chapter.id,
+          slideId: "", // Default to first slide
+          sessionId,
+        },
+      });
+    }
+  }, [nextChapter, navigate, courseId, subjectId, sessionId]);
+
   const SidebarComponent = (
-    <div className="relative w-full max-w-full h-full">
-      <div className="relative h-full bg-white">
-        {/* Header */}
-        <div
-          className="absolute top-0 left-0 right-0 z-20 bg-white border-b border-gray-100"
-          id="slides-side-header"
-        >
-          <div
-            className={`${
-              open ? "px-2 sm:px-3 md:px-4" : "px-1 sm:px-2 md:px-3"
-            } py-2 sm:py-3`}
-          >
-            <div className="relative group overflow-hidden animate-fade-in-down">
-              {showLearningPath && (
-                <div className="flex items-center space-x-1 sm:space-x-2 mb-1 sm:mb-2">
-                  <div className="p-0.5 sm:p-1 bg-gradient-to-br from-primary-100 to-primary-200 rounded-md shadow-sm">
-                    <BookOpen
-                      size={12}
-                      className="sm:w-3.5 sm:h-3.5 text-primary-600"
-                      weight="duotone"
-                    />
-                  </div>
-                  <span className="text-xs font-semibold text-gray-700">
-                    Learning Path
-                  </span>
-                </div>
-              )}
-              {showLearningPath && (
-                <>
-                  {/* Mobile: only last node with popover to show full path + slides */}
-                  <div
-                    className="flex items-center sm:hidden"
-                    id="slides-breadcrumb-row-mobile"
-                  >
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <button className="text-xs font-bold text-primary-600 bg-primary-50 px-2 py-1 rounded-md inline-flex items-center gap-1 truncate max-w-[75%]">
-                          <span className="truncate">
-                            {toTitleCase(chapterName || "Chapter")}
-                          </span>
-                          <ChevronDownIcon className="w-3 h-3 text-primary-600" />
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent
-                        className="w-[90vw] max-w-sm p-3"
-                        sideOffset={6}
-                        align="start"
-                      >
-                        <div className="space-y-3">
-                          <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
-                            Learning Path
-                          </div>
-                          <div className="flex items-center gap-1 text-xs">
-                            <button
-                              className="px-2 py-1 rounded-md bg-gray-50 hover:bg-gray-100 text-gray-700 truncate"
-                              onClick={handleSubjectRoute}
-                            >
-                              {toTitleCase(subjectName || "Subject")}
-                            </button>
-                            <ChevronRightIcon className="w-3 h-3 text-gray-400" />
-                            <button
-                              className="px-2 py-1 rounded-md bg-gray-50 hover:bg-gray-100 text-gray-700 truncate"
-                              onClick={handleModuleRoute}
-                            >
-                              {toTitleCase(moduleName || "Module")}
-                            </button>
-                            <ChevronRightIcon className="w-3 h-3 text-gray-400" />
-                            <span className="px-2 py-1 rounded-md bg-primary-50 text-primary-700 font-semibold truncate">
-                              {toTitleCase(chapterName || "Chapter")}
-                            </span>
-                          </div>
-                          {slides && slides.length > 0 && (
-                            <div className="space-y-2">
-                              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
-                                Slides
-                              </div>
-                              <div className="max-h-64 overflow-auto divide-y divide-gray-100 rounded-md border border-gray-100">
-                                {slides.map((s: Slide, idx: number) => (
-                                  <button
-                                    key={s.id}
-                                    className={`w-full text-left px-2 py-2 text-xs flex items-center gap-2 hover:bg-gray-50 ${
-                                      activeItem?.id === s.id
-                                        ? "bg-primary-50 text-primary-700"
-                                        : "text-gray-700"
-                                    }`}
-                                    onClick={() => gotoSlide(s.id)}
-                                  >
-                                    <span
-                                      className={`inline-flex items-center justify-center w-5 h-5 rounded-md text-[10px] font-bold ${
-                                        activeItem?.id === s.id
-                                          ? "bg-primary-500 text-white"
-                                          : "bg-gray-100 text-gray-600"
-                                      }`}
-                                    >
-                                      {idx + 1}
-                                    </span>
-                                    <span className="truncate flex-1">
-                                      {s.title || "Untitled"}
-                                    </span>
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-
-                  {/* Desktop/Tablet: full breadcrumb */}
-                  <div
-                    className="hidden sm:flex flex-wrap items-center gap-0.5 sm:gap-1 text-gray-600"
-                    id="slides-breadcrumb-row"
-                  >
-                    <button
-                      className={`text-xs font-medium hover:text-primary-600 ${
-                        open ? "block" : "hidden sm:block"
-                      }`}
-                      onClick={handleSubjectRoute}
-                    >
-                      {truncateString(
-                        toTitleCase(subjectName),
-                        open ? (window.innerWidth < 640 ? 20 : 15) : 8
-                      )}
-                    </button>
-                    <ChevronRightIcon className="w-2 h-2 sm:w-3 sm:h-3 text-gray-400" />
-                    <button
-                      className={`text-xs font-medium hover:text-primary-600 ${
-                        open ? "block" : "hidden sm:block"
-                      }`}
-                      onClick={handleModuleRoute}
-                    >
-                      {truncateString(
-                        toTitleCase(moduleName),
-                        open ? (window.innerWidth < 640 ? 20 : 15) : 8
-                      )}
-                    </button>
-                    <ChevronRightIcon className="w-2 h-2 sm:w-3 sm:h-3 text-gray-400" />
-                    <span className="text-xs font-bold text-primary-600 bg-primary-50 px-1 sm:px-2 py-0.5 rounded-lg">
-                      {open
-                        ? window.innerWidth < 640
-                          ? toTitleCase(chapterName)
-                          : truncatedChapterName
-                        : truncatedChapterName}
-                    </span>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Section Title */}
-        <div
-          className={`absolute ${
-            showLearningPath
-              ? "top-[70px] sm:top-[85px]"
-              : "top-[10px] sm:top-[12px]"
-          } left-0 right-0 z-20 flex items-center space-x-1 sm:space-x-2 p-2 sm:p-3 md:p-4 border-b border-gray-100 bg-gray-50`}
-        >
-          <div className="p-1 sm:p-1.5 bg-primary-100 rounded-lg flex items-center justify-center min-w-[28px] min-h-[28px] sm:min-w-[32px] sm:min-h-[32px]">
+    <div className="flex flex-col h-full bg-white border-r border-gray-100/50">
+      {/* --- Header Section: Title & Breadcrumbs --- */}
+      <div className="flex-none p-4 space-y-4 border-b border-dashed border-gray-200 bg-white/50 backdrop-blur-sm z-10">
+        {/* Course Info Row */}
+        <div className="flex items-start gap-3">
+          <div className="flex-shrink-0 w-8 h-8 rounded-lg border border-gray-200 p-1 bg-white shadow-sm flex items-center justify-center text-primary-600">
             {instituteLogoUrl ? (
               <img
                 src={instituteLogoUrl}
-                alt="Institute Logo"
+                alt="Institute"
                 onClick={
                   homeIconClickRoute ? handleInstituteLogoClick : undefined
                 }
-                className={`max-w-full max-h-full object-contain${
-                  homeIconClickRoute ? " cursor-pointer" : ""
+                className={`max-w-full max-h-full object-contain ${
+                  homeIconClickRoute ? "cursor-pointer" : ""
                 }`}
-                style={{
-                  width: "auto",
-                  height: "auto",
-                  maxWidth: "24px",
-                  maxHeight: "24px",
-                }}
               />
             ) : (
-              <GraduationCap
-                size={14}
-                className="sm:w-4 sm:h-4 text-primary-600"
-                weight="duotone"
-              />
+              <GraduationCap size={16} weight="duotone" />
             )}
           </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-xs sm:text-sm font-bold text-gray-900 truncate">
-              {courseName ? toTitleCase(courseName) : "Loading Course..."}
+          <div className="min-w-0 flex-1 pt-0.5">
+            <h3 className="text-sm font-bold text-gray-900 leading-tight line-clamp-1 mb-0.5">
+              {courseName ? toTitleCase(courseName) : "Course Details"}
             </h3>
-            {levelName && levelName.toLowerCase() !== "default" && (
-              <p className="text-xs text-gray-600">{toTitleCase(levelName)}</p>
-            )}
-            {!levelName && (
-              <p className="text-xs text-gray-600">Loading Level...</p>
-            )}
+            <p className="text-[11px] text-gray-500 font-medium tracking-wide uppercase">
+              {levelName && levelName.toLowerCase() !== "default"
+                ? toTitleCase(levelName)
+                : "Course Material"}
+            </p>
           </div>
         </div>
 
-        {/* Scrollable Slides List */}
-        <div
-          className={`absolute ${
-            showLearningPath ? "top-[145px]" : "top-[70px]"
-          } bottom-[85px] left-0 right-0 overflow-y-auto`}
-        >
-          <div className="relative bg-white transition-all duration-300 group min-h-full">
-            <div className="relative p-2 sm:p-3 animate-fade-in-up">
-              <ChapterSidebarSlides />
+        {/* Minimal Breadcrumbs */}
+        {showLearningPath && (
+          <div
+            className="flex items-center text-xs text-gray-500 font-medium overflow-hidden"
+            id="slides-breadcrumb-row"
+          >
+            <div className="flex items-center gap-1.5 flex-wrap truncate">
+              {/* Subject */}
+              <button
+                onClick={handleSubjectRoute}
+                className="hover:text-primary-600 hover:underline transition-colors truncate max-w-[80px] sm:max-w-[100px]"
+              >
+                {toTitleCase(subjectName || "Subject")}
+              </button>
+              <ChevronRightIcon className="w-3 h-3 text-gray-300 flex-shrink-0" />
+
+              {/* Module */}
+              <button
+                onClick={handleModuleRoute}
+                className="hover:text-primary-600 hover:underline transition-colors truncate max-w-[80px] sm:max-w-[100px]"
+              >
+                {toTitleCase(moduleName || "Module")}
+              </button>
+              <ChevronRightIcon className="w-3 h-3 text-gray-300 flex-shrink-0" />
+
+              {/* Chapter (Active) */}
+              <span className="text-gray-900 font-semibold truncate max-w-[100px] sm:max-w-[120px]">
+                {toTitleCase(chapterName || "Chapter")}
+              </span>
             </div>
-          </div>
-        </div>
 
-        {/* Feedback + Progress */}
-        {slides && slides.length > 0 && (
-          <div className="absolute bottom-0 left-0 right-0 z-20 bg-white border-t border-gray-100">
-            <div className={`${open ? "px-3 sm:px-4" : "px-2 sm:px-3"} pt-3`}>
-              {/* Feedback Button */}
-              {feedbackVisible && (
-                <MyButton
-                  buttonType="text"
-                  scale="medium"
-                  layoutVariant="default"
-                  onClick={() => {
-                    const feedbackSlide: Slide = {
-                      id: "feedback-slide",
-                      title: "Feedback",
-                      source_type: "FEEDBACK",
-                      source_id: "",
-                      image_file_id: "",
-                      description: "Provide feedback for this chapter",
-                      status: "ACTIVE",
-                      slide_order: slides?.length ? slides.length + 1 : 1,
-                      percentage_completed: 0,
-                      is_loaded: true,
-                      new_slide: false,
-                      progress_marker: 0,
-                    };
-                    setActiveItem(feedbackSlide);
-                  }}
-                  className={`
-                  w-full 
-                  mb-3 
-                  flex 
-                  items-center 
-                  justify-start 
-                  gap-2 
-                  !bg-transparent 
-                  !border-none 
-                  !text-left 
-                  transition-all 
-                  duration-200 
-                  hover:!bg-primary-100 
-                  ${activeItem?.id === "feedback-slide" ? "!bg-primary-50" : ""}
-                `}
-                >
-                  <FiEdit className="w-4 h-4" />
-                  <span className="text-sm">Feedback</span>
-                </MyButton>
-              )}
-
-              {/* Progress */}
-              <div className="relative p-3 border border-gray-200 rounded-lg bg-gray-50">
-                <div className="relative flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-primary-500 rounded-full animate-pulse" />
-                    <span className="text-xs font-semibold text-gray-700">
-                      Progress
+            {/* Mobile Hierarchy Popover (only visible on smallest screens if needed, otherwise handled by wrap) - kept for compatibility if needed, but the flex-wrap above handles most cases cleanly. 
+                 Re-adding the popover for mobile interactions just in case. */}
+            <div className="sm:hidden ml-auto">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className="p-1 hover:bg-gray-100 rounded">
+                    <ChevronDownIcon className="w-3 h-3 text-gray-400" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-2" align="end">
+                  <div className="flex flex-col gap-1 text-xs">
+                    <button
+                      onClick={handleSubjectRoute}
+                      className="text-left px-2 py-1.5 hover:bg-gray-50 rounded"
+                    >
+                      {toTitleCase(subjectName || "Subject")}
+                    </button>
+                    <button
+                      onClick={handleModuleRoute}
+                      className="text-left px-2 py-1.5 hover:bg-gray-50 rounded"
+                    >
+                      {toTitleCase(moduleName || "Module")}
+                    </button>
+                    <span className="px-2 py-1.5 font-semibold bg-gray-50 rounded text-primary-700">
+                      {toTitleCase(chapterName || "Chapter")}
                     </span>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-primary-500 rounded-full"
-                        style={{
-                          width: `${Math.min(
-                            calculateOverallCompletion(slides),
-                            100
-                          )}%`,
-                        }}
-                      />
-                    </div>
-                    <span className="text-xs font-bold text-primary-600 min-w-[30px]">
-                      {Math.min(calculateOverallCompletion(slides), 100)}%
-                    </span>
-                  </div>
-                </div>
-              </div>
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
         )}
       </div>
+
+      {/* --- Scrollable Content: Slides List --- */}
+      <div className="flex-1 overflow-y-auto min-h-0 custom-scrollbar">
+        <div className="p-3">
+          <ChapterSidebarSlides />
+        </div>
+      </div>
+
+      {/* --- Footer: Progress & Actions --- */}
+      {slides && slides.length > 0 && (
+        <div className="flex-none p-4 border-t border-gray-100 bg-white space-y-3 z-10 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.02)]">
+          {/* Next Chapter Button (Compact) */}
+          {nextChapter && (
+            <button
+              onClick={handleNextChapter}
+              className="w-full flex items-center justify-between gap-2 px-1 py-1 rounded hover:bg-gray-50 transition-colors group/next mb-1"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide group-hover/next:text-primary-500 transition-colors">
+                  Next
+                </span>
+                <span className="text-xs font-semibold text-gray-700 truncate group-hover/next:text-gray-900 transition-colors">
+                  {toTitleCase(nextChapter.chapter.chapter_name)}
+                </span>
+              </div>
+              <CaretRight
+                size={12}
+                className="text-gray-300 group-hover/next:text-primary-500 transition-colors flex-shrink-0"
+                weight="bold"
+              />
+            </button>
+          )}
+
+          {/* Progress Bar (Minimal) */}
+          <div className="space-y-1.5 group">
+            <div className="flex items-center justify-between text-[11px] font-medium text-gray-500 uppercase tracking-wider">
+              <span>Progress</span>
+              <span className="text-gray-900 group-hover:text-primary-600 transition-colors">
+                {Math.min(calculateOverallCompletion(slides), 100)}%
+              </span>
+            </div>
+            <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-primary-500 rounded-full transition-all duration-500 ease-out relative"
+                style={{
+                  width: `${Math.min(
+                    calculateOverallCompletion(slides),
+                    100
+                  )}%`,
+                }}
+              >
+                <div className="absolute inset-0 bg-white/20 animate-pulse-slow py-0.5" />
+              </div>
+            </div>
+          </div>
+
+          {/* Feedback Button (Ghost) */}
+          {feedbackVisible && (
+            <button
+              onClick={() => {
+                const feedbackSlide: Slide = {
+                  id: "feedback-slide",
+                  title: "Feedback",
+                  source_type: "FEEDBACK",
+                  source_id: "",
+                  image_file_id: "",
+                  description: "Provide feedback for this chapter",
+                  status: "ACTIVE",
+                  slide_order: slides?.length ? slides.length + 1 : 1,
+                  percentage_completed: 0,
+                  is_loaded: true,
+                  new_slide: false,
+                  progress_marker: 0,
+                };
+                setActiveItem(feedbackSlide);
+              }}
+              className={`
+                w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold
+                transition-all duration-200 border border-transparent
+                ${
+                  activeItem?.id === "feedback-slide"
+                    ? "bg-primary-50 text-primary-700 border-primary-200"
+                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:border-gray-200"
+                }
+              `}
+            >
+              <FiEdit className="w-3.5 h-3.5" />
+              <span>Feedback</span>
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 
@@ -701,30 +780,6 @@ function Slides() {
     handleSubjectRoute,
     handleModuleRoute,
   ]);
-
-  // Enforce display settings in slides side view
-  useEffect(() => {
-    getStudentDisplaySettings(false).then((s) => {
-      const showLearningPath =
-        s?.courseDetails?.slidesView?.showLearningPath ?? true;
-      const feedbackVisible =
-        s?.courseDetails?.slidesView?.feedbackVisible ?? true;
-
-      const breadcrumbRow = document.getElementById("slides-breadcrumb-row");
-      if (breadcrumbRow) {
-        breadcrumbRow.style.display = showLearningPath ? "flex" : "none";
-      }
-      const feedbackButtons = document.querySelectorAll<HTMLButtonElement>(
-        "button:has(> span:text('Feedback'))"
-      );
-      if (!feedbackVisible) {
-        // hide feedback section by skipping setting activeItem to feedback and hiding button
-        if (feedbackButtons && feedbackButtons.length) {
-          feedbackButtons.forEach((b) => (b.style.display = "none"));
-        }
-      }
-    });
-  }, []);
 
   return (
     <LayoutContainer

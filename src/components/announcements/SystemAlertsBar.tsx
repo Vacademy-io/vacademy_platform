@@ -18,7 +18,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { useSystemAlerts } from '@/hooks/useSystemAlerts';
- 
+
 import { formatLocalDateTime } from '@/helpers/formatISOTime';
 import type { UserMessage } from '@/types/announcement';
 import { announcementApi } from '@/services/announcementApi';
@@ -137,22 +137,21 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
   const renderAlertContent = (alert: UserMessage) => {
     if (alert.content.type === 'html') {
       return (
-        <div 
-          className="prose prose-sm max-w-none"
+        <div
+          className="prose prose-sm max-w-none overflow-hidden break-words [&>*]:max-w-full [&_img]:max-w-full [&_img]:h-auto [&_table]:overflow-x-auto [&_table]:block [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_meta]:hidden [&_style]:hidden [&_title]:hidden [&_head]:hidden [&_script]:hidden"
           dangerouslySetInnerHTML={{ __html: alert.content.content }}
         />
       );
     }
-    
-    return <p className="text-sm text-gray-700">{alert.content.content}</p>;
+
+    return <p className="text-sm text-gray-700 break-words">{alert.content.content}</p>;
   };
 
   const renderAlertCard = (alert: UserMessage) => (
-    <Card 
+    <Card
       key={alert.messageId}
-      className={`mb-3 cursor-pointer transition-all hover:shadow-md ${
-        !alert.isRead ? 'border-l-4 border-l-blue-500 bg-blue-50' : ''
-      }`}
+      className={`mb-3 cursor-pointer transition-all hover:shadow-md ${!alert.isRead ? 'border-l-4 border-l-blue-500 bg-blue-50' : ''
+        }`}
       ref={(el) => {
         if (el) {
           alertRefs.current.set(alert.messageId, el);
@@ -163,37 +162,37 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
     >
       <CardContent className="p-4">
         <div className="flex items-start justify-between">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
+          <div className="flex-1 min-w-0 overflow-hidden">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
               {alert.title && (
-                <h4 className="font-medium text-gray-900 truncate">{alert.title}</h4>
+                <h4 className="font-medium text-gray-900 truncate max-w-full">{alert.title}</h4>
               )}
               {alert.priority && (
-                <Badge 
-                  variant="secondary" 
-                  className={`text-xs ${getPriorityColor(alert.priority)} text-white`}
+                <Badge
+                  variant="secondary"
+                  className={`text-xs ${getPriorityColor(alert.priority)} text-white flex-shrink-0`}
                 >
                   {getPriorityText(alert.priority)}
                 </Badge>
               )}
               {!alert.isRead && (
-                <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0" />
               )}
             </div>
-            
-            <div className="text-sm text-gray-600 mb-2">
+
+            <div className="text-sm text-gray-600 mb-2 overflow-hidden max-w-full">
               {renderAlertContent(alert)}
             </div>
-            
-            <div className="flex items-center justify-between text-xs text-gray-500">
-              <span>
+
+            <div className="flex items-center justify-between text-xs text-gray-500 flex-wrap gap-2">
+              <span className="truncate">
                 {alert.createdByName && `By ${alert.createdByName}`}
                 {alert.createdByName && alert.createdAt && ' • '}
                 {alert.createdAt && formatLocalDateTime(alert.createdAt)}
               </span>
             </div>
           </div>
-          
+
           <Button
             variant="ghost"
             size="sm"
@@ -219,8 +218,8 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
           <Button variant="ghost" size="sm" className="relative">
             <Bell className="h-5 w-5" />
             {unreadCount > 0 && (
-              <Badge 
-                variant="destructive" 
+              <Badge
+                variant="destructive"
                 className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
               >
                 {unreadCount > 99 ? '99+' : unreadCount}
@@ -229,10 +228,10 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
             {isOpen ? <ChevronUp className="ml-1 h-4 w-4" /> : <ChevronDown className="ml-1 h-4 w-4" />}
           </Button>
         </DropdownMenuTrigger>
-        
-        <DropdownMenuContent 
-          align="end" 
-          className="w-96 max-h-96 p-0"
+
+        <DropdownMenuContent
+          align="end"
+          className="w-[calc(100vw-2rem)] sm:w-[32rem] md:w-96 max-h-96 p-0"
           sideOffset={8}
         >
           <div className="p-4 border-b border-gray-200">
@@ -256,7 +255,7 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
                       <AlertDialogHeader>
                         <AlertDialogTitle>Clear All Notifications</AlertDialogTitle>
                         <AlertDialogDescription>
-                          Are you sure you want to dismiss all {alerts.length} notification{alerts.length === 1 ? '' : 's'}? 
+                          Are you sure you want to dismiss all {alerts.length} notification{alerts.length === 1 ? '' : 's'}?
                           This action cannot be undone.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
@@ -283,7 +282,7 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
               </div>
             </div>
           </div>
-          
+
           <ScrollArea className="h-80">
             <div className="p-4">
               {error && (
@@ -291,7 +290,7 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
                   {error}
                 </div>
               )}
-              
+
               {loading && alerts.length === 0 ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
@@ -305,7 +304,7 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
               ) : (
                 <>
                   {alerts.map(renderAlertCard)}
-                  
+
                   {hasMore && (
                     <div className="text-center pt-4">
                       <Button
@@ -331,28 +330,28 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
           </ScrollArea>
         </DropdownMenuContent>
       </DropdownMenu>
-      
+
       {/* Full Content Modal */}
       {selectedAlert && showFullContent && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-2xl max-h-[80vh] overflow-hidden">
-            <CardContent className="p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex-1">
+          <Card className="w-full max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            <CardContent className="p-4 sm:p-6 flex flex-col overflow-hidden">
+              <div className="flex items-start justify-between mb-4 flex-shrink-0">
+                <div className="flex-1 min-w-0 mr-2">
                   {selectedAlert.title && (
-                    <h2 className="text-lg font-semibold text-gray-900 mb-2">
+                    <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-2 break-words">
                       {selectedAlert.title}
                     </h2>
                   )}
-                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-500 flex-wrap">
                     {selectedAlert.priority && (
                       <Badge variant="secondary" className={getPriorityColor(selectedAlert.priority)}>
                         {getPriorityText(selectedAlert.priority)}
                       </Badge>
                     )}
-                    {selectedAlert.createdByName && <span>By {selectedAlert.createdByName}</span>}
+                    {selectedAlert.createdByName && <span className="truncate">By {selectedAlert.createdByName}</span>}
                     {selectedAlert.createdAt && (
-                      <span>{formatLocalDateTime(selectedAlert.createdAt)}</span>
+                      <span className="truncate">{formatLocalDateTime(selectedAlert.createdAt)}</span>
                     )}
                   </div>
                 </div>
@@ -360,15 +359,18 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
                   variant="ghost"
                   size="sm"
                   onClick={() => setShowFullContent(false)}
+                  className="flex-shrink-0"
                 >
                   <X className="h-4 w-4" />
                 </Button>
               </div>
-              
-              <Separator className="mb-4" />
-              
-              <div className="prose prose-sm max-w-none">
-                {renderAlertContent(selectedAlert)}
+
+              <Separator className="mb-4 flex-shrink-0" />
+
+              <div className="overflow-y-auto flex-1 min-h-0">
+                <div className="prose prose-sm max-w-none">
+                  {renderAlertContent(selectedAlert)}
+                </div>
               </div>
             </CardContent>
           </Card>

@@ -12,6 +12,7 @@ import { DoubtResolutionSidebar } from "./doubt-resolution-sidebar/components/si
 import CustomVideoPlayer from "./custom-video-player";
 import QuestionSlide from "./question-slide";
 import AssignmentSlide from "./assignment-slide";
+import { isItemLocked } from "@/components/drip-conditions/helpers";
 
 import { MyButton } from "@/components/design-system/button";
 import { DocViewer } from "./doc-viewer";
@@ -26,7 +27,8 @@ import { Slide } from "@/hooks/study-library/use-slides";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 
 export const SlideMaterial = () => {
-  const { activeItem, items, setActiveItem } = useContentStore();
+  const { activeItem, items, setActiveItem, slideEvaluations } =
+    useContentStore();
   const selectionRef = useRef(null);
   const loadGenerationRef = useRef(0);
   const [heading, setHeading] = useState(activeItem?.title || "");
@@ -41,8 +43,26 @@ export const SlideMaterial = () => {
   // Slide navigation helpers
   const slidesList = Array.isArray(items) ? items : [];
   const currentIndex = slidesList.findIndex((s) => s.id === activeItem?.id);
-  const canGoPrev = currentIndex > 0;
-  const canGoNext = currentIndex > -1 && currentIndex < slidesList.length - 1;
+
+  // Check if prev/next slides are locked
+  const prevSlide = currentIndex > 0 ? slidesList[currentIndex - 1] : null;
+  const nextSlide =
+    currentIndex > -1 && currentIndex < slidesList.length - 1
+      ? slidesList[currentIndex + 1]
+      : null;
+
+  const isPrevLocked = prevSlide
+    ? slideEvaluations[prevSlide.id] &&
+      isItemLocked(slideEvaluations[prevSlide.id])
+    : false;
+  const isNextLocked = nextSlide
+    ? slideEvaluations[nextSlide.id] &&
+      isItemLocked(slideEvaluations[nextSlide.id])
+    : false;
+
+  const canGoPrev = currentIndex > 0 && !isPrevLocked;
+  const canGoNext =
+    currentIndex > -1 && currentIndex < slidesList.length - 1 && !isNextLocked;
 
   const goToPrev = () => {
     if (!canGoPrev) return;
@@ -210,34 +230,47 @@ export const SlideMaterial = () => {
         case "QUIZ": {
           // Support for new quiz slide structure
           const slideWithQuiz = activeItem as Slide & { quiz_slide?: unknown };
-          const quizSlide = slideWithQuiz.quiz_slide as { questions?: unknown[] } | undefined;
-          const questions = Array.isArray(quizSlide?.questions) ? quizSlide!.questions : [];
+          const quizSlide = slideWithQuiz.quiz_slide as
+            | { questions?: unknown[] }
+            | undefined;
+          const questions = Array.isArray(quizSlide?.questions)
+            ? quizSlide!.questions
+            : [];
 
           // Map questions to QuizViewer format
           const mappedQuestions = questions.map((q: unknown) => {
             const question = q as {
               id: string;
-              parent_rich_text?: { id?: string; type?: string; content?: string };
+              parent_rich_text?: {
+                id?: string;
+                type?: string;
+                content?: string;
+              };
               text?: { id?: string; type?: string; content?: string };
               options?: Array<{ id?: string; text?: { content?: string } }>;
               question_type?: string;
               auto_evaluation_json?: string;
-              explanation_text?: { id?: string; type?: string; content?: string };
+              explanation_text?: {
+                id?: string;
+                type?: string;
+                content?: string;
+              };
             };
             return {
               id: question.id,
               parent_rich_text: question.parent_rich_text,
               text: question.text,
               question_type: question.question_type,
-              options: Array.isArray(question.options) && question.options.length > 0
-                ? question.options.map((opt, idx) => ({
-                    id: opt.id || String(idx),
-                    text: { content: opt.text?.content || "Option" },
-                  }))
-                : [
-                    // If no options, provide a default for numeric/text input
-                    { id: "input", text: { content: "(Enter your answer)" } }
-                  ],
+              options:
+                Array.isArray(question.options) && question.options.length > 0
+                  ? question.options.map((opt, idx) => ({
+                      id: opt.id || String(idx),
+                      text: { content: opt.text?.content || "Option" },
+                    }))
+                  : [
+                      // If no options, provide a default for numeric/text input
+                      { id: "input", text: { content: "(Enter your answer)" } },
+                    ],
               auto_evaluation_json: question.auto_evaluation_json,
               explanation_text: question.explanation_text,
             };
@@ -261,13 +294,19 @@ export const SlideMaterial = () => {
         case "QUESTION": {
           // Fallback: if quiz_slide is present, use it
           const slideWithQuiz = activeItem as Slide & { quiz_slide?: unknown };
-          const quizSlide = slideWithQuiz.quiz_slide as { questions?: unknown[] } | undefined;
+          const quizSlide = slideWithQuiz.quiz_slide as
+            | { questions?: unknown[] }
+            | undefined;
           if (quizSlide && Array.isArray(quizSlide.questions)) {
             const questions = quizSlide.questions;
             const mappedQuestions = questions.map((q: unknown) => {
               const question = q as {
                 id: string;
-                parent_rich_text?: { id?: string; type?: string; content?: string };
+                parent_rich_text?: {
+                  id?: string;
+                  type?: string;
+                  content?: string;
+                };
                 text?: { id?: string; type?: string; content?: string };
                 options?: Array<{ id?: string; text?: { content?: string } }>;
                 question_type?: string;
@@ -277,14 +316,18 @@ export const SlideMaterial = () => {
                 parent_rich_text: question.parent_rich_text,
                 text: question.text,
                 question_type: question.question_type,
-                options: Array.isArray(question.options) && question.options.length > 0
-                  ? question.options.map((opt, idx) => ({
-                      id: opt.id || String(idx),
-                      text: { content: opt.text?.content || "Option" },
-                    }))
-                  : [
-                      { id: "input", text: { content: "(Enter your answer)" } }
-                    ]
+                options:
+                  Array.isArray(question.options) && question.options.length > 0
+                    ? question.options.map((opt, idx) => ({
+                        id: opt.id || String(idx),
+                        text: { content: opt.text?.content || "Option" },
+                      }))
+                    : [
+                        {
+                          id: "input",
+                          text: { content: "(Enter your answer)" },
+                        },
+                      ],
               };
             });
             setContent(
@@ -356,8 +399,10 @@ export const SlideMaterial = () => {
             const isHtml =
               activeItem.document_slide.published_data &&
               (activeItem.document_slide.published_data.includes("<html") ||
-               activeItem.document_slide.published_data.includes("<body") ||
-               activeItem.document_slide.published_data.trim().startsWith("<"));
+                activeItem.document_slide.published_data.includes("<body") ||
+                activeItem.document_slide.published_data
+                  .trim()
+                  .startsWith("<"));
             if (isHtml) {
               setContent(
                 <div className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -664,7 +709,9 @@ const AskDoubtButton = () => {
   const [enabled, setEnabled] = useState(true);
   useEffect(() => {
     getStudentDisplaySettings(false)
-      .then((s) => setEnabled(s?.courseDetails?.slidesView?.canAskDoubt !== false))
+      .then((s) =>
+        setEnabled(s?.courseDetails?.slidesView?.canAskDoubt !== false)
+      )
       .catch(() => setEnabled(true));
   }, []);
   if (!enabled) return null;
@@ -681,7 +728,10 @@ const AskDoubtButton = () => {
       >
         <span className="text-neutral-700 font-medium text-sm">Doubts</span>
         <div className="relative">
-          <ChatText size={16} className="text-neutral-600 transition-all duration-300 group-hover:text-primary-600" />
+          <ChatText
+            size={16}
+            className="text-neutral-600 transition-all duration-300 group-hover:text-primary-600"
+          />
           <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-primary-500 rounded-full animate-pulse"></div>
         </div>
       </MyButton>

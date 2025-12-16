@@ -54,7 +54,6 @@ import LocalStorageUtils from "@/utils/localstorage";
 import { fetchPaymentOptions } from "@/routes/courses/-services/payment-options-api";
 import { CourseHeader } from "./course-header";
 import { CertificateCompletionBanner } from "./certificate-completion-banner.tsx";
-import { CertificateDialog } from "./certificate-dialog";
 import { CourseEnrollment } from "./course-enrollment";
 import { CourseContentSections } from "./course-content-sections";
 import { CourseSidebar } from "./course-sidebar";
@@ -543,7 +542,6 @@ export const CourseDetailsPage = () => {
           searchParams.courseId || ""
         );
         setPackageSessionIdForCurrentLevel(packageSessionId);
-
         if (import.meta.env.MODE !== "production") {
           console.info("[CourseDetailsPage] mapping result", {
             selectedSession,
@@ -1212,14 +1210,34 @@ export const CourseDetailsPage = () => {
 
   // Extract read_time_in_minutes from package detail API (correct source of truth)
   useEffect(() => {
-    const packageData = singleCourseQuery.data as unknown as {
-      read_time_in_minutes?: number;
-    };
-
-    if (packageData?.read_time_in_minutes) {
-      setBackendReadTimeMinutes(packageData.read_time_in_minutes);
+    if (!singleCourseQuery.data) {
+      return;
     }
-  }, [singleCourseQuery.data]);
+
+    const rawData = singleCourseQuery.data as Record<string, unknown>;
+    let extractedReadTime: number | undefined = undefined;
+
+    // Check direct properties
+    if ("read_time_in_minutes" in rawData) {
+      extractedReadTime = rawData.read_time_in_minutes as number | undefined;
+    }
+
+    // Check if data is nested in a 'data' property
+    if (
+      !extractedReadTime &&
+      rawData.data &&
+      typeof rawData.data === "object" &&
+      rawData.data !== null &&
+      "read_time_in_minutes" in rawData.data
+    ) {
+      extractedReadTime = (rawData.data as Record<string, unknown>)
+        .read_time_in_minutes as number | undefined;
+    }
+
+    if (extractedReadTime) {
+      setBackendReadTimeMinutes(extractedReadTime);
+    }
+  }, [singleCourseQuery.data, singleCourseQuery.isLoading]);
 
   // Custom slide count calculation to handle special document types
   const processedSlideCounts = useMemo(() => {

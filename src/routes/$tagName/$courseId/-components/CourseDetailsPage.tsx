@@ -56,6 +56,10 @@ interface CourseData {
   enrollInviteId?: string;
   levelId?: string;
   courseId?: string;
+  course_banner_media_id?: string;
+  comma_separeted_tags?: string;
+  course_html_description_html?: string;
+  about_the_course_html?: string;
 }
 
 export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
@@ -94,9 +98,12 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
     );
   };
   const [showLeadCollection, setShowLeadCollection] = useState(false);
-  const [catalogueData, setCatalogueData] =
-    useState<CourseCatalogueData | null>(null);
+  const [catalogueData, setCatalogueData] = useState<CourseCatalogueData | null>(null);
 
+  // Debug catalogue data changes
+  useEffect(() => {
+    console.log("[CourseDetailsPage] Catalogue data loaded:", !!catalogueData);
+  }, [catalogueData]);
   const [enrollmentDialogOpen, setEnrollmentDialogOpen] = useState(false);
 
   // Fetch catalogue data for header and footer
@@ -195,6 +202,18 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
     const fetchCourseDetails = async () => {
       try {
         setIsLoading(true);
+        console.log("[CourseDetailsPage] Fetching course details for:", { courseId, tagName, instituteId });
+
+        // First, fetch course details from /init API to get full course information
+        const initResponse = await axios.get(`${import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_BASE_URL || "https://backend-stage.vacademy.io"}/admin-core-service/open/v1/learner-study-library/init`, {
+          params: {
+            instituteId: instituteId,
+            packageId: courseId,
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
 
         // First, fetch course details from /init API to get full course information
         const initResponse = await axios.get(
@@ -216,9 +235,13 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
         // Find the course in the init response
         const initData = initResponse.data;
-        const courseResponse = initData.find(
-          (item: any) => item.course.id === courseId
-        );
+        const courseResponse = initData.find((item: any) => item.course.id === courseId);
+
+        if (!courseResponse) {
+          console.log("[CourseDetailsPage] Course not found in init response");
+          setError("Course not found.");
+          return;
+        }
 
         const course = courseResponse.course;
 
@@ -227,6 +250,26 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           setError("This course is not available for public viewing.");
           return;
         }
+
+        console.log("[CourseDetailsPage] Course details from init API:", {
+          id: course.id,
+          package_name: course.package_name,
+          course_html_description: course.course_html_description,
+          course_preview_image_media_id: course.course_preview_image_media_id,
+          course_banner_media_id: course.course_banner_media_id,
+          why_learn: course.why_learn,
+          who_should_learn: course.who_should_learn,
+          about_the_course: course.about_the_course,
+          tags: course.tags,
+          course_depth: course.course_depth,
+          is_course_published_to_catalaouge: course.is_course_published_to_catalaouge
+        });
+
+        console.log("[CourseDetailsPage] Props from search API:", {
+          enrollInviteId,
+          packageSessionId
+        });
+
 
         // Use banner image from props if available, otherwise use API fields (raw media IDs)
         let thumbnailUrl = "/api/placeholder/800/400";
@@ -257,12 +300,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
         // Extract learning outcomes from HTML content
         const extractLearningOutcomes = (htmlContent: string) => {
-          if (!htmlContent)
-            return [
-              "Learn practical skills",
-              "Apply knowledge in real projects",
-              "Gain industry insights",
-            ];
+          if (!htmlContent) return ["Learn practical skills", "Apply knowledge in real projects", "Gain industry insights"];
 
           // Try to extract bullet points or list items
           const listItems = htmlContent.match(/<li[^>]*>(.*?)<\/li>/g);
@@ -336,7 +374,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           requirements: [
             "Basic computer skills",
             "Internet connection",
-            "Motivation to learn",
+            "Motivation to learn"
           ],
           whoShouldLearn:
             parseHtmlContent(course.who_should_learn) ||
@@ -373,9 +411,23 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           enrollInviteId: enrollInviteId || course.enroll_invite_id, // Use passed enrollInviteId or fallback to API response
           levelId: course.level_id, // Add levelId from API response
           courseId: course.course_id || courseId, // Add courseId from API response or use the route param
-        };
+          course_banner_media_id: course.course_banner_media_id || "", // Explicitly pass the banner ID for BookDetailsComponent
+          // Preserve raw HTML fields for BookDetailsComponent
+          course_html_description_html: course.course_html_description || course.course_html_description_html || "",
+          about_the_course_html: course.about_the_course || course.about_the_course_html || "",
+          comma_separeted_tags: course.tags || course.comma_separeted_tags || ""
+        } as any;
 
         setCourseData(courseData);
+
+        // Debug: Log the courseData that was set
+        console.log("[CourseDetailsPage] CourseData set with values:", {
+          levelId: courseData.levelId,
+          courseId: courseData.courseId,
+          packageSessionId: courseData.packageSessionId,
+          levelIdFromAPI: course.level_id,
+          courseIdFromAPI: course.course_id
+        });
 
         // Check if lead collection should be shown based on JSON configuration
         const globalSettings = catalogueData?.globalSettings as any;
@@ -383,8 +435,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
         // Check if form has already been submitted
         const leadCollectionSubmittedKey = `leadCollectionSubmitted_${instituteId}_${tagName}`;
-        const hasSubmittedLeadCollection =
-          localStorage.getItem(leadCollectionSubmittedKey) === "true";
+        const hasSubmittedLeadCollection = localStorage.getItem(leadCollectionSubmittedKey) === 'true';
 
         if (leadCollectionConfig?.enabled && !hasSubmittedLeadCollection) {
           setTimeout(() => {
@@ -417,7 +468,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       setShowLeadCollection(true);
     };
 
-    window.addEventListener("openLeadCollection", handleOpenLeadCollection);
+    window.addEventListener('openLeadCollection', handleOpenLeadCollection);
 
     return () => {
       window.removeEventListener(
@@ -477,23 +528,20 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       {catalogueData && (
         <>
           {/* Header from JSON globalSettings */}
-          {(catalogueData.globalSettings as any).layout?.header &&
-            (catalogueData.globalSettings as any).layout?.header?.enabled !==
-              false && (
-              <JsonRenderer
-                page={{
-                  id: "header",
-                  route: "header",
-                  title: "Header",
-                  components: [
-                    (catalogueData.globalSettings as any).layout.header,
-                  ],
-                }}
-                globalSettings={catalogueData.globalSettings}
-                instituteId={instituteId}
-                tagName={tagName}
-              />
-            )}
+          {(catalogueData.globalSettings as any).layout?.header && (catalogueData.globalSettings as any).layout?.header?.enabled !== false && (
+            <JsonRenderer
+              page={{
+                id: "header",
+                route: "header",
+                title: "Header",
+                components: [(catalogueData.globalSettings as any).layout.header]
+              }}
+              globalSettings={catalogueData.globalSettings}
+              instituteId={instituteId}
+              tagName={tagName}
+              catalogueData={catalogueData}
+            />
+          )}
 
           {/* Render details page components from JSON */}
           {catalogueData.pages
@@ -514,7 +562,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       )}
 
       {/* Course Content */}
-      <div className="py-8 sm:py-12 bg-gray-50 w-full">
+      {(catalogueData?.globalSettings as any)?.courseCatalogeType?.enabled !== true && <div className="py-8 sm:py-12 bg-gray-50 w-full">
         <div className="w-full px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
             {/* Main Content */}
@@ -579,11 +627,10 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                             {[1, 2, 3, 4, 5].map((star) => (
                               <svg
                                 key={star}
-                                className={`w-3 h-3 ${
-                                  star <= Math.floor(courseData.rating)
+                                className={`w-3 h-3 ${star <= Math.floor(courseData.rating)
                                     ? "text-yellow-400"
                                     : "text-gray-300"
-                                }`}
+                                  }`}
                                 fill="currentColor"
                                 viewBox="0 0 20 20"
                               >
@@ -645,13 +692,15 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
                           // Check if payment is explicitly disabled (showPayment=false)
                           const showPayment = paymentConfig?.enabled === true;
-                          const leadCollectionEnabled =
-                            leadCollectionConfig?.enabled;
+                          const leadCollectionEnabled = leadCollectionConfig?.enabled;
+
+                          console.log("Payment config:", paymentConfig);
+                          console.log("Lead collection config:", leadCollectionConfig);
+                          console.log("Show payment:", showPayment);
+                          console.log("Lead collection enabled:", leadCollectionEnabled);
 
                           // Check if this is a "Get Started" button (when payment is disabled)
-                          const isGetStartedButton =
-                            catalogueData?.globalSettings?.payment?.enabled ===
-                            false;
+                          const isGetStartedButton = catalogueData?.globalSettings?.payment?.enabled === false;
 
                           // If this is a "Get Started" button or payment is disabled, check if lead collection is enabled
                           if (isGetStartedButton || !showPayment) {
@@ -665,9 +714,9 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                         }}
                         className="w-full text-white py-3 px-4 rounded-lg text-sm font-semibold transition-all duration-200 transform shadow-lg"
                         style={{
-                          backgroundColor: domainRouting.instituteThemeCode
-                            ? `hsl(var(--primary))`
-                            : "#3b82f6",
+                          backgroundColor: domainRouting.instituteThemeCode ?
+                            `hsl(var(--primary))` :
+                            '#3b82f6'
                         }}
                         onMouseEnter={(e) => {
                           e.currentTarget.style.transform = "translateY(-1px)";
@@ -680,12 +729,10 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                             "0 4px 15px rgba(0,0,0,0.1)";
                         }}
                       >
-                        {catalogueData?.globalSettings?.payment?.enabled !==
-                        false
-                          ? courseData.price === 0
-                            ? "Enroll for Free"
-                            : "Enroll Now"
-                          : "Get Started"}
+                        {catalogueData?.globalSettings?.payment?.enabled !== false
+                          ? (courseData.price === 0 ? "Enroll for Free" : "Enroll Now")
+                          : "Get Started"
+                        }
                       </button>
                     </div>
                   </div>
@@ -933,16 +980,11 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                     {/* Course Stats */}
                     <div className="space-y-3">
                       {/* Price - Only show if payment is enabled */}
-                      {catalogueData?.globalSettings?.payment?.enabled !==
-                        false && (
+                      {catalogueData?.globalSettings?.payment?.enabled !== false && (
                         <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-primary-50 to-primary-100 rounded-lg border border-primary-200">
-                          <span className="text-xs font-medium text-primary-700">
-                            Price
-                          </span>
+                          <span className="text-xs font-medium text-primary-700">Price</span>
                           <span className="text-lg font-bold text-primary-800">
-                            {courseData.price === 0
-                              ? "Free"
-                              : `$${courseData.price}`}
+                            {courseData.price === 0 ? "Free" : `$${courseData.price}`}
                           </span>
                         </div>
                       )}
@@ -957,11 +999,10 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                             {[1, 2, 3, 4, 5].map((star) => (
                               <svg
                                 key={star}
-                                className={`w-3 h-3 ${
-                                  star <= Math.floor(courseData.rating)
+                                className={`w-3 h-3 ${star <= Math.floor(courseData.rating)
                                     ? "text-yellow-400"
                                     : "text-gray-300"
-                                }`}
+                                  }`}
                                 fill="currentColor"
                                 viewBox="0 0 20 20"
                               >
@@ -1025,13 +1066,15 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
                           // Check if payment is explicitly disabled (showPayment=false)
                           const showPayment = paymentConfig?.enabled === true;
-                          const leadCollectionEnabled =
-                            leadCollectionConfig?.enabled;
+                          const leadCollectionEnabled = leadCollectionConfig?.enabled;
+
+                          console.log("Payment config:", paymentConfig);
+                          console.log("Lead collection config:", leadCollectionConfig);
+                          console.log("Show payment:", showPayment);
+                          console.log("Lead collection enabled:", leadCollectionEnabled);
 
                           // Check if this is a "Get Started" button (when payment is disabled)
-                          const isGetStartedButton =
-                            catalogueData?.globalSettings?.payment?.enabled ===
-                            false;
+                          const isGetStartedButton = catalogueData?.globalSettings?.payment?.enabled === false;
 
                           // If this is a "Get Started" button or payment is disabled, check if lead collection is enabled
                           if (isGetStartedButton || !showPayment) {
@@ -1044,29 +1087,23 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                         }}
                         className="w-full text-white py-3 px-4 rounded-lg text-sm font-semibold transition-all duration-200 transform shadow-lg"
                         style={{
-                          backgroundColor: domainRouting.instituteThemeCode
-                            ? `hsl(var(--primary))`
-                            : "#3b82f6",
-                          transform: getCardStyling().hover?.scale
-                            ? `scale(${getCardStyling().hover.scale})`
-                            : "scale(1)",
-                          boxShadow: getCardStyling().hover?.shadow
-                            ? "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
-                            : "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+                          backgroundColor: domainRouting.instituteThemeCode ?
+                            `hsl(var(--primary))` :
+                            '#3b82f6',
+                          transform: getCardStyling().hover?.scale ? `scale(${getCardStyling().hover.scale})` : 'scale(1)',
+                          boxShadow: getCardStyling().hover?.shadow ? '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)' : '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
                         }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor =
-                            domainRouting.instituteThemeCode
-                              ? `hsl(var(--primary))`
-                              : "#2563eb";
-                          e.currentTarget.style.opacity = "0.9";
+                          e.currentTarget.style.backgroundColor = domainRouting.instituteThemeCode ?
+                            `hsl(var(--primary))` :
+                            '#2563eb';
+                          e.currentTarget.style.opacity = '0.9';
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor =
-                            domainRouting.instituteThemeCode
-                              ? `hsl(var(--primary))`
-                              : "#3b82f6";
-                          e.currentTarget.style.opacity = "1";
+                          e.currentTarget.style.backgroundColor = domainRouting.instituteThemeCode ?
+                            `hsl(var(--primary))` :
+                            '#3b82f6';
+                          e.currentTarget.style.opacity = '1';
                         }}
                       >
                         🎓 Enroll Now
@@ -1082,7 +1119,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             </div>
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* Footer from JSON globalSettings */}
       {catalogueData &&
@@ -1103,25 +1140,47 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
         )}
 
       {/* Lead Collection Modal */}
-      {showLeadCollection &&
-        catalogueData?.globalSettings?.leadCollection?.enabled && (
-          <LeadCollectionModal
-            isOpen={showLeadCollection}
-            onClose={handleLeadCollectionClose}
-            onSubmit={handleLeadCollectionSubmit}
-            settings={(() => {
-              const globalSettings = catalogueData?.globalSettings as any;
-              const leadCollectionConfig = globalSettings?.leadCollection;
+      {showLeadCollection && catalogueData?.globalSettings?.leadCollection?.enabled && (
+        <LeadCollectionModal
+          isOpen={showLeadCollection}
+          onClose={handleLeadCollectionClose}
+          onSubmit={handleLeadCollectionSubmit}
+          settings={(() => {
+            const globalSettings = catalogueData?.globalSettings as any;
+            const leadCollectionConfig = globalSettings?.leadCollection;
 
-              return {
-                enabled: leadCollectionConfig?.enabled || false, // Use actual enabled value from JSON
-                mandatory: leadCollectionConfig?.mandatory || false,
-                inviteLink: leadCollectionConfig?.inviteLink || null,
-                formStyle: leadCollectionConfig?.formStyle || {
-                  type: "single",
-                  showProgress: false,
-                  progressType: "bar",
-                  transition: "slide",
+            console.log("Lead collection settings being passed:", {
+              catalogueData,
+              globalSettings,
+              leadCollectionConfig,
+              fields: leadCollectionConfig?.fields,
+              formStyle: leadCollectionConfig?.formStyle
+            });
+
+            return {
+              enabled: leadCollectionConfig?.enabled || false, // Use actual enabled value from JSON
+              mandatory: leadCollectionConfig?.mandatory || false,
+              inviteLink: leadCollectionConfig?.inviteLink || null,
+              formStyle: leadCollectionConfig?.formStyle || {
+                type: 'single',
+                showProgress: false,
+                progressType: 'bar',
+                transition: 'slide'
+              },
+              fields: leadCollectionConfig?.fields || [
+                {
+                  name: "name",
+                  label: "Full Name",
+                  type: "text",
+                  required: true,
+                  step: 1
+                },
+                {
+                  name: "email",
+                  label: "Email",
+                  type: "email",
+                  required: true,
+                  step: 2
                 },
                 fields: leadCollectionConfig?.fields || [
                   {
@@ -1177,24 +1236,14 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           onSuccess={async (tokens) => {
             try {
               // Store tokens using the same method as other parts of the app
-              const { setTokenInStorage } = await import(
-                "@/lib/auth/sessionUtility"
-              );
-              const { TokenKey } = await import("@/constants/auth/tokens");
-              const { Preferences } = await import("@capacitor/preferences");
-              const { getTokenDecodedData } = await import(
-                "@/lib/auth/sessionUtility"
-              );
-              const { fetchAndStoreInstituteDetails } = await import(
-                "@/services/fetchAndStoreInstituteDetails"
-              );
-              const { fetchAndStoreStudentDetails } = await import(
-                "@/services/studentDetails"
-              );
-              const { getStudentDisplaySettings } = await import(
-                "@/services/student-display-settings"
-              );
-              const { identifyUser } = await import("@/lib/analytics");
+              const { setTokenInStorage } = await import('@/lib/auth/sessionUtility');
+              const { TokenKey } = await import('@/constants/auth/tokens');
+              const { Preferences } = await import('@capacitor/preferences');
+              const { getTokenDecodedData } = await import('@/lib/auth/sessionUtility');
+              const { fetchAndStoreInstituteDetails } = await import('@/services/fetchAndStoreInstituteDetails');
+              const { fetchAndStoreStudentDetails } = await import('@/services/studentDetails');
+              const { getStudentDisplaySettings } = await import('@/services/student-display-settings');
+              const { identifyUser } = await import('@/lib/analytics');
 
               await setTokenInStorage(TokenKey.accessToken, tokens.accessToken);
               await setTokenInStorage(
@@ -1231,7 +1280,8 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                 }
               }
 
-              window.location.href = "/study-library/courses";
+              console.log('[CourseDetailsPage] All APIs called successfully, redirecting to /study-library/courses');
+              window.location.href = '/study-library/courses';
             } catch (error) {
               console.error(
                 "[CourseDetailsPage] Error in onSuccess flow:",
@@ -1247,54 +1297,54 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       )}
 
       {/* Mobile Action Buttons - Fixed at bottom for course details page */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-blue border-t border-gray-200 p-4">
-        <div className="flex flex-col gap-3">
-          {/* Get Started Button */}
-          <button
-            onClick={() => {
-              const globalSettings = catalogueData?.globalSettings as any;
-              const leadCollectionConfig = globalSettings?.leadCollection;
-              if (leadCollectionConfig?.enabled) {
-                setShowLeadCollection(true);
-              }
-            }}
-            className="w-full px-4 py-2 text-white font-medium hover:opacity-90 rounded-md transition-colors"
-            style={{
-              backgroundColor: domainRouting.instituteThemeCode
-                ? `hsl(var(--primary))`
-                : "#3b82f6",
-            }}
-          >
-            Get Started
-          </button>
-
-          {/* Login Text */}
-          <div className="text-center">
-            <span
-              onClick={() => navigate({ to: "/login" })}
-              className="cursor-pointer text-sm transition-colors"
-              onMouseEnter={(e) => {
-                e.currentTarget.style.opacity = "0.8";
+      {(catalogueData?.globalSettings as any)?.courseCatalogeType?.enabled !== true && (
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 p-4" >
+          <div className="flex flex-col gap-3">
+            {/* Get Started Button */}
+            <button
+              onClick={() => {
+                console.log("[CourseDetailsPage] Mobile Get Started button clicked");
+                const globalSettings = catalogueData?.globalSettings as any;
+                const leadCollectionConfig = globalSettings?.leadCollection;
+                if (leadCollectionConfig?.enabled) {
+                  setShowLeadCollection(true);
+                } else {
+                  console.log("[CourseDetailsPage] Lead collection is disabled, not showing modal");
+                }
               }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.opacity = "1";
+              className="w-full px-4 py-2 text-white font-medium hover:opacity-90 rounded-md transition-colors"
+              style={{
+                backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
               }}
             >
-              <span className="text-black">Already have an account? </span>
+              Get Started
+            </button>
+
+            {/* Login Text */}
+            <div className="text-center border-gray-200">
               <span
-                className="underline"
-                style={{
-                  color: domainRouting.instituteThemeCode
-                    ? `hsl(var(--primary))`
-                    : "#3b82f6",
+                onClick={() => navigate({ to: '/login' })}
+                className="cursor-pointer text-sm transition-colors"
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.opacity = '0.8';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.opacity = '1';
                 }}
               >
-                Login
+                <span className="text-black">Already have an account? </span>
+                <span
+                  className="underline"
+                  style={{
+                    color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                  }}
+                >
+                  Login
+                </span>
               </span>
-            </span>
+            </div>
           </div>
-        </div>
-      </div>
+        </div>)}
     </div>
   );
 };

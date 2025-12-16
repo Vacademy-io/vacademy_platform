@@ -271,7 +271,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
 
 
   return (
-    <div className="min-h-screen bg-white w-full pb-20 md:pb-0  md:pt-0">
+    <div className="min-h-screen bg-white w-full pb-20 md:pb-0 pt-20">
       {/* Intro Page - Show first if enabled and not completed */}
       {showIntroPage && catalogueData?.introPage && (
         <IntroPageComponent
@@ -307,7 +307,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
           {/* Header Section with Theme Colors - Only show if title exists in JSON */}
           {currentPage?.title && (
             <div
-              className="w-full py-8 text-center text-white"
+              className="w-full py-0 text-center text-white"
               style={{
                 backgroundColor: domainRouting.instituteThemeCode ?
                   `hsl(var(--primary))` :
@@ -315,7 +315,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
               }}
             >
               <div className="w-full px-4 sm:px-6 lg:px-8">
-                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4">
+                <h1 className="text-xl sm:text-4xl lg:text-5xl font-bold mb-0">
                   {currentPage.title} {currentPage.title == "Your Cart" ? "🛒" : ""}
                 </h1>
               </div>

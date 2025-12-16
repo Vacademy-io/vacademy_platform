@@ -7,7 +7,7 @@ import { RouteMatcher } from "../../-services/route-matcher";
 import { CourseCatalogueData } from "../../-types/course-catalogue-types";
 import { useState, useEffect } from "react";
 import { Search, ShoppingCart, X } from "lucide-react";
-import { useCartStore } from "@/stores/cart-store";
+import { useCartStore } from "../../-stores/cart-store";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 export const HeaderComponent: React.FC<HeaderProps & {
@@ -24,10 +24,16 @@ export const HeaderComponent: React.FC<HeaderProps & {
   catalogueData,
   tagName = "home",
 }) => {
+  const [togle, settogle] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const domainRouting = useDomainRouting();
-  const { getItemCount } = useCartStore();
+  const { getItemCountByMode, items, syncCart } = useCartStore();
+  const [cartItemCount, setCartItemCount] = useState(0);
+  const [currentMode, setCurrentMode] = useState<'buy' | 'rent'>(() => {
+    const levelFilter = sessionStorage.getItem('levelFilter') || '';
+    return levelFilter.includes('Rent') ? 'rent' : 'buy';
+  });
   const isMobile = useIsMobile();
   const [instituteLogoUrl, setInstituteLogoUrl] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -39,8 +45,71 @@ export const HeaderComponent: React.FC<HeaderProps & {
   const [searchInputRef, setSearchInputRef] = useState<HTMLInputElement | null>(null);
   const [searchBarRef, setSearchBarRef] = useState<HTMLDivElement | null>(null);
   
-  // Calculate cart item count - this will automatically update when cart changes
-  const cartItemCount = getItemCount();
+  // Calculate cart item count based on current mode (Buy or Rent)
+  useEffect(() => {
+    const updateCartCount = async () => {
+      const levelFilter = sessionStorage.getItem('levelFilter') || '';
+      const isRentMode = levelFilter.includes('Rent');
+      const mode = isRentMode ? 'rent' : 'buy';
+      
+      // Update current mode if changed
+      if (mode !== currentMode) {
+        setCurrentMode(mode);
+        // Sync cart when mode changes
+        await syncCart();
+      }
+      
+      // Get count for the current mode from storage (most accurate)
+      const count = await getItemCountByMode(mode);
+      setCartItemCount(count);
+    };
+    
+    updateCartCount();
+    
+    // Listen for cart changes and levelFilter changes
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'levelFilter' || e.key?.startsWith('cart_items_')) {
+        updateCartCount();
+      }
+    };
+    
+    // Listen for custom events
+    const handleCartUpdate = () => {
+      updateCartCount();
+    };
+    
+    const handleCartUpdated = () => {
+      updateCartCount();
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('levelFilterChanged', handleCartUpdate);
+    window.addEventListener('cartUpdated', handleCartUpdated);
+    window.addEventListener('cartSynced', handleCartUpdated);
+    
+    // Also check periodically for same-tab changes
+    const interval = setInterval(updateCartCount, 500);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('levelFilterChanged', handleCartUpdate);
+      window.removeEventListener('cartUpdated', handleCartUpdated);
+      window.removeEventListener('cartSynced', handleCartUpdated);
+    };
+  }, [getItemCountByMode, syncCart, currentMode]);
+  
+  // Also update count when items change (reactive to store updates)
+  useEffect(() => {
+    const updateCountFromStore = async () => {
+      const levelFilter = sessionStorage.getItem('levelFilter') || '';
+      const isRentMode = levelFilter.includes('Rent');
+      const mode = isRentMode ? 'rent' : 'buy';
+      const count = await getItemCountByMode(mode);
+      setCartItemCount(count);
+    };
+    updateCountFromStore();
+  }, [items, getItemCountByMode]);
   
   // Check if header styles.enabled is true
   const isHeaderStylesEnabled = !!(catalogueData?.globalSettings?.layout?.header?.styles?.enabled);
@@ -49,7 +118,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
       window.location.href = domainRouting.homeIconClickRoute;
     }
   };
-
+  
   // Load institute logo
   useEffect(() => {
     const loadInstituteLogo = async () => {
@@ -275,6 +344,20 @@ export const HeaderComponent: React.FC<HeaderProps & {
       return true;
     }
     
+    // Hide on book/course details page (pattern: /$tagName/$courseId)
+    // Check if path has format: /tagName/courseId where courseId looks like an ID (numeric or UUID)
+    const pathSegments = location.pathname.split('/').filter(Boolean);
+    if (pathSegments.length >= 2) {
+      const potentialCourseId = pathSegments[1];
+      // Check if it looks like a course ID (numeric or UUID)
+      const isNumeric = /^\d+$/.test(potentialCourseId);
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(potentialCourseId);
+      if (isNumeric || isUUID) {
+        // This is likely a course/book details page
+        return true;
+      }
+    }
+    
     // Check if current page has buyRentSection component
     if (catalogueData?.pages) {
       const currentPathSegments = location.pathname.split('/').filter(Boolean);
@@ -307,9 +390,9 @@ export const HeaderComponent: React.FC<HeaderProps & {
   const hideSearchAndCart = shouldHideSearchAndCart();
 
   return (
-    <header className="relative bg-white shadow-sm border-b w-full fixed top-0 left-0 right-0 z-50 md:relative">
+    <header className="fixed top-0 left-0 right-0 z-50 bg-white shadow-sm border-b w-full">
       <div className={`w-full ${isHeaderStylesEnabled && !isMobile ? 'px-20' : 'px-4 sm:px-6 lg:px-8'}`}>
-        <div className={`flex items-center h-20 ${isCourseCatalogeTypeEnabled ? 'md:justify-between' : 'justify-between'}`}>
+        <div className={`flex items-center pt-2 pb-2 h-19 ${isCourseCatalogeTypeEnabled ? 'md:justify-between' : 'justify-between'}`}>
           {/* Mobile menu button - Left side when courseCatalogeType.enabled is true */}
           {isCourseCatalogeTypeEnabled && (
             <button
@@ -346,7 +429,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                 src={jsonLogoUrl}
                 alt="Logo"
                 onClick={domainRouting.homeIconClickRoute ? handleInstituteLogoClick : undefined}
-                className={`h-12 sm:h-14 w-auto object-contain rounded-lg shadow-sm transition-all duration-300 hover:scale-105${domainRouting.homeIconClickRoute ? " cursor-pointer" : ""}`}
+                className={`h-10 sm:h-20 w-auto object-contain rounded-lg shadow-sm transition-all duration-300 hover:scale-105${domainRouting.homeIconClickRoute ? " cursor-pointer" : ""}`}
 
                 onError={(e) => {
                   e.currentTarget.style.display = "none";
@@ -416,7 +499,16 @@ export const HeaderComponent: React.FC<HeaderProps & {
               <div className="flex items-center space-x-3 sm:space-x-4">
                 {/* Search Icon */}
                 <button
-                  onClick={() => setIsSearchOpen(!isSearchOpen)}
+                  onClick={() => {
+                    const newToggleState = !togle;
+                    settogle(newToggleState);
+                    // Dispatch custom event to open search bar in BookCatalogueComponent
+                    window.dispatchEvent(new CustomEvent('toggleSearchBar', { 
+                      detail: { isOpen: newToggleState } 
+                    }));
+                    // Also store in sessionStorage for persistence
+                    sessionStorage.setItem('searchBarOpen', String(newToggleState));
+                  }}
                   className="p-2 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-all duration-200 ease-in-out"
                   aria-label="Search"
                 >
@@ -486,7 +578,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
           // Enhanced menu for courseCatalogeType.enabled = true
           <div 
             ref={setMobileMenuRef}
-            className={`md:hidden fixed top-20 left-0 right-0 z-[60] bg-white shadow-lg transition-all duration-500 ease-in-out ${
+            className={`md:hidden fixed top-[60px] left-0 right-0 z-[60] bg-white shadow-lg transition-all duration-500 ease-in-out ${
               isMobileMenuOpen 
                 ? 'max-h-[500px] opacity-100 border-t border-gray-200' 
                 : 'max-h-0 opacity-0 border-t-0 pointer-events-none'
@@ -495,7 +587,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
             <div className={`transform transition-transform duration-500 ease-in-out ${
               isMobileMenuOpen ? 'translate-y-0' : '-translate-y-full'
             }`}>
-              <div className="px-4 pt-4 pb-6 space-y-2">
+              <div className="px-4 pt-2 pb-6 space-y-0">
                 {/* Login */}
                 <button
                   onClick={() => {
@@ -554,7 +646,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                 </button>
 
                 {/* Genre Dropdown */}
-                <div className="relative">
+                {/* <div className="relative">
                   <button
                     onClick={() => setIsGenreDropdownOpen(!isGenreDropdownOpen)}
                     className="group w-full flex items-center justify-between px-5 py-3.5 rounded-xl text-base font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300 transition-all duration-300 ease-in-out transform hover:scale-[1.01] active:scale-[0.99]"
@@ -607,7 +699,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       ))}
                     </div>
                   </div>
-                </div>
+                </div> */}
               </div>
             </div>
           </div>
@@ -616,9 +708,9 @@ export const HeaderComponent: React.FC<HeaderProps & {
           isMobileMenuOpen && (navigation.length > 0 || authLinks.length > 0) && (
             <div 
               ref={setMobileMenuRef}
-              className="md:hidden fixed top-20 left-0 right-0 z-[60] border-t border-gray-200 bg-white shadow-lg"
+              className="md:hidden fixed top-[60px] left-0 right-0 z-[60] border-t border-gray-200 bg-white shadow-lg"
           >
-            <div className="px-2 pt-2 pb-3 space-y-1">
+            <div className="px-2 pt-1 pb-3 space-y-1">
               {/* Navigation Links */}
               {navigation.map((item, index) => {
                 const isActive = isActiveRoute(item.route, item.label);
@@ -685,44 +777,6 @@ export const HeaderComponent: React.FC<HeaderProps & {
       </div>
 
       {/* Search Bar - Only for hero section header */}
-      {isCourseCatalogeTypeEnabled && !hideSearchAndCart && isSearchOpen && (
-        <div 
-          ref={setSearchBarRef}
-          className="absolute top-full left-0 right-0 bg-white border-b border-gray-200 shadow-lg z-40"
-        >
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            <form onSubmit={handleSearch} className="relative max-w-2xl mx-auto">
-              <div className="relative flex items-center">
-                <Search className="absolute left-4 text-gray-400 w-5 h-5" />
-                <input
-                  ref={setSearchInputRef}
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search for books, courses, or topics..."
-                  className="w-full pl-12 pr-12 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base"
-                />
-                {searchTerm && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchTerm("")}
-                    className="absolute right-12 text-gray-400 hover:text-gray-600 transition-colors"
-                    aria-label="Clear search"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                )}
-                <button
-                  type="submit"
-                  className="absolute right-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium"
-                >
-                  Search
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </header>
   );
 };

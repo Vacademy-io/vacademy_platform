@@ -11,8 +11,9 @@ import { MediaShowcaseComponent } from "./components/MediaShowcaseComponent";
 import { StatsHighlightsComponent } from "./components/StatsHighlightsComponent";
 import { TestimonialSectionComponent } from "./components/TestimonialSectionComponent";
 import { CartComponent } from "./components/CartComponent";
-import { CartSummaryComponent } from "./components/CartSummaryComponent";
 import { BuyRentSectionComponent } from "./components/BuyRentSectionComponent";
+import { BookCatalogueComponent } from "./components/BookCatalogueComponent";
+import { BookDetailsComponent } from "./components/BookDetailsComponent";
 
 interface JsonRendererProps {
   page: Page;
@@ -47,7 +48,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
       const fieldPath = field.startsWith('globalSettings.') ? field.substring('globalSettings.'.length) : field;
       const fieldParts = fieldPath.split('.');
       let currentValue: any = globalSettings;
-      
+
       for (const part of fieldParts) {
         if (currentValue && typeof currentValue === 'object' && part in currentValue) {
           currentValue = currentValue[part];
@@ -56,18 +57,18 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
           break;
         }
       }
-      
+
       // Normalize boolean values for comparison (handle both boolean true and string "true")
       const normalizedCurrentValue = typeof currentValue === 'boolean' ? currentValue : currentValue;
       const normalizedExpectedValue = typeof value === 'boolean' ? value : (value === 'true' || value === true);
-      
-      
+
+
       // Check if condition matches
       if (normalizedCurrentValue !== normalizedExpectedValue) {
         console.log(`[JsonRenderer] Component ${id} HIDDEN - condition not met`);
         return null;
       }
-      
+
       console.log(`[JsonRenderer] Component ${id} SHOWN - condition met`);
     }
 
@@ -95,9 +96,27 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             tagName={tagName}
           />
         );
+      case "bookCatalogue":
+        return (
+          <BookCatalogueComponent
+            key={id}
+            {...props}
+            instituteId={instituteId}
+            globalSettings={globalSettings}
+            tagName={tagName}
+          />
+        );
       case "courseDetails":
         // Skip course details component - it shows hardcoded data after footer
         return null;
+      case "bookDetails":
+        return (
+          <BookDetailsComponent
+            key={id}
+            {...props}
+            courseData={courseData}
+          />
+        );
       case "courseRecommendations":
         // Skip course recommendations component - user doesn't want "you may also like" section
         return null;
@@ -127,9 +146,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
       case "testimonialSection":
         return <TestimonialSectionComponent key={id} {...props} />;
       case "cartComponent":
-        return <CartComponent key={id} {...props} />;
-      case "cartSummary":
-        return <CartSummaryComponent key={id} {...props} />;
+        return <CartComponent key={id} {...props} instituteId={instituteId} />;
       case "buyRentSection":
         return <BuyRentSectionComponent key={id} {...props} tagName={tagName} />;
       default:

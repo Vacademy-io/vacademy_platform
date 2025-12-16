@@ -1,14 +1,14 @@
 // Updated to support layout configuration
 export interface GlobalSettings {
-  courseCatalogeType :{
-        enabled: false,
-         value: string
-    };
+  courseCatalogeType: {
+    enabled: false,
+    value: string
+  };
   mode: "light" | "dark";
-  fonts? : {
+  fonts?: {
     enabled?: boolean,
     family?: string
-    },
+  },
   compactness: "small" | "medium" | "large";
   audience: "children" | "adults" | "all";
   leadCollection: {
@@ -332,6 +332,7 @@ export interface CartComponentProps {
   showPrice?: boolean;
   showEmptyState?: boolean;
   emptyStateMessage?: string;
+  instituteId?: string;
   styles?: {
     padding?: string;
     roundedEdges?: boolean;

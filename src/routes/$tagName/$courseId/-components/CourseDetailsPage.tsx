@@ -205,7 +205,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
         console.log("[CourseDetailsPage] Fetching course details for:", { courseId, tagName, instituteId });
 
         // First, fetch course details from /init API to get full course information
-        const initResponse = await axios.get(`${import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_BASE_URL || "https://backend-stage.vacademy.io"}/admin-core-service/open/v1/learner-study-library/init`, {
+        const initApiResponse = await axios.get(`${import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_BASE_URL || "https://backend-stage.vacademy.io"}/admin-core-service/open/v1/learner-study-library/init`, {
           params: {
             instituteId: instituteId,
             packageId: courseId,
@@ -215,26 +215,10 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           },
         });
 
-        // First, fetch course details from /init API to get full course information
-        const initResponse = await axios.get(
-          `${
-            import.meta.env.VITE_BACKEND_URL ||
-            import.meta.env.VITE_API_BASE_URL ||
-            "https://backend-stage.vacademy.io"
-          }/admin-core-service/open/v1/learner-study-library/init`,
-          {
-            params: {
-              instituteId: instituteId,
-              packageId: courseId,
-            },
-            headers: {
-              "Content-Type": "application/json",
-            },
-          }
-        );
+        console.log("[CourseDetailsPage] Init API response:", initApiResponse.data);
 
         // Find the course in the init response
-        const initData = initResponse.data;
+        const initData = initApiResponse.data;
         const courseResponse = initData.find((item: any) => item.course.id === courseId);
 
         if (!courseResponse) {
@@ -562,7 +546,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       )}
 
       {/* Course Content */}
-      {(catalogueData?.globalSettings as any)?.courseCatalogeType?.enabled !== true && <div className="py-8 sm:py-12 bg-gray-50 w-full">
+      {(catalogueData?.globalSettings as any)?.courseCatalogeType?.enabled !== true && <div className="py-8 sm:py-12 pb-24 bg-gray-50 w-full">
         <div className="w-full px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
             {/* Main Content */}
@@ -628,8 +612,8 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                               <svg
                                 key={star}
                                 className={`w-3 h-3 ${star <= Math.floor(courseData.rating)
-                                    ? "text-yellow-400"
-                                    : "text-gray-300"
+                                  ? "text-yellow-400"
+                                  : "text-gray-300"
                                   }`}
                                 fill="currentColor"
                                 viewBox="0 0 20 20"
@@ -704,10 +688,9 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
                           // If this is a "Get Started" button or payment is disabled, check if lead collection is enabled
                           if (isGetStartedButton || !showPayment) {
-                            if (leadCollectionEnabled) {
-                              setShowLeadCollection(true);
-                            } else {
-                            }
+                            console.log("Get Started button clicked - opening lead collection modal!");
+                            // Force show lead collection
+                            setShowLeadCollection(true);
                           } else {
                             setEnrollmentDialogOpen(true);
                           }
@@ -1000,8 +983,8 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                               <svg
                                 key={star}
                                 className={`w-3 h-3 ${star <= Math.floor(courseData.rating)
-                                    ? "text-yellow-400"
-                                    : "text-gray-300"
+                                  ? "text-yellow-400"
+                                  : "text-gray-300"
                                   }`}
                                 fill="currentColor"
                                 viewBox="0 0 20 20"
@@ -1078,9 +1061,9 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
                           // If this is a "Get Started" button or payment is disabled, check if lead collection is enabled
                           if (isGetStartedButton || !showPayment) {
-                            if (leadCollectionEnabled) {
-                              setShowLeadCollection(true);
-                            }
+                            console.log("Get Started button clicked - opening lead collection modal!");
+                            // Force show lead collection
+                            setShowLeadCollection(true);
                           } else {
                             setEnrollmentDialogOpen(true);
                           }
@@ -1140,81 +1123,49 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
         )}
 
       {/* Lead Collection Modal */}
-      {showLeadCollection && catalogueData?.globalSettings?.leadCollection?.enabled && (
+      {showLeadCollection && catalogueData?.globalSettings?.leadCollection && (
         <LeadCollectionModal
           isOpen={showLeadCollection}
           onClose={handleLeadCollectionClose}
           onSubmit={handleLeadCollectionSubmit}
-          settings={(() => {
-            const globalSettings = catalogueData?.globalSettings as any;
-            const leadCollectionConfig = globalSettings?.leadCollection;
-
-            console.log("Lead collection settings being passed:", {
-              catalogueData,
-              globalSettings,
-              leadCollectionConfig,
-              fields: leadCollectionConfig?.fields,
-              formStyle: leadCollectionConfig?.formStyle
-            });
-
-            return {
-              enabled: leadCollectionConfig?.enabled || false, // Use actual enabled value from JSON
-              mandatory: leadCollectionConfig?.mandatory || false,
-              inviteLink: leadCollectionConfig?.inviteLink || null,
-              formStyle: leadCollectionConfig?.formStyle || {
-                type: 'single',
-                showProgress: false,
-                progressType: 'bar',
-                transition: 'slide'
+          settings={{
+            enabled: catalogueData?.globalSettings?.leadCollection?.enabled || false,
+            mandatory: catalogueData?.globalSettings?.leadCollection?.mandatory || false,
+            inviteLink: catalogueData?.globalSettings?.leadCollection?.inviteLink || null,
+            formStyle: catalogueData?.globalSettings?.leadCollection?.formStyle || {
+              type: 'single',
+              showProgress: false,
+              progressType: 'bar',
+              transition: 'slide'
+            },
+            fields: catalogueData?.globalSettings?.leadCollection?.fields || [
+              {
+                name: "name",
+                label: "Full Name",
+                type: "text",
+                required: true,
+                step: 1
               },
-              fields: leadCollectionConfig?.fields || [
-                {
-                  name: "name",
-                  label: "Full Name",
-                  type: "text",
-                  required: true,
-                  step: 1
-                },
-                {
-                  name: "email",
-                  label: "Email",
-                  type: "email",
-                  required: true,
-                  step: 2
-                },
-                fields: leadCollectionConfig?.fields || [
-                  {
-                    name: "name",
-                    label: "Full Name",
-                    type: "text",
-                    required: true,
-                    step: 1,
-                  },
-                  {
-                    name: "email",
-                    label: "Email",
-                    type: "email",
-                    required: true,
-                    step: 2,
-                  },
-                  {
-                    name: "phone",
-                    label: "Phone Number",
-                    type: "tel",
-                    required: true,
-                    step: 3,
-                  },
-                ],
-              };
-            })()}
-            instituteId={instituteId}
-            mandatory={(() => {
-              const mandatoryValue =
-                catalogueData?.globalSettings?.leadCollection?.mandatory;
-              return mandatoryValue || false;
-            })()}
-          />
-        )}
+              {
+                name: "email",
+                label: "Email",
+                type: "email",
+                required: true,
+                step: 2
+              },
+              {
+                name: "phone",
+                label: "Phone Number",
+                type: "tel",
+                required: true,
+                step: 3
+              }
+            ]
+          }}
+          instituteId={instituteId}
+          mandatory={catalogueData?.globalSettings?.leadCollection?.mandatory || false}
+        />
+      )}
 
       {/* Enrollment Payment Dialog */}
       {courseData && (
@@ -1305,12 +1256,8 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
               onClick={() => {
                 console.log("[CourseDetailsPage] Mobile Get Started button clicked");
                 const globalSettings = catalogueData?.globalSettings as any;
-                const leadCollectionConfig = globalSettings?.leadCollection;
-                if (leadCollectionConfig?.enabled) {
-                  setShowLeadCollection(true);
-                } else {
-                  console.log("[CourseDetailsPage] Lead collection is disabled, not showing modal");
-                }
+                // Always show lead collection when Get Started is clicked, overriding the enabled setting
+                setShowLeadCollection(true);
               }}
               className="w-full px-4 py-2 text-white font-medium hover:opacity-90 rounded-md transition-colors"
               style={{

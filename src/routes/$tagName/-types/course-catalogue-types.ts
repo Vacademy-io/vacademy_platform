@@ -1,7 +1,7 @@
 // Updated to support layout configuration
 export interface GlobalSettings {
   courseCatalogeType: {
-    enabled: false,
+    enabled: boolean;
     value: string
   };
   mode: "light" | "dark";

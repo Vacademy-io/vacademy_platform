@@ -1,0 +1,100 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { motion } from "framer-motion";
+import { AlertCircle, Loader2 } from "lucide-react";
+import { getPublicMediaDetails } from "../../-services/media-service";
+import { YouTubeEmbedPlayer } from "../../-components/YouTubeEmbedPlayer";
+import { GenericMediaViewer } from "../../-components/GenericMediaViewer";
+import { MediaSource } from "../../-types/types";
+
+export const Route = createFileRoute("/m/$mediaId/$phoneNumber/")({
+    component: PublicMediaPage,
+});
+
+function PublicMediaPage() {
+    const { mediaId, phoneNumber: _phoneNumber } = Route.useParams();
+
+    const {
+        data: mediaDetails,
+        isLoading,
+        error,
+    } = useQuery({
+        queryKey: ["public-media", mediaId],
+        queryFn: () => getPublicMediaDetails(mediaId),
+        staleTime: 1000 * 60 * 5, // 5 minutes
+        retry: 2,
+    });
+
+    // Loading state - minimal centered loader (fixed fullscreen)
+    if (isLoading) {
+        return (
+            <div className="fixed inset-0 z-[9999] bg-black flex items-center justify-center">
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="text-center"
+                >
+                    <Loader2 className="w-8 h-8 text-white/60 animate-spin mx-auto" />
+                </motion.div>
+            </div>
+        );
+    }
+
+    // Error state - minimal error display (fixed fullscreen)
+    if (error || !mediaDetails) {
+        return (
+            <div className="fixed inset-0 z-[9999] bg-black flex items-center justify-center p-4">
+                <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-center max-w-md"
+                >
+                    <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+                    <h1 className="text-xl font-semibold text-white mb-2">
+                        Media Not Found
+                    </h1>
+                    <p className="text-white/50 text-sm mb-4">
+                        {error instanceof Error
+                            ? error.message
+                            : "The requested media could not be loaded."}
+                    </p>
+                    <button
+                        onClick={() => window.location.reload()}
+                        className="px-4 py-2 bg-white/10 text-white text-sm font-medium rounded-lg hover:bg-white/20 transition-colors"
+                    >
+                        Try Again
+                    </button>
+                </motion.div>
+            </div>
+        );
+    }
+
+    const isYouTube = mediaDetails.source === MediaSource.YOUTUBE;
+
+    return (
+        <div className="fixed inset-0 z-[9999] bg-black flex items-center justify-center overflow-auto">
+            {/* Content-only view - media takes full viewport */}
+            <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.3 }}
+                className="w-full h-full flex items-center justify-center p-2 sm:p-4 md:p-6"
+            >
+                <div className="w-full max-w-[100vw] md:max-w-[95vw] lg:max-w-[90vw]">
+                    {isYouTube ? (
+                        <YouTubeEmbedPlayer
+                            url={mediaDetails.source_id}
+                            title={mediaDetails.file_name || "Video"}
+                            className="w-full"
+                        />
+                    ) : (
+                        <GenericMediaViewer
+                            mediaDetails={mediaDetails}
+                            className="w-full"
+                        />
+                    )}
+                </div>
+            </motion.div>
+        </div>
+    );
+}

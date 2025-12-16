@@ -171,3 +171,6 @@ export const SUB_ORG_TERMINATE_MEMBER = `${SUB_ORG_BASE}/terminate-member`;
 
 export const LIST_PLANNING_LOGS = `${BASE_URL}/admin-core-service/planning-logs/v1/list`;
 export const GENERATE_INTERVAL_TYPE_ID = `${BASE_URL}/admin-core-service/planning-logs/v1/generate-interval-type-id`;
+
+// Public Media
+export const GET_PUBLIC_MEDIA_DETAILS = `${BASE_URL}/media-service/public/get-details/id`;

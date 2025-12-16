@@ -53,6 +53,7 @@ const PUBLIC_ROUTES = [
   "/courses", // Course catalog should be public
   "/courses/course-details", // Course details should be public for browsing
   "/un", // Public unsubscribe links
+  "/m", // Public media hosting page
 ];
 
 const isAuthenticated = async () => {
@@ -276,15 +277,15 @@ const RootComponent = () => {
     const isPopupWindow = (() => {
       try {
         if (window.opener && !window.opener.closed) return true;
-      } catch {}
+      } catch { }
       try {
         if (window.name && window.name.toLowerCase() === "oauth_popup")
           return true;
-      } catch {}
+      } catch { }
       try {
         const q = new URLSearchParams(window.location.search);
         if (q.get("popup") === "1") return true;
-      } catch {}
+      } catch { }
       return false;
     })();
 

@@ -19,9 +19,13 @@ public interface PackageSessionLearnerInvitationToPaymentOptionRepository extend
 
     @Query("SELECT psl " +
             "FROM PackageSessionLearnerInvitationToPaymentOption psl " +
+            "JOIN psl.packageSession ps " +
+            "JOIN ps.packageEntity p " +
             "WHERE psl.paymentOption.id IN :paymentOptionIds " +
             "AND psl.enrollInvite.status IN :enrollInviteStatuses " +
-            "AND psl.status IN :invitationStatuses")
+            "AND psl.status IN :invitationStatuses " +
+            "AND ps.status != 'DELETED' " +
+            "AND p.status != 'DELETED'")
     List<PackageSessionLearnerInvitationToPaymentOption> findByCriteria(
             @Param("paymentOptionIds") List<String> paymentOptionIds,
             @Param("enrollInviteStatuses") List<String> enrollInviteStatuses,

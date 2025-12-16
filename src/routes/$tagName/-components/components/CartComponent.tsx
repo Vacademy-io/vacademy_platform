@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useCartStore, CartItem } from "@/stores/cart-store";
+import { useCartStore, CartItem } from "../../-stores/cart-store";
 import { CartComponentProps } from "../../-types/course-catalogue-types";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { Trash2, Plus, Minus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getMembershipPlans, MembershipPlan } from "@/services/membership-plan-service";
+import { getMembershipPlans, MembershipPlan } from "../../-services/membership-plan-service";
 import { INSTITUTE_ID } from "@/constants/urls";
 import { toast } from "sonner";
 

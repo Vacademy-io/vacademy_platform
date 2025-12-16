@@ -17,7 +17,7 @@ import {
   Minus,
 } from "lucide-react";
 import { toTitleCase } from "@/lib/utils";
-import { useCartStore, CartItem } from "@/stores/cart-store";
+import { useCartStore, CartItem } from "../../-stores/cart-store";
 import { toast } from "sonner";
 
 interface BookCatalogueProps {

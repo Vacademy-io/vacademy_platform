@@ -7,7 +7,7 @@ import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { Filter, ChevronDown, ChevronUp, Search, SortAsc, ShoppingCart, Plus, Minus } from "lucide-react";
 import { toTitleCase } from "@/lib/utils";
-import { useCartStore, CartItem } from "@/stores/cart-store";
+import { useCartStore, CartItem } from "../../-stores/cart-store";
 import { toast } from "sonner";
 // EnrollmentPaymentDialog import removed - not used in catalog
 

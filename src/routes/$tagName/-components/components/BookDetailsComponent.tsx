@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { User, ShoppingCart, Plus, Minus } from "lucide-react";
-import { useCartStore } from "@/stores/cart-store";
+import { useCartStore } from "../../-stores/cart-store";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 

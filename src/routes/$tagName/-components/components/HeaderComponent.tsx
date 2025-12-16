@@ -7,7 +7,7 @@ import { RouteMatcher } from "../../-services/route-matcher";
 import { CourseCatalogueData } from "../../-types/course-catalogue-types";
 import { useState, useEffect } from "react";
 import { Search, ShoppingCart, X } from "lucide-react";
-import { useCartStore } from "@/stores/cart-store";
+import { useCartStore } from "../../-stores/cart-store";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 export const HeaderComponent: React.FC<HeaderProps & {

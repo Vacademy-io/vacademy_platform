@@ -23,6 +23,9 @@ import java.text.SimpleDateFormat;
 import java.util.List;
 import java.util.Map;
 
+import vacademy.io.admin_core_service.features.migration.enums.MigrationStatus;
+import vacademy.io.admin_core_service.features.migration.enums.UploadStatus;
+
 @Service
 public class IndividualMemberKeapStagingService {
 
@@ -35,11 +38,16 @@ public class IndividualMemberKeapStagingService {
     @Autowired
     private MigrationValidator migrationValidator;
 
-    public byte[] uploadUserCsv(MultipartFile file) {
+    public byte[] uploadUserCsv(MultipartFile file, String recordType) {
         try (BufferedReader fileReader = new BufferedReader(
                 new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8));
                 CSVParser csvParser = new CSVParser(fileReader,
-                        CSVFormat.DEFAULT.withFirstRecordAsHeader().withIgnoreHeaderCase().withTrim())) {
+                        CSVFormat.DEFAULT.builder()
+                                .setHeader()
+                                .setSkipHeaderRecord(true)
+                                .setIgnoreHeaderCase(true)
+                                .setTrim(true)
+                                .build())) {
 
             StringBuilder csvOutput = new StringBuilder();
             csvOutput.append("Email,ContactId,UploadStatus,ErrorMessage\n");
@@ -52,17 +60,26 @@ public class IndividualMemberKeapStagingService {
                 String contactId = csvRecord.isMapped("ContactId") ? csvRecord.get("ContactId")
                         : (csvRecord.isMapped("Id") ? csvRecord.get("Id") : null);
 
-                String status = "SUCCESS";
+                String status = UploadStatus.SUCCESS.name();
                 String error = "";
 
                 // Backend Validation
-                String validationError = migrationValidator.validateIndividualUser(csvRecord);
+                String validationError;
+                if ("EXPIRED_INDIVIDUAL".equals(recordType)) {
+                    validationError = migrationValidator.validateExpiredIndividualUser(csvRecord);
+                } else if ("INDIVIDUAL_ACTIVE_RENEW".equals(recordType)) {
+                    validationError = migrationValidator.validateIndividualActiveRenew(csvRecord);
+                } else if ("INDIVIDUAL_ACTIVE_CANCELLED".equals(recordType)) {
+                    validationError = migrationValidator.validateIndividualActiveCancelled(csvRecord);
+                } else {
+                    validationError = migrationValidator.validateIndividualUser(csvRecord);
+                }
                 if (!validationError.isEmpty()) {
-                    status = "FAILED";
+                    status = UploadStatus.FAILED.name();
                     error = validationError;
                 }
 
-                if (status.equals("SUCCESS")) {
+                if (status.equals(UploadStatus.SUCCESS.name())) {
                     try {
                         KeapUserDTO userDTO = new KeapUserDTO();
                         userDTO.setContactId(contactId);
@@ -129,14 +146,14 @@ public class IndividualMemberKeapStagingService {
                         stagingUser.setJobType(userDTO.getJobType());
                         stagingUser.setUserPlanStatus(userDTO.getStatus()); // Map status to userPlanStatus
 
-                        stagingUser.setRecordType("INDIVIDUAL");
-                        stagingUser.setMigrationStatus("PENDING");
+                        stagingUser.setRecordType(recordType);
+                        stagingUser.setMigrationStatus(MigrationStatus.PENDING.name());
                         stagingUser.setRawData(mapper.writeValueAsString(userDTO));
 
                         stagingRepository.save(stagingUser);
 
                     } catch (Exception e) {
-                        status = "FAILED";
+                        status = UploadStatus.FAILED.name();
                         error = e.getMessage();
                     }
                 }
@@ -238,12 +255,13 @@ public class IndividualMemberKeapStagingService {
     }
 
     public List<MigrationStagingKeapUser> getPendingRecords(String recordType, int batchSize) {
-        return stagingRepository.findByMigrationStatusAndRecordType("PENDING", recordType,
+        return stagingRepository.findByMigrationStatusAndRecordType(MigrationStatus.PENDING.name(), recordType,
                 PageRequest.of(0, batchSize));
     }
 
     public List<MigrationStagingKeapPayment> getPendingPaymentRecords(int batchSize) {
-        return paymentStagingRepository.findByMigrationStatus("PENDING", PageRequest.of(0, batchSize));
+        return paymentStagingRepository.findByMigrationStatus(MigrationStatus.PENDING.name(),
+                PageRequest.of(0, batchSize));
     }
 
     public void updateStatus(MigrationStagingKeapUser user, String status, String errorMessage) {
@@ -264,8 +282,10 @@ public class IndividualMemberKeapStagingService {
 
     public Map<String, Long> getStatusCounts() {
         return Map.of(
-                "PENDING", stagingRepository.countByMigrationStatus("PENDING"),
-                "COMPLETED", stagingRepository.countByMigrationStatus("COMPLETED"),
-                "FAILED", stagingRepository.countByMigrationStatus("FAILED"));
+                MigrationStatus.PENDING.name(),
+                stagingRepository.countByMigrationStatus(MigrationStatus.PENDING.name()),
+                MigrationStatus.COMPLETED.name(),
+                stagingRepository.countByMigrationStatus(MigrationStatus.COMPLETED.name()),
+                MigrationStatus.FAILED.name(), stagingRepository.countByMigrationStatus(MigrationStatus.FAILED.name()));
     }
 }

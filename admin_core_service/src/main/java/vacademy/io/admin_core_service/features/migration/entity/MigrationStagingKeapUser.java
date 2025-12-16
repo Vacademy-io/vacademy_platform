@@ -98,9 +98,6 @@ public class MigrationStagingKeapUser {
     protected void onCreate() {
         createdAt = new Timestamp(System.currentTimeMillis());
         updatedAt = new Timestamp(System.currentTimeMillis());
-        if (migrationStatus == null) {
-            migrationStatus = "PENDING";
-        }
     }
 
     @PreUpdate

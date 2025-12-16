@@ -7,8 +7,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import vacademy.io.admin_core_service.features.migration.service.PracticeMemberKeapMigrationService;
 import vacademy.io.admin_core_service.features.migration.service.PracticeMemberKeapStagingService;
-
-import java.util.Map;
+import vacademy.io.admin_core_service.features.migration.util.HttpUtils;
 
 @RestController
 @RequestMapping("/admin-core-service/migration/keap/practice")
@@ -20,39 +19,37 @@ public class PracticeMemberKeapMigrationController {
     @Autowired
     private PracticeMemberKeapStagingService stagingService;
 
-    @PostMapping(value = "/upload-practice-csv", consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = "text/csv")
-    public ResponseEntity<byte[]> uploadPracticeCsv(@RequestParam("file") MultipartFile file) {
-        byte[] csvContent = stagingService.uploadPracticeUserCsv(file);
-
-        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
-        headers.setContentType(MediaType.parseMediaType("text/csv"));
-        headers.setContentDispositionFormData("attachment", "practice_upload_result.csv");
-        headers.setCacheControl("must-revalidate, post-check=0, pre-check=0");
-
-        return new ResponseEntity<>(csvContent, headers, org.springframework.http.HttpStatus.OK);
-    }
 
     @PostMapping(value = "/upload-practice-payment-csv", consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = "text/csv")
     public ResponseEntity<byte[]> uploadPracticePaymentCsv(@RequestParam("file") MultipartFile file) {
         byte[] csvContent = stagingService.uploadPaymentCsv(file);
-
-        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
-        headers.setContentType(MediaType.parseMediaType("text/csv"));
-        headers.setContentDispositionFormData("attachment", "practice_payment_upload_result.csv");
-        headers.setCacheControl("must-revalidate, post-check=0, pre-check=0");
-
-        return new ResponseEntity<>(csvContent, headers, org.springframework.http.HttpStatus.OK);
+        return HttpUtils.createCsvResponse(csvContent, "practice_payment_upload_result.csv");
     }
 
-    @PostMapping(value = "/start-practice-migration", produces = "text/csv")
-    public ResponseEntity<byte[]> startPracticeMigration(@RequestParam(defaultValue = "10") int batchSize) {
-        byte[] csvContent = migrationService.processPracticeBatch(batchSize);
+    @PostMapping(value = "/upload-active-renew-practice-csv", consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = "text/csv")
+    public ResponseEntity<byte[]> uploadActiveRenewPracticeCsv(@RequestParam("file") MultipartFile file) {
+        byte[] csvContent = stagingService.uploadPracticeUserCsv(file, "PRACTICE_ACTIVE_RENEW");
+        return HttpUtils.createCsvResponse(csvContent, "active_renew_practice_upload_result.csv");
+    }
 
-        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
-        headers.setContentType(MediaType.parseMediaType("text/csv"));
-        headers.setContentDispositionFormData("attachment", "practice_migration_report.csv");
-        headers.setCacheControl("must-revalidate, post-check=0, pre-check=0");
+    @PostMapping(value = "/start-active-renew-practice-migration", produces = "text/csv")
+    public ResponseEntity<byte[]> startActiveRenewPracticeMigration(@RequestParam(defaultValue = "10") int batchSize,
+            @RequestBody vacademy.io.admin_core_service.features.migration.dto.MigrationConfigDTO config) {
+        byte[] csvContent = migrationService.processPracticeBatch(batchSize, config, "PRACTICE_ACTIVE_RENEW");
+        return HttpUtils.createCsvResponse(csvContent, "active_renew_practice_migration_report.csv");
+    }
 
-        return new ResponseEntity<>(csvContent, headers, org.springframework.http.HttpStatus.OK);
+    @PostMapping(value = "/upload-active-cancelled-practice-csv", consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = "text/csv")
+    public ResponseEntity<byte[]> uploadActiveCancelledPracticeCsv(@RequestParam("file") MultipartFile file) {
+        byte[] csvContent = stagingService.uploadPracticeUserCsv(file, "PRACTICE_ACTIVE_CANCELLED");
+        return HttpUtils.createCsvResponse(csvContent, "active_cancelled_practice_upload_result.csv");
+    }
+
+    @PostMapping(value = "/start-active-cancelled-practice-migration", produces = "text/csv")
+    public ResponseEntity<byte[]> startActiveCancelledPracticeMigration(
+            @RequestParam(defaultValue = "10") int batchSize,
+            @RequestBody vacademy.io.admin_core_service.features.migration.dto.MigrationConfigDTO config) {
+        byte[] csvContent = migrationService.processPracticeBatch(batchSize, config, "PRACTICE_ACTIVE_CANCELLED");
+        return HttpUtils.createCsvResponse(csvContent, "active_cancelled_practice_migration_report.csv");
     }
 }

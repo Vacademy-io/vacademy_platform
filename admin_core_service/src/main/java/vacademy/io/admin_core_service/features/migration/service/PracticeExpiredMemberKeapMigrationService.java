@@ -16,13 +16,14 @@ import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
-import vacademy.io.admin_core_service.features.migration.dto.KeapUserDTO;
 import vacademy.io.admin_core_service.features.migration.dto.KeapPaymentDTO;
-import vacademy.io.admin_core_service.features.migration.entity.MigrationStagingKeapUser;
+import vacademy.io.admin_core_service.features.migration.dto.KeapUserDTO;
 import vacademy.io.admin_core_service.features.migration.entity.MigrationStagingKeapPayment;
-import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
+import vacademy.io.admin_core_service.features.migration.entity.MigrationStagingKeapUser;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
+import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
@@ -39,7 +40,7 @@ import vacademy.io.admin_core_service.features.migration.enums.UserPlanStatus;
 
 @Service
 @Slf4j
-public class PracticeMemberKeapMigrationService {
+public class PracticeExpiredMemberKeapMigrationService {
 
     @Autowired
     private AuthService authService;
@@ -75,14 +76,14 @@ public class PracticeMemberKeapMigrationService {
     private vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository customFieldValuesRepository;
 
     @Autowired
-    private vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository paymentLogRepository;
+    private PaymentLogRepository paymentLogRepository;
 
-    @Autowired
-    private vacademy.io.admin_core_service.features.migration.validator.MigrationValidator migrationValidator;
+    // Removed hardcoded constants
 
     public byte[] processPracticeBatch(int batchSize,
             vacademy.io.admin_core_service.features.migration.dto.MigrationConfigDTO config, String recordType) {
-        List<MigrationStagingKeapUser> pendingRootAdmins = stagingService.getPendingRootAdmins(recordType, batchSize);
+        List<MigrationStagingKeapUser> pendingRootAdmins = stagingService.getPendingRootAdmins(recordType,
+                batchSize);
 
         String enrollInviteId = config != null ? config.getEnrollInviteId() : null;
         if (enrollInviteId == null) {
@@ -117,25 +118,9 @@ public class PracticeMemberKeapMigrationService {
                 ObjectMapper mapper = new ObjectMapper();
                 KeapUserDTO rootAdminData = mapper.readValue(rootAdminStaging.getRawData(), KeapUserDTO.class);
 
-                // 3rd Validation: Validate Root Admin
-                String rootValidationError = migrationValidator.validatePracticeUser(rootAdminData, recordType);
-                if (!rootValidationError.isEmpty()) {
-                    throw new VacademyException("Root Admin Validation Failed: " + rootValidationError);
-                }
-
                 // Fetch associated members
                 List<MigrationStagingKeapUser> members = stagingService
-                        .getPendingMembersForRootAdmin(rootAdminStaging.getKeapContactId(), recordType);
-
-                // 3rd Validation: Validate Members
-                for (MigrationStagingKeapUser memberStaging : members) {
-                    KeapUserDTO memberData = mapper.readValue(memberStaging.getRawData(), KeapUserDTO.class);
-                    String memberValidationError = migrationValidator.validatePracticeUser(memberData, recordType);
-                    if (!memberValidationError.isEmpty()) {
-                        throw new VacademyException(
-                                "Member Validation Failed (" + memberData.getEmail() + "): " + memberValidationError);
-                    }
-                }
+                        .getPendingMembersForRootAdmin(rootAdminStaging.getKeapContactId(), "EXPIRED_PRACTICE");
 
                 String parentInstituteId = config != null ? config.getInstituteId() : null;
                 if (parentInstituteId == null) {
@@ -145,7 +130,7 @@ public class PracticeMemberKeapMigrationService {
                         .orElseThrow(() -> new VacademyException("Parent Institute not found: " + parentInstituteId));
 
                 migratePractice(rootAdminData, members, enrollInvite, institutePaymentGatewayMapping, packageSession,
-                        parentInstitute, config, recordType);
+                        parentInstitute, config);
 
                 stagingService.updateStatus(rootAdminStaging, MigrationStatus.COMPLETED.name(), null);
                 for (MigrationStagingKeapUser member : members) {
@@ -162,7 +147,7 @@ public class PracticeMemberKeapMigrationService {
                 // re-picked up without root admin
                 try {
                     List<MigrationStagingKeapUser> members = stagingService
-                            .getPendingMembersForRootAdmin(rootAdminStaging.getKeapContactId(), recordType);
+                            .getPendingMembersForRootAdmin(rootAdminStaging.getKeapContactId(), "EXPIRED_PRACTICE");
                     for (MigrationStagingKeapUser member : members) {
                         stagingService.updateStatus(member, MigrationStatus.FAILED.name(),
                                 "Root Admin Migration Failed: " + e.getMessage());
@@ -182,8 +167,7 @@ public class PracticeMemberKeapMigrationService {
     public void migratePractice(KeapUserDTO rootAdminData, List<MigrationStagingKeapUser> members,
             EnrollInvite enrollInvite, InstitutePaymentGatewayMapping institutePaymentGatewayMapping,
             PackageSession packageSession, Institute parentInstitute,
-            vacademy.io.admin_core_service.features.migration.dto.MigrationConfigDTO config, String recordType)
-            throws Exception {
+            vacademy.io.admin_core_service.features.migration.dto.MigrationConfigDTO config) throws Exception {
 
         // 1. Create Root Admin User
         UserDTO rootAdminUser = createOrGetUser(rootAdminData, config);
@@ -196,8 +180,9 @@ public class PracticeMemberKeapMigrationService {
         Institute subOrg = createSubOrg(rootAdminData);
 
         // 3. Create User Plan for Root Admin (Source = SUB_ORG)
+        // For expired members, we create a plan with status EXPIRED
         UserPlan plan = createUserPlanForRootAdmin(rootAdminUserId, rootAdminData, enrollInvite, subOrg,
-                parentInstitute, config, recordType);
+                parentInstitute, config);
 
         // 4. Link Root Admin to Sub-Org (SSIGM)
         createAccess(rootAdminUserId, plan, rootAdminData, packageSession, subOrg, "ROOT_ADMIN,LEARNER", config);
@@ -244,15 +229,15 @@ public class PracticeMemberKeapMigrationService {
 
     private UserPlan createUserPlanForRootAdmin(String userId, KeapUserDTO data, EnrollInvite enrollInvite,
             Institute subOrg, Institute parentInstitute,
-            vacademy.io.admin_core_service.features.migration.dto.MigrationConfigDTO config, String recordType) {
+            vacademy.io.admin_core_service.features.migration.dto.MigrationConfigDTO config) {
         String planId = config != null ? config.getPaymentPlanId() : null;
         if (planId == null) {
             throw new VacademyException("Payment Plan ID is required in config");
         }
 
-        // Check existing plan
+        // Check existing plan with EXPIRED status
         Optional<UserPlan> existingPlan = userPlanRepository.findFirstByUserIdAndPaymentPlanIdAndStatus(userId, planId,
-                "ACTIVE");
+                UserPlanStatus.EXPIRED.name());
         if (existingPlan.isPresent())
             return existingPlan.get();
 
@@ -266,17 +251,8 @@ public class PracticeMemberKeapMigrationService {
         userPlan.setPaymentPlanId(planId);
         userPlan.setPaymentOptionId(paymentOptionId);
 
-        String status = UserPlanStatus.ACTIVE.name();
-
-        // Enforce status based on recordType
-        if ("PRACTICE_ACTIVE_CANCELLED".equals(recordType)) {
-            status = "CANCELLED";
-        } else if ("PRACTICE_ACTIVE_RENEW".equals(recordType)) {
-            status = "ACTIVE";
-        } else if (data.getStatus() != null && !data.getStatus().isEmpty()) {
-            status = data.getStatus().toUpperCase();
-        }
-        userPlan.setStatus(status);
+        // Force status to EXPIRED
+        userPlan.setStatus(UserPlanStatus.EXPIRED.name());
 
         userPlan.setSource("SUB_ORG"); // Source is SUB_ORG
         userPlan.setStartDate(new Timestamp(data.getStartDate().getTime()));
@@ -291,8 +267,8 @@ public class PracticeMemberKeapMigrationService {
         ObjectMapper mapper = new ObjectMapper();
         ObjectNode paymentInitiationRequest = mapper.createObjectNode();
         paymentInitiationRequest.put("amount", data.getAmount());
-        paymentInitiationRequest.put("currency", "aud");
-        paymentInitiationRequest.put("description", "Migration Import - Practice");
+
+        paymentInitiationRequest.put("description", "Migration Import - Practice Expired");
         paymentInitiationRequest.put("charge_automatically", true);
         paymentInitiationRequest.put("institute_id", parentInstitute.getId()); // Linked to Parent for billing
         paymentInitiationRequest.put("email", data.getEmail());
@@ -303,7 +279,9 @@ public class PracticeMemberKeapMigrationService {
         paymentInitiationRequest.set("pay_pal_request", mapper.createObjectNode());
 
         ObjectNode ewayRequest = mapper.createObjectNode();
-        ewayRequest.put("customer_id", data.getEwayToken());
+        if (data.getEwayToken() != null) {
+            ewayRequest.put("customer_id", data.getEwayToken());
+        }
         ewayRequest.put("country_code", data.getCountry());
         paymentInitiationRequest.set("eway_request", ewayRequest);
 
@@ -325,26 +303,6 @@ public class PracticeMemberKeapMigrationService {
 
         ssigm.setEnrolledDate(plan.getStartDate());
         ssigm.setExpiryDate(plan.getEndDate());
-
-        ssigm.setStatus("ACTIVE");
-        ssigm.setUserPlanId(plan.getId());
-        ssigm.setPackageSession(packageSession);
-
-        String ssigmTypeId = config != null ? config.getSsigmTypeId() : null;
-        if (ssigmTypeId == null) {
-            ssigmTypeId = packageSession.getId();
-        }
-        ssigm.setTypeId(ssigmTypeId);
-        // Fetch Parent Institute
-        String parentInstituteId = config != null ? config.getInstituteId() : null;
-        if (parentInstituteId == null) {
-            throw new VacademyException("Parent Institute ID is required in config");
-        }
-        Institute parentInstitute = instituteRepository.findById(parentInstituteId)
-                .orElseThrow(() -> new VacademyException("Parent Institute not found: " + parentInstituteId));
-
-        ssigm.setInstitute(parentInstitute); // Linked to Parent Institute
-        ssigm.setSubOrg(subOrg); // Set Sub Org ID explicitly
 
         ssigm.setCommaSeparatedOrgRoles(roles);
         ssigmRepository.save(ssigm);

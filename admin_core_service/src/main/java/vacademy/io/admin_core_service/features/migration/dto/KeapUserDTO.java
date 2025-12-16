@@ -66,7 +66,7 @@ public class KeapUserDTO {
 
     @JsonProperty("Job Type")
     private String jobType;
-    
+
     @JsonProperty("Phone Type")
     private String phoneType;
 

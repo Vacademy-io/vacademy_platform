@@ -19,6 +19,9 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 
+import vacademy.io.admin_core_service.features.migration.enums.MigrationStatus;
+import vacademy.io.admin_core_service.features.migration.enums.UploadStatus;
+
 @Service
 public class PracticeMemberKeapStagingService {
 
@@ -31,11 +34,16 @@ public class PracticeMemberKeapStagingService {
     @Autowired
     private MigrationValidator migrationValidator;
 
-    public byte[] uploadPracticeUserCsv(MultipartFile file) {
+    public byte[] uploadPracticeUserCsv(MultipartFile file, String recordType) {
         try (BufferedReader fileReader = new BufferedReader(
                 new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8));
                 CSVParser csvParser = new CSVParser(fileReader,
-                        CSVFormat.DEFAULT.withFirstRecordAsHeader().withIgnoreHeaderCase().withTrim())) {
+                        CSVFormat.DEFAULT.builder()
+                                .setHeader()
+                                .setSkipHeaderRecord(true)
+                                .setIgnoreHeaderCase(true)
+                                .setTrim(true)
+                                .build())) {
 
             StringBuilder csvOutput = new StringBuilder();
             csvOutput.append("Email,ContactId,UploadStatus,ErrorMessage\n");
@@ -48,17 +56,26 @@ public class PracticeMemberKeapStagingService {
                 String contactId = csvRecord.isMapped("ContactId") ? csvRecord.get("ContactId")
                         : (csvRecord.isMapped("Id") ? csvRecord.get("Id") : null);
 
-                String status = "SUCCESS";
+                String status = UploadStatus.SUCCESS.name();
                 String error = "";
 
                 // Backend Validation
-                String validationError = migrationValidator.validatePracticeUser(csvRecord);
+                String validationError;
+                if ("EXPIRED_PRACTICE".equals(recordType)) {
+                    validationError = migrationValidator.validateExpiredPracticeUser(csvRecord);
+                } else if ("PRACTICE_ACTIVE_RENEW".equals(recordType)) {
+                    validationError = migrationValidator.validatePracticeActiveRenew(csvRecord);
+                } else if ("PRACTICE_ACTIVE_CANCELLED".equals(recordType)) {
+                    validationError = migrationValidator.validatePracticeActiveCancelled(csvRecord);
+                } else {
+                    validationError = migrationValidator.validatePracticeUser(csvRecord);
+                }
                 if (!validationError.isEmpty()) {
-                    status = "FAILED";
+                    status = UploadStatus.FAILED.name();
                     error = validationError;
                 }
 
-                if (status.equals("SUCCESS")) {
+                if (status.equals(UploadStatus.SUCCESS.name())) {
                     try {
                         KeapUserDTO userDTO = new KeapUserDTO();
                         userDTO.setContactId(contactId);
@@ -110,8 +127,8 @@ public class PracticeMemberKeapStagingService {
                         if (csvRecord.isMapped("PRACTICE_ROLE")) {
                             userDTO.setPracticeRole(csvRecord.get("PRACTICE_ROLE"));
                         }
-                        if (csvRecord.isMapped("PRACTICE_NAME")) {
-                            userDTO.setPracticeName(csvRecord.get("PRACTICE_NAME"));
+                        if (csvRecord.isMapped("Practice Name")) {
+                            userDTO.setPracticeName(csvRecord.get("Practice Name"));
                         }
                         if (csvRecord.isMapped("ROOT_ADMIN_ID")) {
                             userDTO.setRootAdminId(csvRecord.get("ROOT_ADMIN_ID"));
@@ -140,14 +157,14 @@ public class PracticeMemberKeapStagingService {
                         stagingUser.setPracticeName(userDTO.getPracticeName());
                         stagingUser.setRootAdminId(userDTO.getRootAdminId());
 
-                        stagingUser.setRecordType("PRACTICE");
-                        stagingUser.setMigrationStatus("PENDING");
+                        stagingUser.setRecordType(recordType);
+                        stagingUser.setMigrationStatus(MigrationStatus.PENDING.name());
                         stagingUser.setRawData(mapper.writeValueAsString(userDTO));
 
                         stagingRepository.save(stagingUser);
 
                     } catch (Exception e) {
-                        status = "FAILED";
+                        status = UploadStatus.FAILED.name();
                         error = e.getMessage();
                     }
                 }
@@ -167,7 +184,12 @@ public class PracticeMemberKeapStagingService {
         try (BufferedReader fileReader = new BufferedReader(
                 new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8));
                 CSVParser csvParser = new CSVParser(fileReader,
-                        CSVFormat.DEFAULT.withFirstRecordAsHeader().withIgnoreHeaderCase().withTrim())) {
+                        CSVFormat.DEFAULT.builder()
+                                .setHeader()
+                                .setSkipHeaderRecord(true)
+                                .setIgnoreHeaderCase(true)
+                                .setTrim(true)
+                                .build())) {
 
             StringBuilder csvOutput = new StringBuilder();
             csvOutput.append("Email,ContactId,TransactionId,UploadStatus,ErrorMessage\n");
@@ -179,17 +201,17 @@ public class PracticeMemberKeapStagingService {
                 String email = csvRecord.isMapped("Email") ? csvRecord.get("Email") : "UNKNOWN";
                 String contactId = csvRecord.isMapped("ContactId") ? csvRecord.get("ContactId") : "UNKNOWN";
                 String transactionId = csvRecord.isMapped("TransactionId") ? csvRecord.get("TransactionId") : "UNKNOWN";
-                String status = "SUCCESS";
+                String status = UploadStatus.SUCCESS.name();
                 String error = "";
 
                 // Backend Validation
                 String validationError = migrationValidator.validatePayment(csvRecord);
                 if (!validationError.isEmpty()) {
-                    status = "FAILED";
+                    status = UploadStatus.FAILED.name();
                     error = validationError;
                 }
 
-                if (status.equals("SUCCESS")) {
+                if (status.equals(UploadStatus.SUCCESS.name())) {
                     try {
                         vacademy.io.admin_core_service.features.migration.dto.KeapPaymentDTO paymentDTO = new vacademy.io.admin_core_service.features.migration.dto.KeapPaymentDTO();
                         paymentDTO.setEmail(email);
@@ -226,13 +248,13 @@ public class PracticeMemberKeapStagingService {
                         stagingPayment.setTransactionId(paymentDTO.getTransactionId());
                         stagingPayment.setStatus(paymentDTO.getStatus());
 
-                        stagingPayment.setMigrationStatus("PENDING");
+                        stagingPayment.setMigrationStatus(MigrationStatus.PENDING.name());
                         stagingPayment.setRawData(mapper.writeValueAsString(paymentDTO));
 
                         paymentStagingRepository.save(stagingPayment);
 
                     } catch (Exception e) {
-                        status = "FAILED";
+                        status = UploadStatus.FAILED.name();
                         error = e.getMessage();
                     }
                 }
@@ -249,14 +271,16 @@ public class PracticeMemberKeapStagingService {
 
     }
 
-    public List<MigrationStagingKeapUser> getPendingRootAdmins(int batchSize) {
-        return stagingRepository.findByMigrationStatusAndRecordTypeAndPracticeRole("PENDING", "PRACTICE",
+    public List<MigrationStagingKeapUser> getPendingRootAdmins(String recordType, int batchSize) {
+        return stagingRepository.findByMigrationStatusAndRecordTypeAndPracticeRole(MigrationStatus.PENDING.name(),
+                recordType,
                 "ROOT_ADMIN",
                 PageRequest.of(0, batchSize));
     }
 
-    public List<MigrationStagingKeapUser> getPendingMembersForRootAdmin(String rootAdminId) {
-        return stagingRepository.findByMigrationStatusAndRecordTypeAndRootAdminId("PENDING", "PRACTICE",
+    public List<MigrationStagingKeapUser> getPendingMembersForRootAdmin(String rootAdminId, String recordType) {
+        return stagingRepository.findByMigrationStatusAndRecordTypeAndRootAdminId(MigrationStatus.PENDING.name(),
+                recordType,
                 rootAdminId);
     }
 

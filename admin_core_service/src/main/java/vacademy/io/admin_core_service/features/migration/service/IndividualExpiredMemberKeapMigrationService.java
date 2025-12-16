@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
@@ -39,7 +40,7 @@ import vacademy.io.admin_core_service.features.migration.enums.UserPlanStatus;
 
 @Service
 @Slf4j
-public class IndividualMemberKeapMigrationService {
+public class IndividualExpiredMemberKeapMigrationService {
 
     @Autowired
     private AuthService authService;
@@ -74,12 +75,9 @@ public class IndividualMemberKeapMigrationService {
     @Autowired
     private vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository customFieldValuesRepository;
 
-    @Autowired
-    private vacademy.io.admin_core_service.features.migration.validator.MigrationValidator migrationValidator;
-
     public byte[] processUserBatch(int batchSize,
-            vacademy.io.admin_core_service.features.migration.dto.MigrationConfigDTO config, String recordType) {
-        List<MigrationStagingKeapUser> pendingUsers = stagingService.getPendingRecords(recordType, batchSize);
+            vacademy.io.admin_core_service.features.migration.dto.MigrationConfigDTO config) {
+        List<MigrationStagingKeapUser> pendingUsers = stagingService.getPendingRecords("EXPIRED_INDIVIDUAL", batchSize);
 
         String enrollInviteId = config != null ? config.getEnrollInviteId() : null;
         if (enrollInviteId == null) {
@@ -114,14 +112,7 @@ public class IndividualMemberKeapMigrationService {
                 ObjectMapper mapper = new ObjectMapper();
                 KeapUserDTO data = mapper.readValue(stagingUser.getRawData(), KeapUserDTO.class);
 
-                // 3rd Validation: Validate Data before processing
-                String validationError = migrationValidator.validateIndividualUser(data, recordType);
-                if (!validationError.isEmpty()) {
-                    throw new VacademyException("Validation Failed: " + validationError);
-                }
-
-                migrateUserProfile(data, enrollInvite, institutePaymentGatewayMapping, packageSession, config,
-                        recordType);
+                migrateUserProfile(data, enrollInvite, institutePaymentGatewayMapping, packageSession, config);
 
                 stagingService.updateStatus(stagingUser, MigrationStatus.COMPLETED.name(), null);
             } catch (Exception e) {
@@ -139,7 +130,7 @@ public class IndividualMemberKeapMigrationService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public void migrateUserProfile(KeapUserDTO data, EnrollInvite enrollInvite,
             InstitutePaymentGatewayMapping institutePaymentGatewayMapping, PackageSession packageSession,
-            vacademy.io.admin_core_service.features.migration.dto.MigrationConfigDTO config, String recordType) {
+            vacademy.io.admin_core_service.features.migration.dto.MigrationConfigDTO config) {
         // 1. Create or Get User (Idempotent)
         UserDTO user = createOrGetUser(data, config);
         String userId = user.getId();
@@ -148,34 +139,42 @@ public class IndividualMemberKeapMigrationService {
         createStudentProfile(userId, data);
 
         // 2.1 Create User Gateway Mapping (Idempotent)
+        // For expired members, token might be null, but if present, we map it.
         createUserGatewayMapping(userId, data, institutePaymentGatewayMapping);
 
         // 2.2 Migrate Custom Fields (Idempotent)
         migrateCustomFields(userId, data, enrollInvite, config);
 
         // 3. Create User Plan (Idempotent - checks for existing active plan)
-        UserPlan plan = createUserPlan(userId, data, enrollInvite, config, recordType);
+        // For expired members, we create a plan with status EXPIRED
+        UserPlan plan = createUserPlan(userId, data, enrollInvite, config);
 
         // If plan is null, it means an active plan already exists. We need to fetch it
         // to link payments.
+
         if (plan == null) {
             String paymentPlanId = config != null ? config.getPaymentPlanId() : null;
             if (paymentPlanId == null) {
                 throw new VacademyException("Payment Plan ID is required in config");
             }
             Optional<UserPlan> existingPlan = userPlanRepository.findFirstByUserIdAndPaymentPlanIdAndStatus(userId,
-                    paymentPlanId, "ACTIVE");
+                    paymentPlanId, UserPlanStatus.EXPIRED.name()); // Check for EXPIRED plan
             if (existingPlan.isPresent()) {
                 plan = existingPlan.get();
             } else {
-                // Should not happen if createUserPlan logic is correct, but safe fallback
-                throw new VacademyException("Failed to retrieve existing active plan for user: " + data.getEmail());
+                // Fallback to check ACTIVE just in case, or create new if not found?
+                // Assuming if not found we create new EXPIRED plan. But createUserPlan handles
+                // creation.
+                // If createUserPlan returns null, it means it found one.
+                // Let's re-fetch with EXPIRED status if createUserPlan returns null.
+                // Wait, createUserPlan logic below checks for EXPIRED too?
+                // Let's adjust createUserPlan to check for EXPIRED status for this service.
+                throw new VacademyException("Failed to retrieve existing plan for user: " + data.getEmail());
             }
         } else {
             // 4. Create Access (SSIGM) only if we created a new plan
             createAccess(userId, plan, data, packageSession, config);
         }
-
         // 5. Unified Migration: Process Payment Logs for this user immediately
         // Pass the plan and userId directly to avoid re-querying and ensure atomicity
         processUserPayments(data.getContactId(), data.getEmail(), plan, userId);
@@ -293,15 +292,16 @@ public class IndividualMemberKeapMigrationService {
     }
 
     private UserPlan createUserPlan(String userId, KeapUserDTO data, EnrollInvite enrollInvite,
-            vacademy.io.admin_core_service.features.migration.dto.MigrationConfigDTO config, String recordType) {
+            vacademy.io.admin_core_service.features.migration.dto.MigrationConfigDTO config) {
         // Use constant ID instead of CSV product ID
         String planId = config != null ? config.getPaymentPlanId() : null;
         if (planId == null) {
             throw new VacademyException("Payment Plan ID is required in config");
         }
 
+        // Check for existing plan with EXPIRED status
         Optional<UserPlan> existingPlan = userPlanRepository.findFirstByUserIdAndPaymentPlanIdAndStatus(userId, planId,
-                "ACTIVE");
+                UserPlanStatus.EXPIRED.name());
         if (existingPlan.isPresent()) {
             return null;
         }
@@ -317,18 +317,8 @@ public class IndividualMemberKeapMigrationService {
         userPlan.setPaymentPlanId(planId);
         userPlan.setPaymentOptionId(paymentOptionId);
 
-        String status = UserPlanStatus.ACTIVE.name();
-
-        // Enforce status based on recordType
-        if ("INDIVIDUAL_ACTIVE_CANCELLED".equals(recordType)) {
-            status = "CANCELLED";
-        } else if ("INDIVIDUAL_ACTIVE_RENEW".equals(recordType)) {
-            status = "ACTIVE";
-        } else if (data.getStatus() != null && !data.getStatus().isEmpty()) {
-            // Fallback to CSV status for generic INDIVIDUAL type
-            status = data.getStatus().toUpperCase();
-        }
-        userPlan.setStatus(status);
+        // Force status to EXPIRED for this service
+        userPlan.setStatus(UserPlanStatus.EXPIRED.name());
 
         userPlan.setSource("USER");
         userPlan.setStartDate(new Timestamp(data.getStartDate().getTime()));
@@ -343,8 +333,8 @@ public class IndividualMemberKeapMigrationService {
         // Construct PaymentInitiationRequestDTO structure directly
         ObjectNode paymentInitiationRequest = mapper.createObjectNode();
         paymentInitiationRequest.put("amount", data.getAmount());
-        paymentInitiationRequest.put("currency", "aud");
-        paymentInitiationRequest.put("description", "Migration Import");
+
+        paymentInitiationRequest.put("description", "Migration Import - Expired");
         paymentInitiationRequest.put("charge_automatically", true);
         String instituteId = config != null ? config.getInstituteId() : null;
         if (instituteId == null) {
@@ -361,7 +351,9 @@ public class IndividualMemberKeapMigrationService {
 
         // Eway Request
         ObjectNode ewayRequest = mapper.createObjectNode();
-        ewayRequest.put("customer_id", data.getEwayToken());
+        if (data.getEwayToken() != null) {
+            ewayRequest.put("customer_id", data.getEwayToken());
+        }
         ewayRequest.put("country_code", data.getCountry());
         paymentInitiationRequest.set("eway_request", ewayRequest);
 
@@ -379,15 +371,31 @@ public class IndividualMemberKeapMigrationService {
         ssigm.setInstituteEnrolledNumber(data.getContactId());
         ssigm.setEnrolledDate(plan.getStartDate());
         ssigm.setExpiryDate(plan.getEndDate());
-        ssigm.setStatus("ACTIVE");
-        ssigm.setUserPlanId(plan.getId());
-        ssigm.setPackageSession(packageSession);
+
+        // Specific fields for Expired Members
+        ssigm.setStatus("INVITED");
+        ssigm.setSource("EXPIRED");
+        ssigm.setType("PACKAGE_SESSION");
 
         String ssigmTypeId = config != null ? config.getSsigmTypeId() : null;
         if (ssigmTypeId == null) {
-            ssigmTypeId = packageSession.getId();
+            ssigmTypeId = packageSession.getId(); // Fallback to packageSessionId if not provided? Or require it?
+            // User said "what ever will happend that will happpend by config".
+            // But logic was: config.getSsigmTypeId() != null ? config.getSsigmTypeId() :
+            // packageSession.getId();
+            // packageSession.getId() comes from packageSession which comes from
+            // config.getPackageSessionId().
+            // So this is effectively using config.
         }
+        // User said "remove this harcoded things as default". PACKAGE_SESSION_ID was
+        // hardcoded.
+        // We already replaced PACKAGE_SESSION_ID usage in processUserBatch.
+        // So packageSession passed here is already derived from config.
+
         ssigm.setTypeId(ssigmTypeId);
+
+        ssigm.setUserPlanId(plan.getId());
+        ssigm.setPackageSession(packageSession);
         Institute institute = new Institute();
         String instituteId = config != null ? config.getInstituteId() : null;
         if (instituteId == null) {
@@ -401,7 +409,7 @@ public class IndividualMemberKeapMigrationService {
 
     private void createUserGatewayMapping(String userId, KeapUserDTO data,
             InstitutePaymentGatewayMapping gatewayMapping) {
-        if (data.getEwayToken() == null || data.getEwayToken().isEmpty()) {
+        if (data.getEwayToken() == null || data.getEwayToken().isEmpty() || !StringUtils.hasText(data.getEwayToken())) {
             return;
         }
 
@@ -468,6 +476,18 @@ public class IndividualMemberKeapMigrationService {
             vacademy.io.admin_core_service.features.common.entity.CustomFieldValues customFieldValue = existingValue
                     .get();
             customFieldValue.setValue(value);
+            customFieldValue.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
+            customFieldValuesRepository.save(customFieldValue);
+        } else {
+            // Create new value
+            vacademy.io.admin_core_service.features.common.entity.CustomFieldValues customFieldValue = new vacademy.io.admin_core_service.features.common.entity.CustomFieldValues();
+            customFieldValue.setCustomFieldId(customFieldId);
+            customFieldValue.setSourceType(sourceType);
+            customFieldValue.setSourceId(sourceId);
+            customFieldValue.setType(type);
+            customFieldValue.setTypeId(typeId);
+            customFieldValue.setValue(value);
+            customFieldValue.setCreatedAt(new Timestamp(System.currentTimeMillis()));
             customFieldValue.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
             customFieldValuesRepository.save(customFieldValue);
         }

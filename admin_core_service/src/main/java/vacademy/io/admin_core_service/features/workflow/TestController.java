@@ -2,9 +2,7 @@ package vacademy.io.admin_core_service.features.workflow;
 
 import org.quartz.JobExecutionException;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.workflow.scheduler.WorkflowExecutionJob;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowEngineService;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -30,5 +28,9 @@ public class TestController {
         userDTO.setMobileNumber("125687890");
         userDTO.setPassword("kjnjfg");
         return userDTO;
+    }
+    @PostMapping("/wf")
+    public void testTap(@RequestParam String wfId){
+        workflowEngineService.run(wfId,Map.of("user",getUser()));
     }
 }

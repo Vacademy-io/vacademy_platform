@@ -11,36 +11,42 @@ import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessi
 import java.util.List;
 
 @Repository
-public interface PackageSessionLearnerInvitationToPaymentOptionRepository extends JpaRepository<PackageSessionLearnerInvitationToPaymentOption, String> {
-    List<PackageSessionLearnerInvitationToPaymentOption> findByEnrollInviteAndStatusIn(
-            EnrollInvite enrollInvite,
-            List<String> statusList
-    );
+public interface PackageSessionLearnerInvitationToPaymentOptionRepository
+                extends JpaRepository<PackageSessionLearnerInvitationToPaymentOption, String> {
+        List<PackageSessionLearnerInvitationToPaymentOption> findByEnrollInviteAndStatusIn(
+                        EnrollInvite enrollInvite,
+                        List<String> statusList);
 
-    @Query("SELECT psl " +
-            "FROM PackageSessionLearnerInvitationToPaymentOption psl " +
-            "WHERE psl.paymentOption.id IN :paymentOptionIds " +
-            "AND psl.enrollInvite.status IN :enrollInviteStatuses " +
-            "AND psl.status IN :invitationStatuses")
-    List<PackageSessionLearnerInvitationToPaymentOption> findByCriteria(
-            @Param("paymentOptionIds") List<String> paymentOptionIds,
-            @Param("enrollInviteStatuses") List<String> enrollInviteStatuses,
-            @Param("invitationStatuses") List<String> invitationStatuses
-    );
+        @Query("SELECT psl " +
+                        "FROM PackageSessionLearnerInvitationToPaymentOption psl " +
+                        "WHERE psl.paymentOption.id IN :paymentOptionIds " +
+                        "AND psl.enrollInvite.status IN :enrollInviteStatuses " +
+                        "AND psl.status IN :invitationStatuses")
+        List<PackageSessionLearnerInvitationToPaymentOption> findByCriteria(
+                        @Param("paymentOptionIds") List<String> paymentOptionIds,
+                        @Param("enrollInviteStatuses") List<String> enrollInviteStatuses,
+                        @Param("invitationStatuses") List<String> invitationStatuses);
 
-    List<PackageSessionLearnerInvitationToPaymentOption> findByEnrollInvite_IdInAndStatusIn(
-            List<String> enrollInviteIds,
-            List<String> statusList
-    );
+        List<PackageSessionLearnerInvitationToPaymentOption> findByEnrollInvite_IdInAndStatusIn(
+                        List<String> enrollInviteIds,
+                        List<String> statusList);
 
-    @Modifying
-    @Query("UPDATE PackageSessionLearnerInvitationToPaymentOption psl " +
-            "SET psl.status = :status " +
-            "WHERE psl.id IN :ids")
-    void updateStatusByIds(List<String> ids, String status);
+        @Modifying
+        @Query("UPDATE PackageSessionLearnerInvitationToPaymentOption psl " +
+                        "SET psl.status = :status " +
+                        "WHERE psl.id IN :ids")
+        void updateStatusByIds(List<String> ids, String status);
 
-    List<PackageSessionLearnerInvitationToPaymentOption> findByEnrollInvite_IdInAndPaymentOption_IdInAndPackageSession_IdInAndStatusIn(List<String>enrollInviteIds,List<String>paymentOptionIds,List<String>packageSessionIds,List<String>status);
+        List<PackageSessionLearnerInvitationToPaymentOption> findByEnrollInvite_IdInAndPaymentOption_IdInAndPackageSession_IdInAndStatusIn(
+                        List<String> enrollInviteIds, List<String> paymentOptionIds, List<String> packageSessionIds,
+                        List<String> status);
 
-    @Query("SELECT p.packageSession.id FROM PackageSessionLearnerInvitationToPaymentOption p WHERE p.enrollInvite = :enrollInvite AND p.status IN :status")
-    List<String> findPackageSessionIdsByEnrollInviteAndStatusIn(@Param("enrollInvite") EnrollInvite enrollInvite, @Param("status") List<String> status);
+        @Query("SELECT p.packageSession.id FROM PackageSessionLearnerInvitationToPaymentOption p WHERE p.enrollInvite = :enrollInvite AND p.status IN :status")
+        List<String> findPackageSessionIdsByEnrollInviteAndStatusIn(@Param("enrollInvite") EnrollInvite enrollInvite,
+                        @Param("status") List<String> status);
+
+        @Query("SELECT p FROM PackageSessionLearnerInvitationToPaymentOption p JOIN FETCH p.packageSession ps LEFT JOIN FETCH ps.level LEFT JOIN FETCH ps.session LEFT JOIN FETCH ps.packageEntity JOIN FETCH p.paymentOption WHERE p.enrollInvite.id IN :enrollInviteIds AND p.status IN :statusList")
+        List<PackageSessionLearnerInvitationToPaymentOption> findByEnrollInviteIdsAndStatusWithPackageSession(
+                        @Param("enrollInviteIds") List<String> enrollInviteIds,
+                        @Param("statusList") List<String> statusList);
 }

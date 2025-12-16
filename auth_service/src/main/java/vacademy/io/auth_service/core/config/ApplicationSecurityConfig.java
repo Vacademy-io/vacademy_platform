@@ -3,6 +3,8 @@ package vacademy.io.auth_service.core.config;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -21,7 +23,6 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.web.cors.CorsConfigurationSource;
 import vacademy.io.common.auth.filter.InternalAuthFilter;
 import vacademy.io.common.auth.filter.JwtAuthFilter;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
@@ -33,8 +34,7 @@ import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequ
 @EnableMethodSecurity
 public class ApplicationSecurityConfig {
 
-
-    private static final String[] INTERNAL_PATHS = {"/auth-service/internal/**"};
+    private static final String[] INTERNAL_PATHS = { "/auth-service/internal/**" };
 
     private static final String[] ALLOWED_PATHS = {
             "/auth-service/v1/internal/**",
@@ -65,7 +65,8 @@ public class ApplicationSecurityConfig {
             "/auth-service/v1/server-time/**",
             "/auth-service/wordpress-webhook/**",
 
-            // User Resolution APIs for notification service - OPEN for internal communication
+            // User Resolution APIs for notification service - OPEN for internal
+            // communication
             "/auth-service/v1/users/by-role",
             "/auth-service/v1/users/by-ids"
     };
@@ -79,9 +80,6 @@ public class ApplicationSecurityConfig {
     InternalAuthFilter internalAuthFilter;
 
     @Autowired
-    private CorsConfigurationSource corsConfigurationSource;
-
-    @Autowired
     private ClientRegistrationRepository clientRegistrationRepository;
 
     @Autowired
@@ -90,32 +88,71 @@ public class ApplicationSecurityConfig {
     @Autowired
     private AuthenticationFailureHandler customOAuth2FailureHandler;
 
+    /**
+     * Security filter chain for OAuth2 flows - Sessions enabled for OAuth2 state
+     * management.
+     * This is critical for multi-pod deployments where OAuth2 state must be shared
+     * via Redis.
+     * 
+     * OAuth2 flow:
+     * 1. User visits /auth-service/oauth2/authorization/google
+     * 2. Spring creates OAuth2AuthorizationRequest and stores it in Redis session
+     * 3. User redirects to Google
+     * 4. Google redirects back to /auth-service/login/oauth2/code/google
+     * 5. Spring retrieves OAuth2AuthorizationRequest from Redis session
+     * 6. Authentication completes successfully across pods
+     */
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    @Order(1)
+    public SecurityFilterChain oAuth2SecurityFilterChain(HttpSecurity http) throws Exception {
         http
-                .csrf().disable()
-                .cors().and()
+                // Match OAuth2 paths - both with and without /auth-service prefix
+                // The authorization starts at /auth-service/oauth2/authorization/google
+                // But Google redirects back to /login/oauth2/code/google (no prefix)
+                .securityMatcher("/auth-service/oauth2/**", "/auth-service/login/**", "/login/**")
+                .csrf(csrf -> csrf.disable())
+                .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
-                        .maximumSessions(1)
-                )
-                
+                        .maximumSessions(1))
                 .authorizeHttpRequests(authz -> authz
-                        .requestMatchers(ALLOWED_PATHS).permitAll()
-                        .requestMatchers(INTERNAL_PATHS).authenticated()
-                        .anyRequest().authenticated()
-                )
+                        .anyRequest().permitAll())
                 .oauth2Login(oauth2 -> oauth2
                         .authorizationEndpoint(auth -> auth
                                 .baseUri("/auth-service/oauth2/authorization")
                                 .authorizationRequestRepository(authorizationRequestRepository())
                                 .authorizationRequestResolver(
-                                        new CustomAuthorizationRequestResolver(clientRegistrationRepository, "/auth-service/oauth2/authorization")
-                                )
-                        )
+                                        new CustomAuthorizationRequestResolver(clientRegistrationRepository,
+                                                "/auth-service/oauth2/authorization")))
                         .successHandler(customOAuth2SuccessHandler)
-                        .failureHandler(customOAuth2FailureHandler)
-                )
+                        .failureHandler(customOAuth2FailureHandler));
+
+        return http.build();
+    }
+
+    /**
+     * Security filter chain for all other endpoints - STATELESS (no session
+     * creation).
+     * This includes:
+     * - All JWT-authenticated API calls from users
+     * - All internal service-to-service calls
+     * - Health checks and actuator endpoints
+     * 
+     * This prevents memory issues from creating thousands of Redis sessions for
+     * every API call.
+     */
+    @Bean
+    @Order(2)
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        http
+                .csrf(csrf -> csrf.disable())
+                .cors(Customizer.withDefaults())
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(authz -> authz
+                        .requestMatchers(ALLOWED_PATHS).permitAll()
+                        .requestMatchers(INTERNAL_PATHS).authenticated()
+                        .anyRequest().authenticated())
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(internalAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
@@ -123,14 +160,10 @@ public class ApplicationSecurityConfig {
         return http.build();
     }
 
-
-
-
     @Bean
     public RestTemplate restTemplate() {
         return new RestTemplate();
     }
-
 
     @Bean
     public PasswordEncoder passwordEncoder() {

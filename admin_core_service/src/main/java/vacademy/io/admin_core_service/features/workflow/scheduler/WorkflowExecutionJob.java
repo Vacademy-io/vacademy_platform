@@ -48,8 +48,8 @@ public class WorkflowExecutionJob implements Job {
 
             for (WorkflowSchedule schedule : dueSchedules) {
                 log.info("Processing schedule: {} - workflow: {}, cron: {}, lastRunAt: {}, nextRunAt: {}",
-                    schedule.getId(), schedule.getWorkflowId(), schedule.getCronExpression(),
-                    schedule.getLastRunAt(), schedule.getNextRunAt());
+                        schedule.getId(), schedule.getWorkflowId(), schedule.getCronExpression(),
+                        schedule.getLastRunAt(), schedule.getNextRunAt());
 
                 try {
                     String idempotencyKey = generateIdempotencyKey(schedule);
@@ -60,22 +60,29 @@ public class WorkflowExecutionJob implements Job {
 
                     Map<String, Object> result = executeWorkflowFromSchedule(schedule,workflowExecution);
 
-                    idempotencyService.markAsCompleted(idempotencyKey, result);
-
-                    log.info("Successfully executed workflow schedule: {} - Status: {}",
-                        schedule.getId(), result.get("status"));
-
-                    WorkflowSchedule updatedSchedule = workflowScheduleService.getScheduleById(schedule.getId())
-                        .orElse(null);
-                    if (updatedSchedule != null) {
-                        log.info("Schedule {} updated - lastRunAt: {}, nextRunAt: {}",
-                            updatedSchedule.getId(), updatedSchedule.getLastRunAt(),
-                            updatedSchedule.getNextRunAt());
+                    if ("error".equals(result.get("status"))) {
+                        String errorMsg = (String) result.getOrDefault("error", "Unknown error");
+                        idempotencyService.markAsFailed(idempotencyKey, errorMsg);
+                        log.error("Workflow schedule execution failed: {} - Error: {}", schedule.getId(), errorMsg);
+                    } else {
+                        idempotencyService.markAsCompleted(idempotencyKey, result);
+                        log.info("Successfully executed workflow schedule: {} - Status: {}",
+                                schedule.getId(), result.get("status"));
                     }
 
-                }catch (DataIntegrityViolationException e){
-                    log.error("Data integrity violation while executing workflow schedule: {}", schedule.getId());
-                }catch (Exception e) {
+                    WorkflowSchedule updatedSchedule = workflowScheduleService.getScheduleById(schedule.getId())
+                            .orElse(null);
+                    if (updatedSchedule != null) {
+                        log.info("Schedule {} updated - lastRunAt: {}, nextRunAt: {}",
+                                updatedSchedule.getId(), updatedSchedule.getLastRunAt(),
+                                updatedSchedule.getNextRunAt());
+                    }
+
+                } catch (org.springframework.dao.DataIntegrityViolationException e) {
+                    log.warn(
+                            "Workflow schedule {} is already being executed by another instance (Duplicate key). Skipping execution.",
+                            schedule.getId());
+                } catch (Exception e) {
                     log.error("Error executing workflow schedule: {}", schedule.getId(), e);
                     String idempotencyKey = generateIdempotencyKey(schedule);
                     idempotencyService.markAsFailed(idempotencyKey, e.getMessage());
@@ -97,14 +104,14 @@ public class WorkflowExecutionJob implements Job {
             initialContext.put("executionTime", Instant.now().toEpochMilli());
             initialContext.put("executionId",workflowExecution.getId());
             log.info("Starting workflow execution for schedule: {} with workflow: {}",
-                schedule.getId(), schedule.getWorkflowId());
+                    schedule.getId(), schedule.getWorkflowId());
 
             Map<String, Object> workflowResult = workflowEngineService.run(
-                schedule.getWorkflowId(),
-                initialContext);
+                    schedule.getWorkflowId(),
+                    initialContext);
 
             log.info("Workflow execution completed for schedule: {}. Result: {}",
-                schedule.getId(), workflowResult);
+                    schedule.getId(), workflowResult);
 
             Map<String, Object> result = new HashMap<>();
             result.put("status", "success");
@@ -126,6 +133,10 @@ public class WorkflowExecutionJob implements Job {
             errorResult.put("workflowId", schedule.getWorkflowId());
             errorResult.put("error", e.getMessage());
             errorResult.put("executionTime", Instant.now().toEpochMilli());
+
+            // Update schedule execution time to prevent infinite retries on failure
+            updateScheduleExecutionTime(schedule);
+
             return errorResult;
         }
     }
@@ -143,7 +154,7 @@ public class WorkflowExecutionJob implements Job {
             WorkflowSchedule updatedSchedule = workflowScheduleService.updateSchedule(schedule.getId(), schedule);
 
             log.info("Updated execution time for schedule: {} - lastRunAt: {}, nextRunAt: {}",
-                schedule.getId(), updatedSchedule.getLastRunAt(), updatedSchedule.getNextRunAt());
+                    schedule.getId(), updatedSchedule.getLastRunAt(), updatedSchedule.getNextRunAt());
 
         } catch (Exception e) {
             log.error("Error updating schedule execution time: {}", schedule.getId(), e);
@@ -161,8 +172,8 @@ public class WorkflowExecutionJob implements Job {
 
             // Use target timezone
             ZoneId zoneId = (timeZone != null && !timeZone.isBlank())
-                ? ZoneId.of(timeZone)
-                : ZoneId.systemDefault();
+                    ? ZoneId.of(timeZone)
+                    : ZoneId.systemDefault();
             cron.setTimeZone(TimeZone.getTimeZone(zoneId));
 
             // Current time in target timezone
@@ -180,7 +191,8 @@ public class WorkflowExecutionJob implements Job {
             }
 
         } catch (Exception e) {
-            log.error("Error calculating next run for cron {} in timezone {}. Defaulting 1 min.", cronExpression, timeZone, e);
+            log.error("Error calculating next run for cron {} in timezone {}. Defaulting 1 min.", cronExpression,
+                    timeZone, e);
             return Instant.now().plusSeconds(60);
         }
     }
@@ -203,10 +215,14 @@ public class WorkflowExecutionJob implements Job {
     }
 
     private String generateIdempotencyKey(WorkflowSchedule schedule) {
-        long lastExecutionMillis = schedule.getLastRunAt() != null
-            ? schedule.getLastRunAt().toEpochMilli()
-            : Instant.now().toEpochMilli();
+        // If next execution time is available, use it to ensure one execution per
+        // scheduled slot.
+        // If nextRunAt is missing (e.g. first run or manual trigger), use current time
+        // to avoid collision with past executions (lastRunAt).
+        long executionReferenceMillis = schedule.getNextRunAt() != null
+                ? schedule.getNextRunAt().toEpochMilli()
+                : Instant.now().toEpochMilli();
 
-        return String.format("workflow_schedule_%s_%s", schedule.getId(), lastExecutionMillis);
+        return String.format("workflow_schedule_%s_%s", schedule.getId(), executionReferenceMillis);
     }
 }

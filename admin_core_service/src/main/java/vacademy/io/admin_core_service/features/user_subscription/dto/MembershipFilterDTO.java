@@ -15,5 +15,6 @@ public class MembershipFilterDTO {
     private Timestamp endDateInUtc;
     private List<String> membershipStatuses; // Values: "ENDED", "ABOUT_TO_END"
     private String instituteId;
-    Map<String,String> sortOrder;
+    private List<String> packageSessionIds;
+    Map<String, String> sortOrder;
 }

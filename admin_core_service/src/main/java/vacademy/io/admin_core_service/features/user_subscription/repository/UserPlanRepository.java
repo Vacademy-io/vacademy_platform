@@ -41,7 +41,7 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
             LocalDateTime createdAt);
 
     @Query(value = """
-                SELECT up.id,
+                SELECT DISTINCT up.id,
                        CASE
                            WHEN up.end_date IS NULL THEN 'LIFETIME'
                            WHEN up.end_date < CURRENT_TIMESTAMP THEN 'ENDED'
@@ -50,11 +50,17 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                        up.end_date as actualEndDate
                 FROM user_plan up
                 JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+                LEFT JOIN package_session_learner_invitation_to_payment_option ps_link ON ps_link.enroll_invite_id = ei.id AND ps_link.status = 'ACTIVE' AND ps_link.payment_option_id = up.payment_option_id
                 WHERE ei.institute_id = :instituteId
 
                 -- Explicit CAST to TIMESTAMP is still good practice for dynamic null checks
                 AND (CAST(:startDate AS TIMESTAMP) IS NULL OR up.end_date >= CAST(:startDate AS TIMESTAMP))
                 AND (CAST(:endDate AS TIMESTAMP) IS NULL OR up.end_date <= CAST(:endDate AS TIMESTAMP))
+
+                AND (
+                    :#{#packageSessionIds == null || #packageSessionIds.isEmpty() ? 1 : 0} = 1
+                    OR ps_link.package_session_id IN (:packageSessionIds)
+                )
 
                 AND (
                     :#{#statuses == null || #statuses.isEmpty() ? 1 : 0} = 1
@@ -66,12 +72,17 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                     END IN (:statuses)
                 )
             """, countQuery = """
-                SELECT COUNT(up.id)
+                SELECT COUNT(DISTINCT up.id)
                 FROM user_plan up
                 JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+                LEFT JOIN package_session_learner_invitation_to_payment_option ps_link ON ps_link.enroll_invite_id = ei.id AND ps_link.status = 'ACTIVE' AND ps_link.payment_option_id = up.payment_option_id
                 WHERE ei.institute_id = :instituteId
                 AND (CAST(:startDate AS TIMESTAMP) IS NULL OR up.end_date >= CAST(:startDate AS TIMESTAMP))
                 AND (CAST(:endDate AS TIMESTAMP) IS NULL OR up.end_date <= CAST(:endDate AS TIMESTAMP))
+                AND (
+                    :#{#packageSessionIds == null || #packageSessionIds.isEmpty() ? 1 : 0} = 1
+                    OR ps_link.package_session_id IN (:packageSessionIds)
+                )
                 AND (
                     :#{#statuses == null || #statuses.isEmpty() ? 1 : 0} = 1
                     OR
@@ -84,9 +95,10 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
             """, nativeQuery = true)
     Page<Object[]> findMembershipDetailsWithDynamicStatus(
             @Param("instituteId") String instituteId,
-            @Param("startDate") Timestamp startDate, // Changed
-            @Param("endDate") Timestamp endDate, // Changed
+            @Param("startDate") Timestamp startDate,
+            @Param("endDate") Timestamp endDate,
             @Param("statuses") List<String> statuses,
+            @Param("packageSessionIds") List<String> packageSessionIds,
             Pageable pageable);
 
     /**
@@ -97,6 +109,4 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
     @EntityGraph(attributePaths = { "enrollInvite", "paymentOption", "paymentPlan" })
     @Query("SELECT up FROM UserPlan up WHERE up.id IN :ids")
     List<UserPlan> findByIdsWithoutPaymentLogs(@Param("ids") List<String> ids);
-
-    Optional<UserPlan> findFirstByUserIdAndPaymentPlanIdAndStatus(String userId, String paymentPlanId, String status);
 }

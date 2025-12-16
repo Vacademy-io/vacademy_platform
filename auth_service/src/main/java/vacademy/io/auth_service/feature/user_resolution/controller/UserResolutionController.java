@@ -70,6 +70,7 @@ public class UserResolutionController {
             v.setEmail(u.getEmail());
             v.setMobileNumber(u.getMobileNumber());
             v.setFullName(u.getFullName());
+            v.setUsername(u.getUsername());
         } catch (Exception ignore) { }
         return v;
     }

@@ -50,4 +50,33 @@ public interface CustomFieldValuesRepository extends JpaRepository<CustomFieldVa
      */
     @Query("SELECT cfv FROM CustomFieldValues cfv WHERE cfv.value = :phoneNumber ORDER BY cfv.createdAt DESC")
     List<CustomFieldValues> findByPhoneNumber(@Param("phoneNumber") String phoneNumber);
+
+    /**
+     * Find custom field values with field metadata by user IDs
+     * Returns: [sourceId, customFieldId, fieldKey, fieldName, fieldType, value, sourceType]
+     */
+    @Query("SELECT cfv.sourceId, cf.id, cf.fieldKey, cf.fieldName, cf.fieldType, cfv.value, cfv.sourceType " +
+           "FROM CustomFieldValues cfv " +
+           "JOIN CustomFields cf ON cf.id = cfv.customFieldId " +
+           "WHERE cfv.sourceType = :sourceType AND cfv.sourceId IN :userIds " +
+           "ORDER BY cfv.sourceId, cf.formOrder, cfv.createdAt DESC")
+    List<Object[]> findCustomFieldsWithKeysByUserIds(
+            @Param("sourceType") String sourceType,
+            @Param("userIds") List<String> userIds);
+
+    /**
+     * Find custom field values with field metadata by user IDs and institute
+     * Only returns custom fields that are active in institute_custom_fields for the given institute
+     * Returns: [sourceId, customFieldId, fieldKey, fieldName, fieldType, value, sourceType]
+     */
+    @Query("SELECT cfv.sourceId, cf.id, cf.fieldKey, cf.fieldName, cf.fieldType, cfv.value, cfv.sourceType " +
+           "FROM CustomFieldValues cfv " +
+           "JOIN CustomFields cf ON cf.id = cfv.customFieldId " +
+           "JOIN InstituteCustomField icf ON icf.customFieldId = cf.id AND icf.instituteId = :instituteId " +
+           "WHERE cfv.sourceType = :sourceType AND cfv.sourceId IN :userIds " +
+           "ORDER BY cfv.sourceId, cfv.createdAt DESC")
+    List<Object[]> findCustomFieldsWithKeysByUserIdsAndInstitute(
+            @Param("sourceType") String sourceType,
+            @Param("userIds") List<String> userIds,
+            @Param("instituteId") String instituteId);
 }

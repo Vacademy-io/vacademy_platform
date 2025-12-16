@@ -7,7 +7,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.common.entity.CustomFields;
+import vacademy.io.admin_core_service.features.common.entity.InstituteCustomField;
 import vacademy.io.admin_core_service.features.common.enums.CustomFieldValueSourceTypeEnum;
+import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
+import vacademy.io.admin_core_service.features.common.repository.InstituteCustomFieldRepository;
 import vacademy.io.admin_core_service.features.common.service.CustomFieldValueService;
 import vacademy.io.admin_core_service.features.enroll_invite.enums.SubOrgRoles;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
@@ -44,6 +48,8 @@ public class SubOrgLearnerService {
     private final PackageSessionRepository packageSessionRepository;
     private final InstituteRepository instituteRepository;
     private final CustomFieldValueService customFieldValueService;
+    private final CustomFieldValuesRepository customFieldValuesRepository;
+    private final InstituteCustomFieldRepository instituteCustomFieldRepository;
     private final WorkflowTriggerService workflowTriggerService;
     @Transactional(readOnly = true)
     public SubOrgResponseDTO getUsersByPackageSessionAndSubOrg(
@@ -89,6 +95,9 @@ public class SubOrgLearnerService {
             }
         }
 
+        // Fetch and populate custom fields for all users (filtered by institute's active custom fields)
+        enrichStudentMappingsWithCustomFields(studentMappings, subOrgId);
+
         // Build sub-org details
         SubOrgDetailsDTO subOrgDetails = buildSubOrgDetails(subOrg);
 
@@ -128,6 +137,104 @@ public class SubOrgLearnerService {
                 .destinationPackageSessionId((String) row[11])
                 .user(user)
                 .build();
+    }
+
+    /**
+     * Enrich student mappings with custom fields
+     * Returns ALL institute-level custom fields for each user with:
+     * - Actual values if user has filled them
+     * - Null values if user hasn't filled them
+     * This ensures consistent response structure across all users
+     */
+    private void enrichStudentMappingsWithCustomFields(List<StudentMappingWithUserDTO> studentMappings, String instituteId) {
+        if (studentMappings == null || studentMappings.isEmpty()) {
+            return;
+        }
+
+        // Extract all unique user IDs
+        List<String> userIds = studentMappings.stream()
+                .map(StudentMappingWithUserDTO::getUserId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+
+        if (userIds.isEmpty()) {
+            return;
+        }
+
+        log.info("Fetching custom fields for {} users from institute {}", userIds.size(), instituteId);
+
+        // Step 1: Fetch ALL active institute custom fields (template for all users)
+        List<Object[]> instituteCustomFieldsData = instituteCustomFieldRepository
+                .findAllActiveCustomFieldsWithDetailsByInstituteId(instituteId);
+
+        log.info("Found {} active custom fields configured for institute", instituteCustomFieldsData.size());
+
+        // Build template list of all custom fields with null values
+        List<CustomFieldDTO> instituteCustomFieldsTemplate = new ArrayList<>();
+        for (Object[] row : instituteCustomFieldsData) {
+            InstituteCustomField icf = (InstituteCustomField) row[0];
+            CustomFields cf = (CustomFields) row[1];
+
+            CustomFieldDTO template = CustomFieldDTO.builder()
+                    .customFieldId(cf.getId())
+                    .fieldKey(cf.getFieldKey())
+                    .fieldName(cf.getFieldName())
+                    .fieldType(cf.getFieldType())
+                    .fieldValue(null) // Default to null
+                    .sourceType(CustomFieldValueSourceTypeEnum.USER.name())
+                    .build();
+
+            instituteCustomFieldsTemplate.add(template);
+        }
+
+        // Step 2: Fetch user-specific custom field values
+        List<Object[]> customFieldData = customFieldValuesRepository.findCustomFieldsWithKeysByUserIdsAndInstitute(
+                CustomFieldValueSourceTypeEnum.USER.name(),
+                userIds,
+                instituteId
+        );
+
+        log.info("Found {} custom field value records", customFieldData.size());
+
+        // Group custom field values by user ID and custom field ID
+        Map<String, Map<String, String>> userCustomFieldValuesMap = new HashMap<>();
+        
+        for (Object[] row : customFieldData) {
+            String userId = (String) row[0];
+            String customFieldId = (String) row[1];
+            String fieldValue = (String) row[5];
+
+            userCustomFieldValuesMap
+                    .computeIfAbsent(userId, k -> new HashMap<>())
+                    .put(customFieldId, fieldValue);
+        }
+
+        // Step 3: Enrich each student mapping with ALL institute custom fields
+        for (StudentMappingWithUserDTO mapping : studentMappings) {
+            String userId = mapping.getUserId();
+            Map<String, String> userValues = userCustomFieldValuesMap.getOrDefault(userId, new HashMap<>());
+
+            // Clone template and fill in user values
+            List<CustomFieldDTO> userCustomFields = new ArrayList<>();
+            for (CustomFieldDTO template : instituteCustomFieldsTemplate) {
+                CustomFieldDTO userField = CustomFieldDTO.builder()
+                        .customFieldId(template.getCustomFieldId())
+                        .fieldKey(template.getFieldKey())
+                        .fieldName(template.getFieldName())
+                        .fieldType(template.getFieldType())
+                        .fieldValue(userValues.get(template.getCustomFieldId())) // Will be null if not filled
+                        .sourceType(template.getSourceType())
+                        .build();
+
+                userCustomFields.add(userField);
+            }
+
+            mapping.setCustomFields(userCustomFields);
+        }
+
+        log.info("Successfully enriched {} student mappings with {} custom fields each", 
+                studentMappings.size(), instituteCustomFieldsTemplate.size());
     }
 
     /**

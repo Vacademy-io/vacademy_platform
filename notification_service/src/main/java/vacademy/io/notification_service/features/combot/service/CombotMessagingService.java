@@ -13,9 +13,11 @@ import org.springframework.web.client.RestTemplate;
 import vacademy.io.notification_service.constants.NotificationConstants;
 import vacademy.io.notification_service.features.announcements.service.UserAnnouncementPreferenceService;
 import vacademy.io.notification_service.features.combot.constants.CombotWebhookKeys;
+import vacademy.io.notification_service.features.combot.dto.LogSequenceRequest;
 import vacademy.io.notification_service.features.combot.dto.WhatsAppTemplateRequest;
 import vacademy.io.notification_service.features.combot.dto.WhatsAppTemplateResponse;
 import vacademy.io.notification_service.features.combot.enums.WhatsAppProvider;
+import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 import vacademy.io.notification_service.institute.InstituteInfoDTO;
 import vacademy.io.notification_service.institute.InstituteInternalService;
 
@@ -35,6 +37,7 @@ public class CombotMessagingService {
     private final InstituteInternalService instituteInternalService;
     private final ObjectMapper objectMapper;
     private final UserAnnouncementPreferenceService preferenceService;
+    private final NotificationLogRepository notificationLogRepository;
 
     /**
      * Send WhatsApp template messages using Com.bot
@@ -246,6 +249,23 @@ public class CombotMessagingService {
                     .fullResponse(Map.of("statusCode", e.getStatusCode().value()))
                     .build();
         }
+    }
+
+    public List<String> filterUsersByStrictSequence(LogSequenceRequest request) {
+        log.info("Filtering users by strict sequence: {} -> {}",
+                request.getAnchorMessageBody(), request.getReactionMessageBody());
+
+        if (request.getAnchorMessageBody() == null || request.getReactionMessageBody() == null) {
+            log.warn("Invalid sequence request: Bodies cannot be null");
+            return Collections.emptyList();
+        }
+
+        return notificationLogRepository.findUserIdsByAdjacentMessagePair(
+                request.getAnchorMessageType(),
+                request.getAnchorMessageBody(),
+                request.getReactionMessageType(),
+                request.getReactionMessageBody()
+        );
     }
 
     /**

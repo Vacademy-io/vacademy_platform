@@ -722,8 +722,11 @@ public class InvoiceService {
         filled = filled.replace("{{institute_logo}}", instituteLogoHtml);
         
         // Institute theme color - replace in CSS and HTML
-        String themeColor = getThemeColorFromInstitute(institute);
-        filled = filled.replace("{{theme_color}}", themeColor);
+        // Use dark green for BILL TO section and footer
+        String defaultColor = "#1a5f3f"; // Dark green
+        filled = filled.replace("{{theme_color}}", defaultColor);
+        
+        // Table header uses hardcoded orange color (#f78f1e) - no replacement needed
 
         // User info
         UserDTO user = invoiceData.getUser();
@@ -783,9 +786,10 @@ public class InvoiceService {
     }
 
     /**
-     * Get theme color from institute
+     * Get theme color from institute (for table header)
+     * Returns the actual institute theme color, or default dark green if not set
      */
-    private String getThemeColorFromInstitute(Institute institute) {
+    private String getInstituteThemeColor(Institute institute) {
         if (institute == null || institute.getInstituteThemeCode() == null || 
             institute.getInstituteThemeCode().trim().isEmpty()) {
             return "#1a5f3f"; // Default dark green color
@@ -804,6 +808,15 @@ public class InvoiceService {
         }
 
         return "#1a5f3f"; // Default dark green color
+    }
+    
+    /**
+     * Get theme color from institute (deprecated - kept for backward compatibility)
+     * @deprecated Use getInstituteThemeColor instead
+     */
+    @Deprecated
+    private String getThemeColorFromInstitute(Institute institute) {
+        return getInstituteThemeColor(institute);
     }
 
     /**

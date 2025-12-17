@@ -64,7 +64,9 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/v1/users/by-custom-field-filters",
             "/admin-core-service/v1/users/by-custom-field-filters/**",
             // Centralized recipient resolution API
-            "/admin-core-service/v1/recipient-resolution/centralized"
+            "/admin-core-service/v1/recipient-resolution/centralized",
+            // Invoice test endpoints (for testing only)
+            "/admin-core-service/v1/invoices/test/**"
     };
     @Autowired
     JwtAuthFilter jwtAuthFilter;

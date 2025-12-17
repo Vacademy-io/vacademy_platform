@@ -646,4 +646,8 @@ public class UserPlanService {
         Sort sort = ListService.createSortObject(sortCols);
         return PageRequest.of(page, size, sort);
     }
+
+    public UserPlan save(UserPlan userPlan){
+       return userPlanRepository.save(userPlan);
+    }
 }

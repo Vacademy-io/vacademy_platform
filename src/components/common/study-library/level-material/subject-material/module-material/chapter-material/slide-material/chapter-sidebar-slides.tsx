@@ -13,7 +13,6 @@ import {
   Lightning,
   File,
   ChatText,
-  Lock,
 } from "@phosphor-icons/react";
 import { useRouter } from "@tanstack/react-router";
 import { Slide, useSlides } from "@/hooks/study-library/use-slides";
@@ -31,6 +30,7 @@ import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { getPublicUrl } from "@/services/upload_file";
 import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { isItemLocked } from "@/components/drip-conditions/helpers";
+import { LockedBadge } from "@/components/drip-conditions";
 
 // Helper function to get responsive truncation length - kept for tooltip usage
 // const getResponsiveTruncationLength = () => {
@@ -575,21 +575,7 @@ const SlideItem = ({
                       {getSlideTitle()}
                     </h4>
                     {isLocked ? (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div className="inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium bg-gray-100 border border-gray-300 text-gray-600">
-                              <Lock className="w-3 h-3" weight="duotone" />
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent
-                            side="top"
-                            className="bg-gray-900 text-white text-xs px-2 py-1 max-w-xs"
-                          >
-                            {unlockMessage || "This slide is locked"}
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                      <LockedBadge size="sm" unlockMessage={unlockMessage} />
                     ) : (
                       getStatusBadge()
                     )}

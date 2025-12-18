@@ -114,6 +114,8 @@ export interface Slide {
   new_slide: boolean;
   percentage_completed: number;
   progress_marker: number;
+  drip_condition_json?: string | null;
+  drip_condition?: string | null; // JSON string from API
 }
 
 export const fetchSlidesByChapterId = async (

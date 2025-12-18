@@ -157,43 +157,107 @@ function Slides() {
 
       // Apply drip conditions to filter slides
       let accessibleSlides = slides;
-      const evaluations: Record<string, any> = {};
+      const evaluations: Record<
+        string,
+        { isLocked: boolean; isHidden: boolean; unlockMessage: string | null }
+      > = {};
 
-      if (slideCondition) {
-        // Build prerequisite completions map from all slides
-        const prerequisiteCompletions: Record<string, number> = {};
-        slides.forEach((slide) => {
-          prerequisiteCompletions[slide.id] = slide.percentage_completed || 0;
+      // Build comprehensive prerequisite completions map with BOTH chapters and slides
+      const prerequisiteCompletions: Record<string, number> = {};
+
+      // 1. Add all chapters and their progress
+      if (modulesWithChaptersData) {
+        modulesWithChaptersData.forEach((module) => {
+          module.chapters.forEach((chapter) => {
+            // Calculate chapter progress from its slides (if available in current context)
+            // For now, use 0 as default - will be updated when we have slide data loaded
+            prerequisiteCompletions[chapter.id] = 0;
+          });
         });
+      }
 
-        // Evaluate drip conditions for each slide
-        accessibleSlides = slides.filter((slide, index) => {
-          const previousSlide = index > 0 ? slides[index - 1] : null;
-          const progressData: LearnerProgressData = {
-            percentageCompleted: slide.percentage_completed || 0,
-            previousItemId: previousSlide?.id,
-            previousItemCompletion: previousSlide?.percentage_completed || 0,
-            itemIndex: index,
-            prerequisiteCompletions,
-          };
+      // 2. Add all slides from current chapter and their progress
+      slides.forEach((slide: Slide) => {
+        prerequisiteCompletions[slide.id] = slide.percentage_completed || 0;
+      });
 
-          const evaluation = isDrippingEnable
-            ? evaluateDripCondition(slideCondition, progressData)
+      // 3. Calculate chapter progress for current chapter based on its slides
+      if (chapterId) {
+        const chapterProgress = calculateOverallCompletion(slides);
+        prerequisiteCompletions[chapterId] = chapterProgress;
+      }
+
+      // Evaluate drip conditions for each slide
+      accessibleSlides = slides.filter((slide: Slide, index: number) => {
+        const previousSlide = index > 0 ? slides[index - 1] : null;
+        const progressData: LearnerProgressData = {
+          percentageCompleted: slide.percentage_completed || 0,
+          previousItemId: previousSlide?.id,
+          previousItemCompletion: previousSlide?.percentage_completed || 0,
+          itemIndex: index,
+          prerequisiteCompletions,
+        };
+
+        // Check if this slide has its own drip condition (check both fields)
+        let slideDripCondition = null;
+        const dripConditionData =
+          slide.drip_condition || slide.drip_condition_json;
+
+        if (dripConditionData) {
+          try {
+            const parsed =
+              typeof dripConditionData === "string"
+                ? JSON.parse(dripConditionData)
+                : dripConditionData;
+
+            // Handle array of conditions - filter for enabled slide conditions
+            if (Array.isArray(parsed)) {
+              slideDripCondition =
+                parsed.find(
+                  (cond) =>
+                    (cond.target === "slide" || !cond.target) &&
+                    cond.is_enabled !== false
+                ) || null;
+            } else if (parsed && typeof parsed === "object") {
+              // Single condition - check if enabled and for slides
+              if (
+                (parsed.target === "slide" || !parsed.target) &&
+                parsed.is_enabled !== false
+              ) {
+                slideDripCondition = parsed;
+              }
+            }
+          } catch (e) {
+            console.error("Failed to parse slide drip condition:", e);
+          }
+        }
+
+        // Use slide-specific condition if available, otherwise fall back to package-level
+        const conditionToUse = slideDripCondition || slideCondition;
+        const hasCondition = !!slideDripCondition || !!slideCondition;
+
+        // Check global flag first, then per-item condition's is_enabled flag
+        const shouldEvaluate =
+          isDrippingEnable &&
+          hasCondition &&
+          conditionToUse?.is_enabled !== false;
+
+        const evaluation =
+          shouldEvaluate && conditionToUse
+            ? evaluateDripCondition(conditionToUse, progressData)
             : {
-                isAccessible: true,
                 isLocked: false,
                 isHidden: false,
                 unlockMessage: null,
               };
-          evaluations[slide.id] = evaluation; // Store evaluation for this slide
-          const shouldHide = shouldFilterItem(evaluation);
+        evaluations[slide.id] = evaluation; // Store evaluation for this slide
+        const shouldHide = shouldFilterItem(evaluation);
 
-          return !shouldHide; // Keep slide if not hidden
-        });
+        return !shouldHide; // Keep slide if not hidden
+      });
 
-        // Store evaluations for all accessible slides
-        setSlideEvaluations(evaluations);
-      }
+      // Store evaluations for all accessible slides
+      setSlideEvaluations(evaluations);
 
       const slidesWithFeedback = [...accessibleSlides, feedbackSlide];
       setItems(slidesWithFeedback);
@@ -226,13 +290,30 @@ function Slides() {
           const slideIndex = accessibleSlides.findIndex(
             (s) => s.id === slideId
           );
-          if (slideIndex !== -1 && slideCondition) {
-            // Build prerequisite completions map
+          if (slideIndex !== -1) {
+            // Build comprehensive prerequisite completions map
             const prerequisiteCompletions: Record<string, number> = {};
-            slides.forEach((slide) => {
+
+            // Add all chapters and their progress
+            if (modulesWithChaptersData) {
+              modulesWithChaptersData.forEach((module) => {
+                module.chapters.forEach((chapter) => {
+                  prerequisiteCompletions[chapter.id] = 0;
+                });
+              });
+            }
+
+            // Add all slides and their progress
+            slides.forEach((slide: Slide) => {
               prerequisiteCompletions[slide.id] =
                 slide.percentage_completed || 0;
             });
+
+            // Calculate current chapter progress
+            if (chapterId) {
+              const chapterProgress = calculateOverallCompletion(slides);
+              prerequisiteCompletions[chapterId] = chapterProgress;
+            }
 
             const previousSlide =
               slideIndex > 0 ? accessibleSlides[slideIndex - 1] : null;
@@ -244,14 +325,59 @@ function Slides() {
               prerequisiteCompletions,
             };
 
-            const evaluation = isDrippingEnable
-              ? evaluateDripCondition(slideCondition, progressData)
-              : {
-                  isAccessible: true,
-                  isLocked: false,
-                  isHidden: false,
-                  unlockMessage: null,
-                };
+            // Check if this slide has its own drip condition (check both fields)
+            let slideDripCondition = null;
+            const dripConditionData =
+              targetSlide.drip_condition || targetSlide.drip_condition_json;
+
+            if (dripConditionData) {
+              try {
+                const parsed =
+                  typeof dripConditionData === "string"
+                    ? JSON.parse(dripConditionData)
+                    : dripConditionData;
+
+                // Handle array of conditions - filter for enabled slide conditions
+                if (Array.isArray(parsed)) {
+                  slideDripCondition =
+                    parsed.find(
+                      (cond) =>
+                        (cond.target === "slide" || !cond.target) &&
+                        cond.is_enabled !== false
+                    ) || null;
+                } else if (parsed && typeof parsed === "object") {
+                  // Single condition - check if enabled and for slides
+                  if (
+                    (parsed.target === "slide" || !parsed.target) &&
+                    parsed.is_enabled !== false
+                  ) {
+                    slideDripCondition = parsed;
+                  }
+                }
+              } catch (e) {
+                console.error("Failed to parse slide drip condition:", e);
+              }
+            }
+
+            // Use slide-specific condition if available, otherwise fall back to package-level
+            const conditionToUse = slideDripCondition || slideCondition;
+            const hasCondition = !!slideDripCondition || !!slideCondition;
+
+            // Check global flag first, then per-item condition's is_enabled flag
+            const shouldEvaluate =
+              isDrippingEnable &&
+              hasCondition &&
+              conditionToUse?.is_enabled !== false;
+
+            const evaluation =
+              shouldEvaluate && conditionToUse
+                ? evaluateDripCondition(conditionToUse, progressData)
+                : {
+                    isLocked: false,
+                    isHidden: false,
+                    unlockMessage: null,
+                  };
+
             const locked = isItemLocked(evaluation);
 
             if (locked) {
@@ -278,6 +404,7 @@ function Slides() {
     slideCondition,
     setSlideEvaluations,
     isDrippingEnable,
+    modulesWithChaptersData,
   ]);
 
   const handleSubjectRoute = useCallback(() => {

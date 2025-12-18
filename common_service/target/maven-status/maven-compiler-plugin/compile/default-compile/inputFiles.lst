@@ -17,6 +17,7 @@
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/service/UserService.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/service/ClientAuthenticationService.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/db_logging/entity/SystemAlertLog.java
+/Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/payment/dto/EwayTransactionQueryResponse.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/exceptions/UserWithRoleNotFoundException.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/dto/UserRoleRequestDTO.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/dto/RefreshTokenRequestDTO.java
@@ -25,6 +26,7 @@
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/dto/SubmoduleDTO.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/scheduler/entity/SchedulerActivityLog.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/payment/dto/RazorpayRequestDTO.java
+/Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/dto/learner/UserWithJwtDTO.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/payment/enums/PaymentGateway.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/enums/PortalsEnum.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/media/utils/MediaUtil.java
@@ -105,6 +107,7 @@
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/exceptions/VacademyException.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/service/RefreshTokenService.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/media/constant/MediaConstant.java
+/Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/payment/dto/EwayRequestDTO.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/dto/UserPermissionRequestDTO.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/dto/learner/LearnerPackageSessionsEnrollDTO.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/db_logging/repository/SystemAlertLogRepository.java
@@ -142,6 +145,7 @@
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/enums/UserTypesEnum.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/service/JwtService.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/scheduler/service/TaskExecutorFactory.java
+/Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/payment/dto/EwayWebHookDTO.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/exceptions/EventNotFoundException.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/institute/entity/Group.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/entity/UserActivity.java
@@ -151,6 +155,7 @@
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/core/dto/bulk_csv_upload/CsvSubmitApi.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/core/utils/RandomGenerator.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/payment/dto/ManualPaymentDTO.java
+/Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/dto/learner/LearnerExtraDetails.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/payment/dto/PayPalRequestDTO.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/entity/UserSession.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/institute/dto/SubjectDTO.java
@@ -160,9 +165,11 @@
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/entity/UserPermission.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/media/dto/FileDetailsDTO.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/institute/entity/PackageInstitute.java
+/Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/payment/dto/EwayApiResponseDTO.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/scheduler/service/SchedulingService.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/core/utils/CSVHelper.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/institute/repository/SubModuleRepository.java
+/Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/payment/dto/EwayTransaction.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/db_logging/service/SystemAlertLogService.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/payment/entity/WebhookEventLog.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/notification/dto/AttachmentNotificationDTO.java

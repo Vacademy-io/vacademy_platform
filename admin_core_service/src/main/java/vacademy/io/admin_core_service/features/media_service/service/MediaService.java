@@ -126,4 +126,23 @@ public class MediaService {
         }
     }
 
+    /**
+     * Get public URL without expiry (permanent public URL)
+     * Uses the public endpoint that returns direct S3 URLs
+     */
+    public String getFilePublicUrlByIdWithoutExpiry(String fileId) {
+        if (fileId == null || fileId.isEmpty()) {
+            return null;
+        }
+        // Use public endpoint that returns permanent URL without expiry
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                clientName,
+                HttpMethod.GET.name(),
+                mediaServerBaseUrl,
+                "/media-service/public/get-public-url?fileId=" + fileId,
+                null
+        );
+        return response.getBody();
+    }
+
 }

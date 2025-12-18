@@ -119,7 +119,6 @@ public class UserActivityTrackingService {
                                 return sessionRepository.save(newSession);
                         }
                 } catch (Exception e) {
-                        log.error("Error creating or updating session", e);
                 }
                 return null;
         }

@@ -16,18 +16,23 @@ The **Instructor Copilot** feature empowers instructors by automating the creati
 
 ### 2. Service Layer
 - **`InstructorCopilotService.java`**:
-  - Manages the lifecycle of copilot logs (Create, Update, Delete, List).
+  - Manages the lifecycle of copilot logs (Create, Update, Delete, List, Retry).
   - Handles asynchronous content generation. Upon creation, a background task is triggered to call the LLM service.
+  - Provides a retry mechanism for failed content generation attempts.
 - **`InstructorCopilotLLMService.java`**:
   - Interacts with the **OpenRouter API**.
-  - **Model**: `amazon/nova-2-lite-v1:free` (Default).
+  - **Multi-Model Fallback Strategy**: Implements a cascading retry approach for resilience:
+    1. **Primary Model**: `xiaomi/mimo-v2-flash:free` (2 retries)
+    2. **Fallback Model 1**: `mistralai/devstral-2512:free` (2 retries)
+    3. **Fallback Model 2**: `nvidia/nemotron-3-nano-30b-a3b:free` (0 retries - final attempt)
   - **Logic**: Sends the transcript with a prompt enforcing a strict JSON response format.
-  - **Resilience**: Implements retries (3 attempts) for robustness.
+  - **Resilience**: Each model attempt includes retry logic with 2-second delays between retries.
 
 ### 3. API Endpoints (`controller/InstructorCopilotController.java`)
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
 | `POST` | `/admin-core-service/instructor-copilot/v1/create` | Creates a log and triggers async generation. |
+| `POST` | `/admin-core-service/instructor-copilot/v1/retry-generate/{id}` | Retries content generation for an existing log. |
 | `PATCH` | `/admin-core-service/instructor-copilot/v1/{id}` | Updates specific fields of a log. |
 | `DELETE` | `/admin-core-service/instructor-copilot/v1/{id}` | Soft deletes a log. |
 | `GET` | `/admin-core-service/instructor-copilot/v1/list` | Lists logs filtered by institute, status, and date range. |

@@ -13,6 +13,7 @@ import vacademy.io.notification_service.institute.InstituteInfoDTO;
 import vacademy.io.notification_service.institute.InstituteInternalService;
 import vacademy.io.notification_service.features.external_communication_log.service.ExternalCommunicationLogService;
 import vacademy.io.notification_service.features.external_communication_log.model.ExternalCommunicationSource;
+import vacademy.io.common.logging.SentryLogger;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -121,6 +122,15 @@ public class WhatsAppService {
         } catch (Exception e) {
             log.error("Exception occurred while sending WhatsApp messages for institute {}: {}", instituteId,
                     e.getMessage(), e);
+            SentryLogger.SentryEventBuilder.error(e)
+                .withMessage("Failed to send WhatsApp messages")
+                .withTag("notification.type", "WHATSAPP")
+                .withTag("template.name", templateName)
+                .withTag("institute.id", instituteId)
+                .withTag("user.count", String.valueOf(bodyParams != null ? bodyParams.size() : 0))
+                .withTag("language.code", languageCode != null ? languageCode : "unknown")
+                .withTag("operation", "sendWhatsappMessages")
+                .send();
             return null;
         }
     }
@@ -214,6 +224,15 @@ public class WhatsAppService {
 
         } catch (Exception e) {
             log.error("Error sending via WATI: {}", e.getMessage(), e);
+            SentryLogger.SentryEventBuilder.error(e)
+                    .withMessage("Failed to send WhatsApp via WATI")
+                    .withTag("notification.type", "WHATSAPP")
+                    .withTag("whatsapp.provider", "WATI")
+                    .withTag("template.name", templateName)
+                    .withTag("user.count", String.valueOf(bodyParams != null ? bodyParams.size() : 0))
+                    .withTag("language.code", languageCode != null ? languageCode : "unknown")
+                    .withTag("operation", "sendViaWati")
+                    .send();
             return bodyParams.stream()
                     .map(detail -> Map.of(detail.keySet().iterator().next(), false))
                     .collect(Collectors.toList());
@@ -301,6 +320,15 @@ public class WhatsAppService {
 
                         return Map.of(phoneNumber, response.getStatusCode().is2xxSuccessful());
                     } catch (Exception e) {
+                        SentryLogger.SentryEventBuilder.error(e)
+                                .withMessage("Failed to send WhatsApp via Meta to individual recipient")
+                                .withTag("notification.type", "WHATSAPP")
+                                .withTag("whatsapp.provider", "META")
+                                .withTag("template.name", templateName)
+                                .withTag("recipient.phone", phoneNumber)
+                                .withTag("language.code", languageCode != null ? languageCode : "unknown")
+                                .withTag("operation", "sendViaMeta")
+                                .send();
                         return Map.of(phoneNumber, false);
                     }
                 })
@@ -350,6 +378,15 @@ public class WhatsAppService {
             return response;
         } catch (Exception e) {
             externalCommunicationLogService.markFailure(logId, e.getMessage(), null);
+            SentryLogger.SentryEventBuilder.error(e)
+                    .withMessage("Failed to send WhatsApp template message")
+                    .withTag("notification.type", "WHATSAPP")
+                    .withTag("template.name", templateName)
+                    .withTag("recipient.phone", toNumber)
+                    .withTag("language.code", languageCode != null ? languageCode : "unknown")
+                    .withTag("whatsapp.app.id", appId != null ? appId : "unknown")
+                    .withTag("operation", "sendTemplateMessage")
+                    .send();
             throw new RuntimeException("Failed to send WhatsApp message", e);
         }
     }

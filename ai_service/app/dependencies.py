@@ -59,7 +59,7 @@ def get_image_service() -> ImageGenerationService:
         s3_client=s3_client,
         s3_bucket=settings.aws_bucket_name,
         gemini_api_key=settings.gemini_api_key,
-        openrouter_api_key=settings.llm_api_key,
+        openrouter_api_key=settings.openrouter_api_key,
         llm_model=settings.llm_default_model
     )
 

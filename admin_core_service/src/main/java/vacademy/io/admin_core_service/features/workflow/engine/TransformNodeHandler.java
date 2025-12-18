@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.workflow.service.WorkflowExecutio
 import vacademy.io.admin_core_service.features.workflow.enums.ExecutionLogStatus;
 import vacademy.io.admin_core_service.features.workflow.enums.NodeType;
 import vacademy.io.admin_core_service.features.workflow.dto.execution_log.TransformExecutionDetails;
+import vacademy.io.common.logging.SentryLogger;
 
 import java.util.*;
 
@@ -77,6 +78,14 @@ public class TransformNodeHandler implements NodeHandler {
 
         } catch (Exception e) {
             log.error("Error while processing TransformNodeHandler config", e);
+            SentryLogger.SentryEventBuilder.error(e)
+                    .withMessage("Transform node execution failed")
+                    .withTag("workflow.execution.id", workflowExecutionId != null ? workflowExecutionId : "unknown")
+                    .withTag("node.id", nodeId != null ? nodeId : "unknown")
+                    .withTag("node.type", "TRANSFORM")
+                    .withTag("transformed.fields.count", String.valueOf(transformedFields.size()))
+                    .withTag("operation", "transformData")
+                    .send();
             // Return an error in the context if something goes wrong
             Map<String, Object> errorResult = new HashMap<>();
             errorResult.put("error", "TransformNodeHandler failed: " + e.getMessage());

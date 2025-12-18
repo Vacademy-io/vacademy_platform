@@ -2,6 +2,10 @@ package vacademy.io.admin_core_service.features.instructor_copilot.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.sentry.Sentry;
+import io.sentry.SentryEvent;
+import io.sentry.SentryLevel;
+import io.sentry.protocol.Message;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
@@ -38,16 +42,33 @@ public class InstructorCopilotLLMService {
     return callModel("xiaomi/mimo-v2-flash:free", prompt, 2)
         .onErrorResume(e -> {
           log.warn("Model xiaomi/mimo-v2-flash:free failed, retrying with mistralai/devstral-2512:free", e);
+          SentryEvent event = new SentryEvent();
+          event.setLevel(SentryLevel.WARNING);
+          Message message = new Message();
+          message.setMessage("LLM model failed, attempting fallback: " + e.getMessage());
+          event.setMessage(message);
+          event.setTag("llm.model", "xiaomi/mimo-v2-flash:free");
+          event.setTag("fallback.model", "mistralai/devstral-2512:free");
+          event.setTag("operation", "generateContentFromTranscript");
+          Sentry.captureEvent(event);
           return callModel("mistralai/devstral-2512:free", prompt, 2);
         })
         .onErrorResume(e -> {
           log.warn("Model mistralai/devstral-2512:free failed, retrying with nvidia/nemotron-3-nano-30b-a3b:free", e);
+          SentryEvent event = new SentryEvent();
+          event.setLevel(SentryLevel.WARNING);
+          Message message = new Message();
+          message.setMessage("LLM model failed, attempting final fallback: " + e.getMessage());
+          event.setMessage(message);
+          event.setTag("llm.model", "mistralai/devstral-2512:free");
+          event.setTag("fallback.model", "nvidia/nemotron-3-nano-30b-a3b:free");
+          event.setTag("operation", "generateContentFromTranscript");
+          Sentry.captureEvent(event);
           return callModel("nvidia/nemotron-3-nano-30b-a3b:free", prompt, 0);
-        })
-        .flatMap(this::parseResponse);
+        });
   }
 
-  private Mono<String> callModel(String model, String prompt, long maxRetries) {
+  private Mono<JsonNode> callModel(String model, String prompt, long maxRetries) {
     Map<String, Object> payload = Map.of(
         "model", model,
         "messages", List.of(
@@ -61,12 +82,13 @@ public class InstructorCopilotLLMService {
         .bodyValue(payload)
         .retrieve()
         .bodyToMono(String.class)
-        .retryWhen(Retry.fixedDelay(maxRetries, Duration.ofSeconds(2)));
+        .retryWhen(Retry.fixedDelay(maxRetries, Duration.ofSeconds(2)))
+        .flatMap(this::parseResponse);
   }
 
   private String createPrompt(String transcript) {
     return """
-        Analyze the following transcript and generate a JSON response containing a title, summary, flashnotes, and flashcards.
+        Analyze the following transcript and generate a JSON response containing a title, summary, flashnotes, flashcards, classwork, and homework.
 
         The JSON structure must be exactly as follows:
         {
@@ -86,8 +108,25 @@ public class InstructorCopilotLLMService {
               "front": "Concept or Question",
               "back": "Definition or Answer"
             }
+          ],
+          "classwork": [
+            "Task or activity 1 assigned during class",
+            "Task or activity 2 assigned during class"
+          ],
+          "homework": [
+            "Assignment 1 to be completed at home",
+            "Assignment 2 to be completed at home"
           ]
         }
+
+        IMPORTANT INSTRUCTIONS FOR CLASSWORK AND HOMEWORK:
+        - Carefully analyze the transcript to identify any tasks, activities, assignments, or actionables given to students.
+        - "classwork" should contain any in-class activities, exercises, or tasks the teacher asked students to complete during the class session.
+        - "homework" should contain any assignments, tasks, or activities the teacher explicitly asked students to complete after class or at home.
+        - Each item should be a clear, concise description of the task or assignment.
+        - If NO classwork was mentioned in the transcript, return: "classwork": ["No classwork given"]
+        - If NO homework was mentioned in the transcript, return: "homework": ["No homework given"]
+        - Be thorough and extract all actionables, even if mentioned briefly.
 
         Ensure the content is high quality, accurate, and suitable for students.
         Return ONLY the valid JSON object.
@@ -102,7 +141,16 @@ public class InstructorCopilotLLMService {
       JsonNode root = objectMapper.readTree(responseBody);
       JsonNode contentNode = root.path("choices").path(0).path("message").path("content");
       if (contentNode.isMissingNode()) {
-        return Mono.error(new RuntimeException("Invalid response from LLM: No content found"));
+        RuntimeException exception = new RuntimeException("Invalid response from LLM: No content found");
+        SentryEvent event = new SentryEvent(exception);
+        event.setLevel(SentryLevel.ERROR);
+        Message message = new Message();
+        message.setMessage("Invalid LLM response: No content found in response");
+        event.setMessage(message);
+        event.setTag("operation", "parseResponse");
+        event.setTag("error.type", "MissingContentNode");
+        Sentry.captureEvent(event);
+        return Mono.error(exception);
       }
       String contentString = contentNode.asText();
       // Clean up if wrapped in markdown code blocks
@@ -115,6 +163,14 @@ public class InstructorCopilotLLMService {
       return Mono.just(objectMapper.readTree(contentString));
     } catch (Exception e) {
       log.error("Error parsing LLM response", e);
+      SentryEvent event = new SentryEvent(e);
+      event.setLevel(SentryLevel.ERROR);
+      Message message = new Message();
+      message.setMessage("Failed to parse LLM response: " + e.getMessage());
+      event.setMessage(message);
+      event.setTag("operation", "parseResponse");
+      event.setTag("error.type", e.getClass().getSimpleName());
+      Sentry.captureEvent(event);
       return Mono.error(e);
     }
   }

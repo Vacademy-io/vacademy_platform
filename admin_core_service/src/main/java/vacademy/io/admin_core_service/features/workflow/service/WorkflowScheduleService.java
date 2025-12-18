@@ -7,9 +7,11 @@ import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.workflow.entity.WorkflowSchedule;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowScheduleRepository;
+import vacademy.io.common.logging.SentryLogger;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Slf4j
@@ -39,6 +41,8 @@ public class WorkflowScheduleService {
             return workflowScheduleRepository.findByStatusIgnoreCase("ACTIVE");
         } catch (Exception e) {
             log.error("Error retrieving active workflow schedules", e);
+            SentryLogger.logError(e, "Failed to retrieve active workflow schedules", Map.of(
+                    "operation", "getActiveSchedules"));
             return List.of();
         }
     }
@@ -52,6 +56,8 @@ public class WorkflowScheduleService {
             return workflowScheduleRepository.findDueSchedules(Instant.now());
         } catch (Exception e) {
             log.error("Error retrieving due workflow schedules", e);
+            SentryLogger.logError(e, "Failed to retrieve due workflow schedules", Map.of(
+                    "operation", "getDueSchedules"));
             return List.of();
         }
     }
@@ -61,6 +67,9 @@ public class WorkflowScheduleService {
             return workflowScheduleRepository.findById(id);
         } catch (Exception e) {
             log.error("Error retrieving workflow schedule by ID: {}", id, e);
+            SentryLogger.logError(e, "Failed to retrieve workflow schedule by ID", Map.of(
+                    "schedule.id", id,
+                    "operation", "getScheduleById"));
             return Optional.empty();
         }
     }
@@ -76,6 +85,10 @@ public class WorkflowScheduleService {
             return savedSchedule;
         } catch (Exception e) {
             log.error("Error creating workflow schedule", e);
+            SentryLogger.logError(e, "Failed to create workflow schedule", Map.of(
+                    "workflow.id", schedule.getWorkflowId() != null ? schedule.getWorkflowId() : "unknown",
+                    "schedule.type", schedule.getScheduleType() != null ? schedule.getScheduleType() : "unknown",
+                    "operation", "createSchedule"));
             throw new RuntimeException("Failed to create workflow schedule", e);
         }
     }
@@ -108,6 +121,9 @@ public class WorkflowScheduleService {
             return updatedSchedule;
         } catch (Exception e) {
             log.error("Error updating workflow schedule: {}", id, e);
+            SentryLogger.logError(e, "Failed to update workflow schedule", Map.of(
+                    "schedule.id", id,
+                    "operation", "updateSchedule"));
             throw new RuntimeException("Failed to update workflow schedule", e);
         }
     }

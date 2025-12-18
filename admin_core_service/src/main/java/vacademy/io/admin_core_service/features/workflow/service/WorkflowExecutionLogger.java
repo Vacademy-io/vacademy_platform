@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.workflow.entity.WorkflowExecution
 import vacademy.io.admin_core_service.features.workflow.enums.ExecutionLogStatus;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowExecutionLogRepository;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowExecutionRepository;
+import vacademy.io.common.logging.SentryLogger;
 
 import java.time.Instant;
 import java.util.*;
@@ -65,6 +66,11 @@ public class WorkflowExecutionLogger {
                     logEntity.setDetailsJson(inputJson);
                 } catch (JsonProcessingException e) {
                     log.error("Failed to serialize input context for node: {}", nodeTemplateId, e);
+                    SentryLogger.logError(e, "Failed to serialize workflow input context", Map.of(
+                            "node.template.id", nodeTemplateId,
+                            "node.type", nodeType,
+                            "workflow.execution.id", workflowExecutionId,
+                            "operation", "startNodeExecution"));
                 }
             }
 
@@ -76,6 +82,11 @@ public class WorkflowExecutionLogger {
         } catch (Exception e) {
             log.error("Failed to start node execution log for node: {}, type: {}",
                     nodeTemplateId, nodeType, e);
+            SentryLogger.logError(e, "Failed to create node execution log", Map.of(
+                    "node.template.id", nodeTemplateId,
+                    "node.type", nodeType,
+                    "workflow.execution.id", workflowExecutionId,
+                    "operation", "startNodeExecution"));
             return null;
         }
     }
@@ -170,6 +181,9 @@ public class WorkflowExecutionLogger {
                     logEntity.setDetailsJson(detailsJson);
                 } catch (JsonProcessingException e) {
                     log.error("Failed to serialize skip reason", e);
+                    SentryLogger.logError(e, "Failed to serialize workflow skip reason", Map.of(
+                            "log.id", logId,
+                            "operation", "skipNodeExecution"));
                 }
             }
 
@@ -177,6 +191,9 @@ public class WorkflowExecutionLogger {
             log.debug("Marked node execution as skipped: {}, reason: {}", logId, reason);
         } catch (Exception e) {
             log.error("Failed to skip node execution: {}", logId, e);
+            SentryLogger.logError(e, "Failed to skip node execution", Map.of(
+                    "log.id", logId,
+                    "operation", "skipNodeExecution"));
         }
     }
 
@@ -217,9 +234,15 @@ public class WorkflowExecutionLogger {
                 log.debug("Updated node execution progress: {}", logId);
             } catch (JsonProcessingException e) {
                 log.error("Failed to update progress for log: {}", logId, e);
+                SentryLogger.logError(e, "Failed to serialize workflow progress update", Map.of(
+                        "log.id", logId,
+                        "operation", "updateNodeExecutionProgress"));
             }
         } catch (Exception e) {
             log.error("Failed to update node execution progress: {}", logId, e);
+            SentryLogger.logError(e, "Failed to update node execution progress", Map.of(
+                    "log.id", logId,
+                    "operation", "updateNodeExecutionProgress"));
         }
     }
 
@@ -256,6 +279,10 @@ public class WorkflowExecutionLogger {
                     logEntity.setDetailsJson(detailsJson);
                 } catch (JsonProcessingException e) {
                     log.error("Failed to serialize details object for log: {}", logId, e);
+                    SentryLogger.logError(e, "Failed to serialize workflow execution details", Map.of(
+                            "log.id", logId,
+                            "status", status.name(),
+                            "operation", "completeNodeExecutionWithStatus"));
                 }
             }
 
@@ -264,6 +291,10 @@ public class WorkflowExecutionLogger {
                     logId, status, logEntity.getExecutionTimeMs());
         } catch (Exception e) {
             log.error("Failed to complete node execution: {}", logId, e);
+            SentryLogger.logError(e, "Failed to complete node execution", Map.of(
+                    "log.id", logId,
+                    "status", status.name(),
+                    "operation", "completeNodeExecutionWithStatus"));
         }
     }
 
@@ -308,6 +339,9 @@ public class WorkflowExecutionLogger {
                 detailsNode = objectMapper.readTree(logEntity.getDetailsJson());
             } catch (JsonProcessingException e) {
                 log.error("Failed to parse details JSON for log: {}", logEntity.getId(), e);
+                SentryLogger.logError(e, "Failed to parse workflow execution details JSON", Map.of(
+                        "log.id", logEntity.getId(),
+                        "operation", "convertToDTO"));
             }
         }
 

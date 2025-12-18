@@ -11,6 +11,7 @@ import vacademy.io.admin_core_service.features.workflow.service.WorkflowExecutio
 import vacademy.io.admin_core_service.features.workflow.enums.ExecutionLogStatus;
 import vacademy.io.admin_core_service.features.workflow.enums.NodeType;
 import vacademy.io.admin_core_service.features.workflow.dto.execution_log.QueryExecutionDetails;
+import vacademy.io.common.logging.SentryLogger;
 
 import java.util.*;
 
@@ -97,6 +98,14 @@ public class QueryNodeHandler implements NodeHandler {
 
         } catch (Exception e) {
             log.error("Error while processing QueryNodeHandler config", e);
+            SentryLogger.SentryEventBuilder.error(e)
+                    .withMessage("Query node execution failed")
+                    .withTag("workflow.execution.id", workflowExecutionId != null ? workflowExecutionId : "unknown")
+                    .withTag("node.id", nodeId != null ? nodeId : "unknown")
+                    .withTag("node.type", "QUERY")
+                    .withTag("query.key", prebuiltKey != null ? prebuiltKey : "unknown")
+                    .withTag("operation", "executeQuery")
+                    .send();
             changes.put("error", e.getMessage());
 
             // Log failure

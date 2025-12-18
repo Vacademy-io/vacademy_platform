@@ -15,6 +15,7 @@ import vacademy.io.admin_core_service.features.workflow.service.WorkflowExecutio
 import vacademy.io.admin_core_service.features.workflow.enums.ExecutionLogStatus;
 import vacademy.io.admin_core_service.features.workflow.enums.NodeType;
 import vacademy.io.admin_core_service.features.workflow.dto.execution_log.HttpRequestExecutionDetails;
+import vacademy.io.common.logging.SentryLogger;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -62,6 +63,11 @@ public class HttpRequestNodeHandler implements NodeHandler {
             dto = objectMapper.readValue(nodeConfigJson, HttpRequestNodeConfigDTO.class);
         } catch (Exception e) {
             log.error("Failed to parse node config JSON into DTO: {}", e.getMessage());
+            SentryLogger.logError(e, "Failed to parse HTTP request node config", Map.of(
+                    "workflow.execution.id", workflowExecutionId != null ? workflowExecutionId : "unknown",
+                    "node.id", nodeId != null ? nodeId : "unknown",
+                    "node.type", "HTTP_REQUEST",
+                    "operation", "parseNodeConfig"));
             changes.put("error", "Invalid node config JSON");
 
             if (logId != null) {
@@ -107,6 +113,14 @@ public class HttpRequestNodeHandler implements NodeHandler {
             HttpRequestStrategy strategy = strategyRegistry.getStrategy(cfg.getRequestType());
             if (strategy == null) {
                 log.error("No HTTP strategy found for requestType: {}", cfg.getRequestType());
+                SentryLogger.logError(
+                        new IllegalStateException("No HTTP strategy found for type: " + cfg.getRequestType()),
+                        "HTTP request strategy not found", Map.of(
+                                "workflow.execution.id", workflowExecutionId != null ? workflowExecutionId : "unknown",
+                                "node.id", nodeId != null ? nodeId : "unknown",
+                                "node.type", "HTTP_REQUEST",
+                                "http.request.type", cfg.getRequestType() != null ? cfg.getRequestType() : "unknown",
+                                "operation", "getHttpStrategy"));
                 changes.put("error", "No HTTP strategy found for type: " + cfg.getRequestType());
 
                 if (logId != null) {
@@ -141,6 +155,17 @@ public class HttpRequestNodeHandler implements NodeHandler {
             // Check if the strategy itself returned an error, and if so, log it
             if (responseResult.containsKey("error")) {
                 log.error("HttpRequestStrategy execution failed: {}", responseResult.get("error"));
+                SentryLogger.SentryEventBuilder.error(new RuntimeException(String.valueOf(responseResult.get("error"))))
+                        .withMessage("HTTP request strategy execution failed")
+                        .withTag("workflow.execution.id", workflowExecutionId != null ? workflowExecutionId : "unknown")
+                        .withTag("node.id", nodeId != null ? nodeId : "unknown")
+                        .withTag("node.type", "HTTP_REQUEST")
+                        .withTag("http.url", url != null ? url : "unknown")
+                        .withTag("http.method", method != null ? method : "unknown")
+                        .withTag("http.request.type", cfg.getRequestType() != null ? cfg.getRequestType() : "unknown")
+                        .withTag("http.status.code", statusCode != null ? statusCode.toString() : "unknown")
+                        .withTag("operation", "executeHttpRequest")
+                        .send();
                 changes.put("error", responseResult.get("error"));
 
                 if (logId != null) {
@@ -176,6 +201,15 @@ public class HttpRequestNodeHandler implements NodeHandler {
 
         } catch (Exception e) {
             log.error("Error executing HttpRequestNodeHandler: {}", e.getMessage(), e);
+            SentryLogger.SentryEventBuilder.error(e)
+                    .withMessage("HTTP request node execution failed")
+                    .withTag("workflow.execution.id", workflowExecutionId != null ? workflowExecutionId : "unknown")
+                    .withTag("node.id", nodeId != null ? nodeId : "unknown")
+                    .withTag("node.type", "HTTP_REQUEST")
+                    .withTag("http.url", url != null ? url : "unknown")
+                    .withTag("http.method", method != null ? method : "unknown")
+                    .withTag("operation", "handleHttpRequestNode")
+                    .send();
             changes.put(resultKey, Map.of("status", "error", "message", e.getMessage()));
             changes.put("error", "HttpRequestNodeHandler failed: " + e.getMessage());
 

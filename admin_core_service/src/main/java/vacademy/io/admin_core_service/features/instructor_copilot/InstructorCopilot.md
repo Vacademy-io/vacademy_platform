@@ -43,9 +43,10 @@ The **Instructor Copilot** feature empowers instructors by automating the creati
 ## Workflow
 1. **Input**: Instructor submits a transcript via the Create API.
 2. **Persistence**: A log record is created with status `ACTIVE`.
-3. **Async Generation**: The system asynchronously sends the transcript to the LLM.
+3. **Async Generation**: The system asynchronously sends the transcript to the LLM using the multi-model fallback strategy.
 4. **Update**: Once the LLM responds, the specific log entry is updated with the generated content (Title, Summary, Flashcards, Flashnotes).
-5. **Retrieval**: The instructor can retrieve the processed content via the List API.
+5. **Retry (if needed)**: If generation fails or needs to be regenerated, use the Retry API with the log ID.
+6. **Retrieval**: The instructor can retrieve the processed content via the List API.
 
 ## Sample cURLs
 
@@ -59,13 +60,20 @@ curl -X POST "http://localhost:8080/admin-core-service/instructor-copilot/v1/cre
   }'
 ```
 
-### 2. List Logs (Filter by Date & Status)
+### 2. Retry Content Generation
+```bash
+curl -X POST "http://localhost:8080/admin-core-service/instructor-copilot/v1/retry-generate/<LOG_ID>" \
+  -H "Authorization: Bearer <YOUR_TOKEN>"
+```
+**Use Case**: When the initial async generation fails or you need to regenerate content with the updated model fallback strategy.
+
+### 3. List Logs (Filter by Date & Status)
 ```bash
 curl -X GET "http://localhost:8080/admin-core-service/instructor-copilot/v1/list?instituteId=inst_123&status=ACTIVE&startDate=2023-10-01&endDate=2023-10-31" \
   -H "Authorization: Bearer <YOUR_TOKEN>"
 ```
 
-### 3. Update Log
+### 4. Update Log
 ```bash
 curl -X PATCH "http://localhost:8080/admin-core-service/instructor-copilot/v1/<LOG_ID>" \
   -H "Content-Type: application/json" \
@@ -76,8 +84,9 @@ curl -X PATCH "http://localhost:8080/admin-core-service/instructor-copilot/v1/<L
   }'
 ```
 
-### 4. Delete Log (Soft Delete)
+### 5. Delete Log (Soft Delete)
 ```bash
 curl -X DELETE "http://localhost:8080/admin-core-service/instructor-copilot/v1/<LOG_ID>" \
   -H "Authorization: Bearer <YOUR_TOKEN>"
 ```
+

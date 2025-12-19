@@ -18,6 +18,7 @@
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/service/ClientAuthenticationService.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/db_logging/entity/SystemAlertLog.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/payment/dto/EwayTransactionQueryResponse.java
+/Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/logging/SentryLogger.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/exceptions/UserWithRoleNotFoundException.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/dto/UserRoleRequestDTO.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/dto/RefreshTokenRequestDTO.java

@@ -86,11 +86,15 @@ public class UserActivityTrackingService {
         }
 
         /**
-         * Create or update user session
+         * Create or update user session asynchronously
          */
+        @Async
         @Transactional
-        public UserSession createOrUpdateSession(String userId, String instituteId, String sessionToken,
+        public void createOrUpdateSession(String userId, String instituteId, String sessionToken,
                         String ipAddress, String userAgent) {
+                if (!shouldLogActivity()) {
+                        return;
+                }
 
                 try {
 
@@ -100,7 +104,6 @@ public class UserActivityTrackingService {
                         if (existingSession.isPresent()) {
                                 // Update existing session
                                 sessionRepository.updateLastActivityTime(sessionToken, LocalDateTime.now());
-                                return existingSession.get();
                         } else {
                                 // Create new session
                                 UserSession newSession = UserSession.builder()
@@ -116,11 +119,11 @@ public class UserActivityTrackingService {
                                                 .lastActivityTime(LocalDateTime.now())
                                                 .build();
 
-                                return sessionRepository.save(newSession);
+                                sessionRepository.save(newSession);
                         }
                 } catch (Exception e) {
+                        log.error("Error creating or updating user session", e);
                 }
-                return null;
         }
 
         /**

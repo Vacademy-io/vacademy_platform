@@ -17,6 +17,5 @@ public class AdminCoreServiceApplication {
 
     public static void main(String[] args) {
         SpringApplication.run(AdminCoreServiceApplication.class, args);
-        
     }
 }

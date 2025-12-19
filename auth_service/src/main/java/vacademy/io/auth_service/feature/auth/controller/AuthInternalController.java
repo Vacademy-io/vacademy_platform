@@ -10,17 +10,18 @@ import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
 import vacademy.io.auth_service.feature.auth.manager.LearnerAuthManager;
 import vacademy.io.auth_service.feature.auth.service.UserDetailsCacheService;
+import vacademy.io.common.auth.dto.UserServiceDTO;
 import vacademy.io.common.auth.dto.learner.UserWithJwtDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.service.UserActivityTrackingService;
 
-import jakarta.servlet.http.HttpServletRequest;
+import java.util.stream.Collectors;
 
+import jakarta.servlet.http.HttpServletRequest;
 
 @RestController
 @RequestMapping("auth-service/v1/internal")
 public class AuthInternalController {
-
 
     @Autowired
     UserActivityTrackingService userActivityTrackingService;
@@ -32,10 +33,10 @@ public class AuthInternalController {
     private LearnerAuthManager learnerAuthManager;
 
     @GetMapping("/user")
-    public ResponseEntity<CustomUserDetails> getUserDetails(@RequestParam String userName,
-                                                            @RequestParam(required = false) String serviceName,
-                                                            @RequestParam(required = false) String sessionToken,
-                                                            HttpServletRequest request) {
+    public ResponseEntity<UserServiceDTO> getUserDetails(@RequestParam String userName,
+            @RequestParam(required = false) String serviceName,
+            @RequestParam(required = false) String sessionToken,
+            HttpServletRequest request) {
         long startTime = System.currentTimeMillis();
 
         String smallCaseUsername = StringUtils.trimAllWhitespace(userName);
@@ -51,7 +52,8 @@ public class AuthInternalController {
             usernameWithoutInstitute = stringUsernameSplit[1];
         }
 
-        CustomUserDetails customUserDetails = userDetailsCacheService.getCustomUserDetails(usernameWithoutInstitute, instituteId);
+        CustomUserDetails customUserDetails = userDetailsCacheService.getCustomUserDetails(usernameWithoutInstitute,
+                instituteId);
 
         // Track user activity asynchronously
         long responseTime = System.currentTimeMillis() - startTime;
@@ -68,8 +70,7 @@ public class AuthInternalController {
                 ipAddress,
                 userAgent,
                 200,
-                responseTime
-        );
+                responseTime);
 
         // Create or update session if session token is provided
         if (sessionToken != null && instituteId != null) {
@@ -78,13 +79,15 @@ public class AuthInternalController {
                     instituteId,
                     sessionToken,
                     ipAddress,
-                    userAgent
-            );
+                    userAgent);
         }
 
-        return ResponseEntity.ok(customUserDetails);
-    }
+        // Convert CustomUserDetails to UserServiceDTO to avoid Redis serialization
+        // issues
+        UserServiceDTO userServiceDTO = convertToUserServiceDTO(customUserDetails);
 
+        return ResponseEntity.ok(userServiceDTO);
+    }
 
     private String getClientIpAddress(HttpServletRequest request) {
         String xForwardedForHeader = request.getHeader("X-Forwarded-For");
@@ -100,11 +103,31 @@ public class AuthInternalController {
         return request.getRemoteAddr();
     }
 
-    @GetMapping("/generate-token-for-learner")
-    public ResponseEntity<UserWithJwtDTO> generateTokenForLearner(@RequestParam String userId,
-                                                                  @RequestParam String instituteId) {
-        return ResponseEntity.ok(learnerAuthManager.generateTokenForUserByUserId(userId, instituteId));
+    /**
+     * Convert CustomUserDetails to UserServiceDTO to avoid Redis serialization
+     * metadata
+     * leaking into HTTP responses
+     */
+    private UserServiceDTO convertToUserServiceDTO(CustomUserDetails customUserDetails) {
+        UserServiceDTO dto = new UserServiceDTO();
+        dto.setUsername(customUserDetails.getUsername());
+        dto.setUserId(customUserDetails.getUserId());
+        dto.setEnabled(customUserDetails.isEnabled());
+
+        // Convert authorities to DTO format
+        if (customUserDetails.getAuthorities() != null) {
+            dto.setAuthorities(customUserDetails.getAuthorities().stream()
+                    .map(authority -> new UserServiceDTO.Authority(authority.getAuthority()))
+                    .collect(Collectors.toList()));
+        }
+
+        return dto;
     }
 
+    @GetMapping("/generate-token-for-learner")
+    public ResponseEntity<UserWithJwtDTO> generateTokenForLearner(@RequestParam String userId,
+            @RequestParam String instituteId) {
+        return ResponseEntity.ok(learnerAuthManager.generateTokenForUserByUserId(userId, instituteId));
+    }
 
 }

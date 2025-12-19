@@ -38,7 +38,10 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
             SELECT ARRAY_REMOVE(ARRAY_AGG(DISTINCT ps.id), NULL)
             FROM package_session_learner_invitation_to_payment_option psl
             JOIN package_session ps ON ps.id = psl.package_session_id
+            JOIN package p ON p.id = ps.package_id
             WHERE psl.enroll_invite_id = ei.id
+              AND ps.status != 'DELETED'
+              AND p.status != 'DELETED'
               AND (:#{#packageSessionStatuses == null || #packageSessionStatuses.isEmpty()} = true OR ps.status IN (:packageSessionStatuses))
               AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ps.id IN (:packageSessionIds))
         ) AS "packageSessionIds"
@@ -48,12 +51,30 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
       AND (:#{#enrollInviteStatus == null || #enrollInviteStatus.isEmpty()} = true OR ei.status IN (:enrollInviteStatus))
       AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR EXISTS (
           SELECT 1 FROM package_session_learner_invitation_to_payment_option psl
-          WHERE psl.enroll_invite_id = ei.id AND psl.package_session_id IN (:packageSessionIds)
+          JOIN package_session ps_check ON ps_check.id = psl.package_session_id
+          JOIN package p_check ON p_check.id = ps_check.package_id
+          WHERE psl.enroll_invite_id = ei.id 
+            AND psl.package_session_id IN (:packageSessionIds)
+            AND ps_check.status != 'DELETED'
+            AND p_check.status != 'DELETED'
       ))
       AND (:#{#paymentOptionIds == null || #paymentOptionIds.isEmpty()} = true OR EXISTS (
           SELECT 1 FROM package_session_learner_invitation_to_payment_option psl
-          WHERE psl.enroll_invite_id = ei.id AND psl.payment_option_id IN (:paymentOptionIds)
+          JOIN package_session ps_check2 ON ps_check2.id = psl.package_session_id
+          JOIN package p_check2 ON p_check2.id = ps_check2.package_id
+          WHERE psl.enroll_invite_id = ei.id 
+            AND psl.payment_option_id IN (:paymentOptionIds)
+            AND ps_check2.status != 'DELETED'
+            AND p_check2.status != 'DELETED'
       ))
+      AND EXISTS (
+          SELECT 1 FROM package_session_learner_invitation_to_payment_option psl_active
+          JOIN package_session ps_active ON ps_active.id = psl_active.package_session_id
+          JOIN package p_active ON p_active.id = ps_active.package_id
+          WHERE psl_active.enroll_invite_id = ei.id
+            AND ps_active.status != 'DELETED'
+            AND p_active.status != 'DELETED'
+      )
     """,
             countQuery = """
     SELECT COUNT(*)
@@ -63,12 +84,30 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
       AND (:#{#enrollInviteStatus == null || #enrollInviteStatus.isEmpty()} = true OR ei.status IN (:enrollInviteStatus))
       AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR EXISTS (
           SELECT 1 FROM package_session_learner_invitation_to_payment_option psl
-          WHERE psl.enroll_invite_id = ei.id AND psl.package_session_id IN (:packageSessionIds)
+          JOIN package_session ps_check ON ps_check.id = psl.package_session_id
+          JOIN package p_check ON p_check.id = ps_check.package_id
+          WHERE psl.enroll_invite_id = ei.id 
+            AND psl.package_session_id IN (:packageSessionIds)
+            AND ps_check.status != 'DELETED'
+            AND p_check.status != 'DELETED'
       ))
       AND (:#{#paymentOptionIds == null || #paymentOptionIds.isEmpty()} = true OR EXISTS (
           SELECT 1 FROM package_session_learner_invitation_to_payment_option psl
-          WHERE psl.enroll_invite_id = ei.id AND psl.payment_option_id IN (:paymentOptionIds)
+          JOIN package_session ps_check2 ON ps_check2.id = psl.package_session_id
+          JOIN package p_check2 ON p_check2.id = ps_check2.package_id
+          WHERE psl.enroll_invite_id = ei.id 
+            AND psl.payment_option_id IN (:paymentOptionIds)
+            AND ps_check2.status != 'DELETED'
+            AND p_check2.status != 'DELETED'
       ))
+      AND EXISTS (
+          SELECT 1 FROM package_session_learner_invitation_to_payment_option psl_active
+          JOIN package_session ps_active ON ps_active.id = psl_active.package_session_id
+          JOIN package p_active ON p_active.id = ps_active.package_id
+          WHERE psl_active.enroll_invite_id = ei.id
+            AND ps_active.status != 'DELETED'
+            AND p_active.status != 'DELETED'
+      )
     """,
             nativeQuery = true)
     Page<EnrollInviteWithSessionsProjection> getEnrollInvitesWithFilters(
@@ -90,22 +129,31 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
             "FROM enroll_invite ei " +
             "LEFT JOIN package_session_learner_invitation_to_payment_option psl ON ei.id = psl.enroll_invite_id " +
             "LEFT JOIN package_session ps ON psl.package_session_id = ps.id " +
+            "LEFT JOIN package p ON ps.package_id = p.id " +
             "WHERE ei.institute_id = :instituteId " +
             "AND (COALESCE(:enrollInviteStatus, NULL) IS NULL OR ei.status IN (:enrollInviteStatus)) " +
             "AND (:searchName IS NULL OR :searchName = '' OR " +
             "     LOWER(ei.name) LIKE LOWER(CONCAT('%', :searchName, '%')) OR " +
             "     LOWER(ei.invite_code) LIKE LOWER(CONCAT('%', :searchName, '%'))) " +
             "AND (COALESCE(:packageSessionStatuses, NULL) IS NULL OR ps.status IN (:packageSessionStatuses)) " +
-            "GROUP BY ei.id",
+            "AND (ps.id IS NULL OR (ps.status != 'DELETED' AND p.status != 'DELETED')) " +
+            "GROUP BY ei.id " +
+            "HAVING COUNT(CASE WHEN ps.status != 'DELETED' AND p.status != 'DELETED' THEN 1 END) > 0 OR COUNT(ps.id) = 0",
             countQuery = "SELECT COUNT(DISTINCT ei.id) FROM enroll_invite ei " +
                     "LEFT JOIN package_session_learner_invitation_to_payment_option psl ON ei.id = psl.enroll_invite_id " +
                     "LEFT JOIN package_session ps ON psl.package_session_id = ps.id " +
+                    "LEFT JOIN package p ON ps.package_id = p.id " +
                     "WHERE ei.institute_id = :instituteId " +
                     "AND (COALESCE(:enrollInviteStatus, NULL) IS NULL OR ei.status IN (:enrollInviteStatus)) " +
                     "AND (:searchName IS NULL OR :searchName = '' OR " +
                     "     LOWER(ei.name) LIKE LOWER(CONCAT('%', :searchName, '%')) OR " +
                     "     LOWER(ei.invite_code) LIKE LOWER(CONCAT('%', :searchName, '%'))) " +
-                    "AND (COALESCE(:packageSessionStatuses, NULL) IS NULL OR ps.status IN (:packageSessionStatuses))",
+                    "AND (COALESCE(:packageSessionStatuses, NULL) IS NULL OR ps.status IN (:packageSessionStatuses)) " +
+                    "AND (ps.id IS NULL OR (ps.status != 'DELETED' AND p.status != 'DELETED')) " +
+                    "AND EXISTS (SELECT 1 FROM package_session_learner_invitation_to_payment_option psl2 " +
+                    "           JOIN package_session ps2 ON psl2.package_session_id = ps2.id " +
+                    "           JOIN package p2 ON ps2.package_id = p2.id " +
+                    "           WHERE psl2.enroll_invite_id = ei.id AND ps2.status != 'DELETED' AND p2.status != 'DELETED')",
             nativeQuery = true)
     Page<EnrollInviteWithSessionsProjection> getEnrollInvitesByInstituteIdAndSearchName(
             @Param("instituteId") String instituteId,
@@ -120,10 +168,16 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
         FROM enroll_invite ei
         INNER JOIN package_session_learner_invitation_to_payment_option m
             ON m.enroll_invite_id = ei.id
+        INNER JOIN package_session ps
+            ON ps.id = m.package_session_id
+        INNER JOIN package p
+            ON p.id = ps.package_id
         WHERE m.package_session_id = :packageSessionId
           AND ei.status IN (:enrollInviteStatusList)
           AND ei.tag IN (:tagList)
           AND m.status IN (:mappingStatusList)
+          AND ps.status != 'DELETED'
+          AND p.status != 'DELETED'
         ORDER BY ei.created_at DESC
         LIMIT 1
     """, nativeQuery = true)
@@ -150,12 +204,18 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
         ON pslipo.enroll_invite_id = ei.id
     INNER JOIN student_session_institute_group_mapping ssigm
         ON ssigm.package_session_id = pslipo.package_session_id
+    INNER JOIN package_session ps
+        ON ps.id = pslipo.package_session_id
+    INNER JOIN package p
+        ON p.id = ps.package_id
     WHERE ssigm.user_id = :userId
       AND ssigm.institute_id = :instituteId
       AND ssigm.status IN (:ssigmActiveStatuses)
       AND pslipo.status IN (:packageSessionMappingActiveStatuses)
       AND ei.status IN (:enrollInviteActiveStatuses)
       AND ei.tag = 'DEFAULT'
+      AND ps.status != 'DELETED'
+      AND p.status != 'DELETED'
     ORDER BY ei.created_at DESC
 """, nativeQuery = true)
     List<EnrollInvite> findDefaultEnrollInvitesForStudent(

@@ -64,7 +64,10 @@ jobs:
               AWS_BUCKET_NAME=${{ secrets.AWS_S3_PUBLIC_BUCKET }} \
               GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
               YOUTUBE_API_KEY=${{ secrets.YOUTUBE_API_KEY }} \
-              LLM_DEFAULT_MODEL=google/gemini-2.5-flash
+              LLM_DEFAULT_MODEL=google/gemini-2.5-flash \
+              DB_USERNAME=${{ secrets.DB_USERNAME }} \
+              DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+              ADMIN_CORE_SERVICE_DB_URL=${{ secrets.ADMIN_CORE_SERVICE_DB_URL }}
             kubectl rollout restart deployment "$DEPLOYMENT_NAME" --namespace "$NAMESPACE"
           else
             echo "Deployment $DEPLOYMENT_NAME not found in namespace $NAMESPACE. Skipping restart."

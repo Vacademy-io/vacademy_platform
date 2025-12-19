@@ -13,6 +13,7 @@ import type {
   ToolbarSlot,
   TransformToolbarSlot,
 } from "@react-pdf-viewer/toolbar";
+import { Capacitor } from '@capacitor/core'; // Import Capacitor
 
 import "@react-pdf-viewer/core/lib/styles/index.css";
 import "@react-pdf-viewer/default-layout/lib/styles/index.css";
@@ -34,14 +35,15 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
   handlePageChange,
   initialPage = 0
 }, ref) => {
-  // Container ref to control scroll behavior on mobile
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerHeight, setContainerHeight] = useState<string | undefined>(undefined);
-  // Create page navigation plugin instance
+  
+  // Platform check
+  const isIOS = Capacitor.getPlatform() === 'ios';
+
   const pageNavigationPluginInstance = pageNavigationPlugin();
   const { jumpToPage } = pageNavigationPluginInstance;
 
-  // Expose jumpToPage function through ref
   useImperativeHandle(ref, () => ({
     jumpToPage: (pageIndex: number) => {
       jumpToPage(pageIndex);
@@ -72,75 +74,25 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
   const { renderDefaultToolbar } =
     defaultLayoutPluginInstance.toolbarPluginInstance;
 
-  // Prevent scroll chaining/bounce ONLY on iOS at container edges
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-
-    const ua = navigator.userAgent || "";
-    const isIOS = /iPad|iPhone|iPod/.test(ua) ||
-      (navigator.platform === "MacIntel" && (((navigator as Navigator & { maxTouchPoints?: number }).maxTouchPoints ?? 0) > 1));
-    if (!isIOS) return;
-
-    let startY = 0;
-    const onTouchStart = (e: TouchEvent) => {
-      if (e.touches && e.touches.length > 0) {
-        startY = e.touches[0].clientY;
-      }
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      const scrollTop = el.scrollTop;
-      const scrollHeight = el.scrollHeight;
-      const offsetHeight = el.offsetHeight;
-
-      if (!e.touches || e.touches.length === 0) return;
-      const currentY = e.touches[0].clientY;
-      const isScrollingUp = currentY > startY;
-
-      const isAtTop = scrollTop <= 0;
-      const isAtBottom = scrollTop + offsetHeight >= scrollHeight - 1;
-
-      if ((isAtTop && isScrollingUp) || (isAtBottom && !isScrollingUp)) {
-        e.preventDefault();
-      }
-    };
-
-    el.addEventListener("touchstart", onTouchStart, { passive: true });
-    el.addEventListener("touchmove", onTouchMove as EventListener, { passive: false });
-
-    return () => {
-      el.removeEventListener("touchstart", onTouchStart as EventListener);
-      el.removeEventListener("touchmove", onTouchMove as EventListener);
-    };
-  }, []);
-
-  // Compute dynamic height for mobile browsers (Android/older WebViews)
+  // Compute dynamic height for all mobile devices (iOS & Android) to handle URL bars/safe areas
   useEffect(() => {
     const computeHeight = () => {
       const w = window.innerWidth;
       const vh = window.innerHeight;
       
-      // Calculate offsets based on actual UI elements:
-      // - Header (varies by screen size)
-      // - Mobile bottom nav (only on mobile < 640px)
-      // - Borders and padding
-      let headerHeight = 60; // Compact header on mobile
+      let headerHeight = 60; 
       let bottomNavHeight = 0;
       
       if (w < 640) {
-        // Mobile: smaller header + bottom nav + safe area
         headerHeight = 50;
-        bottomNavHeight = 60; // Bottom nav bar height
+        bottomNavHeight = 60; 
       } else if (w < 1024) {
-        // Tablet
         headerHeight = 70;
       } else {
-        // Desktop
         headerHeight = 80;
       }
       
-      const totalOffset = headerHeight + bottomNavHeight + 10; // +10 for padding/borders
+      const totalOffset = headerHeight + bottomNavHeight + 10;
       const h = Math.max(300, vh - totalOffset);
       setContainerHeight(`${h}px`);
     };
@@ -149,7 +101,7 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
     window.addEventListener("resize", computeHeight);
     window.addEventListener("orientationchange", computeHeight);
     
-    // Also recompute on viewport changes (for Android keyboard, etc)
+    // ResizeObserver is safe on modern browsers (Chrome/Safari/Edge)
     const resizeObserver = new ResizeObserver(computeHeight);
     resizeObserver.observe(document.body);
     
@@ -167,11 +119,13 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
         className="w-full max-w-full mx-0 px-0 overflow-y-scroll overflow-x-hidden custom-scrollbar"
         style={{
           height: containerHeight || "100%",
-          minHeight: containerHeight || "300px",
-          maxHeight: containerHeight || "100vh",
-          touchAction: "pan-y",
+          minHeight: "300px",
+          // Critical for mobile scrolling:
+          touchAction: "pan-y", 
           WebkitOverflowScrolling: "touch",
-          overscrollBehavior: "contain",
+          // 'contain' stops the bounce on iOS (iOS 16+) and Chrome Android
+          // It is safe for Windows/Desktop (simply ignored or prevents pull-refresh)
+          overscrollBehavior: "contain", 
           position: "relative",
         }}
       >

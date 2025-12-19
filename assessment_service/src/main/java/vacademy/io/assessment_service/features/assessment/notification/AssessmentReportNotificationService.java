@@ -6,6 +6,7 @@ import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.notification.service.NotificationService;
 import vacademy.io.common.notification.dto.AttachmentNotificationDTO;
 import vacademy.io.common.notification.dto.AttachmentUsersDTO;
+import vacademy.io.common.logging.SentryLogger;
 
 import java.util.ArrayList;
 import java.util.Base64;
@@ -42,9 +43,9 @@ public class AssessmentReportNotificationService {
         sendNotification(attachmentNotificationDTO);
     }
 
-    private AttachmentNotificationDTO getAttachmentNotificationDTO(List<AttachmentUsersDTO> usersList, String assessmentId) {
-        AttachmentNotificationDTO attachmentNotificationDTO =
-                AttachmentNotificationDTO.builder().build();
+    private AttachmentNotificationDTO getAttachmentNotificationDTO(List<AttachmentUsersDTO> usersList,
+            String assessmentId) {
+        AttachmentNotificationDTO attachmentNotificationDTO = AttachmentNotificationDTO.builder().build();
         attachmentNotificationDTO.setBody(AssessmentNotificationEmailBody.getAssessmentReportBody());
         attachmentNotificationDTO.setSubject("Assessment Report");
         attachmentNotificationDTO.setSource("ASSESSMENT_REPORT");
@@ -55,6 +56,20 @@ public class AssessmentReportNotificationService {
     }
 
     private void sendNotification(AttachmentNotificationDTO notificationDTO) {
-        notificationService.sendAttachmentEmailToUsers(notificationDTO);
+        try {
+            notificationService.sendAttachmentEmailToUsers(notificationDTO);
+        } catch (Exception e) {
+            SentryLogger.SentryEventBuilder.error(e)
+                    .withMessage("Failed to send assessment report notification")
+                    .withTag("notification.type", "EMAIL")
+                    .withTag("email.type", "ASSESSMENT_REPORT")
+                    .withTag("assessment.id",
+                            notificationDTO.getSourceId() != null ? notificationDTO.getSourceId() : "unknown")
+                    .withTag("user.count",
+                            String.valueOf(notificationDTO.getUsers() != null ? notificationDTO.getUsers().size() : 0))
+                    .withTag("operation", "sendAssessmentReportEmail")
+                    .send();
+            throw e;
+        }
     }
 }

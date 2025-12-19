@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.workflow.entity.WorkflowTrigger;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowTriggerRepository;
+import vacademy.io.common.logging.SentryLogger;
 
 import java.util.HashMap;
 import java.util.List;
@@ -79,6 +80,14 @@ public class WorkflowTriggerService {
                 } catch (Exception ex) {
                     log.error("Error executing workflowId='{}' for triggerId='{}'",
                             trigger.getWorkflow().getId(), trigger.getId(), ex);
+                    SentryLogger.SentryEventBuilder.error(ex)
+                            .withMessage("Workflow execution failed for trigger")
+                            .withTag("workflow.id", trigger.getWorkflow().getId().toString())
+                            .withTag("trigger.id", trigger.getId().toString())
+                            .withTag("trigger.event", eventName)
+                            .withTag("institute.id", instituteId)
+                            .withTag("operation", "workflowExecution")
+                            .send();
                 }
             }
 
@@ -86,6 +95,13 @@ public class WorkflowTriggerService {
             return response;
         } catch (Exception e) {
             log.error("Unexpected error while processing trigger event='{}', eventId='{}'", eventName, eventId, e);
+            SentryLogger.SentryEventBuilder.error(e)
+                    .withMessage("Unexpected error during trigger event processing")
+                    .withTag("trigger.event", eventName)
+                    .withTag("event.id", eventId)
+                    .withTag("institute.id", instituteId)
+                    .withTag("operation", "handleTriggerEvents")
+                    .send();
         }
 
         log.info("---- Workflow Trigger Event END ----");

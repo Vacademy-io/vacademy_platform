@@ -84,6 +84,9 @@ public class PaymentService {
                 enrollInvite.getVendor(),
                 request);
 
+        userPlan.setJsonPaymentDetails(JsonUtil.toJson(gatewayMapping));
+        userPlanService.save(userPlan);
+
         PaymentResponseDTO response = makePayment(
                 enrollInvite.getVendor(),
                 instituteId,

@@ -109,4 +109,6 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
     @EntityGraph(attributePaths = { "enrollInvite", "paymentOption", "paymentPlan" })
     @Query("SELECT up FROM UserPlan up WHERE up.id IN :ids")
     List<UserPlan> findByIdsWithoutPaymentLogs(@Param("ids") List<String> ids);
+
+    Optional<UserPlan> findFirstByUserIdAndPaymentPlanIdAndStatus(String userId, String paymentPlanId, String status);
 }

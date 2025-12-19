@@ -16,6 +16,7 @@ import vacademy.io.common.payment.dto.EwayWebHookDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
 import vacademy.io.common.payment.enums.PaymentGateway;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
+import vacademy.io.common.logging.SentryLogger;
 
 import java.util.List;
 import java.util.Map;
@@ -38,7 +39,8 @@ public class EwayPoolingService {
     private InstitutePaymentGatewayMappingService institutePaymentGatewayMappingService;
 
     /**
-     * Scheduled task that runs every minute to poll for the status of pending Eway transactions.
+     * Scheduled task that runs every minute to poll for the status of pending Eway
+     * transactions.
      */
     @Scheduled(fixedRate = 60000) // Runs every 60 seconds
     public void pollPendingEwayTransactions() {
@@ -80,7 +82,8 @@ public class EwayPoolingService {
             }
 
             // Fetch Eway credentials for the specific institute
-            Map<String, Object> credentials = institutePaymentGatewayMappingService.findInstitutePaymentGatewaySpecifData(PaymentGateway.EWAY.name(), instituteId);
+            Map<String, Object> credentials = institutePaymentGatewayMappingService
+                    .findInstitutePaymentGatewaySpecifData(PaymentGateway.EWAY.name(), instituteId);
             EwayTransaction transaction = ewayPaymentManager.getTransactionById(transactionId, credentials);
 
             if (transaction == null) {
@@ -104,6 +107,13 @@ public class EwayPoolingService {
 
         } catch (Exception ex) {
             log.error("Error processing Eway webhook with ID: {}", webhookId, ex);
+            SentryLogger.SentryEventBuilder.error(ex)
+                    .withMessage("Eway webhook processing failed during polling")
+                    .withTag("payment.vendor", "EWAY")
+                    .withTag("payment.webhook.id", webhookId)
+                    .withTag("webhook.status", WebHookStatus.RECEIVED.toString())
+                    .withTag("operation", "processEwayWebhook")
+                    .send();
             webHookService.updateWebHookStatus(webhookId, WebHookStatus.RECEIVED, ex.getMessage());
 
         }
@@ -113,15 +123,23 @@ public class EwayPoolingService {
      * Marks a webhook as FAILED due to polling timeout.
      */
     private void handleTimeout(WebHook webhook) {
-        log.warn("Eway webhookId: {} has timed out after {} minutes. Marking as FAILED.", webhook.getId(), POLLING_TIMEOUT_MINUTES);
+        log.warn("Eway webhookId: {} has timed out after {} minutes. Marking as FAILED.", webhook.getId(),
+                POLLING_TIMEOUT_MINUTES);
         try {
             EwayWebHookDTO dto = objectMapper.readValue(webhook.getPayload(), EwayWebHookDTO.class);
-            paymentLogService.updatePaymentLog(dto.getPaymentResponse().getOrderId(), PaymentStatusEnum.FAILED.name(), dto.getInstituteId());
+            paymentLogService.updatePaymentLog(dto.getPaymentResponse().getOrderId(), PaymentStatusEnum.FAILED.name(),
+                    dto.getInstituteId());
             String finalNote = "Transaction timed out after " + POLLING_TIMEOUT_MINUTES + " minutes of polling.";
             webHookService.updateWebHookStatus(webhook.getId(), WebHookStatus.FAILED, finalNote);
         } catch (Exception e) {
             log.error("Failed to process timeout for webhookId: {}", webhook.getId(), e);
-            webHookService.updateWebHookStatus(webhook.getId(), WebHookStatus.FAILED, "Webhook timed out, but failed to parse payload to update payment log.");
+            SentryLogger.logError(e, "Failed to process Eway webhook timeout", Map.of(
+                    "payment.vendor", "EWAY",
+                    "payment.webhook.id", webhook.getId(),
+                    "timeout.minutes", String.valueOf(POLLING_TIMEOUT_MINUTES),
+                    "operation", "handleEwayTimeout"));
+            webHookService.updateWebHookStatus(webhook.getId(), WebHookStatus.FAILED,
+                    "Webhook timed out, but failed to parse payload to update payment log.");
         }
     }
 
@@ -130,7 +148,13 @@ public class EwayPoolingService {
      */
     private void handleProcessingError(WebHook webhook, String errorMessage) {
         log.error("Cannot process webhookId {}: {}. Marking as FAILED.", webhook.getId(), errorMessage);
-        webHookService.updateWebHookStatus(webhook.getId(), WebHookStatus.RECEIVED,errorMessage);
+        SentryLogger.logError(new IllegalStateException(errorMessage),
+                "Eway webhook processing error", Map.of(
+                        "payment.vendor", "EWAY",
+                        "payment.webhook.id", webhook.getId(),
+                        "error.message", errorMessage,
+                        "operation", "handleEwayProcessingError"));
+        webHookService.updateWebHookStatus(webhook.getId(), WebHookStatus.RECEIVED, errorMessage);
     }
 
     /**
@@ -138,7 +162,8 @@ public class EwayPoolingService {
      * (This list may need to be expanded based on Eway documentation).
      */
     private boolean isDefinitiveFailure(String responseMessage) {
-        if (responseMessage == null) return false;
+        if (responseMessage == null)
+            return false;
         String msg = responseMessage.toLowerCase();
         return msg.contains("declined") || msg.contains("invalid") || msg.contains("expired");
     }

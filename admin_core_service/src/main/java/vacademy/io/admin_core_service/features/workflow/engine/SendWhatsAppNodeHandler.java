@@ -20,6 +20,7 @@ import vacademy.io.admin_core_service.features.workflow.service.WorkflowExecutio
 import vacademy.io.admin_core_service.features.workflow.enums.ExecutionLogStatus;
 import vacademy.io.admin_core_service.features.workflow.enums.NodeType;
 import vacademy.io.admin_core_service.features.workflow.dto.execution_log.WhatsAppExecutionDetails;
+import vacademy.io.common.logging.SentryLogger;
 
 import java.util.*;
 
@@ -253,6 +254,16 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
 
                     } catch (Exception e) {
                         log.error("Failed to build WhatsApp request for item {}: {}", item, e.getMessage());
+                        SentryLogger.SentryEventBuilder.error(e)
+                                .withMessage("Failed to build WhatsApp request for user")
+                                .withTag("workflow.execution.id",
+                                        workflowExecutionId != null ? workflowExecutionId : "unknown")
+                                .withTag("node.id", nodeId != null ? nodeId : "unknown")
+                                .withTag("node.type", "SEND_WHATSAPP")
+                                .withTag("template.name", templateName != null ? templateName : "unknown")
+                                .withTag("institute.id", instituteId)
+                                .withTag("operation", "buildWhatsAppRequest")
+                                .send();
                         results.add("ERROR: " + e.getMessage());
                         failedCount++; // Count build failures as failed
                         failedMessages.add(WhatsAppExecutionDetails.FailedMessage.builder()
@@ -282,6 +293,17 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
                             + " users.");
                 } catch (Exception e) {
                     log.error("Failed to send WhatsApp batch request: {}", e.getMessage(), e);
+                    SentryLogger.SentryEventBuilder.error(e)
+                            .withMessage("WhatsApp batch send failed")
+                            .withTag("workflow.execution.id",
+                                    workflowExecutionId != null ? workflowExecutionId : "unknown")
+                            .withTag("node.id", nodeId != null ? nodeId : "unknown")
+                            .withTag("node.type", "SEND_WHATSAPP")
+                            .withTag("batch.count", String.valueOf(finalBatchList.size()))
+                            .withTag("user.count", String.valueOf(processedCount))
+                            .withTag("institute.id", instituteId)
+                            .withTag("operation", "sendWhatsAppBatch")
+                            .send();
                     results.add("ERROR: Batch send failed - " + e.getMessage());
 
                     // Handle failures for all users in these batches
@@ -344,6 +366,13 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
 
         } catch (Exception e) {
             log.error("Error handling SendWhatsApp node", e);
+            SentryLogger.SentryEventBuilder.error(e)
+                    .withMessage("SendWhatsApp node execution failed")
+                    .withTag("workflow.execution.id", workflowExecutionId != null ? workflowExecutionId : "unknown")
+                    .withTag("node.id", nodeId != null ? nodeId : "unknown")
+                    .withTag("node.type", "SEND_WHATSAPP")
+                    .withTag("operation", "handleSendWhatsAppNode")
+                    .send();
             changes.put("status", "error");
             changes.put("error", e.getMessage());
 
@@ -383,6 +412,9 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
             }
         } catch (Exception e) {
             log.error("Error processing forEach operation for item: {}", itemContext.get("item"), e);
+            SentryLogger.logError(e, "WhatsApp forEach operation failed", Map.of(
+                    "operation", "processForEachOperation",
+                    "node.type", "SEND_WHATSAPP"));
         }
 
         return List.of();
@@ -428,6 +460,9 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
             });
         } catch (Exception e) {
             log.error("Failed to parse dynamic_parameters JSON: " + dynamicParametersJson, e);
+            SentryLogger.logError(e, "Failed to parse WhatsApp template parameters", Map.of(
+                    "operation", "parseDynamicParameters",
+                    "node.type", "SEND_WHATSAPP"));
             return new HashMap<>();
         }
     }

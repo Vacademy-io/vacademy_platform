@@ -29,11 +29,11 @@ spec:
                 name: myconfigmapv1.0
           resources:
             requests:
-              cpu: "150m"
-              memory: "250Mi"
-            limits:
               cpu: "200m"
-              memory: "400Mi"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "1024Mi"
           livenessProbe:
             httpGet:
               path: /auth-service/actuator/health

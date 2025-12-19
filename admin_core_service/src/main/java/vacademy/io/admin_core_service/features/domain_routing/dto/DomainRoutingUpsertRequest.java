@@ -23,6 +23,8 @@ public class DomainRoutingUpsertRequest {
     private Boolean allowGithubAuth;
     private Boolean allowEmailOtpAuth;
     private Boolean allowUsernamePasswordAuth;
+    private String playStoreAppLink;
+    private String appStoreAppLink;
+    private String windowsAppLink;
+    private String macAppLink;
 }
-
-

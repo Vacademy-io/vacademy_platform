@@ -25,9 +25,12 @@ public class DomainRoutingAdminService {
                 .redirect(request.getRedirect() == null ? null : request.getRedirect().trim())
                 .privacyPolicyUrl(request.getPrivacyPolicyUrl() == null ? null : request.getPrivacyPolicyUrl().trim())
                 .afterLoginRoute(request.getAfterLoginRoute() == null ? null : request.getAfterLoginRoute().trim())
-                .adminPortalAfterLogoutRoute(request.getAdminPortalAfterLogoutRoute() == null ? null : request.getAdminPortalAfterLogoutRoute().trim())
-                .homeIconClickRoute(request.getHomeIconClickRoute() == null ? null : request.getHomeIconClickRoute().trim())
-                .termsAndConditionUrl(request.getTermsAndConditionUrl() == null ? null : request.getTermsAndConditionUrl().trim())
+                .adminPortalAfterLogoutRoute(request.getAdminPortalAfterLogoutRoute() == null ? null
+                        : request.getAdminPortalAfterLogoutRoute().trim())
+                .homeIconClickRoute(
+                        request.getHomeIconClickRoute() == null ? null : request.getHomeIconClickRoute().trim())
+                .termsAndConditionUrl(
+                        request.getTermsAndConditionUrl() == null ? null : request.getTermsAndConditionUrl().trim())
                 .theme(request.getTheme() == null ? null : request.getTheme().trim())
                 .tabText(request.getTabText() == null ? null : request.getTabText().trim())
                 .allowSignup(request.getAllowSignup())
@@ -37,6 +40,10 @@ public class DomainRoutingAdminService {
                 .allowGithubAuth(request.getAllowGithubAuth())
                 .allowEmailOtpAuth(request.getAllowEmailOtpAuth())
                 .allowUsernamePasswordAuth(request.getAllowUsernamePasswordAuth())
+                .playStoreAppLink(request.getPlayStoreAppLink() == null ? null : request.getPlayStoreAppLink().trim())
+                .appStoreAppLink(request.getAppStoreAppLink() == null ? null : request.getAppStoreAppLink().trim())
+                .windowsAppLink(request.getWindowsAppLink() == null ? null : request.getWindowsAppLink().trim())
+                .macAppLink(request.getMacAppLink() == null ? null : request.getMacAppLink().trim())
                 .build();
         return repository.save(entity);
     }
@@ -52,12 +59,17 @@ public class DomainRoutingAdminService {
             existing.setSubdomain(request.getSubdomain().trim());
             existing.setRole(request.getRole().trim());
             existing.setInstituteId(request.getInstituteId().trim());
-            existing.setAfterLoginRoute(request.getAfterLoginRoute() == null ? null : request.getAfterLoginRoute().trim());
-            existing.setAdminPortalAfterLogoutRoute(request.getAdminPortalAfterLogoutRoute() == null ? null : request.getAdminPortalAfterLogoutRoute().trim());
-            existing.setHomeIconClickRoute(request.getHomeIconClickRoute() == null ? null : request.getHomeIconClickRoute().trim());
+            existing.setAfterLoginRoute(
+                    request.getAfterLoginRoute() == null ? null : request.getAfterLoginRoute().trim());
+            existing.setAdminPortalAfterLogoutRoute(request.getAdminPortalAfterLogoutRoute() == null ? null
+                    : request.getAdminPortalAfterLogoutRoute().trim());
+            existing.setHomeIconClickRoute(
+                    request.getHomeIconClickRoute() == null ? null : request.getHomeIconClickRoute().trim());
             existing.setRedirect(request.getRedirect() == null ? null : request.getRedirect().trim());
-            existing.setPrivacyPolicyUrl(request.getPrivacyPolicyUrl() == null ? null : request.getPrivacyPolicyUrl().trim());
-            existing.setTermsAndConditionUrl(request.getTermsAndConditionUrl() == null ? null : request.getTermsAndConditionUrl().trim());
+            existing.setPrivacyPolicyUrl(
+                    request.getPrivacyPolicyUrl() == null ? null : request.getPrivacyPolicyUrl().trim());
+            existing.setTermsAndConditionUrl(
+                    request.getTermsAndConditionUrl() == null ? null : request.getTermsAndConditionUrl().trim());
             existing.setTheme(request.getTheme() == null ? null : request.getTheme().trim());
             existing.setTabText(request.getTabText() == null ? null : request.getTabText().trim());
             existing.setAllowSignup(request.getAllowSignup());
@@ -67,6 +79,12 @@ public class DomainRoutingAdminService {
             existing.setAllowGithubAuth(request.getAllowGithubAuth());
             existing.setAllowEmailOtpAuth(request.getAllowEmailOtpAuth());
             existing.setAllowUsernamePasswordAuth(request.getAllowUsernamePasswordAuth());
+            existing.setPlayStoreAppLink(
+                    request.getPlayStoreAppLink() == null ? null : request.getPlayStoreAppLink().trim());
+            existing.setAppStoreAppLink(
+                    request.getAppStoreAppLink() == null ? null : request.getAppStoreAppLink().trim());
+            existing.setWindowsAppLink(request.getWindowsAppLink() == null ? null : request.getWindowsAppLink().trim());
+            existing.setMacAppLink(request.getMacAppLink() == null ? null : request.getMacAppLink().trim());
             return repository.save(existing);
         });
     }
@@ -82,5 +100,3 @@ public class DomainRoutingAdminService {
         }
     }
 }
-
-

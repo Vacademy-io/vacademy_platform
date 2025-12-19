@@ -46,14 +46,18 @@ public class SubjectService {
     /**
      * Adds a new subject to the system.
      *
-     * @param subjectDTO                      The DTO containing subject information.
-     * @param commaSeparatedPackageSessionIds A comma-separated list of package session IDs.
+     * @param subjectDTO                      The DTO containing subject
+     *                                        information.
+     * @param commaSeparatedPackageSessionIds A comma-separated list of package
+     *                                        session IDs.
      * @param user                            The user who is creating the subject.
      * @return The created subject DTO.
-     * @throws VacademyException If there are any validation errors or if a required field is missing.
+     * @throws VacademyException If there are any validation errors or if a required
+     *                           field is missing.
      */
     @Transactional
-    public SubjectDTO addSubject(SubjectDTO subjectDTO, String commaSeparatedPackageSessionIds, CustomUserDetails user) {
+    public SubjectDTO addSubject(SubjectDTO subjectDTO, String commaSeparatedPackageSessionIds,
+            CustomUserDetails user) {
         if (Objects.isNull(commaSeparatedPackageSessionIds)) {
             throw new VacademyException("Package Session Id cannot be null");
         }
@@ -69,20 +73,23 @@ public class SubjectService {
         String[] packageSessionIds = getPackageSessionIds(commaSeparatedPackageSessionIds);
         for (String packageSessionId : packageSessionIds) {
             try {
-                Optional<Subject> optionalSubject = getSubjectByNameAndPackageSessionId(subjectDTO.getSubjectName(), packageSessionId);
+                Optional<Subject> optionalSubject = getSubjectByNameAndPackageSessionId(subjectDTO.getSubjectName(),
+                        packageSessionId);
                 if (optionalSubject.isPresent()) {
                     throw new VacademyException("Subject already exists");
                 }
                 PackageSession packageSession = packageSessionRepository.findById(packageSessionId)
                         .orElseThrow(() -> new VacademyException("Package Session not found"));
-                subjectPackageSessionRepository.save(new SubjectPackageSession(savedSubject, packageSession, subjectDTO.getSubjectOrder()));
+                subjectPackageSessionRepository
+                        .save(new SubjectPackageSession(savedSubject, packageSession, subjectDTO.getSubjectOrder()));
                 // Create and save the relationship between the subject and the package session.
             } catch (Exception e) {
                 log.error("Error adding subject: {}", e.getMessage());
             }
         }
-        for(String packageSessionId:packageSessionIds){
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SUBJECT",null,null,null,null,subject.getId(),packageSessionId);
+        for (String packageSessionId : packageSessionIds) {
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SUBJECT", null, null, null, null,
+                    subject.getId(), packageSessionId);
         }
         return subjectDTO;
     }
@@ -98,7 +105,8 @@ public class SubjectService {
      * @param subjectId  The ID of the subject to update.
      * @param user       The user who is updating the subject.
      * @return The updated subject DTO.
-     * @throws VacademyException If the subject ID is null or the subject is not found.
+     * @throws VacademyException If the subject ID is null or the subject is not
+     *                           found.
      */
     public SubjectDTO updateSubject(SubjectDTO subjectDTO, String subjectId, CustomUserDetails user) {
         if (Objects.isNull(subjectId)) {
@@ -119,10 +127,11 @@ public class SubjectService {
      *
      * @param user The user who is deleting the subject.
      * @return A message indicating successful deletion.
-     * @throws VacademyException If the subject ID is null or the subject is not found.
+     * @throws VacademyException If the subject ID is null or the subject is not
+     *                           found.
      */
     @Transactional
-    public String deleteSubject(List<String> subjectIds,String packageSessionId, CustomUserDetails user) {
+    public String deleteSubject(List<String> subjectIds, String packageSessionId, CustomUserDetails user) {
         if (subjectIds == null || subjectIds.isEmpty()) {
             throw new VacademyException("Subject IDs cannot be null or empty");
         }
@@ -133,12 +142,12 @@ public class SubjectService {
 
         subjectRepository.saveAll(subjects);
         chapterPackageSessionMappingRepository.softDeleteChapterMappingsWithoutActiveSubjects(subjectIds);
-        for (String subjectId:subjectIds){
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SUBJECT",null,null,null,null,subjectId,packageSessionId);
+        for (String subjectId : subjectIds) {
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SUBJECT", null, null, null, null, subjectId,
+                    packageSessionId);
         }
         return "Subjects deleted successfully";
     }
-
 
     void validateSubject(SubjectDTO subjectDTO) {
         if (subjectDTO == null) {
@@ -185,16 +194,17 @@ public class SubjectService {
         // Fetch all mappings once
         List<SubjectPackageSession> subjectPackageSessions = subjectPackageSessionRepository
                 .findBySubjectIdInAndPackageSessionIdIn(
-                        updateSubjectOrderDTOS.stream().map(UpdateSubjectOrderDTO::getSubjectId).collect(Collectors.toList()),
-                        updateSubjectOrderDTOS.stream().map(UpdateSubjectOrderDTO::getPackageSessionId).collect(Collectors.toList())
-                );
+                        updateSubjectOrderDTOS.stream().map(UpdateSubjectOrderDTO::getSubjectId)
+                                .collect(Collectors.toList()),
+                        updateSubjectOrderDTOS.stream().map(UpdateSubjectOrderDTO::getPackageSessionId)
+                                .collect(Collectors.toList()));
 
-        // Create a map of the SubjectPackageSession based on the subjectId and packageSessionId
+        // Create a map of the SubjectPackageSession based on the subjectId and
+        // packageSessionId
         Map<String, SubjectPackageSession> mappingMap = subjectPackageSessions.stream()
                 .collect(Collectors.toMap(
                         session -> session.getSubject().getId() + "-" + session.getPackageSession().getId(),
-                        session -> session
-                ));
+                        session -> session));
 
         // Update the subject order using the map
         updateSubjectOrderDTOS.forEach(updateDTO -> {
@@ -222,7 +232,8 @@ public class SubjectService {
     @Transactional
     public List<Module> processSubjectsAndModules(List<String> packageSessionIds, Subject subject, Module module) {
         List<SubjectPackageSession> existingMappings = getExistingMappings(packageSessionIds, subject);
-        List<String> packageSessionsWithoutSubject = getPackageSessionsWithoutSubject(packageSessionIds, existingMappings);
+        List<String> packageSessionsWithoutSubject = getPackageSessionsWithoutSubject(packageSessionIds,
+                existingMappings);
         List<Module> createdModules = createSubjectsAndModules(packageSessionsWithoutSubject, subject, module);
         List<Module> ensuredModules = ensureModulesExistForSubjects(existingMappings, module);
 
@@ -232,7 +243,8 @@ public class SubjectService {
         return allModules;
     }
 
-    private List<Module> createSubjectsAndModules(List<String> packageSessionsWithoutSubject, Subject subject, Module module) {
+    private List<Module> createSubjectsAndModules(List<String> packageSessionsWithoutSubject, Subject subject,
+            Module module) {
         List<Module> createdModules = new ArrayList<>();
         for (String packageSessionId : packageSessionsWithoutSubject) {
             Optional<PackageSession> optionalPackageSession = packageSessionRepository.findById(packageSessionId);
@@ -257,31 +269,32 @@ public class SubjectService {
         return createdModules;
     }
 
-
     private List<SubjectPackageSession> getExistingMappings(List<String> packageSessionIds, Subject subject) {
         return subjectPackageSessionRepository.findBySubjectNameAndPackageSessionIds(
-                subject.getSubjectName(), packageSessionIds
-        );
+                subject.getSubjectName(), packageSessionIds);
     }
 
-    private List<String> getPackageSessionsWithoutSubject(List<String> packageSessionIds, List<SubjectPackageSession> existingMappings) {
+    private List<String> getPackageSessionsWithoutSubject(List<String> packageSessionIds,
+            List<SubjectPackageSession> existingMappings) {
         return packageSessionIds.stream()
-                .filter(psId -> existingMappings.stream().noneMatch(sps -> sps.getPackageSession().getId().equals(psId)))
+                .filter(psId -> existingMappings.stream()
+                        .noneMatch(sps -> sps.getPackageSession().getId().equals(psId)))
                 .collect(Collectors.toList());
     }
 
-
-    private List<Module> ensureModulesExistForSubjects(List<SubjectPackageSession> subjectPackageSessions, Module module) {
+    private List<Module> ensureModulesExistForSubjects(List<SubjectPackageSession> subjectPackageSessions,
+            Module module) {
         List<Module> ensuredModules = new ArrayList<>();
         for (SubjectPackageSession subjectPackageSession : subjectPackageSessions) {
-            Optional<SubjectModuleMapping> existingModule = subjectModuleMappingRepository.findBySubjectIdAndModuleName(
+            List<SubjectModuleMapping> existingModules = subjectModuleMappingRepository.findAllBySubjectIdAndModuleName(
                     subjectPackageSession.getSubject().getId(), module.getModuleName());
-            if (existingModule.isEmpty()) {
+            if (existingModules.isEmpty()) {
                 Module newModule = createAndSaveModule(module);
                 createSubjectModuleMapping(subjectPackageSession.getSubject(), newModule);
                 ensuredModules.add(newModule);
             } else {
-                ensuredModules.add(existingModule.get().getModule());
+                // Use the first matching module if duplicates exist
+                ensuredModules.add(existingModules.get(0).getModule());
             }
         }
 
@@ -305,20 +318,24 @@ public class SubjectService {
     }
 
     @Transactional
-    public boolean copySubjectsFromExistingPackageSessionMapping(PackageSession oldPackageSession, PackageSession newPackageSession) {
+    public boolean copySubjectsFromExistingPackageSessionMapping(PackageSession oldPackageSession,
+            PackageSession newPackageSession) {
         if (Objects.isNull(oldPackageSession) || Objects.isNull(newPackageSession)) {
             return false;
         }
 
-        List<Subject> existingSubjects = subjectRepository.findDistinctSubjectsByPackageSessionId(oldPackageSession.getId());
+        List<Subject> existingSubjects = subjectRepository
+                .findDistinctSubjectsByPackageSessionId(oldPackageSession.getId());
         List<Subject> newSubjects = new ArrayList<>();
         copySubjects(existingSubjects, newSubjects);
-        List<SubjectPackageSession> subjectPackageSessions = createSubjectPackageSessions(newSubjects, newPackageSession);
+        List<SubjectPackageSession> subjectPackageSessions = createSubjectPackageSessions(newSubjects,
+                newPackageSession);
 
         subjectRepository.saveAll(newSubjects);
         subjectPackageSessionRepository.saveAll(subjectPackageSessions);
         for (int i = 0; i < newSubjects.size(); i++) {
-            moduleManager.copyModulesOfSubject(existingSubjects.get(i), newSubjects.get(i), oldPackageSession, newPackageSession);
+            moduleManager.copyModulesOfSubject(existingSubjects.get(i), newSubjects.get(i), oldPackageSession,
+                    newPackageSession);
         }
         return true;
     }
@@ -335,7 +352,8 @@ public class SubjectService {
         }
     }
 
-    private List<SubjectPackageSession> createSubjectPackageSessions(List<Subject> subjects, PackageSession packageSession) {
+    private List<SubjectPackageSession> createSubjectPackageSessions(List<Subject> subjects,
+            PackageSession packageSession) {
         List<SubjectPackageSession> subjectPackageSessions = new ArrayList<>();
         for (Subject subject : subjects) {
             SubjectPackageSession subjectPackageSession = new SubjectPackageSession();
@@ -346,16 +364,17 @@ public class SubjectService {
         return subjectPackageSessions;
     }
 
-    public List<Subject> getAllSubjectsForFaculty(String userId, String packageSessionId){
-        return subjectRepository.findSubjectForFaculty(userId,packageSessionId);
+    public List<Subject> getAllSubjectsForFaculty(String userId, String packageSessionId) {
+        return subjectRepository.findSubjectForFaculty(userId, packageSessionId);
     }
 
     public void addDefaultSubject(String commaSeparatedPackageSessionIds) {
         String[] packageSessionIds = commaSeparatedPackageSessionIds.split(",");
-        List<SubjectPackageSession>subjectPackageSessions = new ArrayList<>();
+        List<SubjectPackageSession> subjectPackageSessions = new ArrayList<>();
         Subject subject = subjectRepository.findById("DEFAULT").get();
         for (String packageSessionId : packageSessionIds) {
-            Optional<SubjectPackageSession>optionalSubjectPackageSession = subjectPackageSessionRepository.findBySubjectIdAndPackageSessionId(subject.getId(), packageSessionId);
+            Optional<SubjectPackageSession> optionalSubjectPackageSession = subjectPackageSessionRepository
+                    .findBySubjectIdAndPackageSessionId(subject.getId(), packageSessionId);
             if (optionalSubjectPackageSession.isEmpty()) {
                 PackageSession packageSession = packageSessionRepository.findById(packageSessionId).get();
                 SubjectPackageSession newMapping = new SubjectPackageSession(subject, packageSession, null);
@@ -366,7 +385,8 @@ public class SubjectService {
     }
 
     @Transactional
-    public String addRequestSubject(SubjectDTO subjectDTO, String commaSeparatedPackageSessionIds, CustomUserDetails user) {
+    public String addRequestSubject(SubjectDTO subjectDTO, String commaSeparatedPackageSessionIds,
+            CustomUserDetails user) {
         if (Objects.isNull(commaSeparatedPackageSessionIds)) {
             throw new VacademyException("Package Session Id cannot be null");
         }
@@ -382,13 +402,15 @@ public class SubjectService {
         String[] packageSessionIds = getPackageSessionIds(commaSeparatedPackageSessionIds);
         for (String packageSessionId : packageSessionIds) {
             try {
-                Optional<Subject> optionalSubject = getSubjectByNameAndPackageSessionId(subjectDTO.getSubjectName(), packageSessionId);
+                Optional<Subject> optionalSubject = getSubjectByNameAndPackageSessionId(subjectDTO.getSubjectName(),
+                        packageSessionId);
                 if (optionalSubject.isPresent()) {
                     throw new VacademyException("Subject already exists");
                 }
                 PackageSession packageSession = packageSessionRepository.findById(packageSessionId)
-                    .orElseThrow(() -> new VacademyException("Package Session not found"));
-                subjectPackageSessionRepository.save(new SubjectPackageSession(savedSubject, packageSession, subjectDTO.getSubjectOrder()));
+                        .orElseThrow(() -> new VacademyException("Package Session not found"));
+                subjectPackageSessionRepository
+                        .save(new SubjectPackageSession(savedSubject, packageSession, subjectDTO.getSubjectOrder()));
                 // Create and save the relationship between the subject and the package session.
             } catch (Exception e) {
                 log.error("Error adding subject: {}", e.getMessage());
@@ -396,6 +418,5 @@ public class SubjectService {
         }
         return subjectDTO.getId();
     }
-
 
 }

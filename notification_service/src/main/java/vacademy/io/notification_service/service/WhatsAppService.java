@@ -13,7 +13,10 @@ import vacademy.io.notification_service.institute.InstituteInfoDTO;
 import vacademy.io.notification_service.institute.InstituteInternalService;
 import vacademy.io.notification_service.features.external_communication_log.service.ExternalCommunicationLogService;
 import vacademy.io.notification_service.features.external_communication_log.model.ExternalCommunicationSource;
+import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
+import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -24,6 +27,7 @@ public class WhatsAppService {
     private final ObjectMapper objectMapper;
     private final WatiService watiService;
     private final ExternalCommunicationLogService externalCommunicationLogService;
+    private final NotificationLogRepository notificationLogRepository;
 
     String appId = null;
     String accessToken = null;
@@ -32,13 +36,15 @@ public class WhatsAppService {
 
     @Autowired
     public WhatsAppService(WatiService watiService, InstituteInternalService internalService,
-            ExternalCommunicationLogService externalCommunicationLogService) {
+            ExternalCommunicationLogService externalCommunicationLogService,
+            NotificationLogRepository notificationLogRepository) {
         this.internalService = internalService;
         this.watiService = watiService;
         this.restTemplate = new RestTemplate();
         this.objectMapper = new ObjectMapper();
         this.objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
         this.externalCommunicationLogService = externalCommunicationLogService;
+        this.notificationLogRepository = notificationLogRepository;
     }
 
     // Helper method to create body component
@@ -204,13 +210,18 @@ public class WhatsAppService {
             log.info("Sending WhatsApp messages via WATI: template={}, recipients={}",
                     templateName, bodyParams.size());
 
-            return watiService.sendTemplateMessages(
+            List<Map<String, Boolean>> results = watiService.sendTemplateMessages(
                     templateName,
                     bodyParams,
                     languageCode != null ? languageCode : "en",
                     apiKey,
                     apiUrl,
                     "Notification - " + templateName);
+
+            // Log each sent message to notification_log table
+            logWhatsAppMessages(templateName, bodyParams, null, languageCode, null, "WATI", results);
+
+            return results;
 
         } catch (Exception e) {
             log.error("Error sending via WATI: {}", e.getMessage(), e);
@@ -257,7 +268,7 @@ public class WhatsAppService {
                         (existing, replacement) -> existing // Keep the first entry on duplicates
                 ));
 
-        return uniqueUsers.entrySet().stream()
+        List<Map<String, Boolean>> results = uniqueUsers.entrySet().stream()
                 .map(entry -> {
                     String phoneNumber = entry.getKey();
                     Map<String, String> params = entry.getValue();
@@ -305,6 +316,11 @@ public class WhatsAppService {
                     }
                 })
                 .collect(Collectors.toList());
+
+        // Log each sent message to notification_log table
+        logWhatsAppMessages(templateName, bodyParams, headerParams, languageCode, headerType, "META", results);
+
+        return results;
     }
 
     public ResponseEntity<String> sendTemplateMessage(String toNumber, String templateName,
@@ -407,5 +423,81 @@ public class WhatsAppService {
             String id,
 
             String filename) {
+    }
+
+    /**
+     * Log WhatsApp messages to notification_log table
+     */
+    private void logWhatsAppMessages(String templateName,
+                                    List<Map<String, Map<String, String>>> bodyParams,
+                                    Map<String, Map<String, String>> headerParams,
+                                    String languageCode,
+                                    String headerType,
+                                    String provider,
+                                    List<Map<String, Boolean>> results) {
+        try {
+            List<NotificationLog> logs = new ArrayList<>();
+            
+            for (int i = 0; i < bodyParams.size() && i < results.size(); i++) {
+                Map<String, Map<String, String>> userDetail = bodyParams.get(i);
+                Map<String, Boolean> result = results.get(i);
+                
+                // Extract phone number (first key in the map)
+                String phoneNumber = userDetail.keySet().iterator().next();
+                Map<String, String> params = userDetail.get(phoneNumber);
+                
+                // Extract userId if present in params
+                String userId = params.getOrDefault("userId", params.getOrDefault("user_id", null));
+                
+                // Get send status
+                Boolean sendSuccess = result.get(phoneNumber);
+                
+                // Build payload JSON
+                Map<String, Object> payload = new HashMap<>();
+                payload.put("templateName", templateName);
+                payload.put("phoneNumber", phoneNumber);
+                payload.put("bodyParams", params);
+                payload.put("languageCode", languageCode);
+                payload.put("headerType", headerType);
+                payload.put("provider", provider);
+                if (headerParams != null && headerParams.containsKey(phoneNumber)) {
+                    payload.put("headerParams", headerParams.get(phoneNumber));
+                }
+                
+                String payloadJson;
+                try {
+                    payloadJson = objectMapper.writeValueAsString(payload);
+                } catch (Exception e) {
+                    payloadJson = payload.toString();
+                }
+                
+                // Build body message for display
+                String bodyMessage = String.format("WhatsApp Template: %s | Provider: %s | Status: %s | Params: %s",
+                        templateName, provider, sendSuccess ? "SUCCESS" : "FAILED", params);
+                
+                // Create notification log
+                NotificationLog log = new NotificationLog();
+                log.setNotificationType("WHATSAPP");
+                log.setChannelId(phoneNumber);
+                log.setBody(bodyMessage);
+                log.setSource("whatsapp-service");
+                log.setSourceId(templateName);
+                log.setUserId(userId);
+                log.setNotificationDate(LocalDateTime.now());
+                log.setMessagePayload(payloadJson);
+                
+                logs.add(log);
+            }
+            
+            // Batch save all logs
+            if (!logs.isEmpty()) {
+                notificationLogRepository.saveAll(logs);
+                log.info("Logged {} WhatsApp messages to notification_log table", logs.size());
+            }
+            
+        } catch (Exception e) {
+            log.error("Failed to log WhatsApp messages to notification_log: {}", e.getMessage(), e);
+            // Don't throw - logging failure shouldn't break the flow
+        }
     }
 }

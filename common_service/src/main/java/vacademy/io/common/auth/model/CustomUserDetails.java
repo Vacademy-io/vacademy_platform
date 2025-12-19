@@ -14,12 +14,20 @@ import java.util.List;
 
 public class CustomUserDetails extends User implements UserDetails {
 
-    private final String username;
-    private final String password;
+    private String username;
+    private String password;
 
     @Getter
-    private final String userId;
+    private String userId;
     Collection<? extends GrantedAuthority> authorities;
+
+    public CustomUserDetails() {
+        super();
+        this.username = null;
+        this.password = null;
+        this.userId = null;
+        this.authorities = new ArrayList<>();
+    }
 
     /**
      * Constructor for CustomUserDetails, creating an instance from a User object.

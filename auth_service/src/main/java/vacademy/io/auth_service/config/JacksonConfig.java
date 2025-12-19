@@ -20,14 +20,11 @@ public class JacksonConfig {
      */
     @Bean
     @Primary
-    public ObjectMapper objectMapper() {
-        ObjectMapper objectMapper = new ObjectMapper();
+    public ObjectMapper objectMapper(Jackson2ObjectMapperBuilder builder) {
+        ObjectMapper objectMapper = builder.build();
 
         // Register JavaTimeModule for Java 8 date/time support
         objectMapper.registerModule(new JavaTimeModule());
-
-        // Find and register all other modules (like Jdk8Module, ParameterNamesModule)
-        objectMapper.findAndRegisterModules();
 
         // Disable writing dates as timestamps (use ISO-8601 format instead)
         objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);

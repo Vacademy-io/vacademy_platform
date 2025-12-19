@@ -9,13 +9,3 @@ data:
   CUSTOM_HEADER: 'Customized with a configmap!'
   REDIS_HOST: 'redis'
   REDIS_PORT: '6379'
-  # Internal service URLs for inter-service communication
-  # Using Kubernetes internal DNS for optimal performance (no external routing)
-  AUTH_SERVER_BASE_URL: 'http://auth-service:8071'
-  ADMIN_CORE_SERVICE_BASE_URL: 'http://admin-core-service:8072'
-  COMMUNITY_SERVICE_BASE_URL: 'http://community-service:8073'
-  ASSESSMENT_SERVER_BASE_URL: 'http://assessment-service:8074'
-  MEDIA_SERVER_BASE_URL: 'http://media-service:8075'
-  MEDIA_SERVICE_BASE_URL: 'http://media-service:8075'
-  NOTIFICATION_SERVER_BASE_URL: 'http://notification-service:8076'
-  AI_SERVICE_BASE_URL: 'http://ai-service:8077'

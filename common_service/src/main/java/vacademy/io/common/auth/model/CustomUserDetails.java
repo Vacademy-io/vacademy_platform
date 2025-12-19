@@ -1,8 +1,5 @@
 package vacademy.io.common.auth.model;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -15,7 +12,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-@JsonIgnoreProperties(ignoreUnknown = true)
 public class CustomUserDetails extends User implements UserDetails {
 
     private final String username;
@@ -24,18 +20,6 @@ public class CustomUserDetails extends User implements UserDetails {
     @Getter
     private final String userId;
     Collection<? extends GrantedAuthority> authorities;
-
-    /**
-     * Default constructor for Jackson deserialization and frameworks.
-     * DO NOT USE directly in application code - use other constructors instead.
-     */
-    @Deprecated
-    protected CustomUserDetails() {
-        this.username = null;
-        this.password = null;
-        this.userId = null;
-        this.authorities = new ArrayList<>();
-    }
 
     /**
      * Constructor for CustomUserDetails, creating an instance from a User object.

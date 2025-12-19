@@ -30,9 +30,6 @@ public class DailyActivityAggregationService {
     @Autowired
     private DailyUserActivitySummaryRepository dailySummaryRepository;
 
-    @Autowired
-    private AnalyticsCacheEvictionService cacheEvictionService;
-
     /**
      * Scheduled task to aggregate yesterday's activity data
      * Runs daily at 1:00 AM
@@ -45,8 +42,6 @@ public class DailyActivityAggregationService {
 
         try {
             aggregateActivityForDate(yesterday);
-            // Evict all analytics caches after aggregation
-            cacheEvictionService.evictAllAnalyticsCaches();
             log.info("Successfully completed daily activity aggregation for date: {}", yesterday);
         } catch (Exception e) {
             log.error("Error during daily activity aggregation for date: {}", yesterday, e);
@@ -198,10 +193,6 @@ public class DailyActivityAggregationService {
         }
 
         dailySummaryRepository.save(summary);
-
-        // Evict analytics caches for this institute after updating summary
-        cacheEvictionService.evictInstituteAnalyticsCache(instituteId);
-
         log.debug("Updated daily summary for user {} in institute {} for date {}", userId, instituteId, date);
     }
 

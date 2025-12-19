@@ -10,12 +10,9 @@ import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
 import vacademy.io.auth_service.feature.auth.manager.LearnerAuthManager;
 import vacademy.io.auth_service.feature.auth.service.UserDetailsCacheService;
-import vacademy.io.common.auth.dto.UserServiceDTO;
 import vacademy.io.common.auth.dto.learner.UserWithJwtDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.service.UserActivityTrackingService;
-
-import java.util.stream.Collectors;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -33,7 +30,7 @@ public class AuthInternalController {
     private LearnerAuthManager learnerAuthManager;
 
     @GetMapping("/user")
-    public ResponseEntity<UserServiceDTO> getUserDetails(@RequestParam String userName,
+    public ResponseEntity<CustomUserDetails> getUserDetails(@RequestParam String userName,
             @RequestParam(required = false) String serviceName,
             @RequestParam(required = false) String sessionToken,
             HttpServletRequest request) {
@@ -82,11 +79,7 @@ public class AuthInternalController {
                     userAgent);
         }
 
-        // Convert CustomUserDetails to UserServiceDTO to avoid Redis serialization
-        // issues
-        UserServiceDTO userServiceDTO = convertToUserServiceDTO(customUserDetails);
-
-        return ResponseEntity.ok(userServiceDTO);
+        return ResponseEntity.ok(customUserDetails);
     }
 
     private String getClientIpAddress(HttpServletRequest request) {
@@ -101,27 +94,6 @@ public class AuthInternalController {
         }
 
         return request.getRemoteAddr();
-    }
-
-    /**
-     * Convert CustomUserDetails to UserServiceDTO to avoid Redis serialization
-     * metadata
-     * leaking into HTTP responses
-     */
-    private UserServiceDTO convertToUserServiceDTO(CustomUserDetails customUserDetails) {
-        UserServiceDTO dto = new UserServiceDTO();
-        dto.setUsername(customUserDetails.getUsername());
-        dto.setUserId(customUserDetails.getUserId());
-        dto.setEnabled(customUserDetails.isEnabled());
-
-        // Convert authorities to DTO format
-        if (customUserDetails.getAuthorities() != null) {
-            dto.setAuthorities(customUserDetails.getAuthorities().stream()
-                    .map(authority -> new UserServiceDTO.Authority(authority.getAuthority()))
-                    .collect(Collectors.toList()));
-        }
-
-        return dto;
     }
 
     @GetMapping("/generate-token-for-learner")

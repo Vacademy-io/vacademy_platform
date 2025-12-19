@@ -4,7 +4,6 @@
 AI video generation system integrated into the `ai_service` API. Generates educational videos through multiple stages: script → TTS → audio alignment → HTML timeline → rendering.
 
 ## Architecture
-
 ### Database
 - **Table**: `ai_gen_video` (in `admin-core-service` database)
 - **Purpose**: Tracks video generation progress, file IDs, and S3 URLs

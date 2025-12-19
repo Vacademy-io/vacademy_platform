@@ -9,6 +9,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.ActivityLog;
+import vacademy.io.admin_core_service.features.learner_tracking.repository.ActivityLogProcessingProjection;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.ActivityLogRepository;
 
 import java.time.LocalDateTime;
@@ -57,13 +58,9 @@ public class ActivityLogProcessorService {
                 log.info("[LLM-Analytics-Scheduler] ===== SCHEDULER RUN STARTED at {} =====", startTime);
 
                 try {
-                        List<ActivityLog> rawLogs = activityLogRepository.findByStatusInOrderByCreatedAtAsc(
-                                        Arrays.asList(STATUS_RAW, STATUS_FAILED));
-
-                        // Limit to 20 entries per scheduler run to avoid overwhelming the system
-                        if (rawLogs.size() > ENTRIES_PER_RUN) {
-                                rawLogs = rawLogs.subList(0, ENTRIES_PER_RUN);
-                        }
+                        List<ActivityLogProcessingProjection> rawLogs = activityLogRepository
+                                        .findProcessingDataByStatusWithLimit(
+                                                        Arrays.asList(STATUS_RAW, STATUS_FAILED), ENTRIES_PER_RUN);
 
                         if (rawLogs.isEmpty()) {
                                 log.info("[LLM-Analytics-Scheduler] No raw activity logs to process");
@@ -78,7 +75,7 @@ public class ActivityLogProcessorService {
                         // Process in batches to avoid overwhelming the system
                         for (int i = 0; i < rawLogs.size(); i += BATCH_SIZE) {
                                 int end = Math.min(i + BATCH_SIZE, rawLogs.size());
-                                List<ActivityLog> batch = rawLogs.subList(i, end);
+                                List<ActivityLogProcessingProjection> batch = rawLogs.subList(i, end);
 
                                 log.info("[LLM-Analytics-Scheduler] Processing batch {}/{}", (i / BATCH_SIZE) + 1,
                                                 (rawLogs.size() + BATCH_SIZE - 1) / BATCH_SIZE);
@@ -101,17 +98,17 @@ public class ActivityLogProcessorService {
                 }
         }
 
-        private int[] processBatch(List<ActivityLog> batch) {
+        private int[] processBatch(List<ActivityLogProcessingProjection> batch) {
                 int processed = 0;
                 int failed = 0;
-                for (ActivityLog activityLog : batch) {
+                for (ActivityLogProcessingProjection activityLog : batch) {
                         try {
                                 processActivityLog(activityLog);
                                 processed++;
                         } catch (Exception e) {
-                                log.error("[LLM-Analytics-Scheduler] Error processing activity log ID: {}",
+                                log.error("[LLM-Analytics-Processing] Error processing activity log ID: {}",
                                                 activityLog.getId(), e);
-                                markAsFailed(activityLog, e.getMessage());
+                                markAsFailed(activityLog.getId(), e.getMessage());
                                 failed++;
                         }
                 }
@@ -123,7 +120,7 @@ public class ActivityLogProcessorService {
          */
         @Async
         @Transactional
-        public void processActivityLog(ActivityLog activityLog) {
+        public void processActivityLog(ActivityLogProcessingProjection activityLog) {
                 log.info("[LLM-Analytics-Processing] Processing activity log ID: {}, Type: {}",
                                 activityLog.getId(), activityLog.getSourceType());
 
@@ -146,12 +143,9 @@ public class ActivityLogProcessorService {
                         // Validate the insights structure
                         validateInsights(insights);
 
-                        // Convert to JSON string and save
+                        // Convert to JSON string and update
                         String processedJson = objectMapper.writeValueAsString(insights);
-                        activityLog.setProcessedJson(processedJson);
-                        activityLog.setStatus(STATUS_PROCESSED);
-
-                        activityLogRepository.save(activityLog);
+                        activityLogRepository.updateProcessedData(activityLog.getId(), processedJson, STATUS_PROCESSED);
 
                         log.info("[LLM-Analytics-Processing] Successfully processed activity log ID: {}",
                                         activityLog.getId());
@@ -159,7 +153,7 @@ public class ActivityLogProcessorService {
                 } catch (Exception e) {
                         log.error("[LLM-Analytics-Processing] Failed to process activity log ID: {}",
                                         activityLog.getId(), e);
-                        markAsFailed(activityLog, e.getMessage());
+                        markAsFailed(activityLog.getId(), e.getMessage());
                         throw new RuntimeException("Failed to process activity log", e);
                 }
         }
@@ -187,20 +181,18 @@ public class ActivityLogProcessorService {
         }
 
         @Transactional
-        protected void markAsFailed(ActivityLog activityLog, String errorMessage) {
+        protected void markAsFailed(String activityLogId, String errorMessage) {
                 try {
-                        activityLog.setStatus(STATUS_FAILED);
                         // Store error info in processed_json for debugging
                         String errorJson = String.format("{\"error\": \"%s\", \"timestamp\": \"%s\"}",
                                         errorMessage.replace("\"", "\\\""),
                                         java.time.Instant.now().toString());
-                        activityLog.setProcessedJson(errorJson);
-                        activityLogRepository.save(activityLog);
+                        activityLogRepository.updateProcessedData(activityLogId, errorJson, STATUS_FAILED);
 
-                        log.info("[LLM-Analytics-Processing] Marked activity log {} as failed", activityLog.getId());
+                        log.info("[LLM-Analytics-Processing] Marked activity log {} as failed", activityLogId);
                 } catch (Exception e) {
                         log.error("[LLM-Analytics-Processing] Failed to mark activity log {} as failed",
-                                        activityLog.getId(), e);
+                                        activityLogId, e);
                 }
         }
 
@@ -226,7 +218,41 @@ public class ActivityLogProcessorService {
                 activityLog.setStatus(STATUS_RAW);
                 activityLogRepository.save(activityLog);
 
-                processActivityLog(activityLog);
+                // Create a projection-like object for processing
+                ActivityLogProcessingProjection projection = new ActivityLogProcessingProjection() {
+                        @Override
+                        public String getId() {
+                                return activityLog.getId();
+                        }
+
+                        @Override
+                        public String getSourceType() {
+                                return activityLog.getSourceType();
+                        }
+
+                        @Override
+                        public String getRawJson() {
+                                return activityLog.getRawJson();
+                        }
+
+                        @Override
+                        public String getProcessedJson() {
+                                return activityLog.getProcessedJson();
+                        }
+
+                        @Override
+                        public String getStatus() {
+                                return activityLog.getStatus();
+                        }
+
+                        @Override
+                        public LocalDateTime getCreatedAt() {
+                                return activityLog.getCreatedAt() != null ? activityLog.getCreatedAt().toLocalDateTime()
+                                                : null;
+                        }
+                };
+
+                processActivityLog(projection);
         }
 
         /**

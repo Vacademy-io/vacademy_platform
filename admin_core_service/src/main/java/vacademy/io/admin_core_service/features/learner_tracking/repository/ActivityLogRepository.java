@@ -5,6 +5,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.core.parameters.P;
 import vacademy.io.admin_core_service.features.learner_reports.dto.ChapterSlideProgressProjection;
 import vacademy.io.admin_core_service.features.learner_reports.dto.LearnerActivityDataProjection;
@@ -12,6 +14,7 @@ import vacademy.io.admin_core_service.features.learner_reports.dto.SubjectProgre
 import vacademy.io.admin_core_service.features.learner_tracking.dto.DailyTimeSpentProjection;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.LearnerActivityProjection;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.ActivityLog;
+import vacademy.io.admin_core_service.features.learner_tracking.repository.ActivityLogProcessingProjection;
 import vacademy.io.admin_core_service.features.slide.dto.LearnerProgressProjection;
 import vacademy.io.admin_core_service.features.slide.entity.Slide;
 
@@ -1542,11 +1545,12 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("subjectStatusList") List<String> subjectStatusList);
 
     /**
-     * Find all activity logs with multiple statuses, ordered by creation date
-     * Used by LLM analytics scheduler to find raw and failed logs for processing
+     * Find limited activity logs with only necessary fields for processing
+     * Used by LLM analytics scheduler to optimize data fetching
      */
-    @Query("SELECT a FROM ActivityLog a WHERE a.status IN :statuses ORDER BY a.createdAt ASC")
-    List<ActivityLog> findByStatusInOrderByCreatedAtAsc(@Param("statuses") List<String> statuses);
+    @Query(value = "SELECT id, source_type, raw_json, processed_json, status, created_at FROM activity_log WHERE status IN (:statuses) ORDER BY created_at ASC LIMIT :limit", nativeQuery = true)
+    List<ActivityLogProcessingProjection> findProcessingDataByStatusWithLimit(@Param("statuses") List<String> statuses,
+            @Param("limit") int limit);
 
     /**
      * Count activity logs by status
@@ -1586,5 +1590,16 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
     List<ActivityLog> findByUserIdAndSourceIdAndStatusProcessed(
             @Param("userId") String userId,
             @Param("sourceId") String sourceId);
+
+    /**
+     * Update processed JSON and status for an activity log
+     * Used by LLM analytics processor to update processed data without loading full
+     * entity
+     */
+    @Modifying
+    @Transactional
+    @Query("UPDATE ActivityLog a SET a.processedJson = :processedJson, a.status = :status WHERE a.id = :id")
+    void updateProcessedData(@Param("id") String id, @Param("processedJson") String processedJson,
+            @Param("status") String status);
 
 }

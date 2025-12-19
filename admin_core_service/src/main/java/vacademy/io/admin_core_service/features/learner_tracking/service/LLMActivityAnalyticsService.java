@@ -26,10 +26,6 @@ import java.util.*;
 
 /**
  * Comprehensive service for LLM-based activity analytics lifecycle.
- * <p>
- * Phase 1 (Current): Capture raw JSON from submissions
- * Phase 2 (Future): Process raw JSON with LLM to generate insights
- * Phase 3 (Future): Store and retrieve analyzed student data
  */
 @Service
 @RequiredArgsConstructor

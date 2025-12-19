@@ -21,6 +21,7 @@ import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessi
 import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
+import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOptionDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentPlanDTO;
@@ -302,8 +303,16 @@ public class EnrollInviteService {
         dto.setInstituteCustomFields(instituteCustomFiledService.findCustomFieldsAsJson(
                 instituteId, CustomFieldTypeEnum.ENROLL_INVITE.name(), enrollInvite.getId()));
 
-        // 2. Build and set Payment Option DTOs from mappings
-        List<PackageSessionToPaymentOptionDTO> paymentOptionDTOs = mappings.stream()
+        // 2. Filter out mappings with deleted package sessions or packages
+        List<PackageSessionLearnerInvitationToPaymentOption> activeMappings = mappings.stream()
+                .filter(mapping -> mapping.getPackageSession() != null 
+                        && !PackageSessionStatusEnum.DELETED.name().equals(mapping.getPackageSession().getStatus())
+                        && mapping.getPackageSession().getPackageEntity() != null
+                        && !PackageStatusEnum.DELETED.name().equals(mapping.getPackageSession().getPackageEntity().getStatus()))
+                .collect(Collectors.toList());
+
+        // 3. Build and set Payment Option DTOs from active mappings only
+        List<PackageSessionToPaymentOptionDTO> paymentOptionDTOs = activeMappings.stream()
                 .map(this::mapToPackageSessionToPaymentOptionDTO)
                 .collect(Collectors.toList());
         dto.setPackageSessionToPaymentOptions(paymentOptionDTOs);

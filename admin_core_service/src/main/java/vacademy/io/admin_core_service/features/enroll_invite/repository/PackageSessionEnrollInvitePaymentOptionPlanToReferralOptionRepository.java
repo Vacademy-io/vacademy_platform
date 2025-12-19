@@ -24,10 +24,16 @@ public interface PackageSessionEnrollInvitePaymentOptionPlanToReferralOptionRepo
               ON pslepo.id = inro.package_session_invite_payment_option_id
             JOIN enroll_invite ei
               ON ei.id = pslepo.enroll_invite_id
+            JOIN package_session ps
+              ON ps.id = pslepo.package_session_id
+            JOIN package p
+              ON p.id = ps.package_id
             WHERE inro.referral_option_id IN :referralOptionIds
               AND inro.status IN :referralOptionStatus
               AND pslepo.status IN :packageSessionLearnerInvitationPaymentOptionStatus
               AND ei.status IN :enrollInviteStatus
+              AND ps.status != 'DELETED'
+              AND p.status != 'DELETED'
             """, nativeQuery = true)
     List<PackageSessionEnrollInvitePaymentOptionPlanToReferralOption> findByReferralOptionIds(
             List<String> referralOptionIds,

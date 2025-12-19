@@ -47,13 +47,30 @@ public class CacheConfig {
     public CacheManager redisCacheManager(RedisConnectionFactory connectionFactory) {
         log.info("Initializing Redis cache manager for analytics");
 
+        // Create ObjectMapper with required modules and configuration
+        com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        objectMapper.registerModule(new org.springframework.security.jackson2.CoreJackson2Module());
+        objectMapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+        objectMapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        
+        // Enable default typing
+
+        
+        objectMapper.activateDefaultTyping(
+                objectMapper.getPolymorphicTypeValidator(), 
+                com.fasterxml.jackson.databind.ObjectMapper.DefaultTyping.NON_FINAL, 
+                com.fasterxml.jackson.annotation.JsonTypeInfo.As.PROPERTY
+        );
+
+        GenericJackson2JsonRedisSerializer serializer = new GenericJackson2JsonRedisSerializer(objectMapper);
+
         // Default cache configuration
         RedisCacheConfiguration defaultConfig = RedisCacheConfiguration.defaultCacheConfig()
                 .entryTtl(Duration.ofMinutes(5))
                 .serializeKeysWith(RedisSerializationContext.SerializationPair
                         .fromSerializer(new StringRedisSerializer()))
                 .serializeValuesWith(RedisSerializationContext.SerializationPair
-                        .fromSerializer(new GenericJackson2JsonRedisSerializer()))
+                        .fromSerializer(serializer))
                 .disableCachingNullValues();
 
         // Custom cache configurations with different TTL
@@ -96,8 +113,9 @@ public class CacheConfig {
      */
     @Bean(name = "caffeineCacheManager")
     public CacheManager caffeineCacheManager() {
-        log.info("Initializing Caffeine cache manager as fallback");
+        log.info("Initializing Caffeine cache manager for analytics");
 
+        
         CaffeineCacheManager cacheManager = new CaffeineCacheManager(
                 ANALYTICS_CACHE,
                 ANALYTICS_ACTIVE_USERS_CACHE,

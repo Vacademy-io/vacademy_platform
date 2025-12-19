@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: default
+  labels:
+    app: redis
+data:
+  redis.conf: |
+    # Redis configuration for OAuth session storage
+    
+    # Maximum memory - use 80% of container limit (80% of 512Mi = ~410Mi)
+    maxmemory 410mb
+    
+    # Eviction policy - remove least recently used keys when memory limit reached
+    # Important: Sessions are temporary, safe to evict
+    maxmemory-policy allkeys-lru
+    
+    # Connection settings
+    timeout 300  # Close idle client connections after 5 minutes
+    tcp-keepalive 60  # Send TCP keepalive every 60 seconds
+    tcp-backlog 511  # Connection queue size
+    
+    # Performance settings
+    # Disable RDB snapshots for OAuth sessions (they're temporary anyway)
+    save ""
+    
+    # AOF persistence - disabled for OAuth sessions
+    appendonly no
+    
+    # Logging
+    loglevel notice
+    
+    # Security - bind to all interfaces (Kubernetes handles network isolation)
+    bind 0.0.0.0
+    protected-mode no
+    
+    # Max clients
+    maxclients 10000
+    
+    # Slow log - track slow commands
+    slowlog-log-slower-than 10000  # 10ms
+    slowlog-max-len 128

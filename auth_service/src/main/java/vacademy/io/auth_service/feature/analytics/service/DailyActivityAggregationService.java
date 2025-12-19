@@ -30,6 +30,9 @@ public class DailyActivityAggregationService {
     @Autowired
     private DailyUserActivitySummaryRepository dailySummaryRepository;
 
+    @Autowired
+    private AnalyticsCacheEvictionService cacheEvictionService;
+
     /**
      * Scheduled task to aggregate yesterday's activity data
      * Runs daily at 1:00 AM
@@ -39,9 +42,11 @@ public class DailyActivityAggregationService {
     public void aggregateYesterdayActivity() {
         LocalDate yesterday = LocalDate.now().minusDays(1);
         log.info("Starting daily activity aggregation for date: {}", yesterday);
-        
+
         try {
             aggregateActivityForDate(yesterday);
+            // Evict all analytics caches after aggregation
+            cacheEvictionService.evictAllAnalyticsCaches();
             log.info("Successfully completed daily activity aggregation for date: {}", yesterday);
         } catch (Exception e) {
             log.error("Error during daily activity aggregation for date: {}", yesterday, e);
@@ -58,18 +63,18 @@ public class DailyActivityAggregationService {
 
         // Get all activity logs for the date
         List<UserActivityLog> dailyLogs = activityLogRepository.findByCreatedAtBetween(startOfDay, endOfDay);
-        
+
         // Get all sessions for the date
         List<UserSession> dailySessions = sessionRepository.findByLoginTimeBetween(startOfDay, endOfDay);
 
         // Group by user and institute
         Map<String, List<UserActivityLog>> logsByUserInstitute = dailyLogs.stream()
-            .filter(log -> log.getUserId() != null && log.getInstituteId() != null)
-            .collect(Collectors.groupingBy(log -> log.getUserId() + ":" + log.getInstituteId()));
+                .filter(log -> log.getUserId() != null && log.getInstituteId() != null)
+                .collect(Collectors.groupingBy(log -> log.getUserId() + ":" + log.getInstituteId()));
 
         Map<String, List<UserSession>> sessionsByUserInstitute = dailySessions.stream()
-            .filter(session -> session.getUserId() != null && session.getInstituteId() != null)
-            .collect(Collectors.groupingBy(session -> session.getUserId() + ":" + session.getInstituteId()));
+                .filter(session -> session.getUserId() != null && session.getInstituteId() != null)
+                .collect(Collectors.groupingBy(session -> session.getUserId() + ":" + session.getInstituteId()));
 
         // Process each user-institute combination
         Set<String> allUserInstituteKeys = new HashSet<>();
@@ -78,8 +83,9 @@ public class DailyActivityAggregationService {
 
         for (String userInstituteKey : allUserInstituteKeys) {
             String[] parts = userInstituteKey.split(":");
-            if (parts.length != 2) continue;
-            
+            if (parts.length != 2)
+                continue;
+
             String userId = parts[0];
             String instituteId = parts[1];
 
@@ -95,76 +101,74 @@ public class DailyActivityAggregationService {
      */
     @Transactional
     public void createOrUpdateDailySummary(String userId, String instituteId, LocalDate date,
-                                         List<UserActivityLog> logs, List<UserSession> sessions) {
-        
-        Optional<DailyUserActivitySummary> existingSummary = 
-            dailySummaryRepository.findByUserIdAndInstituteIdAndActivityDate(userId, instituteId, date);
+            List<UserActivityLog> logs, List<UserSession> sessions) {
+
+        Optional<DailyUserActivitySummary> existingSummary = dailySummaryRepository
+                .findByUserIdAndInstituteIdAndActivityDate(userId, instituteId, date);
 
         DailyUserActivitySummary summary = existingSummary.orElse(
-            DailyUserActivitySummary.builder()
-                .userId(userId)
-                .instituteId(instituteId)
-                .activityDate(date)
-                .build()
-        );
+                DailyUserActivitySummary.builder()
+                        .userId(userId)
+                        .instituteId(instituteId)
+                        .activityDate(date)
+                        .build());
 
         // Calculate metrics from logs
         summary.setTotalApiCalls(logs.size());
-        
+
         // Calculate unique services used
         Set<String> uniqueServices = logs.stream()
-            .map(UserActivityLog::getServiceName)
-            .filter(Objects::nonNull)
-            .collect(Collectors.toSet());
+                .map(UserActivityLog::getServiceName)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
         summary.setUniqueServicesUsed(uniqueServices.size());
         summary.setServicesUsed(String.join(",", uniqueServices));
 
         // Calculate device types used
         Set<String> deviceTypes = new HashSet<>();
         deviceTypes.addAll(logs.stream()
-            .map(UserActivityLog::getDeviceType)
-            .filter(Objects::nonNull)
-            .collect(Collectors.toSet()));
+                .map(UserActivityLog::getDeviceType)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet()));
         deviceTypes.addAll(sessions.stream()
-            .map(UserSession::getDeviceType)
-            .filter(Objects::nonNull)
-            .collect(Collectors.toSet()));
+                .map(UserSession::getDeviceType)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet()));
         summary.setDeviceTypesUsed(String.join(",", deviceTypes));
 
         // Calculate session metrics
         summary.setTotalSessions(sessions.size());
-        
+
         long totalActivityMinutes = sessions.stream()
-            .filter(session -> session.getSessionDurationMinutes() != null)
-            .mapToLong(UserSession::getSessionDurationMinutes)
-            .sum();
+                .filter(session -> session.getSessionDurationMinutes() != null)
+                .mapToLong(UserSession::getSessionDurationMinutes)
+                .sum();
         summary.setTotalActivityTimeMinutes(totalActivityMinutes);
 
         // Calculate peak activity hour
         Map<Integer, Long> hourlyActivity = logs.stream()
-            .collect(Collectors.groupingBy(
-                log -> log.getCreatedAt().getHour(),
-                Collectors.counting()
-            ));
-        
+                .collect(Collectors.groupingBy(
+                        log -> log.getCreatedAt().getHour(),
+                        Collectors.counting()));
+
         Integer peakHour = hourlyActivity.entrySet().stream()
-            .max(Map.Entry.comparingByValue())
-            .map(Map.Entry::getKey)
-            .orElse(12); // Default to noon
+                .max(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey)
+                .orElse(12); // Default to noon
         summary.setPeakActivityHour(peakHour);
 
         // Calculate first and last activity times
         if (!logs.isEmpty()) {
             LocalDateTime firstActivity = logs.stream()
-                .map(UserActivityLog::getCreatedAt)
-                .min(LocalDateTime::compareTo)
-                .orElse(null);
-            
+                    .map(UserActivityLog::getCreatedAt)
+                    .min(LocalDateTime::compareTo)
+                    .orElse(null);
+
             LocalDateTime lastActivity = logs.stream()
-                .map(UserActivityLog::getCreatedAt)
-                .max(LocalDateTime::compareTo)
-                .orElse(null);
-            
+                    .map(UserActivityLog::getCreatedAt)
+                    .max(LocalDateTime::compareTo)
+                    .orElse(null);
+
             summary.setFirstActivityTime(firstActivity);
             summary.setLastActivityTime(lastActivity);
         }
@@ -172,28 +176,32 @@ public class DailyActivityAggregationService {
         // Add session activity times if available
         if (!sessions.isEmpty()) {
             LocalDateTime sessionFirstActivity = sessions.stream()
-                .map(UserSession::getLoginTime)
-                .min(LocalDateTime::compareTo)
-                .orElse(null);
-            
-            LocalDateTime sessionLastActivity = sessions.stream()
-                .map(session -> session.getLogoutTime() != null ? 
-                    session.getLogoutTime() : session.getLastActivityTime())
-                .max(LocalDateTime::compareTo)
-                .orElse(null);
+                    .map(UserSession::getLoginTime)
+                    .min(LocalDateTime::compareTo)
+                    .orElse(null);
 
-            if (summary.getFirstActivityTime() == null || 
-                (sessionFirstActivity != null && sessionFirstActivity.isBefore(summary.getFirstActivityTime()))) {
+            LocalDateTime sessionLastActivity = sessions.stream()
+                    .map(session -> session.getLogoutTime() != null ? session.getLogoutTime()
+                            : session.getLastActivityTime())
+                    .max(LocalDateTime::compareTo)
+                    .orElse(null);
+
+            if (summary.getFirstActivityTime() == null ||
+                    (sessionFirstActivity != null && sessionFirstActivity.isBefore(summary.getFirstActivityTime()))) {
                 summary.setFirstActivityTime(sessionFirstActivity);
             }
 
-            if (summary.getLastActivityTime() == null || 
-                (sessionLastActivity != null && sessionLastActivity.isAfter(summary.getLastActivityTime()))) {
+            if (summary.getLastActivityTime() == null ||
+                    (sessionLastActivity != null && sessionLastActivity.isAfter(summary.getLastActivityTime()))) {
                 summary.setLastActivityTime(sessionLastActivity);
             }
         }
 
         dailySummaryRepository.save(summary);
+
+        // Evict analytics caches for this institute after updating summary
+        cacheEvictionService.evictInstituteAnalyticsCache(instituteId);
+
         log.debug("Updated daily summary for user {} in institute {} for date {}", userId, instituteId, date);
     }
 
@@ -206,7 +214,7 @@ public class DailyActivityAggregationService {
     public void cleanupOldActivityLogs() {
         LocalDateTime cutoffDate = LocalDateTime.now().minusDays(30);
         log.info("Starting cleanup of activity logs older than: {}", cutoffDate);
-        
+
         try {
             List<UserActivityLog> oldLogs = activityLogRepository.findByCreatedAtBefore(cutoffDate);
             if (!oldLogs.isEmpty()) {
@@ -225,12 +233,12 @@ public class DailyActivityAggregationService {
     @Transactional
     public void cleanupInactiveSessions() {
         log.debug("Starting cleanup of inactive sessions");
-        
+
         try {
             // Mark sessions as inactive if no activity for 2 hours
             int inactiveMinutes = 120;
             LocalDateTime cutoffTime = LocalDateTime.now().minusMinutes(inactiveMinutes);
-            
+
             sessionRepository.endInactiveSessions(cutoffTime, LocalDateTime.now());
             log.debug("Completed cleanup of inactive sessions");
         } catch (Exception e) {
@@ -243,7 +251,7 @@ public class DailyActivityAggregationService {
      */
     public void aggregateActivityForDateRange(LocalDate startDate, LocalDate endDate) {
         log.info("Starting manual activity aggregation for date range: {} to {}", startDate, endDate);
-        
+
         LocalDate currentDate = startDate;
         while (!currentDate.isAfter(endDate)) {
             try {
@@ -254,7 +262,7 @@ public class DailyActivityAggregationService {
             }
             currentDate = currentDate.plusDays(1);
         }
-        
+
         log.info("Completed manual activity aggregation for date range: {} to {}", startDate, endDate);
     }
-} 
+}

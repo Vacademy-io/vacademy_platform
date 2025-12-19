@@ -75,6 +75,8 @@ class CourseOutlinePromptBuilder:
               * If no specific counts mentioned, use reasonable defaults for depth {courseDepth}
             - DEPTH SPECIFIC: For depth {courseDepth}, follow the structure rules below
             - CRITICAL: Respect user-specified counts, or use defaults if none specified
+            - AI VIDEO DETECTION: If user prompt mentions "AI video", "AI-generated video", "animated explainer", 
+              or "narrated video", use type `AI_VIDEO` for relevant slides instead of `VIDEO` or `DOCUMENT`
 
             GENERATION CONFIGURATION:
             {generationRequirements}
@@ -566,10 +568,11 @@ class CourseOutlinePromptBuilder:
             - This is a list of tasks for content generation, one for each SLIDE that needs content generated or updated.
             - Each `todo` object must include:
               - `name`: A descriptive name for the content generation task (e.g., "Generate Async/Await Slide Content").
-              - `type`: The type of slide (`DOCUMENT` || `VIDEO` || `PDF` || `EXCALIDRAW_IMAGE` || `ASSESSMENT`).
+              - `type`: The type of slide (`DOCUMENT` || `VIDEO` || `AI_VIDEO` || `PDF` || `EXCALIDRAW_IMAGE` || `ASSESSMENT`).
               - `title`: Generate Title For the Slide Content
               - `keyword`: Generate a search keyword
                         - For `VIDEO` generate `keyword` such that it can be searched on YOUTUBE
+                        - For `AI_VIDEO` generate `keyword` that describes the video topic for AI generation
                         - For 'EXCALIDRAW_IMAGE' generate 'keyword' such that image can be searched on UNSPLASH
               - `path`: The full path to the SLIDE node following the specified depth structure:
                 - Depth 2: "C1.SL9" (course.slide)
@@ -579,14 +582,16 @@ class CourseOutlinePromptBuilder:
               - `model`: Suggest which model should be used to generate the content
                        - for `DOCUMENT' generation use `google/gemini-2.5-pro'
                        - for 'VIDEO' generation use `google/gemini-2.5-flash-preview-05-20`
+                       - for 'AI_VIDEO' generation use `google/gemini-2.5-pro` (for script generation)
                        - for 'PDF' generation use 'google/gemini-2.5-pro'
                        - for 'ASSESSMENT' generation use 'google/gemini-2.5-pro'
               - `actionType`: `ADD` if the slide is newly added and needs initial content, `UPDATE` if the slide already exists and its content needs to be re-generated or improved.
               - `prompt`: A **very clear and detailed prompt** for an AI to generate the specific content for this slide. This prompt should include:
                 - The slide's topic.
-                - The desired `type` (`DOCUMENT` or `VIDEO` or `PDF` or `EXCALIDRAW_IMAGE`).
+                - The desired `type` (`DOCUMENT` or `VIDEO` or `AI_VIDEO` or `PDF` or `EXCALIDRAW_IMAGE`).
                 - Specific requirements for `DOCUMENT` type (e.g., "detailed explanation (150-250 words), markdown formatting, code snippets, real-world examples").
                 - Specific requirements for `VIDEO` type (e.g., "high-quality, relevant video link, short informative description, title matching slide topic").
+                - Specific requirements for `AI_VIDEO` type (e.g., "Generate an AI-narrated explainer video about [topic]. Include clear explanations, visual examples, and engaging narration. Target audience: [audience]. Duration: 2-3 minutes.").
                 - Specific requirements for `PDF` type (e.g., "detailed explanation (150-250 words), markdown formatting, real-world examples").
                 - Specific requirements for `ASSESSMENT`. Prompt must include number of questions(2-10 questions) and should have topic in the prompt.
                 - Any specific analogies or examples to include.

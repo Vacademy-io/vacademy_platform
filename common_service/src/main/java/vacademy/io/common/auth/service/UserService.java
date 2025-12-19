@@ -497,7 +497,6 @@ public class UserService {
             user.setLastLoginTime(new Date());
             userRepository.save(user);
         }catch (Exception e){
-            log.error("Failed to update last login time for user: " + userId, e);
         }
     }
 

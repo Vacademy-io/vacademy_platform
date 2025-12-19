@@ -17,6 +17,7 @@ import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.notification.dto.AttachmentNotificationDTO;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
+import vacademy.io.common.logging.SentryLogger;
 
 import java.util.List;
 import java.util.Map;
@@ -33,17 +34,17 @@ public class NotificationService {
     @Value("${notification.server.baseurl}")
     private String notificationServerBaseUrl;
 
-    public String sendEmailToUsers(NotificationDTO notificationDTO,String instituteId) {
-        String url=NotificationConstant.EMAIL_TO_USERS+"?instituteId="+instituteId;
+    public String sendEmailToUsers(NotificationDTO notificationDTO, String instituteId) {
+        String url = NotificationConstant.EMAIL_TO_USERS + "?instituteId=" + instituteId;
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
-            clientName, // Directly use the injected 'clientName'
-            HttpMethod.POST.name(),
-            notificationServerBaseUrl,
-            url,
-            notificationDTO
-        );
+                clientName, // Directly use the injected 'clientName'
+                HttpMethod.POST.name(),
+                notificationServerBaseUrl,
+                url,
+                notificationDTO);
         return response.getBody();
     }
+
     public Boolean sendGenericHtmlMail(GenericEmailRequest request) {
         return sendGenericHtmlMail(request, null);
     }
@@ -54,7 +55,8 @@ public class NotificationService {
             endpoint += "?instituteId=" + instituteId;
         }
 
-        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(), notificationServerBaseUrl, endpoint, request);
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(),
+                notificationServerBaseUrl, endpoint, request);
 
         ObjectMapper objectMapper = new ObjectMapper();
         try {
@@ -63,12 +65,19 @@ public class NotificationService {
 
             return isMailSent;
         } catch (JsonProcessingException e) {
+            SentryLogger.logError(e, "Failed to parse generic HTML email send response", Map.of(
+                    "notification.type", "EMAIL",
+                    "email.type", "HTML",
+                    "institute.id", instituteId != null ? instituteId : "unknown",
+                    "has.recipient", String.valueOf(request.getTo() != null),
+                    "operation", "sendGenericHtmlMail"));
             throw new VacademyException(e.getMessage());
         }
     }
 
-    public Boolean sendAttachmentEmail(List<AttachmentNotificationDTO> attachmentNotificationDTOs,String instituteId) {
-        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(), notificationServerBaseUrl, NotificationConstant.SEND_ATTACHMENT_EMAIL, attachmentNotificationDTOs);
+    public Boolean sendAttachmentEmail(List<AttachmentNotificationDTO> attachmentNotificationDTOs, String instituteId) {
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(),
+                notificationServerBaseUrl, NotificationConstant.SEND_ATTACHMENT_EMAIL, attachmentNotificationDTOs);
 
         ObjectMapper objectMapper = new ObjectMapper();
         try {
@@ -77,54 +86,65 @@ public class NotificationService {
 
             return isMailSent;
         } catch (JsonProcessingException e) {
+            SentryLogger.logError(e, "Failed to parse attachment email send response", Map.of(
+                    "notification.type", "EMAIL",
+                    "email.type", "ATTACHMENT",
+                    "institute.id", instituteId != null ? instituteId : "unknown",
+                    "attachment.count",
+                    String.valueOf(attachmentNotificationDTOs != null ? attachmentNotificationDTOs.size() : 0),
+                    "operation", "sendAttachmentEmail"));
             throw new VacademyException(e.getMessage());
         }
     }
 
-    public List<Map<String, Boolean>> sendWhatsappToUsers(WhatsappRequest request,String instituteId) {
-        String url=NotificationConstant.SEND_WHATSAPP_TO_USER+"?instituteId="+instituteId;
+    public List<Map<String, Boolean>> sendWhatsappToUsers(WhatsappRequest request, String instituteId) {
+        String url = NotificationConstant.SEND_WHATSAPP_TO_USER + "?instituteId=" + instituteId;
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
-            clientName,
-            HttpMethod.POST.name(),
-            notificationServerBaseUrl,
-            url,
-            request
-        );
+                clientName,
+                HttpMethod.POST.name(),
+                notificationServerBaseUrl,
+                url,
+                request);
 
         ObjectMapper objectMapper = new ObjectMapper();
         try {
             // Parse the response body into the expected return type
             return objectMapper.readValue(
-                response.getBody(),
-                new TypeReference<List<Map<String, Boolean>>>() {}
-            );
+                    response.getBody(),
+                    new TypeReference<List<Map<String, Boolean>>>() {
+                    });
         } catch (JsonProcessingException e) {
+            SentryLogger.logError(e, "Failed to parse WhatsApp send response", Map.of(
+                    "notification.type", "WHATSAPP",
+                    "institute.id", instituteId,
+                    "template.name", request.getTemplateName() != null ? request.getTemplateName() : "unknown",
+                    "user.count",
+                    String.valueOf(request.getUserDetails() != null ? request.getUserDetails().size() : 0),
+                    "operation", "sendWhatsappToUsers"));
             throw new VacademyException("Error parsing WhatsApp send response: " + e.getMessage());
         }
     }
 
-    public String sendEmailToUsersMultiple(List<NotificationDTO> notificationDTOs,String instituteId) {
-        String url=NotificationConstant.EMAIL_TO_USERS_MULTIPLE+"?instituteId="+instituteId;
+    public String sendEmailToUsersMultiple(List<NotificationDTO> notificationDTOs, String instituteId) {
+        String url = NotificationConstant.EMAIL_TO_USERS_MULTIPLE + "?instituteId=" + instituteId;
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
-            clientName, // Directly use the injected 'clientName'
-            HttpMethod.POST.name(),
-            notificationServerBaseUrl,
-            url,
-            notificationDTOs
-        );
+                clientName, // Directly use the injected 'clientName'
+                HttpMethod.POST.name(),
+                notificationServerBaseUrl,
+                url,
+                notificationDTOs);
         return response.getBody();
     }
 
-    public String sendWhatsappToUsers(List<WhatsappRequest> requests,String instituteId) {
+    public String sendWhatsappToUsers(List<WhatsappRequest> requests, String instituteId) {
         System.out.println(JsonUtil.toJson(requests));
-        String url=NotificationConstant.SEND_WHATSAPP_TO_USER_MULTIPLE+"?instituteId="+instituteId;
+        String url = NotificationConstant.SEND_WHATSAPP_TO_USER_MULTIPLE + "?instituteId=" + instituteId;
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
-            clientName,
-            HttpMethod.POST.name(),
-            notificationServerBaseUrl,
-            url,
-            requests
-        );
+                clientName,
+                HttpMethod.POST.name(),
+                notificationServerBaseUrl,
+                url,
+                requests);
         return response.getBody();
     }
 }

@@ -26,13 +26,8 @@ public class Role {
     @Column(name = "role_name")
     private String name;
 
-
     @ManyToMany(fetch = FetchType.EAGER)
-    @JoinTable(
-            name = "role_permission",
-            joinColumns = @JoinColumn(name = "role_id"),
-            inverseJoinColumns = @JoinColumn(name = "permission_id")
-    )
+    @JoinTable(name = "role_permission", joinColumns = @JoinColumn(name = "role_id"), inverseJoinColumns = @JoinColumn(name = "permission_id"))
     private Set<Permissions> authorities = new HashSet<>();
 
     @Column(name = "created_at", insertable = false, updatable = false)

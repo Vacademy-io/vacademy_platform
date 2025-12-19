@@ -19,7 +19,6 @@ import java.util.stream.Collectors;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class CustomUserDetails extends User implements UserDetails {
 
-    private String username;
     private String password;
 
     @Getter
@@ -30,7 +29,6 @@ public class CustomUserDetails extends User implements UserDetails {
 
     public CustomUserDetails() {
         super();
-        this.username = null;
         this.password = null;
         this.userId = null;
         this.storedAuthorities = new ArrayList<>();
@@ -47,7 +45,7 @@ public class CustomUserDetails extends User implements UserDetails {
             throw new IllegalArgumentException("User or Institute cannot be null");
         }
         // Set the username from the provided User object
-        this.username = user.getUsername();
+        this.setUsername(user.getUsername());
 
         // Set the password securely from the User object
         this.password = user.getPassword();
@@ -72,7 +70,7 @@ public class CustomUserDetails extends User implements UserDetails {
 
     public CustomUserDetails(UserServiceDTO user) {
         // Set the username from the provided User object
-        this.username = user.getUsername();
+        this.setUsername(user.getUsername());
         this.password = "";
         this.userId = user.getUserId();
 
@@ -102,9 +100,10 @@ public class CustomUserDetails extends User implements UserDetails {
         return password;
     }
 
-    @Override
-    public String getUsername() {
-        return username;
+    // setPassword is kept from previous step? checking below.
+    public void setPassword(String password) {
+        this.password = password;
+        super.setPassword(password);
     }
 
     @Override

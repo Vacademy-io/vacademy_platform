@@ -1,5 +1,8 @@
 package vacademy.io.common.auth.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -11,7 +14,9 @@ import vacademy.io.common.auth.entity.UserRole;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.stream.Collectors;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class CustomUserDetails extends User implements UserDetails {
 
     private String username;
@@ -19,14 +24,16 @@ public class CustomUserDetails extends User implements UserDetails {
 
     @Getter
     private String userId;
-    Collection<? extends GrantedAuthority> authorities;
+
+    @JsonProperty("authorities")
+    private List<String> storedAuthorities = new ArrayList<>();
 
     public CustomUserDetails() {
         super();
         this.username = null;
         this.password = null;
         this.userId = null;
-        this.authorities = new ArrayList<>();
+        this.storedAuthorities = new ArrayList<>();
     }
 
     /**
@@ -45,22 +52,22 @@ public class CustomUserDetails extends User implements UserDetails {
         // Set the password securely from the User object
         this.password = user.getPassword();
         this.userId = user.getId();
-        // Create a list to store GrantedAuthority objects
-        List<GrantedAuthority> auths = new ArrayList<>();
+
+        // Create a list to store authorities strings
+        List<String> auths = new ArrayList<>();
 
         // Iterate through each UserRole for the user
         for (UserRole role : userRoles.stream().filter((role) -> role.getInstituteId().equals(instituteId)).toList()) {
             // Get individual authorities from the role and convert them to uppercase
-            // GrantedAuthority objects
             role.getRole().getAuthorities().forEach(
-                    userAuthority -> auths.add(new SimpleGrantedAuthority(userAuthority.getName().toUpperCase())));
+                    userAuthority -> auths.add(userAuthority.getName().toUpperCase()));
 
-            // Add the role name itself as a GrantedAuthority (also in uppercase)
-            auths.add(new SimpleGrantedAuthority(role.getRole().getName().toUpperCase()));
+            // Add the role name itself
+            auths.add(role.getRole().getName().toUpperCase());
         }
 
-        // Assign the collected authorities to the this.authorities field
-        this.authorities = auths;
+        // Assign the collected authorities to the storage field
+        this.storedAuthorities = auths;
     }
 
     public CustomUserDetails(UserServiceDTO user) {
@@ -69,23 +76,25 @@ public class CustomUserDetails extends User implements UserDetails {
         this.password = "";
         this.userId = user.getUserId();
 
-        // Create a list to store GrantedAuthority objects
-        List<GrantedAuthority> auths = new ArrayList<>();
+        // Create a list to store authorities strings
+        List<String> auths = new ArrayList<>();
 
         // Iterate through each UserRole for the user
-        for (UserServiceDTO.Authority auth : user.getAuthorities()) {
-
-            // Add the role name itself as a GrantedAuthority (also in uppercase)
-            auths.add(new SimpleGrantedAuthority(auth.getAuthority().toUpperCase()));
+        for (String auth : user.getAuthorities()) {
+            // Add the role name itself
+            auths.add(auth.toUpperCase());
         }
 
-        // Assign the collected authorities to the this.authorities field
-        this.authorities = auths;
+        // Assign the collected authorities to the storage field
+        this.storedAuthorities = auths;
     }
 
     @Override
+    @JsonIgnore
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return authorities;
+        return storedAuthorities.stream()
+                .map(SimpleGrantedAuthority::new)
+                .collect(Collectors.toList());
     }
 
     @Override

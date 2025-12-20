@@ -25,6 +25,11 @@ public class StudentAnalyticsInternalController {
         /**
          * Get login statistics for a specific student within a date range
          * Used by student analysis feature in admin_core_service
+         * 
+         * @param userId    ID of the student user
+         * @param startDate Start date (inclusive) in ISO format (yyyy-MM-dd)
+         * @param endDate   End date (inclusive) in ISO format (yyyy-MM-dd)
+         * @return StudentLoginStatsDto containing login statistics
          */
         @GetMapping("/student-login-stats")
         public ResponseEntity<StudentLoginStatsDto> getStudentLoginStats(

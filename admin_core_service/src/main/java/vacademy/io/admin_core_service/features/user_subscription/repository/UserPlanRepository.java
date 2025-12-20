@@ -111,4 +111,6 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
     List<UserPlan> findByIdsWithoutPaymentLogs(@Param("ids") List<String> ids);
 
     Optional<UserPlan> findFirstByUserIdAndPaymentPlanIdAndStatus(String userId, String paymentPlanId, String status);
+
+    List<UserPlan> findAllByStatusIn(List<String> statuses);
 }

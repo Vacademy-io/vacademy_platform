@@ -10,12 +10,22 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 
 @Component
 public class InternalClientUtils {
 
     @Autowired
     private HmacUtils hmacUtils;
+
+    private final RestTemplate restTemplate = createRestTemplate();
+
+    private static RestTemplate createRestTemplate() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(10000);
+        factory.setReadTimeout(30000);
+        return new RestTemplate(factory);
+    }
 
     public ResponseEntity<String> makeHmacRequest(String clientName, String method, String baseUrl, String route,
             Object content) {
@@ -32,7 +42,6 @@ public class InternalClientUtils {
         headers.set("Signature", secretKey);
         headers.set("Content-Type", MediaType.APPLICATION_JSON_VALUE);
 
-        RestTemplate restTemplate = new RestTemplate();
         // Make the request
         ResponseEntity<String> response = restTemplate.exchange(
                 builder.toUriString(),
@@ -68,7 +77,6 @@ public class InternalClientUtils {
 
         HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
 
-        RestTemplate restTemplate = new RestTemplate();
         return restTemplate.exchange(
                 builder.toUriString(),
                 HttpMethod.valueOf(method),
@@ -90,7 +98,6 @@ public class InternalClientUtils {
         headers.set("clientName", clientName);
         headers.set("Signature", secretKey);
 
-        RestTemplate restTemplate = new RestTemplate();
         // Make the request
         ResponseEntity<String> response = restTemplate.exchange(
                 builder.toUriString(),

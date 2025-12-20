@@ -52,4 +52,10 @@ public class UserPlanDTO {
     private PaymentOptionDTO paymentOption;
 
     private PaymentPlanDTO paymentPlanDTO;
+
+    /**
+     * Policy details for each package session associated with this user plan.
+     * Null if not requested or no policies configured.
+     */
+    private List<PackageSessionPolicyDetailsDTO> policyDetails;
 }

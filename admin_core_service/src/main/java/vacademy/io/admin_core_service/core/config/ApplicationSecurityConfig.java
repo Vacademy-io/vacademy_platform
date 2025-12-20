@@ -54,7 +54,10 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/payments/webhook/callback/**",
             "/admin-core-service/v1/learner/enroll/**",
             "/admin-core-service/workflow/schedule/**",
-            // NOTE: Spring's requestMatchers does not resolve path variables like {instituteId},
+            "/admin-core-service/llm-analytics/**",
+            "/admin-core-service/v1/llm-analytics/**",
+            // NOTE: Spring's requestMatchers does not resolve path variables like
+            // {instituteId},
             // so you must use a pattern with a wildcard instead.
             "/admin-core-service/tag-management/institutes/*/tags/users",
             // User Resolution APIs for notification service - OPEN for internal

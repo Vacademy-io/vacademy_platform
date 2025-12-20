@@ -64,6 +64,7 @@ public class ApplicationSecurityConfig {
             "/auth-service/open/**",
             "/auth-service/v1/server-time/**",
             "/auth-service/wordpress-webhook/**",
+            "/auth-service/analytics/**",
 
             // User Resolution APIs for notification service - OPEN for internal
             // communication

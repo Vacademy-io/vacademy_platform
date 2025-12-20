@@ -76,4 +76,25 @@ public interface UserSessionRepository extends JpaRepository<UserSession, String
 
     // Find sessions by login time range
     List<UserSession> findByLoginTimeBetween(LocalDateTime startTime, LocalDateTime endTime);
+    
+    // Student analysis queries - get login statistics for specific user and date range
+    @Query("SELECT COUNT(u) FROM UserSession u WHERE u.userId = :userId AND u.loginTime BETWEEN :startTime AND :endTime")
+    Long countTotalLoginsByUserAndDateRange(@Param("userId") String userId, 
+                                             @Param("startTime") LocalDateTime startTime, 
+                                             @Param("endTime") LocalDateTime endTime);
+    
+    @Query("SELECT MAX(u.loginTime) FROM UserSession u WHERE u.userId = :userId AND u.loginTime BETWEEN :startTime AND :endTime")
+    LocalDateTime findLastLoginTimeByUserAndDateRange(@Param("userId") String userId, 
+                                                        @Param("startTime") LocalDateTime startTime, 
+                                                        @Param("endTime") LocalDateTime endTime);
+    
+    @Query("SELECT AVG(u.sessionDurationMinutes) FROM UserSession u WHERE u.userId = :userId AND u.loginTime BETWEEN :startTime AND :endTime AND u.sessionDurationMinutes IS NOT NULL")
+    Double findAvgSessionDurationByUserAndDateRange(@Param("userId") String userId, 
+                                                      @Param("startTime") LocalDateTime startTime, 
+                                                      @Param("endTime") LocalDateTime endTime);
+    
+    @Query("SELECT COALESCE(SUM(u.sessionDurationMinutes), 0) FROM UserSession u WHERE u.userId = :userId AND u.loginTime BETWEEN :startTime AND :endTime AND u.sessionDurationMinutes IS NOT NULL")
+    Long findTotalActiveTimeByUserAndDateRange(@Param("userId") String userId, 
+                                                 @Param("startTime") LocalDateTime startTime, 
+                                                 @Param("endTime") LocalDateTime endTime);
 } 

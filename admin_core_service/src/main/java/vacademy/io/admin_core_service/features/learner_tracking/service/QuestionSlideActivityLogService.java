@@ -24,29 +24,44 @@ public class QuestionSlideActivityLogService {
     private final ActivityLogService activityLogService;
     private final LearnerTrackingAsyncService learnerTrackingAsyncService;
 
-   public void addQuestionSlideActivityLog(ActivityLog activityLog,List<QuestionSlideActivityLogDTO>questionSlideActivityLogDTOS) {
+    public void addQuestionSlideActivityLog(ActivityLog activityLog,
+            List<QuestionSlideActivityLogDTO> questionSlideActivityLogDTOS) {
         questionSlideTrackedRepository.deleteByActivityId(activityLog.getId());
-        List<QuestionSlideTracked>questionSlideTrackeds = questionSlideActivityLogDTOS
+        List<QuestionSlideTracked> questionSlideTrackeds = questionSlideActivityLogDTOS
                 .stream()
-                .map(questionSlideActivityLogDTO -> new QuestionSlideTracked(questionSlideActivityLogDTO,activityLog))
+                .map(questionSlideActivityLogDTO -> new QuestionSlideTracked(questionSlideActivityLogDTO, activityLog))
                 .toList();
         questionSlideTrackedRepository.saveAll(questionSlideTrackeds);
-   }
+    }
 
-   public String addOrUpdateQuestionSlideActivityLog(ActivityLogDTO activityLogDTO, String slideId,String chapterId,String packageSessionId,String moduleId,String subjectId, String userId, CustomUserDetails user) {
+    public String addOrUpdateQuestionSlideActivityLog(ActivityLogDTO activityLogDTO, String slideId, String chapterId,
+            String packageSessionId, String moduleId, String subjectId, String userId, CustomUserDetails user) {
         ActivityLog activityLog = null;
-        if (activityLogDTO.isNewActivity()){
+        if (activityLogDTO.isNewActivity()) {
             activityLog = activityLogService.saveActivityLog(activityLogDTO, userId, slideId);
         } else {
             activityLog = activityLogService.updateActivityLog(activityLogDTO);
         }
-       addQuestionSlideActivityLog(activityLog,activityLogDTO.getQuestionSlides());
-       learnerTrackingAsyncService.updateLearnerOperationsForQuestion(user.getUserId(), slideId, chapterId, moduleId,subjectId,packageSessionId,activityLogDTO);
-       return activityLog.getId();
-   }
+        addQuestionSlideActivityLog(activityLog, activityLogDTO.getQuestionSlides());
+        learnerTrackingAsyncService.updateLearnerOperationsForQuestion(user.getUserId(), slideId, chapterId, moduleId,
+                subjectId, packageSessionId, activityLogDTO);
 
-   public Page<ActivityLogDTO> getQuestionSlideActivityLogs(String userId, String slideId, Pageable pageable, CustomUserDetails userDetails) {
-       Page<ActivityLog> activityLogs = activityLogRepository.findActivityLogsWithQuestionSlides(userId, slideId, pageable);
-       return activityLogs.map(activityLog -> activityLog.toActivityLogDTO());
-   }
+        // Save raw data for LLM analytics (async, non-blocking)
+        learnerTrackingAsyncService.saveLLMQuestionDataAsync(
+                activityLog.getId(),
+                slideId,
+                chapterId,
+                packageSessionId,
+                subjectId,
+                activityLogDTO);
+
+        return activityLog.getId();
+    }
+
+    public Page<ActivityLogDTO> getQuestionSlideActivityLogs(String userId, String slideId, Pageable pageable,
+            CustomUserDetails userDetails) {
+        Page<ActivityLog> activityLogs = activityLogRepository.findActivityLogsWithQuestionSlides(userId, slideId,
+                pageable);
+        return activityLogs.map(activityLog -> activityLog.toActivityLogDTO());
+    }
 }

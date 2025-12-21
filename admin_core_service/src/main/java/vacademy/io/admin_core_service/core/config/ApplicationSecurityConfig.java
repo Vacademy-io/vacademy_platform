@@ -56,6 +56,7 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/workflow/schedule/**",
             "/admin-core-service/llm-analytics/**",
             "/admin-core-service/v1/llm-analytics/**",
+            "/admin-core-service/v1/embedding/api-docs/**",
             // NOTE: Spring's requestMatchers does not resolve path variables like
             // {instituteId},
             // so you must use a pattern with a wildcard instead.

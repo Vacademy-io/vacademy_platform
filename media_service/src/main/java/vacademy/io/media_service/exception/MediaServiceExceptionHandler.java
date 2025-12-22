@@ -17,12 +17,15 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
- * Global exception handler for the media service.
+ * Exception handler for the media service.
  * Provides consistent error responses across all endpoints.
+ * 
+ * Named differently from common_service's GlobalExceptionHandler to avoid bean
+ * conflicts.
  */
 @Slf4j
 @RestControllerAdvice(basePackages = "vacademy.io.media_service")
-public class GlobalExceptionHandler {
+public class MediaServiceExceptionHandler {
 
     @Value("${spring.profiles.active:default}")
     private String activeProfile;

@@ -139,43 +139,61 @@ public class CombotNodeHandler implements NodeHandler {
         String toNumber = (String) data.get("to");
         String templateName = (String) data.get("templateName");
         String languageCode = (String) data.getOrDefault("languageCode", "en");
+
+        // New: Check for header image
+        String headerImage = (String) data.get("headerImage");
+
         List<String> params = (List<String>) data.get("params"); // Body parameters
 
         if (!StringUtils.hasText(userId) || !StringUtils.hasText(toNumber) || !StringUtils.hasText(templateName)) {
-            log.warn("Skipping message: Missing required fields (userId, to, or templateName). Data: {}", data);
+            log.warn("Skipping message: Missing required fields. Data: {}", data);
             return null;
         }
 
-        // Build Parameters List
-        List<Map<String, String>> parameterComponents = new ArrayList<>();
-        if (params != null) {
+        List<Map<String, Object>> components = new ArrayList<>();
+
+        // 1. Handle Image Header (New Logic)
+        if (StringUtils.hasText(headerImage)) {
+            Map<String, Object> headerComponent = new HashMap<>();
+            headerComponent.put("type", "header");
+
+            Map<String, Object> imageObj = new HashMap<>();
+            imageObj.put("link", headerImage);
+
+            Map<String, Object> imageParam = new HashMap<>();
+            imageParam.put("type", "image");
+            imageParam.put("image", imageObj);
+
+            headerComponent.put("parameters", Collections.singletonList(imageParam));
+            components.add(headerComponent);
+        }
+
+        // 2. Handle Body Text (Existing Logic)
+        if (params != null && !params.isEmpty()) {
+            List<Map<String, String>> parameterComponents = new ArrayList<>();
             for (String paramText : params) {
                 parameterComponents.add(Map.of("type", "text", "text", paramText));
             }
-        }
 
-        // Build Inner Payload (Meta Structure)
-        Map<String, Object> templateMap = new HashMap<>();
-        templateMap.put("name", templateName);
-        templateMap.put("language", Map.of("code", languageCode));
-
-        // Add body component only if parameters exist
-        if (!parameterComponents.isEmpty()) {
             Map<String, Object> bodyComponent = new HashMap<>();
             bodyComponent.put("type", "body");
             bodyComponent.put("parameters", parameterComponents);
-            templateMap.put("components", List.of(bodyComponent));
-        } else {
-            templateMap.put("components", Collections.emptyList());
+            components.add(bodyComponent);
         }
 
+        // Build Template Map
+        Map<String, Object> templateMap = new HashMap<>();
+        templateMap.put("name", templateName);
+        templateMap.put("language", Map.of("code", languageCode));
+        templateMap.put("components", components);
+
+        // Build Final Wrapper
         Map<String, Object> innerPayload = new HashMap<>();
         innerPayload.put("messaging_product", "whatsapp");
         innerPayload.put("to", toNumber);
         innerPayload.put("type", "template");
         innerPayload.put("template", templateMap);
 
-        // Build Wrapper matching the MessageInfo structure in WhatsAppTemplateRequest
         Map<String, Object> messageWrapper = new HashMap<>();
         messageWrapper.put("userId", userId);
         messageWrapper.put("payload", innerPayload);

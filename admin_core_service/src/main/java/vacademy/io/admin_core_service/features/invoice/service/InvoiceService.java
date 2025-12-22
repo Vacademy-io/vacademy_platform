@@ -113,8 +113,9 @@ public class InvoiceService {
             // 1. Build invoice data from payment log(s)
             InvoiceData invoiceData = buildInvoiceDataFromMultiplePaymentLogs(paymentLogs, instituteId);
 
-            // 2. Generate invoice number
+            // 2. Generate invoice number and set it in invoice data
             String invoiceNumber = generateInvoiceNumber(instituteId);
+            invoiceData.setInvoiceNumber(invoiceNumber);
 
             // 3. Load institute-specific template
             String templateHtml = loadInvoiceTemplate(instituteId);
@@ -1245,8 +1246,9 @@ public class InvoiceService {
                     instituteId
             );
 
-            // Generate invoice number
+            // Generate invoice number and set it in invoice data
             String invoiceNumber = generateInvoiceNumber(instituteId);
+            invoiceData.setInvoiceNumber(invoiceNumber);
 
             // Load template
             String templateHtml = loadInvoiceTemplate(instituteId);

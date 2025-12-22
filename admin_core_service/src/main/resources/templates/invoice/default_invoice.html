@@ -15,7 +15,7 @@
         
         body {
             font-family: 'Cairo', 'Arial', 'Helvetica', sans-serif;
-            font-size: 11px;
+            font-size: 15px;
             line-height: 1.5;
             color: #333;
             background-color: #ffffff;
@@ -29,6 +29,21 @@
             padding: 0;
         }
         
+        /* Invoice Title - Top Right */
+        .invoice-title-row {
+            width: 100%;
+            text-align: right;
+            padding: 10px 30px 15px 0;
+        }
+        
+        .invoice-title-row h1 {
+            font-size: 42px;
+            font-weight: bold;
+            color: #000000;
+            margin: 0;
+            letter-spacing: -1px;
+        }
+        
         /* Top Header Section - Exact 50/50 split side by side */
         .top-header {
             display: table;
@@ -40,14 +55,16 @@
         .bill-to-section {
             background-color: {{theme_color}};
             color: #ffffff;
-            padding: 20px 25px;
+            padding: 15px 25px;
             display: table-cell;
             width: 50%;
             vertical-align: top;
+            border-right: 0;
+            overflow: hidden;
         }
         
         .bill-to-section h2 {
-            font-size: 11px;
+            font-size: 15px;
             font-weight: bold;
             text-transform: uppercase;
             margin-bottom: 15px;
@@ -55,18 +72,8 @@
             letter-spacing: 0.5px;
         }
         
-        .bill-to-section h3 {
-            font-size: 11px;
-            font-weight: bold;
-            text-transform: uppercase;
-            margin-top: 20px;
-            margin-bottom: 10px;
-            color: #ffffff;
-            letter-spacing: 0.5px;
-        }
-        
         .bill-to-section p {
-            font-size: 10px;
+            font-size: 14px;
             margin: 4px 0;
             color: #ffffff;
             line-height: 1.6;
@@ -76,55 +83,56 @@
             font-weight: 600;
         }
         
-        .invoice-header-right {
+        .invoice-details-section {
             background-color: #ffffff;
-            padding: 20px 30px;
+            padding: 15px 20px 15px 25px;
             display: table-cell;
             width: 50%;
             vertical-align: top;
-        }
-        
-        .invoice-header-right h1 {
-            font-size: 38px;
-            font-weight: bold;
-            color: #000000;
-            margin: 0 0 20px 0;
-            text-align: right;
-            letter-spacing: -1px;
+            overflow: hidden;
         }
         
         .invoice-details {
-            text-align: right;
-            border-top: 1px solid #e0e0e0;
-            padding-top: 15px;
-        }
-        
-        .invoice-details p {
-            font-size: 10px;
-            margin: 6px 0;
-            color: #333;
-            line-height: 1.6;
-            text-align: right;
-        }
-        
-        .invoice-details strong {
-            font-weight: normal;
-            display: inline-block;
-            min-width: 120px;
             text-align: left;
+        }
+        
+        .invoice-details-row {
+            margin-bottom: 8px;
+        }
+        
+        .invoice-details-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+            text-align: left;
+            margin-bottom: 2px;
+        }
+        
+        .invoice-details-value {
+            font-size: 14px;
+            color: #333;
+            text-align: left;
+            line-height: 1.5;
         }
         
         /* Company Info Section - Below Header */
         .company-info-section {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 20px 25px;
+            display: table;
+            width: 100%;
+            table-layout: fixed;
             background-color: #ffffff;
             border-top: 1px solid #e0e0e0;
+            margin-top: 0;
         }
         
         .company-logo-name {
+            display: table-cell;
+            width: 50%;
+            vertical-align: middle;
+            padding: 15px 0 15px 25px;
+        }
+        
+        .company-logo-name-wrapper {
             display: flex;
             align-items: center;
             gap: 15px;
@@ -134,9 +142,8 @@
             flex-shrink: 0;
             width: 50px;
             height: 50px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            display: inline-block;
+            vertical-align: middle;
         }
         
         .logo-container img {
@@ -146,27 +153,34 @@
             height: auto;
             object-fit: contain;
             display: block;
+            vertical-align: middle;
         }
         
         .company-name {
-            font-size: 18px;
+            font-size: 22px;
             font-weight: bold;
             color: #000000;
+            display: inline-block;
+            vertical-align: middle;
         }
         
-        .company-contact {
-            text-align: left;
-        }
-        
-        .company-contact p {
-            font-size: 10px;
-            margin: 3px 0;
+        .company-address {
+            display: table-cell;
+            width: 50%;
+            text-align: right;
+            vertical-align: middle;
+            font-size: 14px;
             color: #333;
             line-height: 1.6;
+            padding: 15px 15px 15px 0;
         }
         
-        .company-contact strong {
-            font-weight: 600;
+        .company-address p {
+            margin: 2px 0;
+            font-size: 14px;
+            color: #333;
+            line-height: 1.6;
+            text-align: right;
         }
         
         /* Items Table */
@@ -183,18 +197,18 @@
         }
         
         .items-table th {
-            padding: 12px 15px;
+            padding: 10px 15px;
             text-align: left;
-            font-size: 11px;
+            font-size: 15px;
             font-weight: bold;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
         
         .items-table td {
-            padding: 12px 15px;
+            padding: 10px 15px;
             border-bottom: 1px solid #e0e0e0;
-            font-size: 10px;
+            font-size: 14px;
             line-height: 1.5;
         }
         
@@ -210,8 +224,8 @@
         .total-purchases {
             display: flex;
             justify-content: space-between;
-            padding: 12px 15px;
-            font-size: 11px;
+            padding: 10px 15px;
+            font-size: 15px;
             font-weight: bold;
             border-bottom: 1px solid #e0e0e0;
         }
@@ -226,14 +240,14 @@
         
         /* Payment Details Section */
         .payment-details-section {
-            margin-top: 20px;
+            margin-top: 15px;
         }
         
         .section-header {
             background-color: #4a4a4a;
             color: #ffffff;
-            padding: 12px 15px;
-            font-size: 11px;
+            padding: 10px 15px;
+            font-size: 15px;
             font-weight: bold;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -241,13 +255,13 @@
         
         .section-content {
             background-color: #ffffff;
-            padding: 15px;
+            padding: 12px 15px;
             border: 1px solid #e0e0e0;
             border-top: none;
         }
         
         .section-content p {
-            font-size: 10px;
+            font-size: 14px;
             margin: 6px 0;
             color: #333;
             line-height: 1.5;
@@ -262,7 +276,7 @@
         
         /* Payments Due Section */
         .payments-due-section {
-            margin-top: 15px;
+            margin-top: 10px;
         }
         
         .payments-due-table {
@@ -271,8 +285,8 @@
         }
         
         .payments-due-table td {
-            padding: 8px 15px;
-            font-size: 10px;
+            padding: 6px 15px;
+            font-size: 14px;
             border-bottom: 1px solid #e0e0e0;
         }
         
@@ -301,9 +315,9 @@
         
         /* Footer */
         .footer-note {
-            margin-top: 20px;
-            padding: 10px 0;
-            font-size: 9px;
+            margin-top: 10px;
+            padding: 8px 0;
+            font-size: 13px;
             color: #666;
             text-align: left;
             font-style: italic;
@@ -312,10 +326,36 @@
         .footer-bar {
             background-color: {{theme_color}};
             color: #ffffff;
-            padding: 12px 20px;
-            margin-top: 10px;
-            font-size: 10px;
+            padding: 10px 20px;
+            margin-top: 5px;
+            font-size: 14px;
             text-align: left;
+            page-break-inside: avoid;
+        }
+        
+        /* Prevent page breaks */
+        .invoice-container {
+            page-break-inside: avoid;
+        }
+        
+        .top-header {
+            page-break-inside: avoid;
+        }
+        
+        .company-info-section {
+            page-break-inside: avoid;
+        }
+        
+        .items-table {
+            page-break-inside: avoid;
+        }
+        
+        .payment-details-section {
+            page-break-inside: avoid;
+        }
+        
+        .payments-due-section {
+            page-break-inside: avoid;
         }
         
         @media print {
@@ -335,36 +375,49 @@
 </head>
 <body>
     <div class="invoice-container">
-        <!-- Top Header: BILL TO, SHIP TO (50%) and INVOICE Details (50%) -->
+        <!-- Invoice Title - Top Right -->
+        <div class="invoice-title-row">
+            <h1>INVOICE</h1>
+        </div>
+        
+        <!-- Top Header: BILL TO (50%) and Invoice Details (50%) -->
         <div class="top-header">
             <div class="bill-to-section">
                 <h2>BILL TO</h2>
                 <p><strong>{{user_name}}</strong></p>
                 <p>{{user_email}}</p>
                 <p>{{user_address}}</p>
-                
-                <h3>SHIP TO</h3>
-                <p>{{user_address}}</p>
             </div>
-            <div class="invoice-header-right">
-                <h1>INVOICE</h1>
+            <div class="invoice-details-section">
                 <div class="invoice-details">
-                    <p><strong>Invoice Number:</strong> {{invoice_number}}</p>
-                    <p><strong>Date:</strong> {{invoice_date}}</p>
-                    <p><strong>Due Date:</strong> {{due_date}}</p>
+                    <div class="invoice-details-row">
+                        <div class="invoice-details-label">Invoice Number:</div>
+                        <div class="invoice-details-value">{{invoice_number}}</div>
+                    </div>
+                    <div class="invoice-details-row">
+                        <div class="invoice-details-label">Date:</div>
+                        <div class="invoice-details-value">{{invoice_date}}</div>
+                    </div>
+                    <div class="invoice-details-row">
+                        <div class="invoice-details-label">ABN:</div>
+                        <div class="invoice-details-value">41 459 532 142</div>
+                    </div>
                 </div>
             </div>
         </div>
         
-        <!-- Company Info: Logo, Name, Contact - Next Line -->
+        <!-- Company Info: Logo and Address - Next Line -->
         <div class="company-info-section">
             <div class="company-logo-name">
-                {{institute_logo}}
-                <div class="company-name">{{institute_name}}</div>
+                <div class="company-logo-name-wrapper">
+                    {{institute_logo}}
+                    <div class="company-name">{{institute_name}}</div>
+                </div>
             </div>
-            <div class="company-contact">
-                <p><strong>{{institute_name}}</strong></p>
-                <p>{{institute_address}}</p>
+            <div class="company-address">
+                <p>PO Box 55</p>
+                <p>James Cook University, Queensland 4811</p>
+                <p>Australia</p>
                 <p>{{institute_contact}}</p>
             </div>
         </div>

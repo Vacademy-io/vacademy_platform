@@ -9,6 +9,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.institute_learner.dto.projection.StudentListV2Projection;
 
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -142,6 +143,8 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
             List<String> levelIds,
             List<String> subOrgUserTypes,
             Map<String, List<String>> customFieldFilters,
+            LocalDate startDate,
+            LocalDate endDate,
             Pageable pageable) {
 
         StringBuilder whereClause = new StringBuilder(" WHERE (");
@@ -174,6 +177,16 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
         whereClause.append("AND (:destinationPackageSessionIds IS NULL OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds)) ");
         whereClause.append("AND (:levelIds IS NULL OR ssigm.desired_level_id IN (:levelIds)) ");
 
+        // Date range filter for enrolled_date and expiry_date
+        whereClause.append("AND ( ");
+        whereClause.append("  :startDate IS NULL ");
+        whereClause.append("  OR :endDate IS NULL ");
+        whereClause.append("  OR ( ");
+        whereClause.append("    ssigm.enrolled_date <= :endDate ");
+        whereClause.append("    AND (ssigm.expiry_date >= :startDate OR ssigm.expiry_date IS NULL) ");
+        whereClause.append("  ) ");
+        whereClause.append(") ");
+
         // Sub org user types filter
         whereClause.append("AND ( ");
         whereClause.append("  :subOrgUserTypes IS NULL ");
@@ -200,6 +213,8 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
         parameters.put("destinationPackageSessionIds", destinationPackageSessionIds);
         parameters.put("levelIds", levelIds);
         parameters.put("subOrgUserTypes", subOrgUserTypes);
+        parameters.put("startDate", startDate);
+        parameters.put("endDate", endDate);
 
         if (customFieldFilters != null && !customFieldFilters.isEmpty()) {
             int filterIndex = 0;
@@ -261,6 +276,8 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
             List<String> levelIds,
             List<String> subOrgUserTypes,
             Map<String, List<String>> customFieldFilters,
+            LocalDate startDate,
+            LocalDate endDate,
             Pageable pageable) {
 
         StringBuilder whereClause = new StringBuilder(" WHERE 1=1 ");
@@ -277,6 +294,16 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
         whereClause.append("AND (:typeIds IS NULL OR ssigm.type_id IN (:typeIds)) ");
         whereClause.append("AND (:destinationPackageSessionIds IS NULL OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds)) ");
         whereClause.append("AND (:levelIds IS NULL OR ssigm.desired_level_id IN (:levelIds)) ");
+
+        // Date range filter for enrolled_date and expiry_date
+        whereClause.append("AND ( ");
+        whereClause.append("  :startDate IS NULL ");
+        whereClause.append("  OR :endDate IS NULL ");
+        whereClause.append("  OR ( ");
+        whereClause.append("    ssigm.enrolled_date <= :endDate ");
+        whereClause.append("    AND (ssigm.expiry_date >= :startDate OR ssigm.expiry_date IS NULL) ");
+        whereClause.append("  ) ");
+        whereClause.append(") ");
 
         // Sub org user types filter
         whereClause.append("AND ( ");
@@ -306,6 +333,8 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
         parameters.put("destinationPackageSessionIds", destinationPackageSessionIds);
         parameters.put("levelIds", levelIds);
         parameters.put("subOrgUserTypes", subOrgUserTypes);
+        parameters.put("startDate", startDate);
+        parameters.put("endDate", endDate);
 
         if (customFieldFilters != null && !customFieldFilters.isEmpty()) {
             int filterIndex = 0;

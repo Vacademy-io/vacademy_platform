@@ -16,13 +16,13 @@ public class TestController {
     private WorkflowEngineService workflowEngineService;
 
     @GetMapping
-    public void test() {
-        workflowEngineService.run("test_tash",Map.of("user",getUser()));
+    public Map<String,Object> test() {
+      return  workflowEngineService.run("wf_admin_login",Map.of("instituteId","0bd9421e-2e74-4cfb-bbee-03bc09845bc6","user",getUser()));
     }
 
     public UserDTO getUser(){
         UserDTO userDTO = new UserDTO();
-        userDTO.setEmail("puni1@an.om");
+        userDTO.setEmail("punit@vidyayatan.com");
         userDTO.setUsername("pufb121");
         userDTO.setFullName("Rahufaie r3");
         userDTO.setMobileNumber("125687890");

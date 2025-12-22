@@ -29,6 +29,15 @@ interface CourseInfoCardProps {
   levelName: string;
 }
 
+const stripUrlQueryString = (htmlString: string) => {
+  if (!htmlString) return "";
+  // Regex to find src or href attributes with query parameters and strip them
+  return htmlString.replace(
+    /(src|href)=(["'])([^"']*?)(\?[^"']*)\2/gi,
+    "$1=$2$3$2"
+  );
+};
+
 const CourseInfoCard = ({ courseData, levelName }: CourseInfoCardProps) => {
   return (
     <Card className="overflow-hidden shadow-lg border bg-white w-full">
@@ -59,7 +68,7 @@ const CourseInfoCard = ({ courseData, levelName }: CourseInfoCardProps) => {
         <p
           className="text-gray-700 text-base sm:text-lg leading-relaxed mb-6"
           dangerouslySetInnerHTML={{
-            __html: courseData.description || "",
+            __html: stripUrlQueryString(courseData.description || ""),
           }}
         />
 
@@ -95,7 +104,7 @@ const CourseInfoCard = ({ courseData, levelName }: CourseInfoCardProps) => {
               <p
                 className="text-gray-700 text-sm sm:text-base"
                 dangerouslySetInnerHTML={{
-                  __html: courseData?.learningOutcome || "",
+                  __html: stripUrlQueryString(courseData?.learningOutcome || ""),
                 }}
               />
             </div>
@@ -116,7 +125,7 @@ const CourseInfoCard = ({ courseData, levelName }: CourseInfoCardProps) => {
             <p
               className="text-gray-700 text-sm sm:text-base leading-relaxed"
               dangerouslySetInnerHTML={{
-                __html: courseData?.aboutCourse || "",
+                __html: stripUrlQueryString(courseData?.aboutCourse || ""),
               }}
             />
           </div>

@@ -20,7 +20,6 @@ public class AssessmentServiceApplication {
     public static void main(String[] args) {
         TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
         SpringApplication.run(AssessmentServiceApplication.class, args);
-
     }
 
     @PostConstruct

@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.institute_learner.dto.projection.StudentListV2Projection;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -286,6 +287,14 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ssigm.package_session_id IN (:packageSessionIds))
               AND (:#{#paymentStatuses == null || #paymentStatuses.isEmpty()} = true OR last_pl.payment_status IN (:paymentStatuses))
               AND (
+                CAST(:startDate AS DATE) IS NULL 
+                OR CAST(:endDate AS DATE) IS NULL 
+                OR (
+                  ssigm.enrolled_date >= CAST(:startDate AS DATE)
+                  AND ssigm.enrolled_date <= CAST(:endDate AS DATE)
+                )
+              )
+              AND (
                 :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true 
                 OR (
                   ssigm.comma_separated_org_roles IS NOT NULL 
@@ -327,6 +336,14 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ssigm.package_session_id IN (:packageSessionIds))
               AND (:#{#paymentStatuses == null || #paymentStatuses.isEmpty()} = true OR last_pl.payment_status IN (:paymentStatuses))
               AND (
+                CAST(:startDate AS DATE) IS NULL 
+                OR CAST(:endDate AS DATE) IS NULL 
+                OR (
+                  ssigm.enrolled_date >= CAST(:startDate AS DATE)
+                  AND ssigm.enrolled_date <= CAST(:endDate AS DATE)
+                )
+              )
+              AND (
                 :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true 
                 OR (
                   ssigm.comma_separated_org_roles IS NOT NULL 
@@ -348,6 +365,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             @Param("paymentStatuses") List<String> paymentStatuses,
             @Param("customFieldStatus") List<String> customFieldStatus,
             @Param("subOrgUserTypes") List<String> subOrgUserTypes,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate,
             Pageable pageable);
 
     @Query(nativeQuery = true, value = """
@@ -435,6 +454,14 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:statuses IS NULL OR ssigm.status IN (:statuses))
               AND (:paymentStatuses IS NULL OR last_pl.payment_status IN (:paymentStatuses))
               AND (
+                CAST(:startDate AS DATE) IS NULL 
+                OR CAST(:endDate AS DATE) IS NULL 
+                OR (
+                  ssigm.enrolled_date >= CAST(:startDate AS DATE)
+                  AND ssigm.enrolled_date <= CAST(:endDate AS DATE)
+                )
+              )
+              AND (
                 :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true 
                 OR (
                   ssigm.comma_separated_org_roles IS NOT NULL 
@@ -480,6 +507,14 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))
               AND (:statuses IS NULL OR ssigm.status IN (:statuses))
               AND (:paymentStatuses IS NULL OR last_pl.payment_status IN (:paymentStatuses))
+              AND (
+                CAST(:startDate AS DATE) IS NULL 
+                OR CAST(:endDate AS DATE) IS NULL 
+                OR (
+                  ssigm.enrolled_date >= CAST(:startDate AS DATE)
+                  AND ssigm.enrolled_date <= CAST(:endDate AS DATE)
+                )
+              )
             """)
     Page<StudentListV2Projection> getAllStudentV2WithSearchRaw(
             @Param("name") String name,
@@ -488,6 +523,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             @Param("paymentStatuses") List<String> paymentStatuses,
             @Param("customFieldStatus") List<String> customFieldStatus,
             @Param("subOrgUserTypes") List<String> subOrgUserTypes,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate,
             Pageable pageable);
 
     // Get student details by user IDs for tag management
@@ -723,6 +760,14 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
               AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
               AND (
+                CAST(:startDate AS DATE) IS NULL 
+                OR CAST(:endDate AS DATE) IS NULL 
+                OR (
+                  ssigm.enrolled_date >= CAST(:startDate AS DATE)
+                  AND ssigm.enrolled_date <= CAST(:endDate AS DATE)
+                )
+              )
+              AND (
                 :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true 
                 OR (
                   ssigm.comma_separated_org_roles IS NOT NULL 
@@ -734,17 +779,6 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                   )
                 )
               )
-
-
-
-
-
-
-
-
-
-
-
             GROUP BY s.id, s.username, s.full_name, s.email, s.mobile_number,
                      ssigm.package_session_id, ssigm.enrolled_date, ssigm.expiry_date,
                      last_pl.payment_status, s.user_id, s.address_line, s.region, s.city,
@@ -780,6 +814,14 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
               AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
               AND (
+                CAST(:startDate AS DATE) IS NULL 
+                OR CAST(:endDate AS DATE) IS NULL 
+                OR (
+                  ssigm.enrolled_date >= CAST(:startDate AS DATE)
+                  AND ssigm.enrolled_date <= CAST(:endDate AS DATE)
+                )
+              )
+              AND (
                 :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true 
                 OR (
                   ssigm.comma_separated_org_roles IS NOT NULL 
@@ -791,17 +833,6 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                   )
                 )
               )
-
-
-
-
-
-
-
-
-
-
-
             """)
     Page<StudentListV2Projection> getAllStudentV2WithFilterRaw(
             @Param("statuses") List<String> statuses,
@@ -817,10 +848,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             @Param("destinationPackageSessionIds") List<String> destinationPackageSessionIds,
             @Param("levelIds") List<String> levelIds,
             @Param("subOrgUserTypes") List<String> subOrgUserTypes,
-
-
-
-
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate,
             Pageable pageable);
 
     @Query(nativeQuery = true, value = """
@@ -924,6 +953,14 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
               AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
               AND (
+                CAST(:startDate AS DATE) IS NULL 
+                OR CAST(:endDate AS DATE) IS NULL 
+                OR (
+                  ssigm.enrolled_date >= CAST(:startDate AS DATE)
+                  AND ssigm.enrolled_date <= CAST(:endDate AS DATE)
+                )
+              )
+              AND (
                 :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true 
                 OR (
                   ssigm.comma_separated_org_roles IS NOT NULL 
@@ -935,17 +972,6 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                   )
                 )
               )
-
-
-
-
-
-
-
-
-
-
-
             GROUP BY s.id, s.username, s.full_name, s.email, s.mobile_number,
                      ssigm.package_session_id, ssigm.enrolled_date, ssigm.expiry_date,
                      last_pl.payment_status, s.user_id, s.address_line, s.region, s.city,
@@ -996,6 +1022,14 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
               AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
               AND (
+                CAST(:startDate AS DATE) IS NULL 
+                OR CAST(:endDate AS DATE) IS NULL 
+                OR (
+                  ssigm.enrolled_date >= CAST(:startDate AS DATE)
+                  AND ssigm.enrolled_date <= CAST(:endDate AS DATE)
+                )
+              )
+              AND (
                 :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true 
                 OR (
                   ssigm.comma_separated_org_roles IS NOT NULL 
@@ -1007,17 +1041,6 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                   )
                 )
               )
-
-
-
-
-
-
-
-
-
-
-
             """)
     Page<StudentListV2Projection> getAllStudentV2WithSearchRaw(
             @Param("name") String name,
@@ -1031,10 +1054,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             @Param("destinationPackageSessionIds") List<String> destinationPackageSessionIds,
             @Param("levelIds") List<String> levelIds,
             @Param("subOrgUserTypes") List<String> subOrgUserTypes,
-
-
-
-
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate,
             Pageable pageable);
 
     @Query(value = """

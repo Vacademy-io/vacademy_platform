@@ -183,6 +183,8 @@ public class StudentListManager {
                         filter.getLevelIds(),
                         filter.getSubOrgUserTypes(),
                         filter.getCustomFieldFilters(),
+                        filter.getStartDate(),
+                        filter.getEndDate(),
                         pageable);
             } else {
                 // Use existing @Query method
@@ -198,6 +200,8 @@ public class StudentListManager {
                         filter.getDestinationPackageSessionIds(),
                         filter.getLevelIds(),
                         filter.getSubOrgUserTypes(),
+                        filter.getStartDate(),
+                        filter.getEndDate(),
                         pageable);
             }
         }
@@ -220,6 +224,8 @@ public class StudentListManager {
                         filter.getLevelIds(),
                         filter.getSubOrgUserTypes(),
                         filter.getCustomFieldFilters(),
+                        filter.getStartDate(),
+                        filter.getEndDate(),
                         pageable);
             } else {
                 // Use existing @Query method
@@ -237,6 +243,8 @@ public class StudentListManager {
                         filter.getDestinationPackageSessionIds(),
                         filter.getLevelIds(),
                         filter.getSubOrgUserTypes(),
+                        filter.getStartDate(),
+                        filter.getEndDate(),
                         pageable);
             }
         }

@@ -4,6 +4,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import vacademy.io.admin_core_service.features.institute_learner.dto.projection.StudentListV2Projection;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -28,6 +29,8 @@ public interface InstituteStudentRepositoryCustom {
      * @param levelIds List of level IDs
      * @param subOrgUserTypes List of sub org user types (ADMIN/LEARNER)
      * @param customFieldFilters Map of custom field filters (fieldId -> allowed values)
+     * @param startDate Start date for enrollment date range filter
+     * @param endDate End date for enrollment date range filter
      * @param pageable Pagination parameters
      * @return Page of StudentListV2Projection
      */
@@ -44,6 +47,8 @@ public interface InstituteStudentRepositoryCustom {
             List<String> levelIds,
             List<String> subOrgUserTypes,
             Map<String, List<String>> customFieldFilters,
+            LocalDate startDate,
+            LocalDate endDate,
             Pageable pageable);
     
     /**
@@ -63,6 +68,8 @@ public interface InstituteStudentRepositoryCustom {
      * @param levelIds List of level IDs
      * @param subOrgUserTypes List of sub org user types (ADMIN/LEARNER)
      * @param customFieldFilters Map of custom field filters (fieldId -> allowed values)
+     * @param startDate Start date for enrollment date range filter
+     * @param endDate End date for enrollment date range filter
      * @param pageable Pagination parameters
      * @return Page of StudentListV2Projection
      */
@@ -81,5 +88,7 @@ public interface InstituteStudentRepositoryCustom {
             List<String> levelIds,
             List<String> subOrgUserTypes,
             Map<String, List<String>> customFieldFilters,
+            LocalDate startDate,
+            LocalDate endDate,
             Pageable pageable);
 }

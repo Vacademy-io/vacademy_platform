@@ -24,6 +24,9 @@ spec:
         - name: assessment-service
           image: {{ .Values.services.assessment_service.image.repository }}:{{ .Values.services.assessment_service.image.tag }}
           imagePullPolicy: Always
+          envFrom:
+            - configMapRef:
+                name: myconfigmapv1.0
           resources:
             requests:
               cpu: "100m"

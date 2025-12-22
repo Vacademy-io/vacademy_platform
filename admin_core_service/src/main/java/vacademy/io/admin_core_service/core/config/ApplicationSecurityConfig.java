@@ -68,7 +68,10 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/v1/users/by-custom-field-filters",
             "/admin-core-service/v1/users/by-custom-field-filters/**",
             // Centralized recipient resolution API
-            "/admin-core-service/v1/recipient-resolution/centralized"
+            "/admin-core-service/v1/recipient-resolution/centralized",
+            // Agent SSE stream - EventSource doesn't support auth headers, session is
+            // validated internally
+            "/admin-core-service/v1/agent/stream/**"
     };
     @Autowired
     JwtAuthFilter jwtAuthFilter;

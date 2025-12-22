@@ -1,188 +1,152 @@
 package vacademy.io.media_service.controller.ai;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
-import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.media_service.ai.ExternalAIApiService;
-import vacademy.io.media_service.dto.AiGeneratedQuestionPaperJsonDto;
 import vacademy.io.media_service.dto.AutoDocumentSubmitResponse;
 import vacademy.io.media_service.dto.AutoQuestionPaperResponse;
 import vacademy.io.media_service.dto.PdfHtmlResponseStatusResponse;
-import vacademy.io.media_service.service.DocConverterService;
-import vacademy.io.media_service.service.FileService;
-import vacademy.io.media_service.service.HtmlImageConverter;
-import vacademy.io.media_service.service.NewDocConverterService;
+import vacademy.io.media_service.exception.FileConversionException;
+import vacademy.io.media_service.service.*;
+import vacademy.io.media_service.util.HtmlParsingUtils;
 import vacademy.io.media_service.util.JsonUtils;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
-
+/**
+ * Controller for AI-powered question generation.
+ * Refactored with cleaner code and better error handling.
+ */
+@Slf4j
 @RestController
+@RequiredArgsConstructor
 @RequestMapping("/media-service/ai/get-question")
 public class QuestionGeneratorController {
 
-    @Autowired
-    HtmlImageConverter htmlImageConverter;
-    @Autowired
-    ExternalAIApiService deepSeekService;
-    @Autowired
-    private ObjectMapper objectMapper;
+    private final HtmlImageConverter htmlImageConverter;
+    private final ExternalAIApiService externalAIApiService;
+    private final FileService fileService;
+    private final DocConverterService docConverterService;
+    private final NewDocConverterService newDocConverterService;
+    private final ResponseConverterService responseConverterService;
 
-    @Autowired
-    private FileService fileService;
-
-    @Autowired
-    private DocConverterService docConverterService;
-
-    @Autowired
-    private NewDocConverterService newDocConverterService;
-
-    public static String removeExtraSlashes(String input) {
-        // Regular expression to match <img src="..."> and replace with <img src="...">
-        String regex = "<img src=\\\\\"(.*?)\\\\\">";
-        String replacement = "<img src=\"$1\">";
-
-        // Compile the pattern and create a matcher
-        Pattern pattern = Pattern.compile(regex);
-        Matcher matcher = pattern.matcher(input);
-
-        // Replace all occurrences of the pattern with the replacement string
-        return matcher.replaceAll(replacement);
-    }
-
-    public static String extractBody(String html) {
-        if (html == null || html.isEmpty()) {
-            return "";
-        }
-
-        // Regex to match the content between <body> and </body> tags
-        Pattern pattern = Pattern.compile(
-                "<body[^>]*>(.*?)</body>",
-                Pattern.CASE_INSENSITIVE | Pattern.DOTALL // Handle case and multi-line content
-        );
-
-        Matcher matcher = pattern.matcher(html);
-        if (matcher.find()) {
-            // Extract the content (group 1) between the tags
-            return matcher.group(1).trim(); // Trim to remove leading/trailing whitespace
-        } else {
-            return html;
-        }
-    }
-
+    /**
+     * Generates questions from HTML file.
+     */
     @PostMapping("/from-html")
-    public ResponseEntity<AutoQuestionPaperResponse> fromHtml(@RequestParam(required = false) String userPrompt,
-                                                              @RequestParam("file") MultipartFile file) {
+    public ResponseEntity<AutoQuestionPaperResponse> fromHtml(
+            @RequestParam(required = false) String userPrompt,
+            @RequestParam("file") MultipartFile file) {
 
-        // Check if the uploaded file is HTML
-        if (!isHtmlFile(file)) {
-            throw new VacademyException("Invalid file format. Please upload an HTML file.");
-        }
+        validateHtmlFile(file);
 
         try {
             String html = new String(file.getBytes(), StandardCharsets.UTF_8);
-            String htmlBody = extractBody(html);
+            String htmlBody = HtmlParsingUtils.extractBody(html);
             String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
-            String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTML(networkHtml, userPrompt));
 
-            // Process the raw output to get valid JSON
+            String rawOutput = externalAIApiService.getQuestionsWithDeepSeekFromHTML(networkHtml, userPrompt);
             String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
 
-            return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+            return ResponseEntity.ok(responseConverterService.convertToQuestionPaperResponse(
+                    HtmlParsingUtils.removeExtraSlashes(validJson)));
 
         } catch (IOException e) {
-            throw new VacademyException(e.getMessage());
+            log.error("Failed to process HTML file: {}", e.getMessage(), e);
+            throw FileConversionException.conversionFailed(file.getOriginalFilename(), e.getMessage());
         }
     }
 
+    /**
+     * Generates questions from non-HTML document (docx, pdf, etc.).
+     */
     @PostMapping("/from-not-html")
-    public ResponseEntity<AutoQuestionPaperResponse> fromNotHtml(@RequestParam(required = false) String userPrompt,
-                                                                 @RequestParam("file") MultipartFile file) {
+    public ResponseEntity<AutoQuestionPaperResponse> fromNotHtml(
+            @RequestParam(required = false) String userPrompt,
+            @RequestParam("file") MultipartFile file) {
 
         try {
             String html = docConverterService.convertDocument(file);
-            String htmlBody = extractBody(html);
+            String htmlBody = HtmlParsingUtils.extractBody(html);
             String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
-            String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTML(networkHtml, userPrompt));
 
-            // Process the raw output to get valid JSON
+            String rawOutput = externalAIApiService.getQuestionsWithDeepSeekFromHTML(networkHtml, userPrompt);
             String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
 
-            return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+            return ResponseEntity.ok(responseConverterService.convertToQuestionPaperResponse(
+                    HtmlParsingUtils.removeExtraSlashes(validJson)));
 
         } catch (IOException e) {
-            throw new VacademyException(e.getMessage());
+            log.error("Failed to process document: {}", e.getMessage(), e);
+            throw FileConversionException.conversionFailed(file.getOriginalFilename(), e.getMessage());
         }
     }
 
+    /**
+     * Starts math-aware document processing.
+     */
     @PostMapping("/math-parser/from-not-html")
     public ResponseEntity<AutoDocumentSubmitResponse> fromNotHtmlMathParser(
             @RequestParam("file") MultipartFile file) {
 
-        if (isHtmlFile(file)) {
-            throw new VacademyException("Invalid file format. Please do not upload an HTML file.");
-        }
+        validateNonHtmlFile(file);
 
         try {
             String publicUrl = fileService.uploadFile(file);
-            if (!StringUtils.hasText(publicUrl)) {
-                throw new VacademyException("Error uploading file");
-            }
-            String pdfId = newDocConverterService.startProcessing(publicUrl);
-            if (!StringUtils.hasText(pdfId)) {
-                throw new VacademyException("Error processing file");
+            if (publicUrl == null || publicUrl.isEmpty()) {
+                throw FileConversionException.uploadFailed(file.getOriginalFilename());
             }
 
+            String pdfId = newDocConverterService.startProcessing(publicUrl);
+            if (pdfId == null || pdfId.isEmpty()) {
+                throw FileConversionException.conversionFailed(file.getOriginalFilename(),
+                        "Processing failed to start");
+            }
+
+            log.info("Started math parser processing: pdfId={}", pdfId);
             return ResponseEntity.ok(new AutoDocumentSubmitResponse(pdfId));
 
+        } catch (FileConversionException e) {
+            throw e;
         } catch (Exception e) {
-            throw new VacademyException(e.getMessage());
+            log.error("Failed to start math parser: {}", e.getMessage(), e);
+            throw FileConversionException.uploadFailed(file.getOriginalFilename());
         }
     }
 
-
+    /**
+     * Gets converted HTML from math parser.
+     */
     @GetMapping("/math-parser/pdf-to-html")
-    public ResponseEntity<PdfHtmlResponseStatusResponse> getMathParserPdfHtml(@RequestParam String pdfId) throws IOException {
+    public ResponseEntity<PdfHtmlResponseStatusResponse> getMathParserPdfHtml(
+            @RequestParam String pdfId) throws IOException {
+
         String html = newDocConverterService.getConvertedHtml(pdfId);
-        String htmlBody = extractBody(html);
+        if (html == null) {
+            throw FileConversionException.stillProcessing(pdfId);
+        }
+
+        String htmlBody = HtmlParsingUtils.extractBody(html);
         String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
 
         return ResponseEntity.ok(new PdfHtmlResponseStatusResponse(networkHtml));
     }
 
+    // ==================== Helper Methods ====================
 
-    private boolean isHtmlFile(MultipartFile file) {
-        return "text/html".equals(file.getContentType());
-    }
-
-    public AutoQuestionPaperResponse createAutoQuestionPaperResponse(String htmlResponse) {
-        AutoQuestionPaperResponse autoQuestionPaperResponse = new AutoQuestionPaperResponse();
-        ObjectMapper objectMapper = new ObjectMapper();
-
-        try {
-            AiGeneratedQuestionPaperJsonDto response = objectMapper.readValue(htmlResponse, new TypeReference<AiGeneratedQuestionPaperJsonDto>() {
-            });
-
-            autoQuestionPaperResponse.setQuestions(deepSeekService.formatQuestions(response.getQuestions()));
-            autoQuestionPaperResponse.setTitle(response.getTitle());
-            autoQuestionPaperResponse.setTags(response.getTags());
-            autoQuestionPaperResponse.setClasses(response.getClasses());
-            autoQuestionPaperResponse.setSubjects(response.getSubjects());
-            autoQuestionPaperResponse.setDifficulty(response.getDifficulty());
-
-        } catch (IOException e) {
-            throw new VacademyException(e.getMessage());
+    private void validateHtmlFile(MultipartFile file) {
+        if (!HtmlParsingUtils.isHtmlContentType(file.getContentType())) {
+            throw FileConversionException.invalidFormat("HTML");
         }
-
-        return autoQuestionPaperResponse;
     }
 
+    private void validateNonHtmlFile(MultipartFile file) {
+        if (HtmlParsingUtils.isHtmlContentType(file.getContentType())) {
+            throw FileConversionException.invalidFormat("non-HTML (PDF, DOCX, images)");
+        }
+    }
 }

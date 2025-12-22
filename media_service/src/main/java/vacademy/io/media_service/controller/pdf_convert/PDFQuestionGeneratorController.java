@@ -2,200 +2,237 @@ package vacademy.io.media_service.controller.pdf_convert;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.media.dto.FileDetailsDTO;
 import vacademy.io.media_service.ai.ExternalAIApiService;
+import vacademy.io.media_service.config.AiModelConfig;
 import vacademy.io.media_service.dto.*;
 import vacademy.io.media_service.entity.TaskStatus;
 import vacademy.io.media_service.enums.TaskInputTypeEnum;
 import vacademy.io.media_service.enums.TaskStatusTypeEnum;
+import vacademy.io.media_service.exception.FileConversionException;
 import vacademy.io.media_service.service.*;
+import vacademy.io.media_service.util.HtmlParsingUtils;
 import vacademy.io.media_service.util.JsonUtils;
 
 import java.io.IOException;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.Map;
 
-
+/**
+ * Controller for PDF-based question generation.
+ * Refactored with cleaner code structure, model selection support, and better
+ * error handling.
+ */
 @Slf4j
 @RestController
+@RequiredArgsConstructor
 @RequestMapping("/media-service/ai/get-question-pdf")
 public class PDFQuestionGeneratorController {
 
-    @Autowired
-    HtmlImageConverter htmlImageConverter;
-    @Autowired
-    ExternalAIApiService deepSeekService;
-    @Autowired
-    TaskStatusService taskStatusService;
-    @Autowired
-    DeepSeekAsyncTaskService deepSeekAsyncTaskService;
-    @Autowired
-    private ObjectMapper objectMapper;
-    @Autowired
-    private FileService fileService;
-    @Autowired
-    private FileConversionStatusService fileConversionStatusService;
-    @Autowired
-    private NewDocConverterService newDocConverterService;
+    private final HtmlImageConverter htmlImageConverter;
+    private final ExternalAIApiService externalAIApiService;
+    private final TaskStatusService taskStatusService;
+    private final DeepSeekAsyncTaskService deepSeekAsyncTaskService;
+    private final ObjectMapper objectMapper;
+    private final FileService fileService;
+    private final FileConversionStatusService fileConversionStatusService;
+    private final NewDocConverterService newDocConverterService;
+    private final ResponseConverterService responseConverterService;
+    private final AiModelConfig aiModelConfig;
 
-    public static String removeExtraSlashes(String input) {
-        // Regular expression to match <img src="..."> and replace with <img src="...">
-        String regex = "<img src=\\\\\"(.*?)\\\\\">";
-        String replacement = "<img src=\"$1\">";
+    // ==================== PDF Upload & Processing ====================
 
-        // Compile the pattern and create a matcher
-        Pattern pattern = Pattern.compile(regex);
-        Matcher matcher = pattern.matcher(input);
-
-        // Replace all occurrences of the pattern with the replacement string
-        return matcher.replaceAll(replacement);
-    }
-
-    public static String extractBody(String html) {
-        if (html == null || html.isEmpty()) {
-            return "";
-        }
-
-        // Regex to match the content between <body> and </body> tags
-        Pattern pattern = Pattern.compile(
-                "<body[^>]*>(.*?)</body>",
-                Pattern.CASE_INSENSITIVE | Pattern.DOTALL // Handle case and multi-line content
-        );
-
-        Matcher matcher = pattern.matcher(html);
-        if (matcher.find()) {
-            // Extract the content (group 1) between the tags
-            return matcher.group(1).trim(); // Trim to remove leading/trailing whitespace
-        } else {
-            return html;
-        }
-    }
-
-
+    /**
+     * Starts PDF processing by uploading file to MathPix.
+     */
     @PostMapping("/math-parser/start-process-pdf")
     public ResponseEntity<AutoDocumentSubmitResponse> startProcessPdf(
             @RequestParam("file") MultipartFile file) {
 
-        if (isHtmlFile(file)) {
-            throw new VacademyException("Invalid file format. Please do not upload an HTML file.");
-        }
+        validateNonHtmlFile(file);
 
         try {
             FileDetailsDTO fileDetailsDTO = fileService.uploadFileWithDetails(file);
             if (ObjectUtils.isEmpty(fileDetailsDTO) || !StringUtils.hasText(fileDetailsDTO.getUrl())) {
-                throw new VacademyException("Error uploading file");
+                throw FileConversionException.uploadFailed(file.getOriginalFilename());
             }
+
             String pdfId = newDocConverterService.startProcessing(fileDetailsDTO.getUrl());
             if (!StringUtils.hasText(pdfId)) {
-                throw new VacademyException("Error processing file");
+                throw FileConversionException.conversionFailed(fileDetailsDTO.getId(), "Failed to start processing");
             }
+
             fileConversionStatusService.startProcessing(pdfId, "mathpix", fileDetailsDTO.getId());
 
+            log.info("Started PDF processing: pdfId={}, fileId={}", pdfId, fileDetailsDTO.getId());
             return ResponseEntity.ok(new AutoDocumentSubmitResponse(pdfId));
 
+        } catch (FileConversionException e) {
+            throw e;
         } catch (Exception e) {
-            throw new VacademyException(e.getMessage());
+            log.error("Failed to start PDF processing: {}", e.getMessage(), e);
+            throw FileConversionException.uploadFailed(file.getOriginalFilename());
         }
     }
 
-
+    /**
+     * Starts PDF processing from existing file ID.
+     */
     @PostMapping("/math-parser/start-process-pdf-file-id")
-    public ResponseEntity<AutoDocumentSubmitResponse> startProcessPdf(
-            @RequestBody FileIdSubmitRequest file) {
+    public ResponseEntity<AutoDocumentSubmitResponse> startProcessPdfFromFileId(
+            @RequestBody FileIdSubmitRequest request) {
 
         try {
-            var fileDetailsDTOs = fileService.getMultipleFileDetailsWithExpiryAndId(file.getFileId(), 7);
+            var fileDetailsDTOs = fileService.getMultipleFileDetailsWithExpiryAndId(request.getFileId(), 7);
             if (ObjectUtils.isEmpty(fileDetailsDTOs) || fileDetailsDTOs.isEmpty()) {
-                throw new VacademyException("Error uploading file");
+                throw FileConversionException.uploadFailed(request.getFileId());
             }
+
             String pdfId = newDocConverterService.startProcessing(fileDetailsDTOs.get(0).getUrl());
             if (!StringUtils.hasText(pdfId)) {
-                throw new VacademyException("Error processing file");
+                throw FileConversionException.conversionFailed(request.getFileId(), "Failed to start processing");
             }
+
             fileConversionStatusService.startProcessing(pdfId, "mathpix", fileDetailsDTOs.get(0).getId());
 
+            log.info("Started PDF processing from fileId: pdfId={}", pdfId);
             return ResponseEntity.ok(new AutoDocumentSubmitResponse(pdfId));
 
+        } catch (FileConversionException e) {
+            throw e;
         } catch (Exception e) {
-            throw new VacademyException(e.getMessage());
+            log.error("Failed to start PDF processing from fileId: {}", e.getMessage(), e);
+            throw FileConversionException.uploadFailed(request.getFileId());
         }
     }
 
+    // ==================== Question Generation ====================
 
+    /**
+     * Generates questions from PDF with optional model selection.
+     */
     @GetMapping("/math-parser/pdf-to-questions")
-    public ResponseEntity<String> getMathParserPdfHtml(@RequestParam String pdfId,
-                                                       @RequestParam(required = false) String userPrompt,
-                                                       @RequestParam(name = "taskId", required = false) String taskId,
-                                                       @RequestParam(name = "taskName", required = false) String taskName,
-                                                       @RequestParam(name = "instituteId", required = false) String instituteId) throws IOException {
+    public ResponseEntity<Map<String, Object>> getPdfToQuestions(
+            @RequestParam String pdfId,
+            @RequestParam(required = false) String userPrompt,
+            @RequestParam(name = "taskId", required = false) String taskId,
+            @RequestParam(name = "taskName", required = false) String taskName,
+            @RequestParam(name = "instituteId", required = false) String instituteId,
+            @RequestParam(name = "preferredModel", required = false) String preferredModel) throws IOException {
 
-        TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(taskId, TaskStatusTypeEnum.PDF_TO_QUESTIONS.name(), pdfId, TaskInputTypeEnum.PDF_ID.name(), taskName, instituteId);
+        String model = aiModelConfig.getModelToUse(preferredModel);
 
-        // Background async processing
-        deepSeekAsyncTaskService.pollAndProcessPdfToQuestions(taskStatus, pdfId, userPrompt);
+        TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(
+                taskId,
+                TaskStatusTypeEnum.PDF_TO_QUESTIONS.name(),
+                pdfId,
+                TaskInputTypeEnum.PDF_ID.name(),
+                taskName,
+                instituteId);
 
-        return ResponseEntity.ok(taskStatus.getId());
+        deepSeekAsyncTaskService.pollAndProcessPdfToQuestions(taskStatus, pdfId, userPrompt, model);
+
+        log.info("Started PDF to questions: taskId={}, pdfId={}, model={}", taskStatus.getId(), pdfId, model);
+
+        return ResponseEntity.ok(Map.of(
+                "taskId", taskStatus.getId(),
+                "status", "STARTED",
+                "model", model,
+                "message", "Question generation started"));
     }
 
+    /**
+     * Generates questions from image.
+     */
     @GetMapping("/math-parser/image-to-questions")
-    public ResponseEntity<String> getMathParserPdfHtmlFromImage(@RequestParam String pdfId,
-                                                                @RequestParam(required = false) String userPrompt,
-                                                                @RequestParam(name = "taskId", required = false) String taskId,
-                                                                @RequestParam(name = "taskName", required = false) String taskName,
-                                                                @RequestParam(name = "instituteId", required = false) String instituteId) throws IOException {
+    public ResponseEntity<Map<String, Object>> getImageToQuestions(
+            @RequestParam String pdfId,
+            @RequestParam(required = false) String userPrompt,
+            @RequestParam(name = "taskId", required = false) String taskId,
+            @RequestParam(name = "taskName", required = false) String taskName,
+            @RequestParam(name = "instituteId", required = false) String instituteId,
+            @RequestParam(name = "preferredModel", required = false) String preferredModel) throws IOException {
 
-        TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(taskId, TaskStatusTypeEnum.IMAGE_TO_QUESTIONS.name(), pdfId, TaskInputTypeEnum.IMAGE_ID.name(), taskName, instituteId);
+        String model = aiModelConfig.getModelToUse(preferredModel);
 
-        // Background async processing
-        deepSeekAsyncTaskService.pollAndProcessPdfToQuestions(taskStatus, pdfId, userPrompt);
+        TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(
+                taskId,
+                TaskStatusTypeEnum.IMAGE_TO_QUESTIONS.name(),
+                pdfId,
+                TaskInputTypeEnum.IMAGE_ID.name(),
+                taskName,
+                instituteId);
 
-        return ResponseEntity.ok(taskStatus.getId());
+        deepSeekAsyncTaskService.pollAndProcessPdfToQuestions(taskStatus, pdfId, userPrompt, model);
+
+        return ResponseEntity.ok(Map.of(
+                "taskId", taskStatus.getId(),
+                "status", "STARTED",
+                "model", model));
     }
 
+    /**
+     * Sorts questions by topic.
+     */
     @GetMapping("/math-parser/topic-wise/pdf-to-questions")
-    public ResponseEntity<String> getMathParserPdfWithTopicHtml(@RequestParam String pdfId, @RequestParam(required = false) String userPrompt,
-                                                                @RequestParam("instituteId") String instituteId,
-                                                                @RequestParam("taskName") String taskName) throws IOException {
+    public ResponseEntity<Map<String, Object>> getPdfToQuestionsTopicWise(
+            @RequestParam String pdfId,
+            @RequestParam(required = false) String userPrompt,
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam("taskName") String taskName) throws IOException {
 
-        TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(null, TaskStatusTypeEnum.SORT_QUESTIONS_TOPIC_WISE.name(), pdfId, TaskInputTypeEnum.PDF_ID.name(), taskName, instituteId);
+        TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(
+                null,
+                TaskStatusTypeEnum.SORT_QUESTIONS_TOPIC_WISE.name(),
+                pdfId,
+                TaskInputTypeEnum.PDF_ID.name(),
+                taskName,
+                instituteId);
 
-        // Background async processing
         deepSeekAsyncTaskService.pollAndProcessSortQuestionTopicWise(taskStatus, pdfId);
-        return ResponseEntity.ok(taskStatus.getId());
+
+        return ResponseEntity.ok(Map.of(
+                "taskId", taskStatus.getId(),
+                "status", "STARTED"));
     }
 
+    /**
+     * Generates questions from HTML directly.
+     */
     @PostMapping("/math-parser/html-to-questions")
-    public ResponseEntity<AutoQuestionPaperResponse> getMathParserHtmlToQuestions(@RequestBody HtmlResponse html, @RequestParam(required = false) String userPrompt) throws IOException {
+    public ResponseEntity<AutoQuestionPaperResponse> getHtmlToQuestions(
+            @RequestBody HtmlResponse html,
+            @RequestParam(required = false) String userPrompt) throws IOException {
 
-
-        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTML(html.getHtml(), userPrompt));
-
+        String rawOutput = externalAIApiService.getQuestionsWithDeepSeekFromHTML(html.getHtml(), userPrompt);
         String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
-        return ResponseEntity.ok(createAutoQuestionPaperResponse(removeExtraSlashes(validJson)));
+
+        return ResponseEntity.ok(responseConverterService.convertToQuestionPaperResponse(
+                HtmlParsingUtils.removeExtraSlashes(validJson)));
     }
 
-
+    /**
+     * Gets HTML from processed PDF.
+     */
     @GetMapping("/math-parser/pdf-to-html")
-    public ResponseEntity<HtmlResponse> getMathParserPdfToHtml(@RequestParam String pdfId) throws IOException {
+    public ResponseEntity<HtmlResponse> getPdfToHtml(@RequestParam String pdfId) throws IOException {
 
         var fileConversionStatus = fileConversionStatusService.findByVendorFileId(pdfId);
 
         if (fileConversionStatus.isEmpty() || !StringUtils.hasText(fileConversionStatus.get().getHtmlText())) {
             String html = newDocConverterService.getConvertedHtml(pdfId);
             if (html == null) {
-                throw new VacademyException("File Still Processing");
+                throw FileConversionException.stillProcessing(pdfId);
             }
-            String htmlBody = extractBody(html);
-            String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
 
+            String htmlBody = HtmlParsingUtils.extractBody(html);
+            String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
             fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
 
             return ResponseEntity.ok(new HtmlResponse(networkHtml));
@@ -204,117 +241,130 @@ public class PDFQuestionGeneratorController {
         return ResponseEntity.ok(new HtmlResponse(fileConversionStatus.get().getHtmlText()));
     }
 
+    /**
+     * Extracts questions for specific topics.
+     */
     @GetMapping("/math-parser/pdf-to-extract-topic-questions")
-    public ResponseEntity<String> getMathParserPdfTopicQuestions(@RequestParam String pdfId, @RequestParam String requiredTopics,
-                                                                 @RequestParam(name = "taskId", required = false) String taskId,
-                                                                 @RequestParam(name = "taskName", required = false) String taskName,
-                                                                 @RequestParam(name = "instituteId", required = false) String instituteId) throws IOException {
+    public ResponseEntity<Map<String, Object>> getPdfTopicQuestions(
+            @RequestParam String pdfId,
+            @RequestParam String requiredTopics,
+            @RequestParam(name = "taskId", required = false) String taskId,
+            @RequestParam(name = "taskName", required = false) String taskName,
+            @RequestParam(name = "instituteId", required = false) String instituteId) throws IOException {
 
-
-        TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(taskId, TaskStatusTypeEnum.PDF_TO_QUESTIONS_WITH_TOPIC.name(), pdfId, TaskInputTypeEnum.PDF_ID.name(), taskName, instituteId);
+        TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(
+                taskId,
+                TaskStatusTypeEnum.PDF_TO_QUESTIONS_WITH_TOPIC.name(),
+                pdfId,
+                TaskInputTypeEnum.PDF_ID.name(),
+                taskName,
+                instituteId);
 
         deepSeekAsyncTaskService.pollAndProcessPdfExtractTopicQuestions(taskStatus, pdfId, requiredTopics);
 
-        return ResponseEntity.ok(taskStatus.getId());
-
+        return ResponseEntity.ok(Map.of(
+                "taskId", taskStatus.getId(),
+                "status", "STARTED"));
     }
 
-
+    /**
+     * Evaluates manual answer sheets.
+     */
     @PostMapping("/math-parser/check-manual-answer")
-    public ResponseEntity<AIManualEvaluationQuestionPaperResponse> getEvaluationForQuestions(@RequestParam String pdfId, @RequestBody AIManualEvaluationQuestionPaperRequest aiManualEvaluationQuestionPaperRequest) throws IOException {
+    public ResponseEntity<AIManualEvaluationQuestionPaperResponse> evaluateManualAnswer(
+            @RequestParam String pdfId,
+            @RequestBody AIManualEvaluationQuestionPaperRequest request) throws IOException {
 
-        if (aiManualEvaluationQuestionPaperRequest == null) {
-            throw new VacademyException("Please provide request body");
+        if (request == null) {
+            throw new IllegalArgumentException("Request body is required");
         }
 
-        if (aiManualEvaluationQuestionPaperRequest.getTotalMarks() == null) {
-            aiManualEvaluationQuestionPaperRequest.setTotalMarks(100D);
+        // Set defaults
+        if (request.getTotalMarks() == null) {
+            request.setTotalMarks(100D);
         }
-
-        if (aiManualEvaluationQuestionPaperRequest.getEvaluationDifficulty() == null) {
-            aiManualEvaluationQuestionPaperRequest.setEvaluationDifficulty("hard and medium");
+        if (request.getEvaluationDifficulty() == null) {
+            request.setEvaluationDifficulty("hard and medium");
         }
 
         var fileConversionStatus = fileConversionStatusService.findByVendorFileId(pdfId);
+        String htmlText;
 
         if (fileConversionStatus.isEmpty() || !StringUtils.hasText(fileConversionStatus.get().getHtmlText())) {
             String html = newDocConverterService.getConvertedHtml(pdfId);
             if (html == null) {
-                throw new VacademyException("File Still Processing");
+                throw FileConversionException.stillProcessing(pdfId);
             }
-            String htmlBody = extractBody(html);
-            String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
 
-            fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
-            String rawOutput = (deepSeekService.evaluateManualAnswerSheet(networkHtml, aiManualEvaluationQuestionPaperRequest.getHtmlQuestion(), aiManualEvaluationQuestionPaperRequest.getTotalMarks(), aiManualEvaluationQuestionPaperRequest.getEvaluationDifficulty()));
-
-            // Process the raw output to get valid JSON
-            String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
-
-            return ResponseEntity.ok(createManualEvaluationPaperResponse(aiManualEvaluationQuestionPaperRequest, removeExtraSlashes(validJson)));
+            String htmlBody = HtmlParsingUtils.extractBody(html);
+            htmlText = htmlImageConverter.convertBase64ToUrls(htmlBody);
+            fileConversionStatusService.updateHtmlText(pdfId, htmlText);
+        } else {
+            htmlText = fileConversionStatus.get().getHtmlText();
         }
 
-        String rawOutput = (deepSeekService.evaluateManualAnswerSheet(fileConversionStatus.get().getHtmlText(), aiManualEvaluationQuestionPaperRequest.getHtmlQuestion(), aiManualEvaluationQuestionPaperRequest.getTotalMarks(), aiManualEvaluationQuestionPaperRequest.getEvaluationDifficulty()));
+        String rawOutput = externalAIApiService.evaluateManualAnswerSheet(
+                htmlText,
+                request.getHtmlQuestion(),
+                request.getTotalMarks(),
+                request.getEvaluationDifficulty());
 
-        // Process the raw output to get valid JSON
         String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
-        return ResponseEntity.ok(createManualEvaluationPaperResponse(aiManualEvaluationQuestionPaperRequest, removeExtraSlashes(validJson)));
+        return ResponseEntity
+                .ok(createManualEvaluationResponse(request, HtmlParsingUtils.removeExtraSlashes(validJson)));
     }
 
-
+    /**
+     * Generates questions from text with model selection support.
+     */
     @PostMapping("/from-text")
-    public ResponseEntity<String> fromHtml(
+    public ResponseEntity<Map<String, Object>> fromText(
             @RequestBody TextDTO textPrompt,
             @RequestParam("instituteId") String instituteId,
             @RequestParam(value = "taskId", required = false) String taskId) {
-        TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(taskId, TaskStatusTypeEnum.TEXT_TO_QUESTIONS.name(), deepSeekAsyncTaskService.generateUniqueId(textPrompt.getText()), TaskInputTypeEnum.PROMPT_ID.name(), textPrompt.getTaskName(), instituteId);
+
+        String model = aiModelConfig.getModelToUse(textPrompt.getPreferredModel());
+
+        TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(
+                taskId,
+                TaskStatusTypeEnum.TEXT_TO_QUESTIONS.name(),
+                deepSeekAsyncTaskService.generateUniqueId(textPrompt.getText()),
+                TaskInputTypeEnum.PROMPT_ID.name(),
+                textPrompt.getTaskName(),
+                instituteId);
 
         deepSeekAsyncTaskService.pollAndProcessTextToQuestions(taskStatus, textPrompt);
-        return ResponseEntity.ok(taskStatus.getId());
+
+        return ResponseEntity.ok(Map.of(
+                "taskId", taskStatus.getId(),
+                "status", "STARTED",
+                "model", model,
+                "message", "Question generation started from text"));
     }
 
-    private boolean isHtmlFile(MultipartFile file) {
-        return "text/html".equals(file.getContentType());
-    }
+    // ==================== Helper Methods ====================
 
-    public AutoQuestionPaperResponse createAutoQuestionPaperResponse(String htmlResponse) {
-        AutoQuestionPaperResponse autoQuestionPaperResponse = new AutoQuestionPaperResponse();
-        ObjectMapper objectMapper = new ObjectMapper();
-
-        try {
-            AiGeneratedQuestionPaperJsonDto response = objectMapper.readValue(htmlResponse, new TypeReference<AiGeneratedQuestionPaperJsonDto>() {
-            });
-
-            autoQuestionPaperResponse.setQuestions(deepSeekService.formatQuestions(response.getQuestions()));
-            autoQuestionPaperResponse.setTitle(response.getTitle());
-            autoQuestionPaperResponse.setTags(response.getTags());
-            autoQuestionPaperResponse.setClasses(response.getClasses());
-            autoQuestionPaperResponse.setSubjects(response.getSubjects());
-            autoQuestionPaperResponse.setDifficulty(response.getDifficulty());
-
-        } catch (IOException e) {
-            throw new VacademyException(e.getMessage());
+    private void validateNonHtmlFile(MultipartFile file) {
+        if (HtmlParsingUtils.isHtmlContentType(file.getContentType())) {
+            throw FileConversionException.invalidFormat("PDF, DOCX, or image files");
         }
-
-        return autoQuestionPaperResponse;
     }
 
-    public AIManualEvaluationQuestionPaperResponse createManualEvaluationPaperResponse(AIManualEvaluationQuestionPaperRequest manualEvaluationQuestionPaperRequest, String aiJsonResponse) {
-        AutoQuestionPaperResponse autoQuestionPaperResponse = new AutoQuestionPaperResponse();
-        ObjectMapper objectMapper = new ObjectMapper();
+    private AIManualEvaluationQuestionPaperResponse createManualEvaluationResponse(
+            AIManualEvaluationQuestionPaperRequest request,
+            String aiJsonResponse) {
 
         try {
-            AIManualEvaluationQuestionPaperResponse response = objectMapper.readValue(aiJsonResponse, new TypeReference<AIManualEvaluationQuestionPaperResponse>() {
-            });
-            response.setHtmlQuestion(manualEvaluationQuestionPaperRequest.getHtmlQuestion());
-            response.setTotalMarks(manualEvaluationQuestionPaperRequest.getTotalMarks());
+            AIManualEvaluationQuestionPaperResponse response = objectMapper.readValue(
+                    aiJsonResponse,
+                    new TypeReference<AIManualEvaluationQuestionPaperResponse>() {
+                    });
+            response.setHtmlQuestion(request.getHtmlQuestion());
+            response.setTotalMarks(request.getTotalMarks());
             return response;
         } catch (IOException e) {
-            throw new VacademyException(e.getMessage());
+            log.error("Failed to parse manual evaluation response: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to process evaluation response", e);
         }
-
-
     }
-
-
 }

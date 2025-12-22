@@ -2,7 +2,6 @@ package vacademy.io.media_service.manager;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import vacademy.io.media_service.entity.TaskStatus;
 import vacademy.io.media_service.enums.TaskInputTypeEnum;
@@ -25,15 +24,26 @@ public class AiLectureManager {
 
         /**
          * Generates a lecture plan based on user input.
+         * 
+         * @param userPrompt       The topic/content for the lecture
+         * @param lectureDuration  Duration of the lecture
+         * @param language         Language for the lecture plan
+         * @param methodOfTeaching Teaching method
+         * @param taskName         Name for tracking this task
+         * @param instituteId      Institute identifier
+         * @param level            Class/skill level
+         * @param model            AI model to use
+         * @return Task ID for tracking progress
          */
-        public ResponseEntity<String> generateLecturePlanner(
+        public String generateLecturePlanner(
                         String userPrompt,
                         String lectureDuration,
                         String language,
                         String methodOfTeaching,
                         String taskName,
                         String instituteId,
-                        String level) {
+                        String level,
+                        String model) {
 
                 TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(
                                 null,
@@ -49,19 +59,27 @@ public class AiLectureManager {
                                 lectureDuration,
                                 language,
                                 methodOfTeaching,
-                                level);
+                                level,
+                                model);
 
-                log.info("Started lecture planner generation: taskId={}", taskStatus.getId());
-                return ResponseEntity.ok(taskStatus.getId());
+                log.info("Started lecture planner generation: taskId={}, model={}", taskStatus.getId(), model);
+                return taskStatus.getId();
         }
 
         /**
          * Generates feedback for a lecture from audio transcription.
+         * 
+         * @param audioId     The audio file ID
+         * @param instituteId Institute identifier
+         * @param taskName    Name for tracking this task
+         * @param model       AI model to use
+         * @return Task ID for tracking progress
          */
-        public ResponseEntity<String> generateLectureFeedback(
+        public String generateLectureFeedback(
                         String audioId,
                         String instituteId,
-                        String taskName) {
+                        String taskName,
+                        String model) {
 
                 TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(
                                 null,
@@ -71,9 +89,10 @@ public class AiLectureManager {
                                 taskName,
                                 instituteId);
 
-                deepSeekAsyncTaskService.pollAndProcessAudioFeedback(taskStatus, audioId);
+                deepSeekAsyncTaskService.pollAndProcessAudioFeedback(taskStatus, audioId, model);
 
-                log.info("Started lecture feedback generation: taskId={}, audioId={}", taskStatus.getId(), audioId);
-                return ResponseEntity.ok(taskStatus.getId());
+                log.info("Started lecture feedback generation: taskId={}, audioId={}, model={}",
+                                taskStatus.getId(), audioId, model);
+                return taskStatus.getId();
         }
 }

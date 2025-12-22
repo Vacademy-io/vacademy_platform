@@ -188,16 +188,20 @@ public class DeepSeekAsyncTaskService {
 
     /**
      * Polls for audio transcription and generates lecture feedback.
+     * 
+     * @param taskStatus The task status entity
+     * @param audioId    The audio file ID
+     * @param model      The AI model to use
      */
     @Async("fileProcessingExecutor")
-    public CompletableFuture<Void> pollAndProcessAudioFeedback(TaskStatus taskStatus, String audioId) {
+    public CompletableFuture<Void> pollAndProcessAudioFeedback(TaskStatus taskStatus, String audioId, String model) {
         updateStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING, "Analyzing lecture audio...");
 
         return pollingService.pollForAudioResponseAsync(audioId, taskStatus)
                 .orTimeout(POLLING_TIMEOUT_MINUTES, TimeUnit.MINUTES)
                 .thenCompose(audioResponse -> {
                     if (audioResponse != null && audioResponse.getText() != null) {
-                        return processLectureFeedbackAsync(taskStatus, audioResponse);
+                        return processLectureFeedbackAsync(taskStatus, audioResponse, model);
                     } else {
                         return CompletableFuture.failedFuture(
                                 FileConversionException.conversionFailed(audioId,
@@ -232,6 +236,14 @@ public class DeepSeekAsyncTaskService {
 
     /**
      * Processes lecture planner generation.
+     * 
+     * @param taskStatus       The task status entity
+     * @param userPrompt       User's prompt for the lecture
+     * @param lectureDuration  Duration of the lecture
+     * @param language         Language for the content
+     * @param methodOfTeaching Teaching method
+     * @param level            Class/skill level
+     * @param model            AI model to use
      */
     @Async("aiTaskExecutor")
     public CompletableFuture<Void> processDeepSeekTaskInBackgroundWrapperForLecturePlanner(
@@ -240,7 +252,8 @@ public class DeepSeekAsyncTaskService {
             String lectureDuration,
             String language,
             String methodOfTeaching,
-            String level) {
+            String level,
+            String model) {
 
         return CompletableFuture.runAsync(() -> {
             try {
@@ -334,7 +347,7 @@ public class DeepSeekAsyncTaskService {
     }
 
     private CompletableFuture<Void> processLectureFeedbackAsync(
-            TaskStatus taskStatus, AudioConversionDeepLevelResponse audioResponse) {
+            TaskStatus taskStatus, AudioConversionDeepLevelResponse audioResponse, String model) {
 
         return CompletableFuture.runAsync(() -> {
             try {

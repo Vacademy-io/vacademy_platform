@@ -107,4 +107,12 @@ public class WorkflowTriggerService {
         log.info("---- Workflow Trigger Event END ----");
         return response;
     }
+
+    public Optional<WorkflowTrigger> findByInstituteIdEventNameAndEventId(String instituteId,String eventName,String eventId){
+        List<WorkflowTrigger>res = workflowTriggerRepository.findByInstituteIdAndEventIdAnsEventTypeAndStatusIn(instituteId,eventId,eventName,List.of(StatusEnum.ACTIVE.name()));
+        if (res.size() > 0){
+            return Optional.of(res.get(0));
+        }
+        return Optional.empty();
+    }
 }

@@ -723,8 +723,8 @@ public class InvoiceService {
         filled = filled.replace("{{institute_logo}}", instituteLogoHtml);
         
         // Institute theme color - replace in CSS and HTML
-        // Use dark green for BILL TO section and footer
-        String defaultColor = "#1a5f3f"; // Dark green
+        // Use dark turquoise for BILL TO section and footer
+        String defaultColor = "#124a34"; // Dark turquoise
         filled = filled.replace("{{theme_color}}", defaultColor);
         
         // Table header uses hardcoded orange color (#f78f1e) - no replacement needed
@@ -735,13 +735,13 @@ public class InvoiceService {
         filled = filled.replace("{{user_email}}", user.getEmail() != null ? user.getEmail() : "");
         filled = filled.replace("{{user_address}}", user.getAddressLine() != null ? user.getAddressLine() : "");
 
-        // Financial info
+        // Financial info - format with $ prefix
         filled = filled.replace("{{subtotal}}", invoiceData.getSubtotal() != null ? 
-                invoiceData.getSubtotal().toString() : "0.00");
+                "$" + invoiceData.getSubtotal().toString() : "$0.00");
         filled = filled.replace("{{tax_amount}}", invoiceData.getTaxAmount() != null ? 
-                invoiceData.getTaxAmount().toString() : "0.00");
+                "$" + invoiceData.getTaxAmount().toString() : "$0.00");
         filled = filled.replace("{{total_amount}}", invoiceData.getTotalAmount() != null ? 
-                invoiceData.getTotalAmount().toString() : "0.00");
+                "$" + invoiceData.getTotalAmount().toString() : "$0.00");
         filled = filled.replace("{{currency}}", invoiceData.getCurrency() != null ? 
                 invoiceData.getCurrency() : "INR");
 
@@ -833,10 +833,12 @@ public class InvoiceService {
             html.append("<tr>");
             html.append("<td>").append(item.getDescription() != null ? item.getDescription() : "").append("</td>");
             html.append("<td>").append(item.getQuantity() != null ? item.getQuantity() : 1).append("</td>");
-            html.append("<td>").append(item.getUnitPrice() != null ? item.getUnitPrice().toString() : "0.00")
-                    .append(" ").append(currency != null ? currency : "INR").append("</td>");
-            html.append("<td>").append(item.getAmount() != null ? item.getAmount().toString() : "0.00")
-                    .append(" ").append(currency != null ? currency : "INR").append("</td>");
+            // Format unit price with $ prefix
+            String unitPrice = item.getUnitPrice() != null ? item.getUnitPrice().toString() : "0.00";
+            html.append("<td>$").append(unitPrice).append("</td>");
+            // Format amount with $ prefix
+            String amount = item.getAmount() != null ? item.getAmount().toString() : "0.00";
+            html.append("<td>$").append(amount).append("</td>");
             html.append("</tr>");
         }
         return html.toString();

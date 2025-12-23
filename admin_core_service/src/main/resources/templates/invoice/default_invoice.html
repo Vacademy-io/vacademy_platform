@@ -7,10 +7,22 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
+        @page {
+            size: A4;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+        }
+        
+        html {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100%;
         }
         
         body {
@@ -19,21 +31,23 @@
             line-height: 1.5;
             color: #333;
             background-color: #ffffff;
-            padding: 15px;
+            padding: 0 !important;
+            margin: 0 !important;
+            width: 100%;
         }
         
         .invoice-container {
-            max-width: 800px;
-            margin: 0 auto;
+            width: 100%;
+            margin: 0 !important;
             background: #ffffff;
-            padding: 0;
+            padding: 0 !important;
         }
         
         /* Invoice Title - Top Right */
         .invoice-title-row {
             width: 100%;
             text-align: right;
-            padding: 10px 30px 15px 0;
+            padding: 10px 15px 15px 0;
         }
         
         .invoice-title-row h1 {
@@ -50,17 +64,24 @@
             width: 100%;
             table-layout: fixed;
             border-collapse: separate;
+            border: 1px solid #e0e0e0;
         }
         
         .bill-to-section {
             background-color: {{theme_color}};
             color: #ffffff;
-            padding: 15px 25px;
+            padding: 15px 0;
             display: table-cell;
             width: 50%;
             vertical-align: top;
             border-right: 0;
             overflow: hidden;
+        }
+        
+        .bill-to-section h2,
+        .bill-to-section p {
+            padding-left: 15px;
+            padding-right: 15px;
         }
         
         .bill-to-section h2 {
@@ -85,7 +106,7 @@
         
         .invoice-details-section {
             background-color: #ffffff;
-            padding: 15px 20px 15px 25px;
+            padding: 15px 0;
             display: table-cell;
             width: 50%;
             vertical-align: top;
@@ -94,6 +115,8 @@
         
         .invoice-details {
             text-align: left;
+            padding-left: 15px;
+            padding-right: 15px;
         }
         
         .invoice-details-row {
@@ -121,15 +144,21 @@
             width: 100%;
             table-layout: fixed;
             background-color: #ffffff;
-            border-top: 1px solid #e0e0e0;
+            border: 1px solid #e0e0e0;
             margin-top: 0;
+            margin-bottom: 0;
         }
         
         .company-logo-name {
             display: table-cell;
             width: 50%;
             vertical-align: middle;
-            padding: 15px 0 15px 25px;
+            padding: 15px 0;
+        }
+        
+        .company-logo-name-wrapper {
+            padding-left: 10px;
+            padding-right: 10px;
         }
         
         .company-logo-name-wrapper {
@@ -172,7 +201,7 @@
             font-size: 14px;
             color: #333;
             line-height: 1.6;
-            padding: 15px 15px 15px 0;
+            padding: 15px 0;
         }
         
         .company-address p {
@@ -181,6 +210,8 @@
             color: #333;
             line-height: 1.6;
             text-align: right;
+            padding-left: 10px;
+            padding-right: 10px;
         }
         
         /* Items Table */
@@ -189,6 +220,9 @@
             border-collapse: collapse;
             margin: 0;
             background: #ffffff;
+            border-top: 1px solid #e0e0e0;
+            border-left: none;
+            border-right: none;
         }
         
         .items-table thead {
@@ -197,17 +231,31 @@
         }
         
         .items-table th {
-            padding: 10px 15px;
+            padding: 10px;
             text-align: left;
             font-size: 15px;
             font-weight: bold;
             text-transform: uppercase;
             letter-spacing: 0.5px;
+            border-left: none;
+            border-right: none;
+        }
+        
+        .items-table th:first-child,
+        .items-table td:first-child {
+            padding-left: 15px;
+        }
+        
+        .items-table th:last-child,
+        .items-table td:last-child {
+            padding-right: 15px;
         }
         
         .items-table td {
-            padding: 10px 15px;
+            padding: 10px;
             border-bottom: 1px solid #e0e0e0;
+            border-left: none;
+            border-right: none;
             font-size: 14px;
             line-height: 1.5;
         }
@@ -251,6 +299,8 @@
             font-weight: bold;
             text-transform: uppercase;
             letter-spacing: 0.5px;
+            border-left: none;
+            border-right: none;
         }
         
         .section-content {
@@ -258,6 +308,12 @@
             padding: 12px 15px;
             border: 1px solid #e0e0e0;
             border-top: none;
+            border-left: none;
+            border-right: none;
+        }
+        
+        .section-content p {
+            padding: 0;
         }
         
         .section-content p {
@@ -282,12 +338,15 @@
         .payments-due-table {
             width: 100%;
             border-collapse: collapse;
+            table-layout: fixed;
         }
         
         .payments-due-table td {
             padding: 6px 15px;
             font-size: 14px;
             border-bottom: 1px solid #e0e0e0;
+            border-left: none;
+            border-right: none;
         }
         
         .payments-due-table tr:last-child td {
@@ -296,12 +355,20 @@
         
         .payments-due-table .label-cell {
             color: #333;
+            text-align: left;
+            width: 60%;
+        }
+        
+        .payments-due-table .middle-cell {
+            text-align: left;
+            width: 25%;
         }
         
         .payments-due-table .amount-cell {
             text-align: right;
             font-weight: normal;
             color: #333;
+            width: 15%;
         }
         
         .payments-due-table .date-row {
@@ -309,14 +376,14 @@
         }
         
         .payments-due-table .current-label {
-            text-align: right;
+            text-align: left;
             font-weight: normal;
         }
         
         /* Footer */
         .footer-note {
             margin-top: 10px;
-            padding: 8px 0;
+            padding: 8px 15px;
             font-size: 13px;
             color: #666;
             text-align: left;
@@ -326,7 +393,7 @@
         .footer-bar {
             background-color: {{theme_color}};
             color: #ffffff;
-            padding: 10px 20px;
+            padding: 10px 15px;
             margin-top: 5px;
             font-size: 14px;
             text-align: left;
@@ -358,17 +425,26 @@
             page-break-inside: avoid;
         }
         
+        @page {
+            size: A4;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        
         @media print {
+            @page {
+                size: A4;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
             body {
-                padding: 0;
+                padding: 0 !important;
+                margin: 0 !important;
             }
             .invoice-container {
                 border: none;
-                padding: 0;
-            }
-            @page {
-                size: A4;
-                margin: 0.5cm;
+                padding: 0 !important;
+                margin: 0 !important;
             }
         }
     </style>
@@ -440,7 +516,7 @@
         <!-- Total Purchases -->
         <div class="total-purchases">
             <span class="total-purchases-label">Total Purchases</span>
-            <span class="total-purchases-amount">{{total_amount}} {{currency}}</span>
+            <span class="total-purchases-amount">{{total_amount}}</span>
         </div>
         
         <!-- Payment Details Section -->
@@ -449,7 +525,7 @@
             <div class="section-content">
                 <p><strong>Payments Method:</strong> {{payment_method}} - PAID</p>
                 <p><strong>Date:</strong> {{payment_date}}</p>
-                <p><strong>Amount Paid:</strong> {{total_amount}} {{currency}}</p>
+                <p><strong>Amount Paid:</strong> {{total_amount}}</p>
             </div>
         </div>
         
@@ -460,19 +536,18 @@
                 <table class="payments-due-table">
                     <tr>
                         <td class="label-cell date-row">{{payment_date}}</td>
-                        <td class="current-label">Current</td>
-                    </tr>
-                    <tr>
-                        <td></td>
-                        <td class="amount-cell">0.00 {{currency}}</td>
+                        <td class="middle-cell current-label">Current</td>
+                        <td class="amount-cell">$0.00</td>
                     </tr>
                     <tr>
                         <td class="label-cell">Outstanding Balance:</td>
-                        <td class="amount-cell">0.00 {{currency}}</td>
+                        <td class="middle-cell"></td>
+                        <td class="amount-cell">$0.00</td>
                     </tr>
                     <tr>
                         <td class="label-cell">Balance Due Now:</td>
-                        <td class="amount-cell">0.00 {{currency}}</td>
+                        <td class="middle-cell"></td>
+                        <td class="amount-cell">$0.00</td>
                     </tr>
                 </table>
             </div>

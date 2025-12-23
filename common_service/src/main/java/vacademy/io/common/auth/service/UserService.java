@@ -2,6 +2,7 @@ package vacademy.io.common.auth.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -34,6 +35,9 @@ public class UserService {
 
     @Autowired
     UserRoleRepository userRoleRepository;
+
+    @Value("${spring.application.name:unknown}")
+    private String applicationName;
 
     public List<User> getUsersFromUserIds(List<String> userIds) {
         List<User> users = new ArrayList<>();
@@ -491,12 +495,16 @@ public class UserService {
         return users.stream().map(UserDTO::new).toList();
     }
 
-    public void updateLastLoginTimeForUser(String userId){
-        try{
-            User user = userRepository.findById(userId).orElseThrow(() -> new VacademyException("User Not Found with id " + userId));
+    public void updateLastLoginTimeForUser(String userId) {
+        if (!"auth_service".equals(applicationName)) {
+            return;
+        }
+        try {
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new VacademyException("User Not Found with id " + userId));
             user.setLastLoginTime(new Date());
             userRepository.save(user);
-        }catch (Exception e){
+        } catch (Exception e) {
         }
     }
 

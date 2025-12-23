@@ -220,13 +220,16 @@ public class DeepSeekAsyncTaskService {
 
     /**
      * Processes text to generate questions.
+     * 
+     * @param model The AI model to use
      */
     @Async("aiTaskExecutor")
-    public CompletableFuture<Void> pollAndProcessTextToQuestions(TaskStatus taskStatus, TextDTO textPrompt) {
+    public CompletableFuture<Void> pollAndProcessTextToQuestions(TaskStatus taskStatus, TextDTO textPrompt,
+            String model) {
         return CompletableFuture.runAsync(() -> {
             try {
                 updateStatus(taskStatus, TaskStatusEnum.PROGRESS, "Generating questions from text...");
-                processTextToQuestions(textPrompt, taskStatus);
+                processTextToQuestions(textPrompt, taskStatus, model);
             } catch (Exception e) {
                 log.error("Text to questions processing failed for task {}: {}", taskStatus.getId(), e.getMessage(), e);
                 updateStatusFailed(taskStatus, "Text processing failed: " + e.getMessage());
@@ -368,13 +371,13 @@ public class DeepSeekAsyncTaskService {
         });
     }
 
-    private void processTextToQuestions(TextDTO textPrompt, TaskStatus taskStatus) {
+    private void processTextToQuestions(TextDTO textPrompt, TaskStatus taskStatus, String model) {
         try {
             String restoreJson = taskStatus.getResultJson() != null ? taskStatus.getResultJson() : "";
 
             // getQuestionsWithDeepSeekFromTextPrompt signature: (textPrompt,
             // numberOfQuestions, typeOfQuestion, classLevel, topics, language, taskStatus,
-            // attempt, oldJson)
+            // attempt, oldJson, model)
             String rawOutput = externalAIApiService.getQuestionsWithDeepSeekFromTextPrompt(
                     textPrompt.getText(),
                     String.valueOf(textPrompt.getNum()),
@@ -384,7 +387,12 @@ public class DeepSeekAsyncTaskService {
                     textPrompt.getQuestionLanguage(),
                     taskStatus,
                     0,
-                    restoreJson);
+                    restoreJson,
+                    model);
+
+            if (TaskStatusEnum.FAILED.name().equals(taskStatus.getStatus())) {
+                return;
+            }
 
             updateStatusCompleted(taskStatus, rawOutput, "Text question generation completed");
         } catch (Exception e) {

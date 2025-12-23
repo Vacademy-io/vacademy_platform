@@ -333,7 +333,7 @@ public class PDFQuestionGeneratorController {
                 textPrompt.getTaskName(),
                 instituteId);
 
-        deepSeekAsyncTaskService.pollAndProcessTextToQuestions(taskStatus, textPrompt);
+        deepSeekAsyncTaskService.pollAndProcessTextToQuestions(taskStatus, textPrompt, model);
 
         return ResponseEntity.ok(Map.of(
                 "taskId", taskStatus.getId(),

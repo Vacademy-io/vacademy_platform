@@ -9,7 +9,7 @@ import { StatusCard } from "./StatusCard";
 interface UnsubscribeSummaryCardProps {
   icon: LucideIcon;
   channelLabel: string;
-  supportEmail: string;
+
   isError: boolean;
   isPending: boolean;
   activeAction: "UNSUBSCRIBE" | "RESUBSCRIBE";
@@ -21,7 +21,7 @@ interface UnsubscribeSummaryCardProps {
 export const UnsubscribeSummaryCard = ({
   icon: Icon,
   channelLabel,
-  supportEmail,
+
   isError,
   isPending,
   activeAction,
@@ -84,15 +84,6 @@ export const UnsubscribeSummaryCard = ({
           )}
         </div>
 
-        <p className="text-xs text-slate-400">
-          Need help?{" "}
-          <a
-            className="font-medium text-primary underline-offset-4 hover:underline"
-            href={`mailto:${supportEmail}`}
-          >
-            {supportEmail}
-          </a>
-        </p>
       </CardContent>
     </Card>
   );

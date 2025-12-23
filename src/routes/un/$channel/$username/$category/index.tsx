@@ -61,7 +61,7 @@ function UnsubscribeCommunicationPage() {
   }, [domainRouting.instituteThemeCode, setPrimaryColor]);
 
   if (!flow.channelInfo) {
-    return <InvalidLinkNotice supportEmail={flow.supportEmail} />;
+    return <InvalidLinkNotice />;
   }
 
   const themeCode = domainRouting.instituteThemeCode || fallbackThemeCode;
@@ -101,7 +101,7 @@ function UnsubscribeCommunicationPage() {
           <UnsubscribeSummaryCard
             icon={flow.channelInfo.icon}
             channelLabel={flow.channelInfo.label}
-            supportEmail={flow.supportEmail}
+
             isError={flow.isError}
             isPending={flow.isPending}
             activeAction={flow.activeAction}
@@ -112,7 +112,7 @@ function UnsubscribeCommunicationPage() {
               recipient: flow.maskedRecipient,
               successMessage: flow.messages.success,
               errorMessage: flow.messages.error,
-              supportEmail: flow.supportEmail,
+
             }}
           />
         </motion.section>

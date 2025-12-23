@@ -6,7 +6,7 @@ interface StatusCardProps {
   recipient: string;
   successMessage: string;
   errorMessage: string;
-  supportEmail: string;
+
 }
 
 export const StatusCard = ({
@@ -14,7 +14,7 @@ export const StatusCard = ({
   recipient,
   successMessage,
   errorMessage,
-  supportEmail,
+
 }: StatusCardProps) => {
   if (state === "idle") {
     return null;
@@ -82,15 +82,7 @@ export const StatusCard = ({
             We couldn&apos;t update this
           </p>
           <p className="mt-1 text-xs text-rose-700">{errorMessage}</p>
-          <p className="mt-2 text-[11px] uppercase text-rose-600/70">
-            Need support?{" "}
-            <a
-              href={`mailto:${supportEmail}`}
-              className="font-semibold underline-offset-4 hover:underline"
-            >
-              {supportEmail}
-            </a>
-          </p>
+
         </div>
       </div>
     </div>

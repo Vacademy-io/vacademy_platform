@@ -182,4 +182,26 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             @Param("reactionType") String reactionType,
             @Param("reactionBody") String reactionBody
     );
+    
+    // ==================== ENGAGEMENT TRIGGER METHODS ====================
+    
+    /**
+     * Check if engagement trigger was already executed for a user
+     */
+    boolean existsByNotificationTypeAndUserIdAndSourceAndSourceId(
+            String notificationType,
+            String userId,
+            String source,
+            String sourceId
+    );
+    
+    /**
+     * Find the most recent engagement trigger execution for a user and config
+     */
+    Optional<NotificationLog> findTopByNotificationTypeAndUserIdAndSourceAndSourceIdOrderByCreatedAtDesc(
+            String notificationType,
+            String userId,
+            String source,
+            String sourceId
+    );
 }

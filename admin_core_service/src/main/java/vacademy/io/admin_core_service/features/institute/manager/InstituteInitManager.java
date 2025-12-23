@@ -187,7 +187,7 @@ public class InstituteInitManager {
                 // Private fields that require additional queries
                 if (includePrivateFields) {
                         idto.setGenders(Stream.of(Gender.values()).map(Enum::name).toList());
-                        idto.setStudentStatuses(List.of("ACTIVE", "INACTIVE"));
+                        idto.setStudentStatuses(List.of("ACTIVE", "INACTIVE","INVITED", "PENDING_FOR_APPROVAL"));
                         idto.setSessionExpiryDays(List.of(30, 180, 360));
                 }
 

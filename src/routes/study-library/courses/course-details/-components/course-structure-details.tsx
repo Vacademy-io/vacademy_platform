@@ -511,10 +511,10 @@ export const CourseStructureDetails = ({
         shouldEvaluate && conditionToUse
           ? evaluateDripCondition(conditionToUse, progressData)
           : {
-              isLocked: false,
-              isHidden: false,
-              unlockMessage: null,
-            };
+            isLocked: false,
+            isHidden: false,
+            unlockMessage: null,
+          };
       evaluations[chapter.id] = evaluation;
     }
     return evaluations;
@@ -609,10 +609,10 @@ export const CourseStructureDetails = ({
           shouldEvaluate && conditionToUse
             ? evaluateDripCondition(conditionToUse, progressData)
             : {
-                isLocked: false,
-                isHidden: false,
-                unlockMessage: null,
-              };
+              isLocked: false,
+              isHidden: false,
+              unlockMessage: null,
+            };
 
         evaluations[slide.id] = evaluation;
       });
@@ -1113,7 +1113,7 @@ export const CourseStructureDetails = ({
                         </span>
                       )}
                       <span
-                        className="truncate font-medium group-hover:text-primary-700 transition-colors"
+                        className="break-words font-medium group-hover:text-primary-700 transition-colors"
                         title={toTitleCase(subject.subject_name)}
                       >
                         {toTitleCase(subject.subject_name)}
@@ -1174,7 +1174,7 @@ export const CourseStructureDetails = ({
                                     </span>
                                   )}
                                   <span
-                                    className="truncate group-hover:text-blue-700 transition-colors"
+                                    className="break-words group-hover:text-blue-700 transition-colors"
                                     title={mod.module.module_name}
                                   >
                                     {mod.module.module_name}
@@ -1240,7 +1240,7 @@ export const CourseStructureDetails = ({
                                             isChapterLocked
                                               ? "cursor-not-allowed opacity-60"
                                               : "hover:bg-green-50/70 hover:border-green-200/60 cursor-pointer"
-                                          }`}
+                                            }`}
                                         >
                                           <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                             {isChapterOpen ? (
@@ -1260,33 +1260,33 @@ export const CourseStructureDetails = ({
                                             {thumbUrlById[
                                               `chapter:${ch.id}`
                                             ] && (
-                                              <img
-                                                src={
-                                                  thumbUrlById[
+                                                <img
+                                                  src={
+                                                    thumbUrlById[
                                                     `chapter:${ch.id}`
-                                                  ]
-                                                }
-                                                alt={toTitleCase(
-                                                  ch.chapter_name
-                                                )}
-                                                className="w-4 h-4 rounded-sm object-cover border border-neutral-200"
-                                                crossOrigin="anonymous"
-                                                referrerPolicy="no-referrer"
-                                                loading="eager"
-                                                onError={(e) => {
-                                                  e.currentTarget.classList.add(
-                                                    "border-red-400"
-                                                  );
-                                                }}
-                                              />
-                                            )}
+                                                    ]
+                                                  }
+                                                  alt={toTitleCase(
+                                                    ch.chapter_name
+                                                  )}
+                                                  className="w-4 h-4 rounded-sm object-cover border border-neutral-200"
+                                                  crossOrigin="anonymous"
+                                                  referrerPolicy="no-referrer"
+                                                  loading="eager"
+                                                  onError={(e) => {
+                                                    e.currentTarget.classList.add(
+                                                      "border-red-400"
+                                                    );
+                                                  }}
+                                                />
+                                              )}
                                             {showContentPrefixes && (
                                               <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
                                                 C{chIdx + 1}
                                               </span>
                                             )}
                                             <span
-                                              className="truncate text-sm sm:text-base font-semibold text-neutral-800 group-hover:text-green-700 transition-colors"
+                                              className="break-words text-sm sm:text-base font-semibold text-neutral-800 group-hover:text-green-700 transition-colors"
                                               title={toTitleCase(
                                                 ch.chapter_name
                                               )}
@@ -1331,11 +1331,11 @@ export const CourseStructureDetails = ({
                                                     </div>
                                                     {slidesMap[ch.id] !==
                                                       undefined && (
-                                                      <span className="text-xs text-neutral-500 hidden sm:inline">
-                                                        {completedSlides}/
-                                                        {totalSlides}
-                                                      </span>
-                                                    )}
+                                                        <span className="text-xs text-neutral-500 hidden sm:inline">
+                                                          {completedSlides}/
+                                                          {totalSlides}
+                                                        </span>
+                                                      )}
                                                     {renderCompletionBadge(
                                                       progress
                                                     )}
@@ -1362,7 +1362,7 @@ export const CourseStructureDetails = ({
                                                   (slide) => {
                                                     const slideEval =
                                                       slideEvaluations[
-                                                        slide.id
+                                                      slide.id
                                                       ];
                                                     const shouldHideSlide =
                                                       slideEval &&
@@ -1424,15 +1424,15 @@ export const CourseStructureDetails = ({
                                                       }
                                                       onClick={
                                                         isSlideClickable() &&
-                                                        !isSlideLocked
+                                                          !isSlideLocked
                                                           ? () => {
-                                                              handleSlideNavigation(
-                                                                subject.id,
-                                                                mod.module.id,
-                                                                ch.id,
-                                                                slide.id
-                                                              );
-                                                            }
+                                                            handleSlideNavigation(
+                                                              subject.id,
+                                                              mod.module.id,
+                                                              ch.id,
+                                                              slide.id
+                                                            );
+                                                          }
                                                           : undefined
                                                       }
                                                     >
@@ -1445,7 +1445,7 @@ export const CourseStructureDetails = ({
                                                         {getIcon(slide, "3")}
                                                       </div>
                                                       <span
-                                                        className="truncate text-sm sm:text-base  text-neutral-800 group-hover:text-amber-700 transition-colors"
+                                                        className="break-words text-sm sm:text-base  text-neutral-800 group-hover:text-amber-700 transition-colors"
                                                         title={slide.title}
                                                       >
                                                         {slide.title}
@@ -1463,15 +1463,15 @@ export const CourseStructureDetails = ({
                                                         const sd =
                                                           getStatusDetails(
                                                             slide.percentage_completed ||
-                                                              0
+                                                            0
                                                           );
                                                         const badgeClass =
                                                           sd.badge === "done"
                                                             ? "bg-neutral-800 text-white"
                                                             : sd.badge ===
                                                               "active"
-                                                            ? "bg-neutral-700 text-white"
-                                                            : "bg-neutral-600 text-white";
+                                                              ? "bg-neutral-700 text-white"
+                                                              : "bg-neutral-600 text-white";
                                                         return (
                                                           <Badge
                                                             variant="secondary"
@@ -1591,7 +1591,7 @@ export const CourseStructureDetails = ({
                                     </span>
                                   )}
                                   <span
-                                    className="truncate group-hover:text-blue-700 transition-colors"
+                                    className="break-words group-hover:text-blue-700 transition-colors"
                                     title={toTitleCase(mod.module.module_name)}
                                   >
                                     {toTitleCase(mod.module.module_name)}
@@ -1656,7 +1656,7 @@ export const CourseStructureDetails = ({
                                             isChapterLocked
                                               ? "cursor-not-allowed opacity-60"
                                               : "hover:bg-green-50/70 hover:border-green-200/60 cursor-pointer"
-                                          }`}
+                                            }`}
                                         >
                                           <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                             {isChapterOpen ? (
@@ -1679,7 +1679,7 @@ export const CourseStructureDetails = ({
                                               </span>
                                             )}
                                             <span
-                                              className="truncate group-hover:text-green-700 transition-colors text-xs"
+                                              className="break-words group-hover:text-green-700 transition-colors text-xs"
                                               title={toTitleCase(
                                                 ch.chapter_name
                                               )}
@@ -1723,11 +1723,11 @@ export const CourseStructureDetails = ({
                                                     </div>
                                                     {slidesMap[ch.id] !==
                                                       undefined && (
-                                                      <span className="text-xs text-neutral-500 hidden sm:inline">
-                                                        {completedSlides}/
-                                                        {totalSlides}
-                                                      </span>
-                                                    )}
+                                                        <span className="text-xs text-neutral-500 hidden sm:inline">
+                                                          {completedSlides}/
+                                                          {totalSlides}
+                                                        </span>
+                                                      )}
                                                     {renderCompletionBadge(
                                                       progress
                                                     )}
@@ -1739,7 +1739,7 @@ export const CourseStructureDetails = ({
                                         </CollapsibleTrigger>
                                         <CollapsibleContent>
                                           <div className="space-y-px ml-3 sm:ml-5 border-l border-green-200/50 py-1 pl-2 relative">
-                                            <div className="absolute left-0 top-0 w-px h-full bg-green-300/50"></div>
+                                            <div className="absolute left-0 top-0 w-0.5 h-full bg-green-300/60"></div>
                                             {(() => {
                                               const status =
                                                 slidesLoadingStatus[ch.id] ||
@@ -1788,13 +1788,13 @@ export const CourseStructureDetails = ({
                                                     onClick={
                                                       isSlideClickable()
                                                         ? () => {
-                                                            handleSlideNavigation(
-                                                              subject.id,
-                                                              mod.module.id,
-                                                              ch.id,
-                                                              slide.id
-                                                            );
-                                                          }
+                                                          handleSlideNavigation(
+                                                            subject.id,
+                                                            mod.module.id,
+                                                            ch.id,
+                                                            slide.id
+                                                          );
+                                                        }
                                                         : undefined
                                                     }
                                                   >
@@ -1807,7 +1807,7 @@ export const CourseStructureDetails = ({
                                                       {getIcon(slide, "3")}
                                                     </div>
                                                     <span
-                                                      className="truncate text-sm sm:text-base text-neutral-800 group-hover:text-amber-700 transition-colors"
+                                                      className="break-words text-sm sm:text-base text-neutral-800 group-hover:text-amber-700 transition-colors"
                                                       title={slide.title}
                                                     >
                                                       {slide.title}
@@ -1816,15 +1816,15 @@ export const CourseStructureDetails = ({
                                                       const sd =
                                                         getStatusDetails(
                                                           slide.percentage_completed ||
-                                                            0
+                                                          0
                                                         );
                                                       const badgeClass =
                                                         sd.badge === "done"
                                                           ? "bg-green-50 text-green-700 border-green-200"
                                                           : sd.badge ===
                                                             "active"
-                                                          ? "bg-primary-50 text-primary-700 border-primary-200"
-                                                          : "bg-neutral-50 text-neutral-600 border-neutral-200";
+                                                            ? "bg-primary-50 text-primary-700 border-primary-200"
+                                                            : "bg-neutral-50 text-neutral-600 border-neutral-200";
                                                       return (
                                                         <Badge
                                                           variant="secondary"
@@ -1839,33 +1839,33 @@ export const CourseStructureDetails = ({
                                                       {getSlideTypeDisplay(
                                                         slide
                                                       ) && (
-                                                        <Badge
-                                                          variant="secondary"
-                                                          className={`hidden sm:inline text-[10px] font-medium border ${getTypeBadgeClasses(
-                                                            slide
-                                                          )}`}
-                                                        >
-                                                          {getSlideTypeDisplay(
-                                                            slide
-                                                          )}
-                                                        </Badge>
-                                                      )}
+                                                          <Badge
+                                                            variant="secondary"
+                                                            className={`hidden sm:inline text-[10px] font-medium border ${getTypeBadgeClasses(
+                                                              slide
+                                                            )}`}
+                                                          >
+                                                            {getSlideTypeDisplay(
+                                                              slide
+                                                            )}
+                                                          </Badge>
+                                                        )}
                                                       {getSlideMetaText(
                                                         slide
                                                       ) && (
-                                                        <Badge
-                                                          variant="outline"
-                                                          className="hidden sm:inline text-[10px] font-normal bg-neutral-50 text-neutral-600 border-neutral-200"
-                                                        >
-                                                          {getSlideMetaText(
-                                                            slide
-                                                          )}
-                                                        </Badge>
-                                                      )}
+                                                          <Badge
+                                                            variant="outline"
+                                                            className="hidden sm:inline text-[10px] font-normal bg-neutral-50 text-neutral-600 border-neutral-200"
+                                                          >
+                                                            {getSlideMetaText(
+                                                              slide
+                                                            )}
+                                                          </Badge>
+                                                        )}
                                                       <div className="w-7 sm:w-8 hidden sm:block">
                                                         {renderProgressBar(
                                                           slide.percentage_completed ||
-                                                            0,
+                                                          0,
                                                           "sm"
                                                         )}
                                                       </div>
@@ -1875,10 +1875,10 @@ export const CourseStructureDetails = ({
                                                             0) >= 80
                                                             ? "bg-green-500"
                                                             : (slide.percentage_completed ||
-                                                                0) > 0
-                                                            ? "bg-primary-500"
-                                                            : "bg-neutral-300"
-                                                        }`}
+                                                              0) > 0
+                                                              ? "bg-primary-500"
+                                                              : "bg-neutral-300"
+                                                          }`}
                                                       />
                                                     </div>
                                                   </div>
@@ -1955,7 +1955,7 @@ export const CourseStructureDetails = ({
                                           isChapterLocked
                                             ? "cursor-not-allowed opacity-60"
                                             : "hover:bg-green-50/70 hover:border-green-200/60 cursor-pointer"
-                                        }`}
+                                          }`}
                                       >
                                         <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                           {isChapterOpen ? (
@@ -1978,7 +1978,7 @@ export const CourseStructureDetails = ({
                                             </span>
                                           )}
                                           <span
-                                            className="truncate text-sm sm:text-base font-semibold text-neutral-800 group-hover:text-green-700 transition-colors"
+                                            className="break-words text-sm sm:text-base font-semibold text-neutral-800 group-hover:text-green-700 transition-colors"
                                             title={toTitleCase(ch.chapter_name)}
                                           >
                                             {toTitleCase(ch.chapter_name)}
@@ -2018,11 +2018,11 @@ export const CourseStructureDetails = ({
                                                   </div>
                                                   {slidesMap[ch.id] !==
                                                     undefined && (
-                                                    <span className="text-xs text-neutral-500 hidden sm:inline">
-                                                      {completedSlides}/
-                                                      {totalSlides}
-                                                    </span>
-                                                  )}
+                                                      <span className="text-xs text-neutral-500 hidden sm:inline">
+                                                        {completedSlides}/
+                                                        {totalSlides}
+                                                      </span>
+                                                    )}
                                                   {renderCompletionBadge(
                                                     progress
                                                   )}
@@ -2083,13 +2083,13 @@ export const CourseStructureDetails = ({
                                                   onClick={
                                                     isSlideClickable()
                                                       ? () => {
-                                                          handleSlideNavigation(
-                                                            subject.id,
-                                                            mod.module.id,
-                                                            ch.id,
-                                                            slide.id
-                                                          );
-                                                        }
+                                                        handleSlideNavigation(
+                                                          subject.id,
+                                                          mod.module.id,
+                                                          ch.id,
+                                                          slide.id
+                                                        );
+                                                      }
                                                       : undefined
                                                   }
                                                 >
@@ -2110,14 +2110,14 @@ export const CourseStructureDetails = ({
                                                   {(() => {
                                                     const sd = getStatusDetails(
                                                       slide.percentage_completed ||
-                                                        0
+                                                      0
                                                     );
                                                     const badgeClass =
                                                       sd.badge === "done"
                                                         ? "bg-green-50 text-green-700 border-green-200"
                                                         : sd.badge === "active"
-                                                        ? "bg-primary-50 text-primary-700 border-primary-200"
-                                                        : "bg-neutral-50 text-neutral-600 border-neutral-200";
+                                                          ? "bg-primary-50 text-primary-700 border-primary-200"
+                                                          : "bg-neutral-50 text-neutral-600 border-neutral-200";
                                                     return (
                                                       <Badge
                                                         variant="secondary"
@@ -2132,33 +2132,33 @@ export const CourseStructureDetails = ({
                                                     {getSlideTypeDisplay(
                                                       slide
                                                     ) && (
-                                                      <Badge
-                                                        variant="secondary"
-                                                        className={`hidden sm:inline text-[10px] font-medium border ${getTypeBadgeClasses(
-                                                          slide
-                                                        )}`}
-                                                      >
-                                                        {getSlideTypeDisplay(
-                                                          slide
-                                                        )}
-                                                      </Badge>
-                                                    )}
+                                                        <Badge
+                                                          variant="secondary"
+                                                          className={`hidden sm:inline text-[10px] font-medium border ${getTypeBadgeClasses(
+                                                            slide
+                                                          )}`}
+                                                        >
+                                                          {getSlideTypeDisplay(
+                                                            slide
+                                                          )}
+                                                        </Badge>
+                                                      )}
                                                     {getSlideMetaText(
                                                       slide
                                                     ) && (
-                                                      <Badge
-                                                        variant="outline"
-                                                        className="hidden sm:inline text-[10px] font-normal bg-neutral-50 text-neutral-600 border-neutral-200"
-                                                      >
-                                                        {getSlideMetaText(
-                                                          slide
-                                                        )}
-                                                      </Badge>
-                                                    )}
+                                                        <Badge
+                                                          variant="outline"
+                                                          className="hidden sm:inline text-[10px] font-normal bg-neutral-50 text-neutral-600 border-neutral-200"
+                                                        >
+                                                          {getSlideMetaText(
+                                                            slide
+                                                          )}
+                                                        </Badge>
+                                                      )}
                                                     <div className="w-7 sm:w-8 hidden sm:block">
                                                       {renderProgressBar(
                                                         slide.percentage_completed ||
-                                                          0,
+                                                        0,
                                                         "sm"
                                                       )}
                                                     </div>
@@ -2168,10 +2168,10 @@ export const CourseStructureDetails = ({
                                                           0) >= 80
                                                           ? "bg-green-500"
                                                           : (slide.percentage_completed ||
-                                                              0) > 0
-                                                          ? "bg-primary-500"
-                                                          : "bg-neutral-300"
-                                                      }`}
+                                                            0) > 0
+                                                            ? "bg-primary-500"
+                                                            : "bg-neutral-300"
+                                                        }`}
                                                     />
                                                   </div>
                                                 </div>
@@ -2230,7 +2230,7 @@ export const CourseStructureDetails = ({
                                       <CollapsibleContent>
                                         <div className="space-y-px pl-2 relative">
                                           {(slidesMap[ch.id] ?? []).length ===
-                                          0 ? (
+                                            0 ? (
                                             <div className="text-xs px-2 text-neutral-400 italic bg-neutral-50/50 rounded">
                                               No slides in this chapter.
                                             </div>
@@ -2268,14 +2268,14 @@ export const CourseStructureDetails = ({
                                                   {(() => {
                                                     const sd = getStatusDetails(
                                                       slide.percentage_completed ||
-                                                        0
+                                                      0
                                                     );
                                                     const badgeClass =
                                                       sd.badge === "done"
                                                         ? "bg-green-50 text-green-700 border-green-200"
                                                         : sd.badge === "active"
-                                                        ? "bg-primary-50 text-primary-700 border-primary-200"
-                                                        : "bg-neutral-50 text-neutral-600 border-neutral-200";
+                                                          ? "bg-primary-50 text-primary-700 border-primary-200"
+                                                          : "bg-neutral-50 text-neutral-600 border-neutral-200";
                                                     return (
                                                       <Badge
                                                         variant="secondary"
@@ -2290,33 +2290,33 @@ export const CourseStructureDetails = ({
                                                     {getSlideTypeDisplay(
                                                       slide
                                                     ) && (
-                                                      <Badge
-                                                        variant="secondary"
-                                                        className={`hidden sm:inline text-[10px] font-medium border ${getTypeBadgeClasses(
-                                                          slide
-                                                        )}`}
-                                                      >
-                                                        {getSlideTypeDisplay(
-                                                          slide
-                                                        )}
-                                                      </Badge>
-                                                    )}
+                                                        <Badge
+                                                          variant="secondary"
+                                                          className={`hidden sm:inline text-[10px] font-medium border ${getTypeBadgeClasses(
+                                                            slide
+                                                          )}`}
+                                                        >
+                                                          {getSlideTypeDisplay(
+                                                            slide
+                                                          )}
+                                                        </Badge>
+                                                      )}
                                                     {getSlideMetaText(
                                                       slide
                                                     ) && (
-                                                      <Badge
-                                                        variant="outline"
-                                                        className="hidden sm:inline text-[10px] font-normal bg-neutral-50 text-neutral-600 border-neutral-200"
-                                                      >
-                                                        {getSlideMetaText(
-                                                          slide
-                                                        )}
-                                                      </Badge>
-                                                    )}
+                                                        <Badge
+                                                          variant="outline"
+                                                          className="hidden sm:inline text-[10px] font-normal bg-neutral-50 text-neutral-600 border-neutral-200"
+                                                        >
+                                                          {getSlideMetaText(
+                                                            slide
+                                                          )}
+                                                        </Badge>
+                                                      )}
                                                     <div className="w-8 hidden sm:block">
                                                       {renderProgressBar(
                                                         slide.percentage_completed ||
-                                                          0,
+                                                        0,
                                                         "sm"
                                                       )}
                                                     </div>
@@ -2365,7 +2365,7 @@ export const CourseStructureDetails = ({
               !selectedSubjectId && !selectedModuleId && !selectedChapterId
                 ? "font-semibold text-primary-700"
                 : ""
-            }`}
+              }`}
             onClick={() => {
               setSelectedSubjectId(null);
               setSelectedModuleId(null);
@@ -2382,7 +2382,7 @@ export const CourseStructureDetails = ({
                 selectedSubjectId && !selectedModuleId
                   ? "font-semibold text-primary-700"
                   : ""
-              }`}
+                }`}
               onClick={() => {
                 setSelectedModuleId(null);
                 setSelectedChapterId(null);
@@ -2399,7 +2399,7 @@ export const CourseStructureDetails = ({
                 selectedModuleId && !selectedChapterId
                   ? "font-semibold text-primary-700"
                   : ""
-              }`}
+                }`}
               onClick={() => {
                 setSelectedChapterId(null);
               }}
@@ -2418,7 +2418,7 @@ export const CourseStructureDetails = ({
             {studyLibraryData?.map((subject) => (
               <div
                 key={subject.id}
-                className="rounded-md border border-neutral-200 bg-white p-3 sm:p-4 shadow-sm hover:shadow cursor-pointer"
+                className="h-full rounded-md border border-neutral-200 bg-white p-3 sm:p-4 shadow-sm hover:shadow cursor-pointer"
                 onClick={() => {
                   setSelectedSubjectId(subject.id);
                 }}
@@ -2443,7 +2443,7 @@ export const CourseStructureDetails = ({
                   </div>
                   <div className="min-w-0">
                     <div
-                      className="text-sm font-medium text-neutral-800 truncate"
+                      className="text-sm font-medium text-neutral-800 break-words"
                       title={toTitleCase(subject.subject_name)}
                     >
                       {toTitleCase(subject.subject_name)}
@@ -2485,7 +2485,7 @@ export const CourseStructureDetails = ({
                   </div>
                   <div className="min-w-0">
                     <div
-                      className="text-sm font-medium text-neutral-800 truncate"
+                      className="text-sm font-medium text-neutral-800 break-words"
                       title={m.module.module_name}
                     >
                       {m.module.module_name}
@@ -2515,11 +2515,10 @@ export const CourseStructureDetails = ({
                   return (
                     <div
                       key={ch.id}
-                      className={`rounded-md border border-neutral-200 bg-white p-3 sm:p-4 shadow-sm ${
-                        isChapterLocked
+                      className={`h-full rounded-md border border-neutral-200 bg-white p-3 sm:p-4 shadow-sm ${isChapterLocked
                           ? "opacity-60 cursor-not-allowed"
                           : "hover:shadow cursor-pointer"
-                      }`}
+                        }`}
                       onClick={async () => {
                         if (isChapterLocked) return;
                         setSelectedChapterId(ch.id);
@@ -2546,7 +2545,7 @@ export const CourseStructureDetails = ({
                         </div>
                         <div className="min-w-0">
                           <div
-                            className="text-sm font-medium text-neutral-800 truncate"
+                            className="text-sm font-medium text-neutral-800 break-words"
                             title={ch.chapter_name}
                           >
                             {ch.chapter_name}
@@ -2606,7 +2605,7 @@ export const CourseStructureDetails = ({
                     key={sl.id}
                     className={`${getSlideStyling()} flex-col items-start gap-2 p-3 ${
                       isSlideLocked ? "opacity-60 cursor-not-allowed" : ""
-                    }`}
+                      }`}
                     onClick={() => {
                       if (isSlideLocked) return;
                       if (isSlideClickable()) {
@@ -2627,7 +2626,7 @@ export const CourseStructureDetails = ({
                         {getIcon(sl, "4")}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm truncate">
+                        <div className="font-medium text-sm break-words">
                           {sl.title}
                         </div>
                         <div className="text-xs text-gray-500 mt-0.5 sm:mt-1">
@@ -3023,7 +3022,7 @@ export const CourseStructureDetails = ({
               value={selectedStructureTab}
               className={`${
                 renderTabs.length > 1 ? "mt-4" : ""
-              } rounded-lg bg-white border border-neutral-200/60 p-4`}
+                } rounded-lg bg-white border border-neutral-200/60 p-4`}
             >
               {tabContent[selectedStructureTab as TabType]}
             </TabsContent>

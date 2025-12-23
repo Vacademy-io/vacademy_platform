@@ -140,8 +140,11 @@ public class CombotNodeHandler implements NodeHandler {
         String templateName = (String) data.get("templateName");
         String languageCode = (String) data.getOrDefault("languageCode", "en");
 
-        // New: Check for header image
+        // Optional Fields extraction
         String headerImage = (String) data.get("headerImage");
+        String buttonUrlParam = (String) data.get("buttonUrlParam");
+        // Default to index "0" (first button) if not provided
+        String buttonIndex = (String) data.getOrDefault("buttonIndex", "0");
 
         List<String> params = (List<String>) data.get("params"); // Body parameters
 
@@ -152,7 +155,7 @@ public class CombotNodeHandler implements NodeHandler {
 
         List<Map<String, Object>> components = new ArrayList<>();
 
-        // 1. Handle Image Header (New Logic)
+        // 1. Handle Image Header (Existing Logic)
         if (StringUtils.hasText(headerImage)) {
             Map<String, Object> headerComponent = new HashMap<>();
             headerComponent.put("type", "header");
@@ -179,6 +182,19 @@ public class CombotNodeHandler implements NodeHandler {
             bodyComponent.put("type", "body");
             bodyComponent.put("parameters", parameterComponents);
             components.add(bodyComponent);
+        }
+
+        // 3. Handle Dynamic URL Button (NEW LOGIC)
+        if (StringUtils.hasText(buttonUrlParam)) {
+            Map<String, Object> buttonComponent = new HashMap<>();
+            buttonComponent.put("type", "button");
+            buttonComponent.put("sub_type", "url");
+            buttonComponent.put("index", buttonIndex); // Dynamic index (e.g., "1" if it is the 2nd button)
+
+            Map<String, String> textParam = Map.of("type", "text", "text", buttonUrlParam);
+            buttonComponent.put("parameters", Collections.singletonList(textParam));
+
+            components.add(buttonComponent);
         }
 
         // Build Template Map

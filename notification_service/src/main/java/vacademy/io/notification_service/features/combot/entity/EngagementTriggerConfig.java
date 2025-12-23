@@ -41,6 +41,12 @@ public class EngagementTriggerConfig {
     @Column(name = "template_variables", columnDefinition = "TEXT")
     private String templateVariables;
 
+    @Column(name = "previous_template_name", columnDefinition = "TEXT")
+    private String previousTemplateName;
+
+    @Column(name = "require_previous_template")
+    private boolean requirePreviousTemplate = false;
+
     @Column(name = "is_active")
     private boolean isActive = true;
 

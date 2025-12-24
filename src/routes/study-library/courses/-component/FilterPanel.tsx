@@ -2,112 +2,62 @@ import React, { useState } from "react";
 import { useCatalogStore } from "../-store/catalogStore";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { handleFetchInstituteDetails } from "../-services/institute-details";
-import { Filter, Check, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Filter, X } from 'lucide-react';
 import { toTitleCase } from "@/lib/utils";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
 // Internal reusable component for individual filter sections
-interface FilterSectionProps {
-    title: string;
+interface FilterListProps {
     items: { id: string; name: string }[];
     selectedItems: string[];
     handleChange: (itemId: string) => void;
     disabled?: boolean;
 }
 
-const FilterSection: React.FC<FilterSectionProps> = ({
-    title,
+const FilterList: React.FC<FilterListProps> = ({
     items,
     selectedItems,
     handleChange,
     disabled,
 }) => {
-    const [isExpanded, setIsExpanded] = useState(true);
-    const initialDisplayCount = 5;
-    const canExpand = items.length > initialDisplayCount;
-    const itemsToDisplay =
-        canExpand && !isExpanded ? items.slice(0, initialDisplayCount) : items;
-
     return (
-        <div className="border-b border-gray-200 pb-4 mb-4 last:border-b-0 last:pb-0 last:mb-0">
-            {/* Section Header */}
-            <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
-                {selectedItems.length > 0 && (
-                    <span className="bg-primary-100 text-primary-700 text-xs font-medium px-2 py-1 rounded-md">
-                        {selectedItems.length}
-                    </span>
-                )}
-            </div>
-
-            {/* Filter Items */}
-            <div className="space-y-2">
-                {items.length === 0 && !disabled && (
-                    <div className="text-sm text-gray-500 py-2">
-                        No {title.toLowerCase()} available
-                    </div>
-                )}
-                {disabled && (
-                    <div className="text-sm text-gray-500 py-2">
-                        {title} filters are currently unavailable
-                    </div>
-                )}
-                {itemsToDisplay.map((item) => (
-                    <label
-                        key={item.id}
-                        className={`flex items-center space-x-3 p-2 rounded-md cursor-pointer transition-colors ${
-                            disabled
-                                ? "cursor-not-allowed opacity-50"
-                                : "hover:bg-gray-50"
-                        } ${selectedItems.includes(item.id) ? "bg-primary-50" : ""}`}
-                    >
-                        <div className="relative">
-                            <input
-                                type="checkbox"
-                                className="sr-only"
-                                checked={selectedItems.includes(item.id)}
-                                onChange={() => handleChange(item.id)}
-                                disabled={disabled}
-                            />
-                            <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
-                                selectedItems.includes(item.id) 
-                                    ? "border-primary-500 bg-primary-500" 
-                                    : "border-gray-300"
-                            }`}>
-                                {selectedItems.includes(item.id) && (
-                                    <Check size={12} className="text-white" />
-                                )}
-                            </div>
-                        </div>
-                        <span className={`text-sm ${
-                            selectedItems.includes(item.id) 
-                                ? "text-primary-700 font-medium" 
-                                : "text-gray-700"
-                        }`}>
-                            {item.name}
-                        </span>
-                    </label>
-                ))}
-            </div>
-
-            {/* Expand/Collapse Button */}
-            {canExpand && (
-                <button
-                    onClick={() => setIsExpanded(!isExpanded)}
-                    disabled={disabled}
-                    className={`w-full mt-3 p-2 text-sm font-medium rounded-md transition-colors flex items-center justify-center space-x-2 ${
-                        disabled
-                            ? "text-gray-400 cursor-not-allowed"
-                            : "text-primary-600 hover:text-primary-700 hover:bg-primary-50"
-                    }`}
-                >
-                    <span>{isExpanded ? "Show Less" : `Show ${items.length - initialDisplayCount} More`}</span>
-                    {isExpanded ? (
-                        <ChevronUp size={14} />
-                    ) : (
-                        <ChevronDown size={14} />
-                    )}
-                </button>
+        <div className="space-y-2">
+            {items.length === 0 && !disabled && (
+                <div className="text-sm text-muted-foreground py-2 italic">
+                    No options available
+                </div>
             )}
+            {disabled && (
+                <div className="text-sm text-muted-foreground py-2 italic">
+                    Unavailable
+                </div>
+            )}
+            {items.map((item) => (
+                <div key={item.id} className="flex items-center space-x-2">
+                    <Checkbox
+                        id={item.id}
+                        checked={selectedItems.includes(item.id)}
+                        onCheckedChange={() => handleChange(item.id)}
+                        disabled={disabled}
+                    />
+                    <Label
+                        htmlFor={item.id}
+                        className={`text-sm cursor-pointer leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 ${selectedItems.includes(item.id)
+                            ? "font-medium text-primary"
+                            : "font-normal"
+                            }`}
+                    >
+                        {item.name}
+                    </Label>
+                </div>
+            ))}
         </div>
     );
 };
@@ -140,8 +90,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     tagsDisabled = false,
     instructorsDisabled = false,
 }) => {
-    const { instructor } = useCatalogStore();
-    const [isMobileExpanded, setIsMobileExpanded] = useState(false);
+    const instructor = useCatalogStore((state) => state.instructor);
 
     const { data: instituteData, isLoading } = useSuspenseQuery(
         handleFetchInstituteDetails()
@@ -151,6 +100,8 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
         selectedLevels.length > 0 ||
         selectedTags.length > 0 ||
         selectedInstructors.length > 0;
+
+    const activeFiltersCount = selectedLevels.length + selectedTags.length + selectedInstructors.length;
 
     type LevelItem = { id: string; level_name?: string };
     const levels = (instituteData?.levels || []).map((level: LevelItem) => ({
@@ -171,128 +122,253 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
 
     if (isLoading) {
         return (
-            <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-                <div className="flex items-center space-x-2 mb-4">
-                    <div className="w-5 h-5 bg-gray-200 rounded animate-pulse"></div>
-                    <div className="h-4 bg-gray-200 rounded w-16 animate-pulse"></div>
+            <div className="bg-card border rounded-lg p-4 shadow-sm space-y-4">
+                <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 bg-muted rounded animate-pulse"></div>
+                    <div className="h-4 bg-muted rounded w-16 animate-pulse"></div>
                 </div>
-                <div className="space-y-3">
-                    {[1, 2, 3].map((i) => (
-                        <div key={i} className="space-y-2">
-                            <div className="h-3 bg-gray-200 rounded w-20 animate-pulse"></div>
-                            <div className="space-y-1">
-                                {[1, 2, 3].map((j) => (
-                                    <div key={j} className="flex items-center space-x-2">
-                                        <div className="w-3 h-3 bg-gray-200 rounded animate-pulse"></div>
-                                        <div className="h-3 bg-gray-200 rounded w-16 animate-pulse"></div>
-                                    </div>
-                                ))}
-                            </div>
+                {[1, 2, 3].map((i) => (
+                    <div key={i} className="space-y-2">
+                        <div className="h-4 bg-muted rounded w-20 animate-pulse"></div>
+                        <div className="space-y-2">
+                            {[1, 2, 3].map((j) => (
+                                <div key={j} className="flex items-center gap-2">
+                                    <div className="w-4 h-4 bg-muted rounded animate-pulse"></div>
+                                    <div className="h-4 bg-muted rounded w-24 animate-pulse"></div>
+                                </div>
+                            ))}
                         </div>
-                    ))}
-                </div>
+                    </div>
+                ))}
             </div>
         );
     }
 
-    return (
-        <div className="bg-white border border-gray-200 rounded-lg shadow-sm lg:sticky lg:top-4">
-            {/* Mobile Header - Only visible on mobile */}
-            <div className="lg:hidden p-3 border-b border-gray-200">
-                <button
-                    onClick={() => setIsMobileExpanded(!isMobileExpanded)}
-                    className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-                >
-                    <div className="flex items-center space-x-2">
-                        <Filter size={18} className="text-gray-600" />
-                        <span className="text-sm font-semibold text-gray-900">Filters</span>
-                        {hasActiveFilters && (
-                            <span className="bg-primary-100 text-primary-700 text-xs font-medium px-2 py-1 rounded-md">
-                                {selectedLevels.length + selectedTags.length + selectedInstructors.length}
-                            </span>
-                        )}
-                    </div>
-                    <ChevronDown 
-                        size={16} 
-                        className={`text-gray-500 transition-transform ${isMobileExpanded ? 'rotate-180' : ''}`} 
-                    />
-                </button>
+    const FilterContent = () => (
+        <div className="bg-card border rounded-lg shadow-sm">
+            {/* Desktop Header */}
+            <div className="p-4 border-b flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <Filter size={18} className="text-muted-foreground" />
+                    <h2 className="text-lg font-semibold">Filters</h2>
+                </div>
+                {hasActiveFilters && (
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={clearAllFilters}
+                        className="h-8 text-xs px-2 text-muted-foreground hover:text-foreground"
+                    >
+                        <X size={14} className="mr-1" />
+                        Clear All
+                    </Button>
+                )}
             </div>
 
-            {/* Filter Content - Hidden on mobile when collapsed */}
-            <div className={`lg:block ${isMobileExpanded ? 'block' : 'hidden'}`}>
-                {/* Desktop Header */}
-                <div className="hidden lg:block p-4 border-b border-gray-200">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-2">
-                            <Filter size={18} className="text-gray-600" />
-                            <h2 className="text-lg font-semibold text-gray-900">Filters</h2>
-                        </div>
-                        {hasActiveFilters && (
-                            <button
-                                onClick={clearAllFilters}
-                                className="flex items-center space-x-1 text-sm text-gray-500 hover:text-gray-700"
-                            >
-                                <X size={14} />
-                                <span>Clear All</span>
-                            </button>
-                        )}
-                    </div>
+            {hasActiveFilters && (
+                <div className="px-4 py-2 bg-muted/30 border-b">
+                    <p className="text-xs text-primary font-medium">
+                        {activeFiltersCount} filter(s) applied
+                    </p>
+                </div>
+            )}
+
+            <ScrollArea className="h-[calc(100vh-300px)] lg:h-auto lg:max-h-[600px]">
+                <div className="p-4">
+                    <Accordion type="multiple" defaultValue={["levels", "tags", "instructors"]} className="w-full">
+                        <AccordionItem value="levels" className="border-b-0">
+                            <AccordionTrigger className="hover:no-underline py-3">
+                                <span className="text-sm font-semibold">Level</span>
+                                {selectedLevels.length > 0 && (
+                                    <Badge variant="secondary" className="ml-2 text-[10px] h-5 px-1.5">
+                                        {selectedLevels.length}
+                                    </Badge>
+                                )}
+                            </AccordionTrigger>
+                            <AccordionContent>
+                                <FilterList
+                                    items={levels}
+                                    selectedItems={selectedLevels}
+                                    handleChange={onLevelChange}
+                                    disabled={levelsDisabled || levels.length === 0}
+                                />
+                            </AccordionContent>
+                        </AccordionItem>
+
+                        <Separator className="my-2" />
+
+                        <AccordionItem value="tags" className="border-b-0">
+                            <AccordionTrigger className="hover:no-underline py-3">
+                                <span className="text-sm font-semibold">Popular Tags</span>
+                                {selectedTags.length > 0 && (
+                                    <Badge variant="secondary" className="ml-2 text-[10px] h-5 px-1.5">
+                                        {selectedTags.length}
+                                    </Badge>
+                                )}
+                            </AccordionTrigger>
+                            <AccordionContent>
+                                <FilterList
+                                    items={tags}
+                                    selectedItems={selectedTags}
+                                    handleChange={onTagChange}
+                                    disabled={tagsDisabled || tags.length === 0}
+                                />
+                            </AccordionContent>
+                        </AccordionItem>
+
+                        <Separator className="my-2" />
+
+                        <AccordionItem value="instructors" className="border-b-0">
+                            <AccordionTrigger className="hover:no-underline py-3">
+                                <span className="text-sm font-semibold">Instructors</span>
+                                {selectedInstructors.length > 0 && (
+                                    <Badge variant="secondary" className="ml-2 text-[10px] h-5 px-1.5">
+                                        {selectedInstructors.length}
+                                    </Badge>
+                                )}
+                            </AccordionTrigger>
+                            <AccordionContent>
+                                <FilterList
+                                    items={instructors}
+                                    selectedItems={selectedInstructors}
+                                    handleChange={onInstructorChange}
+                                    disabled={instructorsDisabled || instructors.length === 0}
+                                />
+                            </AccordionContent>
+                        </AccordionItem>
+                    </Accordion>
+                </div>
+            </ScrollArea>
+
+            <div className="p-4 border-t bg-muted/20">
+                <Button
+                    onClick={onApplyFilters}
+                    disabled={!hasActiveFilters}
+                    className="w-full"
+                    size="sm"
+                >
+                    Apply Filters
                     {hasActiveFilters && (
-                        <p className="text-sm text-primary-600 mt-1">
-                            {selectedLevels.length + selectedTags.length + selectedInstructors.length} filter(s) applied
-                        </p>
+                        <Badge variant="secondary" className="ml-2 bg-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/30 border-0">
+                            {activeFiltersCount}
+                        </Badge>
                     )}
-                </div>
-
-                {/* Filter Content */}
-                <div className="p-3 sm:p-4 max-h-96 overflow-y-auto">
-                    <FilterSection
-                        title="Level"
-                        items={levels}
-                        selectedItems={selectedLevels}
-                        handleChange={onLevelChange}
-                        disabled={levelsDisabled || levels.length === 0}
-                    />
-
-                    <FilterSection
-                        title="Popular Tags"
-                        items={tags}
-                        selectedItems={selectedTags}
-                        handleChange={onTagChange}
-                        disabled={tagsDisabled || tags.length === 0}
-                    />
-
-                    <FilterSection
-                        title="Instructors"
-                        items={instructors}
-                        selectedItems={selectedInstructors}
-                        handleChange={onInstructorChange}
-                        disabled={instructorsDisabled || instructors.length === 0}
-                    />
-                </div>
-
-                {/* Apply Button - Always Visible */}
-                <div className="p-3 sm:p-4 border-t border-gray-200 bg-gray-50">
-                    <button
-                        onClick={onApplyFilters}
-                        disabled={!hasActiveFilters}
-                        className={`w-full py-2.5 px-4 text-sm font-medium rounded-md transition-colors ${
-                            hasActiveFilters
-                                ? "bg-primary-500 text-white hover:bg-primary-700 shadow-sm"
-                                : "bg-gray-200 text-gray-400 cursor-not-allowed"
-                        }`}
-                    >
-                        Apply Filters
-                        {hasActiveFilters && (
-                            <span className="ml-2 bg-primary-700 text-xs px-2 py-1 rounded-md">
-                                {selectedLevels.length + selectedTags.length + selectedInstructors.length}
-                            </span>
-                        )}
-                    </button>
-                </div>
+                </Button>
             </div>
         </div>
+    );
+
+    return (
+        <>
+            {/* Desktop View */}
+            <div className="hidden lg:block sticky top-4">
+                <FilterContent />
+            </div>
+
+            {/* Mobile View with Sheet */}
+            <div className="lg:hidden mb-4">
+                <Sheet>
+                    <SheetTrigger asChild>
+                        <Button variant="outline" className="w-full justify-between bg-card">
+                            <div className="flex items-center gap-2">
+                                <Filter size={16} />
+                                <span>Filters</span>
+                                {hasActiveFilters && (
+                                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                                        {activeFiltersCount}
+                                    </Badge>
+                                )}
+                            </div>
+                            <span className="text-xs text-muted-foreground mr-1">Show</span>
+                        </Button>
+                    </SheetTrigger>
+                    <SheetContent side="left" className="w-[300px] sm:w-[400px] p-0 overflow-hidden flex flex-col">
+                        <SheetHeader className="p-4 border-b">
+                            <SheetTitle className="text-left flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Filter size={18} />
+                                    <span>Filters</span>
+                                </div>
+                                {hasActiveFilters && (
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={clearAllFilters}
+                                        className="h-8 w-8 text-muted-foreground"
+                                        title="Clear All"
+                                    >
+                                        <X size={16} />
+                                    </Button>
+                                )}
+                            </SheetTitle>
+                        </SheetHeader>
+
+                        <div className="flex-1 overflow-auto p-4">
+                            <Accordion type="multiple" defaultValue={["levels", "tags"]} className="w-full">
+                                <AccordionItem value="levels" className="border-b-0 mb-4">
+                                    <h4 className="font-semibold mb-3 text-sm flex items-center justify-between">
+                                        Level
+                                        {selectedLevels.length > 0 && (
+                                            <Badge variant="secondary" className="text-[10px]">{selectedLevels.length}</Badge>
+                                        )}
+                                    </h4>
+                                    <FilterList
+                                        items={levels}
+                                        selectedItems={selectedLevels}
+                                        handleChange={onLevelChange}
+                                        disabled={levelsDisabled || levels.length === 0}
+                                    />
+                                </AccordionItem>
+
+                                <Separator className="my-4" />
+
+                                <AccordionItem value="tags" className="border-b-0 mb-4">
+                                    <h4 className="font-semibold mb-3 text-sm flex items-center justify-between">
+                                        Tags
+                                        {selectedTags.length > 0 && (
+                                            <Badge variant="secondary" className="text-[10px]">{selectedTags.length}</Badge>
+                                        )}
+                                    </h4>
+                                    <FilterList
+                                        items={tags}
+                                        selectedItems={selectedTags}
+                                        handleChange={onTagChange}
+                                        disabled={tagsDisabled || tags.length === 0}
+                                    />
+                                </AccordionItem>
+
+                                <Separator className="my-4" />
+
+                                <AccordionItem value="instructors" className="border-b-0">
+                                    <h4 className="font-semibold mb-3 text-sm flex items-center justify-between">
+                                        Instructors
+                                        {selectedInstructors.length > 0 && (
+                                            <Badge variant="secondary" className="text-[10px]">{selectedInstructors.length}</Badge>
+                                        )}
+                                    </h4>
+                                    <FilterList
+                                        items={instructors}
+                                        selectedItems={selectedInstructors}
+                                        handleChange={onInstructorChange}
+                                        disabled={instructorsDisabled || instructors.length === 0}
+                                    />
+                                </AccordionItem>
+                            </Accordion>
+                        </div>
+
+                        <div className="p-4 border-t bg-muted/20">
+                            <Button
+                                onClick={onApplyFilters}
+                                disabled={!hasActiveFilters}
+                                className="w-full"
+                            >
+                                Apply {activeFiltersCount > 0 ? `(${activeFiltersCount})` : ''}
+                            </Button>
+                        </div>
+                    </SheetContent>
+                </Sheet>
+            </div>
+        </>
     );
 };
 

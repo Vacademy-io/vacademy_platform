@@ -6,8 +6,7 @@ import { useEffect, useState } from "react";
 import { getStoredDetails } from "@/routes/assessment/examination/-utils.ts/useFetchAssessment";
 import { UserActivityArray } from "../-types/dashboard-data-types";
 import { formatTimeFromMillis } from "@/helpers/formatTimeFromMiliseconds";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { H2 } from "@/components/design-system/typography";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { BarChart3, Clock, Zap, Target, Award, TrendingUp } from "lucide-react";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
@@ -15,39 +14,34 @@ import { getTerminology } from "@/components/common/layout-container/sidebar/uti
 
 // Enhanced Loading Skeleton
 const AnalyticsLoadingSkeleton = () => (
-  <div className="space-y-4 sm:space-y-5">
+  <div className="space-y-6">
     {/* Header Skeleton */}
-  <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md sm:rounded-lg p-4 sm:p-5 animate-pulse">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gray-200 rounded-lg sm:rounded-xl"></div>
-          <div className="space-y-2">
-            <div className="w-36 h-4 sm:w-48 sm:h-5 bg-gray-200 rounded"></div>
-            <div className="w-24 h-3 sm:w-32 sm:h-4 bg-gray-200 rounded"></div>
-          </div>
+    <div className="border rounded-lg p-5 flex flex-col sm:flex-row justify-between gap-4">
+      <div className="flex items-center gap-4">
+        <div className="w-10 h-10 bg-muted rounded-md animate-pulse" />
+        <div className="space-y-2">
+          <div className="w-48 h-5 bg-muted rounded animate-pulse" />
+          <div className="w-32 h-4 bg-muted rounded animate-pulse" />
         </div>
-        <div className="w-24 h-12 sm:w-32 sm:h-16 bg-gray-200 rounded-lg sm:rounded-xl"></div>
       </div>
+      <div className="w-24 h-8 bg-muted rounded animate-pulse" />
     </div>
 
     {/* Chart Skeleton */}
-  <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md sm:rounded-lg p-4 sm:p-5 animate-pulse">
-      <div className="w-32 h-5 sm:w-40 sm:h-6 bg-gray-200 rounded mb-3 sm:mb-4"></div>
-      <div className="w-full h-48 sm:h-64 bg-gray-200 rounded-lg sm:rounded-xl"></div>
+    <div className="border rounded-lg p-5 space-y-4">
+      <div className="w-40 h-6 bg-muted rounded animate-pulse" />
+      <div className="w-full h-64 bg-muted rounded-lg animate-pulse" />
     </div>
 
     {/* Table Skeleton */}
-  <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md sm:rounded-lg animate-pulse">
-    <div className="p-4 sm:p-5 border-b border-gray-200 dark:border-neutral-800">
-        <div className="w-36 h-5 sm:w-48 sm:h-6 bg-gray-200 rounded"></div>
-      </div>
-      <div className="p-4 sm:p-5 space-y-3 sm:space-y-4">
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="flex justify-between items-center">
-            <div className="w-16 h-3 sm:w-20 sm:h-4 bg-gray-200 rounded"></div>
-            <div className="w-12 h-3 sm:w-16 sm:h-4 bg-gray-200 rounded"></div>
-            <div className="w-12 h-3 sm:w-16 sm:h-4 bg-gray-200 rounded"></div>
-            <div className="w-12 h-3 sm:w-16 sm:h-4 bg-gray-200 rounded"></div>
+    <div className="border rounded-lg space-y-4 p-5">
+      <div className="w-48 h-6 bg-muted rounded animate-pulse" />
+      <div className="space-y-3">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="flex justify-between">
+            <div className="w-20 h-4 bg-muted rounded animate-pulse" />
+            <div className="w-20 h-4 bg-muted rounded animate-pulse" />
+            <div className="w-20 h-4 bg-muted rounded animate-pulse" />
           </div>
         ))}
       </div>
@@ -55,7 +49,7 @@ const AnalyticsLoadingSkeleton = () => (
   </div>
 );
 
-// Enhanced Stats Card Component
+// Enhanced StatsCard Component
 const StatsCard = ({
   title,
   value,
@@ -63,56 +57,43 @@ const StatsCard = ({
   trend,
   trendColor,
   description,
-  gradient,
 }: {
   title: string;
   value: string;
-  icon: React.ComponentType<{ size?: number | string; className?: string }>; 
+  icon: React.ComponentType<{ size?: number | string; className?: string }>;
   trend?: string;
   trendColor?: string;
   description: string;
-  gradient: string;
 }) => {
-  const isVibrant = typeof document !== 'undefined' && document.documentElement.classList.contains('ui-vibrant');
   return (
-<Card className="relative overflow-hidden bg-white dark:bg-neutral-900 shadow-sm hover:shadow-md transition-all duration-300 group">
-    {/* Background gradient overlay */}
-    <div
-      className={`absolute inset-0 bg-gradient-to-br ${gradient} ${isVibrant ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity duration-300`}
-    ></div>
-
-    <CardContent className="relative p-4 sm:p-5">
-      {/* Floating orb effect */}
-      <div className="absolute top-0 right-0 w-12 h-12 sm:w-16 sm:h-16 bg-primary-100/20 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-1 sm:-translate-y-2 translate-x-1 sm:translate-x-2"></div>
-
-      <div className="flex items-center justify-between mb-3 sm:mb-4">
-      <div className="p-2 sm:p-3 bg-gradient-to-br from-primary-50 to-primary-100 rounded-md sm:rounded-lg text-primary-600 group-hover:scale-110 transition-transform duration-300">
-          <Icon size={18} className="sm:w-5 sm:h-5" />
+    <Card className="shadow-none hover:shadow-sm transition-shadow">
+      <CardContent className="p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="p-2 bg-primary/10 rounded-md text-primary">
+            <Icon size={18} />
+          </div>
+          {trend && (
+            <Badge
+              variant="secondary"
+              className={`${trendColor || 'bg-secondary text-secondary-foreground'} border-0 px-2 py-0.5`}
+            >
+              {trend}
+            </Badge>
+          )}
         </div>
-        {trend && (
-          <Badge
-            className={`${trendColor} border-0 text-xs font-medium px-2 py-1`}
-          >
-            {trend}
-          </Badge>
-        )}
-      </div>
 
-      <div className="space-y-1 sm:space-y-2">
-  <div className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-neutral-100 tracking-tight leading-tight">
-          {value}
+        <div className="space-y-1">
+          <div className="text-2xl font-bold tracking-tight">
+            {value}
+          </div>
+          <div className="text-sm font-medium text-muted-foreground">
+            {title}
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">{description}</p>
         </div>
-  <div className="text-xs sm:text-sm font-medium text-gray-600 dark:text-neutral-300 group-hover:text-gray-700 dark:group-hover:text-neutral-200 transition-colors">
-          {title}
-        </div>
-        <div className="text-xs text-gray-500">{description}</div>
-      </div>
-
-      {/* Progress indicator */}
-      <div className={`absolute bottom-0 left-0 h-0.5 bg-gradient-to-r from-primary-400 to-primary-600 ${isVibrant ? 'w-full' : 'w-0 group-hover:w-full'} transition-all duration-500 ease-out`}></div>
-    </CardContent>
-  </Card>
-);
+      </CardContent>
+    </Card>
+  );
 }
 
 export const PastLearningInsights = () => {
@@ -181,58 +162,37 @@ export const PastLearningInsights = () => {
   if (isPending) return <AnalyticsLoadingSkeleton />;
 
   return (
-  <div className="space-y-3 sm:space-y-4 animate-fade-in-up">
+    <div className="space-y-6 animate-fade-in-up">
       {/* Enhanced Header Section */}
-<Card className="relative overflow-hidden bg-gradient-to-br from-white/90 via-primary-50/30 to-white/80 dark:from-neutral-900 dark:via-neutral-900/60 dark:to-neutral-800 shadow-sm hover:shadow-md transition-all duration-300 group">
-        {/* Animated background pattern */}
-        <div className="absolute inset-0 opacity-5">
-          <div className={`absolute top-0 left-1/3 w-20 h-20 sm:w-32 sm:h-32 rounded-full blur-3xl animate-gentle-pulse ${document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-blue' : 'bg-primary-300'}`}></div>
-          <div
-            className={`absolute bottom-1/3 right-1/4 w-24 h-24 sm:w-40 sm:h-40 rounded-full blur-3xl animate-gentle-pulse ${document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-teal' : 'bg-primary-200'}`}
-            style={{ animationDelay: "1s" }}
-          ></div>
-        </div>
-
-        <CardHeader className="relative pb-3 sm:pb-5">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 lg:gap-5">
-            <div className="flex flex-col sm:flex-row sm:items-center space-y-3 sm:space-y-0 sm:space-x-4">
-              <div className={`p-2 sm:p-3 rounded-md sm:rounded-lg shadow-sm flex-shrink-0 ${document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-orange' : 'bg-gradient-to-br from-primary-100 to-primary-200'}`}
-              >
-                <TrendingUp
-                  size={24}
-                  className="text-primary-600 sm:w-7 sm:h-7"
-                />
-              </div>
-              <div className="min-w-0">
-                <H2 className="tracking-tight">Learning Analytics</H2>
-                <p className="text-sm sm:text-base text-gray-600 mt-1 flex items-center space-x-2">
-                  <BarChart3
-                    size={14}
-                    className="text-primary-500 flex-shrink-0"
-                  />
-                  <span>Past 7 days performance insights</span>
-                </p>
-              </div>
+      <Card className="shadow-none border-none bg-transparent">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="p-3 rounded-lg bg-primary/10 text-primary">
+              <TrendingUp size={24} />
             </div>
-
-            <div className="flex items-center justify-center sm:justify-end">
-              <Badge className={`${document.documentElement.classList.contains('ui-vibrant') ? 'pastel-chip pastel-chip-green' : 'bg-primary-100 text-primary-700 border-primary-200'} text-xs sm:text-sm px-2 sm:px-3 py-1`}>
-                <Zap size={12} className="mr-1" />
-                Live Analytics
-              </Badge>
+            <div>
+              <h2 className="text-2xl font-semibold tracking-tight">Learning Analytics</h2>
+              <div className="flex items-center gap-2 text-muted-foreground mt-1">
+                <BarChart3 size={14} />
+                <span className="text-sm">Past 7 days performance insights</span>
+              </div>
             </div>
           </div>
-        </CardHeader>
+
+          <Badge variant="outline" className="w-fit text-primary border-primary/20 gap-1.5 py-1.5 px-3 h-auto">
+            <Zap size={14} />
+            Live Analytics
+          </Badge>
+        </div>
       </Card>
 
       {/* Enhanced Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatsCard
           title="Average Study Time"
           value={avgTimeSpent}
           icon={Clock}
           description="Daily learning average"
-          gradient={document.documentElement.classList.contains('ui-vibrant') ? 'from-[#AFD9E8] to-[#B2DFDB]' : 'from-blue-500/5 to-primary-500/5'}
         />
         <StatsCard
           title={`Active ${getTerminology(
@@ -243,87 +203,60 @@ export const PastLearningInsights = () => {
           icon={Target}
           trend={totalSessions >= 4 ? "+12%" : ""}
           trendColor={
-            totalSessions >= 4 ? "bg-success-100 text-success-700" : ""
+            totalSessions >= 4 ? "bg-green-500/10 text-green-600" : ""
           }
           description={`Learning ${getTerminology(
             ContentTerms.LiveSession,
             SystemTerms.LiveSession
           ).toLocaleLowerCase()}s this week`}
-          gradient={document.documentElement.classList.contains('ui-vibrant') ? 'from-[#B6E2B6] to-[#FFF5BA]' : 'from-green-500/5 to-emerald-500/5'}
         />
         <StatsCard
           title="Learning Streak"
           value={`${streakDays} day${streakDays !== 1 ? "s" : ""}`}
           icon={Award}
           trend={streakDays >= 3 ? "🔥" : ""}
-          trendColor="bg-warning-100 text-warning-700"
+          trendColor="bg-orange-500/10 text-orange-600"
           description="Consecutive learning days"
-          gradient={document.documentElement.classList.contains('ui-vibrant') ? 'from-[#D7BDE2] to-[#FBC4C4]' : 'from-purple-500/5 to-pink-500/5'}
         />
       </div>
 
       {/* Enhanced Chart Section */}
-<Card className="relative overflow-hidden bg-white dark:bg-neutral-900 shadow-sm hover:shadow-md transition-all duration-300">
-        <CardHeader className="border-b border-gray-100 pb-2.5 sm:pb-3.5">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-gradient-to-br from-primary-100 to-primary-200 rounded-md">
-                <BarChart3 size={18} className="text-primary-600" />
-              </div>
-              <div className="min-w-0">
-  <CardTitle className="text-base sm:text-lg font-semibold text-gray-900 dark:text-neutral-100">
-                  Activity Trend
-                </CardTitle>
-  <p className="text-xs sm:text-sm text-gray-600 dark:text-neutral-300 mt-1">
-                  Daily study time comparison with batch average
-                </p>
-              </div>
+      <Card className="shadow-none">
+        <CardHeader className="border-b px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <CardTitle className="text-base font-semibold">Activity Trend</CardTitle>
+              <CardDescription>Daily study time comparison with batch average</CardDescription>
             </div>
-            <Badge
-              variant="secondary"
-              className="bg-primary-50 text-primary-700 border-primary-200 text-xs self-start sm:self-auto"
-            >
-              7 Days
-            </Badge>
+            <Badge variant="secondary" className="font-normal">7 Days</Badge>
           </div>
         </CardHeader>
-        <CardContent className="p-3.5 sm:p-4.5">
+        <CardContent className="p-6">
           <LineChartComponent userActivity={userActivity} />
         </CardContent>
       </Card>
 
       {/* Enhanced Table Section */}
-<Card className="relative overflow-hidden bg-white dark:bg-neutral-900 shadow-sm hover:shadow-md transition-all duration-300">
-        <CardHeader className="border-b border-gray-100 bg-gradient-to-r from-gray-50 to-primary-50/20 pb-2.5 sm:pb-3.5">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-gradient-to-br from-gray-100 to-gray-200 rounded-md">
-  <Target size={18} className="text-gray-600 dark:text-neutral-300" />
-              </div>
-              <div className="min-w-0">
-  <CardTitle className="text-base sm:text-lg font-semibold text-gray-900 dark:text-neutral-100">
-                  Daily Progress
-                </CardTitle>
-  <p className="text-xs sm:text-sm text-gray-600 dark:text-neutral-300 mt-1">
-                  Detailed breakdown of your learning sessions
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Badge className="bg-success-100 text-success-700 border-success-200 text-xs">
-                <div className="w-1.5 h-1.5 bg-success-500 rounded-full mr-1 animate-pulse"></div>
-                Updated
-              </Badge>
-            </div>
+      <Card className="shadow-none">
+        <CardHeader className="border-b px-6 py-4 flex flex-row items-center justify-between space-y-0">
+          <div className="space-y-1">
+            <CardTitle className="text-base font-semibold">Daily Progress</CardTitle>
+            <CardDescription>Detailed breakdown of your learning sessions</CardDescription>
           </div>
+          <Badge variant="outline" className="gap-1.5 border-green-500/20 text-green-600 bg-green-500/5">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+            </span>
+            Updated
+          </Badge>
         </CardHeader>
 
-        <CardContent className="p-0">
-          <div className="p-3.5 sm:p-4.5">
-            <StudentProgressTable userActivity={userActivity} />
-          </div>
+        <CardContent className="p-6">
+          <StudentProgressTable userActivity={userActivity} />
         </CardContent>
       </Card>
     </div>
   );
 };
+

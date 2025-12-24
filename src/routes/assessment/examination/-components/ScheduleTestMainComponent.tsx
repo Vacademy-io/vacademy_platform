@@ -2,13 +2,11 @@ import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { useEffect, useState, useRef, useCallback } from "react";
 import ScheduleTestTabList from "./ScheduleTestTabList";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
-import { assessmentTypes } from "@/types/assessment";
-import { Assessment } from "@/types/assessment";
+import { assessmentTypes, Assessment } from "@/types/assessment";
 import { fetchAssessmentData } from "../-utils.ts/useFetchAssessment";
 import { AssessmentCard } from "../-components/AssessmentCard";
 import { EmptyAssessment } from "@/svgs";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
-// import PullToRefresh from "./PullToRefresh";
 
 export const ScheduleTestMainComponent = ({
   assessment_types,
@@ -49,12 +47,32 @@ export const ScheduleTestMainComponent = ({
     [assessmentTypes.PAST]: 0,
   });
 
+  const loadingRef = useRef(loading);
+  const loadingMoreRef = useRef(loadingMore);
+  const hasMorePagesRef = useRef(hasMorePages);
+
+  useEffect(() => {
+    loadingRef.current = loading;
+  }, [loading]);
+
+  useEffect(() => {
+    loadingMoreRef.current = loadingMore;
+  }, [loadingMore]);
+
+  useEffect(() => {
+    hasMorePagesRef.current = hasMorePages;
+  }, [hasMorePages]);
+
   const observer = useRef<IntersectionObserver | null>(null);
   const pageSize = 5;
 
   const fetchMoreData = useCallback(
     async (tab: assessmentTypes, pageNum: number, isInitialLoad = false) => {
-      if (loading || (loadingMore && !isInitialLoad) || !hasMorePages[tab])
+      if (
+        loadingRef.current ||
+        (loadingMoreRef.current && !isInitialLoad) ||
+        !hasMorePagesRef.current[tab]
+      )
         return;
 
       setLoading(isInitialLoad);
@@ -96,7 +114,7 @@ export const ScheduleTestMainComponent = ({
         setLoadingMore(false);
       }
     },
-    [loading, loadingMore, hasMorePages, assessment_types]
+    [assessment_types]
   );
 
   const fetchAllTabsData = useCallback(() => {
@@ -110,19 +128,6 @@ export const ScheduleTestMainComponent = ({
     setNavHeading(nextHeading);
     fetchAllTabsData();
   }, [assessment_types, fetchAllTabsData, setNavHeading]);
-
-  // const refreshCurrentTab = useCallback(async () => {
-  //   setAssessmentData((prevData) => ({
-  //     ...prevData,
-  //     [selectedTab]: [],
-  //   }));
-  //   setPage((prevPage) => ({
-  //     ...prevPage,
-  //     [selectedTab]: 0,
-  //   }));
-  //   setHasMorePages((prev) => ({ ...prev, [selectedTab]: true }));
-  //   await fetchMoreData(selectedTab, 0, true);
-  // }, [selectedTab]);
 
   const lastElementRef = useCallback(
     (node: HTMLDivElement | null) => {
@@ -143,12 +148,13 @@ export const ScheduleTestMainComponent = ({
   }
 
   return (
-    <div className="items-center gap-3 sm:gap-4 min-h-full px-2 sm:px-0">
+    <div className="w-full space-y-6">
       <Tabs
         value={selectedTab}
         onValueChange={(tab) => {
           setSelectedTab(tab as assessmentTypes);
         }}
+        className="w-full"
       >
         <ScheduleTestTabList
           selectedTab={selectedTab}
@@ -158,7 +164,7 @@ export const ScheduleTestMainComponent = ({
         <TabsContent
           key={selectedTab}
           value={selectedTab}
-          className="rounded-xl bg-neutral-50 flex flex-col gap-2 sm:gap-3"
+          className="mt-6 flex flex-col gap-4 focus-visible:outline-none"
         >
           {assessmentData[selectedTab].length > 0 ? (
             assessmentData[selectedTab].map((assessment, index) => {
@@ -183,63 +189,25 @@ export const ScheduleTestMainComponent = ({
               );
             })
           ) : (
-            <div className="flex min-h-[40vh] sm:h-[60vh] flex-col items-center justify-center px-4 text-center">
-              {/* <img src={EmptyAssessment} alt="No Tests Available" /> */}
+            <div className="flex min-h-[40vh] sm:h-[60vh] flex-col items-center justify-center px-4 text-center space-y-4">
               <EmptyAssessment />
-              <span className="text-neutral-600">No tests found.</span>
+              <span className="text-muted-foreground text-lg">No tests found.</span>
             </div>
           )}
+
           {loading && (
-            <div className="text-center text-primary-500 py-4">Loading...</div>
+            <div className="text-center text-muted-foreground py-8">Loading assessments...</div>
           )}
+
           {loadingMore && (
-            <div className="">
-              <div className="text-center text-primary-500 py-4">
+            <div className="py-4 flex flex-col items-center gap-2">
+              <div className="text-sm text-muted-foreground">
                 Loading more...
               </div>
               <DashboardLoader />
             </div>
           )}
         </TabsContent>
-
-        {/* <TabsContent
-          key={selectedTab}
-          value={selectedTab}
-          className="rounded-xl bg-neutral-50 flex flex-col gap-3"
-        >
-          <PullToRefresh onRefresh={refreshCurrentTab}>
-            {assessmentData[selectedTab].length > 0 ? (
-              assessmentData[selectedTab].map((assessment, index) => {
-                if (index === assessmentData[selectedTab].length - 1) {
-                  return (
-                    <div ref={lastElementRef} key={assessment.assessment_id}>
-                      <AssessmentCard
-                        assessmentInfo={assessment}
-                        assessmentType={selectedTab}
-                      />
-                    </div>
-                  );
-                }
-                return (
-                  <AssessmentCard
-                    key={assessment.assessment_id}
-                    assessmentInfo={assessment}
-                    assessmentType={selectedTab}
-                  />
-                );
-              })
-            ) : (
-              <div className="flex h-screen flex-col items-center justify-center">
-                <img src={EmptyScheduleTest} alt="No Tests Available" />
-                <span className="text-neutral-600">No tests found.</span>
-              </div>
-            )}
-            {loading && <div className="text-center py-4">Loading...</div>}
-            {loadingMore && (
-              <div className="text-center py-4">Loading more...</div>
-            )}
-          </PullToRefresh>
-        </TabsContent> */}
       </Tabs>
     </div>
   );

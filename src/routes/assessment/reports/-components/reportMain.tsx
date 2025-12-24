@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Card } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { format } from "date-fns";
 import { Preferences } from "@capacitor/preferences";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
@@ -7,20 +7,22 @@ import {
   STUDENT_REPORT_DETAIL_URL,
   STUDENT_REPORT_URL,
 } from "@/constants/urls";
-import { MyButton } from "@/components/design-system/button";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "@tanstack/react-router";
 import { Report } from "@/types/assessments/assessment-data-type";
 import { formatDuration, getSubjectNameById } from "@/constants/helper";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
-import { PlayMode, StatusChip } from "@/components/design-system/chips";
+import { PlayMode } from "@/components/design-system/chips";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { cn } from "@/lib/utils";
 
-const playModeColors: { [key: string]: string } = {
-  EXAM: "bg-green-500 text-white",
-  MOCK: "bg-purple-500 text-white",
-  PRACTICE: "bg-blue-500 text-white",
-  SURVEY: "bg-red-500 text-white",
+const playModeStyles: { [key: string]: string } = {
+  EXAM: "bg-green-100 text-green-700 hover:bg-green-200 border-green-200",
+  MOCK: "bg-purple-100 text-purple-700 hover:bg-purple-200 border-purple-200",
+  PRACTICE: "bg-blue-100 text-blue-700 hover:bg-blue-200 border-blue-200",
+  SURVEY: "bg-rose-100 text-rose-700 hover:bg-rose-200 border-rose-200",
 };
 
 export const viewStudentReport = async (
@@ -195,84 +197,92 @@ const AssessmentReportList = ({
 
   if (error && reports.length === 0) {
     return (
-      <div className="text-center py-4 text-red-500">
+      <div className="text-center py-4 text-destructive">
         <p>{error}</p>
       </div>
     );
   }
 
   return (
-    <div className="w-full space-y-4 p-4">
+    <div className="w-full space-y-4 p-4 md:p-6 lg:p-8">
       {reports.map((report: Report, index: number) => (
         <div
           key={report.attempt_id}
           ref={index === reports.length - 1 ? lastReportElementRef : null}
         >
-          <Card className="w-full p-6 space-y-2">
-            <h2 className="text-sm lg:text-base font-semibold text-gray-900">
-              {report.assessment_name}
-            </h2>
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div>
+          <Card className="w-full transition-all hover:shadow-md">
+            <CardHeader className="pb-2">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <CardTitle className="text-base sm:text-lg font-semibold text-foreground">
+                  {report.assessment_name}
+                </CardTitle>
                 {assessment_types !== "HOMEWORK" && (
-                  <div className="flex gap-3 pb-3 items-center">
-                    <StatusChip
-                      playMode={report.play_mode as PlayMode}
-                      className={playModeColors[report.play_mode as PlayMode]}
-                    />
-                  </div>
+                  <Badge
+                    variant="outline"
+                    className={cn("text-xs font-semibold px-2.5 py-0.5 border", playModeStyles[report.play_mode as PlayMode])}
+                  >
+                    {report.play_mode}
+                  </Badge>
                 )}
-                <div className="space-y-2 text-xs lg:text-sm text-gray-600">
-                  <div>Attempt Date: {formatDateTime(report.attempt_date)}</div>
-                  <div>
-                    {getTerminology(
-                      ContentTerms.Subjects,
-                      SystemTerms.Subjects
-                    )}
-                    :{" "}
-                    {getSubjectNameById(
-                      instituteDetails?.subjects || [],
-                      report?.subject_id
-                    ) || ""}
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-1 gap-x-8 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-foreground">Attempt Date:</span>
+                    <span>{formatDateTime(report.attempt_date)}</span>
                   </div>
-                  <div>
-                    Duration:{" "}
-                    {report.duration_in_seconds
-                      ? formatDuration(report.duration_in_seconds)
-                      : "N/A"}
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-foreground">
+                      {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}:
+                    </span>
+                    <span>
+                      {getSubjectNameById(instituteDetails?.subjects || [], report?.subject_id) || "-"}
+                    </span>
                   </div>
-                  <div>Marks: {report.total_marks}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-foreground">Duration:</span>
+                    <span>
+                      {report.duration_in_seconds ? formatDuration(report.duration_in_seconds) : "N/A"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-foreground">Marks:</span>
+                    <span>{report.total_marks}</span>
+                  </div>
+                </div>
+
+                <div className="w-full md:w-auto mt-2 md:mt-0">
+                  <Button
+                    variant="secondary"
+                    className="w-full md:w-auto min-w-[120px]"
+                    onClick={() => handleViewReport(report)}
+                  >
+                    View Report
+                  </Button>
                 </div>
               </div>
-              <div className="w-full md:w-auto">
-                <MyButton
-                  buttonType="secondary"
-                  className="w-full max-w-xs md:w-[200px] lg:w-[300px]"
-                  onClick={() => handleViewReport(report)}
-                >
-                  View Report
-                </MyButton>
-              </div>
-            </div>
+            </CardContent>
           </Card>
         </div>
       ))}
 
       {loading && (
         <div className="flex justify-center p-4" ref={loadingRef}>
-          <div className="animate-spin h-6 w-6 border-2 border-primary-500 border-t-transparent rounded-full"></div>
+          <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full"></div>
         </div>
       )}
 
       {!hasMore && reports.length > 0 && (
-        <p className="text-center text-sm text-gray-500 py-4">
+        <p className="text-center text-sm text-muted-foreground py-4">
           No more reports to load
         </p>
       )}
 
       {reports.length === 0 && !loading && (
         <div className="text-center py-8">
-          <p className="text-gray-500 text-sm">No reports found</p>
+          <p className="text-muted-foreground text-sm">No reports found</p>
         </div>
       )}
     </div>

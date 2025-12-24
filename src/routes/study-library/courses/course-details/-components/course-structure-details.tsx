@@ -203,7 +203,7 @@ export const CourseStructureDetails = ({
   // const getChapterProgressStatus = (chapterId: string) => {
   //     const progress = calculateChapterProgress(chapterId);
   //     if (progress === 0) return { status: 'not-started', color: 'text-neutral-400', bgColor: 'bg-neutral-100' };
-  //     if (progress >= 80) return { status: 'completed', color: 'text-green-600', bgColor: 'bg-green-100' };
+  //     if (progress >= 80) return { status: 'completed', color: 'text-primary', bgColor: 'bg-green-100' };
   //     return { status: 'in-progress', color: 'text-primary-600', bgColor: 'bg-primary-100' };
   // };
 
@@ -221,7 +221,7 @@ export const CourseStructureDetails = ({
   // const getModuleProgressStatus = (moduleChapters: Chapter[]) => {
   //     const progress = calculateModuleProgress(moduleChapters);
   //     if (progress === 0) return { status: 'not-started', color: 'text-neutral-400', bgColor: 'bg-neutral-100' };
-  //     if (progress >= 80) return { status: 'completed', color: 'text-green-600', bgColor: 'bg-green-100' };
+  //     if (progress >= 80) return { status: 'completed', color: 'text-primary', bgColor: 'bg-green-100' };
   //     return { status: 'in-progress', color: 'text-primary-600', bgColor: 'bg-primary-100' };
   // };
 
@@ -248,7 +248,7 @@ export const CourseStructureDetails = ({
 
     const isCompleted = percentage >= 80;
     const bgColor = isCompleted ? "bg-green-100" : "bg-primary-100";
-    const textColor = isCompleted ? "text-green-700" : "text-primary-700";
+    const textColor = isCompleted ? "text-primary" : "text-primary-700";
     const icon = isCompleted ? "✓" : `${Math.round(percentage)}%`;
 
     return (
@@ -426,7 +426,7 @@ export const CourseStructureDetails = ({
   const { userHasDonated } = useEnrollmentStatus(instituteId);
 
   // Log enrollment status changes
-  useEffect(() => {}, [instituteId, userHasDonated, isEnrolledInCourse]);
+  useEffect(() => { }, [instituteId, userHasDonated, isEnrolledInCourse]);
   // const [thumbUrlById, setThumbUrlById] = useState<Record<string, string>>({});
 
   // Evaluate drip conditions for chapters
@@ -1072,7 +1072,7 @@ export const CourseStructureDetails = ({
                   open={isSubjectOpen}
                   onOpenChange={() => toggleSubject(subject.id)}
                 >
-                  <CollapsibleTrigger className="group flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-semibold text-neutral-700 transition-all duration-200 hover:bg-primary-50/60 hover:border-primary-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1">
+                  <CollapsibleTrigger className="group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-left text-sm font-semibold shadow-sm transition-all hover:bg-accent hover:text-accent-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1">
                     <div className="flex min-w-0 flex-1 items-center gap-2.5">
                       {isSubjectOpen ? (
                         <CaretDown
@@ -1135,7 +1135,7 @@ export const CourseStructureDetails = ({
                               open={isModuleOpen}
                               onOpenChange={() => toggleModule(mod.module.id)}
                             >
-                              <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-blue-50/70 hover:border-blue-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1">
+                              <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium transition-all hover:bg-accent hover:text-accent-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1">
                                 <div className="flex min-w-0 flex-1 items-center gap-2">
                                   {isModuleOpen ? (
                                     <CaretDown
@@ -1236,25 +1236,24 @@ export const CourseStructureDetails = ({
                                       >
                                         <CollapsibleTrigger
                                           disabled={isChapterLocked}
-                                          className={`group flex w-full items-center rounded-md px-2 py-1 text-left text-sm text-neutral-600 transition-all duration-200 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1 ${
-                                            isChapterLocked
-                                              ? "cursor-not-allowed opacity-60"
-                                              : "hover:bg-green-50/70 hover:border-green-200/60 cursor-pointer"
+                                          className={`group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${isChapterLocked
+                                            ? "cursor-not-allowed opacity-60"
+                                            : "hover:bg-accent hover:text-accent-foreground cursor-pointer"
                                             }`}
                                         >
                                           <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                             {isChapterOpen ? (
                                               <CaretDown
                                                 size={14}
-                                                className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
+                                                className="shrink-0 text-neutral-500 group-hover:text-primary transition-colors"
                                               />
                                             ) : (
                                               <CaretRight
                                                 size={14}
-                                                className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
+                                                className="shrink-0 text-neutral-500 group-hover:text-primary transition-colors"
                                               />
                                             )}
-                                            <div className="flex items-center justify-center w-4 h-4 rounded bg-green-600 text-white">
+                                            <div className="flex items-center justify-center w-4 h-4 rounded bg-primary text-primary-foreground">
                                               <PresentationChart size={10} />
                                             </div>
                                             {thumbUrlById[
@@ -1286,7 +1285,7 @@ export const CourseStructureDetails = ({
                                               </span>
                                             )}
                                             <span
-                                              className="break-words text-sm sm:text-base font-semibold text-neutral-800 group-hover:text-green-700 transition-colors"
+                                              className="break-words text-sm sm:text-base font-semibold text-neutral-800 group-hover:text-primary transition-colors"
                                               title={toTitleCase(
                                                 ch.chapter_name
                                               )}
@@ -1347,9 +1346,9 @@ export const CourseStructureDetails = ({
                                         </CollapsibleTrigger>
                                         <CollapsibleContent>
                                           <div
-                                            className={`space-y-px ml-5 border-l border-green-200/50 py-1 pl-2 relative `}
+                                            className={`space-y-px ml-5 border-l border-border/50 py-1 pl-2 relative `}
                                           >
-                                            <div className="absolute left-0 top-0 w-px h-full bg-green-300/50"></div>
+                                            <div className="absolute left-0 top-0 w-px h-full bg-border/50"></div>
                                             {(() => {
                                               const slidesForChapter =
                                                 slidesMap[ch.id] ?? [];
@@ -1652,25 +1651,24 @@ export const CourseStructureDetails = ({
                                       >
                                         <CollapsibleTrigger
                                           disabled={isChapterLocked}
-                                          className={`group flex w-full items-center rounded-md px-2 py-1 text-left text-sm text-neutral-600 transition-all duration-200 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1 ${
-                                            isChapterLocked
-                                              ? "cursor-not-allowed opacity-60"
-                                              : "hover:bg-green-50/70 hover:border-green-200/60 cursor-pointer"
+                                          className={`group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${isChapterLocked
+                                            ? "cursor-not-allowed opacity-60"
+                                            : "hover:bg-accent hover:text-accent-foreground cursor-pointer"
                                             }`}
                                         >
                                           <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                             {isChapterOpen ? (
                                               <CaretDown
                                                 size={14}
-                                                className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
+                                                className="shrink-0 text-neutral-500 group-hover:text-primary transition-colors"
                                               />
                                             ) : (
                                               <CaretRight
                                                 size={14}
-                                                className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
+                                                className="shrink-0 text-neutral-500 group-hover:text-primary transition-colors"
                                               />
                                             )}
-                                            <div className="flex items-center justify-center w-4 h-4 rounded bg-green-600 text-white">
+                                            <div className="flex items-center justify-center w-4 h-4 rounded bg-primary text-primary-foreground">
                                               <PresentationChart size={10} />
                                             </div>
                                             {showContentPrefixes && (
@@ -1679,7 +1677,7 @@ export const CourseStructureDetails = ({
                                               </span>
                                             )}
                                             <span
-                                              className="break-words group-hover:text-green-700 transition-colors text-xs"
+                                              className="break-words group-hover:text-primary transition-colors text-xs"
                                               title={toTitleCase(
                                                 ch.chapter_name
                                               )}
@@ -1738,8 +1736,8 @@ export const CourseStructureDetails = ({
                                           </div>
                                         </CollapsibleTrigger>
                                         <CollapsibleContent>
-                                          <div className="space-y-px ml-3 sm:ml-5 border-l border-green-200/50 py-1 pl-2 relative">
-                                            <div className="absolute left-0 top-0 w-0.5 h-full bg-green-300/60"></div>
+                                          <div className="space-y-px ml-3 sm:ml-5 border-l border-border/50 py-1 pl-2 relative">
+                                            <div className="absolute left-0 top-0 w-0.5 h-full bg-border"></div>
                                             {(() => {
                                               const status =
                                                 slidesLoadingStatus[ch.id] ||
@@ -1820,7 +1818,7 @@ export const CourseStructureDetails = ({
                                                         );
                                                       const badgeClass =
                                                         sd.badge === "done"
-                                                          ? "bg-green-50 text-green-700 border-green-200"
+                                                          ? "bg-primary/10 text-primary border-border"
                                                           : sd.badge ===
                                                             "active"
                                                             ? "bg-primary-50 text-primary-700 border-primary-200"
@@ -1870,14 +1868,13 @@ export const CourseStructureDetails = ({
                                                         )}
                                                       </div>
                                                       <div
-                                                        className={`w-2 h-2 rounded-full ${
-                                                          (slide.percentage_completed ||
-                                                            0) >= 80
-                                                            ? "bg-green-500"
-                                                            : (slide.percentage_completed ||
-                                                              0) > 0
-                                                              ? "bg-primary-500"
-                                                              : "bg-neutral-300"
+                                                        className={`w-2 h-2 rounded-full ${(slide.percentage_completed ||
+                                                          0) >= 80
+                                                          ? "bg-primary/100"
+                                                          : (slide.percentage_completed ||
+                                                            0) > 0
+                                                            ? "bg-primary-500"
+                                                            : "bg-neutral-300"
                                                           }`}
                                                       />
                                                     </div>
@@ -1951,25 +1948,24 @@ export const CourseStructureDetails = ({
                                     >
                                       <CollapsibleTrigger
                                         disabled={isChapterLocked}
-                                        className={`group flex w-full items-center rounded-md px-2 py-1 text-left text-sm text-neutral-600 transition-all duration-200 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1 ${
-                                          isChapterLocked
-                                            ? "cursor-not-allowed opacity-60"
-                                            : "hover:bg-green-50/70 hover:border-green-200/60 cursor-pointer"
+                                        className={`group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${isChapterLocked
+                                          ? "cursor-not-allowed opacity-60"
+                                          : "hover:bg-accent hover:text-accent-foreground cursor-pointer"
                                           }`}
                                       >
                                         <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                           {isChapterOpen ? (
                                             <CaretDown
                                               size={14}
-                                              className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
+                                              className="shrink-0 text-neutral-500 group-hover:text-primary transition-colors"
                                             />
                                           ) : (
                                             <CaretRight
                                               size={14}
-                                              className="shrink-0 text-neutral-500 group-hover:text-green-600 transition-colors"
+                                              className="shrink-0 text-neutral-500 group-hover:text-primary transition-colors"
                                             />
                                           )}
-                                          <div className="flex items-center justify-center w-4 h-4 rounded bg-green-600 text-white">
+                                          <div className="flex items-center justify-center w-4 h-4 rounded bg-primary text-primary-foreground">
                                             <PresentationChart size={10} />
                                           </div>
                                           {showContentPrefixes && (
@@ -1978,7 +1974,7 @@ export const CourseStructureDetails = ({
                                             </span>
                                           )}
                                           <span
-                                            className="break-words text-sm sm:text-base font-semibold text-neutral-800 group-hover:text-green-700 transition-colors"
+                                            className="break-words text-sm sm:text-base font-semibold text-neutral-800 group-hover:text-primary transition-colors"
                                             title={toTitleCase(ch.chapter_name)}
                                           >
                                             {toTitleCase(ch.chapter_name)}
@@ -2033,8 +2029,8 @@ export const CourseStructureDetails = ({
                                         </div>
                                       </CollapsibleTrigger>
                                       <CollapsibleContent>
-                                        <div className="space-y-px ml-5 border-l border-green-200/50 py-1 pl-2 relative">
-                                          <div className="absolute left-0 top-0 w-px h-full bg-green-300/50"></div>
+                                        <div className="space-y-px ml-5 border-l border-border/50 py-1 pl-2 relative">
+                                          <div className="absolute left-0 top-0 w-px h-full bg-border/50"></div>
                                           {(() => {
                                             const status =
                                               slidesLoadingStatus[ch.id] ||
@@ -2114,7 +2110,7 @@ export const CourseStructureDetails = ({
                                                     );
                                                     const badgeClass =
                                                       sd.badge === "done"
-                                                        ? "bg-green-50 text-green-700 border-green-200"
+                                                        ? "bg-primary/10 text-primary border-border"
                                                         : sd.badge === "active"
                                                           ? "bg-primary-50 text-primary-700 border-primary-200"
                                                           : "bg-neutral-50 text-neutral-600 border-neutral-200";
@@ -2163,14 +2159,13 @@ export const CourseStructureDetails = ({
                                                       )}
                                                     </div>
                                                     <div
-                                                      className={`w-2 h-2 rounded-full ${
-                                                        (slide.percentage_completed ||
-                                                          0) >= 80
-                                                          ? "bg-green-500"
-                                                          : (slide.percentage_completed ||
-                                                            0) > 0
-                                                            ? "bg-primary-500"
-                                                            : "bg-neutral-300"
+                                                      className={`w-2 h-2 rounded-full ${(slide.percentage_completed ||
+                                                        0) >= 80
+                                                        ? "bg-primary/100"
+                                                        : (slide.percentage_completed ||
+                                                          0) > 0
+                                                          ? "bg-primary-500"
+                                                          : "bg-neutral-300"
                                                         }`}
                                                     />
                                                   </div>
@@ -2272,7 +2267,7 @@ export const CourseStructureDetails = ({
                                                     );
                                                     const badgeClass =
                                                       sd.badge === "done"
-                                                        ? "bg-green-50 text-green-700 border-green-200"
+                                                        ? "bg-primary/10 text-primary border-border"
                                                         : sd.badge === "active"
                                                           ? "bg-primary-50 text-primary-700 border-primary-200"
                                                           : "bg-neutral-50 text-neutral-600 border-neutral-200";
@@ -2361,10 +2356,9 @@ export const CourseStructureDetails = ({
         <div className="flex flex-wrap items-center gap-1 sm:gap-2 text-xs sm:text-sm text-neutral-600 mb-2">
           <button
             type="button"
-            className={`hover:text-primary-600 ${
-              !selectedSubjectId && !selectedModuleId && !selectedChapterId
-                ? "font-semibold text-primary-700"
-                : ""
+            className={`hover:text-primary-600 ${!selectedSubjectId && !selectedModuleId && !selectedChapterId
+              ? "font-semibold text-primary-700"
+              : ""
               }`}
             onClick={() => {
               setSelectedSubjectId(null);
@@ -2378,10 +2372,9 @@ export const CourseStructureDetails = ({
           {selectedSubjectId && (
             <button
               type="button"
-              className={`hover:text-primary-600 ${
-                selectedSubjectId && !selectedModuleId
-                  ? "font-semibold text-primary-700"
-                  : ""
+              className={`hover:text-primary-600 ${selectedSubjectId && !selectedModuleId
+                ? "font-semibold text-primary-700"
+                : ""
                 }`}
               onClick={() => {
                 setSelectedModuleId(null);
@@ -2395,10 +2388,9 @@ export const CourseStructureDetails = ({
           {selectedModuleId && (
             <button
               type="button"
-              className={`hover:text-primary-600 ${
-                selectedModuleId && !selectedChapterId
-                  ? "font-semibold text-primary-700"
-                  : ""
+              className={`hover:text-primary-600 ${selectedModuleId && !selectedChapterId
+                ? "font-semibold text-primary-700"
+                : ""
                 }`}
               onClick={() => {
                 setSelectedChapterId(null);
@@ -2516,8 +2508,8 @@ export const CourseStructureDetails = ({
                     <div
                       key={ch.id}
                       className={`h-full rounded-md border border-neutral-200 bg-white p-3 sm:p-4 shadow-sm ${isChapterLocked
-                          ? "opacity-60 cursor-not-allowed"
-                          : "hover:shadow cursor-pointer"
+                        ? "opacity-60 cursor-not-allowed"
+                        : "hover:shadow cursor-pointer"
                         }`}
                       onClick={async () => {
                         if (isChapterLocked) return;
@@ -2603,8 +2595,7 @@ export const CourseStructureDetails = ({
                 return (
                   <div
                     key={sl.id}
-                    className={`${getSlideStyling()} flex-col items-start gap-2 p-3 ${
-                      isSlideLocked ? "opacity-60 cursor-not-allowed" : ""
+                    className={`${getSlideStyling()} flex-col items-start gap-2 p-3 ${isSlideLocked ? "opacity-60 cursor-not-allowed" : ""
                       }`}
                     onClick={() => {
                       if (isSlideLocked) return;
@@ -2666,7 +2657,7 @@ export const CourseStructureDetails = ({
     [TabType.ASSESSMENT]: (
       <div className="rounded-md bg-card border border-neutral-200 p-5 text-sm text-neutral-600">
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-8 h-8 rounded-md bg-green-600 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center">
             <span className="text-white text-xs font-bold">A</span>
           </div>
           <span className="font-medium text-neutral-700">Assessments</span>
@@ -3020,8 +3011,7 @@ export const CourseStructureDetails = ({
             <TabsContent
               key={selectedStructureTab}
               value={selectedStructureTab}
-              className={`${
-                renderTabs.length > 1 ? "mt-4" : ""
+              className={`${renderTabs.length > 1 ? "mt-4" : ""
                 } rounded-lg bg-white border border-neutral-200/60 p-4`}
             >
               {tabContent[selectedStructureTab as TabType]}

@@ -26,9 +26,14 @@ const CourseCatalougePage: React.FC = () => {
   const [allowLeanersToCreateCourses, setAllowLeanersToCreateCourses] =
     useState<boolean>(false);
 
-  const { setInstituteData, setInstructors } = useCatalogStore();
-  const { setDripCondition, clearDripCondition, setIsDrippingEnable } =
-    useDripConditionStore();
+  // Use selectors to prevent re-renders when store state changes
+  const setInstituteData = useCatalogStore((state) => state.setInstituteData);
+  const setInstructors = useCatalogStore((state) => state.setInstructors);
+
+  const setDripCondition = useDripConditionStore((state) => state.setDripCondition);
+  const clearDripCondition = useDripConditionStore((state) => state.clearDripCondition);
+  const setIsDrippingEnable = useDripConditionStore((state) => state.setIsDrippingEnable);
+
   const [selectedTab, setSelectedTab] = useState("PROGRESS");
   const [visibleTabs, setVisibleTabs] = useState<
     { value: "ALL" | "PROGRESS" | "COMPLETED"; label?: string }[]
@@ -447,12 +452,12 @@ const CourseCatalougePage: React.FC = () => {
                       {t.label ||
                         (t.value === "ALL"
                           ? `All ${getTerminology(
-                              ContentTerms.Course,
-                              SystemTerms.Course
-                            )}s`
+                            ContentTerms.Course,
+                            SystemTerms.Course
+                          )}s`
                           : t.value === "PROGRESS"
-                          ? "In Progress"
-                          : "Completed")}
+                            ? "In Progress"
+                            : "Completed")}
                     </span>
                   </TabsTrigger>
                 ))}

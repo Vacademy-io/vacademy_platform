@@ -7,7 +7,9 @@ import {
 } from "@phosphor-icons/react";
 import { Steps } from "@phosphor-icons/react";
 import { useEffect } from "react";
-import { MyButton } from "@/components/design-system/button";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { CourseDetailsRatingsComponent } from "./course-details-ratings-page";
@@ -65,7 +67,6 @@ interface CourseSidebarProps {
   slideCountQuery: {
     isLoading: boolean;
     error: unknown;
-    // data is optional but if present, can be used for precise totals
     data?: Array<{
       slide_count: number;
       total_read_time_minutes: number | null;
@@ -83,7 +84,6 @@ interface CourseSidebarProps {
   enrolledSessions: EnrolledSession[];
   courseId: string;
   primaryInstructorName?: string;
-  // NEW: Backend timing data (takes priority over slide counts)
   backendReadTimeMinutes?: number;
   paymentType?: string | null;
   packageSessionIdForCurrentLevel?: string | null;
@@ -91,8 +91,6 @@ interface CourseSidebarProps {
   onEnrollmentClick: () => void;
   onRatingsLoadingChange: (loading: boolean) => void;
 }
-
-// Removed per-type slide icon rendering; sidebar now shows only aggregate time
 
 export const CourseSidebar = ({
   hasRightSidebar,
@@ -116,11 +114,8 @@ export const CourseSidebar = ({
   onEnrollmentClick,
   onRatingsLoadingChange,
 }: CourseSidebarProps) => {
-  const capitalizeFirst = (text: string): string => {
-   return text; 
-  };
+  const capitalizeFirst = (text: string): string => text;
 
-  console.log("level options", levelOptions);
   const safeEnrolledSessions = enrolledSessions || [];
   const isAlreadyEnrolled = safeEnrolledSessions.some(
     (enrolledSession) =>
@@ -129,19 +124,16 @@ export const CourseSidebar = ({
       enrolledSession.level.id === selectedLevel
   );
 
-  // Compute total duration - ALWAYS use backend read_time_in_minutes when available
+  // Compute total duration
   const totalDuration = (() => {
-    // ONLY Priority: Backend read_time_in_minutes from batch API (this is the source of truth)
     if (
       typeof backendReadTimeMinutes === "number" &&
       !Number.isNaN(backendReadTimeMinutes) &&
       backendReadTimeMinutes > 0
     ) {
-      console.log("✅ Using backend duration (source of truth):", backendReadTimeMinutes, "minutes");
       return getBackendCourseDuration(backendReadTimeMinutes);
     }
 
-    // Fallback 1: If backend time not available, try slide count API with total_read_time_minutes
     const raw = (slideCountQuery as unknown as { data?: SlideCountEntry[] })
       ?.data;
     if (raw && Array.isArray(raw)) {
@@ -151,78 +143,43 @@ export const CourseSidebar = ({
         }
         return sum;
       }, 0);
-      
+
       if (totalMinutesFromSlides > 0) {
-        console.log("⚠️ Backend time not available. Using slide API total_read_time_minutes:", totalMinutesFromSlides);
         return formatTotalCourseDuration(raw);
       }
     }
 
-    // Fallback 2: Frontend calculation from slide counts (least accurate)
     const mapped: SlideCountEntry[] = (processedSlideCounts || []).map((c) => ({
       slide_count: c.slide_count,
       total_read_time_minutes: null,
       source_type: c.source_type,
     }));
-    console.log("⚠️ No backend time available. Using frontend slide count calculation. => " + formatTotalCourseDuration(mapped));
     return formatTotalCourseDuration(mapped);
   })();
-  
-  console.log("📊 Final total duration displayed:", totalDuration);
 
   const displayAuthorName = (() => {
-    if (
-      primaryInstructorName &&
-      String(primaryInstructorName).trim().length > 0
-    ) {
+    if (primaryInstructorName && String(primaryInstructorName).trim().length > 0) {
       return primaryInstructorName;
     }
-    // Fallback label when instructors exist but no name available in form
     if (instructorsCount > 0) {
       return "Unknown Instructor";
     }
     return undefined;
   })();
 
-  useEffect(() => {
-    // We intentionally depend on these to log when inputs change
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    primaryInstructorName,
-    instructorsCount,
-    slideCountQuery?.isLoading,
-    slideCountQuery?.error,
-    (slideCountQuery as unknown as { data?: SlideCountEntry[] })?.data,
-    processedSlideCounts,
-    totalDuration,
-  ]);
-
   if (!hasRightSidebar) return null;
 
   return (
-    <div className="lg:col-span-1">
-      <div className="sticky top-4 space-y-4 lg:max-h-[calc(100vh-1rem)] overflow-y-auto">
-        <div
-          className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
-          style={{ animationDelay: "0.7s" }}
-        >
-          {/* Background gradient overlay */}
-          <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
-
-          {/* Floating orb effect */}
-          <div className="absolute top-0 right-0 w-12 h-12 bg-primary-100/20 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3"></div>
-
-          <div className="relative">
-            {/* Header */}
-            <div className="flex items-center space-x-2 mb-4">
-              <div className="p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg shadow-sm">
-                <Steps
-                  size={18}
-                  className="text-primary-600"
-                  weight="duotone"
-                />
+    <div className="lg:col-span-1 space-y-4">
+      <div className="sticky top-4 space-y-4 lg:max-h-[calc(100vh-1rem)] overflow-y-auto pb-4">
+        {/* Course Overview Card */}
+        <Card className="animate-fade-in-up transition-all duration-300 hover:shadow-md border-border/60">
+          <CardHeader className="pb-3 border-b bg-muted/40">
+            <div className="flex items-center space-x-2">
+              <div className="p-1.5 bg-primary/10 rounded-md">
+                <Steps size={18} className="text-primary" weight="duotone" />
               </div>
-              <h2 className="text-base font-bold text-gray-900">
+              <CardTitle className="text-base font-bold">
                 {(() => {
                   const term = getTerminology(
                     ContentTerms.Course,
@@ -231,257 +188,135 @@ export const CourseSidebar = ({
                   return term.charAt(0).toUpperCase() + term.slice(1);
                 })()}{" "}
                 Overview
-              </h2>
+              </CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-4 space-y-4">
+            {/* Author Name */}
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground font-medium">Author</span>
+              <span className="font-semibold">{displayAuthorName || "—"}</span>
             </div>
 
-            {/* Course Stats */}
-            <div className="space-y-3">
-              {/* Author Name (always show row with placeholder if missing) */}
-              <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg">
-                <span className="text-xs font-medium text-gray-700">
-                  Author
-                </span>
-                <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                  {displayAuthorName || "—"}
-                </span>
-              </div>
-              {/* Level Badge */}
-              {levelOptions.length > 0 &&
-                selectedLevel &&
-                levelOptions.find((option) => option.value === selectedLevel)
-                  ?.label !== "default" && (
-                  <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-primary-50 to-primary-100 rounded-lg border border-primary-200">
-                    <div className="flex items-center space-x-2">
-                      <Steps
-                        size={16}
-                        className="text-primary-600"
-                        weight="duotone"
-                      />
-                      <span className="text-xs font-medium text-primary-700">
-                        {capitalizeFirst(
-                          getTerminology(
-                            ContentTerms.Level,
-                            SystemTerms.Level
-                          ).toLocaleLowerCase()
-                        )}
-                      </span>
-                    </div>
-                    <span className="text-xs font-bold text-primary-800">
-                      {capitalizeFirst(
-                        levelOptions.find(
-                          (option) => option.value === selectedLevel
-                        )?.label || ""
-                      )}
+            <Separator />
+
+            {/* Level Badge */}
+            {levelOptions.length > 0 &&
+              selectedLevel &&
+              levelOptions.find((option) => option.value === selectedLevel)?.label !== "default" && (
+                <>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground font-medium flex items-center gap-1.5">
+                      <Steps size={14} className="text-muted-foreground" />
+                      {capitalizeFirst(getTerminology(ContentTerms.Level, SystemTerms.Level).toLocaleLowerCase())}
                     </span>
+                    <span className="px-2 py-0.5 bg-primary/10 text-primary text-xs font-semibold rounded-md">
+                      {capitalizeFirst(levelOptions.find((option) => option.value === selectedLevel)?.label || "")}
+                    </span>
+                  </div>
+                  <Separator />
+                </>
+              )}
+
+            {/* Course Time */}
+            {slideCountQuery.isLoading ? (
+              <div className="flex justify-between items-center animate-pulse">
+                <div className="h-4 w-20 bg-muted rounded"></div>
+                <div className="h-4 w-12 bg-muted rounded"></div>
+              </div>
+            ) : !slideCountQuery.error ? (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground font-medium">Course Time</span>
+                <span className="font-semibold">{totalDuration}</span>
+              </div>
+            ) : null}
+
+            {/* Module Stats */}
+            {overviewVisible && (
+              <div className="space-y-3 pt-2">
+                {moduleStats.totalModules > 0 && (
+                  <div className="flex items-center justify-between text-sm group/item">
+                    <div className="flex items-center gap-2 text-muted-foreground group-hover/item:text-foreground transition-colors">
+                      <FileText size={16} className="text-blue-500" weight="duotone" />
+                      <span>{capitalizeFirst(getTerminology(ContentTerms.Modules, SystemTerms.Modules).toLocaleLowerCase())}</span>
+                    </div>
+                    <span className="font-semibold">{moduleStats.totalModules}</span>
                   </div>
                 )}
-
-              {/* Total Time (hide per-type counts) */}
-              {slideCountQuery.isLoading ? (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg animate-pulse">
-                    <div className="h-3 w-24 bg-gray-200 rounded" />
-                    <div className="h-3 w-10 bg-gray-200 rounded" />
-                  </div>
-                </div>
-              ) : slideCountQuery.error ? (
-                <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-xs text-red-600 font-medium">
-                    Unable to load total time
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg">
-                    <span className="text-xs font-medium text-gray-700">
-                      Course Time
-                    </span>
-                    <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                      {totalDuration}
-                    </span>
-                  </div>
-
-                  {/* Module Statistics */}
-                  {overviewVisible && (
-                    <>
-                      {/* Total Modules */}
-                      {moduleStats.totalModules > 0 && (
-                        <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
-                          <div className="flex items-center space-x-2">
-                            <FileText
-                              size={16}
-                              className="text-blue-600 group-hover/item:scale-110 transition-transform duration-300"
-                              weight="duotone"
-                            />
-                            <span className="text-xs font-medium text-gray-700">
-                              {capitalizeFirst(
-                                getTerminology(
-                                  ContentTerms.Modules,
-                                  SystemTerms.Modules
-                                ).toLocaleLowerCase()
-                              )}
-                            </span>
-                          </div>
-                          <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                            {moduleStats.totalModules}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Total Chapters */}
-                      {moduleStats.totalChapters > 0 && (
-                        <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
-                          <div className="flex items-center space-x-2">
-                            <PresentationChart
-                              size={16}
-                              className="text-green-600 group-hover/item:scale-110 transition-transform duration-300"
-                              weight="duotone"
-                            />
-                            <span className="text-xs font-medium text-gray-700">
-                              {capitalizeFirst(
-                                getTerminology(
-                                  ContentTerms.Chapters,
-                                  SystemTerms.Chapters
-                                ).toLocaleLowerCase()
-                              )}
-                            </span>
-                          </div>
-                          <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                            {moduleStats.totalChapters}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Total Subjects (for depth 5) */}
-                      {courseStructure === 5 && currentSubjects.length > 0 && (
-                        <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
-                          <div className="flex items-center space-x-2">
-                            <Folder
-                              size={16}
-                              className="text-purple-600 group-hover/item:scale-110 transition-transform duration-300"
-                              weight="duotone"
-                            />
-                            <span className="text-xs font-medium text-gray-700">
-                              {capitalizeFirst(
-                                getTerminology(
-                                  ContentTerms.Subjects,
-                                  SystemTerms.Subjects
-                                ).toLocaleLowerCase()
-                              )}
-                            </span>
-                          </div>
-                          <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                            {currentSubjects.length}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Instructors Count */}
-                      {instructorsCount > 0 && (
-                        <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300 group/item">
-                          <div className="flex items-center space-x-2">
-                            <ChalkboardTeacher
-                              size={16}
-                              className="text-orange-600 group-hover/item:scale-110 transition-transform duration-300"
-                              weight="duotone"
-                            />
-                            <span className="text-xs font-medium text-gray-700">
-                              Instructors
-                            </span>
-                          </div>
-                          <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                            {instructorsCount}
-                          </span>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Only show enroll button for ALL tab when user is not enrolled */}
-            {selectedTab === "ALL" &&
-              selectedSession &&
-              selectedLevel &&
-              !isAlreadyEnrolled && (
-                <MyButton
-                  type="button"
-                  scale="large"
-                  buttonType="primary"
-                  layoutVariant="default"
-                  className="mt-2 !min-w-full !w-full text-xs h-8"
-                  onClick={onEnrollmentClick}
-                >
-                  Enroll
-                </MyButton>
-              )}
-          </div>
-        </div>
-
-        {/* Course Progress Section - Only show for PROGRESS tab */}
-        {selectedTab === "PROGRESS" &&
-          typeof percentageCompleted === "number" && (
-            <div
-              className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
-              style={{ animationDelay: "0.9s" }}
-            >
-              {/* Background gradient overlay */}
-              <div className="absolute inset-0 bg-gradient-to-br from-green-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
-
-              {/* Floating orb effect */}
-              <div className="absolute top-0 right-0 w-12 h-12 bg-green-100/20 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3"></div>
-
-              <div className="relative">
-                {/* Header */}
-                <div className="flex items-center space-x-2 mb-4">
-                  <div className="p-1.5 bg-gradient-to-br from-green-100 to-green-200 rounded-lg shadow-sm">
-                    <TrendUp
-                      size={18}
-                      className="text-green-600"
-                      weight="duotone"
-                    />
-                  </div>
-                  <h2 className="text-base font-bold text-gray-900">
-                    Course Progress
-                  </h2>
-                </div>
-
-                {/* Progress Content */}
-                <div className="space-y-3">
-                  {/* Progress Bar */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-gray-700">
-                        Completion
-                      </span>
-                      <span className="text-xs font-bold text-green-600">
-                        {Math.min(percentageCompleted, 100).toFixed(1)}%
-                      </span>
+                {moduleStats.totalChapters > 0 && (
+                  <div className="flex items-center justify-between text-sm group/item">
+                    <div className="flex items-center gap-2 text-muted-foreground group-hover/item:text-foreground transition-colors">
+                      <PresentationChart size={16} className="text-green-500" weight="duotone" />
+                      <span>{capitalizeFirst(getTerminology(ContentTerms.Chapters, SystemTerms.Chapters).toLocaleLowerCase())}</span>
                     </div>
-                    <ProgressBar
-                      value={Math.min(percentageCompleted, 100)}
-                      className="h-3"
-                    />
+                    <span className="font-semibold">{moduleStats.totalChapters}</span>
                   </div>
-
-                  {/* Certificate Message */}
-                  <div className="p-2.5 bg-gradient-to-r from-amber-50 to-yellow-50 rounded-lg border border-amber-200">
-                    <p className="text-xs text-amber-700 font-medium text-center">
-                      Certificate will be generated after course completion
-                    </p>
+                )}
+                {courseStructure === 5 && currentSubjects.length > 0 && (
+                  <div className="flex items-center justify-between text-sm group/item">
+                    <div className="flex items-center gap-2 text-muted-foreground group-hover/item:text-foreground transition-colors">
+                      <Folder size={16} className="text-purple-500" weight="duotone" />
+                      <span>{capitalizeFirst(getTerminology(ContentTerms.Subjects, SystemTerms.Subjects).toLocaleLowerCase())}</span>
+                    </div>
+                    <span className="font-semibold">{currentSubjects.length}</span>
                   </div>
-                </div>
+                )}
+                {instructorsCount > 0 && (
+                  <div className="flex items-center justify-between text-sm group/item">
+                    <div className="flex items-center gap-2 text-muted-foreground group-hover/item:text-foreground transition-colors">
+                      <ChalkboardTeacher size={16} className="text-orange-500" weight="duotone" />
+                      <span>Instructors</span>
+                    </div>
+                    <span className="font-semibold">{instructorsCount}</span>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            )}
+
+            {/* Action Button */}
+            {selectedTab === "ALL" && selectedSession && selectedLevel && !isAlreadyEnrolled && (
+              <div className="pt-2">
+                <Button className="w-full" onClick={onEnrollmentClick}>
+                  Enroll Now
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Course Progress Card */}
+        {selectedTab === "PROGRESS" && typeof percentageCompleted === "number" && (
+          <Card className="animate-fade-in-up border-border/60 hover:shadow-md transition-all">
+            <CardHeader className="pb-3 border-b bg-muted/40">
+              <div className="flex items-center space-x-2">
+                <div className="p-1.5 bg-green-100 dark:bg-green-900/30 rounded-md">
+                  <TrendUp size={18} className="text-green-600 dark:text-green-400" weight="duotone" />
+                </div>
+                <CardTitle className="text-base font-bold">Course Progress</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-4 space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium text-muted-foreground">Completion</span>
+                  <span className="font-bold text-green-600 dark:text-green-400">
+                    {Math.min(percentageCompleted, 100).toFixed(0)}%
+                  </span>
+                </div>
+                <ProgressBar value={Math.min(percentageCompleted, 100)} className="h-2.5" />
+              </div>
+              <div className="p-3 bg-amber-50 dark:bg-amber-900/10 rounded-md border border-amber-200 dark:border-amber-800">
+                <p className="text-xs text-amber-700 dark:text-amber-400 font-medium text-center">
+                  Certificate will be generated upon completion
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Ratings & Reviews */}
         {packageSessionIdForCurrentLevel && (
-          <div
-            className="animate-fade-in-up"
-            style={{ animationDelay: "1.0s" }}
-          >
+          <div className="animate-fade-in-up" style={{ animationDelay: "0.2s" }}>
             <CourseDetailsRatingsComponent
               packageSessionId={packageSessionIdForCurrentLevel}
               onLoadingChange={onRatingsLoadingChange}

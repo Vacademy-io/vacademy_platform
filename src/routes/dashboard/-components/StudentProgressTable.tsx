@@ -1,16 +1,24 @@
-import { MyTable } from "@/components/design-system/table";
-import { ColumnDef } from "@tanstack/react-table";
-import { UserActivityArray } from "../-types/dashboard-data-types";
-import { formatTimeFromMillis } from "@/helpers/formatTimeFromMiliseconds";
-import dayjs from "dayjs";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Minus, Clock, Target } from "lucide-react";
+import { formatTimeFromMillis } from "@/helpers/formatTimeFromMiliseconds";
+import { UserActivityArray } from "../-types/dashboard-data-types";
+import dayjs from "dayjs";
+import { TrendingDown, TrendingUp, Minus } from "lucide-react";
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table";
+import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 interface StudentProgress {
     date: string;
     time_spent: string;
     time_spent_batch: string;
-    raw_date: string; // For sorting purposes
+    raw_date: string;
     status: string;
     user_millis: number;
     batch_millis: number;
@@ -19,22 +27,22 @@ interface StudentProgress {
 
 export const StudentProgressTable = ({ userActivity }: { userActivity: UserActivityArray }) => {
     // Transform API data for the table
-    const tableData: StudentProgress[] = userActivity.map((item, index) => {
+    const tableData: StudentProgress[] = userActivity.map((item) => {
         const userTime = item.time_spent_by_user_millis;
         const batchAvg = item.avg_time_spent_by_batch_millis;
-        
-        // Determine status based on comparison with batch average
+
+        // Determine status based oncomparison with batch average
         let status = "Average";
         let performance_trend: 'up' | 'down' | 'neutral' = 'neutral';
-        
+
         if (userTime > batchAvg * 1.2) {
             status = "Above";
             performance_trend = 'up';
         } else if (userTime < batchAvg * 0.8) {
-            status = "Below"; 
+            status = "Below";
             performance_trend = 'down';
         }
-        
+
         return {
             raw_date: item.activity_date,
             date: dayjs(item.activity_date).format("MMM DD"),
@@ -46,314 +54,162 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
             performance_trend
         };
     });
-    
+
     // Sort by date, newest first
     tableData.sort((a, b) => new Date(b.raw_date).getTime() - new Date(a.raw_date).getTime());
-
-    const columns: ColumnDef<StudentProgress>[] = [
-        {
-            accessorKey: "date",
-            header: () => (
-                <div className="flex items-center space-x-2 text-gray-700 font-semibold">
-                    <Clock size={16} className="text-primary-500" />
-                    <span>Date</span>
-                </div>
-            ),
-            cell: ({ row }) => {
-                const isToday = dayjs(row.original.raw_date).isSame(dayjs(), 'day');
-                const isRecent = dayjs().diff(dayjs(row.original.raw_date), 'days') <= 1;
-                
-                return (
-                    <div className="flex items-center space-x-3">
-                        <div className={`w-3 h-3 rounded-full ${
-                            isToday ? (document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-pink animate-pulse shadow-md' : 'bg-primary-500 animate-pulse shadow-md') : 
-                            isRecent ? (document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-yellow' : 'bg-primary-300') : 'bg-gray-300'
-                        }`}></div>
-                        <div>
-                            <div className="text-sm font-semibold text-gray-900">
-                                {row.getValue("date")}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                                {dayjs(row.original.raw_date).format("dddd")}
-                            </div>
-                        </div>
-                    </div>
-                );
-            },
-        },
-        {
-            accessorKey: "time_spent",
-            header: () => (
-                <div className="flex items-center space-x-2 text-gray-700 font-semibold">
-                    <Target size={16} className="text-primary-500" />
-                    <span>Your Time</span>
-                </div>
-            ),
-            cell: ({ row }) => {
-                const userTime = row.original.user_millis;
-                const batchTime = row.original.batch_millis;
-                const percentage = batchTime > 0 ? ((userTime / batchTime) * 100) : 100;
-                
-                return (
-                    <div className="space-y-2">
-                        <div className="text-sm font-semibold text-gray-900">
-                            {row.getValue("time_spent")}
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
-                            <div 
-                                className={`h-full rounded-full transition-all duration-700 ease-out ${
-                                    percentage >= 120 ? (document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-green' : 'bg-success-500') :
-                                    percentage >= 100 ? (document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-blue' : 'bg-primary-500') :
-                                    percentage >= 80 ? (document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-teal' : 'bg-info-500') :
-                                    (document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-yellow' : 'bg-warning-500')
-                                }`}
-                                style={{ width: `${Math.min(percentage, 100)}%` }}
-                            ></div>
-                        </div>
-                        <div className="text-xs text-gray-500">
-                            {percentage.toFixed(0)}% of batch avg
-                        </div>
-                    </div>
-                );
-            },
-        },
-        {
-            accessorKey: "time_spent_batch",
-            header: () => (
-                <div className="flex items-center space-x-2 text-gray-700 font-semibold">
-                    <TrendingUp size={16} className="text-gray-500" />
-                    <span>Batch Avg</span>
-                </div>
-            ),
-            cell: ({ row }) => (
-                <div className="space-y-1">
-                    <div className="text-sm font-medium text-gray-700">
-                        {row.getValue("time_spent_batch")}
-                    </div>
-                    <div className="text-xs text-gray-500 flex items-center space-x-1">
-                        <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
-                        <span>Class average</span>
-                    </div>
-                </div>
-            ),
-        },
-        {
-            accessorKey: "status",
-            header: () => (
-                <div className="flex items-center space-x-2 text-gray-700 font-semibold">
-                    <span>Performance</span>
-                </div>
-            ),
-            cell: ({ row }) => {
-                const status = row.getValue("status") as string;
-                const trend = row.original.performance_trend;
-                
-                const statusConfig = {
-                    "Above": { 
-                        bg: "bg-success-50", 
-                        text: "text-success-700", 
-                        border: "border-success-200",
-                        icon: TrendingUp,
-                        iconColor: "text-success-600"
-                    },
-                    "Below": { 
-                        bg: "bg-warning-50", 
-                        text: "text-warning-700", 
-                        border: "border-warning-200",
-                        icon: TrendingDown,
-                        iconColor: "text-warning-600"
-                    },
-                    "Average": { 
-                        bg: "bg-info-50", 
-                        text: "text-info-700", 
-                        border: "border-info-200",
-                        icon: Minus,
-                        iconColor: "text-info-600"
-                    }
-                };
-                
-                const config = statusConfig[status as keyof typeof statusConfig];
-                const IconComponent = config.icon;
-                
-                return (
-                    <div className="flex items-center space-x-3">
-                        <Badge className={`${config.bg} ${config.text} ${config.border} border text-xs font-semibold px-3 py-1.5 flex items-center space-x-1.5`}>
-                            <IconComponent size={12} className={config.iconColor} />
-                            <span>{status}</span>
-                        </Badge>
-                    </div>
-                );
-            },
-        }
-    ];
 
     // Loading state
     if (!userActivity.length) {
         return (
             <div className="space-y-4">
-                {[1, 2, 3, 4, 5].map((i) => (
-                    <div key={i} className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg animate-pulse">
-                        <div className="w-16 h-4 bg-gray-200 rounded"></div>
-                        <div className="w-20 h-4 bg-gray-200 rounded"></div>
-                        <div className="w-20 h-4 bg-gray-200 rounded"></div>
-                        <div className="w-24 h-4 bg-gray-200 rounded"></div>
+                {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex items-center space-x-4 p-4 border rounded-lg">
+                        <div className="w-16 h-4 bg-muted rounded animate-pulse"></div>
+                        <div className="w-20 h-4 bg-muted rounded animate-pulse"></div>
+                        <div className="w-20 h-4 bg-muted rounded animate-pulse"></div>
+                        <div className="w-24 h-4 bg-muted rounded animate-pulse"></div>
                     </div>
                 ))}
             </div>
         );
     }
 
+    const getStatusBadge = (status: string) => {
+        switch (status) {
+            case "Above":
+                return <Badge variant="outline" className="border-green-500/30 text-green-600 bg-green-500/5 hover:bg-green-500/10"><TrendingUp size={12} className="mr-1" /> Above</Badge>;
+            case "Below":
+                return <Badge variant="outline" className="border-red-500/30 text-red-600 bg-red-500/5 hover:bg-red-500/10"><TrendingDown size={12} className="mr-1" /> Below</Badge>;
+            default:
+                return <Badge variant="outline" className="text-muted-foreground"><Minus size={12} className="mr-1" /> Average</Badge>;
+        }
+    };
+
+    const getProgressBarColor = (percentage: number) => {
+        if (percentage >= 120) return "bg-green-500";
+        if (percentage >= 100) return "bg-primary";
+        if (percentage >= 80) return "bg-primary/70";
+        return "bg-yellow-500";
+    };
+
     return (
-        <div className="space-y-4">
-            {/* Enhanced Header with Summary Stats */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6">
-                <div className="bg-gradient-to-br from-primary-50/50 to-white/80 dark:from-neutral-800/40 dark:to-neutral-800 rounded-lg p-3 sm:p-4 border border-primary-200/40 dark:border-neutral-800">
-                    <div className="flex items-center space-x-2 mb-2">
-                        <div className="w-2 h-2 bg-primary-500 rounded-full"></div>
-                        <span className="text-xs sm:text-sm font-semibold text-gray-900">Total Sessions</span>
-                    </div>
-                    <div className="text-xl sm:text-2xl font-bold text-gray-900">
-                        {tableData.filter(row => row.user_millis > 0).length}
-                    </div>
-                    <div className="text-xs text-gray-600 mt-1">
-                        Active learning days
-                    </div>
-                </div>
-                
-                <div className="bg-gradient-to-br from-success-50/50 to-white/80 dark:from-neutral-800/40 dark:to-neutral-800 rounded-lg p-3 sm:p-4 border border-success-200/40 dark:border-neutral-800">
-                    <div className="flex items-center space-x-2 mb-2">
-                        <div className="w-2 h-2 bg-success-500 rounded-full"></div>
-                        <span className="text-xs sm:text-sm font-semibold text-gray-900">Above Average</span>
-                    </div>
-                    <div className="text-xl sm:text-2xl font-bold text-gray-900">
-                        {tableData.filter(row => row.status === "Above").length}
-                    </div>
-                    <div className="text-xs text-gray-600 mt-1">
-                        High performance days
-                    </div>
-                </div>
-                
-                <div className="bg-gradient-to-br from-info-50/50 to-white/80 dark:from-neutral-800/40 dark:to-neutral-800 rounded-lg p-3 sm:p-4 border border-info-200/40 dark:border-neutral-800">
-                    <div className="flex items-center space-x-2 mb-2">
-                        <div className="w-2 h-2 bg-info-500 rounded-full"></div>
-                        <span className="text-xs sm:text-sm font-semibold text-gray-900">Consistency</span>
-                    </div>
-                    <div className="text-xl sm:text-2xl font-bold text-gray-900">
-                        {Math.round((tableData.filter(row => row.user_millis > 0).length / tableData.length) * 100)}%
-                    </div>
-                    <div className="text-xs text-gray-600 mt-1">
-                        Learning frequency
-                    </div>
-                </div>
+        <div className="space-y-6">
+            {/* Summary Stats */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <Card className="shadow-none border-dashed bg-muted/30">
+                    <CardContent className="p-4 flex flex-col gap-1">
+                        <span className="text-sm font-medium text-muted-foreground">Total Sessions</span>
+                        <div className="text-2xl font-bold tracking-tight">
+                            {tableData.filter(row => row.user_millis > 0).length}
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card className="shadow-none border-dashed bg-green-500/5 border-green-500/20">
+                    <CardContent className="p-4 flex flex-col gap-1">
+                        <span className="text-sm font-medium text-green-600">Above Average</span>
+                        <div className="text-2xl font-bold text-foreground">
+                            {tableData.filter(row => row.status === "Above").length}
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card className="shadow-none border-dashed bg-primary/5 border-primary/20">
+                    <CardContent className="p-4 flex flex-col gap-1">
+                        <span className="text-sm font-medium text-primary">Consistency</span>
+                        <div className="text-2xl font-bold text-foreground">
+                            {Math.round((tableData.filter(row => row.user_millis > 0).length / tableData.length) * 100)}%
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
 
-            {/* Enhanced Table */}
-            <div className="relative overflow-hidden bg-white rounded-md border border-gray-200 shadow-sm w-full max-w-full">
-                {/* Background pattern */}
-                <div className="absolute inset-0 bg-gradient-to-br from-gray-50/30 via-transparent to-primary-50/20 pointer-events-none"></div>
-                
-                {/* Mobile-responsive table container */}
-                <div className="relative w-full max-w-full overflow-hidden">
-                    {/* Mobile Card View */}
-                    <div className="block sm:hidden space-y-3">
-                        {tableData.map((row, index) => (
-                            <div key={index} className="bg-white border border-gray-200 rounded-md p-4">
-                                <div className="flex items-center justify-between mb-3">
-                                    <div className="flex items-center space-x-2">
-                                        <div className={`w-3 h-3 rounded-full ${
-                                            dayjs(row.raw_date).isSame(dayjs(), 'day') ? 'bg-primary-500 animate-pulse' : 
-                                            dayjs().diff(dayjs(row.raw_date), 'days') <= 1 ? 'bg-primary-300' : 'bg-gray-300'
-                                        }`}></div>
-                                        <div>
-                                            <div className="text-sm font-semibold text-gray-900">{row.date}</div>
-                                            <div className="text-xs text-gray-500">{dayjs(row.raw_date).format("dddd")}</div>
+            {/* Desktop Table */}
+            <div className="hidden sm:block rounded-md border shadow-sm">
+                <Table>
+                    <TableHeader>
+                        <TableRow className="bg-muted/40 hover:bg-muted/40">
+                            <TableHead className="w-[180px] font-semibold text-xs uppercase text-muted-foreground">Date</TableHead>
+                            <TableHead className="font-semibold text-xs uppercase text-muted-foreground">Your Time</TableHead>
+                            <TableHead className="font-semibold text-xs uppercase text-muted-foreground">Batch Avg</TableHead>
+                            <TableHead className="text-right font-semibold text-xs uppercase text-muted-foreground">Status</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {tableData.map((row, index) => {
+                            const percentage = row.batch_millis > 0 ? ((row.user_millis / row.batch_millis) * 100) : 100;
+                            const isToday = dayjs(row.raw_date).isSame(dayjs(), 'day');
+
+                            return (
+                                <TableRow key={index} className={cn("transition-colors", isToday && "bg-muted/30")}>
+                                    <TableCell>
+                                        <div className="flex items-center gap-3">
+                                            {isToday && <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />}
+                                            <div className="flex flex-col">
+                                                <span className="font-medium text-sm">{row.date}</span>
+                                                <span className="text-xs text-muted-foreground">{dayjs(row.raw_date).format("dddd")}</span>
+                                            </div>
                                         </div>
+                                    </TableCell>
+                                    <TableCell>
+                                        <div className="space-y-1.5 w-[140px]">
+                                            <div className="font-medium text-sm">{row.time_spent}</div>
+                                            <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
+                                                <div
+                                                    className={`h-full rounded-full ${getProgressBarColor(percentage)}`}
+                                                    style={{ width: `${Math.min(percentage, 100)}%` }}
+                                                />
+                                            </div>
+                                        </div>
+                                    </TableCell>
+                                    <TableCell>
+                                        <span className="text-sm text-muted-foreground">{row.time_spent_batch}</span>
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        {getStatusBadge(row.status)}
+                                    </TableCell>
+                                </TableRow>
+                            );
+                        })}
+                    </TableBody>
+                </Table>
+            </div>
+
+            {/* Mobile Card View */}
+            <div className="block sm:hidden space-y-3">
+                {tableData.map((row, index) => {
+                    const percentage = row.batch_millis > 0 ? ((row.user_millis / row.batch_millis) * 100) : 100;
+                    return (
+                        <Card key={index} className="shadow-none border">
+                            <CardContent className="p-4 space-y-3">
+                                <div className="flex justify-between items-start">
+                                    <div className="flex flex-col">
+                                        <span className="font-semibold">{row.date}</span>
+                                        <span className="text-xs text-muted-foreground">{dayjs(row.raw_date).format("dddd")}</span>
                                     </div>
-                                    <div className="flex items-center space-x-2">
-                                        <Badge className={`${
-                                            row.status === "Above" ? 'bg-success-50 text-success-700 border-success-200' :
-                                            row.status === "Below" ? 'bg-warning-50 text-warning-700 border-warning-200' :
-                                            'bg-info-50 text-info-700 border-info-200'
-                                        } border text-xs font-semibold px-2 py-1`}>
-                                            {row.status}
-                                        </Badge>
+                                    {getStatusBadge(row.status)}
+                                </div>
+
+                                <div className="space-y-2 pt-2">
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-muted-foreground">Your Time</span>
+                                        <span className="font-medium">{row.time_spent}</span>
+                                    </div>
+                                    <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
+                                        <div
+                                            className={`h-full rounded-full ${getProgressBarColor(percentage)}`}
+                                            style={{ width: `${Math.min(percentage, 100)}%` }}
+                                        />
+                                    </div>
+                                    <div className="flex justify-between text-xs text-muted-foreground">
+                                        <span>Batch Avg: {row.time_spent_batch}</span>
+                                        <span>{percentage.toFixed(0)}% of avg</span>
                                     </div>
                                 </div>
-                                
-                                <div className="space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-xs text-gray-600">Your Time</span>
-                                        <span className="text-sm font-semibold text-gray-900">{row.time_spent}</span>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-xs text-gray-600">Batch Avg</span>
-                                        <span className="text-sm text-gray-700">{row.time_spent_batch}</span>
-                                    </div>
-                                    
-                                    <div className="mt-2">
-                                        <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                                            <span>Progress vs Batch</span>
-                                            <span>{((row.user_millis / row.batch_millis) * 100).toFixed(0)}%</span>
-                                        </div>
-                                        <div className="w-full bg-gray-200 rounded-full h-1.5">
-                                            <div 
-                                                className={`h-full rounded-full transition-all duration-700 ${
-                                                    (row.user_millis / row.batch_millis) >= 1.2 ? 'bg-success-500' :
-                                                    (row.user_millis / row.batch_millis) >= 1.0 ? 'bg-primary-500' :
-                                                    (row.user_millis / row.batch_millis) >= 0.8 ? 'bg-info-500' :
-                                                    'bg-warning-500'
-                                                }`}
-                                                style={{ width: `${Math.min((row.user_millis / row.batch_millis) * 100, 100)}%` }}
-                                            ></div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                    
-                    {/* Desktop Table View */}
-                    <div className="hidden sm:block overflow-x-auto w-full max-w-full">
-                        <MyTable
-                            data={{
-                                content: tableData,
-                                total_pages: 1,
-                                page_no: 0,
-                                page_size: tableData.length,
-                                total_elements: tableData.length,
-                                last: true
-                            }}
-                            columns={columns}
-                            isLoading={false}
-                            error={null}
-                            currentPage={0}
-                            className="[&_table]:bg-transparent [&_table]:w-full [&_table]:max-w-full [&_thead]:bg-gradient-to-r [&_thead]:from-gray-50/80 [&_thead]:to-primary-50/30 [&_tbody_tr]:hover:bg-primary-50/30 [&_tbody_tr]:transition-colors [&_tbody_tr]:duration-200 [&_th]:text-xs [&_th]:sm:text-sm [&_td]:text-xs [&_td]:sm:text-sm [&_th]:px-2 [&_th]:py-2 [&_td]:px-2 [&_td]:py-2"
-                        />
-                    </div>
-                </div>
-                
-                {/* Enhanced Footer */}
-                <div className="border-t border-gray-200/60 bg-gradient-to-r from-gray-50/50 to-primary-50/20 px-3.5 sm:px-5 py-2.5 sm:py-3.5">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 text-xs sm:text-sm">
-                        <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-gray-600">
-                            <div className="flex items-center space-x-2">
-                                <div className="w-2 sm:w-3 h-2 sm:h-3 bg-success-500 rounded-full"></div>
-                                <span>Above Average</span>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                                <div className="w-2 sm:w-3 h-2 sm:h-3 bg-info-500 rounded-full"></div>
-                                <span>On Track</span>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                                <div className="w-2 sm:w-3 h-2 sm:h-3 bg-warning-500 rounded-full"></div>
-                                <span>Needs Focus</span>
-                            </div>
-                        </div>
-                        <div className="text-gray-500 font-medium text-center sm:text-right">
-                            Last 7 days • {tableData.length} entries
-                        </div>
-                    </div>
-                </div>
+                            </CardContent>
+                        </Card>
+                    );
+                })}
             </div>
         </div>
     );

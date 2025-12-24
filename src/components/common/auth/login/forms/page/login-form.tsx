@@ -5,7 +5,7 @@ import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import {
   getTokenDecodedData,
   getTokenFromStorage,
-  handleSSOLogin,
+
   setTokenInStorage,
 } from "@/lib/auth/sessionUtility";
 import { EmailLogin } from "./EmailOtpForm";
@@ -22,7 +22,6 @@ import { useTheme } from "@/providers/theme/theme-provider";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import ClipLoader from "react-spinners/ClipLoader";
-import { ArrowRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 import {
@@ -32,6 +31,8 @@ import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { AuthPageBranding } from "@/components/common/institute-branding";
 import { identifyUser } from "@/lib/analytics";
 import { useEffect as useEffectTheme } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 export const getFromStorage = async (key: string) => {
   const result = await Preferences.get({ key });
@@ -66,7 +67,7 @@ export function LoginForm({
   }>({ allowGoogleAuth: true, allowGithubAuth: true, allowEmailOtpAuth: true, allowUsernamePasswordAuth: true });
   const { setInstituteId } = useInstituteFeatureStore();
   const domainRouting = useDomainRouting();
-  
+
   // Pre-login theme and font from Preferences if present (external-first branding)
   useEffectTheme(() => {
     (async () => {
@@ -119,12 +120,12 @@ export function LoginForm({
     const urlParams = new URLSearchParams(window.location.search);
     const accessToken = urlParams.get("accessToken");
     const refreshToken = urlParams.get("refreshToken");
-    
+
     // If this page is loaded inside an OAuth popup, do NOT complete login here.
     // Instead, broadcast tokens to the opener and close the popup to avoid duplicate app instances.
     const isPopupWindow = (() => {
       // Check if we have an opener (most reliable way to detect popup)
-      try { 
+      try {
         if (window.opener && !window.opener.closed) {
           console.log('[LoginForm] ✅ Detected popup via window.opener');
           return true;
@@ -132,24 +133,24 @@ export function LoginForm({
       } catch (e) {
         console.log('[LoginForm] ❌ window.opener check failed:', e);
       }
-      
+
       // Check window name
-      try { 
+      try {
         if (window.name && window.name.toLowerCase() === 'oauth_popup') {
           console.log('[LoginForm] ✅ Detected popup via window.name');
           return true;
         }
-      } catch {}
-      
+      } catch { }
+
       // Check for popup parameter in URL
-      try { 
-        const q = new URLSearchParams(window.location.search); 
+      try {
+        const q = new URLSearchParams(window.location.search);
         if (q.get('popup') === '1') {
           console.log('[LoginForm] ✅ Detected popup via ?popup=1');
           return true;
         }
-      } catch {}
-      
+      } catch { }
+
       console.log('[LoginForm] ❌ Not detected as popup window');
       console.log('[LoginForm] Debug:', {
         hasOpener: !!window.opener,
@@ -158,7 +159,7 @@ export function LoginForm({
       });
       return false;
     })();
-    
+
     console.log('[LoginForm] 🔍 POPUP DETECTION:', { isPopupWindow, hasTokens: !!(accessToken && refreshToken), accessToken: accessToken?.substring(0, 50) + '...' });
 
     if (isPopupWindow && accessToken && refreshToken) {
@@ -173,7 +174,7 @@ export function LoginForm({
               '*'
             );
           }
-        } catch (e) { 
+        } catch (e) {
           console.log('[LoginForm] ❌ postMessage failed:', e);
         }
 
@@ -186,7 +187,7 @@ export function LoginForm({
             ts: Date.now(),
             isModalLogin: true, // Mark as modal login so __root.tsx ignores it
           }));
-        } catch (e) { 
+        } catch (e) {
           console.log('[LoginForm] ❌ localStorage failed:', e);
         }
 
@@ -198,19 +199,19 @@ export function LoginForm({
             bc.postMessage({ type: 'oauth_success', data: { accessToken, refreshToken }, isModalLogin: true });
             try { bc.close(); } catch { /* ignore */ }
           }
-        } catch (e) { 
+        } catch (e) {
           console.log('[LoginForm] ❌ BroadcastChannel failed:', e);
         }
       } finally {
         // Close popup quickly
         console.log('[LoginForm] 🔒 Closing popup in 300ms');
-        setTimeout(() => { 
-          try { 
+        setTimeout(() => {
+          try {
             console.log('[LoginForm] 👋 Closing now');
-            window.close(); 
-          } catch (e) { 
+            window.close();
+          } catch (e) {
             console.log('[LoginForm] ❌ window.close() failed:', e);
-          } 
+          }
         }, 300);
       }
       return; // Don't proceed with in-popup login
@@ -222,14 +223,14 @@ export function LoginForm({
       const signupData = urlParams.get("signupData");
       const emailVerified = urlParams.get("emailVerified");
       const state = urlParams.get("state");
-      
+
       if (error === 'true') {
         console.log('[LoginForm] 🚫 POPUP DETECTED WITH ERROR - OAuth login failed');
-        
+
         // Check if this is a signup scenario (user doesn't exist but we have OAuth data)
         if (signupData) {
           console.log('[LoginForm] 📝 SignupData present - switching to signup flow');
-          
+
           // Decode signupData
           let decodedSignupData = null;
           try {
@@ -237,14 +238,14 @@ export function LoginForm({
           } catch (e) {
             console.log('[LoginForm] ❌ Failed to decode signupData:', e);
           }
-          
+
           // Send signup_needed message to parent
           const signupPayload = {
             signupData: decodedSignupData,
             state: state,
             emailVerified: emailVerified === 'true'
           };
-          
+
           try {
             if (window.opener && !window.opener.closed) {
               console.log('[LoginForm] 📨 Sending signup_needed postMessage to opener');
@@ -258,29 +259,29 @@ export function LoginForm({
           } catch (e) {
             console.log('[LoginForm] ❌ Signup postMessage failed:', e);
           }
-          
+
           // localStorage for storage event listeners
           try {
             console.log('[LoginForm] 💾 Writing signup_needed to localStorage');
-            localStorage.setItem('OAUTH_RESULT', JSON.stringify({ 
-              type: 'oauth_signup_needed', 
-              data: signupPayload, 
-              ts: Date.now(), 
-              isModalLogin: true 
+            localStorage.setItem('OAUTH_RESULT', JSON.stringify({
+              type: 'oauth_signup_needed',
+              data: signupPayload,
+              ts: Date.now(),
+              isModalLogin: true
             }));
           } catch (e) {
             console.log('[LoginForm] ❌ localStorage signup write failed:', e);
           }
-          
+
           // BroadcastChannel fallback
           try {
             if (typeof BroadcastChannel !== 'undefined') {
               console.log('[LoginForm] 📡 Broadcasting signup_needed via BroadcastChannel');
               const bc = new BroadcastChannel('OAUTH_CHANNEL');
-              bc.postMessage({ 
-                type: 'oauth_signup_needed', 
-                data: signupPayload, 
-                isModalLogin: true 
+              bc.postMessage({
+                type: 'oauth_signup_needed',
+                data: signupPayload,
+                isModalLogin: true
               });
               try { bc.close(); } catch { /* ignore */ }
             }
@@ -290,7 +291,7 @@ export function LoginForm({
         } else {
           // No signupData - genuine error
           const errorMessage = "We could not find a user for the credentials used. Please sign up to create a new account or contact the administrator.";
-          
+
           // Send error via multiple channels (same as modal-learner.tsx)
           try {
             if (window.opener && !window.opener.closed) {
@@ -304,29 +305,29 @@ export function LoginForm({
           } catch (e) {
             console.log('[LoginForm] ❌ Error postMessage failed:', e);
           }
-          
+
           // localStorage for storage event listeners
           try {
             console.log('[LoginForm] 💾 Writing error to localStorage');
-            localStorage.setItem('OAUTH_RESULT', JSON.stringify({ 
-              type: 'oauth_error', 
-              data: { message: errorMessage }, 
-              ts: Date.now(), 
-              isModalLogin: true 
+            localStorage.setItem('OAUTH_RESULT', JSON.stringify({
+              type: 'oauth_error',
+              data: { message: errorMessage },
+              ts: Date.now(),
+              isModalLogin: true
             }));
           } catch (e) {
             console.log('[LoginForm] ❌ localStorage error write failed:', e);
           }
-          
+
           // BroadcastChannel fallback
           try {
             if (typeof BroadcastChannel !== 'undefined') {
               console.log('[LoginForm] 📡 Broadcasting error via BroadcastChannel');
               const bc = new BroadcastChannel('OAUTH_CHANNEL');
-              bc.postMessage({ 
-                type: 'oauth_error', 
-                data: { message: errorMessage }, 
-                isModalLogin: true 
+              bc.postMessage({
+                type: 'oauth_error',
+                data: { message: errorMessage },
+                isModalLogin: true
               });
               try { bc.close(); } catch { /* ignore */ }
             }
@@ -334,18 +335,18 @@ export function LoginForm({
             console.log('[LoginForm] ❌ BroadcastChannel error failed:', e);
           }
         }
-        
+
         // Close popup after short delay
         console.log('[LoginForm] 🔒 Closing popup in 800ms');
         setTimeout(() => {
-          try { 
+          try {
             console.log('[LoginForm] 👋 Closing popup now');
-            window.close(); 
+            window.close();
           } catch (e) {
             console.log('[LoginForm] ❌ window.close() failed:', e);
           }
         }, 800);
-        
+
         return; // Don't proceed with rendering login form
       }
     }
@@ -366,7 +367,7 @@ export function LoginForm({
           return false;
         }
       })();
-      
+
       if (hasOpener) {
         console.log('[LoginForm] FAILSAFE: Detected opener after initial check - closing popup');
         // Send tokens and close
@@ -384,7 +385,7 @@ export function LoginForm({
         setTimeout(() => { try { window.close(); } catch { /* ignore */ } }, 300);
         return;
       }
-      
+
       // Show loading screen immediately when processing OAuth tokens
       setIsSSOLoading(true);
       setTokenInStorage(TokenKey.accessToken, accessToken);
@@ -562,7 +563,7 @@ export function LoginForm({
             }
           } catch (error) {
             console.error("Error fetching institute details:", error);
-            
+
           }
 
           try {
@@ -722,14 +723,13 @@ export function LoginForm({
 
   return (
     <div
-      className={`${
-        type ? "h-[400px] overflow-auto" : "min-h-screen overflow-hidden"
-      } bg-background relative `}
+      className={`${type ? "h-[400px] overflow-auto" : "min-h-screen overflow-hidden"
+        } bg-background relative `}
     >
       {/* Subtle Background Pattern (gradients removed) */}
       <div className="absolute inset-0 -z-10" />
 
-      
+
 
       {/* Centered container */}
       <div className="w-full min-h-[60vh] flex items-center justify-center p-4">
@@ -753,218 +753,179 @@ export function LoginForm({
             initial={{ y: 20, opacity: 0, scale: 0.98 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
             transition={{ delay: 0.3, duration: 0.4 }}
-            className={`bg-white rounded-md ${
-              type ? "" : "shadow-md border border-gray-200 p-5 lg:p-6 xl:p-8"
-            }  `}
+            className="w-full"
           >
-
-              {/* Compact Header */}
-              <motion.div
-                initial={{ y: 10, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.5 }}
-                className="text-center mb-6"
-              >
-                <h2 className="text-lg sm:text-xl font-semibold text-primary-700 mb-2">
+            <Card className={type ? "border-0 shadow-none p-0" : "w-full shadow-lg border-gray-100"}>
+              <CardHeader className="space-y-1 pb-6 text-center">
+                <CardTitle className="text-2xl font-bold tracking-tight text-primary-700">
                   Welcome Back
-                </h2>
-                <p className="text-gray-600 text-sm">
+                </CardTitle>
+                <CardDescription>
                   Sign in to continue your journey
-                </p>
-              </motion.div>
-
-              {/* Compact OAuth Buttons */}
-
-              <motion.div
-                initial={{ y: 10, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.7 }}
-                className="space-y-2 mb-6"
-              >
-                {authProviders?.google && (
-                  <motion.button
-                    whileHover={{ scale: 1.01 }}
-                    whileTap={{ scale: 0.99 }}
-                    className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-primary-200 rounded-md bg-white text-gray-700 font-medium hover:bg-primary-50 hover:border-primary-300 hover:shadow-sm transition-all duration-200 group"
-                    onClick={() => handleOAuthLogin("google")}
-                    type="button"
-                  >
-                    <FcGoogle className="w-4 h-4" />
-                    <span className="text-sm">Continue with Google</span>
-                    <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-                  </motion.button>
-                )}
-                {authProviders?.github && (
-                  <motion.button
-                    whileHover={{ scale: 1.01 }}
-                    whileTap={{ scale: 0.99 }}
-                    className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-primary-200 rounded-md bg-white text-gray-700 font-medium hover:bg-primary-50 hover:border-primary-300 hover:shadow-sm transition-all duration-200 group"
-                    onClick={() => handleOAuthLogin("github")}
-                    type="button"
-                  >
-                    <GitHubLogoIcon className="w-4 h-4" />
-                    <span className="text-sm">Continue with GitHub</span>
-                    <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-                  </motion.button>
-                )}
-              </motion.div>
-
-              {/* Compact Divider */}
-              {(authProviders?.google || authProviders?.github) && (
-                <motion.div
-                  initial={{ width: 0, opacity: 0 }}
-                  animate={{ width: "100%", opacity: 1 }}
-                  transition={{ delay: 0.9, duration: 0.3 }}
-                  className="relative my-5"
-                >
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-primary-200" />
-                  </div>
-                  <div className="relative flex justify-center text-xs">
-                    <span className="bg-white px-3 py-1 text-primary-700 font-medium rounded-full border border-primary-200">
-                      or continue with
-                    </span>
-                  </div>
-                </motion.div>
-              )}
-
-              {/* Form Content */}
-              <motion.div
-                initial={{ y: 10, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 1.1 }}
-              >
-                <AnimatePresence mode="wait">
-                  {(() => {
-                    const allowEmail = providerFlags.allowEmailOtpAuth;
-                    const allowUserPass = providerFlags.allowUsernamePasswordAuth;
-
-                    // Only Email OTP allowed
-                    if (allowEmail && !allowUserPass) {
-                      return (
-                        <motion.div
-                          key="email-only"
-                          initial={{ x: 200, opacity: 0 }}
-                          animate={{ x: 0, opacity: 1 }}
-                          exit={{ x: -200, opacity: 0 }}
-                          transition={{ duration: 0.2 }}
-                        >
-                          <EmailLogin
-                            onSwitchToUsername={() => { /* hidden via child check */ }}
-                            type={type}
-                            courseId={courseId}
-                            onSwitchToSignup={onSwitchToSignup}
-                            allowUsernamePasswordAuth={providerFlags.allowUsernamePasswordAuth}
-                          />
-                        </motion.div>
-                      );
-                    }
-
-                    // Only Username/Password allowed
-                    if (!allowEmail && allowUserPass) {
-                      return (
-                        <motion.div
-                          key="username-only"
-                          initial={{ x: 200, opacity: 0 }}
-                          animate={{ x: 0, opacity: 1 }}
-                          exit={{ x: -200, opacity: 0 }}
-                          transition={{ duration: 0.2 }}
-                        >
-                          <UsernameLogin
-                            onSwitchToEmail={() => { /* no email route enabled */ }}
-                            allowEmailOtpAuth={false}
-                            type={type}
-                            courseId={courseId}
-                            onSwitchToSignup={onSwitchToSignup}
-                          />
-                        </motion.div>
-                      );
-                    }
-
-                    // Both allowed: preserve toggle behavior
-                    if (allowEmail && allowUserPass) {
-                      return isEmailLogin ? (
-                        <motion.div
-                          key="email"
-                          initial={{ x: 200, opacity: 0 }}
-                          animate={{ x: 0, opacity: 1 }}
-                          exit={{ x: -200, opacity: 0 }}
-                          transition={{ duration: 0.2 }}
-                        >
-                          <EmailLogin
-                            onSwitchToUsername={() => setIsEmailLogin(false)}
-                            type={type}
-                            courseId={courseId}
-                            onSwitchToSignup={onSwitchToSignup}
-                            allowUsernamePasswordAuth={providerFlags.allowUsernamePasswordAuth}
-                          />
-                        </motion.div>
-                      ) : (
-                        <motion.div
-                          key="username"
-                          initial={{ x: 200, opacity: 0 }}
-                          animate={{ x: 0, opacity: 1 }}
-                          exit={{ x: -200, opacity: 0 }}
-                          transition={{ duration: 0.2 }}
-                        >
-                          <UsernameLogin
-                            onSwitchToEmail={() => setIsEmailLogin(true)}
-                            allowEmailOtpAuth={providerFlags.allowEmailOtpAuth}
-                            type={type}
-                            courseId={courseId}
-                            onSwitchToSignup={onSwitchToSignup}
-                          />
-                        </motion.div>
-                      );
-                    }
-
-                    // None allowed: render nothing or a message
-                    return null;
-                  })()}
-                </AnimatePresence>
-              </motion.div>
-
-              {/* Explore Courses (for institutes with public catalog) */}
-              {domainRouting?.redirectPath && domainRouting.redirectPath !== "/login" ? (
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-6">
+                {/* OAuth Buttons */}
                 <motion.div
                   initial={{ y: 10, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 1.2 }}
-                  className="mt-4"
+                  transition={{ delay: 0.7 }}
+                  className="grid grid-cols-1 gap-3"
                 >
-                  <motion.button
-                    type="button"
-                    whileHover={{ scale: 1.01 }}
-                    whileTap={{ scale: 0.99 }}
-                    onClick={() => navigate({ to: domainRouting.redirectPath as never })}
-                    className="w-full bg-primary-500 hover:bg-primary-400 text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md"
-                  >
-                    Explore Courses
-                  </motion.button>
+                  {authProviders?.google && (
+                    <Button
+                      variant="outline"
+                      className="w-full relative h-11"
+                      onClick={() => handleOAuthLogin("google")}
+                      type="button"
+                    >
+                      <FcGoogle className="mr-2 h-4 w-4" />
+                      Continue with Google
+                    </Button>
+                  )}
+                  {authProviders?.github && (
+                    <Button
+                      variant="outline"
+                      className="w-full relative h-11"
+                      onClick={() => handleOAuthLogin("github")}
+                      type="button"
+                    >
+                      <GitHubLogoIcon className="mr-2 h-4 w-4" />
+                      Continue with GitHub
+                    </Button>
+                  )}
                 </motion.div>
-              ) : null}
 
-              {/* Compact Security Notice */}
-              {/* Security message removed as requested */}
-              {/* <motion.div
-                initial={{ y: 10, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 1.3 }}
-                className="mt-6 p-3 bg-gray-50/80 border border-gray-200/60 rounded-lg"
-              >
-                <div className="flex items-start space-x-2">
-                  <Shield className="w-4 h-4 text-gray-600 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <p className="text-xs font-medium text-gray-800 mb-1">
-                      Secure Login
-                    </p>
-                    <p className="text-xs text-gray-600">
-                      Your data is protected with enterprise-grade encryption.
-                    </p>
+                {/* Divider */}
+                {(authProviders?.google || authProviders?.github) && (
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-background px-2 text-muted-foreground">
+                        Or continue with
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </motion.div> */}
-            </motion.div>
+                )}
+
+                {/* Form Content */}
+                <motion.div
+                  initial={{ y: 10, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 1.1 }}
+                >
+                  <AnimatePresence mode="wait">
+                    {(() => {
+                      const allowEmail = providerFlags.allowEmailOtpAuth;
+                      const allowUserPass = providerFlags.allowUsernamePasswordAuth;
+
+                      // Only Email OTP allowed
+                      if (allowEmail && !allowUserPass) {
+                        return (
+                          <motion.div
+                            key="email-only"
+                            initial={{ x: 200, opacity: 0 }}
+                            animate={{ x: 0, opacity: 1 }}
+                            exit={{ x: -200, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                          >
+                            <EmailLogin
+                              onSwitchToUsername={() => { /* hidden via child check */ }}
+                              type={type}
+                              courseId={courseId}
+                              onSwitchToSignup={onSwitchToSignup}
+                              allowUsernamePasswordAuth={providerFlags.allowUsernamePasswordAuth}
+                            />
+                          </motion.div>
+                        );
+                      }
+
+                      // Only Username/Password allowed
+                      if (!allowEmail && allowUserPass) {
+                        return (
+                          <motion.div
+                            key="username-only"
+                            initial={{ x: 200, opacity: 0 }}
+                            animate={{ x: 0, opacity: 1 }}
+                            exit={{ x: -200, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                          >
+                            <UsernameLogin
+                              onSwitchToEmail={() => { /* no email route enabled */ }}
+                              allowEmailOtpAuth={false}
+                              type={type}
+                              courseId={courseId}
+                              onSwitchToSignup={onSwitchToSignup}
+                            />
+                          </motion.div>
+                        );
+                      }
+
+                      // Both allowed: preserve toggle behavior
+                      if (allowEmail && allowUserPass) {
+                        return isEmailLogin ? (
+                          <motion.div
+                            key="email"
+                            initial={{ x: 200, opacity: 0 }}
+                            animate={{ x: 0, opacity: 1 }}
+                            exit={{ x: -200, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                          >
+                            <EmailLogin
+                              onSwitchToUsername={() => setIsEmailLogin(false)}
+                              type={type}
+                              courseId={courseId}
+                              onSwitchToSignup={onSwitchToSignup}
+                              allowUsernamePasswordAuth={providerFlags.allowUsernamePasswordAuth}
+                            />
+                          </motion.div>
+                        ) : (
+                          <motion.div
+                            key="username"
+                            initial={{ x: 200, opacity: 0 }}
+                            animate={{ x: 0, opacity: 1 }}
+                            exit={{ x: -200, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                          >
+                            <UsernameLogin
+                              onSwitchToEmail={() => setIsEmailLogin(true)}
+                              allowEmailOtpAuth={providerFlags.allowEmailOtpAuth}
+                              type={type}
+                              courseId={courseId}
+                              onSwitchToSignup={onSwitchToSignup}
+                            />
+                          </motion.div>
+                        );
+                      }
+
+                      // None allowed: render nothing or a message
+                      return null;
+                    })()}
+                  </AnimatePresence>
+                </motion.div>
+
+                {/* Explore Courses (for institutes with public catalog) */}
+                {domainRouting?.redirectPath && domainRouting.redirectPath !== "/login" ? (
+                  <motion.div
+                    initial={{ y: 10, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 1.2 }}
+                  >
+                    <Button
+                      variant="default"
+                      className="w-full h-11 text-base font-medium shadow-sm hover:shadow-md transition-all duration-200"
+                      onClick={() => navigate({ to: domainRouting.redirectPath as never })}
+                    >
+                      Explore Courses
+                    </Button>
+                  </motion.div>
+                ) : null}
+
+              </CardContent>
+            </Card>
+          </motion.div>
 
           {/* Footer Links */}
           <motion.div

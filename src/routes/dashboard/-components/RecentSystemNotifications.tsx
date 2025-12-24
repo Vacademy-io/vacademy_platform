@@ -23,8 +23,8 @@ interface RecentSystemNotificationsProps {
   className?: string;
 }
 
-export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps> = ({ 
-  className = '' 
+export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps> = ({
+  className = ''
 }) => {
   const { alerts, loading, error, isEnabled, isLoadingSettings, dismissAll } = useSystemAlerts({
     enablePolling: false, // Don't poll in dashboard widget
@@ -34,7 +34,7 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
   // Filter notifications from last 7 days and limit to 5
   const getRecentNotifications = (): UserMessage[] => {
     const sevenDaysAgo = subDays(new Date(), 7);
-    
+
     return alerts
       .filter(alert => {
         const createdAt = new Date(alert.createdAt);
@@ -53,13 +53,13 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
   const getPriorityColor = (priority?: string) => {
     switch (priority) {
       case 'HIGH':
-        return document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-red text-slate-800' : 'bg-red-500 text-white';
+        return 'bg-destructive/10 text-destructive hover:bg-destructive/20';
       case 'MEDIUM':
-        return document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-yellow text-slate-800' : 'bg-yellow-500 text-white';
+        return 'bg-warning/10 text-warning hover:bg-warning/20';
       case 'LOW':
-        return document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-blue text-slate-800' : 'bg-blue-500 text-white';
+        return 'bg-info/10 text-info hover:bg-info/20';
       default:
-        return document.documentElement.classList.contains('ui-vibrant') ? 'pastel-bg-teal text-slate-800' : 'bg-gray-500 text-white';
+        return 'bg-secondary text-secondary-foreground hover:bg-secondary/80';
     }
   };
 
@@ -96,7 +96,7 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg font-semibold flex items-center gap-2">
-            <Bell className="h-5 w-5 text-blue-600" />
+            <Bell className="h-5 w-5 text-primary" />
             Recent System Notifications
           </CardTitle>
           <div className="flex items-center gap-2">
@@ -109,7 +109,7 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
                     disabled={loading}
                   >
                     <Trash2 className="h-4 w-4 mr-1" />
@@ -128,7 +128,7 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
                     <AlertDialogAction
                       onClick={dismissAll}
-                      className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                     >
                       Clear All
                     </AlertDialogAction>
@@ -139,24 +139,24 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
           </div>
         </div>
       </CardHeader>
-      
+
       <CardContent className="space-y-3">
         {error && (
-          <div className="text-sm text-red-600 p-3 bg-red-50 rounded-md">
+          <div className="text-sm text-destructive p-3 bg-destructive/10 rounded-md">
             {error}
           </div>
         )}
-        
+
         {loading ? (
           <div className="space-y-3">
             {[...Array(3)].map((_, index) => (
               <div key={index} className="animate-pulse">
                 <div className="flex items-start gap-3 p-3 border rounded-lg">
-                  <div className="w-2 h-2 bg-gray-300 rounded-full mt-2"></div>
+                  <div className="w-2 h-2 bg-muted rounded-full mt-2"></div>
                   <div className="flex-1 space-y-2">
-                    <div className="h-4 bg-gray-300 rounded w-3/4"></div>
-                    <div className="h-3 bg-gray-200 rounded w-full"></div>
-                    <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                    <div className="h-4 bg-muted rounded w-3/4"></div>
+                    <div className="h-3 bg-muted rounded w-full"></div>
+                    <div className="h-3 bg-muted rounded w-1/2"></div>
                   </div>
                 </div>
               </div>
@@ -168,43 +168,41 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
               {recentNotifications.map((alert) => (
                 <div
                   key={alert.messageId}
-                  className={`p-3 border rounded-lg transition-all hover:shadow-sm cursor-pointer group ${
-                    !alert.isRead 
-                      ? 'border-l-4 border-l-blue-500 bg-blue-50/50' 
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
+                  className={`p-3 border rounded-lg transition-all hover:shadow-sm cursor-pointer group ${!alert.isRead
+                      ? 'border-l-4 border-l-primary bg-primary/5'
+                      : 'border-border hover:border-primary/50'
+                    }`}
                 >
                   <div className="flex items-start gap-3">
                     {/* Unread indicator */}
-                    <div className={`w-2 h-2 rounded-full mt-2 ${
-                      !alert.isRead ? 'bg-blue-500' : 'bg-gray-300'
-                    }`} />
-                    
+                    <div className={`w-2 h-2 rounded-full mt-2 ${!alert.isRead ? 'bg-primary' : 'bg-muted'
+                      }`} />
+
                     <div className="flex-1 min-w-0">
                       {/* Title and Priority */}
                       <div className="flex items-center gap-2 mb-1">
                         {alert.title && (
-                          <h4 className="font-medium text-gray-900 text-sm truncate">
+                          <h4 className="font-medium text-foreground text-sm truncate">
                             {alert.title}
                           </h4>
                         )}
                         {alert.priority && (
-                          <Badge 
-                            variant="secondary" 
+                          <Badge
+                            variant="secondary"
                             className={`text-xs px-1.5 py-0.5 ${getPriorityColor(alert.priority)}`}
                           >
                             {getPriorityText(alert.priority)}
                           </Badge>
                         )}
                       </div>
-                      
+
                       {/* Content Preview */}
-                      <p className="text-sm text-gray-600 mb-2 leading-relaxed">
+                      <p className="text-sm text-muted-foreground mb-2 leading-relaxed">
                         {truncateText(renderNotificationContent(alert))}
                       </p>
-                      
+
                       {/* Footer */}
-                      <div className="flex items-center justify-between text-xs text-gray-500">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <div className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
                           <span>
@@ -219,20 +217,20 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
                         </div>
                       </div>
                     </div>
-                    
+
                     {/* Arrow indicator */}
-                    <ChevronRight className="h-4 w-4 text-gray-400 group-hover:text-gray-600 transition-colors" />
+                    <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
                   </div>
                 </div>
               ))}
             </div>
-            
+
             {/* View All Button */}
-            <div className="pt-2 border-t border-gray-100">
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="w-full justify-center text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+            <div className="pt-2 border-t border-border">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full justify-center text-sm text-primary hover:text-primary hover:bg-primary/10"
               >
                 View All Notifications
                 <ChevronRight className="h-4 w-4 ml-1" />
@@ -244,3 +242,4 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
     </Card>
   );
 };
+

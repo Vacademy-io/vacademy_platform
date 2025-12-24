@@ -12,9 +12,24 @@ function defaultSidebarTabs(): StudentSidebarTabConfig[] {
       order: 2,
       visible: true,
       subTabs: [
-        { id: "study-library", route: "/study-library", order: 1, visible: true },
-        { id: "attendance", route: "/learning-centre/attendance", order: 2, visible: true },
-        { id: "live-classes", route: "/study-library/live-class", order: 3, visible: true },
+        {
+          id: "study-library",
+          route: "/study-library",
+          order: 1,
+          visible: true,
+        },
+        {
+          id: "attendance",
+          route: "/learning-centre/attendance",
+          order: 2,
+          visible: true,
+        },
+        {
+          id: "live-classes",
+          route: "/study-library/live-class",
+          order: 3,
+          visible: true,
+        },
       ],
     },
     {
@@ -22,8 +37,18 @@ function defaultSidebarTabs(): StudentSidebarTabConfig[] {
       order: 3,
       visible: true,
       subTabs: [
-        { id: "homework-list", route: "/homework/list", order: 1, visible: true },
-        { id: "homework-reports", route: "/homework/reports", order: 2, visible: true },
+        {
+          id: "homework-list",
+          route: "/homework/list",
+          order: 1,
+          visible: true,
+        },
+        {
+          id: "homework-reports",
+          route: "/homework/reports",
+          order: 2,
+          visible: true,
+        },
       ],
     },
     {
@@ -31,8 +56,18 @@ function defaultSidebarTabs(): StudentSidebarTabConfig[] {
       order: 4,
       visible: true,
       subTabs: [
-        { id: "assessment-list", route: "/assessment/examination", order: 1, visible: true },
-        { id: "assessment-reports", route: "/assessment/reports", order: 2, visible: true },
+        {
+          id: "assessment-list",
+          route: "/assessment/examination",
+          order: 1,
+          visible: true,
+        },
+        {
+          id: "assessment-reports",
+          route: "/assessment/reports",
+          order: 2,
+          visible: true,
+        },
       ],
     },
     { id: "referral", order: 5, visible: true },
@@ -62,12 +97,24 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
   dashboard: { widgets: defaultDashboardWidgets() },
   ui: { type: "default" },
   signup: {
-    providers: { google: true, github: true, usernamePassword: true, emailOtp: true, defaultProvider: "emailOtp" },
+    providers: {
+      google: true,
+      github: true,
+      usernamePassword: true,
+      emailOtp: true,
+      defaultProvider: "emailOtp",
+    },
     usernameStrategy: "manual",
     passwordStrategy: "manual",
     passwordDelivery: "none",
   },
-  permissions: { canViewProfile: false, canEditProfile: false, canDeleteProfile: false, canViewFiles: false },
+  permissions: {
+    canViewProfile: false,
+    canEditProfile: false,
+    canDeleteProfile: false,
+    canViewFiles: false,
+    canViewReports: false,
+  },
   courseDetails: {
     tabs: [
       { id: "OUTLINE", order: 1, visible: true },
@@ -82,7 +129,11 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
     showCourseConfiguration: true,
     showCourseContentPrefixes: true,
     courseOverview: { visible: true, showSlidesData: true },
-    slidesView: { showLearningPath: true, feedbackVisible: true, canAskDoubt: true },
+    slidesView: {
+      showLearningPath: true,
+      feedbackVisible: true,
+      canAskDoubt: true,
+    },
   },
   courseSettings: {
     quiz: {
@@ -109,5 +160,3 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
   },
   postLoginRedirectRoute: "/dashboard",
 };
-
-

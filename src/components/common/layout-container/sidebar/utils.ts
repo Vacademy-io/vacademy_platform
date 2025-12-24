@@ -7,7 +7,13 @@ import {
   NotePencil,
   Users,
 } from "@phosphor-icons/react";
-import { Files, Password, UserCircle, UserCircleMinus } from "@phosphor-icons/react";
+import {
+  AddressBook,
+  Files,
+  Password,
+  UserCircle,
+  UserCircleMinus,
+} from "phosphor-react";
 import { NamingSettingsType } from "@/services/fetchAndStoreInstituteDetails";
 import { NAMING_SETTINGS_KEY } from "@/types/naming-settings";
 
@@ -110,6 +116,7 @@ export const HamBurgerSidebarItemsData: SidebarItemsType[] = [
     title: "My Files",
     to: "/my-files",
   },
+  { icon: AddressBook, title: "My Reports", to: "/my-reports" },
   // {
   //   icon: CreditCard,
   //   title: "Membership Details",
@@ -145,6 +152,7 @@ export async function filterHamburgerMenuItemsWithPermissions(
     canEditProfile: boolean;
     canDeleteProfile: boolean;
     canViewFiles: boolean;
+    canViewReports: boolean;
   }
 ) {
   // Filter based on permissions
@@ -153,10 +161,16 @@ export async function filterHamburgerMenuItemsWithPermissions(
       (item) => item.title !== "View Profile Details"
     );
   }
-  
+
   if (!permissions.canViewFiles) {
     HamBurgerSidebarItemsData = HamBurgerSidebarItemsData.filter(
       (item) => item.title !== "My Files"
+    );
+  }
+
+  if (!permissions.canViewReports) {
+    HamBurgerSidebarItemsData = HamBurgerSidebarItemsData.filter(
+      (item) => item.title !== "My Reports"
     );
   }
 

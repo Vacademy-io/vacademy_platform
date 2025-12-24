@@ -132,6 +132,8 @@ function mergeWithDefaults(
         d.permissions.canDeleteProfile,
       canViewFiles:
         incoming?.permissions?.canViewFiles ?? d.permissions.canViewFiles,
+      canViewReports:
+        incoming?.permissions?.canViewReports ?? d.permissions.canViewReports,
     },
     courseDetails: {
       tabs: mergeArrayById(
@@ -211,9 +213,7 @@ function mergeWithDefaults(
         d.notifications.allowBatchStream,
     },
     certificates: {
-      enabled:
-        incoming?.certificates?.enabled ??
-        d.certificates.enabled,
+      enabled: incoming?.certificates?.enabled ?? d.certificates.enabled,
       generationThresholdPercent:
         incoming?.certificates?.generationThresholdPercent ??
         d.certificates.generationThresholdPercent,

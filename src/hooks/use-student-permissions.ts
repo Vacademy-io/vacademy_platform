@@ -3,7 +3,11 @@ import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { StudentPermissions } from "@/types/student-display-settings";
 
 export function useStudentPermissions() {
-  const { data: settings, isLoading, error } = useQuery({
+  const {
+    data: settings,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ["studentDisplaySettings"],
     queryFn: () => getStudentDisplaySettings(false),
     staleTime: 5 * 60 * 1000, // 5 minutes
@@ -14,6 +18,7 @@ export function useStudentPermissions() {
     canEditProfile: false,
     canDeleteProfile: false,
     canViewFiles: false,
+    canViewReports: false,
   };
 
   return {

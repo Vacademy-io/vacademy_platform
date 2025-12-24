@@ -117,8 +117,8 @@ public class LearnerBatchEnrollService {
             } else {
                 packageSession = packageSessionRepository.findById(instituteStudentDetail.getPackageSessionId()).get();
             }
+            Institute suborg = null;
             if (packageSession.getIsOrgAssociated()) {
-                Institute suborg;
                 // If we have an existing SubOrg from UserPlan, use it; otherwise create/get one
                 if (existingSubOrg != null) {
                     suborg = existingSubOrg;
@@ -138,7 +138,7 @@ public class LearnerBatchEnrollService {
                     instituteStudentDetail);
             if (instituteStudentDetail.getEnrollmentStatus().equalsIgnoreCase(LearnerSessionStatusEnum.ACTIVE.name())) {
                 studentRegistrationManager.triggerEnrollmentWorkflow(instituteId, userDTO,
-                        instituteStudentDetail.getPackageSessionId());
+                        instituteStudentDetail.getPackageSessionId(),suborg);
             }
             customFieldValueService.addCustomFieldValue(customFieldValues,
                     CustomFieldValueSourceTypeEnum.STUDENT_SESSION_INSTITUTE_GROUP_MAPPING.name(), studentSessionId);
@@ -187,7 +187,7 @@ public class LearnerBatchEnrollService {
                         mapping,
                         LearnerStatusEnum.ACTIVE.name());
                 studentRegistrationManager.triggerEnrollmentWorkflow(mapping.getInstitute().getId(), userDTO,
-                        mapping.getDestinationPackageSession().getId());
+                        mapping.getDestinationPackageSession().getId(),mapping.getSubOrg());
                 customFieldValueService.shiftCustomField(
                         CustomFieldValueSourceTypeEnum.STUDENT_SESSION_INSTITUTE_GROUP_MAPPING.name(),
                         mapping.getId(),
@@ -213,7 +213,7 @@ public class LearnerBatchEnrollService {
 
     /**
      * Process bulk learner approval requests
-     * 
+     *
      * @param request The bulk approval request containing multiple items
      * @return A result object with success count and total count
      */

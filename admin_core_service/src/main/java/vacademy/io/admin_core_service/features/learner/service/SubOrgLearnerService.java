@@ -199,7 +199,7 @@ public class SubOrgLearnerService {
 
         // Group custom field values by user ID and custom field ID
         Map<String, Map<String, String>> userCustomFieldValuesMap = new HashMap<>();
-        
+
         for (Object[] row : customFieldData) {
             String userId = (String) row[0];
             String customFieldId = (String) row[1];
@@ -233,7 +233,7 @@ public class SubOrgLearnerService {
             mapping.setCustomFields(userCustomFields);
         }
 
-        log.info("Successfully enriched {} student mappings with {} custom fields each", 
+        log.info("Successfully enriched {} student mappings with {} custom fields each",
                 studentMappings.size(), instituteCustomFieldsTemplate.size());
     }
 
@@ -366,7 +366,7 @@ public class SubOrgLearnerService {
      * Create new user or fetch existing user with proper user_roles entry
      */
     private UserDTO createOrFetchUser(SubOrgEnrollRequestDTO request) {
-        log.info("Creating or fetching user with email: {}, userId: {}", 
+        log.info("Creating or fetching user with email: {}, userId: {}",
                 request.getUser().getEmail(), request.getUser().getId());
 
         if (request.getUser().getRoles() == null || request.getUser().getRoles().isEmpty()) {
@@ -584,21 +584,31 @@ public class SubOrgLearnerService {
     private void triggerTerminationWorkflow(List<String>userIds,String instituteId,String packageSessionId,CustomUserDetails userDetails){
         List<UserDTO>userDTOS = authService.getUsersFromAuthServiceByUserIds(userIds);
         UserDTO admin =  authService.getUsersFromAuthServiceByUserIds(List.of(userDetails.getUserId())).get(0);
+        Optional<PackageSession>optionalPackageSession = packageSessionRepository.findById(packageSessionId);
+        if(optionalPackageSession.isEmpty()){
+            throw new VacademyException("PackageSession Not found");
+        }
         for(UserDTO userDTO:userDTOS){
             Map<String, Object> contextData = new HashMap<>();
-            contextData.put("user", userDTO);
+            contextData.put("member", userDTO);
             contextData.put("packageSessionIds", packageSessionId);
             contextData.put("admin",admin);
+            contextData.put("packageId",optionalPackageSession.get().getPackageEntity().getId());
             workflowTriggerService.handleTriggerEvents(WorkflowTriggerEvent.SUB_ORG_MEMBER_TERMINATION.name(),packageSessionId,instituteId,contextData);
         }
     }
 
     @Async
     public void triggerEnrollmentWorkflow(String instituteId, UserDTO userDTO,String packageSessionId,UserDTO adminDTO) {
+        Optional<PackageSession>optionalPackageSession = packageSessionRepository.findById(packageSessionId);
+        if(optionalPackageSession.isEmpty()){
+            throw new VacademyException("PackageSession Not found");
+        }
         Map<String, Object> contextData = new HashMap<>();
-        contextData.put("user", userDTO);
+        contextData.put("member", userDTO);
         contextData.put("packageSessionIds", packageSessionId);
-        contextData.put("admin",adminDTO);
+        contextData.put("subOrgAdmin",adminDTO);
+        contextData.put("packageId",optionalPackageSession.get().getPackageEntity().getId());
         workflowTriggerService.handleTriggerEvents(WorkflowTriggerEvent.SUB_ORG_MEMBER_ENROLLMENT.name(),packageSessionId,instituteId,contextData);
     }
 

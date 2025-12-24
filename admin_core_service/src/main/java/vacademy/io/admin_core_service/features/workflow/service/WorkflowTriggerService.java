@@ -68,7 +68,6 @@ public class WorkflowTriggerService {
                     seedContext.put("triggerEvents", eventName);
                     seedContext.put("triggerId", trigger.getId());
                     seedContext.put("instituteId", instituteId);
-
                     log.info("Seed context prepared for workflow run ({} keys): {}", seedContext.size(), seedContext);
                     log.info("Starting workflowEngineService.run for workflowId='{}'", trigger.getWorkflow().getId());
 

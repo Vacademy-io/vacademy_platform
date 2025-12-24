@@ -131,6 +131,7 @@ public class LearnerPackageService {
                                         List.of(QuestionStatusEnum.ACTIVE.name()),
                                         List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                                         List.of(ChapterStatus.ACTIVE.name()),
+                                        List.of(LearnerStatusEnum.ACTIVE.name()),
                                         pageable);
                 } else {
                         learnerPackageDetail = packageRepository.getCompletedLearnerPackageDetail(
@@ -150,6 +151,7 @@ public class LearnerPackageService {
                                         List.of(QuestionStatusEnum.ACTIVE.name()),
                                         List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                                         List.of(ChapterStatus.ACTIVE.name()),
+                                        List.of(LearnerStatusEnum.ACTIVE.name()),
                                         pageable);
                 }
                 return learnerPackageDetail;

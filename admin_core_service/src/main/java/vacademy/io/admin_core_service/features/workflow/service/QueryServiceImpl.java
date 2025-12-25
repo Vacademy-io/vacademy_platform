@@ -761,11 +761,6 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
     private Map<String, Object> fetchPackageLMSSetting(Map<String, Object> params) {
         try {
             String packageId = (String) params.get("packageId");
-            // Fallback to instituteId if packageId is missing, as per previous logic
-            if (packageId == null) {
-                packageId = (String) params.get("instituteId");
-            }
-
             String settingKey = (String) params.get("settingKey");
 
             if (packageId == null || settingKey == null) {

@@ -146,16 +146,42 @@ public class UserPlanService {
 
         // --- Logic to calculate and set Start and End Dates ---
         // --- Date Logic with Timestamp ---
-        // Validate startDate is not in the future
-        Date effectiveStartDate = startDate;
-        if (effectiveStartDate != null) {
-            Date currentDate = new Date();
-            if (effectiveStartDate.after(currentDate)) {
-                throw new IllegalArgumentException("Start date cannot be in the future");
+
+        // Check for existing ACTIVE or PENDING plans for stacking
+        Optional<UserPlan> existingPlan = userPlanRepository
+                .findTopByUserIdAndEnrollInviteIdAndStatusInOrderByEndDateDesc(
+                        userId,
+                        enrollInvite.getId(),
+                        List.of(UserPlanStatusEnum.ACTIVE.name(), UserPlanStatusEnum.PENDING.name()));
+
+        Date effectiveStartDate;
+        if (existingPlan.isPresent()) {
+            // Stack the new plan after the existing one
+            effectiveStartDate = existingPlan.get().getEndDate();
+            if (effectiveStartDate == null) {
+                effectiveStartDate = new Date(); // Fallback
             }
+
+            // Only change status to PENDING if it was going to be ACTIVE
+            // If it's PENDING_FOR_PAYMENT, let it remain so (it will be handled in
+            // applyOperationsOnFirstPayment)
+            if (UserPlanStatusEnum.ACTIVE.name().equals(status)) {
+                status = UserPlanStatusEnum.PENDING.name();
+                userPlan.setStatus(status);
+            }
+            logger.info("Stacking UserPlan: Found existing plan ID={}. New plan will start at {}",
+                    existingPlan.get().getId(), effectiveStartDate);
         } else {
-            // Default to current date if startDate not provided
-            effectiveStartDate = new Date();
+            // No existing plan, use provided startDate or now
+            effectiveStartDate = startDate;
+            if (effectiveStartDate != null) {
+                Date currentDate = new Date();
+                if (effectiveStartDate.after(currentDate)) {
+                    throw new IllegalArgumentException("Start date cannot be in the future");
+                }
+            } else {
+                effectiveStartDate = new Date();
+            }
         }
 
         long startTimeMillis = effectiveStartDate.getTime();
@@ -229,18 +255,39 @@ public class UserPlanService {
 
         EnrollInvite enrollInvite = userPlan.getEnrollInvite();
 
+        // Check for OTHER existing ACTIVE or PENDING plans for stacking
+        // We exclude the current plan ID just in case, though it shouldn't be
+        // active/pending yet
+        Optional<UserPlan> existingPlan = userPlanRepository
+                .findTopByUserIdAndEnrollInviteIdAndStatusInOrderByEndDateDesc(
+                        userPlan.getUserId(),
+                        enrollInvite.getId(),
+                        List.of(UserPlanStatusEnum.ACTIVE.name(), UserPlanStatusEnum.PENDING.name()));
         List<String> packageSessionIds = packageSessionEnrollInviteToPaymentOptionService
-                .findPackageSessionsOfEnrollInvite(enrollInvite);
-        logger.debug("Package session IDs resolved for EnrollInvite ID={}: {}", enrollInvite.getId(),
-                packageSessionIds);
-        learnerBatchEnrollService.shiftLearnerFromInvitedToActivePackageSessions(packageSessionIds,
-                userPlan.getUserId(), enrollInvite.getId());
-        userPlan.setStatus(UserPlanStatusEnum.ACTIVE.name());
-        userPlanRepository.save(userPlan);
+            .findPackageSessionsOfEnrollInvite(enrollInvite);
+        // If we found a plan, and it's NOT the current plan (sanity check)
+        if (existingPlan.isPresent() && !existingPlan.get().getId().equals(userPlan.getId())) {
+            // Stack it!
+            userPlan.setStatus(UserPlanStatusEnum.PENDING.name());
+            userPlanRepository.save(userPlan);
+            logger.info("UserPlan stacked as PENDING after payment. ID={}. Existing plan ID={}", userPlan.getId(),
+                    existingPlan.get().getId());
+            // Do NOT shift learner to active package sessions yet
+        } else {
+            // Activate normally
 
-        logger.info("UserPlan status updated to ACTIVE and saved. ID={}", userPlan.getId());
+            logger.debug("Package session IDs resolved for EnrollInvite ID={}: {}", enrollInvite.getId(),
+                    packageSessionIds);
+            learnerBatchEnrollService.shiftLearnerFromInvitedToActivePackageSessions(packageSessionIds,
+                    userPlan.getUserId(), enrollInvite.getId());
+            userPlan.setStatus(UserPlanStatusEnum.ACTIVE.name());
+            userPlanRepository.save(userPlan);
 
-        // Send enrollment notifications after successful PAID enrollment
+            logger.info("UserPlan status updated to ACTIVE and saved. ID={}", userPlan.getId());
+
+            // Send enrollment notifications after successful PAID enrollment
+
+        }
         sendEnrollmentNotificationsAfterPayment(userPlan, enrollInvite, packageSessionIds);
     }
 

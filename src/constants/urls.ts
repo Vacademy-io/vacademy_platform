@@ -174,3 +174,5 @@ export const GENERATE_INTERVAL_TYPE_ID = `${BASE_URL}/admin-core-service/plannin
 
 // Public Media
 export const GET_PUBLIC_MEDIA_DETAILS = `${BASE_URL}/media-service/public/get-details/id`;
+
+export const GET_AI_PROCESSED_LOGS = `${BASE_URL}/admin-core-service/llm-analytics/processed-logs`;

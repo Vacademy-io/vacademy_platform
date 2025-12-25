@@ -153,6 +153,7 @@
     "react-quill-new": "^3.4.6",
     "react-router-dom": "^7.1.1",
     "react-spinners": "^0.15.0",
+    "react-to-pdf": "^2.0.3",
     "react-useanimations": "^2.10.0",
     "react-youtube": "^10.1.0",
     "recharts": "^2.15.1",

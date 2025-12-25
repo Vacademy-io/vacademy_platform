@@ -117,7 +117,7 @@ export default function MyFilesPage() {
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
           <h2 className="text-xl font-semibold text-neutral-700 mb-2">
-            Error Loading Reports
+            Error Loading Files
           </h2>
           <p className="text-neutral-500">Please try again later.</p>
         </div>

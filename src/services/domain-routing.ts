@@ -27,6 +27,13 @@ export interface DomainRoutingResponse {
   allowGithubAuth?: boolean | null;
   allowEmailOtpAuth?: boolean | null;
   allowUsernamePasswordAuth?: boolean | null;
+  // App Links
+  playStoreAppLink?: string | null;
+  appStoreAppLink?: string | null;
+  windowsAppLink?: string | null;
+  macAppLink?: string | null;
+  learnerPortalUrl?: string | null;
+  instructorPortalUrl?: string | null;
 }
 
 export interface DomainRoutingError {

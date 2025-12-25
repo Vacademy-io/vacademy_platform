@@ -131,17 +131,15 @@ export const LogoutSidebar = ({
                     onClick={
                       homeIconClickRoute ? handleInstituteLogoClick : undefined
                     }
-                    className={`w-24 h-24 rounded-xl object-contain p-2 bg-white ${
-                      homeIconClickRoute ? "cursor-pointer" : ""
-                    }`}
+                    className={`w-24 h-24 rounded-xl object-contain p-2 bg-white ${homeIconClickRoute ? "cursor-pointer" : ""
+                      }`}
                   />
                   <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                 </div>
               ) : (
                 <div
-                  className={`w-16 h-16 bg-gradient-to-br from-primary-50 to-primary-100 dark:from-primary-800 dark:to-primary-900 border-2 border-primary-200 dark:border-primary-700 rounded-xl flex items-center justify-center transition-all duration-300 group-hover:scale-105 group-hover:shadow-lg${
-                    homeIconClickRoute ? " cursor-pointer" : ""
-                  }`}
+                  className={`w-16 h-16 bg-gradient-to-br from-primary-50 to-primary-100 dark:from-primary-800 dark:to-primary-900 border-2 border-primary-200 dark:border-primary-700 rounded-xl flex items-center justify-center transition-all duration-300 group-hover:scale-105 group-hover:shadow-lg${homeIconClickRoute ? " cursor-pointer" : ""
+                    }`}
                   onClick={
                     homeIconClickRoute ? handleInstituteLogoClick : undefined
                   }
@@ -212,29 +210,29 @@ export const LogoutSidebar = ({
             {sidebarComponent
               ? sidebarComponent
               : filteredHamburgerItems.map((obj, key) => (
-                  <div
-                    key={key}
-                    className="animate-slide-in-right transform transition-all duration-300 hover:scale-[1.01]"
-                    style={{
-                      animationDelay: `${key * 40}ms`,
-                      animationFillMode: "both",
-                    }}
-                  >
-                    <div className="relative group">
-                      <div className="absolute inset-0 bg-gradient-to-r from-primary-500/5 to-primary-600/5 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300 transform scale-95 group-hover:scale-100"></div>
-                      <SidebarItem
-                        icon={obj.icon}
-                        subItems={
-                          obj.subItems as
-                            | { subItem: string; subItemLink: string }[]
-                            | undefined
-                        }
-                        title={obj.title}
-                        to={(obj.to || "/") as string}
-                      />
-                    </div>
+                <div
+                  key={key}
+                  className="animate-slide-in-right transform transition-all duration-300"
+                  style={{
+                    animationDelay: `${key * 40}ms`,
+                    animationFillMode: "both",
+                  }}
+                >
+                  <div className="relative group">
+                    <div className="absolute inset-0 bg-gradient-to-r from-primary-500/5 to-primary-600/5 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300 transform scale-95 group-hover:scale-100"></div>
+                    <SidebarItem
+                      icon={obj.icon}
+                      subItems={
+                        obj.subItems as
+                        | { subItem: string; subItemLink: string }[]
+                        | undefined
+                      }
+                      title={obj.title}
+                      to={(obj.to || "/") as string}
+                    />
                   </div>
-                ))}
+                </div>
+              ))}
           </SidebarMenu>
         </div>
 

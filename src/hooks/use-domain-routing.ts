@@ -73,6 +73,12 @@ export const useDomainRouting = () => {
           institute_theme_code: data.instituteThemeCode,
           home_icon_click_route: data.homeIconClickRoute ?? null,
           homeIconClickRoute: data.homeIconClickRoute ?? null,
+          playStoreAppLink: data.playStoreAppLink ?? null,
+          appStoreAppLink: data.appStoreAppLink ?? null,
+          windowsAppLink: data.windowsAppLink ?? null,
+          macAppLink: data.macAppLink ?? null,
+          learnerPortalUrl: data.learnerPortalUrl ?? null,
+          instructorPortalUrl: data.instructorPortalUrl ?? null,
         }),
       });
 
@@ -181,13 +187,13 @@ export const useDomainRouting = () => {
       setState(globalDomainRoutingState);
       return;
     }
-    
+
     // If we already have a cached result, use it
     if (globalDomainRoutingState && globalDomainRoutingState.instituteId) {
       setState(globalDomainRoutingState);
       return;
     }
-    
+
     isResolvingGlobally = true;
     setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
@@ -220,7 +226,7 @@ export const useDomainRouting = () => {
           error: null,
           homeIconClickRoute: apiResult.homeIconClickRoute ?? null,
         };
-        
+
         // Cache the result globally
         globalDomainRoutingState = newState;
         isResolvingGlobally = false;
@@ -244,7 +250,7 @@ export const useDomainRouting = () => {
           error: null,
           homeIconClickRoute: null,
         };
-        
+
         globalDomainRoutingState = newState;
         isResolvingGlobally = false;
         setState(newState);
@@ -264,7 +270,7 @@ export const useDomainRouting = () => {
         error: null,
         homeIconClickRoute: null,
       };
-      
+
       globalDomainRoutingState = newState;
       isResolvingGlobally = false;
       setState(newState);
@@ -287,7 +293,7 @@ export const useDomainRouting = () => {
             error: null,
             homeIconClickRoute: null,
           };
-          
+
           globalDomainRoutingState = newState;
           isResolvingGlobally = false;
           setState(newState);
@@ -310,7 +316,7 @@ export const useDomainRouting = () => {
         error: error instanceof Error ? error.message : "Unknown error",
         homeIconClickRoute: null,
       };
-      
+
       globalDomainRoutingState = newState;
       isResolvingGlobally = false;
       setState(newState);
@@ -409,9 +415,9 @@ export const useDomainRouting = () => {
       // Only redirect if we're not on the root route (to avoid conflicts with root route logic)
       // and not on a public route like /{tagName}
       const currentPathForRedirect = window.location.pathname;
-      const isPublicRouteForRedirect = /^\/[^/]+\/?$/.test(currentPathForRedirect) && 
-        !currentPathForRedirect.startsWith('/login') && 
-        !currentPathForRedirect.startsWith('/signup') && 
+      const isPublicRouteForRedirect = /^\/[^/]+\/?$/.test(currentPathForRedirect) &&
+        !currentPathForRedirect.startsWith('/login') &&
+        !currentPathForRedirect.startsWith('/signup') &&
         !currentPathForRedirect.startsWith('/register') &&
         !currentPathForRedirect.startsWith('/privacy-policy') &&
         !currentPathForRedirect.startsWith('/terms-and-conditions') &&
@@ -431,7 +437,7 @@ export const useDomainRouting = () => {
         !currentPathForRedirect.startsWith('/learning-centre') &&
         !currentPathForRedirect.startsWith('/user-profile') &&
         !currentPathForRedirect.startsWith('/Coursetile');
-        
+
       if (window.location.pathname !== "/" && !isPublicRouteForRedirect) {
         // Executing redirect to: ${state.redirectPath}
         redirectToResolvedPath();

@@ -105,14 +105,18 @@ public class WorkflowWatchdogJob {
                     execution.getWorkflowSchedule() != null ? execution.getWorkflowSchedule().getId() : "N/A",
                     execution.getStartedAt());
 
-            GenericEmailRequest request = new GenericEmailRequest();
-            request.setSubject(subject);
-            request.setBodyHtml(body);
-            request.setTo(List.of("shreyash@vidyayatan.com", "manshu@vidyayatan.com"));
+            List<String> recipients = List.of("shreyash@vidyayatan.com", "manshu@vidyayatan.com");
 
-            // Pass instituteId for logging/billing if needed, or extract from workflow
-            String instituteId = execution.getWorkflow().getInstituteId();
-            notificationService.sendGenericHtmlMail(request, instituteId);
+            for (String recipient : recipients) {
+                GenericEmailRequest request = new GenericEmailRequest();
+                request.setSubject(subject);
+                request.setBody(body);
+                request.setTo(recipient);
+
+                // Pass instituteId for logging/billing if needed, or extract from workflow
+                String instituteId = execution.getWorkflow().getInstituteId();
+                notificationService.sendGenericHtmlMail(request, instituteId);
+            }
 
             log.info("Alert sent for stale execution: {}", execution.getId());
 

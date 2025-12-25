@@ -113,4 +113,9 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
     Optional<UserPlan> findFirstByUserIdAndPaymentPlanIdAndStatus(String userId, String paymentPlanId, String status);
 
     List<UserPlan> findAllByStatusIn(List<String> statuses);
+
+    Optional<UserPlan> findTopByUserIdAndEnrollInviteIdAndStatusInOrderByEndDateDesc(
+            String userId,
+            String enrollInviteId,
+            List<String> statuses);
 }

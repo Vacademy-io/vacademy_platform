@@ -127,12 +127,13 @@ public class LearnerEnrollRequestService {
                 userPlanSource,
                 subOrgId);
 
-        LearnerEnrollResponseDTO response = enrollLearnerToBatch(
-                learnerEnrollRequestDTO,
-                enrollDTO,
-                enrollInvite,
-                paymentOption,
-                userPlan);
+        LearnerEnrollResponseDTO response;
+        response = enrollLearnerToBatch(
+            learnerEnrollRequestDTO,
+            enrollDTO,
+            enrollInvite,
+            paymentOption,
+            userPlan);
         // Send enrollment notifications ONLY for FREE enrollments (status = ACTIVE)
         // For PAID enrollments, notifications will be sent after webhook confirms
         // payment
@@ -151,6 +152,11 @@ public class LearnerEnrollRequestService {
                     learnerEnrollRequestDTO.getInstituteId(),
                     learnerEnrollRequestDTO.getUser(),
                     enrollInvite);
+        } else if (UserPlanStatusEnum.PENDING.name().equals(userPlan.getStatus())) {
+            log.info(
+                    "Stacked enrollment created with PENDING status for user: {}. Skipping notifications and session mapping.",
+                    learnerEnrollRequestDTO.getUser().getId());
+            // Explicitly do nothing else for PENDING plans
         } else {
             log.info(
                     "PAID enrollment initiated. Notifications will be sent after payment confirmation. UserPlan ID: {}",
@@ -227,7 +233,8 @@ public class LearnerEnrollRequestService {
             userPlanStatus = UserPlanStatusEnum.PENDING_FOR_PAYMENT.name();
         } else {
             userPlanStatus = UserPlanStatusEnum.ACTIVE.name();
-        }        return userPlanService.createUserPlan(
+        }
+        return userPlanService.createUserPlan(
                 userId,
                 paymentPlan,
                 null, // coupon can be handled later if needed

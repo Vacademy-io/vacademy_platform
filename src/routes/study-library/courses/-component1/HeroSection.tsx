@@ -1,4 +1,5 @@
 import { H1 } from "@/components/design-system/typography";
+import { cn } from "@/lib/utils";
 import { BookOpen } from "@phosphor-icons/react";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
@@ -91,7 +92,11 @@ const HeroSection = ({
     if (isLoading) return <DashboardLoader />;
 
     return (
-        <div className="relative bg-background dark:bg-background overflow-hidden w-full max-w-full">
+        <div className={cn(
+            "relative bg-background dark:bg-background overflow-hidden w-full max-w-full",
+            // Vibrant Styles
+            "[.ui-vibrant_&]:bg-gradient-to-b [.ui-vibrant_&]:from-primary/5 [.ui-vibrant_&]:to-transparent"
+        )}>
             {/* Animated background elements */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
                 <div className="absolute top-1/4 left-1/4 w-12 h-12 sm:w-16 sm:h-4 md:w-32 md:h-8 bg-primary-100/20 rounded-full blur-3xl animate-gentle-pulse"></div>
@@ -107,16 +112,25 @@ const HeroSection = ({
                     <div className="animate-fade-in-up max-w-2xl text-center lg:text-left">
                         {/* Header with Icon */}
                         <div className="flex items-center justify-center lg:justify-start space-x-1.0 mb-1 sm:mb-2">
-                            <div className="p-0.5 sm:p-1 bg-primary-100 rounded-lg shadow-sm">
+                            <div className={cn(
+                                "p-0.5 sm:p-1 bg-primary-100 rounded-lg shadow-sm",
+                                "[.ui-vibrant_&]:bg-primary/20 [.ui-vibrant_&]:shadow-md [.ui-vibrant_&]:text-primary"
+                            )}>
                                 <BookOpen
                                     size={16}
-                                    className="text-primary-600 sm:w-[18px] sm:h-[18px]"
+                                    className={cn(
+                                        "text-primary-600 sm:w-[18px] sm:h-[18px]",
+                                        "[.ui-vibrant_&]:text-primary"
+                                    )}
                                     weight="duotone"
                                 />
                             </div>
                             <div className="flex items-center space-x-0.5 sm:space-x-1">
                                 <div className="w-1 h-1 sm:w-1.5 bg-primary-500 rounded-full animate-pulse"></div>
-                                <span className="text-xs font-semibold text-primary-600 uppercase tracking-wider">
+                                <span className={cn(
+                                    "text-xs font-semibold text-primary-600 uppercase tracking-wider",
+                                    "[.ui-vibrant_&]:text-primary"
+                                )}>
                                     {getTerminology(
                                         ContentTerms.Course,
                                         SystemTerms.Course
@@ -141,11 +155,10 @@ const HeroSection = ({
 
                 {/* Actions Section (image removed) */}
                 <div
-                    className={`w-full lg:w-1/3 flex items-right justify-end lg:items-end lg:ml-auto p-0.5 sm:p-1 animate-fade-in-up ${
-                        allowLeanersToCreateCourses
-                            ? "gap-2 sm:gap-3 flex-col"
-                            : ""
-                    }`}
+                    className={`w-full lg:w-1/3 flex items-right justify-end lg:items-end lg:ml-auto p-0.5 sm:p-1 animate-fade-in-up ${allowLeanersToCreateCourses
+                        ? "gap-2 sm:gap-3 flex-col"
+                        : ""
+                        }`}
                     style={{ animationDelay: "0.4s" }}
                 >
                     {hasTeacherAndStudentRole && (

@@ -2,7 +2,7 @@ import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { PullToRefreshWrapper } from "@/components/design-system/pull-to-refresh";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { toTitleCase } from "@/lib/utils";
+import { cn, toTitleCase } from "@/lib/utils";
 import { useDripConditions } from "@/hooks/use-drip-conditions";
 import { LockedBadge } from "@/components/drip-conditions";
 import { useDripConditionStore } from "@/stores/study-library/drip-conditions-store";
@@ -1072,7 +1072,12 @@ export const CourseStructureDetails = ({
                   open={isSubjectOpen}
                   onOpenChange={() => toggleSubject(subject.id)}
                 >
-                  <CollapsibleTrigger className="group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-left text-sm font-semibold shadow-sm transition-all hover:bg-accent hover:text-accent-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1">
+                  <CollapsibleTrigger className={cn(
+                    "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-left text-sm font-semibold shadow-sm transition-all hover:bg-accent hover:text-accent-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                    // Vibrant Styles
+                    "[.ui-vibrant_&]:bg-gradient-to-r [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5",
+                    "[.ui-vibrant_&]:border-primary/20 [.ui-vibrant_&]:hover:border-primary/40"
+                  )}>
                     <div className="flex min-w-0 flex-1 items-center gap-2.5">
                       {isSubjectOpen ? (
                         <CaretDown
@@ -1135,7 +1140,11 @@ export const CourseStructureDetails = ({
                               open={isModuleOpen}
                               onOpenChange={() => toggleModule(mod.module.id)}
                             >
-                              <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium transition-all hover:bg-accent hover:text-accent-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1">
+                              <CollapsibleTrigger className={cn(
+                                "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium transition-all hover:bg-accent hover:text-accent-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                                // Vibrant Styles
+                                "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary"
+                              )}>
                                 <div className="flex min-w-0 flex-1 items-center gap-2">
                                   {isModuleOpen ? (
                                     <CaretDown
@@ -1236,10 +1245,14 @@ export const CourseStructureDetails = ({
                                       >
                                         <CollapsibleTrigger
                                           disabled={isChapterLocked}
-                                          className={`group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${isChapterLocked
-                                            ? "cursor-not-allowed opacity-60"
-                                            : "hover:bg-accent hover:text-accent-foreground cursor-pointer"
-                                            }`}
+                                          className={cn(
+                                            `group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${isChapterLocked
+                                              ? "cursor-not-allowed opacity-60"
+                                              : "hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                                            }`,
+                                            // Vibrant Styles
+                                            !isChapterLocked && "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary"
+                                          )}
                                         >
                                           <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                             {isChapterOpen ? (
@@ -1417,10 +1430,11 @@ export const CourseStructureDetails = ({
                                                   return (
                                                     <div
                                                       key={slide.id}
-                                                      className={
-                                                        getSlideStyling() +
-                                                        " rounded-md"
-                                                      }
+                                                      className={cn(
+                                                        getSlideStyling() + " rounded-md",
+                                                        // Vibrant Styles
+                                                        "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:border-primary/20 [.ui-vibrant_&]:transition-colors"
+                                                      )}
                                                       onClick={
                                                         isSlideClickable() &&
                                                           !isSlideLocked

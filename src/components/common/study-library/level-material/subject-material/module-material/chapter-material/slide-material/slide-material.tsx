@@ -25,6 +25,7 @@ import { useDoubtSidebarStore } from "@/stores/study-library/doubt-sidebar-store
 import QuizViewer from "./quiz-viewer";
 import { Slide } from "@/hooks/study-library/use-slides";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
+import { ConcentrationSettings } from "@/types/student-display-settings";
 
 export const SlideMaterial = () => {
   const { activeItem, items, setActiveItem, slideEvaluations } =
@@ -37,6 +38,20 @@ export const SlideMaterial = () => {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { uploadFile, getPublicUrl } = useFileUpload();
+
+  // Settings state
+  const [concentrationSettings, setConcentrationSettings] = useState<ConcentrationSettings | undefined>(undefined);
+
+  // Fetch settings
+  useEffect(() => {
+    getStudentDisplaySettings()
+      .then((settings) => {
+        if (settings?.concentration) {
+          setConcentrationSettings(settings.concentration);
+        }
+      })
+      .catch((err) => console.error("Failed to load display settings for concentration:", err));
+  }, []);
 
   const playerRef = useRef<HTMLVideoElement | null>(null);
 
@@ -53,11 +68,11 @@ export const SlideMaterial = () => {
 
   const isPrevLocked = prevSlide
     ? slideEvaluations[prevSlide.id] &&
-      isItemLocked(slideEvaluations[prevSlide.id])
+    isItemLocked(slideEvaluations[prevSlide.id])
     : false;
   const isNextLocked = nextSlide
     ? slideEvaluations[nextSlide.id] &&
-      isItemLocked(slideEvaluations[nextSlide.id])
+    isItemLocked(slideEvaluations[nextSlide.id])
     : false;
 
   const canGoPrev = currentIndex > 0 && !isPrevLocked;
@@ -197,6 +212,7 @@ export const SlideMaterial = () => {
                       videoUrl={videoUrl}
                       onTimeUpdate={handleVideoTimeUpdate}
                       ref={playerRef}
+                      concentrationSettings={concentrationSettings}
                     />
                   </div>
                 </div>
@@ -218,6 +234,7 @@ export const SlideMaterial = () => {
                       ref={playerRef}
                       ms={activeItem.progress_marker}
                       questions={videoSlide?.questions || []}
+                      concentrationSettings={concentrationSettings}
                     />
                   </div>
                 </div>
@@ -264,13 +281,13 @@ export const SlideMaterial = () => {
               options:
                 Array.isArray(question.options) && question.options.length > 0
                   ? question.options.map((opt, idx) => ({
-                      id: opt.id || String(idx),
-                      text: { content: opt.text?.content || "Option" },
-                    }))
+                    id: opt.id || String(idx),
+                    text: { content: opt.text?.content || "Option" },
+                  }))
                   : [
-                      // If no options, provide a default for numeric/text input
-                      { id: "input", text: { content: "(Enter your answer)" } },
-                    ],
+                    // If no options, provide a default for numeric/text input
+                    { id: "input", text: { content: "(Enter your answer)" } },
+                  ],
               auto_evaluation_json: question.auto_evaluation_json,
               explanation_text: question.explanation_text,
             };
@@ -319,15 +336,15 @@ export const SlideMaterial = () => {
                 options:
                   Array.isArray(question.options) && question.options.length > 0
                     ? question.options.map((opt, idx) => ({
-                        id: opt.id || String(idx),
-                        text: { content: opt.text?.content || "Option" },
-                      }))
+                      id: opt.id || String(idx),
+                      text: { content: opt.text?.content || "Option" },
+                    }))
                     : [
-                        {
-                          id: "input",
-                          text: { content: "(Enter your answer)" },
-                        },
-                      ],
+                      {
+                        id: "input",
+                        text: { content: "(Enter your answer)" },
+                      },
+                    ],
               };
             });
             setContent(

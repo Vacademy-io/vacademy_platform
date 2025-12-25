@@ -228,6 +228,34 @@ function mergeWithDefaults(
           d.courseSettings.quiz.celebrateOnQuizComplete,
       },
     },
+    concentration: {
+      enabled:
+        incoming?.concentration?.enabled ?? d.concentration.enabled,
+      frequency: {
+        min_minutes:
+          incoming?.concentration?.frequency?.min_minutes ??
+          d.concentration.frequency.min_minutes,
+        max_minutes:
+          incoming?.concentration?.frequency?.max_minutes ??
+          d.concentration.frequency.max_minutes,
+      },
+      behavior: {
+        allow_skip:
+          incoming?.concentration?.behavior?.allow_skip ??
+          d.concentration.behavior.allow_skip,
+        penalty_type:
+          incoming?.concentration?.behavior?.penalty_type ??
+          d.concentration.behavior.penalty_type,
+      },
+      appearance: {
+        title:
+          incoming?.concentration?.appearance?.title ??
+          d.concentration.appearance.title,
+        subtitle:
+          incoming?.concentration?.appearance?.subtitle ??
+          d.concentration.appearance.subtitle,
+      },
+    },
     postLoginRedirectRoute:
       incoming?.postLoginRedirectRoute ?? d.postLoginRedirectRoute,
   };
@@ -285,6 +313,12 @@ export async function getStudentDisplaySettings(
   // Try institute-aware cache first
   if (!forceRefresh) {
     const cached = readCacheForInstitute(instituteId);
+    // Force add concentration defaults if missing in cache (migration)
+    if (cached && !cached.concentration) {
+      cached.concentration = DEFAULT_STUDENT_DISPLAY_SETTINGS.concentration;
+      // Update cache immediately
+      writeCacheForInstitute(instituteId, cached);
+    }
     if (cached) return mergeWithDefaults(cached);
   }
   if (!instituteId) {

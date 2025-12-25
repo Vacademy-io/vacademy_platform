@@ -49,10 +49,18 @@ export const ContinueLearningCard = ({
     }
 
     return (
-        <Card className="h-full flex flex-col shadow-sm hover:shadow-md transition-all duration-300 group">
+        <Card className={cn(
+            "h-full flex flex-col shadow-sm hover:shadow-md transition-all duration-300 group",
+            // Vibrant Mode Styles - Flat Pastel
+            "[.ui-vibrant_&]:bg-indigo-50/50 dark:[.ui-vibrant_&]:bg-indigo-950/20",
+            "[.ui-vibrant_&]:border-indigo-200/50 dark:[.ui-vibrant_&]:border-indigo-800/30"
+        )}>
             <CardHeader className="pb-3 px-4 sm:px-6 flex flex-row items-center justify-between space-y-0">
                 <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-primary/10 rounded-md text-primary">
+                    <div className={cn(
+                        "p-2 bg-primary/10 rounded-md text-primary",
+                        "[.ui-vibrant_&]:bg-white/80 [.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:text-indigo-600 [.ui-vibrant_&]:dark:bg-indigo-500/20 [.ui-vibrant_&]:dark:text-indigo-300"
+                    )}>
                         <Play weight="duotone" size={18} />
                     </div>
                     <div>
@@ -69,7 +77,10 @@ export const ContinueLearningCard = ({
                         </p>
                     </div>
                 </div>
-                <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 gap-1">
+                <Badge variant="secondary" className={cn(
+                    "bg-primary/10 text-primary border-primary/20 gap-1",
+                    "[.ui-vibrant_&]:bg-white/50 [.ui-vibrant_&]:border-primary/30"
+                )}>
                     <Sparkles size={8} /> Active
                 </Badge>
             </CardHeader>
@@ -80,12 +91,15 @@ export const ContinueLearningCard = ({
                         <div
                             key={slide.slide_id}
                             onClick={() => onResumeClick(slide)}
-                            className="group/item flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer border border-transparent hover:border-muted-foreground/10"
+                            className={cn(
+                                "group/item flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer border border-transparent hover:border-muted-foreground/10",
+                                "[.ui-vibrant_&]:hover:bg-white/60 [.ui-vibrant_&]:hover:border-primary/20"
+                            )}
                         >
                             <div className="flex-shrink-0">
                                 <span className={cn(
                                     "flex items-center justify-center w-6 h-6 rounded-md text-xs font-medium",
-                                    index === 0 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                                    index === 0 ? "bg-primary text-primary-foreground shadow-sm [.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-primary [.ui-vibrant_&]:to-primary/80" : "bg-muted text-muted-foreground"
                                 )}>
                                     {index + 1}
                                 </span>
@@ -105,7 +119,10 @@ export const ContinueLearningCard = ({
 
                 <Button
                     onClick={() => data.slides[0] && onResumeClick(data.slides[0])}
-                    className="w-full gap-2"
+                    className={cn(
+                        "w-full gap-2",
+                        "[.ui-vibrant_&]:bg-gradient-to-r [.ui-vibrant_&]:from-primary [.ui-vibrant_&]:to-primary/90 [.ui-vibrant_&]:shadow-lg [.ui-vibrant_&]:shadow-primary/20"
+                    )}
                     size="sm"
                 >
                     <Play weight="duotone" size={14} />

@@ -158,5 +158,20 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
     enabled: true,
     generationThresholdPercent: 80,
   },
+  concentration: {
+    enabled: true,
+    frequency: {
+      min_minutes: 5,
+      max_minutes: 7,
+    },
+    behavior: {
+      allow_skip: false,
+      penalty_type: "pause",
+    },
+    appearance: {
+      title: "Focus Check",
+      subtitle: "Select the matching number to continue your streak",
+    },
+  },
   postLoginRedirectRoute: "/dashboard",
 };

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { cn } from "@/lib/utils";
 import CoursesPage from "./CoursesPage.tsx";
 import { useCatalogStore } from "../-store/catalogStore.ts";
 import axios from "axios";
@@ -440,11 +441,17 @@ const CourseCatalougePage: React.FC = () => {
                   <TabsTrigger
                     key={t.value}
                     value={t.value}
-                    className="flex-1 sm:flex-none px-1.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium data-[state=active]:bg-white dark:data-[state=active]:bg-neutral-800 data-[state=active]:shadow-sm"
+                    className={cn(
+                      "flex-1 sm:flex-none px-1.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium data-[state=active]:bg-white dark:data-[state=active]:bg-neutral-800 data-[state=active]:shadow-sm",
+                      // Vibrant Styles - Flat Pastel
+                      t.value === "COMPLETED" && "[.ui-vibrant_&]:data-[state=active]:bg-emerald-100/50 [.ui-vibrant_&]:data-[state=active]:text-emerald-700 dark:[.ui-vibrant_&]:data-[state=active]:bg-emerald-900/30 dark:[.ui-vibrant_&]:data-[state=active]:text-emerald-300",
+                      t.value === "PROGRESS" && "[.ui-vibrant_&]:data-[state=active]:bg-indigo-100/50 [.ui-vibrant_&]:data-[state=active]:text-indigo-700 dark:[.ui-vibrant_&]:data-[state=active]:bg-indigo-900/30 dark:[.ui-vibrant_&]:data-[state=active]:text-indigo-300",
+                      t.value !== "COMPLETED" && t.value !== "PROGRESS" && "[.ui-vibrant_&]:data-[state=active]:bg-slate-100/50 [.ui-vibrant_&]:data-[state=active]:text-slate-700 dark:[.ui-vibrant_&]:data-[state=active]:bg-slate-800/50 dark:[.ui-vibrant_&]:data-[state=active]:text-slate-300"
+                    )}
                   >
                     <span className="inline-flex items-center gap-1">
                       {/* Icon (visible only in vibrant mode via CSS) */}
-                      <span className="ui-vibrant:inline hidden">
+                      <span className="hidden [.ui-vibrant_&]:inline">
                         {t.value === "ALL" && <IconBooks size={14} />}
                         {t.value === "PROGRESS" && <IconChartBar size={14} />}
                         {t.value === "COMPLETED" && <IconCheck size={14} />}

@@ -144,6 +144,22 @@ export interface StudentCourseSettings {
   quiz: StudentCourseSettingsQuiz;
 }
 
+export interface ConcentrationSettings {
+  enabled: boolean;
+  frequency: {
+    min_minutes: number;
+    max_minutes: number;
+  };
+  behavior: {
+    allow_skip: boolean;
+    penalty_type: "pause" | "flag_only";
+  };
+  appearance: {
+    title: string;
+    subtitle: string;
+  };
+}
+
 // Root
 export interface StudentDisplaySettingsData {
   sidebar: { visible: boolean; tabs: StudentSidebarTabConfig[] };
@@ -155,6 +171,7 @@ export interface StudentDisplaySettingsData {
   allCourses: StudentAllCoursesSettings;
   notifications: StudentNotificationSettings;
   certificates: StudentCertificateSettings;
+  concentration: ConcentrationSettings;
   ui: StudentUISettings;
   postLoginRedirectRoute: string;
 }

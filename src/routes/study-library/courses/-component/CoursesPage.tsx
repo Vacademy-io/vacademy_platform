@@ -2,10 +2,10 @@ import React, { useEffect, useRef, useState } from "react";
 import FilterPanel from "./FilterPanel.tsx";
 import SearchAndSortBar from "./SearchAndSortBar.tsx";
 import CourseCard from "./CourseCards.tsx";
-import { MyPagination } from "@/components/design-system/pagination.tsx";
+import Pagination from "./Pagination.tsx";
 import { CoursePackageResponse } from "@/types/course-catalog/course-catalog-list.ts";
 import { Search } from "lucide-react";
-import { toTitleCase } from "@/lib/utils";
+import { cn, toTitleCase } from "@/lib/utils";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils.ts";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings.ts";
 
@@ -95,10 +95,10 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
 
         const handleScroll = () => {
             if (!filterPanelRef.current) return;
-            
+
             const rect = filterPanelRef.current.getBoundingClientRect();
             const scrollTop = window.scrollY || document.documentElement.scrollTop;
-            
+
             // Check if we're on desktop (lg breakpoint is 1024px)
             if (window.innerWidth < 1024) {
                 setIsSticky(false);
@@ -151,7 +151,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                 .filter((item) => item.fileId && item.fileId.trim() !== "");
 
             if (validFileIds.length === 0) {
-        
+
                 return;
             }
         };
@@ -174,12 +174,12 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                     <>
                         {/* Spacer to maintain layout when filter panel becomes fixed */}
                         {isSticky && (
-                            <div 
+                            <div
                                 className="hidden lg:block flex-shrink-0"
                                 style={{ width: '20rem' }}
                             />
                         )}
-                        <aside 
+                        <aside
                             ref={filterPanelRef}
                             className="w-full flex-shrink-0"
                             style={{
@@ -194,29 +194,29 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                             }}
                         >
                             <FilterPanel
-                            selectedLevels={selectedLevels}
-                            onLevelChange={(id) =>
-                                toggleItem(
-                                    id,
-                                    selectedLevels,
-                                    setSelectedLevels
-                                )
-                            }
-                            selectedTags={selectedTags}
-                            onTagChange={(id) =>
-                                toggleItem(id, selectedTags, setSelectedTags)
-                            }
-                            selectedInstructors={selectedInstructors}
-                            onInstructorChange={(id) =>
-                                toggleItem(
-                                    id,
-                                    selectedInstructors,
-                                    setSelectedInstructors
-                                )
-                            }
-                            clearAllFilters={clearAllFilters}
-                            onApplyFilters={onApplyFilters}
-                        />
+                                selectedLevels={selectedLevels}
+                                onLevelChange={(id) =>
+                                    toggleItem(
+                                        id,
+                                        selectedLevels,
+                                        setSelectedLevels
+                                    )
+                                }
+                                selectedTags={selectedTags}
+                                onTagChange={(id) =>
+                                    toggleItem(id, selectedTags, setSelectedTags)
+                                }
+                                selectedInstructors={selectedInstructors}
+                                onInstructorChange={(id) =>
+                                    toggleItem(
+                                        id,
+                                        selectedInstructors,
+                                        setSelectedInstructors
+                                    )
+                                }
+                                clearAllFilters={clearAllFilters}
+                                onApplyFilters={onApplyFilters}
+                            />
                         </aside>
                     </>
                 )}
@@ -231,29 +231,45 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                     />
 
                     {isLoading ? (
-                        <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md shadow-sm p-5 sm:p-6">
+                        <div className={cn(
+                            "bg-card border rounded-md shadow-sm p-5 sm:p-6",
+                            // Vibrant Styles
+                            "[.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:border-primary/20",
+                            "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5"
+                        )}>
                             <div className="animate-pulse space-y-3 sm:space-y-4">
-                                <div className="h-4 bg-gray-200 dark:bg-neutral-800 rounded w-1/3"></div>
+                                <div className="h-4 bg-muted rounded w-1/3"></div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-3 sm:gap-4">
                                     {Array.from({ length: 4 }).map((_, i) => (
-                                        <div key={i} className="bg-gray-50 dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md p-3 sm:p-4">
-                                            <div className="h-32 sm:h-36 bg-gray-200 dark:bg-neutral-800 rounded mb-3"></div>
-                                            <div className="h-4 bg-gray-200 dark:bg-neutral-800 rounded w-3/4 mb-2"></div>
-                                            <div className="h-3 bg-gray-200 dark:bg-neutral-800 rounded w-1/2"></div>
+                                        <div key={i} className="bg-muted/10 border rounded-md p-3 sm:p-4">
+                                            <div className="h-32 sm:h-36 bg-muted rounded mb-3"></div>
+                                            <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
+                                            <div className="h-3 bg-muted rounded w-1/2"></div>
                                         </div>
                                     ))}
                                 </div>
                             </div>
                         </div>
                     ) : courseData.content.length === 0 ? (
-                        <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md shadow-sm p-5 sm:p-6 text-center">
-                            <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 rounded-md mx-auto mb-3 sm:mb-4 flex items-center justify-center">
+                        <div className={cn(
+                            "bg-card border rounded-md shadow-sm p-5 sm:p-6 text-center",
+                            // Vibrant Styles
+                            "[.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:border-primary/20",
+                            "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5"
+                        )}>
+                            <div className={cn(
+                                "w-12 h-12 sm:w-16 sm:h-16 bg-muted rounded-md mx-auto mb-3 sm:mb-4 flex items-center justify-center",
+                                "[.ui-vibrant_&]:bg-primary/10"
+                            )}>
                                 <Search
                                     size={20}
-                                    className="text-gray-400 sm:w-6 sm:h-6"
+                                    className={cn(
+                                        "text-muted-foreground sm:w-6 sm:h-6",
+                                        "[.ui-vibrant_&]:text-primary"
+                                    )}
                                 />
                             </div>
-                            <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-neutral-100 mb-2">
+                            <h3 className="text-base sm:text-lg font-semibold text-foreground mb-2">
                                 No{" "}
                                 {getTerminology(
                                     ContentTerms.Course,
@@ -261,7 +277,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                 ).toLocaleLowerCase()}
                                 s found
                             </h3>
-                            <p className="text-gray-600 dark:text-neutral-300 text-sm max-w-md mx-auto">
+                            <p className="text-muted-foreground text-sm max-w-md mx-auto">
                                 Try adjusting your search criteria or browse our
                                 popular categories to discover learning
                                 opportunities.
@@ -270,7 +286,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                     ) : (
                         <div className="space-y-3 sm:space-y-4">
                             {/* Compact Results Summary */}
-                            <div className="text-[11px] sm:text-xs text-gray-500 dark:text-neutral-400 mb-1">
+                            <div className="text-[11px] sm:text-xs text-muted-foreground mb-1">
                                 {courseData.totalElements}{" "}
                                 {getTerminology(
                                     ContentTerms.Course,
@@ -288,7 +304,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                             courseId={course.id}
                                             package_name={toTitleCase(
                                                 course.package_name ||
-                                                    "Untitled Package"
+                                                "Untitled Package"
                                             )}
                                             level_name={toTitleCase(
                                                 course.level_name || "Beginner"
@@ -305,12 +321,12 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                             tags={
                                                 course.comma_separeted_tags
                                                     ? course.comma_separeted_tags
-                                                          .split(",")
-                                                          .map((tag: string) => tag.trim())
+                                                        .split(",")
+                                                        .map((tag: string) => tag.trim())
                                                     : fallbackTags && fallbackTags.trim() !== ""
                                                         ? fallbackTags
-                                                              .split(",")
-                                                              .map((tag: string) => tag.trim())
+                                                            .split(",")
+                                                            .map((tag: string) => tag.trim())
                                                         : []
                                             }
                                             previewImageUrl={
@@ -334,7 +350,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                             {/* Pagination */}
                             {courseData.totalPages > 1 && (
                                 <div className="flex justify-center mt-4 sm:mt-6">
-                                    <MyPagination
+                                    <Pagination
                                         currentPage={courseData.number}
                                         totalPages={courseData.totalPages}
                                         onPageChange={handlePageChange}

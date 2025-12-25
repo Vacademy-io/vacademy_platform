@@ -1,4 +1,4 @@
-import { toTitleCase } from "@/lib/utils";
+import { cn, toTitleCase } from "@/lib/utils";
 import { VideoPlayer } from "../components/media/video-player";
 import { Badge } from "@/components/ui/badge";
 
@@ -63,14 +63,25 @@ export const CourseHeader = ({ courseData, showConfetti = false }: CourseHeaderP
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="bg-background/95 backdrop-blur-md rounded-xl p-6 shadow-sm border border-border/50 text-foreground text-left ring-1 ring-black/5">
+                                    <div className={cn(
+                                        "bg-background/95 backdrop-blur-md rounded-xl p-6 shadow-sm border border-border/50 text-foreground text-left ring-1 ring-black/5",
+                                        // Vibrant Styles - Flat Pastel
+                                        "[.ui-vibrant_&]:bg-slate-50/95 dark:[.ui-vibrant_&]:bg-slate-900/95",
+                                        "[.ui-vibrant_&]:border-slate-200/50 dark:[.ui-vibrant_&]:border-slate-800/30",
+                                        "[.ui-vibrant_&]:shadow-md"
+                                    )}>
                                         {/* Tags */}
                                         <div className="mb-4 flex flex-wrap gap-2">
                                             {courseData.tags.map((tag, index) => (
                                                 <Badge
                                                     key={index}
                                                     variant="secondary"
-                                                    className="uppercase tracking-wide text-[10px] sm:text-xs font-semibold px-2.5 py-1"
+                                                    className={cn(
+                                                        "uppercase tracking-wide text-[10px] sm:text-xs font-semibold px-2.5 py-1",
+                                                        // Vibrant Styles - Flat Pastel
+                                                        "[.ui-vibrant_&]:bg-sky-100/50 [.ui-vibrant_&]:text-sky-700 dark:[.ui-vibrant_&]:bg-sky-900/30 dark:[.ui-vibrant_&]:text-sky-300",
+                                                        "[.ui-vibrant_&]:border-sky-200/50 dark:[.ui-vibrant_&]:border-sky-800/30 [.ui-vibrant_&]:border"
+                                                    )}
                                                 >
                                                     {tag}
                                                 </Badge>
@@ -78,7 +89,11 @@ export const CourseHeader = ({ courseData, showConfetti = false }: CourseHeaderP
                                         </div>
 
                                         {/* Title */}
-                                        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 leading-tight tracking-tight">
+                                        <h1 className={cn(
+                                            "text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 leading-tight tracking-tight",
+                                            // Vibrant Styles - Flat Pastel
+                                            "[.ui-vibrant_&]:text-slate-900 dark:[.ui-vibrant_&]:text-slate-50"
+                                        )}>
                                             {toTitleCase(courseData.title)}
                                         </h1>
 

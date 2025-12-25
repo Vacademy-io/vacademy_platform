@@ -3,6 +3,7 @@ import {
     ChatCircle,
     TrendUp,
 } from "@phosphor-icons/react";
+import { cn } from "@/lib/utils";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { MyPagination } from "@/components/design-system/pagination";
 import { AxiosError } from "axios";
@@ -19,7 +20,7 @@ import {
     handleSubmitRating,
 } from "../-services/rating-services";
 import { StarRatingComponent } from "@/components/common/star-rating-component";
-import { DashboardLoader } from "@/components/core/dashboard-loader";
+// import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { ProgressBar } from "@/components/ui/custom-progress-bar";
 import { useRouter } from "@tanstack/react-router";
 import { MyButton } from "@/components/design-system/button";
@@ -135,7 +136,7 @@ export function CourseDetailsRatingsComponent({
     // Transform API data to reviews format
     const reviews = ratingData?.content.map(transformRatingToReview) || [];
     const totalPages = ratingData?.totalPages || 0;
-    
+
 
 
     // State to store avatar URLs
@@ -167,13 +168,13 @@ export function CourseDetailsRatingsComponent({
 
             const results = await Promise.all(urlPromises);
             const newUrls: Record<string, string> = {};
-            
+
             results.forEach(({ reviewId, url }) => {
                 if (url) {
                     newUrls[reviewId] = url;
                 }
             });
-            
+
             // Merge with existing URLs instead of replacing
             setAvatarUrls(prev => ({ ...prev, ...newUrls }));
         };
@@ -225,17 +226,17 @@ export function CourseDetailsRatingsComponent({
                 ["GET_ALL_USER_COURSE_RATINGS", page, 10, { source_id: packageSessionId || "", source_type: "PACKAGE_SESSION" }],
                 (oldData: PaginatedResponse | undefined) => {
                     if (!oldData) return oldData;
-                    
+
                     // Find the original review to revert changes
                     const originalReview = reviews.find(r => r.id === variables.id);
                     if (!originalReview) return oldData;
 
                     return {
                         ...oldData,
-                        content: oldData.content.map((rating: Rating) => 
-                            rating.id === variables.id 
-                                ? { 
-                                    ...rating, 
+                        content: oldData.content.map((rating: Rating) =>
+                            rating.id === variables.id
+                                ? {
+                                    ...rating,
                                     likes: originalReview.likes,
                                     dislikes: originalReview.dislikes,
                                     status: "ACTIVE" // Revert status if it was deleted
@@ -283,8 +284,8 @@ export function CourseDetailsRatingsComponent({
                     if (!oldData) return oldData;
                     return {
                         ...oldData,
-                        content: oldData.content.map((rating: Rating) => 
-                            rating.id === reviewId 
+                        content: oldData.content.map((rating: Rating) =>
+                            rating.id === reviewId
                                 ? { ...rating, likes: rating.likes + 1 }
                                 : rating
                         )
@@ -314,8 +315,8 @@ export function CourseDetailsRatingsComponent({
                     if (!oldData) return oldData;
                     return {
                         ...oldData,
-                        content: oldData.content.map((rating: Rating) => 
-                            rating.id === reviewId 
+                        content: oldData.content.map((rating: Rating) =>
+                            rating.id === reviewId
                                 ? { ...rating, dislikes: rating.dislikes + 1 }
                                 : rating
                         )
@@ -413,7 +414,7 @@ export function CourseDetailsRatingsComponent({
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!searchParams.courseId) return;
-        
+
         // Ensure rating is selected
         if (!selectedRating) {
             toast.error("Please select a rating before submitting", {
@@ -434,7 +435,12 @@ export function CourseDetailsRatingsComponent({
     // if (isRatingLoading || !packageSessionId) return <DashboardLoader />;
 
     return (
-        <div className="relative bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md shadow-sm hover:shadow-md transition-all duration-200 p-3 sm:p-4 lg:p-5 group overflow-hidden">
+        <div className={cn(
+            "relative bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md shadow-sm hover:shadow-md transition-all duration-200 p-3 sm:p-4 lg:p-5 group overflow-hidden",
+            // Vibrant Styles
+            "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5",
+            "[.ui-vibrant_&]:border-primary/20 [.ui-vibrant_&]:shadow-md"
+        )}>
             {/* Background gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
 
@@ -445,7 +451,10 @@ export function CourseDetailsRatingsComponent({
             <div className="relative space-y-4 lg:space-y-6">
                 {/* Enhanced Header */}
                 <div className="flex items-center space-x-2 sm:space-x-3 animate-fade-in-down">
-                    <div className="p-1.5 sm:p-2 bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-lg shadow-sm">
+                    <div className={cn(
+                        "p-1.5 sm:p-2 bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-lg shadow-sm",
+                        "[.ui-vibrant_&]:bg-yellow-500/20 [.ui-vibrant_&]:text-yellow-600"
+                    )}>
                         <Star
                             size={20}
                             className="text-yellow-600"
@@ -533,9 +542,17 @@ export function CourseDetailsRatingsComponent({
                         style={{ animationDelay: "0.1s" }}
                     >
                         {/* Enhanced Overall Rating Section */}
-                        <div className="relative bg-gradient-to-br from-yellow-50/80 to-orange-50/80 border border-yellow-200/60 rounded-md p-3 sm:p-4 lg:p-5 overflow-hidden group/rating">
+                        <div className={cn(
+                            "relative bg-gradient-to-br from-yellow-50/80 to-orange-50/80 border border-yellow-200/60 rounded-md p-3 sm:p-4 lg:p-5 overflow-hidden group/rating",
+                            // Vibrant Styles - Flat Pastel
+                            "[.ui-vibrant_&]:bg-none [.ui-vibrant_&]:bg-amber-50/50 dark:[.ui-vibrant_&]:bg-amber-950/20",
+                            "[.ui-vibrant_&]:border-amber-200/50 dark:[.ui-vibrant_&]:border-amber-800/30"
+                        )}>
                             {/* Background pattern */}
-                            <div className="absolute inset-0 bg-gradient-to-br from-yellow-100/20 via-transparent to-orange-100/20 opacity-0 group-hover/rating:opacity-100 transition-opacity duration-500"></div>
+                            <div className={cn(
+                                "absolute inset-0 bg-gradient-to-br from-yellow-100/20 via-transparent to-orange-100/20 opacity-0 group-hover/rating:opacity-100 transition-opacity duration-500",
+                                "[.ui-vibrant_&]:hidden"
+                            )}></div>
 
                             <div className="relative grid grid-cols-1 lg:grid-cols-5 gap-4 lg:gap-6">
                                 {/* Rating Score */}
@@ -544,11 +561,11 @@ export function CourseDetailsRatingsComponent({
                                         <div className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900">
                                             {overallRatingData?.average_rating !==
                                                 null &&
-                                            overallRatingData?.average_rating !==
+                                                overallRatingData?.average_rating !==
                                                 undefined
                                                 ? Number(
-                                                      overallRatingData.average_rating
-                                                  ).toFixed(1)
+                                                    overallRatingData.average_rating
+                                                ).toFixed(1)
                                                 : "N/A"}
                                         </div>
                                         <div className="flex items-center space-x-1.5">
@@ -556,11 +573,11 @@ export function CourseDetailsRatingsComponent({
                                                 score={
                                                     overallRatingData?.average_rating !==
                                                         null &&
-                                                    overallRatingData?.average_rating !==
+                                                        overallRatingData?.average_rating !==
                                                         undefined
                                                         ? Number(
-                                                              overallRatingData.average_rating
-                                                          ) * 20
+                                                            overallRatingData.average_rating
+                                                        ) * 20
                                                         : 0
                                                 }
                                                 starColor={true}
@@ -575,7 +592,7 @@ export function CourseDetailsRatingsComponent({
                                             <span className="text-xs font-medium">
                                                 {overallRatingData?.total_reviews !==
                                                     null &&
-                                                overallRatingData?.total_reviews !==
+                                                    overallRatingData?.total_reviews !==
                                                     undefined
                                                     ? overallRatingData.total_reviews
                                                     : 0}{" "}

@@ -77,26 +77,26 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
     const getStatusBadge = (status: string) => {
         switch (status) {
             case "Above":
-                return <Badge variant="outline" className="border-green-500/30 text-green-600 bg-green-500/5 hover:bg-green-500/10"><TrendingUp size={12} className="mr-1" /> Above</Badge>;
+                return <Badge variant="outline" className="border-green-500/30 text-green-600 bg-green-500/5 hover:bg-green-500/10 [.ui-vibrant_&]:bg-green-100 [.ui-vibrant_&]:text-green-800"><TrendingUp size={12} className="mr-1" /> Above</Badge>;
             case "Below":
-                return <Badge variant="outline" className="border-red-500/30 text-red-600 bg-red-500/5 hover:bg-red-500/10"><TrendingDown size={12} className="mr-1" /> Below</Badge>;
+                return <Badge variant="outline" className="border-red-500/30 text-red-600 bg-red-500/5 hover:bg-red-500/10 [.ui-vibrant_&]:bg-red-100 [.ui-vibrant_&]:text-red-800"><TrendingDown size={12} className="mr-1" /> Below</Badge>;
             default:
-                return <Badge variant="outline" className="text-muted-foreground"><Minus size={12} className="mr-1" /> Average</Badge>;
+                return <Badge variant="outline" className="text-muted-foreground [.ui-vibrant_&]:bg-gray-100 [.ui-vibrant_&]:text-gray-700"><Minus size={12} className="mr-1" /> Average</Badge>;
         }
     };
 
     const getProgressBarColor = (percentage: number) => {
-        if (percentage >= 120) return "bg-green-500";
-        if (percentage >= 100) return "bg-primary";
+        if (percentage >= 120) return "bg-green-500 [.ui-vibrant_&]:bg-green-400";
+        if (percentage >= 100) return "bg-primary [.ui-vibrant_&]:bg-indigo-400";
         if (percentage >= 80) return "bg-primary/70";
-        return "bg-yellow-500";
+        return "bg-yellow-500 [.ui-vibrant_&]:bg-yellow-400";
     };
 
     return (
         <div className="space-y-6">
             {/* Summary Stats */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <Card className="shadow-none border-dashed bg-muted/30">
+                <Card className="shadow-none border-dashed bg-muted/30 [.ui-vibrant_&]:bg-gray-100/50">
                     <CardContent className="p-4 flex flex-col gap-1">
                         <span className="text-sm font-medium text-muted-foreground">Total Sessions</span>
                         <div className="text-2xl font-bold tracking-tight">
@@ -105,18 +105,18 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
                     </CardContent>
                 </Card>
 
-                <Card className="shadow-none border-dashed bg-green-500/5 border-green-500/20">
+                <Card className="shadow-none border-dashed bg-green-500/5 border-green-500/20 [.ui-vibrant_&]:bg-green-50 [.ui-vibrant_&]:border-green-200">
                     <CardContent className="p-4 flex flex-col gap-1">
-                        <span className="text-sm font-medium text-green-600">Above Average</span>
+                        <span className="text-sm font-medium text-green-600 [.ui-vibrant_&]:text-green-700">Above Average</span>
                         <div className="text-2xl font-bold text-foreground">
                             {tableData.filter(row => row.status === "Above").length}
                         </div>
                     </CardContent>
                 </Card>
 
-                <Card className="shadow-none border-dashed bg-primary/5 border-primary/20">
+                <Card className="shadow-none border-dashed bg-primary/5 border-primary/20 [.ui-vibrant_&]:bg-primary/10 [.ui-vibrant_&]:border-primary/30">
                     <CardContent className="p-4 flex flex-col gap-1">
-                        <span className="text-sm font-medium text-primary">Consistency</span>
+                        <span className="text-sm font-medium text-primary [.ui-vibrant_&]:text-primary-700">Consistency</span>
                         <div className="text-2xl font-bold text-foreground">
                             {Math.round((tableData.filter(row => row.user_millis > 0).length / tableData.length) * 100)}%
                         </div>
@@ -125,10 +125,10 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
             </div>
 
             {/* Desktop Table */}
-            <div className="hidden sm:block rounded-md border shadow-sm">
+            <div className="hidden sm:block rounded-md border shadow-sm [.ui-vibrant_&]:border-primary/10">
                 <Table>
                     <TableHeader>
-                        <TableRow className="bg-muted/40 hover:bg-muted/40">
+                        <TableRow className="bg-muted/40 hover:bg-muted/40 [.ui-vibrant_&]:bg-primary/5">
                             <TableHead className="w-[180px] font-semibold text-xs uppercase text-muted-foreground">Date</TableHead>
                             <TableHead className="font-semibold text-xs uppercase text-muted-foreground">Your Time</TableHead>
                             <TableHead className="font-semibold text-xs uppercase text-muted-foreground">Batch Avg</TableHead>
@@ -141,7 +141,7 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
                             const isToday = dayjs(row.raw_date).isSame(dayjs(), 'day');
 
                             return (
-                                <TableRow key={index} className={cn("transition-colors", isToday && "bg-muted/30")}>
+                                <TableRow key={index} className={cn("transition-colors", isToday && "bg-muted/30 [.ui-vibrant_&]:bg-blue-50/50")}>
                                     <TableCell>
                                         <div className="flex items-center gap-3">
                                             {isToday && <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />}
@@ -156,7 +156,10 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
                                             <div className="font-medium text-sm">{row.time_spent}</div>
                                             <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
                                                 <div
-                                                    className={`h-full rounded-full ${getProgressBarColor(percentage)}`}
+                                                    className={cn(
+                                                        "h-full rounded-full transition-all duration-500",
+                                                        getProgressBarColor(percentage)
+                                                    )}
                                                     style={{ width: `${Math.min(percentage, 100)}%` }}
                                                 />
                                             </div>

@@ -1,5 +1,5 @@
 import { GraduationCap, Download, Eye } from "@phosphor-icons/react";
-import { toTitleCase } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { MyButton } from "@/components/design-system/button";
 
 interface CertificateCompletionBannerProps {
@@ -14,8 +14,8 @@ interface CertificateCompletionBannerProps {
 export const CertificateCompletionBanner = ({
     certificateUrl,
     courseTitle,
-    sessionLabel,
-    levelLabel,
+    // sessionLabel,
+    // levelLabel,
     percentageCompleted,
     threshold,
 }: CertificateCompletionBannerProps) => {
@@ -26,12 +26,21 @@ export const CertificateCompletionBanner = ({
 
     return (
         <>
-            <div className="mb-4 p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm animate-fade-in-up">
+            <div className={cn(
+                "mb-4 p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm animate-fade-in-up",
+                // Vibrant Styles - Flat Pastel
+                "[.ui-vibrant_&]:bg-emerald-50/50 dark:[.ui-vibrant_&]:bg-emerald-950/20",
+                "[.ui-vibrant_&]:border-emerald-200/50 dark:[.ui-vibrant_&]:border-emerald-800/30 [.ui-vibrant_&]:shadow-sm"
+            )}>
                 <div className="flex items-center gap-4">
                     {/* Left Side - Certificate Icon and Content */}
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                         {/* Certificate Icon */}
-                        <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center shadow-lg">
+                        <div className={cn(
+                            "flex-shrink-0 w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center shadow-lg",
+                            // Vibrant Styles - Flat Icon
+                            "[.ui-vibrant_&]:bg-none [.ui-vibrant_&]:bg-emerald-600 [.ui-vibrant_&]:shadow-md"
+                        )}>
                             <GraduationCap size={20} className="text-white" />
                         </div>
 
@@ -49,7 +58,7 @@ export const CertificateCompletionBanner = ({
                                     {percentageCompleted}% Complete
                                 </div> */}
                             </div>
-                            
+
                             <p className="text-black dark:text-gray-300 text-sm">
                                 Congratulations! You've earned a certificate.
                             </p>
@@ -74,7 +83,7 @@ export const CertificateCompletionBanner = ({
                                     View Certificate
                                 </a>
                             </MyButton>
-                            
+
                             <MyButton
                                 asChild
                                 buttonType="secondary"

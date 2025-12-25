@@ -5,6 +5,7 @@ import {
   ChalkboardTeacher,
   TrendUp,
 } from "@phosphor-icons/react";
+import { cn } from "@/lib/utils";
 import { Steps } from "@phosphor-icons/react";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -276,7 +277,12 @@ export const CourseSidebar = ({
             {/* Action Button */}
             {selectedTab === "ALL" && selectedSession && selectedLevel && !isAlreadyEnrolled && (
               <div className="pt-2">
-                <Button className="w-full" onClick={onEnrollmentClick}>
+                <Button className={cn(
+                  "w-full font-semibold",
+                  // Vibrant Styles - Flat Button
+                  "[.ui-vibrant_&]:bg-indigo-600 [.ui-vibrant_&]:hover:bg-indigo-700 [.ui-vibrant_&]:text-white",
+                  "[.ui-vibrant_&]:shadow-md"
+                )} onClick={onEnrollmentClick}>
                   Enroll Now
                 </Button>
               </div>
@@ -286,10 +292,23 @@ export const CourseSidebar = ({
 
         {/* Course Progress Card */}
         {selectedTab === "PROGRESS" && typeof percentageCompleted === "number" && (
-          <Card className="animate-fade-in-up border-border/60 hover:shadow-md transition-all">
-            <CardHeader className="pb-3 border-b bg-muted/40">
+          <Card className={cn(
+            "animate-fade-in-up border-border/60 hover:shadow-md transition-all",
+            // Vibrant Styles - Flat Pastel
+            percentageCompleted === 100
+              ? "[.ui-vibrant_&]:bg-emerald-50/50 dark:[.ui-vibrant_&]:bg-emerald-950/20 [.ui-vibrant_&]:border-emerald-200/50 dark:[.ui-vibrant_&]:border-emerald-800/30"
+              : "[.ui-vibrant_&]:bg-blue-50/50 dark:[.ui-vibrant_&]:bg-blue-950/20 [.ui-vibrant_&]:border-blue-200/50 dark:[.ui-vibrant_&]:border-blue-800/30",
+            "[.ui-vibrant_&]:shadow-md"
+          )}>
+            <CardHeader className={cn(
+              "pb-3 border-b bg-muted/40",
+              "[.ui-vibrant_&]:bg-transparent [.ui-vibrant_&]:border-black/5 dark:[.ui-vibrant_&]:border-white/5"
+            )}>
               <div className="flex items-center space-x-2">
-                <div className="p-1.5 bg-green-100 dark:bg-green-900/30 rounded-md">
+                <div className={cn(
+                  "p-1.5 bg-green-100 dark:bg-green-900/30 rounded-md",
+                  "[.ui-vibrant_&]:bg-green-500/20"
+                )}>
                   <TrendUp size={18} className="text-green-600 dark:text-green-400" weight="duotone" />
                 </div>
                 <CardTitle className="text-base font-bold">Course Progress</CardTitle>

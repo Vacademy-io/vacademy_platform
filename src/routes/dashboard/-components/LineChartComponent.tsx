@@ -46,10 +46,10 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
     const performanceRatio = avgBatchTime > 0 ? (avgUserTime / avgBatchTime) : 0;
 
     const getPerformanceStatus = () => {
-        if (performanceRatio >= 1.2) return { text: "Excellent", color: "bg-green-500/10 text-green-700 border-green-200" };
-        if (performanceRatio >= 1.0) return { text: "Above Average", color: "bg-primary/10 text-primary border-primary/20" };
-        if (performanceRatio >= 0.8) return { text: "On Track", color: "bg-blue-500/10 text-blue-700 border-blue-200" };
-        return { text: "Needs Focus", color: "bg-orange-500/10 text-orange-700 border-orange-200" };
+        if (performanceRatio >= 1.2) return { text: "Excellent", color: "bg-green-500/10 text-green-700 border-green-200 [.ui-vibrant_&]:bg-green-100 [.ui-vibrant_&]:text-green-800" };
+        if (performanceRatio >= 1.0) return { text: "Above Average", color: "bg-primary/10 text-primary border-primary/20 [.ui-vibrant_&]:bg-primary/20 [.ui-vibrant_&]:text-primary-800" };
+        if (performanceRatio >= 0.8) return { text: "On Track", color: "bg-blue-500/10 text-blue-700 border-blue-200 [.ui-vibrant_&]:bg-blue-100 [.ui-vibrant_&]:text-blue-800" };
+        return { text: "Needs Focus", color: "bg-orange-500/10 text-orange-700 border-orange-200 [.ui-vibrant_&]:bg-orange-100 [.ui-vibrant_&]:text-orange-800" };
     };
 
     const performanceStatus = getPerformanceStatus();

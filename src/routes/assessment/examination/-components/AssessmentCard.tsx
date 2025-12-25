@@ -1,4 +1,10 @@
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  CardFooter,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
@@ -28,7 +34,14 @@ import {
 } from "../-utils.ts/useFetchAssessment";
 import { formatDuration } from "@/constants/helper";
 import { toast } from "sonner";
-import { CalendarDays, Timer, RotateCw, Clock, Eye, AlertCircle } from "lucide-react";
+import {
+  CalendarDays,
+  Timer,
+  RotateCw,
+  Clock,
+  Eye,
+  AlertCircle,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface AssessmentProps {
@@ -66,7 +79,7 @@ const getCardBorderColor = (mode: string) => {
     default:
       return "border-l-border";
   }
-}
+};
 
 export const AssessmentCard = ({
   assessmentInfo,
@@ -82,7 +95,8 @@ export const AssessmentCard = ({
   // Helper to safely close dialogs
   const handleClosePopup = () => setShowPopup(false);
   const handleCloseRestartDialog = () => setShowRestartDialog(false);
-  const handleCloseSurveyConfirmDialog = () => setShowSurveyConfirmDialog(false);
+  const handleCloseSurveyConfirmDialog = () =>
+    setShowSurveyConfirmDialog(false);
 
   const handleSurveyConfirm = async () => {
     try {
@@ -99,18 +113,23 @@ export const AssessmentCard = ({
 
   const handleAction = async () => {
     // If attempting to resume
-    if (["LIVE", "PREVIEW"].includes(assessmentInfo?.recent_attempt_status ?? "")) {
+    if (
+      ["LIVE", "PREVIEW"].includes(assessmentInfo?.recent_attempt_status ?? "")
+    ) {
       setShowRestartDialog(true);
       return;
     }
 
     // Check attempts logic
-    const isEndedOrNull = assessmentInfo.recent_attempt_status === "ENDED" || assessmentInfo.recent_attempt_status === null;
+    const isEndedOrNull =
+      assessmentInfo.recent_attempt_status === "ENDED" ||
+      assessmentInfo.recent_attempt_status === null;
 
     if (isEndedOrNull) {
-      const maxAttempts = assessmentInfo.user_attempts !== 0
-        ? assessmentInfo.user_attempts
-        : (assessmentInfo.assessment_attempts ?? 1);
+      const maxAttempts =
+        assessmentInfo.user_attempts !== 0
+          ? assessmentInfo.user_attempts
+          : assessmentInfo.assessment_attempts ?? 1;
       const usedAttempts = assessmentInfo.created_attempts ?? 0;
 
       if ((maxAttempts ?? 1) > usedAttempts) {
@@ -119,7 +138,9 @@ export const AssessmentCard = ({
         if (assessmentInfo.play_mode === "SURVEY") {
           setShowSurveyConfirmDialog(true);
         } else {
-          navigate({ to: `/assessment/examination/${assessmentInfo.assessment_id}` });
+          navigate({
+            to: `/assessment/examination/${assessmentInfo.assessment_id}`,
+          });
         }
       } else {
         // Attempts exhausted, do nothing (button should be disabled anyway)
@@ -131,7 +152,9 @@ export const AssessmentCard = ({
       if (assessmentInfo.play_mode === "SURVEY") {
         setShowSurveyConfirmDialog(true);
       } else {
-        navigate({ to: `/assessment/examination/${assessmentInfo.assessment_id}` });
+        navigate({
+          to: `/assessment/examination/${assessmentInfo.assessment_id}`,
+        });
       }
     }
   };
@@ -151,7 +174,9 @@ export const AssessmentCard = ({
           replace: true,
         });
       } else {
-        toast.error("Failed to resume the assessment. Assessment already Ended.");
+        toast.error(
+          "Failed to resume the assessment. Assessment already Ended."
+        );
       }
     } catch (error) {
       console.error("Error in handleRestartAssessment:", error);
@@ -164,15 +189,20 @@ export const AssessmentCard = ({
 
   // Determine button label
   const getButtonLabel = () => {
-    if (["LIVE", "PREVIEW"].includes(assessmentInfo?.recent_attempt_status ?? "")) {
+    if (
+      ["LIVE", "PREVIEW"].includes(assessmentInfo?.recent_attempt_status ?? "")
+    ) {
       return "Resume";
     }
 
-    const isEndedOrNull = assessmentInfo.recent_attempt_status === "ENDED" || assessmentInfo.recent_attempt_status === null;
+    const isEndedOrNull =
+      assessmentInfo.recent_attempt_status === "ENDED" ||
+      assessmentInfo.recent_attempt_status === null;
     if (isEndedOrNull) {
-      const maxAttempts = assessmentInfo.user_attempts !== 0
-        ? assessmentInfo.user_attempts
-        : (assessmentInfo.assessment_attempts ?? 1);
+      const maxAttempts =
+        assessmentInfo.user_attempts !== 0
+          ? assessmentInfo.user_attempts
+          : assessmentInfo.assessment_attempts ?? 1;
       const usedAttempts = assessmentInfo.created_attempts ?? 0;
 
       if ((maxAttempts ?? 1) > usedAttempts) {
@@ -189,7 +219,9 @@ export const AssessmentCard = ({
   };
 
   const buttonLabel = getButtonLabel();
-  const isResume = ["LIVE", "PREVIEW"].includes(assessmentInfo?.recent_attempt_status ?? "");
+  const isResume = ["LIVE", "PREVIEW"].includes(
+    assessmentInfo?.recent_attempt_status ?? ""
+  );
 
   return (
     <>
@@ -204,7 +236,13 @@ export const AssessmentCard = ({
             <div className="flex flex-col gap-2">
               {assessment_types === "ASSESSMENT" && (
                 <div className="flex">
-                  <Badge variant="outline" className={cn("px-2.5 py-0.5 text-xs font-semibold tracking-wider border", getPlayModeStyles(assessmentInfo.play_mode))}>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "px-2.5 py-0.5 text-xs font-semibold tracking-wider border",
+                      getPlayModeStyles(assessmentInfo.play_mode)
+                    )}
+                  >
                     {assessmentInfo.play_mode}
                   </Badge>
                 </div>
@@ -227,7 +265,9 @@ export const AssessmentCard = ({
                   icon={<CalendarDays className="w-4 h-4 text-blue-600" />}
                   bgClass="bg-blue-50"
                   label="Starts"
-                  value={dayjs(assessmentInfo.bound_start_time).format("DD MMM, hh:mm A")}
+                  value={dayjs(assessmentInfo.bound_start_time).format(
+                    "DD MMM, hh:mm A"
+                  )}
                 />
               )}
 
@@ -235,23 +275,28 @@ export const AssessmentCard = ({
               <InfoItem
                 icon={<Clock className="w-4 h-4 text-purple-600" />}
                 bgClass="bg-purple-50"
-                label={assessmentInfo.play_mode === "MOCK" ? "Valid Till" : "Ends"}
+                label={
+                  assessmentInfo.play_mode === "MOCK" ? "Valid Till" : "Ends"
+                }
                 value={
                   dayjs(assessmentInfo.bound_end_time).year() === 9999
                     ? "No Expiry"
-                    : dayjs(assessmentInfo.bound_end_time).format("DD MMM, hh:mm A")
+                    : dayjs(assessmentInfo.bound_end_time).format(
+                        "DD MMM, hh:mm A"
+                      )
                 }
               />
 
               {/* Duration */}
-              {assessmentInfo.duration && assessmentInfo.play_mode !== "SURVEY" && (
-                <InfoItem
-                  icon={<Timer className="w-4 h-4 text-orange-600" />}
-                  bgClass="bg-orange-50"
-                  label="Duration"
-                  value={formatDuration(assessmentInfo.duration * 60)}
-                />
-              )}
+              {assessmentInfo.duration &&
+                assessmentInfo.play_mode !== "SURVEY" && (
+                  <InfoItem
+                    icon={<Timer className="w-4 h-4 text-orange-600" />}
+                    bgClass="bg-orange-50"
+                    label="Duration"
+                    value={formatDuration(assessmentInfo.duration * 60)}
+                  />
+                )}
 
               {/* Preview Time */}
               {assessmentInfo.preview_time > 0 && (
@@ -268,59 +313,93 @@ export const AssessmentCard = ({
                 icon={<RotateCw className="w-4 h-4 text-green-600" />}
                 bgClass="bg-green-50"
                 label="Attempts"
-                value={`${assessmentInfo.created_attempts ?? 0} / ${assessmentInfo.user_attempts !== 0 && assessmentInfo.user_attempts !== null
-                  ? assessmentInfo.user_attempts
-                  : (assessmentInfo.assessment_attempts ?? 0)
-                  }`}
+                value={`${assessmentInfo.created_attempts ?? 0} / ${
+                  assessmentInfo.user_attempts !== 0 &&
+                  assessmentInfo.user_attempts !== null
+                    ? assessmentInfo.user_attempts
+                    : assessmentInfo.assessment_attempts ?? 0
+                }`}
               />
             </div>
           )}
         </CardContent>
 
         <CardFooter className="bg-muted/30 py-4 px-5 sm:px-6 flex justify-end gap-3 border-t">
-          {assessmentType !== assessmentTypes.UPCOMING && assessmentType !== assessmentTypes.PAST && (
-            <Button
-              className={cn("w-full sm:w-auto min-w-[140px] font-semibold transition-all")}
-              variant={isResume ? "default" : (buttonLabel === "Ended" ? "secondary" : "default")}
-              disabled={isButtonDisabled()}
-              onClick={(e) => {
-                e.stopPropagation();
-                handleAction();
-              }}
-            >
-              {buttonLabel}
-            </Button>
-          )}
+          {assessmentType !== assessmentTypes.UPCOMING &&
+            assessmentType !== assessmentTypes.PAST && (
+              <Button
+                className={cn(
+                  "w-full sm:w-auto min-w-[140px] font-semibold transition-all"
+                )}
+                variant={
+                  isResume
+                    ? "default"
+                    : buttonLabel === "Ended"
+                    ? "secondary"
+                    : "default"
+                }
+                disabled={isButtonDisabled()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleAction();
+                }}
+              >
+                {buttonLabel}
+              </Button>
+            )}
 
           {/* upcoming state button (disabled or specific action) */}
           {assessmentType === assessmentTypes.UPCOMING && (
-            <Button variant="outline" className="w-full sm:w-auto min-w-[140px] cursor-not-allowed text-muted-foreground" disabled>
+            <Button
+              variant="outline"
+              className="w-full sm:w-auto min-w-[140px] cursor-not-allowed text-muted-foreground"
+              disabled
+            >
               Upcoming
             </Button>
           )}
 
-          {assessmentType === assessmentTypes.PAST && (assessmentInfo.created_attempts ?? 0) > 0 && (
-            <Button
-              variant="outline"
-              className="w-full sm:w-auto min-w-[140px] text-primary hover:text-primary hover:bg-primary/5"
-              onClick={(e) => {
-                e.stopPropagation();
-                navigate({
-                  to: `/assessment/reports/student-report`,
-                  search: {
-                    assessmentId: assessmentInfo.assessment_id,
-                    attemptId: assessmentInfo.last_attempt_id ?? "",
-                  },
-                  state: {
-                    playMode: assessmentInfo.play_mode,
-                    assessmentInfo: assessmentInfo,
-                  } as any,
-                })
-              }}
-            >
-              Show Report
-            </Button>
-          )}
+          {assessmentType === assessmentTypes.PAST &&
+            (assessmentInfo.created_attempts ?? 0) > 0 && (
+              <>
+                <Button
+                  variant="outline"
+                  className="w-full sm:w-auto min-w-[140px] text-primary hover:text-primary hover:bg-primary/5"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate({
+                      to: `/assessment/reports/student-report`,
+                      search: {
+                        assessmentId: assessmentInfo.assessment_id,
+                        attemptId: assessmentInfo.last_attempt_id ?? "",
+                      },
+                      state: {
+                        playMode: assessmentInfo.play_mode,
+                        assessmentInfo: assessmentInfo,
+                      } as any,
+                    });
+                  }}
+                >
+                  Show Report
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full sm:w-auto min-w-[140px] text-primary hover:text-primary hover:bg-primary/5"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate({
+                      to: `/assessment/reports/ai-report`,
+                      search: {
+                        assessmentId: assessmentInfo.assessment_id,
+                        assessmentName: assessmentInfo.name ?? "",
+                      },
+                    });
+                  }}
+                >
+                  Show AI Report
+                </Button>
+              </>
+            )}
         </CardFooter>
       </Card>
 
@@ -332,22 +411,31 @@ export const AssessmentCard = ({
               <div className="p-2 bg-yellow-100 rounded-full">
                 <AlertCircle className="w-5 h-5 text-yellow-600" />
               </div>
-              <DialogTitle className="text-lg font-semibold">Assessment Unavailable</DialogTitle>
+              <DialogTitle className="text-lg font-semibold">
+                Assessment Unavailable
+              </DialogTitle>
             </div>
             <DialogDescription className="text-muted-foreground pt-1">
-              The assessment is not live currently. You can appear for the assessment when it goes live.
+              The assessment is not live currently. You can appear for the
+              assessment when it goes live.
             </DialogDescription>
           </DialogHeader>
         </DialogContent>
       </Dialog>
 
       {/* Resume Confirmation Dialog */}
-      <AlertDialog open={showRestartDialog} onOpenChange={handleCloseRestartDialog}>
+      <AlertDialog
+        open={showRestartDialog}
+        onOpenChange={handleCloseRestartDialog}
+      >
         <AlertDialogContent className="max-w-sm rounded-lg p-6">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-xl">Resume Assessment</AlertDialogTitle>
+            <AlertDialogTitle className="text-xl">
+              Resume Assessment
+            </AlertDialogTitle>
             <AlertDialogDescription className="text-muted-foreground">
-              Would you like to continue the assessment from your last saved progress?
+              Would you like to continue the assessment from your last saved
+              progress?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-3 sm:gap-2">
@@ -362,21 +450,25 @@ export const AssessmentCard = ({
       </AlertDialog>
 
       {/* Survey Confirmation Dialog */}
-      <AlertDialog open={showSurveyConfirmDialog} onOpenChange={handleCloseSurveyConfirmDialog}>
+      <AlertDialog
+        open={showSurveyConfirmDialog}
+        onOpenChange={handleCloseSurveyConfirmDialog}
+      >
         <AlertDialogContent className="max-w-sm rounded-lg p-6">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-xl">Start Survey</AlertDialogTitle>
+            <AlertDialogTitle className="text-xl">
+              Start Survey
+            </AlertDialogTitle>
             <AlertDialogDescription className="text-muted-foreground">
-              Are you ready to start filling out the survey? Once you begin, you can complete it at your own pace.
+              Are you ready to start filling out the survey? Once you begin, you
+              can complete it at your own pace.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-3 sm:gap-2">
             <Button variant="ghost" onClick={handleCloseSurveyConfirmDialog}>
               Cancel
             </Button>
-            <Button onClick={handleSurveyConfirm}>
-              Start Survey
-            </Button>
+            <Button onClick={handleSurveyConfirm}>Start Survey</Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

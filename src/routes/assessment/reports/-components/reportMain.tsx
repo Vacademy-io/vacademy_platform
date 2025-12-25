@@ -17,6 +17,7 @@ import { PlayMode } from "@/components/design-system/chips";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { cn } from "@/lib/utils";
+import { MyButton } from "@/components/design-system/button";
 
 const playModeStyles: { [key: string]: string } = {
   EXAM: "bg-green-100 text-green-700 hover:bg-green-200 border-green-200",
@@ -99,6 +100,16 @@ const AssessmentReportList = ({
         report,
         evaluationType: report.evaluation_type,
       } as any,
+    });
+  };
+
+  const handleViewAIReport = (report: Report) => {
+    navigate({
+      to: `/assessment/reports/ai-report`,
+      search: {
+        assessmentId: report.assessment_id,
+        assessmentName: report.assessment_name,
+      },
     });
   };
 
@@ -219,7 +230,10 @@ const AssessmentReportList = ({
                 {assessment_types !== "HOMEWORK" && (
                   <Badge
                     variant="outline"
-                    className={cn("text-xs font-semibold px-2.5 py-0.5 border", playModeStyles[report.play_mode as PlayMode])}
+                    className={cn(
+                      "text-xs font-semibold px-2.5 py-0.5 border",
+                      playModeStyles[report.play_mode as PlayMode]
+                    )}
                   >
                     {report.play_mode}
                   </Badge>
@@ -230,21 +244,34 @@ const AssessmentReportList = ({
               <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-1 gap-x-8 text-sm text-muted-foreground">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-foreground">Attempt Date:</span>
+                    <span className="font-medium text-foreground">
+                      Attempt Date:
+                    </span>
                     <span>{formatDateTime(report.attempt_date)}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-foreground">
-                      {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}:
+                      {getTerminology(
+                        ContentTerms.Subjects,
+                        SystemTerms.Subjects
+                      )}
+                      :
                     </span>
                     <span>
-                      {getSubjectNameById(instituteDetails?.subjects || [], report?.subject_id) || "-"}
+                      {getSubjectNameById(
+                        instituteDetails?.subjects || [],
+                        report?.subject_id
+                      ) || "-"}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-foreground">Duration:</span>
+                    <span className="font-medium text-foreground">
+                      Duration:
+                    </span>
                     <span>
-                      {report.duration_in_seconds ? formatDuration(report.duration_in_seconds) : "N/A"}
+                      {report.duration_in_seconds
+                        ? formatDuration(report.duration_in_seconds)
+                        : "N/A"}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -253,7 +280,13 @@ const AssessmentReportList = ({
                   </div>
                 </div>
 
-                <div className="w-full md:w-auto mt-2 md:mt-0">
+                <div className="w-full md:w-auto mt-2 md:mt-0  flex flex-col md:flex-row gap-2">
+                  <MyButton
+                    className="w-full md:w-auto min-w-[120px]"
+                    onClick={() => handleViewAIReport(report)}
+                  >
+                    View AI Report
+                  </MyButton>
                   <Button
                     variant="secondary"
                     className="w-full md:w-auto min-w-[120px]"

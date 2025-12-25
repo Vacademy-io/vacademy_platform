@@ -96,9 +96,21 @@ public class LearnerBatchEnrollService {
         Student student = studentRegistrationManager.createStudentFromRequest(createdUser,
                 mapToStudentExtraDetails(learnerExtraDetails));
 
-        // Get SubOrg from UserPlan if it exists (created earlier for single package
-        // session with isOrgAssociated)
+        if (userPlan != null) {
+            boolean isPending = vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum.PENDING
+                    .name().equals(userPlan.getStatus());
+            boolean isFutureDated = userPlan.getStartDate() != null
+                    && userPlan.getStartDate().after(new java.util.Date());
+
+            if (isPending || isFutureDated) {
+                log.info("UserPlan is Stacked (Status: {}, StartDate: {}). Skipping batch enrollment for user: {}",
+                        userPlan.getStatus(), userPlan.getStartDate(), userDTO.getId());
+                return createdUser;
+            }
+        }
+
         Institute existingSubOrg = null;
+
         if (userPlan != null && StringUtils.hasText(userPlan.getSubOrgId())) {
             Optional<Institute> subOrgOpt = instituteRepository.findById(userPlan.getSubOrgId());
             if (subOrgOpt.isPresent()) {
@@ -138,7 +150,7 @@ public class LearnerBatchEnrollService {
                     instituteStudentDetail);
             if (instituteStudentDetail.getEnrollmentStatus().equalsIgnoreCase(LearnerSessionStatusEnum.ACTIVE.name())) {
                 studentRegistrationManager.triggerEnrollmentWorkflow(instituteId, userDTO,
-                        instituteStudentDetail.getPackageSessionId(),suborg);
+                        instituteStudentDetail.getPackageSessionId(), suborg);
             }
             customFieldValueService.addCustomFieldValue(customFieldValues,
                     CustomFieldValueSourceTypeEnum.STUDENT_SESSION_INSTITUTE_GROUP_MAPPING.name(), studentSessionId);
@@ -187,7 +199,7 @@ public class LearnerBatchEnrollService {
                         mapping,
                         LearnerStatusEnum.ACTIVE.name());
                 studentRegistrationManager.triggerEnrollmentWorkflow(mapping.getInstitute().getId(), userDTO,
-                        mapping.getDestinationPackageSession().getId(),mapping.getSubOrg());
+                        mapping.getDestinationPackageSession().getId(), mapping.getSubOrg());
                 customFieldValueService.shiftCustomField(
                         CustomFieldValueSourceTypeEnum.STUDENT_SESSION_INSTITUTE_GROUP_MAPPING.name(),
                         mapping.getId(),

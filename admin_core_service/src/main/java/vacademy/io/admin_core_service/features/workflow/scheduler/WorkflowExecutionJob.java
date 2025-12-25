@@ -52,6 +52,10 @@ public class WorkflowExecutionJob implements Job {
                     WorkflowExecution workflowExecution = idempotencyService.markAsProcessing(idempotencyKey,
                             schedule.getWorkflowId(), schedule.getId());
 
+                    // Update schedule immediately to lock next run time and prevent infinite
+                    // loops/zombies
+                    updateScheduleExecutionTime(schedule);
+
                     log.info("Executing workflow schedule: {} - {}", schedule.getId(), schedule.getWorkflowId());
 
                     Map<String, Object> result = executeWorkflowFromSchedule(schedule, workflowExecution);
@@ -118,8 +122,6 @@ public class WorkflowExecutionJob implements Job {
             result.put("workflowResult", workflowResult);
             result.put("message", "Workflow executed successfully");
 
-            updateScheduleExecutionTime(schedule);
-
             return result;
 
         } catch (Exception e) {
@@ -130,9 +132,6 @@ public class WorkflowExecutionJob implements Job {
             errorResult.put("workflowId", schedule.getWorkflowId());
             errorResult.put("error", e.getMessage());
             errorResult.put("executionTime", Instant.now().toEpochMilli());
-
-            // Update schedule execution time to prevent infinite retries on failure
-            updateScheduleExecutionTime(schedule);
 
             return errorResult;
         }

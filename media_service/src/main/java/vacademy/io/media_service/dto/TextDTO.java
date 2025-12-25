@@ -27,6 +27,7 @@ public class TextDTO {
     @JsonProperty("taskId")
     private String taskId;
     private String questionType;
+    private Boolean generateImage;
 
     /**
      * Optional: Preferred AI model to use.

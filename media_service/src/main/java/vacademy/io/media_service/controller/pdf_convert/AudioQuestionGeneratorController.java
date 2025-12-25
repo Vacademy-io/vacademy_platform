@@ -112,6 +112,9 @@ public class AudioQuestionGeneratorController {
     /**
      * Generates questions from audio with optional model selection.
      */
+    /**
+     * Generates questions from audio with optional model selection.
+     */
     @GetMapping("/audio-parser/audio-to-questions")
     public ResponseEntity<Map<String, Object>> getAudioToQuestions(
             @RequestParam String audioId,
@@ -122,7 +125,9 @@ public class AudioQuestionGeneratorController {
             @RequestParam(name = "taskId", required = false) String taskId,
             @RequestParam(name = "taskName", required = false) String taskName,
             @RequestParam(name = "instituteId", required = false) String instituteId,
-            @RequestParam(name = "preferredModel", required = false) String preferredModel) throws IOException {
+            @RequestParam(name = "preferredModel", required = false) String preferredModel,
+            @RequestParam(name = "generateImage", required = false, defaultValue = "false") Boolean generateImage)
+            throws IOException {
 
         // Apply defaults
         String actualDifficulty = StringUtils.hasText(difficulty) ? difficulty : DEFAULT_DIFFICULTY;
@@ -147,7 +152,8 @@ public class AudioQuestionGeneratorController {
                 actualDifficulty,
                 actualLanguage,
                 actualNumQuestions,
-                model);
+                model,
+                generateImage);
 
         log.info("Started audio to questions: taskId={}, audioId={}, model={}",
                 taskStatus.getId(), audioId, model);
@@ -176,6 +182,7 @@ public class AudioQuestionGeneratorController {
                 : DEFAULT_NUM_QUESTIONS;
         String prompt = StringUtils.hasText(request.getPrompt()) ? request.getPrompt() : "";
         String language = StringUtils.hasText(request.getLanguage()) ? request.getLanguage() : DEFAULT_LANGUAGE;
+        Boolean generateImage = Boolean.TRUE.equals(request.getGenerateImage());
 
         String model = aiModelConfig.getModelToUse(request.getPreferredModel());
 
@@ -194,7 +201,8 @@ public class AudioQuestionGeneratorController {
                 difficulty,
                 language,
                 numQuestions,
-                model);
+                model,
+                generateImage);
 
         log.info("Started audio to questions (POST): taskId={}, audioId={}, model={}",
                 taskStatus.getId(), audioId, model);
@@ -221,5 +229,6 @@ public class AudioQuestionGeneratorController {
         private String taskName;
         private String instituteId;
         private String preferredModel;
+        private Boolean generateImage;
     }
 }

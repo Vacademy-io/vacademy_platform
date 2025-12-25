@@ -42,6 +42,9 @@ public class ExternalAIApiService {
     private ExternalAIApiServiceImpl deepSeekApiService;
 
     @Autowired
+    private GeminiImageGenerationService geminiImageGenerationService;
+
+    @Autowired
     public ExternalAIApiService(ChatModel chatModel) {
         this.chatModel = chatModel;
     }
@@ -283,7 +286,7 @@ public class ExternalAIApiService {
 
     public String getQuestionsWithDeepSeekFromTextPrompt(String textPrompt, String numberOfQuestions,
             String typeOfQuestion, String classLevel, String topics, String language, TaskStatus taskStatus,
-            Integer attempt, String oldJson, String model) {
+            Integer attempt, String oldJson, String model, Boolean generateImage) {
         try {
             if (attempt >= 4)
                 return oldJson;
@@ -298,6 +301,10 @@ public class ExternalAIApiService {
                             ? "Start from beginning"
                             : ("Continue for question other than " + allQuestionNumbers + " if needed");
 
+            String imageInstruction = Boolean.TRUE.equals(generateImage)
+                    ? ConstantAiTemplate.getImageGenerationInstruction()
+                    : "";
+
             Map<String, Object> promptMap = Map.of(
                     "textPrompt", textPrompt,
                     "numberOfQuestions", numberOfQuestions,
@@ -307,7 +314,9 @@ public class ExternalAIApiService {
                     "language", language,
                     "allQuestionNumbers", allQuestionNumbers,
                     "existingQuestions", existingQuestions,
-                    "continuationInstruction", continuationInstruction);
+                    "continuationInstruction", continuationInstruction,
+                    "imageInstruction", imageInstruction);
+
             Prompt prompt = new PromptTemplate(template).create(promptMap);
             taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
 
@@ -326,11 +335,23 @@ public class ExternalAIApiService {
             String mergedJson = mergeQuestionsJson(oldJson, restored);
 
             if (getIsProcessCompleted(mergedJson)) {
+
+                // Process Image Generation
+                if (Boolean.TRUE.equals(generateImage)) {
+                    mergedJson = processAndGenerateImages(mergedJson);
+                }
+
                 taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), mergedJson,
                         "Questions Generated");
                 return mergedJson;
             }
             if (getQuestionCount(mergedJson) >= Integer.parseInt(numberOfQuestions)) {
+
+                // Process Image Generation
+                if (Boolean.TRUE.equals(generateImage)) {
+                    mergedJson = processAndGenerateImages(mergedJson);
+                }
+
                 taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), mergedJson,
                         "Questions Generated");
                 return mergedJson;
@@ -340,7 +361,7 @@ public class ExternalAIApiService {
                     "Questions Generating");
 
             return getQuestionsWithDeepSeekFromTextPrompt(textPrompt, numberOfQuestions, typeOfQuestion, classLevel,
-                    topics, language, taskStatus, attempt + 1, mergedJson, model);
+                    topics, language, taskStatus, attempt + 1, mergedJson, model, generateImage);
         } catch (Exception e) {
             taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldJson, e.getMessage());
             return oldJson;
@@ -395,7 +416,7 @@ public class ExternalAIApiService {
         return previewIdAndQuestionTextCompressed;
     }
 
-    public String getQuestionsWithDeepSeekFromHTML(String htmlData, String userPrompt) {
+    public String getQuestionsWithDeepSeekFromHTML(String htmlData, String userPrompt, Boolean generateImage) {
         HtmlJsonProcessor htmlJsonProcessor = new HtmlJsonProcessor();
         String unTaggedHtml = htmlJsonProcessor.removeTags(htmlData);
 
@@ -405,7 +426,12 @@ public class ExternalAIApiService {
 
         String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.HTML_TO_QUESTIONS);
 
-        Prompt prompt = new PromptTemplate(template).create(Map.of("htmlData", unTaggedHtml, "userPrompt", userPrompt));
+        String imageInstruction = Boolean.TRUE.equals(generateImage)
+                ? ConstantAiTemplate.getImageGenerationInstruction()
+                : "";
+
+        Prompt prompt = new PromptTemplate(template).create(
+                Map.of("htmlData", unTaggedHtml, "userPrompt", userPrompt, "imageInstruction", imageInstruction));
 
         DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash",
                 prompt.getContents().trim(), 30000);
@@ -416,6 +442,12 @@ public class ExternalAIApiService {
         String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
         try {
             String restoredJson = htmlJsonProcessor.restoreTagsInJson(validJson);
+
+            // Process Image Generation
+            if (Boolean.TRUE.equals(generateImage)) {
+                restoredJson = processAndGenerateImages(restoredJson);
+            }
+
             return restoredJson;
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());
@@ -423,7 +455,7 @@ public class ExternalAIApiService {
     }
 
     public String getQuestionsWithDeepSeekFromHTMLRecursive(String htmlData, String userPrompt, String restoredJson,
-            int attempt, TaskStatus taskStatus) {
+            int attempt, TaskStatus taskStatus, Boolean generateImage) {
         try {
             if (attempt >= 5) {
                 return restoredJson != null ? restoredJson : "";
@@ -438,10 +470,15 @@ public class ExternalAIApiService {
 
             String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.PDF_TO_QUESTIONS);
 
+            String imageInstruction = Boolean.TRUE.equals(generateImage)
+                    ? ConstantAiTemplate.getImageGenerationInstruction()
+                    : "";
+
             Map<String, Object> promptMap = Map.of(
                     "htmlData", unTaggedHtml,
                     "userPrompt", userPrompt,
-                    "allQuestionNumbers", allQuestionNumbers);
+                    "allQuestionNumbers", allQuestionNumbers,
+                    "imageInstruction", imageInstruction);
 
             taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
 
@@ -463,6 +500,12 @@ public class ExternalAIApiService {
             String mergedJson = mergeQuestionsJson(restoredJson, restored);
 
             if (getIsProcessCompleted(mergedJson)) {
+
+                // Process Image Generation
+                if (Boolean.TRUE.equals(generateImage)) {
+                    mergedJson = processAndGenerateImages(mergedJson);
+                }
+
                 taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), mergedJson,
                         "Questions Generated");
                 return mergedJson;
@@ -470,7 +513,8 @@ public class ExternalAIApiService {
 
             taskStatusService.updateTaskStatus(taskStatus, "PROGRESS", restoredJson, "Questions Generating");
             // Recurse for remaining questions
-            return getQuestionsWithDeepSeekFromHTMLRecursive(htmlData, userPrompt, mergedJson, attempt + 1, taskStatus);
+            return getQuestionsWithDeepSeekFromHTMLRecursive(htmlData, userPrompt, mergedJson, attempt + 1, taskStatus,
+                    generateImage);
         } catch (Exception e) {
             taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), restoredJson, e.getMessage());
             throw new RuntimeException(e);
@@ -478,7 +522,7 @@ public class ExternalAIApiService {
     }
 
     public String getQuestionsWithDeepSeekFromHTMLOfTopics(String htmlData, String requiredTopics, String restoredJson,
-            Integer attempt, TaskStatus taskStatus) {
+            Integer attempt, TaskStatus taskStatus, Boolean generateImage) {
         try {
             if (attempt >= 5) {
                 if (restoredJson == null || restoredJson.isEmpty()) {
@@ -493,10 +537,15 @@ public class ExternalAIApiService {
 
             String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.PDF_TO_QUESTIONS_WITH_TOPIC);
 
+            String imageInstruction = Boolean.TRUE.equals(generateImage)
+                    ? ConstantAiTemplate.getImageGenerationInstruction()
+                    : "";
+
             Map<String, Object> promptMap = Map.of("htmlData", unTaggedHtml,
                     "requiredTopics", requiredTopics,
                     "allQuestionNumbers", allQuestionNumbers,
-                    "restoredJson", restoredJson == null ? "" : restoredJson);
+                    "restoredJson", restoredJson == null ? "" : restoredJson,
+                    "imageInstruction", imageInstruction);
 
             Prompt prompt = new PromptTemplate(template).create(promptMap);
 
@@ -512,7 +561,7 @@ public class ExternalAIApiService {
 
             if (!StringUtils.hasText(response.getChoices().get(0).getMessage().getContent())) {
                 return getQuestionsWithDeepSeekFromHTMLOfTopics(htmlData, requiredTopics, restoredJson, attempt + 1,
-                        taskStatus);
+                        taskStatus, generateImage);
             }
 
             String resultJson = response.getChoices().get(0).getMessage().getContent();
@@ -522,6 +571,12 @@ public class ExternalAIApiService {
             String mergedJson = mergeQuestionsJson(restoredJson, newRestoredJson);
 
             if (getIsProcessCompleted(mergedJson)) {
+
+                // Process Image Generation
+                if (Boolean.TRUE.equals(generateImage)) {
+                    mergedJson = processAndGenerateImages(mergedJson);
+                }
+
                 taskStatusService.updateTaskStatus(taskStatus, null, mergedJson, "Questions Generated");
                 return mergedJson;
             }
@@ -529,7 +584,7 @@ public class ExternalAIApiService {
             taskStatusService.updateTaskStatus(taskStatus, "PROGRESS", restoredJson, "Questions Generating");
             // Recurse for remaining questions
             return getQuestionsWithDeepSeekFromHTMLOfTopics(htmlData, requiredTopics, mergedJson, attempt + 1,
-                    taskStatus);
+                    taskStatus, generateImage);
         } catch (Exception e) {
             taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), restoredJson, e.getMessage());
             throw new RuntimeException(e);
@@ -565,7 +620,7 @@ public class ExternalAIApiService {
     }
 
     public String getQuestionsWithDeepSeekFromAudio(String audioString, String difficulty, String numQuestions,
-            String optionalPrompt, String oldResponse, int attempt, TaskStatus taskStatus) {
+            String optionalPrompt, String oldResponse, int attempt, TaskStatus taskStatus, Boolean generateImage) {
         try {
             if (attempt >= 5) {
                 return oldResponse;
@@ -574,9 +629,15 @@ public class ExternalAIApiService {
 
             String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.AUDIO_TO_QUESTIONS);
 
+            String imageInstruction = Boolean.TRUE.equals(generateImage)
+                    ? ConstantAiTemplate.getImageGenerationInstruction()
+                    : "";
+
             Map<String, Object> promptMap = Map.of("classLecture", audioString, "difficulty", difficulty,
                     "numQuestions", numQuestions, "optionalPrompt", optionalPrompt, "language", "en",
-                    "allQuestionNumbers", allQuestionNumbers);
+                    "allQuestionNumbers", allQuestionNumbers,
+                    "imageInstruction", imageInstruction);
+
             Prompt prompt = new PromptTemplate(template).create(promptMap);
 
             taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
@@ -599,19 +660,31 @@ public class ExternalAIApiService {
             log.info("Total Questions: " + currentQuestionCount);
 
             if (getIsProcessCompleted(mergedJson)) {
+
+                // Process Image Generation
+                if (Boolean.TRUE.equals(generateImage)) {
+                    mergedJson = processAndGenerateImages(mergedJson);
+                }
+
                 taskStatusService.updateTaskStatus(taskStatus, "COMPLETED", mergedJson, "Questions Generated");
                 return mergedJson;
             }
 
-            if (!Objects.isNull(numQuestions) && numQuestions.isEmpty()
+            if (!Objects.isNull(numQuestions) && !numQuestions.isEmpty()
                     && currentQuestionCount >= Integer.parseInt(numQuestions)) {
+
+                // Process Image Generation
+                if (Boolean.TRUE.equals(generateImage)) {
+                    mergedJson = processAndGenerateImages(mergedJson);
+                }
+
                 taskStatusService.updateTaskStatus(taskStatus, "COMPLETED", mergedJson, "Questions Generated");
                 return mergedJson;
             }
 
             taskStatusService.updateTaskStatus(taskStatus, "PROGRESS", mergedJson, "Questions Generating");
             return getQuestionsWithDeepSeekFromAudio(audioString, difficulty, numQuestions, optionalPrompt, mergedJson,
-                    attempt + 1, taskStatus);
+                    attempt + 1, taskStatus, generateImage);
         } catch (Exception e) {
             taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldResponse, e.getMessage());
             return oldResponse;
@@ -849,7 +922,7 @@ public class ExternalAIApiService {
     }
 
     public String getQuestionsWithDeepSeekFromHTMLWithTopics(String htmlData, TaskStatus taskStatus, Integer attempt,
-            String oldJson) {
+            String oldJson, Boolean generateImage) {
         try {
             if (attempt >= 3) {
                 throw new VacademyException("No response from DeepSeek");
@@ -859,8 +932,14 @@ public class ExternalAIApiService {
             String unTaggedHtml = htmlJsonProcessor.removeTags(htmlData);
 
             String template = ConstantAiTemplate.getTemplateBasedOnType(TaskStatusTypeEnum.SORT_QUESTIONS_TOPIC_WISE);
+
+            String imageInstruction = Boolean.TRUE.equals(generateImage)
+                    ? ConstantAiTemplate.getImageGenerationInstruction()
+                    : "";
+
             Map<String, Object> promptMap = Map.of("htmlData", unTaggedHtml,
-                    "extractedQuestionNumber", extractedQuestionNumber);
+                    "extractedQuestionNumber", extractedQuestionNumber,
+                    "imageInstruction", imageInstruction);
 
             Prompt prompt = new PromptTemplate(template).create(promptMap);
 
@@ -882,6 +961,12 @@ public class ExternalAIApiService {
             String mergedJson = mergeQuestionsJson(oldJson, restored);
 
             if (getIsProcessCompleted(mergedJson)) {
+
+                // Process Image Generation
+                if (Boolean.TRUE.equals(generateImage)) {
+                    mergedJson = processAndGenerateImages(mergedJson);
+                }
+
                 taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), mergedJson,
                         "Questions Generated");
                 return mergedJson;
@@ -889,10 +974,73 @@ public class ExternalAIApiService {
 
             taskStatusService.updateTaskStatus(taskStatus, "PROGRESS", mergedJson, "Questions Generating");
             // Recurse for remaining questions
-            return getQuestionsWithDeepSeekFromHTMLWithTopics(htmlData, taskStatus, attempt + 1, mergedJson);
+            return getQuestionsWithDeepSeekFromHTMLWithTopics(htmlData, taskStatus, attempt + 1, mergedJson,
+                    generateImage);
         } catch (Exception e) {
             taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldJson, e.getMessage());
             return oldJson;
         }
+    }
+
+    private String processAndGenerateImages(String jsonString) {
+        try {
+            JsonNode root = objectMapper.readTree(jsonString);
+            boolean modified = false;
+
+            JsonNode questions = root.path("questions");
+            if (questions.isArray()) {
+                for (JsonNode q : questions) {
+                    if (q.has("question")) {
+                        modified |= processContentForImage(q.get("question"));
+                    }
+                    JsonNode options = q.path("options");
+                    if (options.isArray()) {
+                        for (JsonNode opt : options) {
+                            modified |= processContentForImage(opt);
+                        }
+                    }
+                }
+            }
+
+            if (modified) {
+                return objectMapper.writeValueAsString(root);
+            }
+            return jsonString;
+
+        } catch (Exception e) {
+            log.error("Error processing text for image generation", e);
+            return jsonString;
+        }
+    }
+
+    private boolean processContentForImage(JsonNode contentNode) {
+        if (contentNode.has("content")) {
+            String content = contentNode.get("content").asText();
+            if (content.contains("image_to_generate")) {
+                // Use regex to find and replace
+                String regex = "<div class=\"image_to_generate\">PROMPT: (.*?)</div>";
+                java.util.regex.Matcher matcher = java.util.regex.Pattern.compile(regex).matcher(content);
+                StringBuffer sb = new StringBuffer();
+                boolean matches = false;
+                while (matcher.find()) {
+                    matches = true;
+                    String prompt = matcher.group(1);
+                    String url = geminiImageGenerationService.generateAndUploadImage(prompt);
+                    if (url != null) {
+                        matcher.appendReplacement(sb,
+                                "<img src=\"" + url + "\" style=\"width:100%; object-fit:contain;\"/>");
+                    } else {
+                        // Failed to generate, remove the div
+                        matcher.appendReplacement(sb, "");
+                    }
+                }
+                matcher.appendTail(sb);
+                if (matches) {
+                    ((ObjectNode) contentNode).put("content", sb.toString());
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }

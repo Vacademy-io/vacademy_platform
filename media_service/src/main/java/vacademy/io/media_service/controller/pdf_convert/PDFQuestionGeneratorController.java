@@ -124,7 +124,9 @@ public class PDFQuestionGeneratorController {
             @RequestParam(name = "taskId", required = false) String taskId,
             @RequestParam(name = "taskName", required = false) String taskName,
             @RequestParam(name = "instituteId", required = false) String instituteId,
-            @RequestParam(name = "preferredModel", required = false) String preferredModel) throws IOException {
+            @RequestParam(name = "preferredModel", required = false) String preferredModel,
+            @RequestParam(name = "generateImage", required = false, defaultValue = "false") Boolean generateImage)
+            throws IOException {
 
         String model = aiModelConfig.getModelToUse(preferredModel);
 
@@ -136,7 +138,7 @@ public class PDFQuestionGeneratorController {
                 taskName,
                 instituteId);
 
-        deepSeekAsyncTaskService.pollAndProcessPdfToQuestions(taskStatus, pdfId, userPrompt, model);
+        deepSeekAsyncTaskService.pollAndProcessPdfToQuestions(taskStatus, pdfId, userPrompt, model, generateImage);
 
         log.info("Started PDF to questions: taskId={}, pdfId={}, model={}", taskStatus.getId(), pdfId, model);
 
@@ -157,7 +159,9 @@ public class PDFQuestionGeneratorController {
             @RequestParam(name = "taskId", required = false) String taskId,
             @RequestParam(name = "taskName", required = false) String taskName,
             @RequestParam(name = "instituteId", required = false) String instituteId,
-            @RequestParam(name = "preferredModel", required = false) String preferredModel) throws IOException {
+            @RequestParam(name = "preferredModel", required = false) String preferredModel,
+            @RequestParam(name = "generateImage", required = false, defaultValue = "false") Boolean generateImage)
+            throws IOException {
 
         String model = aiModelConfig.getModelToUse(preferredModel);
 
@@ -169,7 +173,7 @@ public class PDFQuestionGeneratorController {
                 taskName,
                 instituteId);
 
-        deepSeekAsyncTaskService.pollAndProcessPdfToQuestions(taskStatus, pdfId, userPrompt, model);
+        deepSeekAsyncTaskService.pollAndProcessPdfToQuestions(taskStatus, pdfId, userPrompt, model, generateImage);
 
         return ResponseEntity.ok(Map.of(
                 "taskId", taskStatus.getId(),
@@ -185,7 +189,9 @@ public class PDFQuestionGeneratorController {
             @RequestParam String pdfId,
             @RequestParam(required = false) String userPrompt,
             @RequestParam("instituteId") String instituteId,
-            @RequestParam("taskName") String taskName) throws IOException {
+            @RequestParam("taskName") String taskName,
+            @RequestParam(name = "generateImage", required = false, defaultValue = "false") Boolean generateImage)
+            throws IOException {
 
         TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(
                 null,
@@ -195,7 +201,7 @@ public class PDFQuestionGeneratorController {
                 taskName,
                 instituteId);
 
-        deepSeekAsyncTaskService.pollAndProcessSortQuestionTopicWise(taskStatus, pdfId);
+        deepSeekAsyncTaskService.pollAndProcessSortQuestionTopicWise(taskStatus, pdfId, generateImage);
 
         return ResponseEntity.ok(Map.of(
                 "taskId", taskStatus.getId(),
@@ -208,9 +214,11 @@ public class PDFQuestionGeneratorController {
     @PostMapping("/math-parser/html-to-questions")
     public ResponseEntity<AutoQuestionPaperResponse> getHtmlToQuestions(
             @RequestBody HtmlResponse html,
-            @RequestParam(required = false) String userPrompt) throws IOException {
+            @RequestParam(required = false) String userPrompt,
+            @RequestParam(required = false, defaultValue = "false") Boolean generateImage) throws IOException {
 
-        String rawOutput = externalAIApiService.getQuestionsWithDeepSeekFromHTML(html.getHtml(), userPrompt);
+        String rawOutput = externalAIApiService.getQuestionsWithDeepSeekFromHTML(html.getHtml(), userPrompt,
+                generateImage);
         String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
 
         return ResponseEntity.ok(responseConverterService.convertToQuestionPaperResponse(
@@ -250,7 +258,9 @@ public class PDFQuestionGeneratorController {
             @RequestParam String requiredTopics,
             @RequestParam(name = "taskId", required = false) String taskId,
             @RequestParam(name = "taskName", required = false) String taskName,
-            @RequestParam(name = "instituteId", required = false) String instituteId) throws IOException {
+            @RequestParam(name = "instituteId", required = false) String instituteId,
+            @RequestParam(name = "generateImage", required = false, defaultValue = "false") Boolean generateImage)
+            throws IOException {
 
         TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(
                 taskId,
@@ -260,7 +270,8 @@ public class PDFQuestionGeneratorController {
                 taskName,
                 instituteId);
 
-        deepSeekAsyncTaskService.pollAndProcessPdfExtractTopicQuestions(taskStatus, pdfId, requiredTopics);
+        deepSeekAsyncTaskService.pollAndProcessPdfExtractTopicQuestions(taskStatus, pdfId, requiredTopics,
+                generateImage);
 
         return ResponseEntity.ok(Map.of(
                 "taskId", taskStatus.getId(),

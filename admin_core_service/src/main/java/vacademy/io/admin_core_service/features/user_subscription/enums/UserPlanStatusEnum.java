@@ -6,5 +6,6 @@ public enum UserPlanStatusEnum {
     PAYMENT_FAILED,
     CANCELED,
     EXPIRED,
-    PENDING
+    PENDING,
+    TERMINATED
 }

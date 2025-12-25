@@ -127,4 +127,78 @@ public class WorkflowScheduleService {
             throw new RuntimeException("Failed to update workflow schedule", e);
         }
     }
+
+    public void forceAdvanceSchedule(String scheduleId) {
+        try {
+            WorkflowSchedule schedule = getScheduleById(scheduleId).orElseThrow(
+                    () -> new RuntimeException("Schedule not found: " + scheduleId));
+
+            Instant now = Instant.now();
+            Instant nextRunTime = calculateNextRunTime(schedule.getCronExpression(), schedule.getTimezone());
+
+            schedule.setLastRunAt(now); // Mark 'now' as the point where we intervened
+            schedule.setNextRunAt(nextRunTime);
+            schedule.setUpdatedAt(now);
+
+            updateSchedule(scheduleId, schedule);
+            log.info("Forced advancement of schedule: {} - New Next Run: {}", scheduleId, nextRunTime);
+
+        } catch (Exception e) {
+            log.error("Error forcing advancement of schedule: {}", scheduleId, e);
+            SentryLogger.logError(e, "Failed to force advance schedule", Map.of("scheduleId", scheduleId));
+        }
+    }
+
+    /**
+     * Calculate next run time based on cron expression in specific timezone
+     */
+    public Instant calculateNextRunTime(String cronExpression, String timeZone) {
+        try {
+            // Convert cron to Quartz format if needed
+            String quartzCron = convertToQuartzFormat(cronExpression);
+            org.quartz.CronExpression cron = new org.quartz.CronExpression(quartzCron);
+
+            // Use target timezone
+            java.time.ZoneId zoneId = (timeZone != null && !timeZone.isBlank())
+                    ? java.time.ZoneId.of(timeZone)
+                    : java.time.ZoneId.systemDefault();
+            cron.setTimeZone(java.util.TimeZone.getTimeZone(zoneId));
+
+            // Current time in target timezone
+            java.time.ZonedDateTime nowInZone = java.time.ZonedDateTime.now(zoneId);
+
+            // Compute next run in target timezone based on NOW
+            java.util.Date nextValidTime = cron.getNextValidTimeAfter(java.util.Date.from(nowInZone.toInstant()));
+
+            if (nextValidTime != null) {
+                // Convert to Instant (UTC) for DB
+                return nextValidTime.toInstant();
+            } else {
+                // fallback: 1 minute later
+                return Instant.now().plusSeconds(60);
+            }
+
+        } catch (Exception e) {
+            log.error("Error calculating next run for cron {} in timezone {}. Defaulting 1 min.", cronExpression,
+                    timeZone, e);
+            return Instant.now().plusSeconds(60);
+        }
+    }
+
+    private String convertToQuartzFormat(String cronExpression) {
+        if (cronExpression == null || cronExpression.trim().isEmpty()) {
+            return "0 * * * * ?";
+        }
+
+        String[] parts = cronExpression.trim().split("\\s+");
+
+        if (parts.length == 5) {
+            return "0 " + String.join(" ", parts) + " ?";
+        } else if (parts.length == 6) {
+            return cronExpression;
+        } else {
+            log.warn("Invalid cron expression format: {}. Defaulting to every minute.", cronExpression);
+            return "0 * * * * ?";
+        }
+    }
 }

@@ -5,7 +5,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.quartz.Job;
 import org.quartz.JobExecutionContext;
 import org.quartz.JobExecutionException;
-import org.quartz.CronExpression;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.workflow.entity.WorkflowExecution;
@@ -15,13 +14,9 @@ import vacademy.io.admin_core_service.features.workflow.service.WorkflowEngineSe
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowScheduleService;
 
 import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.TimeZone;
 
 @Slf4j
 @Component
@@ -54,11 +49,12 @@ public class WorkflowExecutionJob implements Job {
                 try {
                     String idempotencyKey = generateIdempotencyKey(schedule);
 
-                    WorkflowExecution workflowExecution =  idempotencyService.markAsProcessing(idempotencyKey, schedule.getWorkflowId(), schedule.getId());
+                    WorkflowExecution workflowExecution = idempotencyService.markAsProcessing(idempotencyKey,
+                            schedule.getWorkflowId(), schedule.getId());
 
                     log.info("Executing workflow schedule: {} - {}", schedule.getId(), schedule.getWorkflowId());
 
-                    Map<String, Object> result = executeWorkflowFromSchedule(schedule,workflowExecution);
+                    Map<String, Object> result = executeWorkflowFromSchedule(schedule, workflowExecution);
 
                     if ("error".equals(result.get("status"))) {
                         String errorMsg = (String) result.getOrDefault("error", "Unknown error");
@@ -93,7 +89,8 @@ public class WorkflowExecutionJob implements Job {
         }
     }
 
-    private Map<String, Object> executeWorkflowFromSchedule(WorkflowSchedule schedule,WorkflowExecution workflowExecution) {
+    private Map<String, Object> executeWorkflowFromSchedule(WorkflowSchedule schedule,
+            WorkflowExecution workflowExecution) {
         try {
             Map<String, Object> initialContext = new HashMap<>();
             if (schedule.getInitialContext() != null) {
@@ -102,7 +99,7 @@ public class WorkflowExecutionJob implements Job {
             initialContext.put("scheduleId", schedule.getId());
             initialContext.put("scheduleName", schedule.getWorkflowId());
             initialContext.put("executionTime", Instant.now().toEpochMilli());
-            initialContext.put("executionId",workflowExecution.getId());
+            initialContext.put("executionId", workflowExecution.getId());
             log.info("Starting workflow execution for schedule: {} with workflow: {}",
                     schedule.getId(), schedule.getWorkflowId());
 
@@ -148,7 +145,8 @@ public class WorkflowExecutionJob implements Job {
             schedule.setLastRunAt(now);
             schedule.setUpdatedAt(now);
 
-            Instant nextRunTime = calculateNextRunTime(schedule.getCronExpression(), schedule.getTimezone());
+            Instant nextRunTime = workflowScheduleService.calculateNextRunTime(schedule.getCronExpression(),
+                    schedule.getTimezone());
             schedule.setNextRunAt(nextRunTime);
 
             WorkflowSchedule updatedSchedule = workflowScheduleService.updateSchedule(schedule.getId(), schedule);
@@ -158,59 +156,6 @@ public class WorkflowExecutionJob implements Job {
 
         } catch (Exception e) {
             log.error("Error updating schedule execution time: {}", schedule.getId(), e);
-        }
-    }
-
-    /**
-     * Calculate next run time based on cron expression in specific timezone
-     */
-    public Instant calculateNextRunTime(String cronExpression, String timeZone) {
-        try {
-            // Convert cron to Quartz format if needed
-            String quartzCron = convertToQuartzFormat(cronExpression);
-            CronExpression cron = new CronExpression(quartzCron);
-
-            // Use target timezone
-            ZoneId zoneId = (timeZone != null && !timeZone.isBlank())
-                    ? ZoneId.of(timeZone)
-                    : ZoneId.systemDefault();
-            cron.setTimeZone(TimeZone.getTimeZone(zoneId));
-
-            // Current time in target timezone
-            ZonedDateTime nowInZone = ZonedDateTime.now(zoneId);
-
-            // Compute next run in target timezone
-            Date nextValidTime = cron.getNextValidTimeAfter(Date.from(nowInZone.toInstant()));
-
-            if (nextValidTime != null) {
-                // Convert to Instant (UTC) for DB
-                return nextValidTime.toInstant();
-            } else {
-                // fallback: 1 minute later
-                return Instant.now().plusSeconds(60);
-            }
-
-        } catch (Exception e) {
-            log.error("Error calculating next run for cron {} in timezone {}. Defaulting 1 min.", cronExpression,
-                    timeZone, e);
-            return Instant.now().plusSeconds(60);
-        }
-    }
-
-    private String convertToQuartzFormat(String cronExpression) {
-        if (cronExpression == null || cronExpression.trim().isEmpty()) {
-            return "0 * * * * ?";
-        }
-
-        String[] parts = cronExpression.trim().split("\\s+");
-
-        if (parts.length == 5) {
-            return "0 " + String.join(" ", parts) + " ?";
-        } else if (parts.length == 6) {
-            return cronExpression;
-        } else {
-            log.warn("Invalid cron expression format: {}. Defaulting to every minute.", cronExpression);
-            return "0 * * * * ?";
         }
     }
 

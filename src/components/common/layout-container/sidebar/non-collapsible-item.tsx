@@ -1,78 +1,29 @@
 import React from "react";
-import { useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useRouter } from "@tanstack/react-router";
 import { SidebarItemProps } from "../../../../types/layout-container-types";
-import { useSidebar } from "@/components/ui/sidebar";
-import { useRouter } from "@tanstack/react-router";
+import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 
 export const NonCollapsibleItem = ({ icon, title, to }: SidebarItemProps) => {
-    const [hover, setHover] = useState<boolean>(false);
-    const { state } = useSidebar();
     const router = useRouter();
     const currentRoute = router.state.location.pathname;
-
-    const toggleHover = () => setHover(!hover);
-    const isActive = to && currentRoute.includes(to);
-
-    const isExpanded = state === "expanded";
+    const isActive = to ? currentRoute.includes(to) : false;
 
     return (
-        <Link
-            to={to}
-            className={`flex w-full sm:w-[84%] max-w-full overflow-x-hidden gap-4 mx-auto cursor-pointer items-center rounded-lg px-3 py-2.5 transition-all duration-300 ease-in-out group relative overflow-hidden border ${
-                isActive 
-                    ? "bg-gradient-to-r from-primary-50 to-primary-100/80 dark:from-neutral-800 dark:to-neutral-800 text-primary-700 dark:text-neutral-200 border border-primary-200 dark:border-neutral-700" 
-                    : "hover:bg-gradient-to-r hover:from-neutral-50 hover:to-primary-50/30 dark:hover:from-neutral-800 dark:hover:to-neutral-700/30 text-neutral-600 dark:text-neutral-300 hover:text-neutral-800 dark:hover:text-neutral-200 hover:border-primary-200/50 dark:hover:border-neutral-600 border border-transparent"
-            }`}
-            onMouseEnter={toggleHover}
-            onMouseLeave={toggleHover}
-        >
-            {/* Background overlay for active state */}
-            {isActive && (
-                <div className="absolute inset-0 bg-gradient-to-r from-primary-500/5 to-primary-600/10 rounded-lg"></div>
-            )}
-            
-            <div className={`flex-shrink-0 transition-all duration-300 relative z-10 ${
-                isActive ? "scale-110" : hover ? "scale-105" : "scale-100"
-            }`}>
-                {icon &&
-                    React.createElement(icon, {
-                        className: `transition-colors duration-300 ${
-                            isExpanded ? "size-7" : "size-7"
-                        } ${
-                            isActive 
-                                ? "text-primary-600" 
-                                : hover 
-                                    ? "text-primary-500" 
-                                    : "text-neutral-500"
-                        }`,
+        <SidebarMenuItem>
+            <SidebarMenuButton
+                asChild
+                isActive={isActive}
+                tooltip={title}
+                size="lg"
+            >
+                <Link to={to}>
+                    {icon && React.createElement(icon, {
                         weight: "duotone",
+                        className: "size-4"
                     })}
-            </div>
-
-            {isExpanded && (
-                <div
-                    className={`!text-[1rem] !font-normal flex-1 min-w-0 text-left transition-all duration-300 relative z-10 ${
-                        isActive 
-                            ? "text-primary-700 dark:text-neutral-200 !font-normal" 
-                            : hover 
-                                ? "text-neutral-800 dark:text-neutral-200 font-medium" 
-                                : "text-neutral-600 dark:text-neutral-300 font-medium"
-                    } text-sm truncate`}
-                >
-                    {title}
-                </div>
-            )}
-            
-            {/* Active indicator */}
-            {isActive && (
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-gradient-to-b from-primary-500 to-primary-600 dark:from-neutral-600 dark:to-neutral-500 rounded-r-full"></div>
-            )}
-            
-            {/* Hover glow effect */}
-            {(hover || isActive) && (
-                <div className="absolute inset-0 bg-gradient-to-r from-primary-400/5 via-primary-500/10 to-primary-600/5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-            )}
-        </Link>
+                    <span>{title}</span>
+                </Link>
+            </SidebarMenuButton>
+        </SidebarMenuItem>
     );
 };

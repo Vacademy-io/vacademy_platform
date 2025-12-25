@@ -7,6 +7,7 @@ import { useSystemAlerts } from '@/hooks/useSystemAlerts';
 import { isAfter, subDays } from 'date-fns';
 import { formatLocalDateTime } from '@/helpers/formatISOTime';
 import type { UserMessage } from '@/types/announcement';
+import { cn } from "@/lib/utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -92,7 +93,12 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
   };
 
   return (
-    <Card className={`${className}`}>
+    <Card className={cn(
+      className,
+      // Vibrant Styles - Flat Pastel
+      "[.ui-vibrant_&]:bg-fuchsia-50/50 dark:[.ui-vibrant_&]:bg-fuchsia-950/20",
+      "[.ui-vibrant_&]:border-fuchsia-200/50 dark:[.ui-vibrant_&]:border-fuchsia-800/30"
+    )}>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg font-semibold flex items-center gap-2">
@@ -168,10 +174,14 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
               {recentNotifications.map((alert) => (
                 <div
                   key={alert.messageId}
-                  className={`p-3 border rounded-lg transition-all hover:shadow-sm cursor-pointer group ${!alert.isRead
-                      ? 'border-l-4 border-l-primary bg-primary/5'
-                      : 'border-border hover:border-primary/50'
-                    }`}
+                  className={cn(
+                    "p-3 border rounded-lg transition-all hover:shadow-sm cursor-pointer group",
+                    !alert.isRead
+                      ? "border-l-4 border-l-primary bg-primary/5 [.ui-vibrant_&]:bg-fuchsia-100/30 dark:[.ui-vibrant_&]:bg-fuchsia-900/20"
+                      : "border-border hover:border-primary/50",
+                    // Vibrant Styles - Flat Pastel
+                    "[.ui-vibrant_&]:hover:bg-fuchsia-100/40 [.ui-vibrant_&]:hover:border-fuchsia-200/60 dark:[.ui-vibrant_&]:hover:bg-fuchsia-900/30"
+                  )}
                 >
                   <div className="flex items-start gap-3">
                     {/* Unread indicator */}

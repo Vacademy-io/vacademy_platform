@@ -3,7 +3,7 @@ import { useCatalogStore } from "../-store/catalogStore";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { handleFetchInstituteDetails } from "../-services/institute-details";
 import { Filter, X } from 'lucide-react';
-import { toTitleCase } from "@/lib/utils";
+import { cn, toTitleCase } from "@/lib/utils";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -49,10 +49,10 @@ const FilterList: React.FC<FilterListProps> = ({
                     />
                     <Label
                         htmlFor={item.id}
-                        className={`text-sm cursor-pointer leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 ${selectedItems.includes(item.id)
-                            ? "font-medium text-primary"
-                            : "font-normal"
-                            }`}
+                        className={cn(
+                            "text-sm cursor-pointer leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
+                            selectedItems.includes(item.id) ? "font-medium text-primary [.ui-vibrant_&]:font-semibold" : "font-normal"
+                        )}
                     >
                         {item.name}
                     </Label>
@@ -145,12 +145,21 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     }
 
     const FilterContent = () => (
-        <div className="bg-card border rounded-lg shadow-sm">
+        <div className={cn(
+            "bg-card border rounded-lg shadow-sm",
+            // Vibrant Styles - Flat Pastel
+            "[.ui-vibrant_&]:bg-slate-50/50 dark:[.ui-vibrant_&]:bg-slate-900/20",
+            "[.ui-vibrant_&]:border-slate-200/50 dark:[.ui-vibrant_&]:border-slate-800/30",
+            "[.ui-vibrant_&]:shadow-md"
+        )}>
             {/* Desktop Header */}
-            <div className="p-4 border-b flex items-center justify-between">
+            <div className={cn(
+                "p-4 border-b flex items-center justify-between",
+                "[.ui-vibrant_&]:border-primary/10"
+            )}>
                 <div className="flex items-center gap-2">
-                    <Filter size={18} className="text-muted-foreground" />
-                    <h2 className="text-lg font-semibold">Filters</h2>
+                    <Filter size={18} className={cn("text-muted-foreground", "[.ui-vibrant_&]:text-primary")} />
+                    <h2 className={cn("text-lg font-semibold", "[.ui-vibrant_&]:text-primary")}>Filters</h2>
                 </div>
                 {hasActiveFilters && (
                     <Button
@@ -269,7 +278,16 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
             <div className="lg:hidden mb-4">
                 <Sheet>
                     <SheetTrigger asChild>
-                        <Button variant="outline" className="w-full justify-between bg-card">
+                        <Button
+                            variant="outline"
+                            className={cn(
+                                "w-full justify-between bg-card",
+                                // Vibrant Styles
+                                "[.ui-vibrant_&]:border-slate-200/50 dark:[.ui-vibrant_&]:border-slate-800/30",
+                                "[.ui-vibrant_&]:shadow-sm",
+                                "[.ui-vibrant_&]:bg-slate-50/50 dark:[.ui-vibrant_&]:bg-slate-900/20"
+                            )}
+                        >
                             <div className="flex items-center gap-2">
                                 <Filter size={16} />
                                 <span>Filters</span>

@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Bell, ChevronRight, Clock } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface NotifcationCardProps {
   title?: string;
@@ -17,8 +18,13 @@ export function NotifcationCard({
 }: NotifcationCardProps) {
   return (
     <Card
-      className={`relative overflow-hidden transition-all duration-300 hover:shadow-md cursor-pointer group ${isNew ? "border-primary/20 bg-primary/5" : "border-border shadow-sm"
-        }`}
+      className={cn(
+        "relative overflow-hidden transition-all duration-300 hover:shadow-md cursor-pointer group",
+        isNew ? "border-primary/20 bg-primary/5" : "border-border shadow-sm",
+        // Vibrant Styles
+        "[.ui-vibrant_&]:hover:shadow-lg [.ui-vibrant_&]:hover:border-primary/30",
+        isNew && "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-primary/5 [.ui-vibrant_&]:to-primary/10"
+      )}
     >
       <CardContent className="p-4 sm:p-5">
         <div className="flex items-start gap-3 md:gap-4">

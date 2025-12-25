@@ -5,6 +5,7 @@ import {
     ChalkboardTeacher,
 } from "@phosphor-icons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { cn } from "@/lib/utils";
 import { extractTextFromHTML } from "@/components/common/helper";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
@@ -40,7 +41,10 @@ export const CourseContentSections = ({ courseData }: CourseContentSectionsProps
             {/* What You'll Learn Section */}
             {extractTextFromHTML(courseData.whatYoullLearn) && (
                 <div
-                    className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
+                    className={cn(
+                        "relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up",
+                        "[.ui-vibrant_&]:bg-emerald-50/50 dark:[.ui-vibrant_&]:bg-emerald-950/20 [.ui-vibrant_&]:border-emerald-200/50 dark:[.ui-vibrant_&]:border-emerald-800/30"
+                    )}
                     style={{ animationDelay: "0.3s" }}
                 >
                     <div className="absolute inset-0 bg-gradient-to-br from-success-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
@@ -70,7 +74,10 @@ export const CourseContentSections = ({ courseData }: CourseContentSectionsProps
             {/* About Course Section */}
             {extractTextFromHTML(courseData.aboutTheCourse) && (
                 <div
-                    className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
+                    className={cn(
+                        "relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up",
+                        "[.ui-vibrant_&]:bg-blue-50/50 dark:[.ui-vibrant_&]:bg-blue-950/20 [.ui-vibrant_&]:border-blue-200/50 dark:[.ui-vibrant_&]:border-blue-800/30"
+                    )}
                     style={{ animationDelay: "0.4s" }}
                 >
                     <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
@@ -104,7 +111,12 @@ export const CourseContentSections = ({ courseData }: CourseContentSectionsProps
             {/* Who Should Join Section */}
             {extractTextFromHTML(courseData.whoShouldLearn) && (
                 <div
-                    className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
+                    className={cn(
+                        "relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up",
+                        // Vibrant Styles - Flat Pastel
+                        "[.ui-vibrant_&]:bg-purple-50/50 dark:[.ui-vibrant_&]:bg-purple-950/20",
+                        "[.ui-vibrant_&]:border-purple-200/50 dark:[.ui-vibrant_&]:border-purple-800/30 [.ui-vibrant_&]:shadow-md"
+                    )}
                     style={{ animationDelay: "0.5s" }}
                 >
                     <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
@@ -134,7 +146,12 @@ export const CourseContentSections = ({ courseData }: CourseContentSectionsProps
             {/* Instructors Section */}
             {courseData.instructors && courseData.instructors.length > 0 && (
                 <div
-                    className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
+                    className={cn(
+                        "relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up",
+                        // Vibrant Styles - Flat Pastel
+                        "[.ui-vibrant_&]:bg-orange-50/50 dark:[.ui-vibrant_&]:bg-orange-950/20",
+                        "[.ui-vibrant_&]:border-orange-200/50 dark:[.ui-vibrant_&]:border-orange-800/30 [.ui-vibrant_&]:shadow-md"
+                    )}
                     style={{ animationDelay: "0.6s" }}
                 >
                     <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>

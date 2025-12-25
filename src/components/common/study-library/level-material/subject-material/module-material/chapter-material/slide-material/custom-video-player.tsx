@@ -15,6 +15,8 @@ import { getEpochTimeInMillis } from "./utils";
 import { convertTimeToSeconds } from "@/utils/study-library/tracking/convertTimeToSeconds";
 import { formatVideoTime } from "@/utils/study-library/tracking/formatVideoTime";
 import { useVideoSync } from "@/hooks/study-library/useVideoSync";
+import { ConcentrationSettings } from "@/types/student-display-settings";
+import { DEFAULT_STUDENT_DISPLAY_SETTINGS } from "@/constants/display-settings/student-defaults";
 
 import {
     ArrowsOut,
@@ -53,10 +55,11 @@ interface CustomVideoPlayerProps {
         }>;
         can_skip?: boolean;
     }>;
+    concentrationSettings?: ConcentrationSettings;
 }
 
 const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
-    ({ videoUrl, sourceType = "URL", onTimeUpdate, questions = [] }, ref) => {
+    ({ videoUrl, sourceType = "URL", onTimeUpdate, questions = [], concentrationSettings }, ref) => {
         const { activeItem } = useContentStore();
         // Select only the addActivity function to avoid re-renders due to trackingData updates
         const addActivity = useTrackingStore((state) => state.addActivity);
@@ -130,8 +133,24 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
         const [verificationNumbers, setVerificationNumbers] = useState<
             number[]
         >([]);
-        const [verificationInterval] = useState(180);
+
+        // const [verificationInterval] = useState(180); // Removed fixed interval
         const verificationTimerRef = useRef<NodeJS.Timeout | null>(null);
+        const nextVerificationTimeRef = useRef<number>(0);
+
+        // Settings defaults
+        const settings = {
+            enabled: concentrationSettings?.enabled ?? DEFAULT_STUDENT_DISPLAY_SETTINGS.concentration.enabled,
+            min_minutes: concentrationSettings?.frequency.min_minutes ?? DEFAULT_STUDENT_DISPLAY_SETTINGS.concentration.frequency.min_minutes,
+            max_minutes: concentrationSettings?.frequency.max_minutes ?? DEFAULT_STUDENT_DISPLAY_SETTINGS.concentration.frequency.max_minutes,
+        };
+
+        // Reset schedule if settings change to ensure we pick up new intervals immediately
+        useEffect(() => {
+            if (nextVerificationTimeRef.current !== 0) {
+                nextVerificationTimeRef.current = 0;
+            }
+        }, [settings.min_minutes, settings.max_minutes, settings.enabled]);
         // Concentration metrics
         const [tabSwitchCount, setTabSwitchCount] = useState(0);
         const [pauseCount, setPauseCount] = useState(0);
@@ -661,6 +680,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
             const newAnswerTimes = [...answerTimesInSeconds, responseTime];
             setAnswerTimesInSeconds(newAnswerTimes);
             // Check if correct number was clicked (middle position, index 1)
+            // Note: In future we should randomize the correct index too
             if (index === 1) {
                 // Record verification time
                 const currentTimeInSeconds = Math.floor(Date.now() / 1000);
@@ -668,6 +688,9 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
 
                 // Hide verification
                 setShowVerification(false);
+
+                // Reschedule next check
+                scheduleNextVerification();
             } else {
                 // Wrong number clicked, increment wrong answer count
                 setWrongAnswerCount((prev) => prev + 1);
@@ -680,27 +703,58 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
 
                 // Close the verification dialog
                 setShowVerification(false);
+                // We will reschedule only when they resume (via the isPlayed effect)
+                nextVerificationTimeRef.current = 0;
             }
         };
 
-        // Check if verification is needed based on elapsed time
+        // Schedule next verification
+        const scheduleNextVerification = useCallback(() => {
+            if (!settings.enabled) return;
+
+            const minSeconds = settings.min_minutes * 60;
+            const maxSeconds = settings.max_minutes * 60;
+            const randomSeconds = Math.floor(Math.random() * (maxSeconds - minSeconds + 1)) + minSeconds;
+
+            // Set target time based on CURRENT elapsed time + random future duration
+            // We use a ref because we don't want to trigger re-renders just for the target time
+            nextVerificationTimeRef.current = elapsedTime + randomSeconds;
+            console.log(`Next verification scheduled at ${nextVerificationTimeRef.current}s (in ${randomSeconds}s)`);
+        }, [settings.enabled, settings.min_minutes, settings.max_minutes, elapsedTime]);
+
+
+        // Check if verification is needed based on elapsed time (polled via elapsedTime update)
         useEffect(() => {
+            if (!settings.enabled) return;
+
+            // If we just started playing and haven't scheduled one yet
+            if (isPlayed && nextVerificationTimeRef.current === 0) {
+                scheduleNextVerification();
+            }
+
+            // Check if we hit the target
             if (
                 isPlayed &&
                 elapsedTime > 0 &&
-                elapsedTime % verificationInterval === 0
+                nextVerificationTimeRef.current > 0 &&
+                elapsedTime >= nextVerificationTimeRef.current
             ) {
                 // Show verification without pausing the video
                 setShowVerification(true);
                 generateVerificationNumbers();
                 startVerificationTimer();
+
+                // Reset/Schedule next
+                // We'll reschedule AFTER they complete it, but for now reset to 0 so we don't trigger again immediately
+                nextVerificationTimeRef.current = 0;
             }
         }, [
             elapsedTime,
-            verificationInterval,
             isPlayed,
+            settings.enabled,
             generateVerificationNumbers,
             startVerificationTimer,
+            scheduleNextVerification
         ]);
 
         const calculatePercentageWatched = (totalDuration: number) => {
@@ -1281,13 +1335,12 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                 return (
                     <button
                         key={question.id}
-                        className={`absolute w-3 h-3 rounded-full transform -translate-x-1/2 -translate-y-1/2 top-1/2 border-2 border-white shadow-lg transition-all hover:scale-125 z-10 ${
-                            isAnswered
-                                ? "bg-green-500 hover:bg-green-600"
-                                : canSkip
-                                  ? "bg-yellow-500 hover:bg-yellow-600"
-                                  : "bg-red-500 hover:bg-red-600"
-                        }`}
+                        className={`absolute w-3 h-3 rounded-full transform -translate-x-1/2 -translate-y-1/2 top-1/2 border-2 border-white shadow-lg transition-all hover:scale-125 z-10 ${isAnswered
+                            ? "bg-green-500 hover:bg-green-600"
+                            : canSkip
+                                ? "bg-yellow-500 hover:bg-yellow-600"
+                                : "bg-red-500 hover:bg-red-600"
+                            }`}
                         style={{
                             left: `${Math.max(1.5, Math.min(98.5, position))}%`,
                         }}
@@ -1370,40 +1423,95 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                 >
                     {/* Verification overlay - only shown in fullscreen */}
                     {showVerification && isFullscreen && (
-                        <div className="absolute top-2 left-1/2 transform -translate-x-1/2 w-full max-w-xs z-[10000] animate-in fade-in slide-in-from-top duration-300">
-                            <div className="bg-yellow-50 border border-yellow-200 rounded-lg shadow-lg overflow-hidden">
-                                <div className="p-3">
-                                    <div className="mt-1">
-                                        <p className="text-xs text-neutral-600">
-                                            Just ensuring that you are actively
-                                            learning, please click the number{" "}
-                                            <span className="text-primary-500 font-bold">
-                                                {verificationNumbers[1]}
-                                            </span>{" "}
-                                            within{" "}
-                                            <span className="text-primary-500 font-bold">
-                                                {verificationCountdown}{" "}
-                                            </span>
-                                            seconds.
-                                        </p>
+                        <div className="absolute inset-0 z-[10000] flex items-end justify-center pb-24 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+                            <div className="relative animate-in slide-in-from-bottom-10 fade-in duration-500 w-full max-w-lg px-6">
+                                <div className="bg-zinc-950 border border-zinc-800 text-white rounded-2xl shadow-2xl overflow-hidden relative">
+                                    <div className="absolute bottom-0 left-0 h-1 bg-zinc-800 w-full">
+                                        <div
+                                            className="h-full bg-emerald-500 transition-all duration-1000 ease-linear"
+                                            style={{ width: `${(verificationCountdown / 59) * 100}%` }}
+                                        />
                                     </div>
-                                    <div className="mt-2 flex justify-center space-x-2">
-                                        {verificationNumbers.map(
-                                            (number, index) => (
+
+                                    <div className="p-5 flex flex-col sm:flex-row items-center gap-6">
+                                        <div className="flex-1 text-center sm:text-left space-y-2">
+                                            <div className="flex items-center justify-center sm:justify-start gap-2.5">
+                                                <span className="relative flex h-3 w-3">
+                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                                                </span>
+                                                <h4 className="text-base font-bold text-white tracking-tight">Active Focus Check</h4>
+                                            </div>
+                                            <p className="text-sm text-zinc-400 leading-relaxed">
+                                                Select <span className="inline-block px-2 py-0.5 mx-1 bg-zinc-900 border border-zinc-700 rounded text-emerald-400 font-mono font-bold text-base shadow-inner md:align-middle">{verificationNumbers[1]}</span> to maintain your learning streak.
+                                            </p>
+                                        </div>
+
+                                        <div className="flex items-center gap-3 shrink-0">
+                                            {verificationNumbers.map((number, index) => (
                                                 <button
                                                     key={index}
-                                                    onClick={() =>
-                                                        handleVerificationClick(
-                                                            index
-                                                        )
-                                                    }
-                                                    className="px-2 py-1 rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 bg-white text-neutral-600 border border-gray-200 hover:bg-gray-50"
+                                                    onClick={() => handleVerificationClick(index)} // Correct index is 1
+                                                    className="w-12 h-12 flex items-center justify-center rounded-xl text-base font-bold bg-zinc-900 text-zinc-300 border border-zinc-800 hover:bg-emerald-500/10 hover:text-emerald-400 hover:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all duration-200 active:scale-95 shadow-lg group relative overflow-hidden"
                                                 >
-                                                    {number}
+                                                    <span className="relative z-10">{number}</span>
                                                 </button>
-                                            )
-                                        )}
+                                            ))}
+                                        </div>
                                     </div>
+                                </div>
+                                <div className="text-center mt-3">
+                                    <span className="text-xs font-medium text-zinc-500 bg-black/40 px-3 py-1 rounded-full border border-white/5 backdrop-blur-md">
+                                        Closing in {verificationCountdown}s
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    {/* Verification Overlay - Premium UI */}
+                    {showVerification && !isFullscreen && ( // Removed enableConcentrationScore check as it is checked in logic
+                        <div className="absolute inset-0 z-[50] flex items-end justify-center pb-8 pointer-events-none">
+                            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9990] animate-in fade-in duration-500 pointer-events-auto" />
+                            <div className="relative z-[9999] animate-in slide-in-from-bottom-10 fade-in duration-500 w-full max-w-lg px-6 pointer-events-auto">
+                                <div className="bg-zinc-950 border border-zinc-800 text-white rounded-2xl shadow-2xl overflow-hidden relative">
+                                    <div className="absolute bottom-0 left-0 h-1 bg-zinc-800 w-full">
+                                        <div
+                                            className="h-full bg-emerald-500 transition-all duration-1000 ease-linear"
+                                            style={{ width: `${(verificationCountdown / 59) * 100}%` }}
+                                        />
+                                    </div>
+
+                                    <div className="p-5 flex flex-col sm:flex-row items-center gap-6">
+                                        <div className="flex-1 text-center sm:text-left space-y-2">
+                                            <div className="flex items-center justify-center sm:justify-start gap-2.5">
+                                                <span className="relative flex h-3 w-3">
+                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                                                </span>
+                                                <h4 className="text-base font-bold text-white tracking-tight">Active Focus Check</h4>
+                                            </div>
+                                            <p className="text-sm text-zinc-400 leading-relaxed">
+                                                Select <span className="inline-block px-2 py-0.5 mx-1 bg-zinc-900 border border-zinc-700 rounded text-emerald-400 font-mono font-bold text-base shadow-inner md:align-middle">{verificationNumbers[1]}</span> to maintain your learning streak.
+                                            </p>
+                                        </div>
+
+                                        <div className="flex items-center gap-3 shrink-0">
+                                            {verificationNumbers.map((number, index) => (
+                                                <button
+                                                    key={index}
+                                                    onClick={() => handleVerificationClick(index)} // Correct index is 1
+                                                    className="w-12 h-12 flex items-center justify-center rounded-xl text-base font-bold bg-zinc-900 text-zinc-300 border border-zinc-800 hover:bg-emerald-500/10 hover:text-emerald-400 hover:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all duration-200 active:scale-95 shadow-lg group relative overflow-hidden"
+                                                >
+                                                    <span className="relative z-10">{number}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="text-center mt-3">
+                                    <span className="text-xs font-medium text-zinc-500 bg-black/40 px-3 py-1 rounded-full border border-white/5 backdrop-blur-md">
+                                        Closing in {verificationCountdown}s
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -1771,7 +1879,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                             previousAnswer={
                                 currentQuestion
                                     ? answeredQuestions[currentQuestion.id]
-                                          ?.selectedOptions
+                                        ?.selectedOptions
                                     : undefined
                             }
                         />

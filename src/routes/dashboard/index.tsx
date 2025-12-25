@@ -428,6 +428,8 @@ export function DashboardComponent() {
                         navigate({ to: "/study-library/courses" });
                       }}
                       isLoading={isLoading}
+                      className="[.ui-vibrant_&]:bg-sky-50/50 [.ui-vibrant_&]:border-sky-200/50 dark:[.ui-vibrant_&]:bg-sky-950/20 dark:[.ui-vibrant_&]:border-sky-800/30"
+                      iconClassName="[.ui-vibrant_&]:text-sky-600 dark:[.ui-vibrant_&]:text-sky-300 [.ui-vibrant_&]:bg-white/90 dark:[.ui-vibrant_&]:bg-sky-500/10"
                     />
                   ),
                 },
@@ -447,6 +449,8 @@ export function DashboardComponent() {
                         navigate({ to: "/learning-centre/attendance" })
                       }
                       isLoading={isLoadingAttendance}
+                      className="[.ui-vibrant_&]:bg-emerald-50/50 [.ui-vibrant_&]:border-emerald-200/50 dark:[.ui-vibrant_&]:bg-emerald-950/20 dark:[.ui-vibrant_&]:border-emerald-800/30"
+                      iconClassName="[.ui-vibrant_&]:text-emerald-600 dark:[.ui-vibrant_&]:text-emerald-300 [.ui-vibrant_&]:bg-white/90 dark:[.ui-vibrant_&]:bg-emerald-500/10"
                     />
                   ),
                 },
@@ -462,6 +466,8 @@ export function DashboardComponent() {
                         navigate({ to: "/study-library/live-class" })
                       }
                       isLoading={isLoadingLiveSessions}
+                      className="[.ui-vibrant_&]:bg-rose-50/50 [.ui-vibrant_&]:border-rose-200/50 dark:[.ui-vibrant_&]:bg-rose-950/20 dark:[.ui-vibrant_&]:border-rose-800/30"
+                      iconClassName="[.ui-vibrant_&]:text-rose-600 dark:[.ui-vibrant_&]:text-rose-300 [.ui-vibrant_&]:bg-white/90 dark:[.ui-vibrant_&]:bg-rose-500/10"
                     />
                   ),
                 },
@@ -481,6 +487,8 @@ export function DashboardComponent() {
                         navigate({ to: "/assessment/examination" });
                       }}
                       isLoading={isLoading}
+                      className="[.ui-vibrant_&]:bg-amber-50/50 [.ui-vibrant_&]:border-amber-200/50 dark:[.ui-vibrant_&]:bg-amber-950/20 dark:[.ui-vibrant_&]:border-amber-800/30"
+                      iconClassName="[.ui-vibrant_&]:text-amber-600 dark:[.ui-vibrant_&]:text-amber-300 [.ui-vibrant_&]:bg-white/90 dark:[.ui-vibrant_&]:bg-amber-500/10"
                     />
                   ),
                 },
@@ -523,7 +531,11 @@ export function DashboardComponent() {
                   id: "custom" as const,
                   className: "",
                   render: customWidget ? (
-                    <Card className="shadow-sm hover:shadow-md transition-shadow">
+                    <Card className={cn(
+                      "shadow-sm hover:shadow-md transition-shadow",
+                      "[.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:border-primary/20",
+                      "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5"
+                    )}>
                       <CardHeader className="pb-2">
                         <CardTitle className="text-lg">
                           {customWidget.title || "Custom Widget"}

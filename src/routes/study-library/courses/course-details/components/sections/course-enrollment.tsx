@@ -9,6 +9,7 @@ import {
 import { MyButton } from "@/components/design-system/button";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
+import { cn } from "@/lib/utils";
 
 interface SessionOption {
     _id: string;
@@ -72,7 +73,7 @@ export const CourseEnrollment = ({
     enrolledSessions,
     courseId,
     hasRightSidebar,
-    paymentType,
+    // paymentType,
     certificateUrl,
     onSessionChange,
     onLevelChange,
@@ -87,7 +88,12 @@ export const CourseEnrollment = ({
 
     return (
         <div
-            className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-200 p-3 sm:p-4 group animate-fade-in-up"
+            className={cn(
+                "relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-200 p-3 sm:p-4 group animate-fade-in-up",
+                // Vibrant Styles - Flat Pastel
+                "[.ui-vibrant_&]:bg-indigo-50/50 dark:[.ui-vibrant_&]:bg-indigo-950/20",
+                "[.ui-vibrant_&]:border-indigo-200/50 dark:[.ui-vibrant_&]:border-indigo-800/30 [.ui-vibrant_&]:shadow-md"
+            )}
             style={{ animationDelay: "0.1s" }}
         >
             {/* Background gradient overlay */}
@@ -98,14 +104,23 @@ export const CourseEnrollment = ({
 
             <div className="relative">
                 <div className="flex items-center space-x-2 mb-3">
-                    <div className="p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-md shadow-sm">
+                    <div className={cn(
+                        "p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-md shadow-sm",
+                        "[.ui-vibrant_&]:bg-primary/20 [.ui-vibrant_&]:text-primary"
+                    )}>
                         <GraduationCap
                             size={18}
-                            className="text-primary-600"
+                            className={cn(
+                                "text-primary-600",
+                                "[.ui-vibrant_&]:text-primary"
+                            )}
                             weight="duotone"
                         />
                     </div>
-                    <h3 className="text-base font-bold text-gray-900">
+                    <h3 className={cn(
+                        "text-base font-bold text-gray-900",
+                        "[.ui-vibrant_&]:text-foreground"
+                    )}>
                         {getTerminology(ContentTerms.Course, SystemTerms.Course)}{" "}
                         Configuration
                     </h3>
@@ -147,68 +162,68 @@ export const CourseEnrollment = ({
                             {sessionOptions &&
                                 sessionOptions.length > 0 &&
                                 (sessionOptions.length === 1 &&
-                                sessionOptions[0].label === "default" ? null : sessionOptions.length === 1 ? (
-                                    <div className="p-2.5 bg-gray-50/80 rounded-lg border border-gray-200">
-                                        <span className="text-sm font-medium text-gray-900">
-                                            {sessionOptions[0]?.label}
-                                        </span>
-                                    </div>
-                                ) : sessionOptions.length > 1 ? (
-                                    <div className="flex flex-col gap-2">
-                                        <Select
-                                            value={selectedSession}
-                                            onValueChange={onSessionChange}
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select Session" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {sessionOptions.map((option) => (
-                                                    <SelectItem
-                                                        key={option._id}
-                                                        value={option.value}
-                                                    >
-                                                        {option.label}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                ) : null)}
+                                    sessionOptions[0].label === "default" ? null : sessionOptions.length === 1 ? (
+                                        <div className="p-2.5 bg-gray-50/80 rounded-lg border border-gray-200">
+                                            <span className="text-sm font-medium text-gray-900">
+                                                {sessionOptions[0]?.label}
+                                            </span>
+                                        </div>
+                                    ) : sessionOptions.length > 1 ? (
+                                        <div className="flex flex-col gap-2">
+                                            <Select
+                                                value={selectedSession}
+                                                onValueChange={onSessionChange}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select Session" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {sessionOptions.map((option) => (
+                                                        <SelectItem
+                                                            key={option._id}
+                                                            value={option.value}
+                                                        >
+                                                            {option.label}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    ) : null)}
 
                             {/* Level Selector */}
                             {levelOptions &&
                                 levelOptions.length > 0 &&
                                 (levelOptions.length === 1 &&
-                                levelOptions[0].label === "default" ? null : levelOptions.length === 1 ? (
-                                    <div className="p-2.5 bg-gray-50/80 rounded-lg border border-gray-200">
-                                        <span className="text-sm font-medium text-gray-900">
-                                            {levelOptions[0]?.label}
-                                        </span>
-                                    </div>
-                                ) : levelOptions.length > 1 ? (
-                                    <div className="flex flex-col gap-2">
-                                        <Select
-                                            value={selectedLevel}
-                                            onValueChange={onLevelChange}
-                                            disabled={!selectedSession}
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select Level" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {levelOptions.map((option) => (
-                                                    <SelectItem
-                                                        key={option._id}
-                                                        value={option.value}
-                                                    >
-                                                        {option.label}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                ) : null)}
+                                    levelOptions[0].label === "default" ? null : levelOptions.length === 1 ? (
+                                        <div className="p-2.5 bg-gray-50/80 rounded-lg border border-gray-200">
+                                            <span className="text-sm font-medium text-gray-900">
+                                                {levelOptions[0]?.label}
+                                            </span>
+                                        </div>
+                                    ) : levelOptions.length > 1 ? (
+                                        <div className="flex flex-col gap-2">
+                                            <Select
+                                                value={selectedLevel}
+                                                onValueChange={onLevelChange}
+                                                disabled={!selectedSession}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select Level" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {levelOptions.map((option) => (
+                                                        <SelectItem
+                                                            key={option._id}
+                                                            value={option.value}
+                                                        >
+                                                            {option.label}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    ) : null)}
                         </div>
                     </div>
                 ) : (
@@ -218,37 +233,37 @@ export const CourseEnrollment = ({
                             <span className="text-sm font-medium text-yellow-800">
                                 {selectedTab === "ALL"
                                     ? `No ${getTerminology(
-                                          ContentTerms.Session,
-                                          SystemTerms.Session
-                                      ).toLocaleLowerCase()} available for this ${getTerminology(
-                                          ContentTerms.Course,
-                                          SystemTerms.Course
-                                      ).toLocaleLowerCase()}`
+                                        ContentTerms.Session,
+                                        SystemTerms.Session
+                                    ).toLocaleLowerCase()} available for this ${getTerminology(
+                                        ContentTerms.Course,
+                                        SystemTerms.Course
+                                    ).toLocaleLowerCase()}`
                                     : `You are not enrolled in any ${getTerminology(
-                                          ContentTerms.Session,
-                                          SystemTerms.Session
-                                      ).toLocaleLowerCase()} for this ${getTerminology(
-                                          ContentTerms.Course,
-                                          SystemTerms.Course
-                                      ).toLocaleLowerCase()}`}
+                                        ContentTerms.Session,
+                                        SystemTerms.Session
+                                    ).toLocaleLowerCase()} for this ${getTerminology(
+                                        ContentTerms.Course,
+                                        SystemTerms.Course
+                                    ).toLocaleLowerCase()}`}
                             </span>
                         </div>
                         <p className="text-xs text-yellow-700 mt-1">
                             {selectedTab === "ALL"
                                 ? `This ${getTerminology(
-                                      ContentTerms.Course,
-                                      SystemTerms.Course
-                                  ).toLocaleLowerCase()} may not have any active ${getTerminology(
-                                      ContentTerms.Session,
-                                      SystemTerms.Session
-                                  ).toLocaleLowerCase()}s configured.`
+                                    ContentTerms.Course,
+                                    SystemTerms.Course
+                                ).toLocaleLowerCase()} may not have any active ${getTerminology(
+                                    ContentTerms.Session,
+                                    SystemTerms.Session
+                                ).toLocaleLowerCase()}s configured.`
                                 : `Please contact your ${getTerminology(
-                                      RoleTerms.Teacher,
-                                      SystemTerms.Teacher
-                                  ).toLocaleLowerCase()} or ${getTerminology(
-                                      RoleTerms.Admin,
-                                      SystemTerms.Admin
-                                  ).toLocaleLowerCase()} to get enrolled.`}
+                                    RoleTerms.Teacher,
+                                    SystemTerms.Teacher
+                                ).toLocaleLowerCase()} or ${getTerminology(
+                                    RoleTerms.Admin,
+                                    SystemTerms.Admin
+                                ).toLocaleLowerCase()} to get enrolled.`}
                         </p>
                     </div>
                 )}

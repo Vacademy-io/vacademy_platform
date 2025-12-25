@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { BarChart3, Clock, Zap, Target, Award, TrendingUp } from "lucide-react";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { cn } from "@/lib/utils";
 
 // Enhanced Loading Skeleton
 const AnalyticsLoadingSkeleton = () => (
@@ -66,16 +67,28 @@ const StatsCard = ({
   description: string;
 }) => {
   return (
-    <Card className="shadow-none hover:shadow-sm transition-shadow">
+    <Card className={cn(
+      "shadow-none hover:shadow-sm transition-shadow",
+      // Vibrant Styles - Flat Pastel
+      "[.ui-vibrant_&]:bg-teal-50/50 dark:[.ui-vibrant_&]:bg-teal-950/20",
+      "[.ui-vibrant_&]:border-teal-200/50 dark:[.ui-vibrant_&]:border-teal-800/30"
+    )}>
       <CardContent className="p-5">
         <div className="flex items-center justify-between mb-4">
-          <div className="p-2 bg-primary/10 rounded-md text-primary">
+          <div className={cn(
+            "p-2 bg-primary/10 rounded-md text-primary",
+            "[.ui-vibrant_&]:bg-white/90 [.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:text-teal-600 [.ui-vibrant_&]:ring-0",
+            "[.ui-vibrant_&]:dark:bg-teal-500/10 [.ui-vibrant_&]:dark:text-teal-300"
+          )}>
             <Icon size={18} />
           </div>
           {trend && (
             <Badge
               variant="secondary"
-              className={`${trendColor || 'bg-secondary text-secondary-foreground'} border-0 px-2 py-0.5`}
+              className={cn(
+                `${trendColor || 'bg-secondary text-secondary-foreground'} border-0 px-2 py-0.5`,
+                "[.ui-vibrant_&]:shadow-sm"
+              )}
             >
               {trend}
             </Badge>
@@ -221,7 +234,13 @@ export const PastLearningInsights = () => {
       </div>
 
       {/* Enhanced Chart Section */}
-      <Card className="shadow-none">
+      <Card className={cn(
+        "shadow-none",
+        // Vibrant Styles - Flat Pastel
+        "[.ui-vibrant_&]:bg-blue-50/50 dark:[.ui-vibrant_&]:bg-blue-950/20",
+        "[.ui-vibrant_&]:border-blue-200/50 dark:[.ui-vibrant_&]:border-blue-800/30",
+        "[.ui-vibrant_&]:shadow-sm"
+      )}>
         <CardHeader className="border-b px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="space-y-1">
@@ -237,7 +256,11 @@ export const PastLearningInsights = () => {
       </Card>
 
       {/* Enhanced Table Section */}
-      <Card className="shadow-none">
+      <Card className={cn(
+        "shadow-none",
+        "[.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:border-primary/20",
+        "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5"
+      )}>
         <CardHeader className="border-b px-6 py-4 flex flex-row items-center justify-between space-y-0">
           <div className="space-y-1">
             <CardTitle className="text-base font-semibold">Daily Progress</CardTitle>

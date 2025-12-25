@@ -1,6 +1,6 @@
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
 import React from 'react';
-
+import { cn } from "@/lib/utils";
 
 
 interface PaginationProps {
@@ -11,8 +11,9 @@ interface PaginationProps {
 
 const Pagination: React.FC<PaginationProps> = ({ currentPage, totalPages, onPageChange }) => {
   const renderPageNumbers = (): (number | string)[] => {
+    // ... (logic remains same, just ensuring we don't break it)
     const pageNumbers: (number | string)[] = [];
-    const smallTotalPagesThreshold = 4; 
+    const smallTotalPagesThreshold = 4;
 
     if (totalPages <= smallTotalPagesThreshold) {
       for (let i = 1; i <= totalPages; i++) {
@@ -37,32 +38,32 @@ const Pagination: React.FC<PaginationProps> = ({ currentPage, totalPages, onPage
       if (dynamicBlockEnd < totalPages - 1) {
         pageNumbers.push('...');
       }
-      
+
       if (totalPages > 3) {
-         pageNumbers.push(totalPages);
+        pageNumbers.push(totalPages);
       }
 
     } else {
       pageNumbers.push(1);
       let startPage: number, endPage: number;
 
-      if (currentPage <= 6) { 
+      if (currentPage <= 6) {
         startPage = 2;
         endPage = Math.min(totalPages - 1, 7);
-      } else if (currentPage > totalPages - 5) { 
+      } else if (currentPage > totalPages - 5) {
         startPage = Math.max(2, totalPages - 6);
         endPage = totalPages - 1;
-      } else { 
+      } else {
         startPage = currentPage - 2;
         endPage = currentPage + 2;
       }
-      
+
       if (startPage > 2) {
         pageNumbers.push('...');
       }
 
       for (let i = startPage; i <= endPage; i++) {
-        if (i > 1 && i < totalPages) { 
+        if (i > 1 && i < totalPages) {
           pageNumbers.push(i);
         }
       }
@@ -71,15 +72,15 @@ const Pagination: React.FC<PaginationProps> = ({ currentPage, totalPages, onPage
         pageNumbers.push('...');
       }
       if (totalPages > 1) {
-         pageNumbers.push(totalPages);
+        pageNumbers.push(totalPages);
       }
     }
-    return [...new Set(pageNumbers)].filter(p => p !== 0 && p !== null && p !== undefined) as (number | string)[]; 
+    return [...new Set(pageNumbers)].filter(p => p !== 0 && p !== null && p !== undefined) as (number | string)[];
   };
 
   const pagesToDisplay = renderPageNumbers();
 
-  if (totalPages <=1 && pagesToDisplay.length <=1) return null;
+  if (totalPages <= 1 && pagesToDisplay.length <= 1) return null;
 
   return (
     <div className="flex items-center justify-center mt-8 mb-4">
@@ -87,7 +88,11 @@ const Pagination: React.FC<PaginationProps> = ({ currentPage, totalPages, onPage
         <button
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1}
-          className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 transition-opacity"
+          className={cn(
+            "relative inline-flex items-center px-2 py-2 rounded-l-md border border-input bg-background text-sm font-medium text-muted-foreground hover:bg-muted disabled:opacity-50 transition-all focus:z-10",
+            // Vibrant Styles
+            "[.ui-vibrant_&]:border-primary/20 [.ui-vibrant_&]:text-primary/70 [.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary"
+          )}
         >
           <span className="sr-only">Previous</span>
           <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
@@ -95,15 +100,19 @@ const Pagination: React.FC<PaginationProps> = ({ currentPage, totalPages, onPage
 
         {pagesToDisplay.map((page, index) => (
           <button
-            key={index} 
+            key={index}
             onClick={() => typeof page === 'number' && onPageChange(page)}
             aria-current={page === currentPage ? 'page' : undefined}
-            className={`relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium
-              ${page === currentPage 
-                ? 'z-10 bg-blue-600 text-white border-blue-600' 
-                : 'bg-white text-gray-700 hover:bg-gray-50'}
-              ${typeof page !== 'number' ? 'text-gray-500 cursor-default' : ''}`
-            }
+            className={cn(
+              "relative inline-flex items-center px-4 py-2 border text-sm font-medium transition-all focus:z-10",
+              page === currentPage
+                ? "z-10 bg-primary text-primary-foreground border-primary hover:bg-primary/90"
+                : "bg-background text-muted-foreground border-input hover:bg-muted hover:text-foreground",
+              typeof page !== 'number' && "cursor-default hover:bg-background",
+              // Vibrant Styles
+              page === currentPage && "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-primary [.ui-vibrant_&]:to-primary/90 [.ui-vibrant_&]:shadow-md [.ui-vibrant_&]:border-primary",
+              page !== currentPage && typeof page === 'number' && "[.ui-vibrant_&]:border-primary/20 [.ui-vibrant_&]:text-primary/70 [.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary"
+            )}
             disabled={typeof page !== 'number'}
           >
             {page}
@@ -113,7 +122,11 @@ const Pagination: React.FC<PaginationProps> = ({ currentPage, totalPages, onPage
         <button
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage === totalPages}
-          className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 transition-opacity"
+          className={cn(
+            "relative inline-flex items-center px-2 py-2 rounded-r-md border border-input bg-background text-sm font-medium text-muted-foreground hover:bg-muted disabled:opacity-50 transition-all focus:z-10",
+            // Vibrant Styles
+            "[.ui-vibrant_&]:border-primary/20 [.ui-vibrant_&]:text-primary/70 [.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary"
+          )}
         >
           <span className="sr-only">Next</span>
           <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />

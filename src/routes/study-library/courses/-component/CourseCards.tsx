@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ChevronRight, Play, BookOpen, Users, Clock } from "lucide-react";
-import { IconRocket, IconMoodSmile, IconAdjustments, IconHash } from "@tabler/icons-react";
+import { IconRocket, IconMoodSmile, IconAdjustments } from "@tabler/icons-react";
 import BoringAvatar from "boring-avatars";
 import { useRouter } from "@tanstack/react-router";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import LocalStorageUtils from "@/utils/localstorage";
 import { Star } from "@phosphor-icons/react";
 import { ProgressBar } from "@/components/ui/custom-progress-bar";
-import { toTitleCase } from "@/lib/utils";
+import { cn, toTitleCase } from "@/lib/utils";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils.ts";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 import { Card, CardFooter } from "@/components/ui/card";
@@ -55,6 +55,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
 }) => {
     const [courseImageUrl, setCourseImageUrl] = useState<string | null>(null);
     const [loadingImage, setLoadingImage] = useState(true);
+    const router = useRouter();
 
     const instructor = instructors[0];
     const instructorName = instructor?.full_name || "Unknown Instructor";
@@ -62,27 +63,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
     const ratingValue = rating || 0;
     const cappedPercentageCompleted = Math.min(percentageCompleted, 100);
-
-    const router = useRouter();
-
-    // Vibrant mode detection (reads global class applied by root)
-    const [isVibrant, setIsVibrant] = useState(false);
-    useEffect(() => {
-        const check = () => {
-            try {
-                setIsVibrant(document.documentElement.classList.contains("ui-vibrant"));
-            } catch {
-                setIsVibrant(false);
-            }
-        };
-        check();
-        const onStorage = (e: StorageEvent) => {
-            if (!e) return;
-            if (e.key === "DEBUG_UI_TYPE") check();
-        };
-        window.addEventListener("storage", onStorage);
-        return () => window.removeEventListener("storage", onStorage);
-    }, []);
+    const isCompleted = cappedPercentageCompleted === 100;
 
     const LevelIcon = useMemo(() => {
         const lvl = (level_name || "").toLowerCase();
@@ -149,6 +130,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
     }, [previewImageUrl]);
 
     const getLevelBadgeVariant = () => {
+        // ... (keep existing switch)
         switch (level_name.toLowerCase()) {
             case "beginner":
                 return "secondary";
@@ -162,11 +144,12 @@ const CourseCard: React.FC<CourseCardProps> = ({
     };
 
     const getLevelCustomClass = () => {
+        // ... (keep existing switch)
         switch (level_name.toLowerCase()) {
             case "beginner":
                 return "bg-emerald-100 text-emerald-700 hover:bg-emerald-200 border-transparent dark:bg-emerald-900/30 dark:text-emerald-300";
             case "intermediate":
-                return "bg-amber-100 text-amber-700 hover:bg-amber-200 border-transparent dark:bg-amber-900/30 dark:text-amber-300";
+                return "bg-amber-100 text-amber-700 hover:bg-amber-200 border-transparent dark:bg-amber900/30 dark:text-amber-300";
             case "advanced":
                 return "bg-rose-100 text-rose-700 hover:bg-rose-200 border-transparent dark:bg-rose-900/30 dark:text-rose-300";
             default:
@@ -174,8 +157,22 @@ const CourseCard: React.FC<CourseCardProps> = ({
         }
     };
 
+    const levelLower = (level_name || "").trim().toLowerCase();
+    const isDefaultLevel = levelLower === "default" || levelLower.includes("default");
+
     return (
-        <Card className="course-card group relative overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-lg flex flex-col w-full max-w-full animate-fade-in-up border-border/60 bg-card/50 hover:bg-card">
+        <Card className={cn(
+            "course-card group relative overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-lg flex flex-col w-full max-w-full animate-fade-in-up border-border/60 bg-card/50 hover:bg-card",
+            // Vibrant Styles - Flat Pastel
+            !isCompleted && "[.ui-vibrant_&]:bg-slate-50/50 dark:[.ui-vibrant_&]:bg-slate-900/20",
+            !isCompleted && "[.ui-vibrant_&]:border-slate-200/50 dark:[.ui-vibrant_&]:border-slate-800/30",
+
+            // Completed Styles
+            isCompleted && "[.ui-vibrant_&]:bg-emerald-50/50 dark:[.ui-vibrant_&]:bg-emerald-950/20",
+            isCompleted && "[.ui-vibrant_&]:border-emerald-200/50 dark:[.ui-vibrant_&]:border-emerald-800/30",
+
+            "[.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:hover:shadow-xl"
+        )}>
             {/* Background gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg pointer-events-none"></div>
 
@@ -184,10 +181,13 @@ const CourseCard: React.FC<CourseCardProps> = ({
                 <div className="relative w-full h-40 sm:h-48 lg:h-52 bg-muted flex items-center justify-center overflow-hidden rounded-t-lg course-card-image border-b">
                     {courseImageUrl && (
                         <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors duration-300 flex items-center justify-center z-10">
-                            <div className="bg-background/90 backdrop-blur-sm rounded-full p-3 transform scale-75 opacity-0 group-hover:opacity-100 group-hover:scale-100 transition-all duration-300 shadow-xl">
+                            <div className={cn(
+                                "bg-background/90 backdrop-blur-sm rounded-full p-3 transform scale-75 opacity-0 group-hover:opacity-100 group-hover:scale-100 transition-all duration-300 shadow-xl",
+                                "[.ui-vibrant_&]:bg-white/90 [.ui-vibrant_&]:text-indigo-600 dark:[.ui-vibrant_&]:text-indigo-300"
+                            )}>
                                 <Play
                                     size={20}
-                                    className="text-primary ml-1 fill-primary"
+                                    className="text-primary ml-1 fill-primary [.ui-vibrant_&]:text-inherit [.ui-vibrant_&]:fill-current"
                                 />
                             </div>
                         </div>
@@ -219,20 +219,27 @@ const CourseCard: React.FC<CourseCardProps> = ({
                     >
                         {toTitleCase(package_name)}
                     </h3>
-                    {(() => {
-                        const levelLower = (level_name || "").trim().toLowerCase();
-                        const isDefaultLevel = levelLower === "default" || levelLower.includes("default");
-                        const shouldRenderBadge = !isDefaultLevel || (isDefaultLevel && isVibrant);
-                        return shouldRenderBadge ? (
-                            <Badge
-                                variant={getLevelBadgeVariant() as any}
-                                className={`flex-shrink-0 gap-1 px-2.5 py-0.5 ${getLevelCustomClass()}`}
-                            >
-                                {isVibrant && <LevelIcon size={12} className="text-current" />}
-                                {!isDefaultLevel && toTitleCase(level_name)}
-                            </Badge>
-                        ) : null;
-                    })()}
+
+                    <Badge
+                        variant={getLevelBadgeVariant() as any}
+                        className={cn(
+                            "flex-shrink-0 gap-1 px-2.5 py-0.5",
+                            getLevelCustomClass(),
+                            // Default level logic: hidden by default, shown in vibrant mode
+                            isDefaultLevel && "hidden [.ui-vibrant_&]:inline-flex",
+                            // Vibrant mode override for alignment/style if needed
+                            "[.ui-vibrant_&]:shadow-sm"
+                        )}
+                    >
+                        <LevelIcon size={12} className="text-current hidden [.ui-vibrant_&]:block" />
+                        {!isDefaultLevel && toTitleCase(level_name)}
+                        {/* If it IS default level, we might want to show text in vibrant mode? 
+                            Original logic: !isDefaultLevel && toTitleCase(level_name). 
+                            If it's default level, text is hidden, only icon was shown in original logic?
+                            Wait, original: `{!isDefaultLevel && toTitleCase(level_name)}`.
+                            So if default level, NO TEXT. Only icon (if vibrant).
+                        */}
+                    </Badge>
                 </div>
 
                 {/* Description */}
@@ -245,7 +252,11 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
                 {/* Instructor */}
                 {instructors.length > 0 && (
-                    <div className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50 transition-colors duration-200 -mx-2">
+                    <div className={cn(
+                        "flex items-center gap-3 p-2 rounded-md hover:bg-muted/50 transition-colors duration-200 -mx-2",
+                        // Vibrant Styles
+                        "[.ui-vibrant_&]:hover:bg-white/60 [.ui-vibrant_&]:border [.ui-vibrant_&]:border-transparent [.ui-vibrant_&]:hover:border-primary/20"
+                    )}>
                         <div className="relative flex-shrink-0">
                             {instructor?.image_url ? (
                                 <img
@@ -342,7 +353,13 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
             <CardFooter className="p-4 pt-0 mt-auto">
                 <Button
-                    className="w-full font-semibold shadow-sm group/btn"
+                    className={cn(
+                        "w-full font-semibold shadow-sm group/btn",
+                        // Vibrant Styles - Flat Button
+                        !isCompleted && "[.ui-vibrant_&]:bg-indigo-600 [.ui-vibrant_&]:hover:bg-indigo-700 [.ui-vibrant_&]:text-white",
+                        isCompleted && "[.ui-vibrant_&]:bg-emerald-600 [.ui-vibrant_&]:hover:bg-emerald-700 [.ui-vibrant_&]:text-white",
+                        "[.ui-vibrant_&]:shadow-md"
+                    )}
                     onClick={() => handleViewCoureseDetails(courseId)}
                 >
                     <BookOpen

@@ -10,6 +10,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 interface SearchAndSortBarProps {
     searchTerm: string;
@@ -37,7 +38,13 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
     };
 
     return (
-        <div className="bg-card border border-border rounded-lg shadow-sm p-3 sm:p-4 mb-3 sm:mb-4">
+        <div className={cn(
+            "bg-card border border-border rounded-lg shadow-sm p-3 sm:p-4 mb-3 sm:mb-4",
+            // Vibrant Styles - Flat Pastel
+            "[.ui-vibrant_&]:bg-slate-50/50 dark:[.ui-vibrant_&]:bg-slate-900/20",
+            "[.ui-vibrant_&]:border-slate-200/50 dark:[.ui-vibrant_&]:border-slate-800/30",
+            "[.ui-vibrant_&]:shadow-sm"
+        )}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 {/* Search Section */}
                 <div className="flex-1 min-w-0">

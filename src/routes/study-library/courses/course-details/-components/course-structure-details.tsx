@@ -44,6 +44,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   TabType,
   tabs,
@@ -2356,23 +2357,23 @@ export const CourseStructureDetails = ({
       </div>
     ),
     [TabType.CONTENT_STRUCTURE]: (
-      <div className="space-y-4">
-        <div className="flex items-center justify-between border-b border-neutral-200 pb-3">
-          <div className="flex items-center gap-2">
-            <PresentationChart size={18} className="text-primary-600" />
-            <span className="text-sm font-medium text-neutral-700">
+      <div className="space-y-6">
+        <div className="flex items-center justify-between border-b border-neutral-200 pb-4">
+          <div className="flex items-center gap-3">
+            <PresentationChart size={24} className="text-primary-600" />
+            <span className="text-lg font-semibold text-neutral-800">
               Content Structure
             </span>
           </div>
         </div>
-        {/* Drill-down folder UI */}
+
         {/* Breadcrumbs */}
-        <div className="flex flex-wrap items-center gap-1 sm:gap-2 text-xs sm:text-sm text-neutral-600 mb-2">
+        <div className="flex flex-wrap items-center gap-2 text-sm text-neutral-600 mb-6 bg-neutral-50/50 p-2.5 rounded-lg border border-neutral-100">
           <button
             type="button"
-            className={`hover:text-primary-600 ${!selectedSubjectId && !selectedModuleId && !selectedChapterId
-              ? "font-semibold text-primary-700"
-              : ""
+            className={`px-3 py-1.5 rounded-md transition-all duration-200 text-sm ${!selectedSubjectId && !selectedModuleId && !selectedChapterId
+              ? "bg-white shadow-sm font-semibold text-primary-700 ring-1 ring-black/5"
+              : "hover:bg-neutral-200/60 hover:text-neutral-900"
               }`}
             onClick={() => {
               setSelectedSubjectId(null);
@@ -2382,13 +2383,15 @@ export const CourseStructureDetails = ({
           >
             Subjects
           </button>
-          {selectedSubjectId && <span className="text-neutral-400">/</span>}
+
+          {selectedSubjectId && <CaretRight size={14} className="text-neutral-400" />}
+
           {selectedSubjectId && (
             <button
               type="button"
-              className={`hover:text-primary-600 ${selectedSubjectId && !selectedModuleId
-                ? "font-semibold text-primary-700"
-                : ""
+              className={`px-3 py-1.5 rounded-md transition-all duration-200 text-sm ${selectedSubjectId && !selectedModuleId
+                ? "bg-white shadow-sm font-semibold text-primary-700 ring-1 ring-black/5"
+                : "hover:bg-neutral-200/60 hover:text-neutral-900"
                 }`}
               onClick={() => {
                 setSelectedModuleId(null);
@@ -2398,13 +2401,15 @@ export const CourseStructureDetails = ({
               Modules
             </button>
           )}
-          {selectedModuleId && <span className="text-neutral-400">/</span>}
+
+          {selectedModuleId && <CaretRight size={14} className="text-neutral-400" />}
+
           {selectedModuleId && (
             <button
               type="button"
-              className={`hover:text-primary-600 ${selectedModuleId && !selectedChapterId
-                ? "font-semibold text-primary-700"
-                : ""
+              className={`px-3 py-1.5 rounded-md transition-all duration-200 text-sm ${selectedModuleId && !selectedChapterId
+                ? "bg-white shadow-sm font-semibold text-primary-700 ring-1 ring-black/5"
+                : "hover:bg-neutral-200/60 hover:text-neutral-900"
                 }`}
               onClick={() => {
                 setSelectedChapterId(null);
@@ -2413,24 +2418,29 @@ export const CourseStructureDetails = ({
               Chapters
             </button>
           )}
-          {selectedChapterId && <span className="text-neutral-400">/</span>}
+
+          {selectedChapterId && <CaretRight size={14} className="text-neutral-400" />}
+
           {selectedChapterId && (
-            <span className="font-semibold text-primary-700">Slides</span>
+            <span className="px-3 py-1.5 rounded-md bg-white shadow-sm font-semibold text-primary-700 ring-1 ring-black/5 text-sm">
+              Slides
+            </span>
           )}
         </div>
+
         {/* Starting depth adapts to courseStructure; if preselected IDs exist, skips to that depth */}
         {!isModulesLoading && !selectedSubjectId && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {studyLibraryData?.map((subject) => (
-              <div
+              <Card
                 key={subject.id}
-                className="h-full rounded-md border border-neutral-200 bg-white p-3 sm:p-4 shadow-sm hover:shadow cursor-pointer"
+                className="group h-full hover:shadow-lg transition-all duration-300 cursor-pointer overflow-hidden border-neutral-200 hover:border-primary-300/50 transform hover:-translate-y-1 bg-white"
                 onClick={() => {
                   setSelectedSubjectId(subject.id);
                 }}
               >
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-md bg-neutral-100 flex items-center justify-center overflow-hidden">
+                <CardContent className="p-4 flex items-center gap-5">
+                  <div className="w-20 h-20 shrink-0 rounded-lg bg-neutral-50 flex items-center justify-center overflow-hidden border border-neutral-100 shadow-sm relative group-hover:scale-105 transition-transform duration-300">
                     {thumbUrlById[`subject:${subject.id}`] ? (
                       <img
                         src={thumbUrlById[`subject:${subject.id}`]}
@@ -2444,35 +2454,36 @@ export const CourseStructureDetails = ({
                         }}
                       />
                     ) : (
-                      <Folder size={28} className="text-neutral-500" />
+                      <Folder size={32} weight="duotone" className="text-primary-600/60" />
                     )}
                   </div>
-                  <div className="min-w-0">
-                    <div
-                      className="text-sm font-medium text-neutral-800 break-words"
+                  <div className="min-w-0 flex-1 py-1">
+                    <h3
+                      className="text-base font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug break-words"
                       title={toTitleCase(subject.subject_name)}
                     >
                       {toTitleCase(subject.subject_name)}
-                    </div>
+                    </h3>
                   </div>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
             ))}
           </div>
         )}
+
         {/* Modules */}
         {!isModulesLoading && selectedSubjectId && !selectedModuleId && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {(subjectModulesMap[selectedSubjectId] || []).map((m) => (
-              <div
+              <Card
                 key={m.module.id}
-                className="rounded-md border border-neutral-200 bg-white p-3 sm:p-4 shadow-sm hover:shadow cursor-pointer"
+                className="group h-full hover:shadow-lg transition-all duration-300 cursor-pointer overflow-hidden border-neutral-200 hover:border-primary-300/50 transform hover:-translate-y-1 bg-white"
                 onClick={() => {
                   setSelectedModuleId(m.module.id);
                 }}
               >
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-md bg-neutral-100 flex items-center justify-center overflow-hidden">
+                <CardContent className="p-4 flex items-center gap-5">
+                  <div className="w-20 h-20 shrink-0 rounded-lg bg-neutral-50 flex items-center justify-center overflow-hidden border border-neutral-100 shadow-sm relative group-hover:scale-105 transition-transform duration-300">
                     {thumbUrlById[`module:${m.module.id}`] ? (
                       <img
                         src={thumbUrlById[`module:${m.module.id}`]}
@@ -2486,28 +2497,29 @@ export const CourseStructureDetails = ({
                         }}
                       />
                     ) : (
-                      <Folder size={28} className="text-neutral-500" />
+                      <Folder size={32} weight="duotone" className="text-blue-600/60" />
                     )}
                   </div>
-                  <div className="min-w-0">
-                    <div
-                      className="text-sm font-medium text-neutral-800 break-words"
+                  <div className="min-w-0 flex-1 py-1">
+                    <h3
+                      className="text-base font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug break-words"
                       title={m.module.module_name}
                     >
                       {m.module.module_name}
-                    </div>
+                    </h3>
                   </div>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
             ))}
           </div>
         )}
+
         {/* Chapters */}
         {!isModulesLoading &&
           selectedSubjectId &&
           selectedModuleId &&
           !selectedChapterId && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {(subjectModulesMap[selectedSubjectId] || [])
                 .filter((m) => m.module.id === selectedModuleId)
                 .flatMap((m) => m.chapters)
@@ -2519,20 +2531,22 @@ export const CourseStructureDetails = ({
                   const evaluation = chapterEvaluations[ch.id];
                   const isChapterLocked = evaluation?.isLocked ?? false;
                   return (
-                    <div
+                    <Card
                       key={ch.id}
-                      className={`h-full rounded-md border border-neutral-200 bg-white p-3 sm:p-4 shadow-sm ${isChapterLocked
-                        ? "opacity-60 cursor-not-allowed"
-                        : "hover:shadow cursor-pointer"
-                        }`}
+                      className={cn(
+                        "group h-full transition-all duration-300 overflow-hidden border-neutral-200 bg-white",
+                        isChapterLocked
+                          ? "opacity-70 bg-neutral-50 cursor-not-allowed"
+                          : "hover:shadow-lg cursor-pointer hover:border-primary-300/50 transform hover:-translate-y-1"
+                      )}
                       onClick={async () => {
                         if (isChapterLocked) return;
                         setSelectedChapterId(ch.id);
                         await getSlidesWithChapterId(ch.id);
                       }}
                     >
-                      <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-md bg-neutral-100 flex items-center justify-center overflow-hidden">
+                      <CardContent className="p-4 flex items-center gap-5">
+                        <div className="w-20 h-20 shrink-0 rounded-lg bg-neutral-50 flex items-center justify-center overflow-hidden border border-neutral-100 shadow-sm relative group-hover:scale-105 transition-transform duration-300">
                           {thumbUrlById[`chapter:${ch.id}`] ? (
                             <img
                               src={thumbUrlById[`chapter:${ch.id}`]}
@@ -2546,45 +2560,46 @@ export const CourseStructureDetails = ({
                               }}
                             />
                           ) : (
-                            <FileText size={24} className="text-neutral-500" />
+                            <PresentationChart size={32} weight="duotone" className="text-primary-600/60" />
                           )}
                         </div>
-                        <div className="min-w-0">
-                          <div
-                            className="text-sm font-medium text-neutral-800 break-words"
-                            title={ch.chapter_name}
+                        <div className="min-w-0 flex-1 py-1">
+                          <h3
+                            className="text-base font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug break-words"
+                            title={toTitleCase(ch.chapter_name)}
                           >
-                            {ch.chapter_name}
-                          </div>
+                            {toTitleCase(ch.chapter_name)}
+                          </h3>
                           {isChapterLocked && (
-                            <div className="mt-1">
-                              <LockedBadge size="sm" />
+                            <div className="mt-2 text-left">
+                              <LockedBadge size="sm" unlockMessage="" />
                             </div>
                           )}
                         </div>
-                      </div>
-                    </div>
+                      </CardContent>
+                    </Card>
                   );
                 })}
             </div>
           )}
+
         {/* Slides */}
         {selectedChapterId && (
-          <div className="space-y-2">
+          <div className="space-y-4">
             {(() => {
               const status = slidesLoadingStatus[selectedChapterId] || "idle";
               if (status === "loading") {
                 return (
-                  <div className="px-2">
+                  <div className="grid gap-3">
                     {Array.from({ length: 4 }).map((_, i) => (
                       <div
                         key={i}
-                        className="flex items-center gap-2 px-2 py-1"
+                        className="flex items-center gap-4 px-4 py-3 rounded-lg border border-neutral-200 bg-white"
                       >
-                        <Skeleton className="w-5 h-5 rounded" />
-                        <Skeleton className="h-4 w-32" />
-                        <div className="ml-auto flex items-center gap-2">
-                          <Skeleton className="h-3 w-16" />
+                        <Skeleton className="w-10 h-10 rounded-md" />
+                        <div className="space-y-2 flex-1">
+                          <Skeleton className="h-4 w-1/3" />
+                          <Skeleton className="h-3 w-1/4" />
                         </div>
                       </div>
                     ))}
@@ -2598,55 +2613,70 @@ export const CourseStructureDetails = ({
               });
               if (status === "loaded" && visibleSlides.length === 0) {
                 return (
-                  <div className="text-sm text-neutral-500 italic">
-                    No Slides
+                  <div className="rounded-lg border border-dashed border-neutral-300 p-8 text-center">
+                    <p className="text-neutral-500 italic">No content available in this chapter.</p>
                   </div>
                 );
               }
-              return visibleSlides.map((sl, index) => {
-                const evaluation = slideEvaluations[sl.id];
-                const isSlideLocked = evaluation?.isLocked ?? false;
-                return (
-                  <div
-                    key={sl.id}
-                    className={`${getSlideStyling()} flex-col items-start gap-2 p-3 ${isSlideLocked ? "opacity-60 cursor-not-allowed" : ""
-                      }`}
-                    onClick={() => {
-                      if (isSlideLocked) return;
-                      if (isSlideClickable()) {
-                        handleSlideNavigation(
-                          selectedSubjectId || "",
-                          selectedModuleId || "",
-                          selectedChapterId,
-                          sl.id
-                        );
-                      }
-                    }}
-                  >
-                    <div className="flex items-center gap-2 sm:gap-3 w-full">
-                      <div className="flex items-center gap-2">
-                        <div className="flex w-6 h-6 items-center justify-center rounded-md text-xs font-bold bg-gray-100 text-gray-500">
-                          {index + 1}
-                        </div>
-                        {getIcon(sl, "4")}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm break-words">
-                          {sl.title}
-                        </div>
-                        <div className="text-xs text-gray-500 mt-0.5 sm:mt-1">
-                          {getSlideTypeDisplay(sl)}
-                        </div>
-                        {isSlideLocked && (
-                          <div className="mt-1">
-                            <LockedBadge size="sm" />
-                          </div>
+              return (
+                <div className="grid gap-3">
+                  {visibleSlides.map((sl, index) => {
+                    const evaluation = slideEvaluations[sl.id];
+                    const isSlideLocked = evaluation?.isLocked ?? false;
+                    return (
+                      <Card
+                        key={sl.id}
+                        className={cn(
+                          "group transition-all duration-200 border-neutral-200 overflow-hidden",
+                          isSlideLocked
+                            ? "opacity-60 bg-neutral-50"
+                            : isSlideClickable()
+                              ? "hover:shadow-md cursor-pointer hover:border-primary-300/50 bg-white"
+                              : "bg-white"
                         )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              });
+                        onClick={() => {
+                          if (isSlideLocked) return;
+                          if (isSlideClickable()) {
+                            handleSlideNavigation(
+                              selectedSubjectId || "",
+                              selectedModuleId || "",
+                              selectedChapterId,
+                              sl.id
+                            );
+                          }
+                        }}
+                      >
+                        <CardContent className="p-3 sm:p-4 flex items-start gap-3 sm:gap-4">
+                          <div className="flex-shrink-0 flex w-10 h-10 items-center justify-center rounded-lg bg-neutral-100/80 text-sm font-bold text-neutral-500 group-hover:bg-primary-50 group-hover:text-primary-600 transition-colors">
+                            {index + 1}
+                          </div>
+
+                          <div className="flex-1 min-w-0 pt-0.5">
+                            <div className="flex items-start justify-between gap-4">
+                              <h4 className="text-base font-medium text-neutral-800 break-words leading-tight group-hover:text-primary-700 transition-colors">
+                                {sl.title}
+                              </h4>
+                              <div className="shrink-0 text-neutral-400 group-hover:text-primary-500 transition-colors">
+                                {getIcon(sl, "5")}
+                              </div>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2 mt-2">
+                              <Badge variant="secondary" className="bg-neutral-100 text-neutral-500 font-normal hover:bg-neutral-200 text-xs">
+                                {getSlideTypeDisplay(sl) || 'Slide'}
+                              </Badge>
+
+                              {isSlideLocked && (
+                                <LockedBadge size="sm" />
+                              )}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              );
             })()}
           </div>
         )}

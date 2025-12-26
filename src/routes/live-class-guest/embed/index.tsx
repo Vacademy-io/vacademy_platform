@@ -7,12 +7,16 @@ import YouTubePlayerWrapper from "@/components/common/study-library/level-materi
 import ZoomEmbedPlayer from "@/routes/study-library/live-class/embed/-components/ZoomEmbedPlayer";
 import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
 
+import { useState } from "react";
+import { SafetyWarningModal } from "@/components/common/safety/safety-warning-modal";
+
 export const Route = createFileRoute("/live-class-guest/embed/")({
   validateSearch: z.object({
     sessionId: z.string(),
   }),
   component: GuestEmbedComponent,
 });
+
 
 function GuestEmbedComponent() {
   const { sessionId } = Route.useSearch();
@@ -21,6 +25,7 @@ function GuestEmbedComponent() {
     isLoading,
     error,
   } = useSessionDetails(sessionId);
+  const [isSafetyVerified, setIsSafetyVerified] = useState(false);
 
   // Utility: extract the 11-character YouTube ID from any common URL form
   const extractYouTubeVideoId = (url: string): string | null => {
@@ -108,6 +113,18 @@ function GuestEmbedComponent() {
     return (
       <div className="p-4 border border-yellow-200 rounded-lg bg-yellow-50 text-yellow-700">
         No meeting link available for this session.
+      </div>
+    );
+  }
+
+  if (!isSafetyVerified) {
+    return (
+      <div className="w-screen h-screen bg-primary-50 flex items-center justify-center">
+        <SafetyWarningModal
+          open={true}
+          onAccept={() => setIsSafetyVerified(true)}
+          onReject={() => window.history.back()}
+        />
       </div>
     );
   }

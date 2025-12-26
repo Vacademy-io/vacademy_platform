@@ -3,7 +3,7 @@ import { Helmet } from "react-helmet";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useSessionDetails } from "../-hooks/useSessionDetails";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LinkType } from "@/routes/register/live-class/-types/enum";
@@ -20,6 +20,8 @@ export const Route = createFileRoute("/study-library/live-class/embed/")({
   component: EmbedComponent,
 });
 
+import { SafetyWarningModal } from "@/components/common/safety/safety-warning-modal";
+
 function EmbedComponent() {
   const { sessionId } = Route.useSearch();
   const { setNavHeading } = useNavHeadingStore();
@@ -29,6 +31,7 @@ function EmbedComponent() {
     isLoading,
     error,
   } = useSessionDetails(sessionId);
+  const [isSafetyVerified, setIsSafetyVerified] = useState(false);
   const { data: serverTimeData } = useServerTime();
 
   useEffect(() => {
@@ -169,6 +172,20 @@ function EmbedComponent() {
       <LayoutContainer>
         <div className="p-4 border border-yellow-200 rounded-lg bg-yellow-50 text-yellow-700">
           No meeting link available for this session.
+        </div>
+      </LayoutContainer>
+    );
+  }
+
+  if (!isSafetyVerified) {
+    return (
+      <LayoutContainer>
+        <div className="w-full h-[calc(100vh-64px)] flex items-center justify-center">
+          <SafetyWarningModal
+            open={true}
+            onAccept={() => setIsSafetyVerified(true)}
+            onReject={() => navigate({ to: "/study-library/live-class" })}
+          />
         </div>
       </LayoutContainer>
     );

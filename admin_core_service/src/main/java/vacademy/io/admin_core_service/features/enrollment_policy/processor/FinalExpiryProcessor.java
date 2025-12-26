@@ -37,6 +37,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Slf4j
 @Component
@@ -55,10 +56,10 @@ public class FinalExpiryProcessor implements IEnrolmentPolicyProcessor {
     private final PaymentRenewalCheckService paymentRenewalCheckService;
 
     // ThreadLocal caches to prevent duplicate payment attempts and extensions
-    private static final ThreadLocal<Map<String, PaymentAttemptResult>> paymentAttemptCache =
-            ThreadLocal.withInitial(HashMap::new);
-    private static final ThreadLocal<Map<String, Boolean>> userPlanExtendedCache =
-            ThreadLocal.withInitial(HashMap::new);
+    private static final ThreadLocal<Map<String, PaymentAttemptResult>> paymentAttemptCache = ThreadLocal
+            .withInitial(HashMap::new);
+    private static final ThreadLocal<Map<String, Boolean>> userPlanExtendedCache = ThreadLocal
+            .withInitial(HashMap::new);
 
     @Override
     @Transactional
@@ -107,11 +108,31 @@ public class FinalExpiryProcessor implements IEnrolmentPolicyProcessor {
             return;
         }
 
+        // Check for stacked PENDING plan
+        Optional<UserPlan> stackedPlan = userPlanRepository
+                .findTopByUserIdAndEnrollInviteIdAndStatusInOrderByCreatedAtAsc(
+                        userPlan.getUserId(),
+                        userPlan.getEnrollInvite().getId(),
+                        List.of(UserPlanStatusEnum.PENDING.name()));
+
+        if (stackedPlan.isPresent()) {
+            log.info("Found stacked PENDING plan ID={} for user ID={}. Activating it instead of expiring.",
+                    stackedPlan.get().getId(), userPlan.getUserId());
+            userPlanService.activateStackedPlan(stackedPlan.get(), userPlan);
+
+            // Mark current plan as EXPIRED
+            userPlan.setStatus(UserPlanStatusEnum.EXPIRED.name());
+            userPlanRepository.save(userPlan);
+            log.info("Current UserPlan {} marked as EXPIRED after activating stacked plan.", userPlan.getId());
+            return;
+        }
+
         String packageSessionId = allSubOrgMappings.get(0).getPackageSession().getId();
 
         // NO PAYMENT ATTEMPT HERE - Payment is only attempted in WaitingPeriodProcessor
         // After waiting period ends, just move to INVITED and EXPIRE UserPlan
-        log.info("Waiting period ended. Moving all mappings to INVITED and marking UserPlan as EXPIRED for SubOrg: {}", subOrgId);
+        log.info("Waiting period ended. Moving all mappings to INVITED and marking UserPlan as EXPIRED for SubOrg: {}",
+                subOrgId);
         notifyAdminsOfExpiry(subOrgId, packageSessionId, context);
         moveAllMappingsToInvitedAndExpireUserPlan(allSubOrgMappings, userPlan);
     }
@@ -123,19 +144,39 @@ public class FinalExpiryProcessor implements IEnrolmentPolicyProcessor {
             return;
         }
 
+        // Check for stacked PENDING plan
+        Optional<UserPlan> stackedPlan = userPlanRepository
+                .findTopByUserIdAndEnrollInviteIdAndStatusInOrderByCreatedAtAsc(
+                        userPlan.getUserId(),
+                        userPlan.getEnrollInvite().getId(),
+                        List.of(UserPlanStatusEnum.PENDING.name()));
+
+        if (stackedPlan.isPresent()) {
+            log.info("Found stacked PENDING plan ID={} for user ID={}. Activating it instead of expiring.",
+                    stackedPlan.get().getId(), userPlan.getUserId());
+            userPlanService.activateStackedPlan(stackedPlan.get(), userPlan);
+
+            // Mark current plan as EXPIRED
+            userPlan.setStatus(UserPlanStatusEnum.EXPIRED.name());
+            userPlanRepository.save(userPlan);
+            log.info("Current UserPlan {} marked as EXPIRED after activating stacked plan.", userPlan.getId());
+            return;
+        }
+
         // NO PAYMENT ATTEMPT HERE - Payment is only attempted in WaitingPeriodProcessor
         // After waiting period ends, just move to INVITED and EXPIRE UserPlan
-        log.info("Waiting period ended. Moving mappings to INVITED and marking UserPlan as EXPIRED for UserPlan: {}", userPlan.getId());
+        log.info("Waiting period ended. Moving mappings to INVITED and marking UserPlan as EXPIRED for UserPlan: {}",
+                userPlan.getId());
         sendExpiryNotificationsToUser(context);
         moveAllMappingsToInvitedAndExpireUserPlan(mappings, userPlan);
     }
 
     private void sendExpiryNotificationsToUser(EnrolmentContext context) {
         // Get any policy for notification settings
-        vacademy.io.admin_core_service.features.enrollment_policy.dto.EnrollmentPolicySettingsDTO policy =
-                context.getPoliciesByPackageSessionId().values().stream()
-                        .findFirst()
-                        .orElse(null);
+        vacademy.io.admin_core_service.features.enrollment_policy.dto.EnrollmentPolicySettingsDTO policy = context
+                .getPoliciesByPackageSessionId().values().stream()
+                .findFirst()
+                .orElse(null);
 
         if (policy == null || policy.getNotifications() == null) {
             return;
@@ -200,9 +241,11 @@ public class FinalExpiryProcessor implements IEnrolmentPolicyProcessor {
     /**
      * Moves all ACTIVE mappings to INVITED and marks UserPlan as EXPIRED.
      * Only processes mappings whose expiryDate has been reached (not future dates).
-     * Soft deletes ACTIVE mapping (marks as TERMINATED) and creates/updates INVITED mapping.
+     * Soft deletes ACTIVE mapping (marks as TERMINATED) and creates/updates INVITED
+     * mapping.
      */
-    private void moveAllMappingsToInvitedAndExpireUserPlan(List<StudentSessionInstituteGroupMapping> mappings, UserPlan userPlan) {
+    private void moveAllMappingsToInvitedAndExpireUserPlan(List<StudentSessionInstituteGroupMapping> mappings,
+            UserPlan userPlan) {
         log.info("Moving {} mappings to INVITED after waiting period ended", mappings.size());
 
         Date today = new Date();
@@ -251,9 +294,11 @@ public class FinalExpiryProcessor implements IEnrolmentPolicyProcessor {
     }
 
     /**
-     * Finds existing INVITED mapping for the same user, package session, and institute.
+     * Finds existing INVITED mapping for the same user, package session, and
+     * institute.
      */
-    private StudentSessionInstituteGroupMapping findExistingInvitedMapping(StudentSessionInstituteGroupMapping originalMapping) {
+    private StudentSessionInstituteGroupMapping findExistingInvitedMapping(
+            StudentSessionInstituteGroupMapping originalMapping) {
         try {
             // Get INVITED package session for the original package session
             PackageSession invitedPackageSession = getInvitedPackageSession(originalMapping.getPackageSession());
@@ -266,8 +311,7 @@ public class FinalExpiryProcessor implements IEnrolmentPolicyProcessor {
                             originalMapping.getInstitute().getId(),
                             LearnerSessionStatusEnum.INVITED.name(),
                             LearnerSessionSourceEnum.EXPIRED.name(),
-                            LearnerSessionTypeEnum.PACKAGE_SESSION.name()
-                    );
+                            LearnerSessionTypeEnum.PACKAGE_SESSION.name());
 
             if (existingMappings != null && !existingMappings.isEmpty()) {
                 // Return first match
@@ -285,7 +329,7 @@ public class FinalExpiryProcessor implements IEnrolmentPolicyProcessor {
      * Updates existing INVITED mapping with new dates.
      */
     private void updateInvitedMapping(StudentSessionInstituteGroupMapping invitedMapping,
-                                      StudentSessionInstituteGroupMapping originalMapping) {
+            StudentSessionInstituteGroupMapping originalMapping) {
         // Update enrolledDate to current date
         invitedMapping.setEnrolledDate(new Date());
 
@@ -352,7 +396,8 @@ public class FinalExpiryProcessor implements IEnrolmentPolicyProcessor {
 
     /**
      * Gets the INVITED package session for a given ACTIVE package session.
-     * INVITED package session is identified by levelId="INVITED" and sessionId="INVITED".
+     * INVITED package session is identified by levelId="INVITED" and
+     * sessionId="INVITED".
      */
     private PackageSession getInvitedPackageSession(PackageSession activePackageSession) {
 

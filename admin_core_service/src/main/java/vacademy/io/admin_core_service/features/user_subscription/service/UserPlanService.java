@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.user_subscription.service;
 
+import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,6 +18,9 @@ import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.service.PackageSessionEnrollInviteToPaymentOptionService;
+import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerBatchEnrollService;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationEventType;
 import vacademy.io.admin_core_service.features.notification.service.DynamicNotificationService;
@@ -53,11 +57,15 @@ public class UserPlanService {
     public LearnerBatchEnrollService learnerBatchEnrollService;
 
     @Autowired
-    private PaymentLogRepository paymentLogRepository;    @Autowired
+    private PaymentLogRepository paymentLogRepository;
+    @Autowired
     private DynamicNotificationService dynamicNotificationService;
 
     @Autowired
     private AuthService authService;
+
+    @Autowired
+    private StudentSessionRepository studentSessionRepository;
 
     @Autowired
     private vacademy.io.admin_core_service.features.institute.repository.InstituteRepository instituteRepository;
@@ -139,8 +147,37 @@ public class UserPlanService {
 
         // --- Logic to calculate and set Start and End Dates ---
         // --- Date Logic with Timestamp ---
-        long currentTimeMillis = System.currentTimeMillis();
-        userPlan.setStartDate(new Timestamp(currentTimeMillis));
+        // Check for existing ACTIVE or PENDING plans for stacking
+        Optional<UserPlan> existingPlan = userPlanRepository
+                .findTopByUserIdAndEnrollInviteIdAndStatusInOrderByEndDateDesc(
+                        userId,
+                        enrollInvite.getId(),
+                        List.of(UserPlanStatusEnum.ACTIVE.name(), UserPlanStatusEnum.PENDING.name()));
+
+        Date effectiveStartDate;
+        if (existingPlan.isPresent()) {
+            // Stack the new plan after the existing one
+            effectiveStartDate = existingPlan.get().getEndDate();
+            if (effectiveStartDate == null) {
+                effectiveStartDate = new Date(); // Fallback
+            }
+
+            // Only change status to PENDING if it was going to be ACTIVE
+            // If it's PENDING_FOR_PAYMENT, let it remain so (it will be handled in
+            // applyOperationsOnFirstPayment)
+            if (UserPlanStatusEnum.ACTIVE.name().equals(status)) {
+                status = UserPlanStatusEnum.PENDING.name();
+                userPlan.setStatus(status);
+            }
+            logger.info("Stacking UserPlan: Found existing plan ID={}. New plan will start at {}",
+                    existingPlan.get().getId(), effectiveStartDate);
+        } else {
+            // No existing plan, use now
+            effectiveStartDate = new Date();
+        }
+
+        long startTimeMillis = effectiveStartDate.getTime();
+        userPlan.setStartDate(new Timestamp(startTimeMillis));
 
         Integer validityDays = null;
         if (paymentPlan != null && paymentPlan.getValidityInDays() != null) {
@@ -152,7 +189,7 @@ public class UserPlanService {
         if (validityDays != null) {
             // Add days to milliseconds: days * 24 * 60 * 60 * 1000
             long validityMillis = validityDays * 24L * 60L * 60L * 1000L;
-            userPlan.setEndDate(new Timestamp(currentTimeMillis + validityMillis));
+            userPlan.setEndDate(new Timestamp(startTimeMillis + validityMillis));
         }
         // -----------------------------------------------------
 
@@ -203,30 +240,56 @@ public class UserPlanService {
     public void applyOperationsOnFirstPayment(UserPlan userPlan) {
         logger.info("Applying operations on first payment for UserPlan ID={}", userPlan.getId());
 
-        if (userPlan.getStatus().equalsIgnoreCase(UserPlanStatusEnum.ACTIVE.name())) {
-            logger.info("UserPlan already ACTIVE. Skipping re-activation.");
+        if (UserPlanStatusEnum.ACTIVE.name().equals(userPlan.getStatus())
+                || UserPlanStatusEnum.PENDING.name().equals(userPlan.getStatus())) {
+            logger.info("UserPlan already ACTIVE or pending . Skipping re-activation.");
             return;
         }
 
         EnrollInvite enrollInvite = userPlan.getEnrollInvite();
 
+        // Check for OTHER existing ACTIVE or PENDING plans for stacking
+        // We exclude the current plan ID just in case, though it shouldn't be
+        // active/pending yet
+        Optional<UserPlan> existingPlan = userPlanRepository
+                .findTopByUserIdAndEnrollInviteIdAndStatusInAndIdNotInOrderByEndDateDesc(
+                        userPlan.getUserId(),
+                        enrollInvite.getId(),
+                        List.of(
+                                UserPlanStatusEnum.ACTIVE.name(),
+                                UserPlanStatusEnum.PENDING.name()),
+                        List.of(userPlan.getId()));
+
         List<String> packageSessionIds = packageSessionEnrollInviteToPaymentOptionService
                 .findPackageSessionsOfEnrollInvite(enrollInvite);
-        logger.debug("Package session IDs resolved for EnrollInvite ID={}: {}", enrollInvite.getId(),
-                packageSessionIds);
-        learnerBatchEnrollService.shiftLearnerFromInvitedToActivePackageSessions(packageSessionIds,
-                userPlan.getUserId(), enrollInvite.getId());
-        userPlan.setStatus(UserPlanStatusEnum.ACTIVE.name());
-        userPlanRepository.save(userPlan);
+        // If we found a plan, and it's NOT the current plan (sanity check)
+        if (existingPlan.isPresent() && !existingPlan.get().getId().equals(userPlan.getId())) {
+            // Stack it!
+            userPlan.setStatus(UserPlanStatusEnum.PENDING.name());
+            userPlanRepository.save(userPlan);
+            logger.info("UserPlan stacked as PENDING after payment. ID={}. Existing plan ID={}", userPlan.getId(),
+                    existingPlan.get().getId());
+            // Do NOT shift learner to active package sessions yet
+        } else {
+            // Activate normally
 
-        logger.info("UserPlan status updated to ACTIVE and saved. ID={}", userPlan.getId());
+            logger.debug("Package session IDs resolved for EnrollInvite ID={}: {}", enrollInvite.getId(),
+                    packageSessionIds);
+            learnerBatchEnrollService.shiftLearnerFromInvitedToActivePackageSessions(packageSessionIds,
+                    userPlan.getUserId(), enrollInvite.getId());
+            userPlan.setStatus(UserPlanStatusEnum.ACTIVE.name());
+            userPlanRepository.save(userPlan);
 
-        // Send enrollment notifications after successful PAID enrollment
+            logger.info("UserPlan status updated to ACTIVE and saved. ID={}", userPlan.getId());
+
+            // Send enrollment notifications after successful PAID enrollment
+
+        }
         sendEnrollmentNotificationsAfterPayment(userPlan, enrollInvite, packageSessionIds);
     }
 
     private void sendEnrollmentNotificationsAfterPayment(UserPlan userPlan, EnrollInvite enrollInvite,
-                                                         List<String> packageSessionIds) {
+            List<String> packageSessionIds) {
         try {
             logger.info("Sending enrollment notifications for PAID enrollment. UserPlan ID: {}", userPlan.getId());
 
@@ -270,7 +333,9 @@ public class UserPlanService {
                     "Enrollment is complete but notification failed.", userPlan.getId(), e);
             // Don't throw exception - enrollment is complete, notification is secondary
         }
-    }    @Cacheable(value = "userPlanWithPaymentLogs", key = "#userPlanId")
+    }
+
+    @Cacheable(value = "userPlanWithPaymentLogs", key = "#userPlanId")
     public UserPlanDTO getUserPlanWithPaymentLogs(String userPlanId) {
         logger.info("Getting UserPlan with payment logs for ID: {}", userPlanId);
 
@@ -293,7 +358,9 @@ public class UserPlanService {
         logger.info("Finding UserPlan by ID: {}", userPlanId);
         return userPlanRepository.findById(userPlanId)
                 .orElseThrow(() -> new RuntimeException("UserPlan not found with ID: " + userPlanId));
-    }    private List<PaymentLogDTO> getPaymentLogsByUserPlanId(String userPlanId) {
+    }
+
+    private List<PaymentLogDTO> getPaymentLogsByUserPlanId(String userPlanId) {
         logger.info("Getting payment logs for user plan ID: {}", userPlanId);
 
         List<PaymentLog> paymentLogs = paymentLogRepository.findByUserPlanIdOrderByCreatedAtDesc(userPlanId);
@@ -308,7 +375,7 @@ public class UserPlanService {
 
     @Cacheable(value = "userPlansByUser", key = "#userPlanFilterDTO.userId + ':' + #userPlanFilterDTO.instituteId + ':' + #pageNo + ':' + #pageSize + ':' + #userPlanFilterDTO.statuses + ':' + #userPlanFilterDTO.sortColumns")
     public Page<UserPlanDTO> getUserPlansByUserIdAndInstituteId(int pageNo, int pageSize,
-                                                                UserPlanFilterDTO userPlanFilterDTO) {
+            UserPlanFilterDTO userPlanFilterDTO) {
         logger.info("Getting paginated UserPlans for userId={}, instituteId={}", userPlanFilterDTO.getUserId(),
                 userPlanFilterDTO.getInstituteId());
         Sort thisSort = ListService.createSortObject(userPlanFilterDTO.getSortColumns());
@@ -353,10 +420,8 @@ public class UserPlanService {
                 .collect(Collectors.toMap(
                         Institute::getId,
                         i -> i,
-                        (existing, replacement) -> existing
-                ));
+                        (existing, replacement) -> existing));
     }
-
 
     /**
      * Map UserPlan to DTO with Institute details from pre-fetched map.
@@ -484,7 +549,8 @@ public class UserPlanService {
                 .updatedAt(userPlan.getUpdatedAt())
                 .startDate(userPlan.getStartDate())
                 .endDate(userPlan.getEndDate())
-                .enrollInvite(userPlan.getEnrollInvite() != null ? userPlan.getEnrollInvite().toEnrollInviteDTO() : null)
+                .enrollInvite(
+                        userPlan.getEnrollInvite() != null ? userPlan.getEnrollInvite().toEnrollInviteDTO() : null)
                 .paymentPlanDTO(
                         (userPlan.getPaymentPlan() != null ? userPlan.getPaymentPlan().mapToPaymentPlanDTO() : null))
                 .paymentOption(
@@ -492,7 +558,10 @@ public class UserPlanService {
                                 : null))
                 .paymentLogs(List.of()) // Empty list - no payment logs loaded
                 .build();
-    }    @CacheEvict(value = {"userPlanById", "userPlansByUser", "userPlanWithPaymentLogs", "membershipDetails"}, allEntries = true)
+    }
+
+    @CacheEvict(value = { "userPlanById", "userPlansByUser", "userPlanWithPaymentLogs",
+            "membershipDetails" }, allEntries = true)
     public void updateUserPlanStatuses(List<String> userPlanIds, String status) {
         if (CollectionUtils.isEmpty(userPlanIds)) {
             throw new IllegalArgumentException("User plan ids must not be empty.");
@@ -516,22 +585,20 @@ public class UserPlanService {
 
         userPlans.forEach(plan -> plan.setStatus(normalizedStatus));
         userPlanRepository.saveAll(userPlans);
-    }    /**
+    }
+
+    /**
      * Get membership details with caching and optimizations.
      * - Uses caching to reduce database load
      * - Avoids loading payment logs for better performance
      * - Fetches only necessary associations
      */
-   @Cacheable(
-            value = "membershipDetails",
-            key = "#filterDTO.instituteId + '_' + #pageNo + '_' + #pageSize + '_' + " +
-                    "#filterDTO.startDateInUtc + '_' + #filterDTO.endDateInUtc + '_' + " +
-                    "(#filterDTO.membershipStatuses != null ? #filterDTO.membershipStatuses.toString() : 'null') + '_' + " +
-                    "(#filterDTO.sortOrder != null ? #filterDTO.sortOrder.toString() : 'null')",
-            unless = "#result == null || #result.isEmpty()"
-    )
+    @Cacheable(value = "membershipDetails", key = "#filterDTO.instituteId + '_' + #pageNo + '_' + #pageSize + '_' + " +
+            "#filterDTO.startDateInUtc + '_' + #filterDTO.endDateInUtc + '_' + " +
+            "(#filterDTO.membershipStatuses != null ? #filterDTO.membershipStatuses.toString() : 'null') + '_' + " +
+            "(#filterDTO.sortOrder != null ? #filterDTO.sortOrder.toString() : 'null')", unless = "#result == null || #result.isEmpty()")
     public Page<MembershipDetailsDTO> getMembershipDetails(MembershipFilterDTO filterDTO, int pageNo, int pageSize) {
-        Pageable pageable = createPageable(pageNo,pageSize,filterDTO.getSortOrder());
+        Pageable pageable = createPageable(pageNo, pageSize, filterDTO.getSortOrder());
 
         // 1. Fetch Data with Dynamic Status Calculation
         Page<Object[]> results = userPlanRepository.findMembershipDetailsWithDynamicStatus(
@@ -539,13 +606,12 @@ public class UserPlanService {
                 filterDTO.getStartDateInUtc(),
                 filterDTO.getEndDateInUtc(),
                 filterDTO.getMembershipStatuses(),
-                pageable
-        );
+                pageable);
 
         // 2. Extract User Plan IDs to fetch entities in bulk
         List<Object[]> content = results.getContent();
         List<String> userPlanIds = content.stream()
-                .map(row -> (String) row[0])  // row[0] is the user_plan.id (String)
+                .map(row -> (String) row[0]) // row[0] is the user_plan.id (String)
                 .collect(Collectors.toList());
 
         // 3. Fetch UserPlan entities by IDs WITHOUT payment logs (optimized)
@@ -572,9 +638,9 @@ public class UserPlanService {
         Map<String, UserPlan> finalUserPlanMap = userPlanMap;
         Map<String, UserDTO> finalUserMap = userMap;
         return results.map(row -> {
-            String userPlanId = (String) row[0];  // user_plan.id
-            String dynamicStatus = (String) row[1];  // computedStatus
-            Timestamp endDate = (Timestamp) row[2];  // actualEndDate
+            String userPlanId = (String) row[0]; // user_plan.id
+            String dynamicStatus = (String) row[1]; // computedStatus
+            Timestamp endDate = (Timestamp) row[2]; // actualEndDate
 
             UserPlan userPlan = finalUserPlanMap.get(userPlanId);
             if (userPlan == null) {
@@ -597,4 +663,69 @@ public class UserPlanService {
         Sort sort = ListService.createSortObject(sortCols);
         return PageRequest.of(page, size, sort);
     }
+
+    @Transactional
+    public void activateStackedPlan(UserPlan stackedPlan, UserPlan expiredPlan) {
+        logger.info("Activating stacked plan ID={} after expiry of plan ID={}", stackedPlan.getId(),
+                expiredPlan.getId());
+
+        // 1. Determine validity of the stacked plan
+        Integer validityDays = null;
+        if (stackedPlan.getPaymentPlan() != null && stackedPlan.getPaymentPlan().getValidityInDays() != null) {
+            validityDays = stackedPlan.getPaymentPlan().getValidityInDays();
+        } else if (stackedPlan.getEnrollInvite() != null
+                && stackedPlan.getEnrollInvite().getLearnerAccessDays() != null) {
+            validityDays = stackedPlan.getEnrollInvite().getLearnerAccessDays();
+        }
+
+        // 2. Set new dates
+        // Start date = Expiry date of previous plan (or now if null)
+        Date newStartDate = expiredPlan.getEndDate();
+        if (newStartDate == null) {
+            newStartDate = new Date();
+        }
+        stackedPlan.setStartDate(new Timestamp(newStartDate.getTime()));
+
+        if (validityDays != null) {
+            long validityMillis = validityDays * 24L * 60L * 60L * 1000L;
+            stackedPlan.setEndDate(new Timestamp(newStartDate.getTime() + validityMillis));
+        }
+
+        // 3. Update status to ACTIVE
+        stackedPlan.setStatus(UserPlanStatusEnum.ACTIVE.name());
+        userPlanRepository.save(stackedPlan);
+
+        // 4. Transfer active mappings from expired plan to stacked plan
+        // We want to keep the learner in the SAME batch/session, just update the
+        // userPlanId and expiry
+        List<StudentSessionInstituteGroupMapping> activeMappings = studentSessionRepository
+                .findAllByUserPlanIdAndStatusActive(expiredPlan.getId());
+
+        if (activeMappings.isEmpty()) {
+            logger.warn(
+                    "No active mappings found for expired plan ID={}. Stacked plan activated but no sessions linked.",
+                    expiredPlan.getId());
+            return;
+        }
+
+        for (StudentSessionInstituteGroupMapping mapping : activeMappings) {
+            // Update userPlanId
+            mapping.setUserPlanId(stackedPlan.getId());
+
+            // Extend expiry date of the mapping
+            if (validityDays != null) {
+                // Set mapping expiry to match the stacked plan's end date
+                // This ensures the mapping is valid exactly as long as the plan is
+                mapping.setExpiryDate(stackedPlan.getEndDate());
+            }
+
+            // Ensure status is ACTIVE
+            mapping.setStatus(LearnerSessionStatusEnum.ACTIVE.name());
+
+            studentSessionRepository.save(mapping);
+        }
+
+        logger.info("Stacked plan activated. {} mappings transferred and extended.", activeMappings.size());
+    }
 }
+

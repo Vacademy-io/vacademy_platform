@@ -83,6 +83,15 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
         if (daysPastExpiry == 0) {
             log.info("Day 0: Expiry date reached for UserPlan: {}", userPlan.getId());
 
+            // Check if UserPlan is CANCELED or TERMINATED - if so, DO NOT ATTEMPT PAYMENT
+            if (UserPlanStatusEnum.CANCELED.name().equals(userPlan.getStatus()) ||
+                    UserPlanStatusEnum.TERMINATED.name().equals(userPlan.getStatus())) {
+                log.info("UserPlan is {}, skipping payment attempt and expiring immediately. UserPlan: {}",
+                        userPlan.getStatus(), userPlan.getId());
+                handleNonRenewableExpiry(context, userPlan, subOrgId, isSubOrg);
+                return;
+            }
+
             // Check if at least one package session policy allows auto-renewal
             boolean shouldAttemptPayment = allMappings.stream()
                     .map(StudentSessionInstituteGroupMapping::getPackageSession)
@@ -96,7 +105,8 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
                 String packageSessionId = allMappings.get(0).getPackageSession().getId();
                 processPaymentOnExpiry(context, userPlan, isSubOrg, subOrgId, packageSessionId);
             } else {
-                // Payment not attempted (no policy allows auto-renewal, or FREE/DONATION/ONE_TIME)
+                // Payment not attempted (no policy allows auto-renewal, or
+                // FREE/DONATION/ONE_TIME)
                 log.info("Payment not attempted for UserPlan: {} (no policy allows auto-renewal)", userPlan.getId());
                 handleNonRenewableExpiry(context, userPlan, subOrgId, isSubOrg);
             }
@@ -124,7 +134,8 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
                     String packageSessionId = allMappings.get(0).getPackageSession().getId();
                     processPaymentRetryOnLastDay(context, userPlan, isSubOrg, subOrgId, packageSessionId);
                 } else {
-                    log.info("Skipping payment retry - first payment did not fail (either SUCCESS or PENDING). UserPlan: {}",
+                    log.info(
+                            "Skipping payment retry - first payment did not fail (either SUCCESS or PENDING). UserPlan: {}",
                             userPlan.getId());
                 }
             } else {
@@ -139,7 +150,8 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
 
     /**
      * Process notifications based on each mapping's policy.
-     * For SUB_ORG: Send ONE notification to ROOT_ADMIN (context.user is already ROOT_ADMIN)
+     * For SUB_ORG: Send ONE notification to ROOT_ADMIN (context.user is already
+     * ROOT_ADMIN)
      * For Individual: Send notification to the user
      */
     private void processNotifications(EnrolmentContext context, long daysPastExpiry) {
@@ -157,7 +169,8 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
      */
     private void processSubOrgNotifications(EnrolmentContext context, long daysPastExpiry) {
         // Check if any policy has notifications for this day
-        for (Map.Entry<String, EnrollmentPolicySettingsDTO> entry : context.getPoliciesByPackageSessionId().entrySet()) {
+        for (Map.Entry<String, EnrollmentPolicySettingsDTO> entry : context.getPoliciesByPackageSessionId()
+                .entrySet()) {
             EnrollmentPolicySettingsDTO policy = entry.getValue();
 
             if (policy.getNotifications() == null) {
@@ -234,7 +247,7 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
      * All processing happens in RenewalPaymentService when webhook is received.
      */
     private void processPaymentOnExpiry(EnrolmentContext context, UserPlan userPlan,
-                                        boolean isSubOrg, String subOrgId, String packageSessionId) {
+            boolean isSubOrg, String subOrgId, String packageSessionId) {
         log.info("Initiating payment on expiry date for UserPlan: {} (SubOrg: {})",
                 userPlan.getId(), isSubOrg);
 
@@ -271,7 +284,7 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
      * This is the final attempt before moving to INVITED.
      */
     private void processPaymentRetryOnLastDay(EnrolmentContext context, UserPlan userPlan,
-                                              boolean isSubOrg, String subOrgId, String packageSessionId) {
+            boolean isSubOrg, String subOrgId, String packageSessionId) {
         log.info("Retrying payment on last day of waiting period for UserPlan: {} (SubOrg: {})",
                 userPlan.getId(), isSubOrg);
 
@@ -280,7 +293,8 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
             vacademy.io.common.payment.dto.PaymentResponseDTO paymentResponse = subOrgPaymentService
                     .processSubOrgPaymentOnExpiry(context, userPlan);
 
-            log.info("Payment retry initiated (ATTEMPT #2) for UserPlan: {}. Waiting for webhook confirmation. OrderId: {}",
+            log.info(
+                    "Payment retry initiated (ATTEMPT #2) for UserPlan: {}. Waiting for webhook confirmation. OrderId: {}",
                     userPlan.getId(), paymentResponse.getOrderId());
 
             // Payment is tracked via PaymentLog, webhook will handle the result
@@ -297,25 +311,27 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
 
     /**
      * Handles successful payment - REMOVED
-     * This logic now lives in RenewalPaymentService.handleRenewalPaymentConfirmation()
+     * This logic now lives in
+     * RenewalPaymentService.handleRenewalPaymentConfirmation()
      * which is called by webhook handlers
      */
     @Deprecated
     private void handleSuccessfulPayment(EnrolmentContext context, UserPlan userPlan,
-                                         boolean isSubOrg, String subOrgId, String packageSessionId) {
+            boolean isSubOrg, String subOrgId, String packageSessionId) {
         // This method is deprecated - all processing happens via webhook
         log.warn("handleSuccessfulPayment called - this should not happen. Processing should be via webhook.");
     }
 
     /**
      * Handles failed payment - REMOVED
-     * This logic now lives in RenewalPaymentService.handleRenewalPaymentConfirmation()
+     * This logic now lives in
+     * RenewalPaymentService.handleRenewalPaymentConfirmation()
      * which is called by webhook handlers
      */
     @Deprecated
     private void handleFailedPayment(EnrolmentContext context, UserPlan userPlan,
-                                     boolean isSubOrg, String subOrgId, String packageSessionId,
-                                     List<StudentSessionInstituteGroupMapping> allMappings) {
+            boolean isSubOrg, String subOrgId, String packageSessionId,
+            List<StudentSessionInstituteGroupMapping> allMappings) {
         // This method is deprecated - all processing happens via webhook
         log.warn("handleFailedPayment called - this should not happen. Processing should be via webhook.");
     }
@@ -326,7 +342,7 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
      * Uses mappings from context (no DB call needed).
      */
     private void handlePaymentResult(EnrolmentContext context, UserPlan userPlan,
-                                     boolean isSubOrg, String subOrgId, String packageSessionId, boolean successful) {
+            boolean isSubOrg, String subOrgId, String packageSessionId, boolean successful) {
 
         if (successful) {
             // Payment succeeded - extend UserPlan once, then extend mappings only if their
@@ -358,7 +374,7 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
                         // Check if re-enrollment is allowed
                         boolean allowReenrollment = policy.getReenrollmentPolicy() != null
                                 && Boolean.TRUE
-                                .equals(policy.getReenrollmentPolicy().getAllowReenrollmentAfterExpiry());
+                                        .equals(policy.getReenrollmentPolicy().getAllowReenrollmentAfterExpiry());
 
                         if (allowReenrollment) {
                             // Extend this mapping (only mapping expiryDate, not UserPlan)
@@ -542,7 +558,7 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
      * Handles expiry for non-renewable payment options
      */
     private void handleNonRenewableExpiry(EnrolmentContext context, UserPlan userPlan,
-                                          String subOrgId, boolean isSubOrg) {
+            String subOrgId, boolean isSubOrg) {
         log.info("Handling non-renewable expiry for UserPlan: {} (SUB_ORG: {})",
                 userPlan.getId(), isSubOrg);
 
@@ -556,12 +572,13 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
     // Remove old signature - replaced with one above
     @Deprecated
     private void handleNonRenewableExpiry(EnrolmentContext context, UserPlan userPlan,
-                                          String subOrgId, String packageSessionId, boolean isSubOrg) {
+            String subOrgId, String packageSessionId, boolean isSubOrg) {
         handleNonRenewableExpiry(context, userPlan, subOrgId, isSubOrg);
     }
 
     /**
-     * Notifies ROOT_ADMIN of expiry (for non-renewable or auto-renewal disabled cases).
+     * Notifies ROOT_ADMIN of expiry (for non-renewable or auto-renewal disabled
+     * cases).
      */
     private void notifyAdminsOfExpiry(EnrolmentContext context) {
         try {
@@ -828,13 +845,13 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
      * Checks if the first payment attempt failed for this UserPlan.
      * Looks for the most recent payment log entry with status = FAILED.
      *
-     * @return true if first payment failed, false if SUCCESS or PENDING or no payment found
+     * @return true if first payment failed, false if SUCCESS or PENDING or no
+     *         payment found
      */
     private boolean checkIfFirstPaymentFailed(UserPlan userPlan) {
         try {
             // Find the most recent payment log for this UserPlan
-            List<PaymentLog> paymentLogs =
-                    paymentLogRepository.findByUserPlanIdOrderByCreatedAtDesc(userPlan.getId());
+            List<PaymentLog> paymentLogs = paymentLogRepository.findByUserPlanIdOrderByCreatedAtDesc(userPlan.getId());
 
             if (paymentLogs == null || paymentLogs.isEmpty()) {
                 log.warn("No payment log found for UserPlan: {} - assuming no payment attempt made", userPlan.getId());
@@ -858,7 +875,8 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
                 log.info("First payment PENDING for UserPlan: {} - waiting for webhook, no retry", userPlan.getId());
                 return false;
             } else {
-                log.warn("Unknown payment status '{}' for UserPlan: {} - will not retry", paymentStatus, userPlan.getId());
+                log.warn("Unknown payment status '{}' for UserPlan: {} - will not retry", paymentStatus,
+                        userPlan.getId());
                 return false;
             }
 

@@ -561,27 +561,37 @@ export const SlideMaterial = () => {
     }
   };
 
-  useEffect(() => {
-    loadGenerationRef.current += 1;
-    const currentGeneration = loadGenerationRef.current;
+  const prevSlideIdRef = useRef<string | null>(null);
 
-    if (activeItem) {
-      setHeading(activeItem.title || "");
-      loadContent(currentGeneration);
-    } else {
-      setHeading("No content");
-      if (currentGeneration === loadGenerationRef.current) {
-        setContent(
-          <div className="flex h-[500px] flex-col items-center justify-center rounded-lg py-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="bg-neutral-50 rounded-full p-6 transition-transform duration-300 group-hover:scale-105">
-              <EmptySlideMaterial />
+  useEffect(() => {
+    // Only reload content if the slide ID actually changed
+    if (activeItem?.id !== prevSlideIdRef.current) {
+      loadGenerationRef.current += 1;
+      const currentGeneration = loadGenerationRef.current;
+
+      if (activeItem) {
+        setHeading(activeItem.title || "");
+        loadContent(currentGeneration);
+        prevSlideIdRef.current = activeItem.id;
+      } else {
+        setHeading("No content");
+        prevSlideIdRef.current = null;
+        if (currentGeneration === loadGenerationRef.current) {
+          setContent(
+            <div className="flex h-[500px] flex-col items-center justify-center rounded-lg py-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="bg-neutral-50 rounded-full p-6 transition-transform duration-300 group-hover:scale-105">
+                <EmptySlideMaterial />
+              </div>
+              <p className="mt-6 text-neutral-500 animate-in fade-in duration-700 delay-200 text-center">
+                No study material has been added yet
+              </p>
             </div>
-            <p className="mt-6 text-neutral-500 animate-in fade-in duration-700 delay-200 text-center">
-              No study material has been added yet
-            </p>
-          </div>
-        );
+          );
+        }
       }
+    } else if (activeItem) {
+      // Slide ID is the same, just update heading (no content reload)
+      setHeading(activeItem.title || "");
     }
   }, [activeItem]);
 
@@ -593,7 +603,7 @@ export const SlideMaterial = () => {
           <div className="flex items-center gap-2.5">
             <div className="w-1 h-6 bg-primary-500 rounded-full"></div>
             <div className="flex flex-col min-w-0">
-              <h3 className="text-sm sm:text-base font-semibold text-neutral-900 leading-tight animate-in fade-in slide-in-from-left-4 duration-500 truncate max-w-[60vw] sm:max-w-none">
+              <h3 className="text-sm sm:text-base font-semibold text-neutral-900 leading-tight animate-in fade-in slide-in-from-left-4 duration-500">
                 {heading || "No content"}
               </h3>
               <p className="text-xs font-medium text-neutral-500 uppercase tracking-wide animate-in fade-in slide-in-from-left-4 duration-500 delay-75">

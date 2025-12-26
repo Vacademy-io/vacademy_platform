@@ -69,20 +69,31 @@ class CourseOutlineGenerationService:
         # Check if practice problems/solutions are requested and add homework slides
         outline_response = self._add_homework_slides_if_needed(outline_response, request.user_prompt)
 
-        # Generate images if requested
-        if request.generation_options and request.generation_options.generate_images:
-            banner_url, preview_url = await self._image_service.generate_images(
-                course_name=outline_response.course_metadata.course_name,
-                about_course=outline_response.course_metadata.about_the_course_html,
-                course_depth=outline_response.course_metadata.course_depth,
-                image_style=request.generation_options.image_style or "professional"
-            )
-            
-            # Update metadata with image URLs if generation was successful
-            if banner_url:
-                outline_response.course_metadata.banner_image_url = banner_url
-            if preview_url:
-                outline_response.course_metadata.preview_image_url = preview_url
+        # Generate images if requested AND parsing was successful
+        # Skip image generation if course_name is "Error" (indicates parsing failure)
+        if (request.generation_options and 
+            request.generation_options.generate_images and
+            outline_response.course_metadata.course_name and
+            outline_response.course_metadata.course_name.lower() != "error" and
+            len(outline_response.course_metadata.course_name.strip()) > 0):
+            try:
+                banner_url, preview_url, media_url = await self._image_service.generate_images(
+                    course_name=outline_response.course_metadata.course_name,
+                    about_course=outline_response.course_metadata.about_the_course_html,
+                    course_depth=outline_response.course_metadata.course_depth,
+                    image_style=request.generation_options.image_style or "professional"
+                )
+                
+                # Update metadata with image URLs if generation was successful
+                if banner_url:
+                    outline_response.course_metadata.banner_image_url = banner_url
+                if preview_url:
+                    outline_response.course_metadata.preview_image_url = preview_url
+                if media_url:
+                    outline_response.course_metadata.media_image_url = media_url
+            except Exception as e:
+                logger.error(f"Failed to generate course images: {str(e)}. Skipping image generation to save credits.")
+                # Don't fail the entire request if image generation fails
 
         return outline_response
 
@@ -122,8 +133,13 @@ class CourseOutlineGenerationService:
             # Check if practice problems/solutions are requested and add homework slides
             outline_response = self._add_homework_slides_if_needed(outline_response, request.user_prompt)
 
-            # Generate images if requested
-            if request.generation_options and request.generation_options.generate_images:
+            # Generate images if requested AND parsing was successful
+            # Skip image generation if course_name is "Error" (indicates parsing failure)
+            if (request.generation_options and 
+                request.generation_options.generate_images and
+                outline_response.course_metadata.course_name and
+                outline_response.course_metadata.course_name.lower() != "error" and
+                len(outline_response.course_metadata.course_name.strip()) > 0):
                 yield "[Generating...]\nCreating course banner, preview, and media images..."
 
                 try:
@@ -143,7 +159,14 @@ class CourseOutlineGenerationService:
                     if media_url:
                         outline_response.course_metadata.media_image_url = media_url
                 except Exception as e:
-                    logger.warning(f"Image generation failed: {str(e)}, continuing without images")
+                    logger.error(f"Failed to generate course images: {str(e)}. Skipping image generation to save credits.")
+                    # Don't fail the entire request if image generation fails
+            else:
+                # Log why images were skipped
+                if not outline_response.course_metadata.course_name or outline_response.course_metadata.course_name.lower() == "error":
+                    logger.warning("Skipping image generation: Course parsing failed (course_name is 'Error')")
+                elif not request.generation_options or not request.generation_options.generate_images:
+                    logger.debug("Skipping image generation: Not requested by user")
 
             # Yield the final processed outline as JSON (matches media-service pattern)
             try:
@@ -238,10 +261,10 @@ class CourseOutlineGenerationService:
                     logger.warning(f"Failed to parse todo: {str(e)}, skipping")
                     continue
             
-            # Filter todos to only process DOCUMENT, ASSESSMENT, VIDEO, and AI_VIDEO types
+            # Filter todos to only process DOCUMENT, ASSESSMENT, VIDEO, VIDEO_CODE, AI_VIDEO, and AI_VIDEO_CODE types
             content_todos = [
                 todo for todo in todos 
-                if todo.type in ["DOCUMENT", "ASSESSMENT", "VIDEO", "AI_VIDEO"]
+                if todo.type in ["DOCUMENT", "ASSESSMENT", "VIDEO", "VIDEO_CODE", "AI_VIDEO", "AI_VIDEO_CODE"]
             ]
             
             if not content_todos:

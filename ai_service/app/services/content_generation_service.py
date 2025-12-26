@@ -60,16 +60,26 @@ class ContentGenerationService:
             "status": true,
             "actionType": "<actionType>",
             "slideType": "DOCUMENT",
-            "contentData": "<generated HTML content>"
+            "contentData": "<generated HTML or Markdown content>"
         }
         """
         try:
             logger.info(f"Generating document content for slide: {todo.path}")
             
-            # Build document prompt with explicit HTML format requirement
+            # Check if diagrams should be included based on prompt
+            diagram_keywords = ["include diagrams", "include diagram", "with diagrams", "with diagram", 
+                               "add diagrams", "add diagram", "diagrams", "mermaid"]
+            prompt_lower = prompt.lower()
+            include_diagrams = any(keyword in prompt_lower for keyword in diagram_keywords)
+            
+            if include_diagrams:
+                logger.info(f"Detected diagram request in prompt for slide: {todo.path}, generating markdown with Mermaid diagrams")
+            
+            # Build document prompt (will generate markdown if diagrams requested, HTML otherwise)
             document_prompt = ContentGenerationPrompts.build_document_prompt(
                 text_prompt=prompt,
-                title=todo.title or todo.name
+                title=todo.title or todo.name,
+                include_diagrams=include_diagrams
             )
             
             # Generate content using the enhanced prompt
@@ -384,6 +394,227 @@ class ContentGenerationService:
             }
             yield json.dumps(error_response)
 
+    async def generate_video_code_content(
+        self, todo: Todo
+    ) -> dict:
+        """
+        Generate video+code content for a VIDEO_CODE type todo.
+        Combines YouTube video with code examples in a split-screen layout.
+        
+        Format: {
+            "type": "SLIDE_CONTENT_UPDATE",
+            "path": "<slidePath>",
+            "status": true,
+            "title": "<title>",
+            "actionType": "<actionType>",
+            "slideType": "VIDEO_CODE",
+            "contentData": {
+                "video": { ... YouTube video details ... },
+                "code": { "content": "...", "language": "python" },
+                "layout": "split-left" | "split-right" | "split-top" | "split-bottom"
+            }
+        }
+        """
+        try:
+            logger.info(f"Generating video+code content for slide: {todo.path}")
+            
+            # Step 1: Generate YouTube video content
+            video_content = await self.generate_video_content(todo)
+            if not video_content.get("status") or video_content.get("type") == "SLIDE_CONTENT_ERROR":
+                raise ValueError(f"Failed to generate video: {video_content.get('errorMessage', 'Unknown error')}")
+            
+            video_data = video_content.get("contentData", {})
+            
+            # Step 2: Generate code content
+            code_prompt = ContentGenerationPrompts.build_code_prompt(
+                text_prompt=todo.prompt,
+                title=todo.title or todo.name,
+                video_topic=todo.title or todo.name
+            )
+            
+            code_content = await self._llm_client.generate_outline(
+                prompt=code_prompt,
+                model=self._content_model,
+            )
+            
+            # Extract code language from prompt or default to python
+            code_language = self._extract_code_language(todo.prompt) or "python"
+            
+            # Step 3: Determine layout (default: split-left)
+            layout = self._extract_layout_preference(todo.prompt) or "split-left"
+            
+            # Format response
+            return {
+                "type": "SLIDE_CONTENT_UPDATE",
+                "path": todo.path,
+                "status": True,
+                "title": todo.title or todo.name,
+                "actionType": todo.action_type,
+                "slideType": "VIDEO_CODE",
+                "contentData": {
+                    "video": video_data,
+                    "code": {
+                        "content": code_content,
+                        "language": code_language
+                    },
+                    "layout": layout
+                },
+            }
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Error generating video+code content for {todo.path}: {error_msg}")
+            return {
+                "type": "SLIDE_CONTENT_ERROR",
+                "path": todo.path,
+                "status": False,
+                "actionType": todo.action_type,
+                "slideType": "VIDEO_CODE",
+                "errorMessage": f"Failed to generate content: {error_msg}",
+                "contentData": "Error generating video+code content for this slide. Please try again or contact support.",
+            }
+
+    async def generate_ai_video_code_content(
+        self, todo: Todo
+    ) -> AsyncGenerator[str, None]:
+        """
+        Generate AI video+code content for an AI_VIDEO_CODE type todo.
+        Combines AI-generated video with code examples in a split-screen layout.
+        Streams progress events and returns final combined content.
+        """
+        try:
+            logger.info(f"[AI_VIDEO_CODE] Starting generation for slide: {todo.path}")
+            
+            # Step 1: Generate AI video (stream events)
+            video_id = None
+            video_status = None
+            
+            async for event_str in self.generate_ai_video_content(todo):
+                event = json.loads(event_str)
+                
+                # Extract video_id from events
+                if event.get("slideType") == "AI_VIDEO":
+                    content_data = event.get("contentData", {})
+                    if content_data.get("videoId") and not video_id:
+                        video_id = content_data.get("videoId")
+                    
+                    # If video generation is complete, get final status
+                    if content_data.get("status") == "COMPLETED":
+                        video_status = content_data
+                        break
+                    
+                    # Forward progress events with updated slide type
+                    progress_event = {
+                        "type": "SLIDE_CONTENT_UPDATE",
+                        "path": todo.path,
+                        "status": True,
+                        "actionType": todo.action_type,
+                        "slideType": "AI_VIDEO_CODE",
+                        "contentData": {
+                            "video": content_data,
+                            "status": "GENERATING_VIDEO",
+                            "message": f"Generating video: {content_data.get('currentStage', 'Processing')}...",
+                            "progress": content_data.get("progress", 0)
+                        }
+                    }
+                    yield json.dumps(progress_event)
+            
+            if not video_status or not video_id:
+                raise ValueError(f"AI video generation failed for {todo.path}")
+            
+            # Step 2: Generate code content
+            logger.info(f"[AI_VIDEO_CODE] Generating code content for {todo.path}")
+            
+            code_prompt = ContentGenerationPrompts.build_code_prompt(
+                text_prompt=todo.prompt,
+                title=todo.title or todo.name,
+                video_topic=todo.title or todo.name
+            )
+            
+            code_content = await self._llm_client.generate_outline(
+                prompt=code_prompt,
+                model=self._content_model,
+            )
+            
+            # Extract code language and layout
+            code_language = self._extract_code_language(todo.prompt) or "python"
+            layout = self._extract_layout_preference(todo.prompt) or "split-left"
+            
+            # Step 3: Combine and return final content
+            final_content = {
+                "type": "SLIDE_CONTENT_UPDATE",
+                "path": todo.path,
+                "status": True,
+                "title": todo.title or todo.name,
+                "actionType": todo.action_type,
+                "slideType": "AI_VIDEO_CODE",
+                "contentData": {
+                    "video": video_status,
+                    "code": {
+                        "content": code_content,
+                        "language": code_language
+                    },
+                    "layout": layout
+                },
+            }
+            
+            yield json.dumps(final_content)
+            logger.info(f"[AI_VIDEO_CODE] Successfully completed generation for {todo.path}")
+            
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"[AI_VIDEO_CODE] Error generating AI video+code content for {todo.path}: {error_msg}")
+            error_response = {
+                "type": "SLIDE_CONTENT_ERROR",
+                "path": todo.path,
+                "status": False,
+                "actionType": todo.action_type,
+                "slideType": "AI_VIDEO_CODE",
+                "errorMessage": f"Failed to generate AI video+code: {error_msg}",
+                "contentData": f"Error generating AI video+code: {error_msg}",
+            }
+            yield json.dumps(error_response)
+
+    def _extract_code_language(self, prompt: str) -> Optional[str]:
+        """Extract programming language from prompt if mentioned."""
+        prompt_lower = prompt.lower()
+        languages = {
+            "python": ["python", "py"],
+            "javascript": ["javascript", "js", "node"],
+            "java": ["java"],
+            "cpp": ["c++", "cpp", "c plus plus"],
+            "c": [" c ", " c,"],
+            "typescript": ["typescript", "ts"],
+            "go": ["go", "golang"],
+            "rust": ["rust"],
+            "php": ["php"],
+            "ruby": ["ruby"],
+            "swift": ["swift"],
+            "kotlin": ["kotlin"],
+            "html": ["html"],
+            "css": ["css"],
+            "sql": ["sql", "database"],
+        }
+        
+        for lang, keywords in languages.items():
+            if any(keyword in prompt_lower for keyword in keywords):
+                return lang
+        return None
+
+    def _extract_layout_preference(self, prompt: str) -> Optional[str]:
+        """Extract layout preference from prompt if mentioned."""
+        prompt_lower = prompt.lower()
+        
+        if "split-left" in prompt_lower or "video left" in prompt_lower or "code right" in prompt_lower:
+            return "split-left"
+        elif "split-right" in prompt_lower or "video right" in prompt_lower or "code left" in prompt_lower:
+            return "split-right"
+        elif "split-top" in prompt_lower or "video top" in prompt_lower or "code bottom" in prompt_lower:
+            return "split-top"
+        elif "split-bottom" in prompt_lower or "video bottom" in prompt_lower or "code top" in prompt_lower:
+            return "split-bottom"
+        
+        return None
+
     def _extract_json_from_response(self, response: str) -> dict:
         """
         Extract JSON from LLM response, handling markdown code blocks and other formatting.
@@ -446,9 +677,17 @@ class ContentGenerationService:
                 content_update = await self.generate_video_content(todo=todo)
                 # Yield the content update as JSON string
                 yield json.dumps(content_update)
+            elif todo.type == "VIDEO_CODE":
+                content_update = await self.generate_video_code_content(todo=todo)
+                # Yield the content update as JSON string
+                yield json.dumps(content_update)
             elif todo.type == "AI_VIDEO":
                 # AI_VIDEO generation streams multiple events
                 async for event in self.generate_ai_video_content(todo=todo):
+                    yield event
+            elif todo.type == "AI_VIDEO_CODE":
+                # AI_VIDEO_CODE generation streams multiple events
+                async for event in self.generate_ai_video_code_content(todo=todo):
                     yield event
             else:
                 logger.warning(f"Unknown todo type: {todo.type}, skipping content generation")

@@ -17,7 +17,7 @@ Base idea from the user:
 Requirements:
 - Audience: curious beginners.
 - Tone: upbeat, authoritative, and human.
-- Keep the narration ~4-5 minutes long (~550-650 words total).
+- Keep the narration ~2-3 minutes long (~250-350 words total). MAXIMUM 3 minutes.
 - Include a short CTA at the end encouraging viewers to apply what they learned.
 - Provide a concise beat outline to help designers understand key turns.
 - **IMPORTANT**: Write the script, title, and summaries ENTIRELY in **{language}**.

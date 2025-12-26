@@ -126,7 +126,7 @@ public class AudioQuestionGeneratorController {
             @RequestParam(name = "taskName", required = false) String taskName,
             @RequestParam(name = "instituteId", required = false) String instituteId,
             @RequestParam(name = "preferredModel", required = false) String preferredModel,
-            @RequestParam(name = "generateImage", required = false, defaultValue = "false") Boolean generateImage)
+            @RequestParam(name = "generateImage", required = false, defaultValue = "true") Boolean generateImage)
             throws IOException {
 
         // Apply defaults
@@ -182,7 +182,7 @@ public class AudioQuestionGeneratorController {
                 : DEFAULT_NUM_QUESTIONS;
         String prompt = StringUtils.hasText(request.getPrompt()) ? request.getPrompt() : "";
         String language = StringUtils.hasText(request.getLanguage()) ? request.getLanguage() : DEFAULT_LANGUAGE;
-        Boolean generateImage = Boolean.TRUE.equals(request.getGenerateImage());
+        Boolean generateImage = request.getGenerateImage() == null || request.getGenerateImage();
 
         String model = aiModelConfig.getModelToUse(request.getPreferredModel());
 

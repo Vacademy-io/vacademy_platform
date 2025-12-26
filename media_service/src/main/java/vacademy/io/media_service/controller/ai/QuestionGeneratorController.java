@@ -41,7 +41,7 @@ public class QuestionGeneratorController {
     public ResponseEntity<AutoQuestionPaperResponse> fromHtml(
             @RequestParam(required = false) String userPrompt,
             @RequestParam("file") MultipartFile file,
-            @RequestParam(required = false, defaultValue = "false") Boolean generateImage) {
+            @RequestParam(required = false, defaultValue = "true") Boolean generateImage) {
 
         validateHtmlFile(file);
 
@@ -70,7 +70,7 @@ public class QuestionGeneratorController {
     public ResponseEntity<AutoQuestionPaperResponse> fromNotHtml(
             @RequestParam(required = false) String userPrompt,
             @RequestParam("file") MultipartFile file,
-            @RequestParam(required = false, defaultValue = "false") Boolean generateImage) {
+            @RequestParam(required = false, defaultValue = "true") Boolean generateImage) {
 
         try {
             String html = docConverterService.convertDocument(file);

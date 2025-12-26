@@ -125,7 +125,7 @@ public class PDFQuestionGeneratorController {
             @RequestParam(name = "taskName", required = false) String taskName,
             @RequestParam(name = "instituteId", required = false) String instituteId,
             @RequestParam(name = "preferredModel", required = false) String preferredModel,
-            @RequestParam(name = "generateImage", required = false, defaultValue = "false") Boolean generateImage)
+            @RequestParam(name = "generateImage", required = false, defaultValue = "true") Boolean generateImage)
             throws IOException {
 
         String model = aiModelConfig.getModelToUse(preferredModel);
@@ -160,7 +160,7 @@ public class PDFQuestionGeneratorController {
             @RequestParam(name = "taskName", required = false) String taskName,
             @RequestParam(name = "instituteId", required = false) String instituteId,
             @RequestParam(name = "preferredModel", required = false) String preferredModel,
-            @RequestParam(name = "generateImage", required = false, defaultValue = "false") Boolean generateImage)
+            @RequestParam(name = "generateImage", required = false, defaultValue = "true") Boolean generateImage)
             throws IOException {
 
         String model = aiModelConfig.getModelToUse(preferredModel);
@@ -190,7 +190,7 @@ public class PDFQuestionGeneratorController {
             @RequestParam(required = false) String userPrompt,
             @RequestParam("instituteId") String instituteId,
             @RequestParam("taskName") String taskName,
-            @RequestParam(name = "generateImage", required = false, defaultValue = "false") Boolean generateImage)
+            @RequestParam(name = "generateImage", required = false, defaultValue = "true") Boolean generateImage)
             throws IOException {
 
         TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(
@@ -215,7 +215,7 @@ public class PDFQuestionGeneratorController {
     public ResponseEntity<AutoQuestionPaperResponse> getHtmlToQuestions(
             @RequestBody HtmlResponse html,
             @RequestParam(required = false) String userPrompt,
-            @RequestParam(required = false, defaultValue = "false") Boolean generateImage) throws IOException {
+            @RequestParam(required = false, defaultValue = "true") Boolean generateImage) throws IOException {
 
         String rawOutput = externalAIApiService.getQuestionsWithDeepSeekFromHTML(html.getHtml(), userPrompt,
                 generateImage);
@@ -259,7 +259,7 @@ public class PDFQuestionGeneratorController {
             @RequestParam(name = "taskId", required = false) String taskId,
             @RequestParam(name = "taskName", required = false) String taskName,
             @RequestParam(name = "instituteId", required = false) String instituteId,
-            @RequestParam(name = "generateImage", required = false, defaultValue = "false") Boolean generateImage)
+            @RequestParam(name = "generateImage", required = false, defaultValue = "true") Boolean generateImage)
             throws IOException {
 
         TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(

@@ -60,6 +60,9 @@ public class Slide {
     @Column(name = "created_by_user_id")
     private String createdByUserId;
 
+    @Column(name = "drip_condition_json", columnDefinition = "TEXT")
+    private String dripConditionJson;
+
     public Slide(AddDocumentSlideDTO addDocumentSlideDTO, String sourceId, String sourceType, String status) {
         this.sourceId = sourceId;
         this.sourceType = sourceType;

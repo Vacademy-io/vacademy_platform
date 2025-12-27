@@ -9,25 +9,44 @@ import java.util.List;
 public interface PackageDetailV2Projection {
     // Old fields
     String getId();
+
     String getPackageName();
+
     String getThumbnailFileId();
+
     Boolean getIsCoursePublishedToCatalaouge();
+
     String getCoursePreviewImageMediaId();
+
     String getCourseBannerMediaId();
+
     String getCourseMediaId();
+
     String getWhyLearnHtml();
+
     String getWhoShouldLearnHtml();
+
     String getAboutTheCourseHtml();
+
     String getCommaSeparetedTags();
+
     Integer getCourseDepth();
+
     String getCourseHtmlDescriptionHtml();
+
+    String getDripConditionJson();
+
     Double getRating();
+
     Long getReadTimeInMinutes();
+
     String getPackageType();
 
     // New v2 fields
     String getPackageSessionId();
+
     String getLevelId();
+
     String getLevelName();
 
     // Faculty IDs
@@ -35,9 +54,14 @@ public interface PackageDetailV2Projection {
 
     // Enroll Invite + Payment details
     String getEnrollInviteId();
+
     String getPaymentOptionId();
+
     String getPaymentOptionType();
+
     String getPaymentOptionStatus();
+
     Double getMinPlanActualPrice();
+
     String getCurrency();
 }

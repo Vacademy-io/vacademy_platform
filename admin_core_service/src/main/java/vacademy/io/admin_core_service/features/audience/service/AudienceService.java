@@ -33,6 +33,8 @@ import vacademy.io.admin_core_service.features.notification.dto.NotificationTemp
 import vacademy.io.admin_core_service.features.notification_service.service.SendUniqueLinkService;
 import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
 import vacademy.io.admin_core_service.features.common.entity.CustomFields;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
+import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
 import vacademy.io.common.exceptions.VacademyException;
@@ -75,6 +77,9 @@ public class AudienceService {
 
     @Autowired
     private NotificationService notificationService;
+
+    @Autowired
+    private WorkflowTriggerService workflowTriggerService;
 
     public List<String> getConvertedUserIdsByCampaign(String audienceId, String instituteId) {
         logger.info("Getting converted user IDs for campaign: {} (institute: {})", audienceId, instituteId);
@@ -447,6 +452,187 @@ public class AudienceService {
         return "Error in submitting the response";
 
 
+    }
+
+    /**
+     * Submit a lead with workflow integration (v2)
+     * Email sending is handled by workflow engine
+     */
+    @Transactional
+    public String submitLeadV2(SubmitLeadRequestDTO requestDTO) {
+        logger.info("[V2] Submitting lead for audience: {}", requestDTO.getAudienceId());
+
+        // Validate audience exists
+        Audience audience = audienceRepository.findById(requestDTO.getAudienceId())
+                .orElseThrow(() -> new VacademyException("Audience not found"));
+
+        // Validate audience is active
+        if (!"ACTIVE".equals(audience.getStatus())) {
+            throw new VacademyException("Audience campaign is not active");
+        }
+        
+        String instituteId = audience.getInstituteId();
+
+        // 1. Create/fetch user from auth_service
+        String userId = null;
+        UserDTO createdUser = null;
+        try {
+            UserDTO userDTO = requestDTO.getUserDTO();
+            if (userDTO != null && StringUtils.hasText(userDTO.getEmail())) {
+                // Call auth_service to create or fetch existing user
+                // sendCred = false (no email notification)
+                createdUser = authService.createUserFromAuthService(
+                        userDTO, 
+                        audience.getInstituteId(), 
+                        false  // Don't send credentials email
+                );
+                userId = createdUser.getId();
+
+                // Duplicate submission guard: same audience + same user
+                if (StringUtils.hasText(userId) &&
+                        audienceResponseRepository.existsByAudienceIdAndUserId(requestDTO.getAudienceId(), userId)) {
+                    return "You have already submitted your response for this campaign";
+                }
+
+                // 2. Create audience response with user_id
+                AudienceResponse response = AudienceResponse.builder()
+                        .audienceId(requestDTO.getAudienceId())
+                        .sourceType(requestDTO.getSourceType())
+                        .sourceId(requestDTO.getSourceId())
+                        .userId(userId)
+                        .build();
+
+                AudienceResponse savedResponse = audienceResponseRepository.save(response);
+                logger.info("[V2] Saved audience response with ID: {} and user_id: {}",
+                        savedResponse.getId(), userId);
+
+                // 3. Save custom field values
+                if (!CollectionUtils.isEmpty(requestDTO.getCustomFieldValues())) {
+                    saveCustomFieldValues(
+                            savedResponse.getId(),
+                            requestDTO.getCustomFieldValues(),
+                            audience.getInstituteId()
+                    );
+                }
+
+                // 4. Build custom field map for email (to pass to workflow)
+                Map<String, String> customFieldsForEmail = buildCustomFieldMapForEmail(savedResponse.getId());
+
+                // Get current time with timezone
+                java.time.ZonedDateTime now = java.time.ZonedDateTime.now();
+                java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("MMM dd, yyyy hh:mm a z");
+                String submissionTime = now.format(formatter);
+
+                // 5. Generate complete email content (SIMPLIFIED APPROACH)
+                // Build default respondent email body
+                String respondentEmailBody = buildDefaultEmailBody(
+                        audience.getCampaignName(),
+                        createdUser.getFullName(),
+                        createdUser.getEmail(),
+                        customFieldsForEmail
+                );
+                String respondentEmailSubject = "Thank You for Submitting Your Response for Campaign - " + audience.getCampaignName();
+
+                // Build admin notification email body
+                String adminEmailBody = buildAdminNotificationBody(
+                        audience.getCampaignName(),
+                        createdUser.getFullName(),
+                        createdUser.getEmail(),
+                        customFieldsForEmail
+                );
+                String adminEmailSubject = "New Lead Submitted - " + audience.getCampaignName();
+
+                logger.info("[V2] Generated default email bodies for workflow");
+
+                // 6. Parse admin notification recipients (toNotify)
+                List<String> adminEmails = new ArrayList<>();
+                if (StringUtils.hasText(audience.getToNotify())) {
+                    String[] emails = audience.getToNotify().split(",");
+                    for (String email : emails) {
+                        String trimmedEmail = email.trim();
+                        if (StringUtils.hasText(trimmedEmail)) {
+                            adminEmails.add(trimmedEmail);
+                        }
+                    }
+                    logger.info("[V2] Found {} admin notification recipients", adminEmails.size());
+                }
+
+                // 7. Build audience DTO for workflow context
+                AudienceDTO audienceDTO = AudienceDTO.builder()
+                        .id(audience.getId())
+                        .campaignName(audience.getCampaignName())
+                        .instituteId(audience.getInstituteId())
+                        .status(audience.getStatus())
+                        .toNotify(audience.getToNotify())
+                        .sendRespondentEmail(audience.getSendRespondentEmail())
+                        .build();
+
+                // 8. Prepare context data for workflow (SIMPLIFIED)
+                Map<String, Object> contextData = new HashMap<>();
+                
+                // User and audience data
+                contextData.put("user", createdUser);  // UserDTO object
+                contextData.put("audience", audienceDTO);  // Audience details
+                contextData.put("audienceId", requestDTO.getAudienceId());
+                contextData.put("instituteId", instituteId);
+                contextData.put("customFields", customFieldsForEmail);  // Map of custom field name -> value
+                contextData.put("submissionTime", submissionTime);
+                contextData.put("responseId", savedResponse.getId());
+                contextData.put("campaignName", audience.getCampaignName());
+                
+                // Email sending configuration
+                contextData.put("sendRespondentEmail", audience.getSendRespondentEmail() == null || audience.getSendRespondentEmail());
+                
+                // Prepare respondent email request (List with single Map)
+                List<Map<String, Object>> respondentEmailRequests = new ArrayList<>();
+                Map<String, Object> respondentEmailRequest = new HashMap<>();
+                respondentEmailRequest.put("to", createdUser.getEmail());
+                respondentEmailRequest.put("subject", respondentEmailSubject);
+                respondentEmailRequest.put("body", respondentEmailBody);
+                respondentEmailRequests.add(respondentEmailRequest);
+                contextData.put("respondentEmailRequests", respondentEmailRequests);
+                
+                logger.info("[V2] Prepared respondent email request: to={}, subject={}", 
+                    createdUser.getEmail(), respondentEmailSubject);
+                
+                // Prepare admin email requests (List of Maps, one per admin)
+                List<Map<String, Object>> adminEmailRequests = new ArrayList<>();
+                for (String adminEmail : adminEmails) {
+                    Map<String, Object> adminEmailRequest = new HashMap<>();
+                    adminEmailRequest.put("to", adminEmail);
+                    adminEmailRequest.put("subject", adminEmailSubject);
+                    adminEmailRequest.put("body", adminEmailBody);
+                    adminEmailRequests.add(adminEmailRequest);
+                }
+                contextData.put("adminEmailRequests", adminEmailRequests);
+                
+                logger.info("[V2] Prepared {} admin email requests", adminEmailRequests.size());
+                for (Map<String, Object> req : adminEmailRequests) {
+                    logger.info("  - Admin email to: {}, subject: {}", req.get("to"), req.get("subject"));
+                }
+
+                logger.info("[V2] Triggering workflow for AUDIENCE_LEAD_SUBMISSION event. AudienceId: {}, InstituteId: {}, SendRespondentEmail: {}, AdminEmails: {}",
+                        requestDTO.getAudienceId(), instituteId, 
+                        audience.getSendRespondentEmail() == null || audience.getSendRespondentEmail(), 
+                        adminEmails.size());
+
+                // 9. Trigger the workflow
+                workflowTriggerService.handleTriggerEvents(
+                        WorkflowTriggerEvent.AUDIENCE_LEAD_SUBMISSION.name(),
+                        requestDTO.getAudienceId(),  // eventId (audience campaign ID)
+                        instituteId,
+                        contextData
+                );
+
+                logger.info("[V2] Workflow triggered successfully for audience: {}", requestDTO.getAudienceId());
+
+                return savedResponse.getId();
+            }
+        } catch (Exception e) {
+            logger.error("[V2] Error submitting lead: {}", e.getMessage(), e);
+        }
+        
+        return "Error in submitting the response";
     }
 
     /**
@@ -830,6 +1016,146 @@ public class AudienceService {
         emailBody.append("</html>");
         
         return emailBody.toString();
+    }
+
+    /**
+     * Find user by phone number from custom field values
+     * Searches in custom_field_values table and returns complete user with all custom fields
+     * If multiple users found, returns the latest one by created_at
+     * 
+     * @param phoneNumber Phone number to search for
+     * @return UserWithCustomFieldsDTO containing complete user details and custom fields
+     * @throws VacademyException if user not found
+     */
+    public UserWithCustomFieldsDTO getUserByPhoneNumber(String phoneNumber) {
+        logger.info("Searching for user with phone number: {}", phoneNumber);
+        
+        // Step 1: Find all custom field values matching the phone number
+        List<CustomFieldValues> matchingValues = customFieldValuesRepository.findByPhoneNumber(phoneNumber);
+        
+        if (matchingValues.isEmpty()) {
+            logger.warn("No user found with phone number: {}", phoneNumber);
+            throw new VacademyException("No user found with phone number: " + phoneNumber);
+        }
+        
+        logger.info("Found {} custom field value records matching phone: {}", matchingValues.size(), phoneNumber);
+        
+        // Step 2: Extract user IDs from different source types
+        Set<String> userIds = new HashSet<>();
+        
+        for (CustomFieldValues cfv : matchingValues) {
+            String sourceType = cfv.getSourceType();
+            String sourceId = cfv.getSourceId();
+            
+            if ("USER".equals(sourceType)) {
+                // For USER type, source_id is the user_id directly
+                userIds.add(sourceId);
+                logger.debug("Found USER type: source_id={} is user_id", sourceId);
+            } else if ("AUDIENCE_RESPONSE".equals(sourceType)) {
+                // For AUDIENCE_RESPONSE type, source_id is response_id, need to get user_id
+                Optional<AudienceResponse> responseOpt = audienceResponseRepository.findById(sourceId);
+                if (responseOpt.isPresent() && responseOpt.get().getUserId() != null) {
+                    userIds.add(responseOpt.get().getUserId());
+                    logger.debug("Found AUDIENCE_RESPONSE type: source_id={}, user_id={}", 
+                        sourceId, responseOpt.get().getUserId());
+                }
+            }
+        }
+        
+        if (userIds.isEmpty()) {
+            logger.warn("No user IDs extracted from custom field values for phone: {}", phoneNumber);
+            throw new VacademyException("No user found with phone number: " + phoneNumber);
+        }
+        
+        logger.info("Extracted {} unique user IDs: {}", userIds.size(), userIds);
+        
+        // Step 3: If multiple users, get the latest one by created_at
+        String selectedUserId;
+        if (userIds.size() == 1) {
+            selectedUserId = userIds.iterator().next();
+            logger.info("Single user found: {}", selectedUserId);
+        } else {
+            // Get the latest user by finding the custom field value with latest created_at
+            selectedUserId = matchingValues.stream()
+                .filter(cfv -> {
+                    if ("USER".equals(cfv.getSourceType())) {
+                        return userIds.contains(cfv.getSourceId());
+                    } else if ("AUDIENCE_RESPONSE".equals(cfv.getSourceType())) {
+                        Optional<AudienceResponse> resp = audienceResponseRepository.findById(cfv.getSourceId());
+                        return resp.isPresent() && resp.get().getUserId() != null 
+                            && userIds.contains(resp.get().getUserId());
+                    }
+                    return false;
+                })
+                .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()))
+                .findFirst()
+                .map(cfv -> {
+                    if ("USER".equals(cfv.getSourceType())) {
+                        return cfv.getSourceId();
+                    } else {
+                        return audienceResponseRepository.findById(cfv.getSourceId())
+                            .map(AudienceResponse::getUserId)
+                            .orElse(null);
+                    }
+                })
+                .orElseThrow(() -> new VacademyException("Could not determine latest user"));
+            
+            logger.info("Multiple users found ({}), selected latest: {}", userIds.size(), selectedUserId);
+        }
+        
+        // Step 4: Fetch complete user details from auth service
+        UserDTO userDTO;
+        try {
+            userDTO = authService.getUsersFromAuthServiceByUserIds(List.of(selectedUserId)).get(0);
+            logger.info("Fetched user details: id={}, email={}, name={}", 
+                userDTO.getId(), userDTO.getEmail(), userDTO.getFullName());
+        } catch (Exception e) {
+            logger.error("Failed to fetch user details for userId: {}", selectedUserId, e);
+            throw new VacademyException("Failed to fetch user details: " + e.getMessage());
+        }
+        
+        // Step 5: Fetch all custom field values for this user (from both USER and AUDIENCE_RESPONSE types)
+        Map<String, String> customFieldsMap = new HashMap<>();
+        
+        // Get USER type custom fields
+        List<CustomFieldValues> userCustomFields = customFieldValuesRepository
+            .findBySourceTypeAndSourceId("USER", selectedUserId);
+        
+        for (CustomFieldValues cfv : userCustomFields) {
+            // Get field key from custom_fields table
+            Optional<CustomFields> customFieldOpt = customFieldRepository.findById(cfv.getCustomFieldId());
+            if (customFieldOpt.isPresent()) {
+                String fieldKey = customFieldOpt.get().getFieldName();
+                customFieldsMap.put(fieldKey, cfv.getValue());
+            }
+        }
+        
+        logger.info("Found {} USER type custom fields", userCustomFields.size());
+        
+        // Get AUDIENCE_RESPONSE type custom fields
+        List<AudienceResponse> userResponses = audienceResponseRepository.findByUserId(selectedUserId);
+        for (AudienceResponse response : userResponses) {
+            List<CustomFieldValues> responseCustomFields = customFieldValuesRepository
+                .findBySourceTypeAndSourceId("AUDIENCE_RESPONSE", response.getId());
+            
+            for (CustomFieldValues cfv : responseCustomFields) {
+                Optional<CustomFields> customFieldOpt = customFieldRepository.findById(cfv.getCustomFieldId());
+                if (customFieldOpt.isPresent()) {
+                    String fieldKey = customFieldOpt.get().getFieldName();
+                    // Don't override if already exists from USER type (USER takes precedence)
+                    customFieldsMap.putIfAbsent(fieldKey, cfv.getValue());
+                }
+            }
+        }
+        
+        logger.info("Total custom fields collected: {}", customFieldsMap.size());
+        logger.debug("Custom fields: {}", customFieldsMap);
+        
+        // Step 6: Build and return response
+        return UserWithCustomFieldsDTO.builder()
+            .user(userDTO)
+            .customFields(customFieldsMap)
+            .build();
     }
 }
 

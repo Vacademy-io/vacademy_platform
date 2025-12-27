@@ -1,6 +1,5 @@
 package vacademy.io.common.institute.entity;
 
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -84,4 +83,10 @@ public class PackageEntity {
 
     @Column(name = "course_audit_logs", columnDefinition = "TEXT")
     private String courseAuditLogs;
+
+    @Column(name = "drip_condition_json", columnDefinition = "TEXT")
+    private String dripConditionJson;
+
+    @Column(name = "course_setting", columnDefinition = "TEXT")
+    private String courseSetting;
 }

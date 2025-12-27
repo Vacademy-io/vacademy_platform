@@ -40,7 +40,7 @@ public class Group {
 
     // Additional constructors, if needed
     public Group(String id, String groupName, Group parentGroup, Boolean isRoot,
-                 Date createdAt, Date updatedAt, String groupValue) {
+            Date createdAt, Date updatedAt, String groupValue) {
         this.id = id;
         this.groupName = groupName;
         this.parentGroup = parentGroup;
@@ -50,7 +50,7 @@ public class Group {
         this.groupValue = groupValue;
     }
 
-    public Group(GroupDTO groupDTO){
+    public Group(GroupDTO groupDTO) {
         this.id = groupDTO.getId();
         this.groupName = groupDTO.getGroupName();
         this.parentGroup = groupDTO.getParentGroup();

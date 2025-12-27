@@ -116,6 +116,11 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
     boolean existsByAudienceIdAndUserId(String audienceId, String userId);
 
     /**
+     * Find all audience responses for a specific user
+     */
+    List<AudienceResponse> findByUserId(String userId);
+
+    /**
      * Find all distinct user IDs from audience responses for given audience IDs
      */
     @Query("SELECT DISTINCT ar.userId FROM AudienceResponse ar " +
@@ -137,5 +142,23 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
     List<String> findDistinctUserIdsByAudienceIdsAndUserIds(
             @Param("audienceIds") List<String> audienceIds,
             @Param("userIds") List<String> userIds);
+
+    // In vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository
+
+    // In AudienceResponseRepository.java
+
+    @Query("""
+        SELECT ar FROM AudienceResponse ar
+        JOIN Audience a ON a.id = ar.audienceId
+        WHERE a.instituteId = :instituteId
+        AND ar.audienceId = :audienceId
+        AND ar.createdAt >= :startDate AND ar.createdAt <= :endDate
+    """)
+    List<AudienceResponse> findLeadsByAudienceAndDateRange(
+            @Param("instituteId") String instituteId,
+            @Param("audienceId") String audienceId,
+            @Param("startDate") Timestamp startDate,
+            @Param("endDate") Timestamp endDate
+    );
 }
 

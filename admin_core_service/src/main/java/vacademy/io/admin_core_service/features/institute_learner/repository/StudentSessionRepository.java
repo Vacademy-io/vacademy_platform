@@ -80,6 +80,8 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
         List<StudentSessionInstituteGroupMapping> findAllByInstituteIdAndUserIdAndStatusIn(String instituteId,
                         String userId, List<String> status);
 
+        List<StudentSessionInstituteGroupMapping> findAllBySubOrgIdAndStatusIn(String subOrgId, List<String>status);
+
         @Query(value = "SELECT COUNT(ss.id) " +
                         "FROM student_session_institute_group_mapping ss " +
                         "JOIN package_session ps ON ss.package_session_id = ps.id " +
@@ -236,31 +238,7 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
                         @Param("userTypeSize") int userTypeSize,
                         Pageable pageable);
 
-        @Modifying
-        @Transactional
-        @Query("DELETE FROM StudentSessionInstituteGroupMapping s " +
-                        "WHERE s.userId = :userId " +
-                        "AND s.typeId = :typeId " +
-                        "AND s.source = :source " +
-                        "AND s.type = :type " +
-                        "AND s.packageSession.id = :packageSessionId " +
-                        "AND s.institute.id = :instituteId")
-        int deleteByUserTypeSourcePackageInstitute(
-                        @Param("userId") String userId,
-                        @Param("typeId") String typeId,
-                        @Param("source") String source,
-                        @Param("type") String type,
-                        @Param("packageSessionId") String packageSessionId,
-                        @Param("instituteId") String instituteId);
+    void deleteAllInBatch(Iterable<StudentSessionInstituteGroupMapping> entities);
 
-        /**
-         * Finds all ACTIVE mappings for a given UserPlan.
-         * Used for processing enrollment expiry based on UserPlan.
-         */
-        @Query("SELECT m FROM StudentSessionInstituteGroupMapping m " +
-                        "WHERE m.userPlanId = :userPlanId " +
-                        "AND m.status = 'ACTIVE'")
-        List<StudentSessionInstituteGroupMapping> findAllByUserPlanIdAndStatusActive(
-                        @Param("userPlanId") String userPlanId);
-
+    List<StudentSessionInstituteGroupMapping>findAllByUserPlanIdAndStatusIn(String userPlanId,List<String>status);
 }

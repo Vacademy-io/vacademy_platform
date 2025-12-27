@@ -53,7 +53,7 @@ public class UserDTO {
         this.roles = user.getRoles().stream().map((ur) -> ur.getRole().getName()).toList();
     }
 
-    public UserDTO(User user,UserDTO userDTO){
+    public UserDTO(User user, UserDTO userDTO) {
         this.id = user.getId();
         this.username = user.getUsername();
         this.email = user.getEmail();
@@ -66,7 +66,7 @@ public class UserDTO {
         this.gender = user.getGender();
         this.isRootUser = user.isRootUser();
         this.profilePicFileId = user.getProfilePicFileId();
-        this.region=userDTO.getRegion();
+        this.region = userDTO.getRegion();
         this.setLastLoginTime(user.getLastLoginTime());
         this.roles = user.getRoles().stream().map((ur) -> ur.getRole().getName()).toList();
 

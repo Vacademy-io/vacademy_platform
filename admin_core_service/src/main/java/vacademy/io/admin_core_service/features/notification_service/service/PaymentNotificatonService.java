@@ -14,6 +14,7 @@ import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
+import vacademy.io.common.logging.SentryLogger;
 
 import java.time.Instant;
 import java.time.ZoneId;
@@ -33,26 +34,29 @@ public class PaymentNotificatonService {
     @Autowired
     private MediaService mediaService;
 
-
     public boolean sendPaymentConfirmationNotification(
-        String instituteId,
-        PaymentResponseDTO paymentResponseDTO,
-        PaymentInitiationRequestDTO paymentInitiationRequestDTO,
-        UserDTO userDTO) {
-        if (instituteId == null || paymentResponseDTO == null || paymentInitiationRequestDTO == null || userDTO == null) {
+            String instituteId,
+            PaymentResponseDTO paymentResponseDTO,
+            PaymentInitiationRequestDTO paymentInitiationRequestDTO,
+            UserDTO userDTO) {
+        if (instituteId == null || paymentResponseDTO == null || paymentInitiationRequestDTO == null
+                || userDTO == null) {
             return false;
         }
 
         Institute institute = instituteService.findById(instituteId);
-        if (institute == null || userDTO.getEmail() == null) return false;
+        if (institute == null || userDTO.getEmail() == null)
+            return false;
 
         if (!isPaymentSuccessful(paymentResponseDTO)) {
             return false;
         }
 
         // UPDATED: Build the email body using the new logic
-        String emailBody = buildPaymentConfirmationEmailBody(institute, userDTO, paymentInitiationRequestDTO, paymentResponseDTO);
-        if (emailBody == null) return false;
+        String emailBody = buildPaymentConfirmationEmailBody(institute, userDTO, paymentInitiationRequestDTO,
+                paymentResponseDTO);
+        if (emailBody == null)
+            return false;
 
         NotificationDTO notificationDTO = new NotificationDTO();
         notificationDTO.setBody(emailBody);
@@ -61,38 +65,56 @@ public class PaymentNotificatonService {
 
         NotificationToUserDTO notificationToUserDTO = new NotificationToUserDTO();
         notificationToUserDTO.setUserId(userDTO.getId());
-        notificationToUserDTO.setChannelId(paymentInitiationRequestDTO.getEmail() == null ? userDTO.getEmail() : paymentInitiationRequestDTO.getEmail());
+        notificationToUserDTO.setChannelId(paymentInitiationRequestDTO.getEmail() == null ? userDTO.getEmail()
+                : paymentInitiationRequestDTO.getEmail());
         notificationToUserDTO.setPlaceholders(new HashMap<>());
         notificationDTO.setUsers(List.of(notificationToUserDTO));
-        notificationService.sendEmailToUsers(notificationDTO, instituteId);
-        return true;
+
+        try {
+            notificationService.sendEmailToUsers(notificationDTO, instituteId);
+            return true;
+        } catch (Exception e) {
+            SentryLogger.SentryEventBuilder.error(e)
+                    .withMessage("Failed to send payment confirmation email")
+                    .withTag("notification.type", "EMAIL")
+                    .withTag("email.type", "PAYMENT_CONFIRMATION")
+                    .withTag("institute.id", instituteId)
+                    .withTag("user.id", userDTO.getId())
+                    .withTag("user.email", notificationToUserDTO.getChannelId())
+                    .withTag("operation", "sendPaymentConfirmationEmail")
+                    .send();
+            return false;
+        }
     }
 
     // This method can now be deprecated or removed if you only use Payment Intents
-    public boolean sendDonationPaymentNotification(/*...*/) {
+    public boolean sendDonationPaymentNotification(/* ... */) {
         // ... existing logic
         return true;
     }
 
     public boolean sendDonationPaymentConfirmationNotification(
-        String instituteId,
-        PaymentResponseDTO paymentResponseDTO,
-        PaymentInitiationRequestDTO paymentInitiationRequestDTO,
-        String email) {
+            String instituteId,
+            PaymentResponseDTO paymentResponseDTO,
+            PaymentInitiationRequestDTO paymentInitiationRequestDTO,
+            String email) {
         if (instituteId == null || paymentResponseDTO == null || paymentInitiationRequestDTO == null || email == null) {
             return false;
         }
 
         Institute institute = instituteService.findById(instituteId);
-        if (institute == null) return false;
+        if (institute == null)
+            return false;
 
         if (!isPaymentSuccessful(paymentResponseDTO)) {
             return false;
         }
 
         // UPDATED: Build the email body using the new logic
-        String emailBody = buildDonationPaymentConfirmationEmailBody(institute, email, paymentInitiationRequestDTO, paymentResponseDTO);
-        if (emailBody == null) return false;
+        String emailBody = buildDonationPaymentConfirmationEmailBody(institute, email, paymentInitiationRequestDTO,
+                paymentResponseDTO);
+        if (emailBody == null)
+            return false;
 
         NotificationDTO notificationDTO = new NotificationDTO();
         notificationDTO.setBody(emailBody);
@@ -104,20 +126,37 @@ public class PaymentNotificatonService {
         notificationToUserDTO.setPlaceholders(new HashMap<>());
         notificationToUserDTO.setChannelId(email);
         notificationDTO.setUsers(List.of(notificationToUserDTO));
-        notificationService.sendEmailToUsers(notificationDTO, instituteId);
-        return true;
+
+        try {
+            notificationService.sendEmailToUsers(notificationDTO, instituteId);
+            return true;
+        } catch (Exception e) {
+            SentryLogger.SentryEventBuilder.error(e)
+                    .withMessage("Failed to send donation payment confirmation email")
+                    .withTag("notification.type", "EMAIL")
+                    .withTag("email.type", "DONATION_CONFIRMATION")
+                    .withTag("institute.id", instituteId)
+                    .withTag("donor.email", email)
+                    .withTag("payment.amount", String.valueOf(paymentInitiationRequestDTO.getAmount()))
+                    .withTag("operation", "sendDonationConfirmationEmail")
+                    .send();
+            return false;
+        }
     }
 
     /**
      * UPDATED: Builds email body using PaymentIntent data.
      */
-    // In: vacademy.io.admin_core_service.features.notification_service.service.PaymentNotificatonService
+    // In:
+    // vacademy.io.admin_core_service.features.notification_service.service.PaymentNotificatonService
 
     private String buildPaymentConfirmationEmailBody(
-        Institute institute, UserDTO userDTO, PaymentInitiationRequestDTO requestDTO, PaymentResponseDTO responseDTO) {
+            Institute institute, UserDTO userDTO, PaymentInitiationRequestDTO requestDTO,
+            PaymentResponseDTO responseDTO) {
 
         Map<String, Object> responseData = responseDTO.getResponseData();
-        if (responseData == null) return null;
+        if (responseData == null)
+            return null;
 
         String transactionId = safeCastToString(responseData.get("transactionId"));
         String instituteLogoUrl = mediaService.getFileUrlById(institute.getLogoFileId());
@@ -128,27 +167,26 @@ public class PaymentNotificatonService {
         Number createdValue = (Number) responseData.getOrDefault("created", Instant.now().getEpochSecond());
         long createdTimestamp = createdValue.longValue();
         String paymentDate = Instant.ofEpochSecond(createdTimestamp)
-            .atZone(ZoneId.systemDefault())
-            .toLocalDate()
-            .format(DateTimeFormatter.ofPattern("dd MMM yyyy"));
-
+                .atZone(ZoneId.systemDefault())
+                .toLocalDate()
+                .format(DateTimeFormatter.ofPattern("dd MMM yyyy"));
 
         String displayAmount = String.valueOf(responseDTO.getResponseData().get("amount"));
 
         // FIX: Pass the receiptUrl to the email body generator
         return StripeInvoiceEmailBody.getPaymentConfirmationEmailBody(
-            safe(institute.getInstituteName()),
-            safe(instituteLogoUrl),
-            safe(userDTO.getFullName()),
-            displayAmount,
-            safe(requestDTO.getCurrency()),
-            transactionId,
-            paymentDate,
-            receiptUrl,
-            safe(institute.getAddress()),
-            institute.getInstituteThemeCode()
-        );
+                safe(institute.getInstituteName()),
+                safe(instituteLogoUrl),
+                safe(userDTO.getFullName()),
+                displayAmount,
+                safe(requestDTO.getCurrency()),
+                transactionId,
+                paymentDate,
+                receiptUrl,
+                safe(institute.getAddress()),
+                institute.getInstituteThemeCode());
     }
+
     /**
      * UPDATED: Builds donation email body using PaymentIntent data.
      */
@@ -156,7 +194,8 @@ public class PaymentNotificatonService {
             Institute institute, String email, PaymentInitiationRequestDTO requestDTO, PaymentResponseDTO responseDTO) {
 
         Map<String, Object> responseData = responseDTO.getResponseData();
-        if (responseData == null) return null;
+        if (responseData == null)
+            return null;
 
         String transactionId = safeCastToString(responseData.get("transactionId"));
         String instituteLogoUrl = mediaService.getFileUrlById(institute.getLogoFileId());
@@ -184,12 +223,12 @@ public class PaymentNotificatonService {
                 paymentDate,
                 receiptUrl, // Corrected parameter order
                 safe(institute.getAddress()),
-                institute.getInstituteThemeCode()
-        );
+                institute.getInstituteThemeCode());
     }
 
     private boolean isPaymentSuccessful(PaymentResponseDTO responseDTO) {
-        if (responseDTO == null || responseDTO.getResponseData() == null) return false;
+        if (responseDTO == null || responseDTO.getResponseData() == null)
+            return false;
         String paymentStatus = safeCastToString(responseDTO.getResponseData().get("paymentStatus"));
         return PaymentStatusEnum.PAID.name().equals(paymentStatus);
     }
@@ -197,9 +236,11 @@ public class PaymentNotificatonService {
     private String safeCastToString(Object value) {
         return value != null ? value.toString() : "";
     }
+
     private <T> T safe(T val) {
         // A simple way to avoid NullPointerException for strings in the template.
-        if (val == null) return (T) "";
+        if (val == null)
+            return (T) "";
         return val;
     }
 }

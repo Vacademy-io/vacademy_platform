@@ -4,8 +4,14 @@ metadata:
   name: myconfigmapv1.0
   namespace: default
 data:
-  BG_COLOR: '#12181b'
+  ADMIN_CORE_SERVICE_BASE_URL: http://admin-core-service:8072
+  AI_SERVICE_BASE_URL: http://ai-service:8077
+  ASSESSMENT_SERVER_BASE_URL: http://assessment-service:8074
+  AUTH_SERVER_BASE_URL: http://auth-service:8071
+  COMMUNITY_SERVICE_BASE_URL: http://community-service:8073
   FONT_COLOR: '#FFFFFF'
-  CUSTOM_HEADER: 'Customized with a configmap!'
-  REDIS_HOST: 'redis'
+  MEDIA_SERVER_BASE_URL: http://media-service:8075
+  MEDIA_SERVICE_BASE_URL: http://media-service:8075
+  NOTIFICATION_SERVER_BASE_URL: http://notification-service:8076
+  REDIS_HOST: redis
   REDIS_PORT: '6379'

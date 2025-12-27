@@ -43,7 +43,7 @@ public class UserRole {
     @Column(name = "status", nullable = false, columnDefinition = "VARCHAR(255) DEFAULT 'ACTIVE'")
     private String status = "ACTIVE";
 
-    public UserRoleDTO getRoleDto(){
+    public UserRoleDTO getRoleDto() {
         return new UserRoleDTO(this);
     }
 

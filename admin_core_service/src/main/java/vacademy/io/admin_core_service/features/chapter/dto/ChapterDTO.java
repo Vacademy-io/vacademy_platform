@@ -14,4 +14,5 @@ public class ChapterDTO {
     private String description;
     private Integer chapterOrder;
     private String parentId;
+    private String dripConditionJson;
 }

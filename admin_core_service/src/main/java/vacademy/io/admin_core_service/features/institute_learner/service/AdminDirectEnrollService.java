@@ -76,14 +76,17 @@ public class AdminDirectEnrollService {
         PaymentPlan paymentPlan = null;
         if (enrollDTO.getPlanId() != null) {
             paymentPlan = paymentPlanService.findById(enrollDTO.getPlanId()).orElse(null);
-        }
-		sendNotificationsForEnrollment(
+        }		sendNotificationsForEnrollment(
 				instituteId,
 				user,
 				paymentOption,
 				enrollInvite,
 				enrollDTO.getPackageSessionIds().get(0)
 		);
+		
+		// Extract startDate from enrollDTO, default to current date if not provided
+		Date enrollmentStartDate = enrollDTO.getStartDate() != null ? enrollDTO.getStartDate() : new Date();
+		
         UserPlan userPlan = userPlanService.createUserPlan(
                 user.getId(),
                 paymentPlan,
@@ -91,7 +94,10 @@ public class AdminDirectEnrollService {
                 enrollInvite,
                 paymentOption,
                 enrollDTO.getPaymentInitiationRequest(),
-                UserPlanStatusEnum.ACTIVE.name());
+                UserPlanStatusEnum.ACTIVE.name(),
+                null,
+                null,
+                enrollmentStartDate);
 
         List<InstituteStudentDetails> instituteStudentDetails = new ArrayList<>();
         for (String packageSessionId : enrollDTO.getPackageSessionIds()) {
@@ -99,7 +105,7 @@ public class AdminDirectEnrollService {
                     .instituteId(instituteId)
                     .packageSessionId(packageSessionId)
                     .enrollmentStatus(LearnerStatusEnum.ACTIVE.name())
-                    .enrollmentDate(new Date())
+                    .enrollmentDate(enrollmentStartDate)
                     .accessDays(
                             enrollInvite.getLearnerAccessDays() != null ? enrollInvite.getLearnerAccessDays().toString()
                                     : null)

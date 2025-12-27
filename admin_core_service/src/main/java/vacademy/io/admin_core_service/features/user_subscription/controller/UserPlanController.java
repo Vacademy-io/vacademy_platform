@@ -23,9 +23,10 @@ public class UserPlanController {
     @GetMapping("/{userPlanId}/with-payment-logs")
     public ResponseEntity<UserPlanDTO> getUserPlanWithPaymentLogs(
             @PathVariable String userPlanId,
+            @RequestParam(required = false, defaultValue = "false") boolean includePolicyDetails,
             @RequestAttribute("user") CustomUserDetails userDetails) {
 
-        UserPlanDTO userPlanDTO = userPlanService.getUserPlanWithPaymentLogs(userPlanId);
+        UserPlanDTO userPlanDTO = userPlanService.getUserPlanWithPaymentLogs(userPlanId, includePolicyDetails);
         return ResponseEntity.ok(userPlanDTO);
     }
 
@@ -60,6 +61,16 @@ public class UserPlanController {
         return ResponseEntity.ok().build();
     }
 
+    @PutMapping("/{userPlanId}/cancel")
+    public ResponseEntity<Void> cancelUserPlan(
+            @PathVariable String userPlanId,
+            @RequestParam(required = false, defaultValue = "false") boolean force,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+
+        userPlanService.cancelUserPlan(userPlanId, force);
+        return ResponseEntity.ok().build();
+    }
+
     @PostMapping("/membership-details")
     public ResponseEntity<Page<MembershipDetailsDTO>> getMembershipDetails(
             @RequestParam(required = false, defaultValue = "0") int pageNo,
@@ -67,11 +78,14 @@ public class UserPlanController {
             @RequestBody MembershipFilterDTO filterDTO,
             @RequestAttribute("user") CustomUserDetails userDetails) {
 
-        // Ensure institute ID is set (security check could be added here to ensure user belongs to institute)
+        // Ensure institute ID is set (security check could be added here to ensure user
+        // belongs to institute)
         if (filterDTO.getInstituteId() == null) {
-            // Fallback or Error depending on logic, assuming usually passed in body or derived
+            // Fallback or Error depending on logic, assuming usually passed in body or
+            // derived
         }
 
-        return ResponseEntity.ok(userPlanService.getMembershipDetails(filterDTO, pageNo, pageSize));
+        return ResponseEntity
+                .ok(userPlanService.getMembershipDetails(filterDTO, pageNo, pageSize));
     }
 }

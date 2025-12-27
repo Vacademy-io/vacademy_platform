@@ -7,7 +7,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.common.entity.CustomFields;
+import vacademy.io.admin_core_service.features.common.entity.InstituteCustomField;
 import vacademy.io.admin_core_service.features.common.enums.CustomFieldValueSourceTypeEnum;
+import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
+import vacademy.io.admin_core_service.features.common.repository.InstituteCustomFieldRepository;
 import vacademy.io.admin_core_service.features.common.service.CustomFieldValueService;
 import vacademy.io.admin_core_service.features.enroll_invite.enums.SubOrgRoles;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
@@ -44,6 +48,8 @@ public class SubOrgLearnerService {
     private final PackageSessionRepository packageSessionRepository;
     private final InstituteRepository instituteRepository;
     private final CustomFieldValueService customFieldValueService;
+    private final CustomFieldValuesRepository customFieldValuesRepository;
+    private final InstituteCustomFieldRepository instituteCustomFieldRepository;
     private final WorkflowTriggerService workflowTriggerService;
     @Transactional(readOnly = true)
     public SubOrgResponseDTO getUsersByPackageSessionAndSubOrg(
@@ -82,11 +88,22 @@ public class SubOrgLearnerService {
 
         // Build list of student mappings with user details
         List<StudentMappingWithUserDTO> studentMappings = new ArrayList<>();
+        String instituteIdFromMapping = null;
         for (Object[] row : mappingData) {
             StudentMappingWithUserDTO mapping = buildStudentMappingWithUser(row, userMap);
             if (mapping != null) {
                 studentMappings.add(mapping);
+                // Extract institute_id from the mapping (row[7])
+                if (instituteIdFromMapping == null && row[7] != null) {
+                    instituteIdFromMapping = (String) row[7];
+                }
             }
+        }
+
+        // Fetch and populate custom fields for all users (filtered by institute's active custom fields)
+        // Use institute_id from student_session_institute_group_mapping, not sub_org_id
+        if (instituteIdFromMapping != null) {
+            enrichStudentMappingsWithCustomFields(studentMappings, instituteIdFromMapping);
         }
 
         // Build sub-org details
@@ -128,6 +145,104 @@ public class SubOrgLearnerService {
                 .destinationPackageSessionId((String) row[11])
                 .user(user)
                 .build();
+    }
+
+    /**
+     * Enrich student mappings with custom fields
+     * Returns ALL institute-level custom fields for each user with:
+     * - Actual values if user has filled them
+     * - Null values if user hasn't filled them
+     * This ensures consistent response structure across all users
+     */
+    private void enrichStudentMappingsWithCustomFields(List<StudentMappingWithUserDTO> studentMappings, String instituteId) {
+        if (studentMappings == null || studentMappings.isEmpty()) {
+            return;
+        }
+
+        // Extract all unique user IDs
+        List<String> userIds = studentMappings.stream()
+                .map(StudentMappingWithUserDTO::getUserId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+
+        if (userIds.isEmpty()) {
+            return;
+        }
+
+        log.info("Fetching custom fields for {} users from institute {}", userIds.size(), instituteId);
+
+        // Step 1: Fetch ALL active institute custom fields (template for all users)
+        List<Object[]> instituteCustomFieldsData = instituteCustomFieldRepository
+                .findAllActiveCustomFieldsWithDetailsByInstituteId(instituteId);
+
+        log.info("Found {} active custom fields configured for institute", instituteCustomFieldsData.size());
+
+        // Build template list of all custom fields with null values
+        List<CustomFieldDTO> instituteCustomFieldsTemplate = new ArrayList<>();
+        for (Object[] row : instituteCustomFieldsData) {
+            InstituteCustomField icf = (InstituteCustomField) row[0];
+            CustomFields cf = (CustomFields) row[1];
+
+            CustomFieldDTO template = CustomFieldDTO.builder()
+                    .customFieldId(cf.getId())
+                    .fieldKey(cf.getFieldKey())
+                    .fieldName(cf.getFieldName())
+                    .fieldType(cf.getFieldType())
+                    .fieldValue(null) // Default to null
+                    .sourceType(CustomFieldValueSourceTypeEnum.USER.name())
+                    .build();
+
+            instituteCustomFieldsTemplate.add(template);
+        }
+
+        // Step 2: Fetch user-specific custom field values
+        List<Object[]> customFieldData = customFieldValuesRepository.findCustomFieldsWithKeysByUserIdsAndInstitute(
+                CustomFieldValueSourceTypeEnum.USER.name(),
+                userIds,
+                instituteId
+        );
+
+        log.info("Found {} custom field value records", customFieldData.size());
+
+        // Group custom field values by user ID and custom field ID
+        Map<String, Map<String, String>> userCustomFieldValuesMap = new HashMap<>();
+
+        for (Object[] row : customFieldData) {
+            String userId = (String) row[0];
+            String customFieldId = (String) row[1];
+            String fieldValue = (String) row[5];
+
+            userCustomFieldValuesMap
+                    .computeIfAbsent(userId, k -> new HashMap<>())
+                    .put(customFieldId, fieldValue);
+        }
+
+        // Step 3: Enrich each student mapping with ALL institute custom fields
+        for (StudentMappingWithUserDTO mapping : studentMappings) {
+            String userId = mapping.getUserId();
+            Map<String, String> userValues = userCustomFieldValuesMap.getOrDefault(userId, new HashMap<>());
+
+            // Clone template and fill in user values
+            List<CustomFieldDTO> userCustomFields = new ArrayList<>();
+            for (CustomFieldDTO template : instituteCustomFieldsTemplate) {
+                CustomFieldDTO userField = CustomFieldDTO.builder()
+                        .customFieldId(template.getCustomFieldId())
+                        .fieldKey(template.getFieldKey())
+                        .fieldName(template.getFieldName())
+                        .fieldType(template.getFieldType())
+                        .fieldValue(userValues.get(template.getCustomFieldId())) // Will be null if not filled
+                        .sourceType(template.getSourceType())
+                        .build();
+
+                userCustomFields.add(userField);
+            }
+
+            mapping.setCustomFields(userCustomFields);
+        }
+
+        log.info("Successfully enriched {} student mappings with {} custom fields each",
+                studentMappings.size(), instituteCustomFieldsTemplate.size());
     }
 
     /**
@@ -182,18 +297,20 @@ public class SubOrgLearnerService {
         UserDTO adminDTO = authService.getUsersFromAuthServiceByUserIds(List.of(admin.getUserId())).get(0);
         // 7. Save custom fields if provided
         if (request.getCustomFieldValues() != null && !request.getCustomFieldValues().isEmpty()) {
+            // Save custom fields for the mapping entity
             customFieldValueService.addCustomFieldValue(
                     request.getCustomFieldValues(),
                     CustomFieldValueSourceTypeEnum.STUDENT_SESSION_INSTITUTE_GROUP_MAPPING.name(),
                     mapping.getId()
             );
+            // Save custom fields for the user entity (using user.getId() not mapping.getId())
             customFieldValueService.addCustomFieldValue(
                     request.getCustomFieldValues(),
                     CustomFieldValueSourceTypeEnum.USER.name(),
-                    mapping.getId()
+                    user.getId()
             );
-            log.info("Saved {} custom field values for mapping: {}",
-                    request.getCustomFieldValues().size(), mapping.getId());
+            log.info("Saved {} custom field values for mapping: {} and user: {}",
+                    request.getCustomFieldValues().size(), mapping.getId(), user.getId());
         }
 
         triggerEnrollmentWorkflow(request.getInstituteId(),user,request.getPackageSessionId(),adminDTO);
@@ -259,7 +376,7 @@ public class SubOrgLearnerService {
      * Create new user or fetch existing user with proper user_roles entry
      */
     private UserDTO createOrFetchUser(SubOrgEnrollRequestDTO request) {
-        log.info("Creating or fetching user with email: {}, userId: {}", 
+        log.info("Creating or fetching user with email: {}, userId: {}",
                 request.getUser().getEmail(), request.getUser().getId());
 
         if (request.getUser().getRoles() == null || request.getUser().getRoles().isEmpty()) {
@@ -477,21 +594,58 @@ public class SubOrgLearnerService {
     private void triggerTerminationWorkflow(List<String>userIds,String instituteId,String packageSessionId,CustomUserDetails userDetails){
         List<UserDTO>userDTOS = authService.getUsersFromAuthServiceByUserIds(userIds);
         UserDTO admin =  authService.getUsersFromAuthServiceByUserIds(List.of(userDetails.getUserId())).get(0);
+        Optional<PackageSession>optionalPackageSession = packageSessionRepository.findById(packageSessionId);
+        if(optionalPackageSession.isEmpty()){
+            throw new VacademyException("PackageSession Not found");
+        }
         for(UserDTO userDTO:userDTOS){
             Map<String, Object> contextData = new HashMap<>();
-            contextData.put("user", userDTO);
+            contextData.put("member", userDTO);
             contextData.put("packageSessionIds", packageSessionId);
             contextData.put("admin",admin);
+            contextData.put("packageId",optionalPackageSession.get().getPackageEntity().getId());
             workflowTriggerService.handleTriggerEvents(WorkflowTriggerEvent.SUB_ORG_MEMBER_TERMINATION.name(),packageSessionId,instituteId,contextData);
         }
     }
 
     @Async
     public void triggerEnrollmentWorkflow(String instituteId, UserDTO userDTO,String packageSessionId,UserDTO adminDTO) {
+        Optional<PackageSession>optionalPackageSession = packageSessionRepository.findById(packageSessionId);
+        if(optionalPackageSession.isEmpty()){
+            throw new VacademyException("PackageSession Not found");
+        }
         Map<String, Object> contextData = new HashMap<>();
-        contextData.put("user", userDTO);
+        contextData.put("member", userDTO);
         contextData.put("packageSessionIds", packageSessionId);
-        contextData.put("admin",adminDTO);
+        contextData.put("subOrgAdmin",adminDTO);
+        contextData.put("packageId",optionalPackageSession.get().getPackageEntity().getId());
         workflowTriggerService.handleTriggerEvents(WorkflowTriggerEvent.SUB_ORG_MEMBER_ENROLLMENT.name(),packageSessionId,instituteId,contextData);
+    }
+
+    @Transactional(readOnly = true)
+    public SubOrgAdminsResponseDTO getSubOrgAdmins(String userId, String packageSessionId, String subOrgId) {
+        log.info("Fetching admins for packageSessionId: {}, subOrgId: {}", packageSessionId, subOrgId);
+
+        // Query the database for admins
+        List<Object[]> adminResults = mappingRepository.findAdminsByPackageSessionAndSubOrg(packageSessionId, subOrgId, userId);
+
+        // Map results to DTOs
+        List<AdminDetailsDTO> admins = adminResults.stream()
+                .map(result -> AdminDetailsDTO.builder()
+                        .userId((String) result[0])
+                        .name((String) result[1])
+                        .role(SubOrgRoles.ADMIN.name())
+                        .build())
+                .collect(Collectors.toList());
+
+        log.info("Found {} admins for packageSessionId: {}, subOrgId: {}", admins.size(), packageSessionId, subOrgId);
+
+        return SubOrgAdminsResponseDTO.builder()
+                .userId(userId)
+                .packageSessionId(packageSessionId)
+                .subOrgId(subOrgId)
+                .admins(admins)
+                .totalAdmins(admins.size())
+                .build();
     }
 }

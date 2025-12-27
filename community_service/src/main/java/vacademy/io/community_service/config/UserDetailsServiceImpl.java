@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -23,11 +24,9 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 
-
 @Slf4j
 @Component
 public class UserDetailsServiceImpl implements UserDetailsService {
-
 
     @Value(value = "${spring.application.name}")
     String clientName;
@@ -39,18 +38,19 @@ public class UserDetailsServiceImpl implements UserDetailsService {
     private InternalClientUtils internalClientUtils;
 
     @Override
+    @Cacheable(value = "userDetails", key = "#username")
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         log.debug("Entering in loadUserByUsername Method...");
-        
+
         // Extract session token from SecurityContext if available
         String sessionToken = extractSessionToken();
-        
+
         // Build endpoint URL with service name and optional session token
-        String endpoint = AuthConstant.userServiceRoute 
-            + "?userName=" + username 
-            + "&serviceName=" + clientName
-            + (sessionToken != null ? "&sessionToken=" + sessionToken : "");
-            
+        String endpoint = AuthConstant.userServiceRoute
+                + "?userName=" + username
+                + "&serviceName=" + clientName
+                + (sessionToken != null ? "&sessionToken=" + sessionToken : "");
+
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                 clientName,
                 HttpMethod.GET.name(),
@@ -79,26 +79,26 @@ public class UserDetailsServiceImpl implements UserDetailsService {
             RequestAttributes requestAttributes = RequestContextHolder.getRequestAttributes();
             if (requestAttributes instanceof ServletRequestAttributes) {
                 HttpServletRequest request = ((ServletRequestAttributes) requestAttributes).getRequest();
-                
+
                 // Check if JWT filter set the session token
                 String sessionToken = (String) request.getAttribute("sessionToken");
                 if (sessionToken != null) {
                     return sessionToken;
                 }
-                
+
                 // Fallback: Extract from Authorization header
                 String authHeader = request.getHeader("Authorization");
                 if (authHeader != null && authHeader.startsWith("Bearer ")) {
                     return generateSessionIdFromToken(authHeader.substring(7));
                 }
-                
+
                 // Fallback: HTTP session
                 HttpSession session = request.getSession(false);
                 if (session != null) {
                     return session.getId();
                 }
             }
-            
+
             return null;
         } catch (Exception e) {
             log.debug("Could not extract session token: {}", e.getMessage());

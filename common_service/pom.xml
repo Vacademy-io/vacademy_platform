@@ -57,6 +57,12 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
+    <!-- Sentry Spring Boot Integration for Structured Logging -->
+    <dependency>
+        <groupId>io.sentry</groupId>
+        <artifactId>sentry-spring-boot-starter-jakarta</artifactId>
+        <version>7.15.0</version>
+    </dependency>
     </dependencies>
     <artifactId>common_service</artifactId>
 

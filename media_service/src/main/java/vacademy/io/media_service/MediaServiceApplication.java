@@ -15,7 +15,10 @@ import vacademy.io.common.auth.config.SharedConfigurationReference;
 public class MediaServiceApplication {
     public static void main(String[] args) {
         SpringApplication.run(MediaServiceApplication.class, args);
-        
     }
 
+    @org.springframework.context.annotation.Bean
+    public org.springframework.web.client.RestTemplate restTemplate() {
+        return new org.springframework.web.client.RestTemplate();
+    }
 }

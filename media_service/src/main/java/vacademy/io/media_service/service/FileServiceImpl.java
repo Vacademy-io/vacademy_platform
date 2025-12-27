@@ -58,7 +58,9 @@ public class FileServiceImpl implements FileService {
 
         String key = "SERVICE_UPLOAD/" + UUID.randomUUID() + "_" + multipartFile.getOriginalFilename();
         s3Client.putObject(publicBucket, key, multipartFile.getInputStream(), null);
-        FileMetadata metadata = new FileMetadata(multipartFile.getName(), Objects.isNull(multipartFile.getContentType()) ? "unknown" : multipartFile.getContentType(), key, "SERVICE_UPLOAD", "SERVICE_UPLOAD");
+        FileMetadata metadata = new FileMetadata(multipartFile.getName(),
+                Objects.isNull(multipartFile.getContentType()) ? "unknown" : multipartFile.getContentType(), key,
+                "SERVICE_UPLOAD", "SERVICE_UPLOAD");
         fileMetadataRepository.save(metadata);
         return "https://" + publicBucket + ".s3.amazonaws.com/" + key;
     }
@@ -67,7 +69,9 @@ public class FileServiceImpl implements FileService {
     public FileDetailsDTO uploadFileWithDetails(MultipartFile multipartFile) throws FileUploadException, IOException {
         String key = "SERVICE_UPLOAD/" + UUID.randomUUID() + "_" + multipartFile.getOriginalFilename();
         s3Client.putObject(publicBucket, key, multipartFile.getInputStream(), null);
-        FileMetadata fileMetadata = new FileMetadata(multipartFile.getName(), Objects.isNull(multipartFile.getContentType()) ? "unknown" : multipartFile.getContentType(), key, "SERVICE_UPLOAD", "SERVICE_UPLOAD");
+        FileMetadata fileMetadata = new FileMetadata(multipartFile.getName(),
+                Objects.isNull(multipartFile.getContentType()) ? "unknown" : multipartFile.getContentType(), key,
+                "SERVICE_UPLOAD", "SERVICE_UPLOAD");
         fileMetadata = fileMetadataRepository.save(fileMetadata);
         String url = "https://" + publicBucket + ".s3.amazonaws.com/" + key;
 
@@ -82,10 +86,8 @@ public class FileServiceImpl implements FileService {
                 .createdOn(fileMetadata.getCreatedOn())
                 .updatedOn(fileMetadata.getUpdatedOn());
 
-
         return builder.build();
     }
-
 
     @Override
     public Object downloadFile(String fileName) throws FileDownloadException, IOException {
@@ -98,7 +100,8 @@ public class FileServiceImpl implements FileService {
      * @param fileName The name of the file.
      * @param fileType The type of the file (e.g., image, document).
      * @param source   The source of the file (e.g., user, system).
-     * @param sourceId The unique identifier of the source (e.g., user ID, system ID).
+     * @param sourceId The unique identifier of the source (e.g., user ID, system
+     *                 ID).
      * @return A pre-signed PreSignedUrlResponse for uploading the file.
      */
     public PreSignedUrlResponse getPreSignedUrl(String fileName, String fileType, String source, String sourceId) {
@@ -109,10 +112,9 @@ public class FileServiceImpl implements FileService {
         String key = generateFileKey(fileName, source, sourceId);
 
         // Create a request to generate the pre-signed URL
-        GeneratePresignedUrlRequest generatePresignedUrlRequest =
-                new GeneratePresignedUrlRequest(bucketName, key)
-                        .withMethod(HttpMethod.PUT)
-                        .withExpiration(expiration);
+        GeneratePresignedUrlRequest generatePresignedUrlRequest = new GeneratePresignedUrlRequest(bucketName, key)
+                .withMethod(HttpMethod.PUT)
+                .withExpiration(expiration);
 
         // Generate the pre-signed URL
         URL url = s3Client.generatePresignedUrl(generatePresignedUrlRequest);
@@ -134,10 +136,9 @@ public class FileServiceImpl implements FileService {
         c.add(Calendar.DATE, days);
 
         // Create a request to generate the pre-signed URL
-        GeneratePresignedUrlRequest generatePresignedUrlRequest =
-                new GeneratePresignedUrlRequest(bucketName, key)
-                        .withMethod(HttpMethod.GET)
-                        .withExpiration(c.getTime());
+        GeneratePresignedUrlRequest generatePresignedUrlRequest = new GeneratePresignedUrlRequest(bucketName, key)
+                .withMethod(HttpMethod.GET)
+                .withExpiration(c.getTime());
 
         // Generate the pre-signed URL
         URL url = s3Client.generatePresignedUrl(generatePresignedUrlRequest);
@@ -147,22 +148,25 @@ public class FileServiceImpl implements FileService {
     @Override
     public String getUrlWithExpiryAndId(String id, Integer days) throws FileDownloadException {
         Date expiryDate = addTime(days);
+        try {
+            Optional<FileMetadata> fileMetadata = fileMetadataRepository.findById(id);
+            if (fileMetadata.isEmpty())
+                throw new FileDownloadException("File Not Found");
 
-        Optional<FileMetadata> fileMetadata = fileMetadataRepository.findById(id);
-        if (fileMetadata.isEmpty()) throw new FileDownloadException("File Not Found");
+            // Create a request to generate the pre-signed URL
+            GeneratePresignedUrlRequest generatePresignedUrlRequest = new GeneratePresignedUrlRequest(bucketName,
+                    fileMetadata.get().getKey())
+                    .withMethod(HttpMethod.GET)
+                    .withExpiration(expiryDate);
 
-       // Create a request to generate the pre-signed URL
-        GeneratePresignedUrlRequest generatePresignedUrlRequest =
-                new GeneratePresignedUrlRequest(bucketName, fileMetadata.get().getKey())
-                        .withMethod(HttpMethod.GET)
-                        .withExpiration(expiryDate);
+            // Generate the pre-signed URL
+            URL url = s3Client.generatePresignedUrl(generatePresignedUrlRequest);
 
-        // Generate the pre-signed URL
-        URL url = s3Client.generatePresignedUrl(generatePresignedUrlRequest);
-
-        //return cloudFrontUrl + fileMetadata.get().getKey();
-        return url.toString();
-
+            // return cloudFrontUrl + fileMetadata.get().getKey();
+            return url.toString();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public Date addTime(Integer days) {
@@ -178,8 +182,8 @@ public class FileServiceImpl implements FileService {
     public String getPublicUrlWithExpiryAndId(String id) throws FileDownloadException {
 
         Optional<FileMetadata> fileMetadata = fileMetadataRepository.findById(id);
-        if (fileMetadata.isEmpty()) throw new FileDownloadException("File Not Found");
-
+        if (fileMetadata.isEmpty())
+            throw new FileDownloadException("File Not Found");
 
         return MediaConstant.s3baseurl + fileMetadata.get().getKey();
     }
@@ -198,7 +202,8 @@ public class FileServiceImpl implements FileService {
             if (!Objects.isNull(request.getFolderIconId())) {
                 folderIcon = fileMetadataRepository.findById(request.getFolderIconId()).orElse(null);
             }
-            UserToFile userToFile = new UserToFile(metadata.get(), folderIcon, request.getFolderName(), request.getUserId(), request.getSourceType(), request.getSourceId(), FileStatusEnum.ACTIVE.name());
+            UserToFile userToFile = new UserToFile(metadata.get(), folderIcon, request.getFolderName(),
+                    request.getUserId(), request.getSourceType(), request.getSourceId(), FileStatusEnum.ACTIVE.name());
             userToFileRepository.save(userToFile);
             return true;
         }
@@ -216,20 +221,22 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public String getPublicUrlWithExpiryAndSource(String source, String sourceId, Integer expiryDays) throws FileDownloadException {
+    public String getPublicUrlWithExpiryAndSource(String source, String sourceId, Integer expiryDays)
+            throws FileDownloadException {
         // Set the expiration time for the pre-signed URL
         Calendar c = Calendar.getInstance();
         c.setTime(new Date()); // Using today's date
         c.add(Calendar.DATE, expiryDays);
 
         Optional<FileMetadata> fileMetadata = fileMetadataRepository.findTopBySourceAndSourceId(source, sourceId);
-        if (fileMetadata.isEmpty()) throw new FileDownloadException("File Not Found");
+        if (fileMetadata.isEmpty())
+            throw new FileDownloadException("File Not Found");
 
         // Create a request to generate the pre-signed URL
-        GeneratePresignedUrlRequest generatePresignedUrlRequest =
-                new GeneratePresignedUrlRequest(bucketName, fileMetadata.get().getKey())
-                        .withMethod(HttpMethod.GET)
-                        .withExpiration(c.getTime());
+        GeneratePresignedUrlRequest generatePresignedUrlRequest = new GeneratePresignedUrlRequest(bucketName,
+                fileMetadata.get().getKey())
+                .withMethod(HttpMethod.GET)
+                .withExpiration(c.getTime());
 
         // Generate the pre-signed URL
         URL url = s3Client.generatePresignedUrl(generatePresignedUrlRequest);
@@ -280,7 +287,8 @@ public class FileServiceImpl implements FileService {
     public FileDetailsDTO getFileDetailsWithExpiryAndId(String id, Integer days) {
 
         Optional<FileMetadata> fileMetadata = fileMetadataRepository.findById(id);
-        if (fileMetadata.isEmpty()) throw new DatabaseException("File Not Found");
+        if (fileMetadata.isEmpty())
+            throw new DatabaseException("File Not Found");
 
         try {
             FileDetailsDTO.FileDetailsDTOBuilder builder = FileDetailsDTO.builder()
@@ -306,11 +314,11 @@ public class FileServiceImpl implements FileService {
             throw new RuntimeException(e);
         }
 
-
     }
 
     @Override
-    public List<FileDetailsDTO> getMultipleFileDetailsWithExpiryAndId(String ids, Integer days) throws FileDownloadException {
+    public List<FileDetailsDTO> getMultipleFileDetailsWithExpiryAndId(String ids, Integer days)
+            throws FileDownloadException {
 
         List<String> dividedFileIds = MediaUtil.getFileIdsFromParam(ids);
         List<FileDetailsDTO> fileDetailsDTOS = new ArrayList<>();
@@ -347,7 +355,8 @@ public class FileServiceImpl implements FileService {
         if (!acknowledgeClientUpload(acknowledgeRequest)) {
             return null;
         }
-        FileMetadata fileMetadata = fileMetadataRepository.findById(acknowledgeRequest.getFileId()).orElseThrow(() -> new DatabaseException("File Not Found"));
+        FileMetadata fileMetadata = fileMetadataRepository.findById(acknowledgeRequest.getFileId())
+                .orElseThrow(() -> new DatabaseException("File Not Found"));
         copyFileToPublicBucket(fileMetadata.getKey());
         FileDetailsDTO.FileDetailsDTOBuilder builder = FileDetailsDTO.builder()
                 .url(getPublicUrl(acknowledgeRequest.getFileId(), publicBucket))
@@ -371,7 +380,8 @@ public class FileServiceImpl implements FileService {
     @Override
     public String getPublicUrl(String id, String bucketName) {
         Optional<FileMetadata> fileMetadata = fileMetadataRepository.findById(id);
-        if (fileMetadata.isEmpty()) throw new DatabaseException("File Not Found");
+        if (fileMetadata.isEmpty())
+            throw new DatabaseException("File Not Found");
 
         String objectKey = fileMetadata.get().getKey().trim();
 
@@ -379,13 +389,14 @@ public class FileServiceImpl implements FileService {
         return "https://" + bucketName + ".s3.amazonaws.com/" + objectKey;
     }
 
-
     public void copyFileToPublicBucket(String objectKey) {
-        CopyObjectRequest copyRequest = new CopyObjectRequest(bucketName, objectKey.trim(), publicBucket, objectKey.trim());
+        CopyObjectRequest copyRequest = new CopyObjectRequest(bucketName, objectKey.trim(), publicBucket,
+                objectKey.trim());
         s3Client.copyObject(copyRequest);
     }
 
-    public PreSignedUrlResponse getPublicPreSignedUrl(String fileName, String fileType, String source, String sourceId) {
+    public PreSignedUrlResponse getPublicPreSignedUrl(String fileName, String fileType, String source,
+            String sourceId) {
         // Set the expiration time for the pre-signed URL (1 hour from now)
         Date expiration = new Date(System.currentTimeMillis() + 3600000);
 
@@ -393,10 +404,9 @@ public class FileServiceImpl implements FileService {
         String key = generateFileKey(fileName, source, sourceId);
 
         // Create a request to generate the pre-signed URL
-        GeneratePresignedUrlRequest generatePresignedUrlRequest =
-                new GeneratePresignedUrlRequest(bucketName, key)
-                        .withMethod(HttpMethod.PUT)
-                        .withExpiration(expiration);
+        GeneratePresignedUrlRequest generatePresignedUrlRequest = new GeneratePresignedUrlRequest(bucketName, key)
+                .withMethod(HttpMethod.PUT)
+                .withExpiration(expiration);
 
         // Generate the pre-signed URL
         URL url = s3Client.generatePresignedUrl(generatePresignedUrlRequest);
@@ -419,10 +429,10 @@ public class FileServiceImpl implements FileService {
         }
 
         // Generate presigned URL for public bucket
-        GeneratePresignedUrlRequest generatePresignedUrlRequest =
-                new GeneratePresignedUrlRequest(publicBucket, fileMetadata.get().getKey())
-                        .withMethod(HttpMethod.GET)
-                        .withExpiration(expiryDate);
+        GeneratePresignedUrlRequest generatePresignedUrlRequest = new GeneratePresignedUrlRequest(publicBucket,
+                fileMetadata.get().getKey())
+                .withMethod(HttpMethod.GET)
+                .withExpiration(expiryDate);
 
         URL url = s3Client.generatePresignedUrl(generatePresignedUrlRequest);
 

@@ -34,6 +34,7 @@ public class PackageDTO {
     private List<String> tags;
     private Integer courseDepth;
     private String courseHtmlDescriptionHtml;
+    private String dripConditionJson;
 
     // Constructor from Package entity
     public PackageDTO(PackageEntity packageEntity) {
@@ -49,12 +50,13 @@ public class PackageDTO {
         this.aboutTheCourseHtml = packageEntity.getAboutTheCourse();
         if (packageEntity.getTags() != null && !packageEntity.getTags().isEmpty()) {
             this.tags = Arrays.stream(packageEntity.getTags().split(","))
-                              .map(String::trim)
-                              .collect(Collectors.toList());
+                    .map(String::trim)
+                    .collect(Collectors.toList());
         } else {
             this.tags = Collections.emptyList();
         }
         this.courseDepth = packageEntity.getCourseDepth();
         this.courseHtmlDescriptionHtml = packageEntity.getCourseHtmlDescription();
+        this.dripConditionJson = packageEntity.getDripConditionJson();
     }
 }

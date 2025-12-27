@@ -1,64 +1,98 @@
 package vacademy.io.media_service.manager;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
-import org.springframework.stereotype.Component;
-import vacademy.io.common.exceptions.VacademyException;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
 import vacademy.io.media_service.entity.TaskStatus;
 import vacademy.io.media_service.enums.TaskInputTypeEnum;
 import vacademy.io.media_service.enums.TaskStatusTypeEnum;
 import vacademy.io.media_service.service.DeepSeekAsyncTaskService;
-import vacademy.io.media_service.service.FileConversionStatusService;
-import vacademy.io.media_service.service.NewAudioConverterService;
 import vacademy.io.media_service.service.TaskStatusService;
+import vacademy.io.media_service.util.IdGenerationUtils;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.text.SimpleDateFormat;
-import java.util.Base64;
-import java.util.Date;
-
-@Component
+/**
+ * Manager for AI lecture-related operations.
+ * Handles lecture planning and feedback generation.
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
 public class AiLectureManager {
 
-    @Autowired
-    DeepSeekAsyncTaskService deepSeekAsyncTaskService;
+        private final DeepSeekAsyncTaskService deepSeekAsyncTaskService;
+        private final TaskStatusService taskStatusService;
 
-    @Autowired
-    FileConversionStatusService fileConversionStatusService;
+        /**
+         * Generates a lecture plan based on user input.
+         * 
+         * @param userPrompt       The topic/content for the lecture
+         * @param lectureDuration  Duration of the lecture
+         * @param language         Language for the lecture plan
+         * @param methodOfTeaching Teaching method
+         * @param taskName         Name for tracking this task
+         * @param instituteId      Institute identifier
+         * @param level            Class/skill level
+         * @param model            AI model to use
+         * @return Task ID for tracking progress
+         */
+        public String generateLecturePlanner(
+                        String userPrompt,
+                        String lectureDuration,
+                        String language,
+                        String methodOfTeaching,
+                        String taskName,
+                        String instituteId,
+                        String level,
+                        String model) {
 
-    @Autowired
-    NewAudioConverterService newAudioConverterService;
+                TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(
+                                null,
+                                TaskStatusTypeEnum.LECTURE_PLANNER.name(),
+                                IdGenerationUtils.generateUniqueId(userPrompt),
+                                TaskInputTypeEnum.PROMPT_ID.name(),
+                                taskName,
+                                instituteId);
 
-    @Autowired
-    TaskStatusService taskStatusService;
+                deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForLecturePlanner(
+                                taskStatus,
+                                userPrompt,
+                                lectureDuration,
+                                language,
+                                methodOfTeaching,
+                                level,
+                                model);
 
-    public ResponseEntity<String> generateLecturePlanner(String userPrompt, String lectureDuration, String language, String methodOfTeaching, String taskName, String instituteId, String level) {
-        TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(null, TaskStatusTypeEnum.LECTURE_PLANNER.name(), generateUniqueId(userPrompt), TaskInputTypeEnum.PROMPT_ID.name(), taskName, instituteId);
-        deepSeekAsyncTaskService.processDeepSeekTaskInBackgroundWrapperForLecturePlanner(taskStatus, userPrompt, lectureDuration, language, methodOfTeaching, level);
-        return ResponseEntity.ok(taskStatus.getId());
-    }
-
-    public ResponseEntity<String> generateLectureFeedback(String audioId, String instituteId, String taskName) {
-
-        TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(null, TaskStatusTypeEnum.LECTURE_FEEDBACK.name(), audioId, TaskInputTypeEnum.AUDIO_ID.name(), taskName, instituteId);
-        deepSeekAsyncTaskService.pollAndProcessAudioFeedback(taskStatus, audioId);
-        return ResponseEntity.ok(taskStatus.getId());
-    }
-
-    public String generateUniqueId(String input) {
-        try {
-            String timestamp = new SimpleDateFormat("yyyyMMddHHmmssSSS").format(new Date());
-            String combined = input + "-" + timestamp;
-
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(combined.getBytes(StandardCharsets.UTF_8));
-            String base64Encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(hash);
-
-            // Return first 20 characters for uniqueness + brevity
-            return base64Encoded.substring(0, 20);
-        } catch (Exception e) {
-            throw new VacademyException("Error generating unique ID" + e.getMessage());
+                log.info("Started lecture planner generation: taskId={}, model={}", taskStatus.getId(), model);
+                return taskStatus.getId();
         }
-    }
+
+        /**
+         * Generates feedback for a lecture from audio transcription.
+         * 
+         * @param audioId     The audio file ID
+         * @param instituteId Institute identifier
+         * @param taskName    Name for tracking this task
+         * @param model       AI model to use
+         * @return Task ID for tracking progress
+         */
+        public String generateLectureFeedback(
+                        String audioId,
+                        String instituteId,
+                        String taskName,
+                        String model) {
+
+                TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(
+                                null,
+                                TaskStatusTypeEnum.LECTURE_FEEDBACK.name(),
+                                audioId,
+                                TaskInputTypeEnum.AUDIO_ID.name(),
+                                taskName,
+                                instituteId);
+
+                deepSeekAsyncTaskService.pollAndProcessAudioFeedback(taskStatus, audioId, model);
+
+                log.info("Started lecture feedback generation: taskId={}, audioId={}, model={}",
+                                taskStatus.getId(), audioId, model);
+                return taskStatus.getId();
+        }
 }

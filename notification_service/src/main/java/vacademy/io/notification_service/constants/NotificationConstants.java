@@ -26,8 +26,10 @@ public class NotificationConstants {
     public static final String PROVIDER = "provider";
     public static final String WATI = "wati";
     public static final String META = "meta";
+    public static final String COMBOT = "combot";
     public static final String API_KEY = "apiKey";
     public static final String API_URL = "apiUrl";
+    public static final String PHONE_NUMBER_ID = "phone_number_id";
     public static final String WHATSAPP_NUMBER = "whatsappNumber";
     // Testing allowlist for WhatsApp sending
     public static final String TEST_PHONE_NUMBER = "TEST_PHONE_NUMBER";

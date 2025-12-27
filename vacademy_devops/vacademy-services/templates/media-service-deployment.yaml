@@ -24,6 +24,9 @@ spec:
         - name: media-service
           image: {{ .Values.services.media_service.image.repository }}:{{ .Values.services.media_service.image.tag }}
           imagePullPolicy: Always
+          envFrom:
+            - configMapRef:
+                name: myconfigmapv1.0
           resources:
             requests:
               cpu: "200m"

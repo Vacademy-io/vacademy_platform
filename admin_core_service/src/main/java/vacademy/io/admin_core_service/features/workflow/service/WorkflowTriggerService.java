@@ -2,11 +2,12 @@ package vacademy.io.admin_core_service.features.workflow.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.annotation.Async;
+
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.workflow.entity.WorkflowTrigger;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowTriggerRepository;
+import vacademy.io.common.logging.SentryLogger;
 
 import java.util.HashMap;
 import java.util.List;
@@ -23,10 +24,12 @@ public class WorkflowTriggerService {
     @Autowired
     private WorkflowEngineService workflowEngineService;
 
-    public Map<String,Object> handleTriggerEvents(String eventName, String eventId, String instituteId, Map<String, Object> contextData) {
+    public Map<String, Object> handleTriggerEvents(String eventName, String eventId, String instituteId,
+            Map<String, Object> contextData) {
         log.info("---- Workflow Trigger Event START ----");
-        log.info("Incoming trigger params: eventName='{}', eventId='{}', instituteId='{}'", eventName, eventId, instituteId);
-        Map<String,Object>response = new HashMap<>();
+        log.info("Incoming trigger params: eventName='{}', eventId='{}', instituteId='{}'", eventName, eventId,
+                instituteId);
+        Map<String, Object> response = new HashMap<>();
         try {
             // Log context data if present
             if (contextData == null || contextData.isEmpty()) {
@@ -35,12 +38,13 @@ public class WorkflowTriggerService {
                 log.info("Context data received ({} keys): {}", contextData.size(), contextData);
             }
 
-            log.info("Calling repository: findByInstituteIdAndEventIdAnsEventTypeAndStatusIn(instituteId='{}', eventId='{}', eventType='{}')",
+            log.info(
+                    "Calling repository: findByInstituteIdAndEventIdAnsEventTypeAndStatusIn(instituteId='{}', eventId='{}', eventType='{}')",
                     instituteId, eventId, eventName);
 
-            List<WorkflowTrigger> triggers = workflowTriggerRepository.findByInstituteIdAndEventIdAnsEventTypeAndStatusIn(
-                    instituteId, eventId, eventName, List.of(StatusEnum.ACTIVE.name())
-            );
+            List<WorkflowTrigger> triggers = workflowTriggerRepository
+                    .findByInstituteIdAndEventIdAnsEventTypeAndStatusIn(
+                            instituteId, eventId, eventName, List.of(StatusEnum.ACTIVE.name()));
 
             log.info("Repository returned {} triggers for event='{}', eventId='{}', instituteId='{}'",
                     triggers.size(), eventName, eventId, instituteId);
@@ -56,24 +60,33 @@ public class WorkflowTriggerService {
             for (WorkflowTrigger trigger : triggers) {
                 count++;
                 log.info("Processing trigger {} of {} | TriggerId='{}', TriggerEventName='{}', WorkflowId='{}'",
-                        count, triggers.size(), trigger.getId(), trigger.getTriggerEventName(), trigger.getWorkflow().getId());
+                        count, triggers.size(), trigger.getId(), trigger.getTriggerEventName(),
+                        trigger.getWorkflow().getId());
 
                 try {
-                    Map<String, Object> seedContext = new HashMap<>(Optional.ofNullable(contextData).orElse(new HashMap<>()));
+                    Map<String, Object> seedContext = new HashMap<>(
+                            Optional.ofNullable(contextData).orElse(new HashMap<>()));
                     seedContext.put("triggerEvents", eventName);
                     seedContext.put("triggerId", trigger.getId());
                     seedContext.put("instituteId", instituteId);
-
                     log.info("Seed context prepared for workflow run ({} keys): {}", seedContext.size(), seedContext);
                     log.info("Starting workflowEngineService.run for workflowId='{}'", trigger.getWorkflow().getId());
 
-                   Map<String,Object>result = workflowEngineService.run(trigger.getWorkflow().getId(), seedContext);
+                    Map<String, Object> result = workflowEngineService.run(trigger.getWorkflow().getId(), seedContext);
 
                     log.info("Workflow execution completed for workflowId='{}'", trigger.getWorkflow().getId());
                     response.putAll(result);
                 } catch (Exception ex) {
                     log.error("Error executing workflowId='{}' for triggerId='{}'",
                             trigger.getWorkflow().getId(), trigger.getId(), ex);
+                    SentryLogger.SentryEventBuilder.error(ex)
+                            .withMessage("Workflow execution failed for trigger")
+                            .withTag("workflow.id", trigger.getWorkflow().getId().toString())
+                            .withTag("trigger.id", trigger.getId().toString())
+                            .withTag("trigger.event", eventName)
+                            .withTag("institute.id", instituteId)
+                            .withTag("operation", "workflowExecution")
+                            .send();
                 }
             }
 
@@ -81,9 +94,24 @@ public class WorkflowTriggerService {
             return response;
         } catch (Exception e) {
             log.error("Unexpected error while processing trigger event='{}', eventId='{}'", eventName, eventId, e);
+            SentryLogger.SentryEventBuilder.error(e)
+                    .withMessage("Unexpected error during trigger event processing")
+                    .withTag("trigger.event", eventName)
+                    .withTag("event.id", eventId)
+                    .withTag("institute.id", instituteId)
+                    .withTag("operation", "handleTriggerEvents")
+                    .send();
         }
 
         log.info("---- Workflow Trigger Event END ----");
         return response;
+    }
+
+    public Optional<WorkflowTrigger> findByInstituteIdEventNameAndEventId(String instituteId,String eventName,String eventId){
+        List<WorkflowTrigger>res = workflowTriggerRepository.findByInstituteIdAndEventIdAnsEventTypeAndStatusIn(instituteId,eventId,eventName,List.of(StatusEnum.ACTIVE.name()));
+        if (res.size() > 0){
+            return Optional.of(res.get(0));
+        }
+        return Optional.empty();
     }
 }

@@ -92,6 +92,7 @@ public class BenefitConfigDTO {
         private List<DeliveryMedium> deliveryMediums;
         private String templateId, subject, body;
         private List<String> fileIds;
+        private String contentUrl;  // Support for external links like YouTube
         public enum DeliveryMedium { EMAIL, WHATSAPP }
     }
 

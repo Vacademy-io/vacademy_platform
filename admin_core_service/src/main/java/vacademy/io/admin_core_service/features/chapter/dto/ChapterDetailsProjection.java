@@ -15,6 +15,8 @@ public interface ChapterDetailsProjection {
 
     String getDescription();
 
+    String getDripConditionJson();
+
     Double getPercentageCompleted();
 
     String getLastSlideViewed();

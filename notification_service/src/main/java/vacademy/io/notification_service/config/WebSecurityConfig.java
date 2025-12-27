@@ -25,6 +25,9 @@ public class WebSecurityConfig {
     private static final String[] ALLOWED_PATHS = {
             // Existing notification service paths
             "/notification-service/push-notifications/**",
+            "/notification-service/v1/webhook/**",
+            "/notification-service/v1/combot/**",
+            "/notification-service/v1/tracking/**",
             "/notification-service/whatsapp/v1/send-template-whatsapp",
             "/notification-service/whatsapp/v1/send-template-whatsapp/multiple",
             "/auth/**",
@@ -35,7 +38,7 @@ public class WebSecurityConfig {
             "/notification-service/v1/send-email-to-users-public",
             "/internal/**",
             "/verify/id",
-
+            "/notification-service/diagnostic/**",
             // Swagger and documentation
             "/notification-service/swagger-ui.html",
             "/notification-service/api-docs/**",

@@ -3,9 +3,15 @@ package vacademy.io.admin_core_service.features.workflow.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
+import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
+import vacademy.io.admin_core_service.features.common.entity.CustomFields;
+import vacademy.io.admin_core_service.features.common.repository.CustomFieldRepository;
+import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
+import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.workflow.engine.QueryNodeHandler;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
 import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
@@ -15,12 +21,19 @@ import vacademy.io.admin_core_service.features.live_session.entity.SessionSchedu
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSessionParticipants;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
+import vacademy.io.common.institute.entity.PackageEntity;
+
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 
 import java.sql.Timestamp;
 import java.sql.Time;
 import java.util.*;
+import java.util.stream.Collectors;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 
 @Slf4j
 @Service
@@ -32,6 +45,11 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
     private final SessionScheduleRepository sessionScheduleRepository;
     private final LiveSessionParticipantRepository liveSessionParticipantRepository;
     private final LiveSessionRepository liveSessionRepository;
+    private final InstituteSettingService instituteSettingService;
+    private final AudienceResponseRepository audienceResponseRepository;
+    private final CustomFieldRepository customFieldRepository;
+    private final PackageRepository packageRepository;
+    private final ObjectMapper objectMapper;
 
     @Override
     public Map<String, Object> execute(String prebuiltKey, Map<String, Object> params) {
@@ -52,6 +70,12 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return createLiveSession(params);
             case "checkStudentIsPresentInPackageSession":
                 return isAlreadyPresentInGivenPackageSession(params);
+            case "fetchInstituteSetting":
+                return fetchInstituteSetting(params);
+            case "getAudienceResponsesByDayDifference":
+                return getAudienceResponsesByDayDifference(params);
+            case "fetchPackageLMSSetting":
+                return fetchPackageLMSSetting(params);
             default:
                 log.warn("Unknown prebuilt query key: {}", prebuiltKey);
                 return Map.of("error", "Unknown query key: " + prebuiltKey);
@@ -84,8 +108,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             }
 
             return Map.of(
-                "ssigm_list", ssigmList,
-                "mapping_count", ssigmList.size());
+                    "ssigm_list", ssigmList,
+                    "mapping_count", ssigmList.size());
 
         } catch (Exception e) {
             log.error("Error executing fetch_ssigm_by_package query", e);
@@ -152,8 +176,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             }
 
             return Map.of(
-                "ssigmList", ssigmList,
-                "ssigmListCount", ssigmList.size());
+                    "ssigmList", ssigmList,
+                    "ssigmListCount", ssigmList.size());
 
         } catch (Exception e) {
             log.error("Error executing getSSIGMByStatusAndSessions query", e);
@@ -169,8 +193,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
         try {
             // First, try to get remaining days from custom field values
             Optional<CustomFieldValues> customFieldValue = customFieldValuesRepository
-                .findBySourceIdAndFieldKeyAndSourceType(ssigmId, "remaining_days",
-                    "STUDENT_SESSION_INSTITUTE_GROUP_MAPPING");
+                    .findBySourceIdAndFieldKeyAndSourceType(ssigmId, "remaining_days",
+                            "STUDENT_SESSION_INSTITUTE_GROUP_MAPPING");
 
             if (customFieldValue.isPresent()) {
                 try {
@@ -182,7 +206,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                     }
                 } catch (NumberFormatException e) {
                     log.warn("Invalid remaining_days value in custom field for SSIGM {}: {}", ssigmId,
-                        customFieldValue.get().getValue());
+                            customFieldValue.get().getValue());
                 }
             }
 
@@ -247,7 +271,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             // Try to update custom field value if it exists
             try {
                 Optional<CustomFieldValues> customFieldValue = customFieldValuesRepository
-                    .findBySourceIdAndFieldKeyAndSourceType(ssigmId, "remaining_days", "SSIGM");
+                        .findBySourceIdAndFieldKeyAndSourceType(ssigmId, "remaining_days", "SSIGM");
 
                 if (customFieldValue.isPresent()) {
                     CustomFieldValues cfv = customFieldValue.get();
@@ -256,7 +280,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                     log.debug("Updated remaining_days custom field value for SSIGM {} to {}", ssigmId, remainingDays);
                 } else {
                     log.debug("No custom field found for remaining_days on SSIGM {}, skipping custom field update",
-                        ssigmId);
+                            ssigmId);
                 }
             } catch (Exception e) {
                 log.warn("Failed to update custom field value for SSIGM {}: {}", ssigmId, e.getMessage());
@@ -361,18 +385,18 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
 
             // Create session schedule using only the values from params
             SessionSchedule schedule = SessionSchedule.builder()
-                .sessionId(sessionId)
-                .recurrenceType(recurrenceType)
-                .meetingDate(meetingDate)
-                .startTime(startTime)
-                .lastEntryTime(lastEntryTime)
-                .linkType(linkType)
-                .customMeetingLink(customMeetingLink)
-                .customWaitingRoomMediaId(null)
-                .status(status)
-                .thumbnailFileId(null)
-                .dailyAttendance(dailyAttendance != null ? dailyAttendance : false)
-                .build();
+                    .sessionId(sessionId)
+                    .recurrenceType(recurrenceType)
+                    .meetingDate(meetingDate)
+                    .startTime(startTime)
+                    .lastEntryTime(lastEntryTime)
+                    .linkType(linkType)
+                    .customMeetingLink(customMeetingLink)
+                    .customWaitingRoomMediaId(null)
+                    .status(status)
+                    .thumbnailFileId(null)
+                    .dailyAttendance(dailyAttendance != null ? dailyAttendance : false)
+                    .build();
 
             // Save the schedule
             SessionSchedule savedSchedule = sessionScheduleRepository.save(schedule);
@@ -380,13 +404,13 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             log.info("Successfully created session schedule: {} for session: {}", savedSchedule.getId(), sessionId);
 
             return Map.of(
-                "SESSION_SCHEDULE", "SUCCEESS");
+                    "SESSION_SCHEDULE", "SUCCEESS");
 
         } catch (Exception e) {
             log.error("Error creating session schedule", e);
             return Map.of(
-                "error", "Failed to create session schedule: " + e.getMessage(),
-                "success", false);
+                    "error", "Failed to create session schedule: " + e.getMessage(),
+                    "success", false);
         }
     }
 
@@ -413,59 +437,53 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
 
             // Check if participant already exists
             Optional<LiveSessionParticipants> existingParticipant = liveSessionParticipantRepository
-                .findBySessionId(sessionId)
-                .stream()
-                .filter(p -> sourceType.equals(p.getSourceType()) && sourceId.equals(p.getSourceId()))
-                .findFirst();
+                    .findBySessionId(sessionId)
+                    .stream()
+                    .filter(p -> sourceType.equals(p.getSourceType()) && sourceId.equals(p.getSourceId()))
+                    .findFirst();
 
             if (existingParticipant.isPresent()) {
                 log.info("Participant already exists for user {} in session {}", sourceId, sessionId);
                 LiveSessionParticipants existing = existingParticipant.get();
 
                 return Map.of(
-                    "participant", Map.of(
-                        "id", existing.getId(),
-                        "sourceId", existing.getSourceId(),
-                        "sourceType", existing.getSourceType(),
-                        "sessionId", existing.getSessionId()
-                    ),
-                    "message", "Participant already exists",
-                    "success", true
-                );
+                        "participant", Map.of(
+                                "id", existing.getId(),
+                                "sourceId", existing.getSourceId(),
+                                "sourceType", existing.getSourceType(),
+                                "sessionId", existing.getSessionId()),
+                        "message", "Participant already exists",
+                        "success", true);
             }
 
             // Create new participant
             LiveSessionParticipants participant = LiveSessionParticipants.builder()
-                .sessionId(sessionId)
-                .sourceType(sourceType)
-                .sourceId(sourceId)
-                .build();
+                    .sessionId(sessionId)
+                    .sourceType(sourceType)
+                    .sourceId(sourceId)
+                    .build();
 
             LiveSessionParticipants savedParticipant = liveSessionParticipantRepository.save(participant);
 
             log.info("Successfully created session participant: {} for user: {} in session: {}",
-                savedParticipant.getId(), sourceId, sessionId);
+                    savedParticipant.getId(), sourceId, sessionId);
 
             return Map.of(
-                "participant", Map.of(
-                    "id", savedParticipant.getId(),
-                    "sourceId", savedParticipant.getSourceId(),
-                    "sourceType", savedParticipant.getSourceType(),
-                    "sessionId", savedParticipant.getSessionId()
-                ),
-                "message", "Participant created successfully",
-                "success", true
-            );
+                    "participant", Map.of(
+                            "id", savedParticipant.getId(),
+                            "sourceId", savedParticipant.getSourceId(),
+                            "sourceType", savedParticipant.getSourceType(),
+                            "sessionId", savedParticipant.getSessionId()),
+                    "message", "Participant created successfully",
+                    "success", true);
 
         } catch (Exception e) {
             log.error("Error creating session participant", e);
             return Map.of(
-                "error", "Failed to create session participant: " + e.getMessage(),
-                "success", false
-            );
+                    "error", "Failed to create session participant: " + e.getMessage(),
+                    "success", false);
         }
     }
-
 
     /**
      * Creates a live session based on the provided parameters. This method is
@@ -504,52 +522,52 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
 
             // Create the LiveSession entity
             LiveSession liveSession = LiveSession.builder()
-                .instituteId(instituteId)
-                .title(title)
-                .status(status != null ? status : "DRAFT")
-                .startTime(startTime)
-                .lastEntryTime(lastEntryTime)
-                .timezone(timezone) // Added timezone
-                .accessLevel((String) params.get("accessLevel"))
-                .meetingType((String) params.get("meetingType"))
-                .defaultMeetLink((String) params.get("defaultMeetLink"))
-                .linkType((String) params.get("linkType"))
-                .waitingRoomLink((String) params.get("waitingRoomLink"))
-                .registrationFormLinkForPublicSessions((String) params.get("registrationFormLinkForPublicSessions"))
-                .createdByUserId((String) params.get("createdByUserId")) // Note: keeping original typo from params
-                .descriptionHtml((String) params.get("descriptionHtml"))
-                .notificationEmailMessage((String) params.get("notificationEmailMessage"))
-                .attendanceEmailMessage((String) params.get("attendanceEmailMessage"))
-                .coverFileId((String) params.get("coverFileId"))
-                .subject((String) params.get("subject"))
-                .waitingRoomTime(waitingRoomTime)
-                .thumbnailFileId((String) params.get("thumbnailFileId"))
-                .backgroundScoreFileId((String) params.get("backgroundScoreFileId"))
-                .allowRewind(allowRewind)
-                .sessionStreamingServiceType((String) params.get("sessionStreamingServiceType"))
-                .allowPlayPause(allowPlayPause != null ? allowPlayPause : false)
-                .build();
+                    .instituteId(instituteId)
+                    .title(title)
+                    .status(status != null ? status : "DRAFT")
+                    .startTime(startTime)
+                    .lastEntryTime(lastEntryTime)
+                    .timezone(timezone) // Added timezone
+                    .accessLevel((String) params.get("accessLevel"))
+                    .meetingType((String) params.get("meetingType"))
+                    .defaultMeetLink((String) params.get("defaultMeetLink"))
+                    .linkType((String) params.get("linkType"))
+                    .waitingRoomLink((String) params.get("waitingRoomLink"))
+                    .registrationFormLinkForPublicSessions((String) params.get("registrationFormLinkForPublicSessions"))
+                    .createdByUserId((String) params.get("createdByUserId")) // Note: keeping original typo from params
+                    .descriptionHtml((String) params.get("descriptionHtml"))
+                    .notificationEmailMessage((String) params.get("notificationEmailMessage"))
+                    .attendanceEmailMessage((String) params.get("attendanceEmailMessage"))
+                    .coverFileId((String) params.get("coverFileId"))
+                    .subject((String) params.get("subject"))
+                    .waitingRoomTime(waitingRoomTime)
+                    .thumbnailFileId((String) params.get("thumbnailFileId"))
+                    .backgroundScoreFileId((String) params.get("backgroundScoreFileId"))
+                    .allowRewind(allowRewind)
+                    .sessionStreamingServiceType((String) params.get("sessionStreamingServiceType"))
+                    .allowPlayPause(allowPlayPause != null ? allowPlayPause : false)
+                    .build();
 
             // Save the live session
             LiveSession savedSession = liveSessionRepository.save(liveSession);
 
             log.info("Successfully created live session: {} with title: {}", savedSession.getId(), title);
-            params.put("sessionId",savedSession.getId());
+            params.put("sessionId", savedSession.getId());
             return Map.of(
-                "success", true,
-                "sessionId", savedSession.getId(),
-                "message", "Live session created successfully",
-                "session", Map.of(
-                    "id", savedSession.getId(),
-                    "title", savedSession.getTitle(),
-                    "status", savedSession.getStatus(),
-                    "instituteId", savedSession.getInstituteId()));
+                    "success", true,
+                    "sessionId", savedSession.getId(),
+                    "message", "Live session created successfully",
+                    "session", Map.of(
+                            "id", savedSession.getId(),
+                            "title", savedSession.getTitle(),
+                            "status", savedSession.getStatus(),
+                            "instituteId", savedSession.getInstituteId()));
 
         } catch (Exception e) {
             log.error("Error creating live session", e);
             return Map.of(
-                "error", "Failed to create live session: " + e.getMessage(),
-                "success", false);
+                    "error", "Failed to create live session: " + e.getMessage(),
+                    "success", false);
         }
     }
 
@@ -618,14 +636,14 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
         return null;
     }
 
-    private Map<String, Object> isAlreadyPresentInGivenPackageSession(Map<String,Object>params) {
-        // This query finds if an active mapping exists for the user in the specified package.
-        Optional<StudentSessionInstituteGroupMapping> optionalStudentSessionInstituteGroupMapping =
-            ssigmRepo.findByUserIdAndStatusInAndPackageSessionId(
-                (String) params.get("userId"),
-                List.of(LearnerStatusEnum.ACTIVE.name()),
-                (String) params.get("packageSessionId")
-            );
+    private Map<String, Object> isAlreadyPresentInGivenPackageSession(Map<String, Object> params) {
+        // This query finds if an active mapping exists for the user in the specified
+        // package.
+        Optional<StudentSessionInstituteGroupMapping> optionalStudentSessionInstituteGroupMapping = ssigmRepo
+                .findByUserIdAndStatusInAndPackageSessionId(
+                        (String) params.get("userId"),
+                        List.of(LearnerStatusEnum.ACTIVE.name()),
+                        (String) params.get("packageSessionId"));
 
         // If the optional has a value, it means the mapping exists.
         if (optionalStudentSessionInstituteGroupMapping.isPresent()) {
@@ -637,7 +655,153 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             return Map.of("isAlreadyPresentInPackageSession", false);
         }
     }
+
+    private Map<String, Object> getAudienceResponsesByDayDifference(Map<String, Object> params) {
+        String instituteId = (String) params.get("instituteId");
+        String audienceId = (String) params.get("audienceId");
+        Integer daysAgo = (Integer) params.get("daysAgo");
+
+        // Validate all required params
+        if (instituteId == null || daysAgo == null || audienceId == null) {
+            throw new RuntimeException("Missing parameters: instituteId, audienceId, or daysAgo");
+        }
+
+        // 1. Calculate Date Range (Yesterday 00:00 to 23:59)
+        LocalDateTime startLocal = LocalDateTime.now().minusDays(daysAgo).with(LocalTime.MIN);
+        LocalDateTime endLocal = LocalDateTime.now().minusDays(daysAgo).with(LocalTime.MAX);
+
+        Timestamp startDate = Timestamp.valueOf(startLocal);
+        Timestamp endDate = Timestamp.valueOf(endLocal);
+
+        // 2. Fetch Leads (Using the specific Audience repository method)
+        List<AudienceResponse> responses = audienceResponseRepository.findLeadsByAudienceAndDateRange(
+                instituteId, audienceId, startDate, endDate);
+
+        if (responses.isEmpty()) {
+            return Map.of("leads", Collections.emptyList());
+        }
+
+        // --- START CUSTOM FIELD FETCHING LOGIC ---
+
+        // 3. Extract Response IDs to bulk fetch values
+        List<String> responseIds = responses.stream().map(AudienceResponse::getId).toList();
+
+        // 4. Fetch Custom Field Values (The actual data: "9198...", "Rahul")
+        // This queries the 'custom_field_values' table
+        List<CustomFieldValues> cfValues = customFieldValuesRepository.findBySourceTypeAndSourceIdIn(
+                "AUDIENCE_RESPONSE", responseIds);
+
+        // 5. Fetch Field Definitions (To resolve "cf_123" -> "phone number")
+        // This queries the 'custom_fields' table to get human-readable keys
+        Set<String> customFieldIds = cfValues.stream()
+                .map(CustomFieldValues::getCustomFieldId)
+                .collect(Collectors.toSet());
+
+        Map<String, String> fieldIdToName = customFieldRepository.findAllById(customFieldIds).stream()
+                .collect(Collectors.toMap(
+                        CustomFields::getId,
+                        // Normalize key to lowercase for easy access in SpEL (e.g., "Phone Number" ->
+                        // "phone number")
+                        cf -> cf.getFieldName().toLowerCase(),
+                        (k1, k2) -> k1));
+
+        // 6. Group values by Response ID
+        // Result structure: { "resp_id_1": { "phone number": "999...", "name": "Rahul"
+        // } }
+        Map<String, Map<String, String>> responseDataMap = new HashMap<>();
+        for (CustomFieldValues cfv : cfValues) {
+            String fieldName = fieldIdToName.getOrDefault(cfv.getCustomFieldId(), cfv.getCustomFieldId());
+            responseDataMap
+                    .computeIfAbsent(cfv.getSourceId(), k -> new HashMap<>())
+                    .put(fieldName, cfv.getValue());
+        }
+
+        // 7. Build Final List for Workflow
+        List<Map<String, Object>> leads = new ArrayList<>();
+        for (AudienceResponse ar : responses) {
+            Map<String, Object> lead = new HashMap<>();
+            lead.put("id", ar.getId());
+            lead.put("userId", ar.getUserId());
+            lead.put("createdAt", ar.getCreatedAt());
+
+            // Merge custom fields into the lead map
+            // This is what makes #this['phone number'] work in your TRANSFORM node
+            Map<String, String> fields = responseDataMap.getOrDefault(ar.getId(), new HashMap<>());
+            lead.putAll(fields);
+
+            leads.add(lead);
+        }
+
+        // --- END CUSTOM FIELD FETCHING LOGIC ---
+
+        return Map.of("leads", leads);
+    }
+
+    private Map<String, Object> fetchInstituteSetting(Map<String, Object> params) {
+        try {
+            String instituteId = (String) params.get("instituteId");
+            String settingKey = (String) params.get("settingKey");
+
+            if (instituteId == null || settingKey == null) {
+                return Map.of("error", "Missing instituteId or settingKey");
+            }
+
+            // Fetch data using your existing service
+            Object settingData = instituteSettingService.getSettingByInstituteIdAndKey(instituteId, settingKey);
+
+            // Wrap in a map key so it's accessible as #ctx['lmsSettings']
+            return Map.of("lmsConfig", settingData);
+
+        } catch (Exception e) {
+            log.error("Error executing fetchInstituteSetting", e);
+            return Map.of("error", e.getMessage());
+        }
+    }
+
+    private Map<String, Object> fetchPackageLMSSetting(Map<String, Object> params) {
+        try {
+            String packageId = (String) params.get("packageId");
+            String settingKey = (String) params.get("settingKey");
+
+            if (packageId == null || settingKey == null) {
+                return Map.of("error", "Missing packageId or settingKey");
+            }
+
+            Optional<PackageEntity> packageEntityOpt = packageRepository.findById(packageId);
+            if (packageEntityOpt.isEmpty()) {
+                return Map.of("error", "Package not found with ID: " + packageId);
+            }
+
+            String settingJson = packageEntityOpt.get().getCourseSetting();
+
+            if (settingJson == null || settingJson.isEmpty()) {
+                return Map.of("lmsConfig", null);
+            }
+
+            // Parse JSON
+            JsonNode rootNode = objectMapper.readTree(settingJson);
+
+            // Navigate: setting -> [settingKey] -> data -> data
+            JsonNode settingNode = rootNode.path("setting").path(settingKey);
+
+            if (settingNode.isMissingNode()) {
+                return Map.of("lmsConfig", null);
+            }
+
+            JsonNode dataNode = settingNode.path("data").path("data");
+
+            if (dataNode.isMissingNode()) {
+                return Map.of("lmsConfig", null);
+            }
+
+            // Convert back to Map
+            Map<String, Object> settingData = objectMapper.convertValue(dataNode, Map.class);
+
+            return Map.of("lmsConfig", settingData);
+
+        } catch (Exception e) {
+            log.error("Error executing fetchPackageLMSSetting", e);
+            return Map.of("error", e.getMessage());
+        }
+    }
 }
-
-
-

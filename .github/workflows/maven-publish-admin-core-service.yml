@@ -96,9 +96,6 @@ jobs:
               DB_USERNAME=${{ secrets.DB_USERNAME }} \
               APP_USERNAME=${{ secrets.APP_USERNAME }} \
               APP_PASSWORD=${{ secrets.APP_PASSWORD }} \
-              AUTH_SERVER_BASE_URL=${{ secrets.AUTH_SERVER_BASE_URL }} \
-              NOTIFICATION_SERVER_BASE_URL=${{ secrets.NOTIFICATION_SERVER_BASE_URL }} \
-              ASSESSMENT_SERVER_BASE_URL=${{ secrets.ASSESSMENT_SERVER_BASE_URL }} \
               CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
               ADMIN_CORE_SERVICE_DB_URL=${{ secrets.ADMIN_CORE_SERVICE_DB_URL }} \
               GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \

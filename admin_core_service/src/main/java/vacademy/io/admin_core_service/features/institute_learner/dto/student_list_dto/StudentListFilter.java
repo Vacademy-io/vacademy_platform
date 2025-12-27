@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -30,4 +31,6 @@ public class StudentListFilter {
     private List<String> levelIds;
     private List<String> subOrgUserTypes;
     private Map<String, List<String>> customFieldFilters;
+    private LocalDate startDate;
+    private LocalDate endDate;
 }

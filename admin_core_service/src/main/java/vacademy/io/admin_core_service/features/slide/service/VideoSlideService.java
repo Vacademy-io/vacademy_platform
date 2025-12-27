@@ -394,8 +394,6 @@ public class VideoSlideService {
                     videoSlide.setPublishedUrl(dto.getUrl());
                     videoSlide.setPublishedVideoLengthInMillis(dto.getVideoLengthInMillis());
                 }
-                videoSlide.setUrl(null);
-                videoSlide.setVideoLengthInMillis(null);
             }
             case DRAFT, UNSYNC -> {
                 if (StringUtils.hasText(dto.getUrl())) {

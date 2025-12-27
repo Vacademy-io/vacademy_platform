@@ -310,31 +310,31 @@ public class LearnerEnrollRequestService {
 
             JsonNode rootNode = objectMapper.readTree(settingJson);
 
-            // Navigate through JSON path safely - path() returns MissingNode if not found (never throws)
+            // Check each level of the path to provide better error messages
+            if (!rootNode.has("setting")) {
+                log.info("'setting' object not found in setting_json for institute: {} - defaulting to sendCredentials=true", instituteId);
+                return true;
+            }
+
             JsonNode settingNode = rootNode.path("setting");
-            if (settingNode.isMissingNode()) {
-                log.info("'setting' node not found in setting_json for institute: {} - defaulting to sendCredentials=true", instituteId);
+            if (!settingNode.has("LEARNER_ENROLLMENT_SETTING")) {
+                log.info("'LEARNER_ENROLLMENT_SETTING' not found in setting_json for institute: {} - defaulting to sendCredentials=true", instituteId);
                 return true;
             }
 
             JsonNode enrollmentSettingNode = settingNode.path("LEARNER_ENROLLMENT_SETTING");
-            if (enrollmentSettingNode.isMissingNode()) {
-                log.info("'LEARNER_ENROLLMENT_SETTING' not configured for institute: {} - defaulting to sendCredentials=true", instituteId);
+            if (!enrollmentSettingNode.has("data")) {
+                log.info("'data' object not found in LEARNER_ENROLLMENT_SETTING for institute: {} - defaulting to sendCredentials=true", instituteId);
                 return true;
             }
 
             JsonNode dataNode = enrollmentSettingNode.path("data");
-            if (dataNode.isMissingNode()) {
-                log.info("'data' node not found in LEARNER_ENROLLMENT_SETTING for institute: {} - defaulting to sendCredentials=true", instituteId);
+            if (!dataNode.has("sendCredentials")) {
+                log.info("'sendCredentials' field not found in LEARNER_ENROLLMENT_SETTING.data for institute: {} - defaulting to sendCredentials=true", instituteId);
                 return true;
             }
 
             JsonNode sendCredentialsNode = dataNode.path("sendCredentials");
-            if (sendCredentialsNode.isMissingNode()) {
-                log.info("'sendCredentials' field not configured for institute: {} - defaulting to sendCredentials=true", instituteId);
-                return true;
-            }
-
             boolean sendCredentials = sendCredentialsNode.asBoolean(true);
             log.info("Institute {} sendCredentials setting found: {}", instituteId, sendCredentials);
             return sendCredentials;

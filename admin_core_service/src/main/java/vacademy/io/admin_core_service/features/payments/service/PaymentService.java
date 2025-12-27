@@ -32,251 +32,301 @@ import java.util.Optional;
 @Transactional
 public class PaymentService {
 
-    @Autowired
-    private PaymentServiceFactory paymentServiceFactory;
+        @Autowired
+        private PaymentServiceFactory paymentServiceFactory;
 
-    @Autowired
-    private UserInstitutePaymentGatewayMappingService userInstitutePaymentGatewayMappingService;
+        @Autowired
+        private UserInstitutePaymentGatewayMappingService userInstitutePaymentGatewayMappingService;
 
-    @Autowired
-    private InstitutePaymentGatewayMappingService institutePaymentGatewayMappingService;
+        @Autowired
+        private InstitutePaymentGatewayMappingService institutePaymentGatewayMappingService;
 
-    @Autowired
-    private PaymentLogService paymentLogService;
+        @Autowired
+        private PaymentLogService paymentLogService;
 
-    @Autowired
-    private PaymentNotificatonService paymentNotificatonService;
+        @Autowired
+        private PaymentNotificatonService paymentNotificatonService;
 
-    @Autowired
-    private PaymentGatewaySpecificPaymentDetailService paymentGatewaySpecificPaymentDetailService;
+        @Autowired
+        private PaymentGatewaySpecificPaymentDetailService paymentGatewaySpecificPaymentDetailService;
 
-    @Autowired
-    private UserPlanService userPlanService;
+        @Autowired
+        private UserPlanService userPlanService;
 
-    @Autowired
-    private AuthService authService;
+        @Autowired
+        private AuthService authService;
 
-    public PaymentResponseDTO handlePayment(UserDTO user,
-            LearnerPackageSessionsEnrollDTO enrollDTO,
-            String instituteId,
-            EnrollInvite enrollInvite,
-            UserPlan userPlan) {
+        public PaymentResponseDTO handlePayment(UserDTO user,
+                        LearnerPackageSessionsEnrollDTO enrollDTO,
+                        String instituteId,
+                        EnrollInvite enrollInvite,
+                        UserPlan userPlan) {
 
-        PaymentInitiationRequestDTO request = enrollDTO.getPaymentInitiationRequest();
-        String paymentLogId = paymentLogService.createPaymentLog(
-                user.getId(),
-                request.getAmount(),
-                enrollInvite.getVendor(),
-                enrollInvite.getVendorId(),
-                enrollInvite.getCurrency(),
-                userPlan);
+                PaymentInitiationRequestDTO request = enrollDTO.getPaymentInitiationRequest();
+                String paymentLogId = paymentLogService.createPaymentLog(
+                                user.getId(),
+                                request.getAmount(),
+                                enrollInvite.getVendor(),
+                                enrollInvite.getVendorId(),
+                                enrollInvite.getCurrency(),
+                                userPlan);
 
-        request.setOrderId(paymentLogId);
+                request.setOrderId(paymentLogId);
 
-        UserInstitutePaymentGatewayMapping gatewayMapping = createOrGetCustomer(
-                instituteId,
-                user,
-                enrollInvite.getVendor(),
-                request);
+                UserInstitutePaymentGatewayMapping gatewayMapping = createOrGetCustomer(
+                                instituteId,
+                                user,
+                                enrollInvite.getVendor(),
+                                request);
 
-        paymentGatewaySpecificPaymentDetailService.configureCustomerPaymentData(
-                gatewayMapping,
-                enrollInvite.getVendor(),
-                request);
+                paymentGatewaySpecificPaymentDetailService.configureCustomerPaymentData(
+                                gatewayMapping,
+                                enrollInvite.getVendor(),
+                                request);
 
-        userPlan.setJsonPaymentDetails(JsonUtil.toJson(gatewayMapping));
-        userPlanService.save(userPlan);
+                userPlan.setJsonPaymentDetails(JsonUtil.toJson(gatewayMapping));
+                userPlanService.save(userPlan);
 
-        PaymentResponseDTO response = makePayment(
-                enrollInvite.getVendor(),
-                instituteId,
-                user,
-                request);
+                PaymentResponseDTO response = makePayment(
+                                enrollInvite.getVendor(),
+                                instituteId,
+                                user,
+                                request);
 
-        paymentLogService.updatePaymentLog(
-                paymentLogId,
-                PaymentLogStatusEnum.ACTIVE.name(),
-                (String) response.getResponseData().get("paymentStatus"),
-                JsonUtil.toJson(Map.of(
-                        "response", response,
-                        "originalRequest", request)));
+                paymentLogService.updatePaymentLog(
+                                paymentLogId,
+                                PaymentLogStatusEnum.ACTIVE.name(),
+                                (String) response.getResponseData().get("paymentStatus"),
+                                JsonUtil.toJson(Map.of(
+                                                "response", response,
+                                                "originalRequest", request)));
 
-        return response;
-    }
-
-    public PaymentResponseDTO handlePayment(PaymentInitiationRequestDTO request,
-            String instituteId) {
-
-        String paymentLogId = paymentLogService.createPaymentLog(
-                null,
-                request.getAmount(),
-                request.getVendor(),
-                request.getVendorId(),
-                request.getCurrency(),
-                null);
-
-        request.setOrderId(paymentLogId);
-
-        // Create or get customer for unknown user based on email
-        Map<String, Object> gatewayMapping = createOrGetCustomerForUnknownUser(
-                instituteId,
-                request.getEmail(),
-                request.getVendor(),
-                request);
-
-        // Extract customer ID from the gateway mapping for payment configuration
-        String customerId = (String) gatewayMapping.get("customerId");
-        if (customerId == null) {
-            throw new RuntimeException("Failed to get customer ID from payment gateway");
+                return response;
         }
 
-        paymentGatewaySpecificPaymentDetailService.configureCustomerPaymentData(
-                gatewayMapping,
-                request.getVendor(),
-                request);
+        public PaymentResponseDTO handlePayment(PaymentInitiationRequestDTO request,
+                        String instituteId) {
 
-        PaymentResponseDTO response = makePayment(
-                request.getVendor(),
-                instituteId,
-                null, // No user for unknown donations
-                request);
+                String paymentLogId = paymentLogService.createPaymentLog(
+                                null,
+                                request.getAmount(),
+                                request.getVendor(),
+                                request.getVendorId(),
+                                request.getCurrency(),
+                                null);
 
+                request.setOrderId(paymentLogId);
 
-        paymentLogService.updatePaymentLog(
-                paymentLogId,
-                PaymentLogStatusEnum.ACTIVE.name(),
-                (String) response.getResponseData().get("paymentStatus"),
-                JsonUtil.toJson(Map.of(
-                        "response", response,
-                        "originalRequest", request)));
+                // Create or get customer for unknown user based on email
+                Map<String, Object> gatewayMapping = createOrGetCustomerForUnknownUser(
+                                instituteId,
+                                request.getEmail(),
+                                request.getVendor(),
+                                request);
 
-        return response;
-    }
+                // Extract customer ID from the gateway mapping for payment configuration
+                String customerId = (String) gatewayMapping.get("customerId");
+                if (customerId == null) {
+                        throw new RuntimeException("Failed to get customer ID from payment gateway");
+                }
 
-    public PaymentResponseDTO handleUserPlanPayment(PaymentInitiationRequestDTO request,
-            String instituteId,
-            CustomUserDetails userDetails,
-            String userPlanId) {
+                paymentGatewaySpecificPaymentDetailService.configureCustomerPaymentData(
+                                gatewayMapping,
+                                request.getVendor(),
+                                request);
 
-        String userId = userDetails.getUserId();
+                PaymentResponseDTO response = makePayment(
+                                request.getVendor(),
+                                instituteId,
+                                null, // No user for unknown donations
+                                request);
 
-        // Validate that user plan exists and belongs to the user
-        UserPlan userPlan = userPlanService.findById(userPlanId);
+                paymentLogService.updatePaymentLog(
+                                paymentLogId,
+                                PaymentLogStatusEnum.ACTIVE.name(),
+                                (String) response.getResponseData().get("paymentStatus"),
+                                JsonUtil.toJson(Map.of(
+                                                "response", response,
+                                                "originalRequest", request)));
 
-        if (!userPlan.getUserId().equals(userId)) {
-            throw new RuntimeException("User plan does not belong to the specified user");
+                return response;
         }
 
-        // Create payment log for the user plan
-        String paymentLogId = paymentLogService.createPaymentLog(
-                userId,
-                request.getAmount(),
-                request.getVendor(),
-                request.getVendorId(),
-                request.getCurrency(),
-                userPlan);
+        public PaymentResponseDTO handleUserPlanPayment(PaymentInitiationRequestDTO request,
+                        String instituteId,
+                        CustomUserDetails userDetails,
+                        String userPlanId) {
 
-        request.setOrderId(paymentLogId);
+                String userId = userDetails.getUserId();
 
-        // Create or get customer for the user
-        UserDTO userDTO = getUserById(userId);
-        UserInstitutePaymentGatewayMapping gatewayMapping = createOrGetCustomer(
-                instituteId,
-                userDTO,
-                request.getVendor(),
-                request);
+                // Validate that user plan exists and belongs to the user
+                UserPlan userPlan = userPlanService.findById(userPlanId);
 
-        paymentGatewaySpecificPaymentDetailService.configureCustomerPaymentData(
-                gatewayMapping,
-                request.getVendor(),
-                request);
+                if (!userPlan.getUserId().equals(userId)) {
+                        throw new RuntimeException("User plan does not belong to the specified user");
+                }
 
-        // Process the payment
-        PaymentResponseDTO response =
-            makePayment(
-                request.getVendor(),
-                instituteId,
-                userDTO,
-                request);
+                // Create payment log for the user plan
+                String paymentLogId = paymentLogService.createPaymentLog(
+                                userId,
+                                request.getAmount(),
+                                request.getVendor(),
+                                request.getVendorId(),
+                                request.getCurrency(),
+                                userPlan);
 
-        // Send payment notification
-        paymentNotificatonService.sendPaymentConfirmationNotification(
-                instituteId,
-                response,
-                request,
-                getUserById(userId));
+                request.setOrderId(paymentLogId);
 
-        // Update payment log with response
-        paymentLogService.updatePaymentLog(
-                paymentLogId,
-                PaymentLogStatusEnum.ACTIVE.name(),
-                (String) response.getResponseData().get("paymentStatus"),
-                JsonUtil.toJson(Map.of(
-                        "response", response,
-                        "originalRequest", request)));
+                // Create or get customer for the user
+                UserDTO userDTO = getUserById(userId);
+                UserInstitutePaymentGatewayMapping gatewayMapping = createOrGetCustomer(
+                                instituteId,
+                                userDTO,
+                                request.getVendor(),
+                                request);
 
-        return response;
-    }
+                paymentGatewaySpecificPaymentDetailService.configureCustomerPaymentData(
+                                gatewayMapping,
+                                request.getVendor(),
+                                request);
 
-    public PaymentResponseDTO makePayment(String vendor, String instituteId, UserDTO user,
-            PaymentInitiationRequestDTO request) {
-        Map<String, Object> paymentGatewaySpecificData = institutePaymentGatewayMappingService
-                .findInstitutePaymentGatewaySpecifData(vendor, instituteId);
-        PaymentServiceStrategy paymentServiceStrategy = paymentServiceFactory
-                .getStrategy(PaymentGateway.fromString(vendor));
-        request.setInstituteId(instituteId);
-        return paymentServiceStrategy.initiatePayment(user, request, paymentGatewaySpecificData);
-    }
+                // Process the payment
+                PaymentResponseDTO response = makePayment(
+                                request.getVendor(),
+                                instituteId,
+                                userDTO,
+                                request);
 
-    public UserInstitutePaymentGatewayMapping createOrGetCustomer(String instituteId, UserDTO user, String vendor,
-            PaymentInitiationRequestDTO request) {
-        Map<String, Object> paymentGatewaySpecificData = institutePaymentGatewayMappingService
-                .findInstitutePaymentGatewaySpecifData(vendor, instituteId);
-        Optional<UserInstitutePaymentGatewayMapping> optionalUserInstitutePaymentGatewayMapping = userInstitutePaymentGatewayMappingService
-                .findByUserIdAndInstituteId(user.getId(), instituteId, vendor);
-        if (optionalUserInstitutePaymentGatewayMapping.isPresent()) {
-            return optionalUserInstitutePaymentGatewayMapping.get();
-        }
-        PaymentServiceStrategy paymentServiceStrategy = paymentServiceFactory
-                .getStrategy(PaymentGateway.fromString(vendor));
-        Map<String, Object> gatewayCustomerIdAndDataMap = paymentServiceStrategy.createCustomer(user, request,
-                paymentGatewaySpecificData);
-        return userInstitutePaymentGatewayMappingService.saveUserInstituteVendorMapping(
-                user.getId(),
-                instituteId,
-                vendor,
-                (String) gatewayCustomerIdAndDataMap.get("customerId"),
-                gatewayCustomerIdAndDataMap);
-    }
+                // Update payment log with response
+                paymentLogService.updatePaymentLog(
+                                paymentLogId,
+                                PaymentLogStatusEnum.ACTIVE.name(),
+                                (String) response.getResponseData().get("paymentStatus"),
+                                JsonUtil.toJson(Map.of(
+                                                "response", response,
+                                                "originalRequest", request)));
 
-    public Map<String, Object> createOrGetCustomerForUnknownUser(String instituteId, String email,
-            String vendor, PaymentInitiationRequestDTO request) {
-        Map<String, Object> paymentGatewaySpecificData = institutePaymentGatewayMappingService
-                .findInstitutePaymentGatewaySpecifData(vendor, instituteId);
-
-        // Check if customer exists directly from payment gateway
-        PaymentServiceStrategy paymentServiceStrategy = paymentServiceFactory
-                .getStrategy(PaymentGateway.fromString(vendor));
-
-        // First try to find existing customer by email
-        Map<String, Object> existingCustomer = paymentServiceStrategy.findCustomerByEmail(email,
-                paymentGatewaySpecificData);
-        if (existingCustomer != null && existingCustomer.containsKey("customerId")) {
-            // Customer exists, return their data
-            return existingCustomer;
+                return response;
         }
 
-        // Create customer for unknown user if not found
-        return paymentServiceStrategy.createCustomerForUnknownUser(email,
-                request, paymentGatewaySpecificData);
-    }
+        /**
+         * Handles payment for UserPlan with UserDTO (for auto-renewal scenarios).
+         * This method is used when we have both UserDTO and UserPlan available,
+         * such as in subscription auto-renewal flows.
+         * 
+         * @param request     Payment initiation request with all payment details
+         * @param instituteId Institute ID for payment processing
+         * @param user        UserDTO of the user making the payment (ROOT_ADMIN for
+         *                    SubOrg)
+         * @param userPlan    UserPlan associated with this payment
+         * @return PaymentResponseDTO with payment result
+         */
+        public PaymentResponseDTO handlePaymentWithUser(PaymentInitiationRequestDTO request,
+                        String instituteId,
+                        UserDTO user,
+                        UserPlan userPlan) {
 
-    private UserDTO getUserById(String userId) {
-        // Get user details from auth service
-        List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(userId));
-        if (users.isEmpty()) {
-            throw new RuntimeException("User not found with ID: " + userId);
+                // Create payment log for the user plan
+                String paymentLogId = paymentLogService.createPaymentLog(
+                                user.getId(),
+                                request.getAmount(),
+                                request.getVendor(),
+                                request.getVendorId(),
+                                request.getCurrency(),
+                                userPlan);
+
+                request.setOrderId(paymentLogId);
+
+                // Create or get customer for the user
+                UserInstitutePaymentGatewayMapping gatewayMapping = createOrGetCustomer(
+                                instituteId,
+                                user,
+                                request.getVendor(),
+                                request);
+
+                paymentGatewaySpecificPaymentDetailService.configureCustomerPaymentData(
+                                gatewayMapping,
+                                request.getVendor(),
+                                request);
+
+                // Process the payment
+                PaymentResponseDTO response = makePayment(
+                                request.getVendor(),
+                                instituteId,
+                                user,
+                                request);
+
+                // Update payment log with response
+                paymentLogService.updatePaymentLog(
+                                paymentLogId,
+                                PaymentLogStatusEnum.ACTIVE.name(),
+                                (String) response.getResponseData().get("paymentStatus"),
+                                JsonUtil.toJson(Map.of(
+                                                "response", response,
+                                                "originalRequest", request)));
+
+                return response;
         }
-        return users.get(0);
-    }
+
+        public PaymentResponseDTO makePayment(String vendor, String instituteId, UserDTO user,
+                        PaymentInitiationRequestDTO request) {
+                Map<String, Object> paymentGatewaySpecificData = institutePaymentGatewayMappingService
+                                .findInstitutePaymentGatewaySpecifData(vendor, instituteId);
+                PaymentServiceStrategy paymentServiceStrategy = paymentServiceFactory
+                                .getStrategy(PaymentGateway.fromString(vendor));
+                request.setInstituteId(instituteId);
+                return paymentServiceStrategy.initiatePayment(user, request, paymentGatewaySpecificData);
+        }
+
+        public UserInstitutePaymentGatewayMapping createOrGetCustomer(String instituteId, UserDTO user, String vendor,
+                        PaymentInitiationRequestDTO request) {
+                Map<String, Object> paymentGatewaySpecificData = institutePaymentGatewayMappingService
+                                .findInstitutePaymentGatewaySpecifData(vendor, instituteId);
+                Optional<UserInstitutePaymentGatewayMapping> optionalUserInstitutePaymentGatewayMapping = userInstitutePaymentGatewayMappingService
+                                .findByUserIdAndInstituteId(user.getId(), instituteId, vendor);
+                if (optionalUserInstitutePaymentGatewayMapping.isPresent()) {
+                        return optionalUserInstitutePaymentGatewayMapping.get();
+                }
+                PaymentServiceStrategy paymentServiceStrategy = paymentServiceFactory
+                                .getStrategy(PaymentGateway.fromString(vendor));
+                Map<String, Object> gatewayCustomerIdAndDataMap = paymentServiceStrategy.createCustomer(user, request,
+                                paymentGatewaySpecificData);
+                return userInstitutePaymentGatewayMappingService.saveUserInstituteVendorMapping(
+                                user.getId(),
+                                instituteId,
+                                vendor,
+                                (String) gatewayCustomerIdAndDataMap.get("customerId"),
+                                gatewayCustomerIdAndDataMap);
+        }
+
+        public Map<String, Object> createOrGetCustomerForUnknownUser(String instituteId, String email,
+                        String vendor, PaymentInitiationRequestDTO request) {
+                Map<String, Object> paymentGatewaySpecificData = institutePaymentGatewayMappingService
+                                .findInstitutePaymentGatewaySpecifData(vendor, instituteId);
+
+                // Check if customer exists directly from payment gateway
+                PaymentServiceStrategy paymentServiceStrategy = paymentServiceFactory
+                                .getStrategy(PaymentGateway.fromString(vendor));
+
+                // First try to find existing customer by email
+                Map<String, Object> existingCustomer = paymentServiceStrategy.findCustomerByEmail(email,
+                                paymentGatewaySpecificData);
+                if (existingCustomer != null && existingCustomer.containsKey("customerId")) {
+                        // Customer exists, return their data
+                        return existingCustomer;
+                }
+
+                // Create customer for unknown user if not found
+                return paymentServiceStrategy.createCustomerForUnknownUser(email,
+                                request, paymentGatewaySpecificData);
+        }
+
+        private UserDTO getUserById(String userId) {
+                // Get user details from auth service
+                List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(userId));
+                if (users.isEmpty()) {
+                        throw new RuntimeException("User not found with ID: " + userId);
+                }
+                return users.get(0);
+        }
 }

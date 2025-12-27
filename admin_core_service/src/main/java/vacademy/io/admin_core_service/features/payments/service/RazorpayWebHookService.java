@@ -15,6 +15,8 @@ import vacademy.io.admin_core_service.features.user_subscription.service.Payment
 import vacademy.io.admin_core_service.features.user_subscription.service.UserInstitutePaymentGatewayMappingService;
 import vacademy.io.common.payment.enums.PaymentGateway;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
+import vacademy.io.common.payment.enums.PaymentType;
+import vacademy.io.admin_core_service.features.enrollment_policy.service.RenewalPaymentService;
 import vacademy.io.common.logging.SentryLogger;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -52,6 +54,9 @@ public class RazorpayWebHookService {
 
     @Autowired
     private PaymentLogRepository paymentLogRepository;
+
+    @Autowired
+    private RenewalPaymentService renewalPaymentService;
 
     /**
      * Processes Razorpay webhook events
@@ -121,14 +126,7 @@ public class RazorpayWebHookService {
             if (orderId == null) {
                 log.error("Missing 'orderId' in payment notes for payment_id: {}",
                         paymentEntity.get("id").asText());
-                SentryLogger.logError(new IllegalStateException("Missing orderId in payment notes"),
-                        "Razorpay webhook missing orderId in payment notes", Map.of(
-                                "payment.vendor", "RAZORPAY",
-                                "payment.id", paymentEntity.has("id") ? paymentEntity.get("id").asText() : "unknown",
-                                "institute.id", instituteId,
-                                "webhook.id", webhookId != null ? webhookId : "unknown",
-                                "payment.webhook.event", eventType,
-                                "operation", "extractOrderId"));
+
                 updateWebhookStatus(webhookId, WebHookStatus.FAILED, "Missing orderId in payment notes");
                 return ResponseEntity.status(400).body("Missing orderId in payment notes");
             }
@@ -136,8 +134,16 @@ public class RazorpayWebHookService {
             // Step 8: Update webhook with order details
             webHookService.updateWebHook(webhookId, payload, orderId, eventType);
 
-            // Step 9: Handle different event types
-            handleRazorpayEvent(eventType, orderId, instituteId, paymentEntity);
+            // Step 9: Check payment type and route accordingly
+            String paymentType = extractPaymentType(paymentEntity);
+
+            if (paymentType != null && PaymentType.RENEWAL.name().equals(paymentType)) {
+                log.info("Processing RENEWAL payment webhook for orderId: {}", orderId);
+                handleRenewalPayment(eventType, orderId, instituteId, paymentEntity);
+            } else {
+                // Handle initial payment events
+                handleRazorpayEvent(eventType, orderId, instituteId, paymentEntity);
+            }
 
             // Step 10: Mark webhook as processed
             updateWebhookStatus(webhookId, WebHookStatus.PROCESSED, null);
@@ -296,7 +302,7 @@ public class RazorpayWebHookService {
 
     /**
      * Verifies Razorpay webhook signature using HMAC SHA256
-     * 
+     *
      * Razorpay signature format: hmac_sha256(webhook_secret, webhook_body)
      */
     private boolean verifySignature(String payload, String receivedSignature, String webhookSecret) {
@@ -433,7 +439,7 @@ public class RazorpayWebHookService {
 
     /**
      * Retrieves userId from payment_log table using order ID.
-     * 
+     *
      * @param orderId Payment log order ID
      * @return User ID or null if not found
      */
@@ -718,6 +724,51 @@ public class RazorpayWebHookService {
                     "order.id", orderId,
                     "invoice.url", invoiceUrl != null ? invoiceUrl : "unknown",
                     "operation", "storeInvoiceUrl"));
+        }
+    }
+
+    private String extractPaymentType(JsonNode paymentEntity) {
+        try {
+            JsonNode notesNode = paymentEntity.get("notes");
+            if (notesNode != null && notesNode.has("payment_type")) {
+                return notesNode.get("payment_type").asText();
+            }
+        } catch (Exception e) {
+            log.warn("Failed to extract payment_type from payment entity", e);
+        }
+        return null;
+    }
+
+    private void handleRenewalPayment(String eventType, String orderId, String instituteId, JsonNode paymentEntity) {
+        try {
+            // Map Razorpay event to PaymentStatusEnum
+            PaymentStatusEnum paymentStatus = determinePaymentStatus(eventType);
+
+            if (paymentStatus == null) {
+                log.info("Event {} is not relevant for renewal payment status update. Skipping.", eventType);
+                return;
+            }
+
+            log.info("Processing renewal payment: orderId={}, status={}", orderId, paymentStatus);
+
+            renewalPaymentService.handleRenewalPaymentConfirmation(orderId, instituteId, paymentStatus, paymentEntity);
+
+        } catch (Exception e) {
+            log.error("Error processing renewal payment webhook", e);
+        }
+    }
+
+    private PaymentStatusEnum determinePaymentStatus(String eventType) {
+        switch (eventType) {
+            case "payment.captured":
+            case "order.paid":
+                return PaymentStatusEnum.PAID;
+            case "payment.failed":
+                return PaymentStatusEnum.FAILED;
+            case "payment.authorized":
+                return PaymentStatusEnum.PAYMENT_PENDING;
+            default:
+                return null;
         }
     }
 }

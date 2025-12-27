@@ -6,4 +6,5 @@ import lombok.Data;
 public class EwayWebHookDTO {
     private String instituteId;
     private PaymentResponseDTO paymentResponse;
+    private String paymentType;
 }

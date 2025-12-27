@@ -120,9 +120,19 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
             List<String> statuses);
 
     Optional<UserPlan> findTopByUserIdAndEnrollInviteIdAndStatusInAndIdNotInOrderByEndDateDesc(
-        String userId,
-        String enrollInviteId,
-        List<String> statuses,
-        List<String> userPlanIds
-    );
+            String userId,
+            String enrollInviteId,
+            List<String> statuses,
+            List<String> userPlanIds);
+
+    Optional<UserPlan> findTopByUserIdAndEnrollInviteIdAndStatusInAndIdNotInOrderByCreatedAtAsc(
+            String userId,
+            String enrollInviteId,
+            List<String> statuses,
+            List<String> userPlanIds);
+
+    Optional<UserPlan> findTopByUserIdAndEnrollInviteIdAndStatusInOrderByCreatedAtAsc(
+            String userId,
+            String enrollInviteId,
+            List<String> statuses);
 }

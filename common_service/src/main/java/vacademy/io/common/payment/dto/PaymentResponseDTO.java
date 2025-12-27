@@ -3,6 +3,7 @@ package vacademy.io.common.payment.dto;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
+import vacademy.io.common.payment.enums.PaymentType;
 
 import java.util.Map;
 
@@ -13,4 +14,5 @@ public class PaymentResponseDTO {
     private String orderId;
     private String status;
     private String message;
+    private PaymentType paymentType;
 }

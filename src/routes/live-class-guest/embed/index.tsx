@@ -18,6 +18,8 @@ export const Route = createFileRoute("/live-class-guest/embed/")({
 });
 
 
+import { ENABLE_LIVE_CLASS_SAFETY_MODAL } from "@/constants/feature-flags";
+
 function GuestEmbedComponent() {
   const { sessionId } = Route.useSearch();
   const {
@@ -25,7 +27,8 @@ function GuestEmbedComponent() {
     isLoading,
     error,
   } = useSessionDetails(sessionId);
-  const [isSafetyVerified, setIsSafetyVerified] = useState(false);
+  // If safety modal is disabled, we are "verified" by default.
+  const [isSafetyVerified, setIsSafetyVerified] = useState(!ENABLE_LIVE_CLASS_SAFETY_MODAL);
 
   // Utility: extract the 11-character YouTube ID from any common URL form
   const extractYouTubeVideoId = (url: string): string | null => {

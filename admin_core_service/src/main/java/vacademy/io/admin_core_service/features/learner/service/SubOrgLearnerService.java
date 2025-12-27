@@ -23,6 +23,9 @@ import vacademy.io.admin_core_service.features.institute_learner.repository.Stud
 import vacademy.io.admin_core_service.features.learner.dto.*;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
+import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
+import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -51,6 +54,8 @@ public class SubOrgLearnerService {
     private final CustomFieldValuesRepository customFieldValuesRepository;
     private final InstituteCustomFieldRepository instituteCustomFieldRepository;
     private final WorkflowTriggerService workflowTriggerService;
+    private final UserPlanRepository userPlanRepository;
+    
     @Transactional(readOnly = true)
     public SubOrgResponseDTO getUsersByPackageSessionAndSubOrg(
             String packageSessionId,
@@ -286,16 +291,22 @@ public class SubOrgLearnerService {
         // 4. Ensure student record exists
         ensureStudentExists(user);
 
-        // 5. Validate no duplicate enrollment
+        // 5. Validate member count limit for this sub-org
+        validateMemberCountLimit(request.getSubOrgId(), request.getPackageSessionId());
+
+        // 6. Validate no duplicate enrollment
         validateNoDuplicateEnrollment(user.getId(), request);
 
-        // 6. Create mapping
-        StudentSessionInstituteGroupMapping mapping = createMapping(request, user, packageSession, subOrg);
+        //7. Find root admin plan id
+        String rootAdminPlanId=findRootAdminPlanId(request.getSubOrgId(),request.getPackageSessionId());
+
+        // 8. Create mapping
+        StudentSessionInstituteGroupMapping mapping = createMapping(request, user, packageSession, subOrg,rootAdminPlanId);
         mapping = mappingRepository.save(mapping);
 
         log.info("Created mapping with ID: {} for user: {}", mapping.getId(), user.getId());
         UserDTO adminDTO = authService.getUsersFromAuthServiceByUserIds(List.of(admin.getUserId())).get(0);
-        // 7. Save custom fields if provided
+        // 8. Save custom fields if provided
         if (request.getCustomFieldValues() != null && !request.getCustomFieldValues().isEmpty()) {
             // Save custom fields for the mapping entity
             customFieldValueService.addCustomFieldValue(
@@ -316,7 +327,7 @@ public class SubOrgLearnerService {
         triggerEnrollmentWorkflow(request.getInstituteId(),user,request.getPackageSessionId(),adminDTO);
 
 
-        // 8. Build and return response
+        // 9. Build and return response
         return SubOrgEnrollResponseDTO.builder()
                 .user(user)
                 .mappingId(mapping.getId())
@@ -442,7 +453,9 @@ public class SubOrgLearnerService {
             SubOrgEnrollRequestDTO request,
             UserDTO user,
             PackageSession packageSession,
-            Institute subOrg) {
+            Institute subOrg,
+            String userPlanId
+            ) {
 
         StudentSessionInstituteGroupMapping mapping = new StudentSessionInstituteGroupMapping();
 
@@ -477,7 +490,7 @@ public class SubOrgLearnerService {
         mapping.setCommaSeparatedOrgRoles(request.getCommaSeparatedOrgRoles());
 
         // No payment tracking for sub-org enrollments
-        mapping.setUserPlanId(null);
+        mapping.setUserPlanId(userPlanId);
         mapping.setDestinationPackageSession(null);
 
         return mapping;
@@ -610,6 +623,77 @@ public class SubOrgLearnerService {
         contextData.put("packageSessionIds", packageSessionId);
         contextData.put("admin",adminDTO);
         workflowTriggerService.handleTriggerEvents(WorkflowTriggerEvent.SUB_ORG_MEMBER_ENROLLMENT.name(),packageSessionId,instituteId,contextData);
+    }
+    private String findRootAdminPlanId(String subOrgId,String packageSessionId){
+        Optional<StudentSessionInstituteGroupMapping> rootAdminMappingOpt = mappingRepository
+                .findRootAdminMappingBySubOrgAndPackageSession(subOrgId, packageSessionId);
+
+        if (rootAdminMappingOpt.isEmpty()) {
+            log.warn("No ROOT_ADMIN mapping found for sub_org_id: {}, package_session_id: {} - skipping validation",
+                    subOrgId, packageSessionId);
+            return null;
+        }
+
+        StudentSessionInstituteGroupMapping rootAdminMapping = rootAdminMappingOpt.get();
+        return rootAdminMapping.getUserPlanId();
+
+    }
+    private void validateMemberCountLimit(String subOrgId, String packageSessionId) {
+        String userPlanId=findRootAdminPlanId(subOrgId,packageSessionId);
+        if (userPlanId == null) {
+            log.warn("ROOT_ADMIN mapping has no user_plan_id for batch {} - skipping validation", 
+                    packageSessionId);
+            return;
+        }
+
+        log.info("Found ROOT_ADMIN mapping with user_plan_id: {} for batch {}", userPlanId, packageSessionId);
+
+        // Step 2: Get UserPlan by ID
+        Optional<UserPlan> userPlanOpt = userPlanRepository.findById(userPlanId);
+
+        if (userPlanOpt.isEmpty()) {
+            log.warn("UserPlan not found for id: {} - skipping validation", userPlanId);
+            return;
+        }
+
+        UserPlan userPlan = userPlanOpt.get();
+        PaymentPlan paymentPlan = userPlan.getPaymentPlan();
+
+        if (paymentPlan == null) {
+            log.warn("No PaymentPlan found for UserPlan: {} - skipping validation", userPlan.getId());
+            return;
+        }
+
+        Integer memberCountLimit = paymentPlan.getMemberCount();
+
+        if (memberCountLimit == null) {
+            log.info("No member_count limit set for payment_plan: {} - allowing unlimited enrollment",
+                    paymentPlan.getId());
+            return;
+        }
+
+        // Step 3: Count current ACTIVE members in this batch
+        long currentMemberCount = mappingRepository.countBySubOrgIdAndPackageSessionIdAndStatus(
+                subOrgId,
+                packageSessionId,
+                LearnerSessionStatusEnum.ACTIVE.name()
+        );
+
+        log.info("Batch quota - Current: {}, Limit: {}, UserPlan: {}",
+                currentMemberCount, memberCountLimit, userPlanId);
+
+        // Step 4: Validate limit not exceeded
+        if (currentMemberCount >= memberCountLimit) {
+            throw new VacademyException(
+                String.format("Member limit exceeded for this batch. " +
+                        "Current members: %d, Maximum allowed: %d. " +
+                        "Please contact ROOT_ADMIN to upgrade the plan.",
+                        currentMemberCount, memberCountLimit)
+            );
+        }
+
+        log.info("Validation passed. {} seats remaining for this batch.",
+                (memberCountLimit - currentMemberCount - 1));
     }
 
     @Transactional(readOnly = true)

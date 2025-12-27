@@ -113,4 +113,34 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
     Optional<UserPlan> findFirstByUserIdAndPaymentPlanIdAndStatus(String userId, String paymentPlanId, String status);
 
     List<UserPlan> findAllByStatusIn(List<String> statuses);
+
+    /**
+     * Find active UserPlan for a sub-organization with payment plan loaded
+     * Used to retrieve member count limits for sub-org enrollments
+     */
+    @EntityGraph(attributePaths = {"paymentPlan"})
+    @Query("SELECT up FROM UserPlan up " +
+           "WHERE up.subOrgId = :subOrgId " +
+           "AND up.source = :source " +
+           "AND up.status = :status")
+    Optional<UserPlan> findBySubOrgIdAndSourceAndStatus(
+        @Param("subOrgId") String subOrgId,
+        @Param("source") String source,
+        @Param("status") String status);
+
+    /**
+     * Find UserPlan for ROOT_ADMIN with payment plan loaded
+     * Used to get member count limit from the ROOT_ADMIN who purchased the plan
+     */
+    @EntityGraph(attributePaths = {"paymentPlan"})
+    @Query("SELECT up FROM UserPlan up " +
+           "WHERE up.userId = :userId " +
+           "AND up.subOrgId = :subOrgId " +
+           "AND up.source = :source " +
+           "AND up.status = :status")
+    Optional<UserPlan> findByUserIdAndSubOrgIdAndSourceAndStatus(
+        @Param("userId") String userId,
+        @Param("subOrgId") String subOrgId,
+        @Param("source") String source,
+        @Param("status") String status);
 }

@@ -82,9 +82,7 @@ public class LearnerEnrollRequestService {
     public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
         LearnerPackageSessionsEnrollDTO enrollDTO = learnerEnrollRequestDTO.getLearnerPackageSessionEnroll();
         if (!StringUtils.hasText(learnerEnrollRequestDTO.getUser().getId())) {
-            // Get institute-specific sendCredentials flag from settings (default: true)
             boolean sendCredentials = getSendCredentialsFlag(learnerEnrollRequestDTO.getInstituteId());
-
             UserDTO user = authService.createUserFromAuthService(learnerEnrollRequestDTO.getUser(),
                     learnerEnrollRequestDTO.getInstituteId(), sendCredentials);
             learnerEnrollRequestDTO.setUser(user);
@@ -139,7 +137,8 @@ public class LearnerEnrollRequestService {
                 userPlanSource,
                 subOrgId);
 
-        LearnerEnrollResponseDTO response = enrollLearnerToBatch(
+        LearnerEnrollResponseDTO response;
+        response = enrollLearnerToBatch(
                 learnerEnrollRequestDTO,
                 enrollDTO,
                 enrollInvite,
@@ -163,6 +162,11 @@ public class LearnerEnrollRequestService {
                     learnerEnrollRequestDTO.getInstituteId(),
                     learnerEnrollRequestDTO.getUser(),
                     enrollInvite);
+        } else if (UserPlanStatusEnum.PENDING.name().equals(userPlan.getStatus())) {
+            log.info(
+                    "Stacked enrollment created with PENDING status for user: {}. Skipping notifications and session mapping.",
+                    learnerEnrollRequestDTO.getUser().getId());
+            // Explicitly do nothing else for PENDING plans
         } else {
             log.info(
                     "PAID enrollment initiated. Notifications will be sent after payment confirmation. UserPlan ID: {}",
@@ -239,7 +243,8 @@ public class LearnerEnrollRequestService {
             userPlanStatus = UserPlanStatusEnum.PENDING_FOR_PAYMENT.name();
         } else {
             userPlanStatus = UserPlanStatusEnum.ACTIVE.name();
-        }        return userPlanService.createUserPlan(
+        }
+        return userPlanService.createUserPlan(
                 userId,
                 paymentPlan,
                 null, // coupon can be handled later if needed
@@ -271,6 +276,8 @@ public class LearnerEnrollRequestService {
                 Map.of(), // optional extra data,
                 learnerEnrollRequestDTO.getLearnerExtraDetails());
     }
+
+
 
     /**
      * Extract sendCredentials flag from institute's setting_json

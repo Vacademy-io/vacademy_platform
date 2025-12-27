@@ -22,6 +22,8 @@ export const Route = createFileRoute("/study-library/live-class/embed/")({
 
 import { SafetyWarningModal } from "@/components/common/safety/safety-warning-modal";
 
+import { ENABLE_LIVE_CLASS_SAFETY_MODAL } from "@/constants/feature-flags";
+
 function EmbedComponent() {
   const { sessionId } = Route.useSearch();
   const { setNavHeading } = useNavHeadingStore();
@@ -31,7 +33,8 @@ function EmbedComponent() {
     isLoading,
     error,
   } = useSessionDetails(sessionId);
-  const [isSafetyVerified, setIsSafetyVerified] = useState(false);
+  // If safety modal is disabled, we are "verified" by default.
+  const [isSafetyVerified, setIsSafetyVerified] = useState(!ENABLE_LIVE_CLASS_SAFETY_MODAL);
   const { data: serverTimeData } = useServerTime();
 
   useEffect(() => {

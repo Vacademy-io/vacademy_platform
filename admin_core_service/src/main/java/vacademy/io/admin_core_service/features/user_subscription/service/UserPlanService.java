@@ -41,7 +41,6 @@ import vacademy.io.admin_core_service.features.user_subscription.repository.User
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
-import jakarta.transaction.Transactional;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.institute.entity.Institute;
@@ -87,9 +86,6 @@ public class UserPlanService {
 
     @Autowired
     private PackageSessionLearnerInvitationToPaymentOptionRepository packageSessionLearnerInvitationRepository;
-
-    @Autowired
-    private StudentSessionRepository studentSessionRepository;
 
     @Autowired
     private PackageSessionRepository packageSessionRepository;
@@ -262,27 +258,24 @@ public class UserPlanService {
         logger.info("Applying operations on first payment for UserPlan ID={}", userPlan.getId());
 
         if (UserPlanStatusEnum.ACTIVE.name().equals(userPlan.getStatus())
-            || UserPlanStatusEnum.PENDING.name().equals(userPlan.getStatus())) {
+                || UserPlanStatusEnum.PENDING.name().equals(userPlan.getStatus())) {
             logger.info("UserPlan already ACTIVE or pending . Skipping re-activation.");
             return;
         }
-
 
         EnrollInvite enrollInvite = userPlan.getEnrollInvite();
 
         // Check for OTHER existing ACTIVE or PENDING plans for stacking
         // We exclude the current plan ID just in case, though it shouldn't be
         // active/pending yet
-        Optional<UserPlan> existingPlan =
-            userPlanRepository.findTopByUserIdAndEnrollInviteIdAndStatusInAndIdNotInOrderByEndDateDesc(
-                userPlan.getUserId(),
-                enrollInvite.getId(),
-                List.of(
-                    UserPlanStatusEnum.ACTIVE.name(),
-                    UserPlanStatusEnum.PENDING.name()
-                ),
-                List.of(userPlan.getId())
-            );
+        Optional<UserPlan> existingPlan = userPlanRepository
+                .findTopByUserIdAndEnrollInviteIdAndStatusInAndIdNotInOrderByEndDateDesc(
+                        userPlan.getUserId(),
+                        enrollInvite.getId(),
+                        List.of(
+                                UserPlanStatusEnum.ACTIVE.name(),
+                                UserPlanStatusEnum.PENDING.name()),
+                        List.of(userPlan.getId()));
 
         List<String> packageSessionIds = packageSessionEnrollInviteToPaymentOptionService
                 .findPackageSessionsOfEnrollInvite(enrollInvite);
@@ -631,18 +624,77 @@ public class UserPlanService {
         userPlanRepository.saveAll(userPlans);
     }
 
+    /**
+     * Activates a stacked PENDING plan when the current plan expires.
+     * 1. Updates stacked plan status to ACTIVE.
+     * 2. Sets stacked plan start/end dates based on current time and validity.
+     * 3. Moves all active mappings from expired plan to stacked plan and extends
+     * their expiry.
+     */
+    @Transactional
+    public void activateStackedPlan(UserPlan stackedPlan, UserPlan expiredPlan) {
+        logger.info("Activating stacked plan ID={} (replacing expired plan ID={})", stackedPlan.getId(),
+                expiredPlan.getId());
+
+        // 1. Update Stacked Plan Dates
+        Date now = new Date();
+        stackedPlan.setStartDate(new Timestamp(now.getTime()));
+
+        // Calculate validity
+        Integer validityDays = null;
+        if (stackedPlan.getPaymentPlan() != null && stackedPlan.getPaymentPlan().getValidityInDays() != null) {
+            validityDays = stackedPlan.getPaymentPlan().getValidityInDays();
+        } else if (stackedPlan.getEnrollInvite() != null
+                && stackedPlan.getEnrollInvite().getLearnerAccessDays() != null) {
+            validityDays = stackedPlan.getEnrollInvite().getLearnerAccessDays();
+        }
+
+        if (validityDays != null) {
+            Calendar calendar = Calendar.getInstance();
+            calendar.setTime(now);
+            calendar.add(Calendar.DAY_OF_YEAR, validityDays);
+            stackedPlan.setEndDate(new Timestamp(calendar.getTimeInMillis()));
+        }
+
+        // 2. Update Status
+        stackedPlan.setStatus(UserPlanStatusEnum.ACTIVE.name());
+        userPlanRepository.save(stackedPlan);
+
+        // 3. Transfer and Extend Mappings
+        List<StudentSessionInstituteGroupMapping> mappings = studentSessionRepository.findAllByUserPlanIdAndStatusIn(
+                expiredPlan.getId(),
+                List.of(LearnerSessionStatusEnum.ACTIVE.name()));
+
+        if (mappings.isEmpty()) {
+            logger.warn("No active mappings found for expired plan ID={}. Nothing to transfer.", expiredPlan.getId());
+            return;
+        }
+
+        for (StudentSessionInstituteGroupMapping mapping : mappings) {
+            // Link to new plan
+            mapping.setUserPlanId(stackedPlan.getId());
+
+            // Extend expiry date to match the new plan's end date
+            // This ensures the mapping is valid for the duration of the new plan
+            if (stackedPlan.getEndDate() != null) {
+                mapping.setExpiryDate(stackedPlan.getEndDate());
+            }
+
+            studentSessionRepository.save(mapping);
+        }
+
+        logger.info("Transferred {} mappings from plan {} to plan {}", mappings.size(), expiredPlan.getId(),
+                stackedPlan.getId());
+    }
+
     @Transactional
     public void cancelUserPlan(String userPlanId, boolean force) {
         logger.info("Cancelling UserPlan ID: {}, force: {}", userPlanId, force);
 
         UserPlan userPlan = userPlanRepository.findById(userPlanId)
-            .orElseThrow(() -> new RuntimeException("UserPlan not found with ID: " + userPlanId));
+                .orElseThrow(() -> new RuntimeException("UserPlan not found with ID: " + userPlanId));
 
-        userPlan.setStatus(
-            force
-                ? UserPlanStatusEnum.TERMINATED.name()
-                : UserPlanStatusEnum.CANCELED.name()
-        );
+        userPlan.setStatus(force ? UserPlanStatusEnum.TERMINATED.name() : UserPlanStatusEnum.CANCELED.name());
         userPlanRepository.save(userPlan);
 
         if (!force) {
@@ -652,11 +704,9 @@ public class UserPlanService {
 
         logger.info("UserPlan ID: {} marked as TERMINATED", userPlanId);
 
-        List<StudentSessionInstituteGroupMapping> mappings =
-            studentSessionRepository.findAllByUserPlanIdAndStatusIn(
+        List<StudentSessionInstituteGroupMapping> mappings = studentSessionRepository.findAllByUserPlanIdAndStatusIn(
                 userPlanId,
-                List.of(LearnerSessionStatusEnum.ACTIVE.name())
-            );
+                List.of(LearnerSessionStatusEnum.ACTIVE.name()));
 
         if (mappings.isEmpty()) {
             logger.warn("No session mappings found for UserPlan ID: {}", userPlanId);
@@ -665,10 +715,10 @@ public class UserPlanService {
 
         // Extract packageIds
         Set<String> packageIds = mappings.stream()
-            .map(StudentSessionInstituteGroupMapping::getPackageSession)
-            .filter(Objects::nonNull)
-            .map(ps -> ps.getPackageEntity().getId())
-            .collect(Collectors.toSet());
+                .map(StudentSessionInstituteGroupMapping::getPackageSession)
+                .filter(Objects::nonNull)
+                .map(ps -> ps.getPackageEntity().getId())
+                .collect(Collectors.toSet());
 
         if (packageIds.isEmpty()) {
             studentSessionRepository.deleteAllInBatch(mappings);
@@ -677,55 +727,47 @@ public class UserPlanService {
         }
 
         // Fetch all invited sessions in one query
-        Map<String, PackageSession> invitedSessionByPackageId =
-            packageSessionRepository
+        Map<String, PackageSession> invitedSessionByPackageId = packageSessionRepository
                 .findAllInvitedByPackageIds(packageIds)
                 .stream()
                 .collect(Collectors.toMap(
-                    ps -> ps.getPackageEntity().getId(),
-                    Function.identity()
-                ));
+                        ps -> ps.getPackageEntity().getId(),
+                        Function.identity()));
 
         List<StudentSessionInstituteGroupMapping> newMappings = new ArrayList<>();
 
         for (StudentSessionInstituteGroupMapping mapping : mappings) {
             PackageSession activePackageSession = mapping.getPackageSession();
-            if (activePackageSession == null) continue;
+            if (activePackageSession == null)
+                continue;
 
             String packageId = activePackageSession.getPackageEntity().getId();
             PackageSession invitedSession = invitedSessionByPackageId.get(packageId);
 
             if (invitedSession == null) {
                 logger.error(
-                    "INVITED package session not found for package ID: {}. Mapping ID: {}",
-                    packageId, mapping.getId()
-                );
+                        "INVITED package session not found for package ID: {}. Mapping ID: {}",
+                        packageId, mapping.getId());
                 continue;
             }
 
             newMappings.add(
-                StudentSessionInstituteGroupMapping.createInvitedMappingFromTerminated(
-                    mapping,
-                    invitedSession,
-                    activePackageSession,
-                    LearnerSessionSourceEnum.TERMINATED.name(),
-                    LearnerSessionTypeEnum.PACKAGE_SESSION.name(),
-                    LearnerSessionStatusEnum.INVITED.name()
-                )
-            );
+                    StudentSessionInstituteGroupMapping.createInvitedMappingFromTerminated(
+                            mapping,
+                            invitedSession,
+                            activePackageSession,
+                            LearnerSessionSourceEnum.TERMINATED.name(),
+                            LearnerSessionTypeEnum.PACKAGE_SESSION.name(),
+                            LearnerSessionStatusEnum.INVITED.name()));
         }
 
         // Bulk delete + bulk insert
         studentSessionRepository.deleteAllInBatch(mappings);
         studentSessionRepository.saveAll(newMappings);
 
-        logger.info(
-            "Force-cancel completed. Deleted: {}, Created INVITED mappings: {}",
-            mappings.size(),
-            newMappings.size()
-        );
+        logger.info("Force-cancel completed. Deleted: {}, Created INVITED mappings: {}", mappings.size(),
+                newMappings.size());
     }
-
 
     /**
      * Get membership details with caching and optimizations.
@@ -947,7 +989,8 @@ public class UserPlanService {
     private List<PolicyActionDTO> buildPolicyActions(UserPlan userPlan,
             EnrollmentPolicyJsonDTOs.EnrollmentPolicySettingsDTO settings) {
         List<PolicyActionDTO> actions = new ArrayList<>();
-        LocalDate endDate = userPlan.getEndDate() != null ? userPlan.getEndDate().toLocalDateTime().toLocalDate()
+        LocalDate endDate = userPlan.getEndDate() != null
+                ? userPlan.getEndDate().toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDate()
                 : null;
 
         if (endDate == null)
@@ -1044,7 +1087,7 @@ public class UserPlanService {
 
         LocalDate nextEligible = null;
         if (userPlan.getEndDate() != null && settings.getReenrollmentPolicy().getReenrollmentGapInDays() != null) {
-            nextEligible = userPlan.getEndDate().toLocalDateTime().toLocalDate()
+            nextEligible = userPlan.getEndDate().toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDate()
                     .plusDays(settings.getReenrollmentPolicy().getReenrollmentGapInDays());
         }
 
@@ -1060,7 +1103,8 @@ public class UserPlanService {
         if (settings.getOnExpiry() == null)
             return null;
 
-        LocalDate endDate = userPlan.getEndDate() != null ? userPlan.getEndDate().toLocalDateTime().toLocalDate()
+        LocalDate endDate = userPlan.getEndDate() != null
+                ? userPlan.getEndDate().toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDate()
                 : null;
         LocalDate finalExpiry = null;
         LocalDate nextPayment = null;
@@ -1086,4 +1130,3 @@ public class UserPlanService {
         return userPlanRepository.save(userPlan);
     }
 }
-

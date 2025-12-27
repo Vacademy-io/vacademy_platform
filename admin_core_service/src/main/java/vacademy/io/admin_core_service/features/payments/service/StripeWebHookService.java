@@ -19,6 +19,7 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.payment.enums.PaymentGateway;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
 import vacademy.io.common.logging.SentryLogger;
+import vacademy.io.common.payment.enums.PaymentType;
 
 import java.util.HashMap;
 import java.util.Map;

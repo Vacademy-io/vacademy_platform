@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.enroll_invite.service.SubOrgService;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
@@ -71,7 +72,7 @@ public class RenewalPaymentService {
 
             // Extend all ACTIVE mappings for this UserPlan
             List<StudentSessionInstituteGroupMapping> activeMappings =
-                mappingRepository.findAllByUserPlanIdAndStatusActive(userPlan.getId());
+                mappingRepository.findByUserPlanIdAndStatus(userPlan.getId(), LearnerSessionStatusEnum.ACTIVE.name());
 
             for (StudentSessionInstituteGroupMapping mapping : activeMappings) {
                 mapping.setExpiryDate(newEndDate);

@@ -811,7 +811,7 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
         }
 
         // Delete old EXPIRED entries before creating new one (to handle constraint)
-        studentSessionRepository.deleteByUserTypeSourcePackageInstitute(
+        studentSessionRepository.deleteByUserIdAndPackageSessionIdAndSourceAndTypeAndTypeIdAndInstituteId(
                 mapping.getUserId(),
                 mapping.getPackageSession().getId(),
                 LearnerSessionSourceEnum.EXPIRED.name(),

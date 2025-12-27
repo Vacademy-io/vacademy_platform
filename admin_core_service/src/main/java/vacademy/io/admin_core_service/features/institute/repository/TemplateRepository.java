@@ -104,6 +104,5 @@ public interface TemplateRepository extends JpaRepository<Template, String> {
 
     Optional<Template> findByInstituteIdAndNameAndTypeAndStatus(String instituteId, String name, String type,String status);
 
-    Optional<Template> findByInstituteIdAndNameAndTypeAndStatus(String instituteId, String name, String type,
-            String status);
+    Optional<Template>findByInstituteIdAndNameAndType(String instituteId,String name,String type);
 }

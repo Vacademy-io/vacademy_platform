@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.enrollment_policy.processor.Enrol
 import vacademy.io.admin_core_service.features.enrollment_policy.processor.EnrolmentProcessorFactory;
 import vacademy.io.admin_core_service.features.enrollment_policy.service.SubOrgAdminService;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanSourceEnum;
@@ -127,7 +128,7 @@ public class PackageSessionEnrolmentService {
 
         // Find all ACTIVE mappings for this UserPlan
         List<StudentSessionInstituteGroupMapping> activeMappings = mappingRepository
-                .findAllByUserPlanIdAndStatusActive(userPlan.getId());
+                .findByUserPlanIdAndStatus(userPlan.getId(), UserPlanStatusEnum.ACTIVE.name());
 
         if (CollectionUtils.isEmpty(activeMappings)) {
             log.warn("No ACTIVE mappings found for UserPlan: {}, skipping", userPlan.getId());
@@ -241,7 +242,7 @@ public class PackageSessionEnrolmentService {
      */
     private void initializeUserPlanDatesFromMappings(UserPlan userPlan) {
         List<StudentSessionInstituteGroupMapping> mappings = mappingRepository
-                .findAllByUserPlanIdAndStatusActive(userPlan.getId());
+                .findByUserPlanIdAndStatus(userPlan.getId(), LearnerSessionStatusEnum.ACTIVE.name());
 
         if (CollectionUtils.isEmpty(mappings)) {
             return;

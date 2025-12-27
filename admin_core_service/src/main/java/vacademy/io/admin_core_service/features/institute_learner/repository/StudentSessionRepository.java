@@ -241,4 +241,6 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
     void deleteAllInBatch(Iterable<StudentSessionInstituteGroupMapping> entities);
 
     List<StudentSessionInstituteGroupMapping>findAllByUserPlanIdAndStatusIn(String userPlanId,List<String>status);
+
+   void deleteByUserIdAndPackageSessionIdAndSourceAndTypeAndTypeIdAndInstituteId(String userId,String packageSessionId,String source,String type,String typeId,String instituteId);
 }

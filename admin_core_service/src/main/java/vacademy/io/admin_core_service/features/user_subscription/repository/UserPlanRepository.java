@@ -143,4 +143,15 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
         @Param("subOrgId") String subOrgId,
         @Param("source") String source,
         @Param("status") String status);
+    Optional<UserPlan> findTopByUserIdAndEnrollInviteIdAndStatusInOrderByEndDateDesc(
+            String userId,
+            String enrollInviteId,
+            List<String> statuses);
+
+    Optional<UserPlan> findTopByUserIdAndEnrollInviteIdAndStatusInAndIdNotInOrderByEndDateDesc(
+        String userId,
+        String enrollInviteId,
+        List<String> statuses,
+        List<String> userPlanIds
+    );
 }

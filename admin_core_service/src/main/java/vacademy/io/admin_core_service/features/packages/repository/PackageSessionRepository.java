@@ -14,6 +14,7 @@ import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Repository
 public interface PackageSessionRepository extends JpaRepository<PackageSession, String> {
@@ -223,5 +224,13 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             String sessionId,
             List<String> status
     );
+
+    @Query("""
+    SELECT ps
+    FROM PackageSession ps
+    WHERE ps.packageEntity.id IN :packageIds
+      AND ps.status = 'INVITED'
+""")
+    List<PackageSession> findAllInvitedByPackageIds(@Param("packageIds") Set<String> packageIds);
 
 }

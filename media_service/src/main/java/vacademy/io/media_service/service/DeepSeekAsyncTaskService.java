@@ -43,9 +43,10 @@ public class DeepSeekAsyncTaskService {
     public CompletableFuture<Void> pollAndProcessPdfToQuestions(
             TaskStatus taskStatus,
             String pdfId,
-            String userPrompt) {
+            String userPrompt,
+            Boolean generateImage) {
 
-        return pollAndProcessPdfToQuestions(taskStatus, pdfId, userPrompt, null);
+        return pollAndProcessPdfToQuestions(taskStatus, pdfId, userPrompt, null, generateImage);
     }
 
     /**
@@ -58,7 +59,8 @@ public class DeepSeekAsyncTaskService {
             TaskStatus taskStatus,
             String pdfId,
             String userPrompt,
-            String preferredModel) {
+            String preferredModel,
+            Boolean generateImage) {
 
         updateStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING, "Starting PDF processing...");
 
@@ -66,7 +68,8 @@ public class DeepSeekAsyncTaskService {
                 .orTimeout(POLLING_TIMEOUT_MINUTES, TimeUnit.MINUTES)
                 .thenCompose(networkHtml -> {
                     if (networkHtml != null) {
-                        return processDeepSeekTaskAsync(taskStatus, userPrompt, networkHtml, preferredModel);
+                        return processDeepSeekTaskAsync(taskStatus, userPrompt, networkHtml, preferredModel,
+                                generateImage);
                     } else {
                         return CompletableFuture.failedFuture(
                                 FileConversionException.conversionFailed(pdfId, "Timeout waiting for PDF conversion"));
@@ -84,14 +87,15 @@ public class DeepSeekAsyncTaskService {
      * Polls for PDF conversion and sorts questions topic-wise.
      */
     @Async("fileProcessingExecutor")
-    public CompletableFuture<Void> pollAndProcessSortQuestionTopicWise(TaskStatus taskStatus, String pdfId) {
+    public CompletableFuture<Void> pollAndProcessSortQuestionTopicWise(TaskStatus taskStatus, String pdfId,
+            Boolean generateImage) {
         updateStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING, "Processing PDF for topic sorting...");
 
         return pollingService.pollForPdfHtmlAsync(pdfId, taskStatus)
                 .orTimeout(POLLING_TIMEOUT_MINUTES, TimeUnit.MINUTES)
                 .thenCompose(networkHtml -> {
                     if (networkHtml != null) {
-                        return processSortQuestionsByTopicAsync(networkHtml, taskStatus, null);
+                        return processSortQuestionsByTopicAsync(networkHtml, taskStatus, null, generateImage);
                     } else {
                         return CompletableFuture.failedFuture(
                                 FileConversionException.conversionFailed(pdfId, "Timeout waiting for PDF conversion"));
@@ -112,7 +116,8 @@ public class DeepSeekAsyncTaskService {
     public CompletableFuture<Void> pollAndProcessPdfExtractTopicQuestions(
             TaskStatus taskStatus,
             String pdfId,
-            String requiredTopics) {
+            String requiredTopics,
+            Boolean generateImage) {
 
         updateStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING, "Extracting topic questions...");
 
@@ -120,7 +125,8 @@ public class DeepSeekAsyncTaskService {
                 .orTimeout(POLLING_TIMEOUT_MINUTES, TimeUnit.MINUTES)
                 .thenCompose(networkHtml -> {
                     if (networkHtml != null) {
-                        return processTopicExtractionAsync(taskStatus, requiredTopics, networkHtml, null);
+                        return processTopicExtractionAsync(taskStatus, requiredTopics, networkHtml, null,
+                                generateImage);
                     } else {
                         return CompletableFuture.failedFuture(
                                 FileConversionException.conversionFailed(pdfId, "Timeout waiting for PDF conversion"));
@@ -145,9 +151,11 @@ public class DeepSeekAsyncTaskService {
             String prompt,
             String difficulty,
             String language,
-            String numQuestions) {
+            String numQuestions,
+            Boolean generateImage) {
 
-        return pollAndProcessAudioToQuestions(taskStatus, audioId, prompt, difficulty, language, numQuestions, null);
+        return pollAndProcessAudioToQuestions(taskStatus, audioId, prompt, difficulty, language, numQuestions, null,
+                generateImage);
     }
 
     /**
@@ -162,7 +170,8 @@ public class DeepSeekAsyncTaskService {
             String difficulty,
             String language,
             String numQuestions,
-            String preferredModel) {
+            String preferredModel,
+            Boolean generateImage) {
 
         updateStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING, "Processing audio transcription...");
 
@@ -171,7 +180,7 @@ public class DeepSeekAsyncTaskService {
                 .thenCompose(transcribedText -> {
                     if (transcribedText != null) {
                         return processAudioToQuestionsAsync(taskStatus, transcribedText, numQuestions, prompt,
-                                difficulty, language, preferredModel);
+                                difficulty, language, preferredModel, generateImage);
                     } else {
                         return CompletableFuture.failedFuture(
                                 FileConversionException.conversionFailed(audioId,
@@ -188,10 +197,6 @@ public class DeepSeekAsyncTaskService {
 
     /**
      * Polls for audio transcription and generates lecture feedback.
-     * 
-     * @param taskStatus The task status entity
-     * @param audioId    The audio file ID
-     * @param model      The AI model to use
      */
     @Async("fileProcessingExecutor")
     public CompletableFuture<Void> pollAndProcessAudioFeedback(TaskStatus taskStatus, String audioId, String model) {
@@ -222,11 +227,12 @@ public class DeepSeekAsyncTaskService {
      * Processes text to generate questions.
      */
     @Async("aiTaskExecutor")
-    public CompletableFuture<Void> pollAndProcessTextToQuestions(TaskStatus taskStatus, TextDTO textPrompt) {
+    public CompletableFuture<Void> pollAndProcessTextToQuestions(TaskStatus taskStatus, TextDTO textPrompt,
+            String model) {
         return CompletableFuture.runAsync(() -> {
             try {
                 updateStatus(taskStatus, TaskStatusEnum.PROGRESS, "Generating questions from text...");
-                processTextToQuestions(textPrompt, taskStatus);
+                processTextToQuestions(textPrompt, taskStatus, model);
             } catch (Exception e) {
                 log.error("Text to questions processing failed for task {}: {}", taskStatus.getId(), e.getMessage(), e);
                 updateStatusFailed(taskStatus, "Text processing failed: " + e.getMessage());
@@ -236,14 +242,6 @@ public class DeepSeekAsyncTaskService {
 
     /**
      * Processes lecture planner generation.
-     * 
-     * @param taskStatus       The task status entity
-     * @param userPrompt       User's prompt for the lecture
-     * @param lectureDuration  Duration of the lecture
-     * @param language         Language for the content
-     * @param methodOfTeaching Teaching method
-     * @param level            Class/skill level
-     * @param model            AI model to use
      */
     @Async("aiTaskExecutor")
     public CompletableFuture<Void> processDeepSeekTaskInBackgroundWrapperForLecturePlanner(
@@ -273,7 +271,8 @@ public class DeepSeekAsyncTaskService {
     // ==================== Async Processing Methods ====================
 
     private CompletableFuture<Void> processDeepSeekTaskAsync(
-            TaskStatus taskStatus, String userPrompt, String networkHtml, String preferredModel) {
+            TaskStatus taskStatus, String userPrompt, String networkHtml, String preferredModel,
+            Boolean generateImage) {
 
         return CompletableFuture.runAsync(() -> {
             try {
@@ -281,7 +280,7 @@ public class DeepSeekAsyncTaskService {
                 updateStatus(taskStatus, TaskStatusEnum.PROGRESS, "Generating questions...");
 
                 String rawOutput = externalAIApiService.getQuestionsWithDeepSeekFromHTMLRecursive(
-                        networkHtml, userPrompt, restoreJson, 0, taskStatus);
+                        networkHtml, userPrompt, restoreJson, 0, taskStatus, generateImage);
 
                 updateStatusCompleted(taskStatus, rawOutput, "Question generation completed");
             } catch (Exception e) {
@@ -291,14 +290,14 @@ public class DeepSeekAsyncTaskService {
     }
 
     private CompletableFuture<Void> processSortQuestionsByTopicAsync(
-            String networkHtml, TaskStatus taskStatus, String preferredModel) {
+            String networkHtml, TaskStatus taskStatus, String preferredModel, Boolean generateImage) {
 
         return CompletableFuture.runAsync(() -> {
             try {
                 updateStatus(taskStatus, TaskStatusEnum.PROGRESS, "Sorting questions by topic...");
 
                 String rawOutput = externalAIApiService.getQuestionsWithDeepSeekFromHTMLWithTopics(
-                        networkHtml, taskStatus, 0, "");
+                        networkHtml, taskStatus, 0, "", generateImage);
 
                 updateStatusCompleted(taskStatus, rawOutput, "Topic sorting completed");
             } catch (Exception e) {
@@ -308,7 +307,8 @@ public class DeepSeekAsyncTaskService {
     }
 
     private CompletableFuture<Void> processTopicExtractionAsync(
-            TaskStatus taskStatus, String requiredTopics, String networkHtml, String preferredModel) {
+            TaskStatus taskStatus, String requiredTopics, String networkHtml, String preferredModel,
+            Boolean generateImage) {
 
         return CompletableFuture.runAsync(() -> {
             try {
@@ -316,7 +316,7 @@ public class DeepSeekAsyncTaskService {
                 updateStatus(taskStatus, TaskStatusEnum.PROGRESS, "Extracting topic questions...");
 
                 String rawOutput = externalAIApiService.getQuestionsWithDeepSeekFromHTMLOfTopics(
-                        networkHtml, requiredTopics, restoreJson, 0, taskStatus);
+                        networkHtml, requiredTopics, restoreJson, 0, taskStatus, generateImage);
 
                 updateStatusCompleted(taskStatus, rawOutput, "Topic extraction completed");
             } catch (Exception e) {
@@ -327,17 +327,15 @@ public class DeepSeekAsyncTaskService {
 
     private CompletableFuture<Void> processAudioToQuestionsAsync(
             TaskStatus taskStatus, String transcribedText, String numQuestions, String prompt,
-            String difficulty, String language, String preferredModel) {
+            String difficulty, String language, String preferredModel, Boolean generateImage) {
 
         return CompletableFuture.runAsync(() -> {
             try {
                 String restoreJson = taskStatus.getResultJson() != null ? taskStatus.getResultJson() : "";
                 updateStatus(taskStatus, TaskStatusEnum.PROGRESS, "Generating questions from audio...");
 
-                // getQuestionsWithDeepSeekFromAudio signature: (audioString, difficulty,
-                // numQuestions, optionalPrompt, oldResponse, attempt, taskStatus)
                 String rawOutput = externalAIApiService.getQuestionsWithDeepSeekFromAudio(
-                        transcribedText, difficulty, numQuestions, prompt, restoreJson, 0, taskStatus);
+                        transcribedText, difficulty, numQuestions, prompt, restoreJson, 0, taskStatus, generateImage);
 
                 updateStatusCompleted(taskStatus, rawOutput, "Audio question generation completed");
             } catch (Exception e) {
@@ -353,8 +351,6 @@ public class DeepSeekAsyncTaskService {
             try {
                 updateStatus(taskStatus, TaskStatusEnum.PROGRESS, "Generating lecture feedback...");
 
-                // generateLectureFeedback signature: (text, convertedAudioResponseString,
-                // taskStatus, attempt, audioPace)
                 String audioPace = audioResponse.getAudioDuration() != null
                         ? String.valueOf(audioResponse.getAudioDuration())
                         : "unknown";
@@ -368,13 +364,10 @@ public class DeepSeekAsyncTaskService {
         });
     }
 
-    private void processTextToQuestions(TextDTO textPrompt, TaskStatus taskStatus) {
+    private void processTextToQuestions(TextDTO textPrompt, TaskStatus taskStatus, String model) {
         try {
             String restoreJson = taskStatus.getResultJson() != null ? taskStatus.getResultJson() : "";
 
-            // getQuestionsWithDeepSeekFromTextPrompt signature: (textPrompt,
-            // numberOfQuestions, typeOfQuestion, classLevel, topics, language, taskStatus,
-            // attempt, oldJson)
             String rawOutput = externalAIApiService.getQuestionsWithDeepSeekFromTextPrompt(
                     textPrompt.getText(),
                     String.valueOf(textPrompt.getNum()),
@@ -384,7 +377,13 @@ public class DeepSeekAsyncTaskService {
                     textPrompt.getQuestionLanguage(),
                     taskStatus,
                     0,
-                    restoreJson);
+                    restoreJson,
+                    model,
+                    textPrompt.getGenerateImage());
+
+            if (TaskStatusEnum.FAILED.name().equals(taskStatus.getStatus())) {
+                return;
+            }
 
             updateStatusCompleted(taskStatus, rawOutput, "Text question generation completed");
         } catch (Exception e) {
@@ -418,9 +417,6 @@ public class DeepSeekAsyncTaskService {
                 message);
     }
 
-    /**
-     * Gets the root cause message from a throwable chain.
-     */
     private String getRootCauseMessage(Throwable throwable) {
         Throwable cause = throwable;
         while (cause.getCause() != null) {
@@ -429,9 +425,6 @@ public class DeepSeekAsyncTaskService {
         return cause.getMessage() != null ? cause.getMessage() : throwable.getMessage();
     }
 
-    /**
-     * Generates a unique ID for a given input.
-     */
     public String generateUniqueId(String input) {
         return IdGenerationUtils.generateUniqueId(input);
     }

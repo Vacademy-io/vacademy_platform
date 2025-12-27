@@ -20,6 +20,7 @@ import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSe
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.learner.service.LearnerCouponService;
+import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
@@ -31,6 +32,8 @@ import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.institute.entity.Institute;
+import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.util.*;
 
@@ -47,6 +50,9 @@ public class StudentRegistrationManager {
 
     @Autowired
     StudentSessionRepository studentSessionRepository;
+
+    @Autowired
+    private PackageSessionRepository packageSessionRepository;
 
     @Value("${auth.server.baseurl}")
     private String authServerBaseUrl;
@@ -76,7 +82,7 @@ public class StudentRegistrationManager {
         linkStudentToInstitute(student, instituteStudentDTO.getInstituteStudentDetails());
         learnerCouponService.generateCouponCodeForLearner(student.getUserId());
         if (instituteStudentDTO.getInstituteStudentDetails().getEnrollmentStatus().equalsIgnoreCase(LearnerSessionStatusEnum.ACTIVE.name())){
-            triggerEnrollmentWorkflow(instituteStudentDTO.getInstituteStudentDetails().getInstituteId(),instituteStudentDTO.getUserDetails(),instituteStudentDTO.getInstituteStudentDetails().getPackageSessionId());
+            triggerEnrollmentWorkflow(instituteStudentDTO.getInstituteStudentDetails().getInstituteId(),instituteStudentDTO.getUserDetails(),instituteStudentDTO.getInstituteStudentDetails().getPackageSessionId(),null);
         }
         return instituteStudentDTO;
     }
@@ -90,7 +96,7 @@ public class StudentRegistrationManager {
         if (instituteStudentDTO.getInstituteStudentDetails() != null) {
             linkStudentToInstitute(student, instituteStudentDTO.getInstituteStudentDetails());
             if (instituteStudentDTO.getInstituteStudentDetails().getEnrollmentStatus().equalsIgnoreCase(LearnerSessionStatusEnum.ACTIVE.name())){
-                triggerEnrollmentWorkflow(instituteStudentDTO.getInstituteStudentDetails().getInstituteId(),instituteStudentDTO.getUserDetails(),instituteStudentDTO.getInstituteStudentDetails().getPackageSessionId());
+                triggerEnrollmentWorkflow(instituteStudentDTO.getInstituteStudentDetails().getInstituteId(),instituteStudentDTO.getUserDetails(),instituteStudentDTO.getInstituteStudentDetails().getPackageSessionId(),null);
             }
         }
         return ResponseEntity.ok(new StudentDTO(student));
@@ -578,10 +584,16 @@ public class StudentRegistrationManager {
         return createStudentFromRequest(userDTO, null).getId();
     }
 
-    public void triggerEnrollmentWorkflow(String instituteId, UserDTO userDTO,String packageSessionId) {
+    public void triggerEnrollmentWorkflow(String instituteId, UserDTO userDTO, String packageSessionId, Institute subOrg) {
         Map<String, Object> contextData = new HashMap<>();
         contextData.put("user", userDTO);
         contextData.put("packageSessionIds", packageSessionId);
+        contextData.put("subOrg",subOrg);
+        Optional<PackageSession>packageSession = packageSessionRepository.findById(packageSessionId);
+        if (packageSession.isEmpty()){
+            throw new VacademyException("Package Session Not Found");
+        }
+        contextData.put("packageId",packageSession.get().getPackageEntity().getId());
         workflowTriggerService.handleTriggerEvents(WorkflowTriggerEvent.LEARNER_BATCH_ENROLLMENT.name(),packageSessionId,instituteId,contextData);
     }
 }

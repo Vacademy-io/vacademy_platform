@@ -40,7 +40,8 @@ public class QuestionGeneratorController {
     @PostMapping("/from-html")
     public ResponseEntity<AutoQuestionPaperResponse> fromHtml(
             @RequestParam(required = false) String userPrompt,
-            @RequestParam("file") MultipartFile file) {
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(required = false, defaultValue = "true") Boolean generateImage) {
 
         validateHtmlFile(file);
 
@@ -49,7 +50,8 @@ public class QuestionGeneratorController {
             String htmlBody = HtmlParsingUtils.extractBody(html);
             String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
 
-            String rawOutput = externalAIApiService.getQuestionsWithDeepSeekFromHTML(networkHtml, userPrompt);
+            String rawOutput = externalAIApiService.getQuestionsWithDeepSeekFromHTML(networkHtml, userPrompt,
+                    generateImage);
             String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
 
             return ResponseEntity.ok(responseConverterService.convertToQuestionPaperResponse(
@@ -67,14 +69,16 @@ public class QuestionGeneratorController {
     @PostMapping("/from-not-html")
     public ResponseEntity<AutoQuestionPaperResponse> fromNotHtml(
             @RequestParam(required = false) String userPrompt,
-            @RequestParam("file") MultipartFile file) {
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(required = false, defaultValue = "true") Boolean generateImage) {
 
         try {
             String html = docConverterService.convertDocument(file);
             String htmlBody = HtmlParsingUtils.extractBody(html);
             String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
 
-            String rawOutput = externalAIApiService.getQuestionsWithDeepSeekFromHTML(networkHtml, userPrompt);
+            String rawOutput = externalAIApiService.getQuestionsWithDeepSeekFromHTML(networkHtml, userPrompt,
+                    generateImage);
             String validJson = JsonUtils.extractAndSanitizeJson(rawOutput);
 
             return ResponseEntity.ok(responseConverterService.convertToQuestionPaperResponse(

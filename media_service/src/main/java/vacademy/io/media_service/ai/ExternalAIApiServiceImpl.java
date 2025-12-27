@@ -1,16 +1,20 @@
 package vacademy.io.media_service.ai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestTemplate;
 import vacademy.io.media_service.dto.DeepSeekResponse;
 
 import java.util.*;
 
 @Service
+@Slf4j
 public class ExternalAIApiServiceImpl {
 
     private final RestTemplate restTemplate = new RestTemplate();
@@ -50,29 +54,59 @@ public class ExternalAIApiServiceImpl {
         requestBody.put("max_tokens", maxTokens);
         requestBody.put("frequency_penalty", 0);
         requestBody.put("presence_penalty", 0);
-        requestBody.put("temperature", 0.7);           // Less randomness for JSON
-        requestBody.put("top_p", 0.9);                 // Slightly narrower sampling
+        requestBody.put("temperature", 0.7); // Less randomness for JSON
+        requestBody.put("top_p", 0.9); // Slightly narrower sampling
         requestBody.put("stream", false);
-        // Note: Avoid using experimental transforms unless explicitly required/supported by the model
 
         // Create HTTP entity
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
-        // Make the API call and parse response
-        try {
-            ResponseEntity<String> response = restTemplate.exchange(
-                    apiUrl,
-                    HttpMethod.POST,
-                    entity,
-                    String.class
-            );
+        int maxRetries = 3;
+        int attempt = 0;
+        long waitTime = 2000;
 
-            return objectMapper.readValue(response.getBody(), DeepSeekResponse.class);
-        } catch (HttpClientErrorException e) {
-            String body = e.getResponseBodyAsString();
-            throw new RuntimeException("OpenRouter request failed: " + e.getStatusCode() + (body != null && !body.isBlank() ? (" - " + body) : ""), e);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to parse API response", e);
+        while (true) {
+            try {
+                attempt++;
+                ResponseEntity<String> response = restTemplate.exchange(
+                        apiUrl,
+                        HttpMethod.POST,
+                        entity,
+                        String.class);
+
+                return objectMapper.readValue(response.getBody(), DeepSeekResponse.class);
+            } catch (HttpClientErrorException e) {
+                if (e.getStatusCode() == HttpStatus.TOO_MANY_REQUESTS && attempt <= maxRetries) {
+                    log.warn("Rate limit exceeded on OpenRouter (429). Retrying attempt {}/{} in {}ms", attempt,
+                            maxRetries, waitTime);
+                    sleep(waitTime);
+                    waitTime *= 2;
+                } else {
+                    String body = e.getResponseBodyAsString();
+                    throw new RuntimeException("OpenRouter request failed: " + e.getStatusCode()
+                            + (body != null && !body.isBlank() ? (" - " + body) : ""), e);
+                }
+            } catch (HttpServerErrorException | ResourceAccessException e) {
+                if (attempt <= maxRetries) {
+                    log.warn("Transient error calling OpenRouter ({}). Retrying attempt {}/{} in {}ms",
+                            e.getClass().getSimpleName(), attempt, maxRetries, waitTime);
+                    sleep(waitTime);
+                    waitTime *= 2;
+                } else {
+                    throw new RuntimeException("OpenRouter API call failed after " + maxRetries + " retries", e);
+                }
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to parse API response or unknown error", e);
+            }
+        }
+    }
+
+    private void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("Sleep interrupted");
         }
     }
 

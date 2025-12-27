@@ -87,7 +87,7 @@ public class LearnerService {
 
     public String updateLearnerDetail(UserDTO userDTO,LearnerExtraDetails learnerExtraDetails) {
         Student student = instituteStudentRepository.findTopByUserId(userDTO.getId())
-            .orElseThrow(() -> new VacademyException("User not found"));
+                .orElseThrow(() -> new VacademyException("User not found"));
 
         student.setUsername(userDTO.getUsername());
         student.setFullName(userDTO.getFullName());
@@ -105,6 +105,7 @@ public class LearnerService {
         student.setLinkedInstituteName(learnerExtraDetails.getLinkedInstituteName());
         student.setParentsToMotherEmail(learnerExtraDetails.getParentsToMotherEmail());
         student.setParentToMotherMobileNumber(learnerExtraDetails.getParentsToMotherMobileNumber());
+       student.setFaceFileId(userDTO.getProfilePicFileId());
 
         instituteStudentRepository.save(student);
         return "done";
@@ -143,6 +144,9 @@ public class LearnerService {
         }
         if (StringUtils.hasText(userDTO.getGender())) {
             student.setGender(userDTO.getGender());
+        }
+        if (StringUtils.hasText(userDTO.getProfilePicFileId())) {
+            student.setFaceFileId(userDTO.getProfilePicFileId());
         }
         instituteStudentRepository.save(student);
         return "done";

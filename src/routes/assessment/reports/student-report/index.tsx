@@ -2,7 +2,7 @@ import { Preferences } from "@capacitor/preferences";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { z } from "zod";
 import { viewStudentReport } from "../-components/reportMain";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { TestReportDialog } from "@/components/common/student-test-records/test-report-dialog";
 import { SurveyReportDialog } from "@/components/common/student-test-records/survey-report-dialog";
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
@@ -84,6 +84,9 @@ function RouteComponent() {
   const [instituteId, setInstituteId] = useState<string | undefined>(undefined);
   const [isSurvey, setIsSurvey] = useState(false);
 
+  // useRef guard to prevent duplicate API calls
+  const hasFetchedReport = useRef(false);
+
   // First, fetch the institute ID
   useEffect(() => {
     async function fetchData() {
@@ -152,11 +155,39 @@ function RouteComponent() {
     async function fetchStudentReport() {
       if (!instituteId) return;
 
+      // Prevent duplicate calls with useRef guard
+      if (hasFetchedReport.current) {
+        console.log("=== SKIPPING DUPLICATE API CALL (useRef guard) ===");
+        return;
+      }
+
       console.log("=== FETCHING REPORT ===");
       console.log("isSurvey:", isSurvey);
       console.log("assessmentId:", assessmentId);
       console.log("attemptId:", attemptId);
       console.log("instituteId:", instituteId);
+      console.log("reportFromState exists:", !!reportFromState);
+
+      // OPTIMIZATION: Skip API call for Way 2 ONLY if we already have report data WITH SECTIONS
+      // Way 2 comes from assessment-report tab with pre-populated report
+      // If reportFromState is just summary (no sections), we MUST fetch from API
+      const hasSectionsData = reportFromState && ((reportFromState as any).sections || (reportFromState as any).all_sections);
+
+      if (reportFromState && hasSectionsData && !isSurvey) {
+        console.log("=== WAY 2 DETECTED: Using cached report with sections, skipping API call ===");
+        setStudentReportData(reportFromState as any);
+        setLoading(false);
+        hasFetchedReport.current = true;
+        return;
+      }
+
+      if (reportFromState && !hasSectionsData) {
+        console.log("=== WAY 2 PARTIAL DETECTED: Cached report missing sections, fetching full report from API ===");
+        // Fall through to API call below
+      }
+
+      // Mark as fetched before making the call
+      hasFetchedReport.current = true;
 
       try {
         if (isSurvey) {
@@ -166,8 +197,8 @@ function RouteComponent() {
           setSurveyReportData(data);
           console.log("Survey Report Data:", data);
         } else {
-          // Fetch regular report
-          console.log("Fetching REGULAR report...");
+          // Fetch regular report 
+          // console.log("=== WAY 1 DETECTED: Fetching REGULAR report from API ===");
           const data = await viewStudentReport(
             assessmentId || "",
             attemptId || "",
@@ -178,13 +209,15 @@ function RouteComponent() {
         }
       } catch (error) {
         console.error("Error fetching student report:", error);
+        // Reset guard on error to allow retry
+        hasFetchedReport.current = false;
       } finally {
         setLoading(false);
       }
     }
 
     fetchStudentReport();
-  }, [instituteId, assessmentId, attemptId, isSurvey]);
+  }, [instituteId, assessmentId, attemptId, isSurvey, reportFromState]);
 
   // Show loading state if any of the data is still loading
   if (loading || isAssessmentLoading || !instituteId) {

@@ -100,7 +100,10 @@ export const AssessmentCard = ({
 
   const handleSurveyConfirm = async () => {
     try {
-      await fetchPreviewData(assessmentInfo.assessment_id);
+      await fetchPreviewData(
+        assessmentInfo.assessment_id,
+        assessmentInfo.batch_id || assessmentInfo.package_session_id
+      );
       navigate({
         to: `/assessment/examination/${assessmentInfo.assessment_id}/LearnerLiveTest`,
       });
@@ -266,7 +269,7 @@ export const AssessmentCard = ({
                   bgClass="bg-blue-50"
                   label="Starts"
                   value={dayjs(assessmentInfo.bound_start_time).format(
-                    "DD MMM, hh:mm A"
+                    "DD/MM/YYYY, hh:mm A"
                   )}
                 />
               )}
@@ -282,8 +285,8 @@ export const AssessmentCard = ({
                   dayjs(assessmentInfo.bound_end_time).year() === 9999
                     ? "No Expiry"
                     : dayjs(assessmentInfo.bound_end_time).format(
-                        "DD MMM, hh:mm A"
-                      )
+                      "DD/MM/YYYY, hh:mm A"
+                    )
                 }
               />
 

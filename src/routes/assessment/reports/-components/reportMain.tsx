@@ -199,7 +199,7 @@ const AssessmentReportList = ({
 
   const formatDateTime = (dateString: string) => {
     try {
-      return format(new Date(dateString), "dd/MM/yyyy HH:mm");
+      return format(new Date(dateString), "dd/MM/yyyy hh:mm a");
     } catch (err) {
       console.error("Date formatting error:", err);
       return dateString;

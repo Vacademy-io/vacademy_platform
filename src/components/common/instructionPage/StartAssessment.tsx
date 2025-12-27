@@ -46,8 +46,11 @@ const AssessmentStartModal = () => {
 
       if (assessment?.play_mode === "SURVEY") {
         // For Survey assessments, fetch data and go directly to live test
-        const response = await fetchPreviewData(assessmentId);
-        
+        const response = await fetchPreviewData(
+          assessmentId,
+          assessment?.batch_id || assessment?.package_session_id
+        );
+
         if (response) {
           // Ensure the assessment store is properly initialized with the first question
           if (response.section_dtos && response.section_dtos.length > 0) {
@@ -81,7 +84,10 @@ const AssessmentStartModal = () => {
         }
       } else {
         // For other assessments, use the normal preview flow
-        const response = await fetchPreviewData(assessmentId);
+        const response = await fetchPreviewData(
+          assessmentId,
+          assessment?.batch_id || assessment?.package_session_id
+        );
 
         if (response) {
           fullScreen.trigger();

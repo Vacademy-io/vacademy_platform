@@ -18,7 +18,7 @@ export function convertToLocalDateTime(utcDate: string): string {
     minute: "2-digit",
     second: "2-digit",
     hour12: true,
-    timeZone: "UTC",
+
   };
 
   const formatted = new Intl.DateTimeFormat("en-GB", options).format(date);

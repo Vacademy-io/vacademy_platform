@@ -122,7 +122,10 @@ export const storeAssessmentInfo = async (assessmentInfo: any) => {
   });
 };
 
-export const fetchPreviewData = async (assessment_id: string) => {
+export const fetchPreviewData = async (
+  assessment_id: string,
+  batch_id?: string
+) => {
   try {
     const { student, institute } = await getStoredDetails();
     if (!student || !institute) {
@@ -154,6 +157,17 @@ export const fetchPreviewData = async (assessment_id: string) => {
       return;
     }
 
+    console.log(
+      "Student Enrolled Batch (package_session_id):",
+      student_details.package_session_id
+    );
+    console.log("Input Batch ID:", batch_id);
+
+
+
+    const sessions = await getAllSessionListFromStorage();
+    const batchIds = sessions?.map((session) => session.id) || [];
+
     const requestBody = {
       username: student_details.username,
       user_id: student_details.user_id,
@@ -164,14 +178,27 @@ export const fetchPreviewData = async (assessment_id: string) => {
       guardian_email: student_details.parents_email,
       guardian_mobile_number: student_details.parents_mobile_number,
       reattempt_count: 3,
+      batch_ids: batch_id
+        ? [batch_id]
+        : batchIds.length > 0
+          ? batchIds
+          : [student_details.package_session_id],
+      institute_id: institute_id,
+      assessment_id: assessment_id,
     };
+
+    console.log("Batch IDs being sent:", requestBody.batch_ids);
 
     const response = await authenticatedAxiosInstance.post(
       `${ASSESSMENT_PREVIEW}`,
       requestBody,
       {
         params: {
-          batch_ids: student_details.package_session_id,
+          batch_ids: batch_id
+            ? batch_id
+            : batchIds.length > 0
+              ? batchIds.join(",")
+              : student_details.package_session_id,
           instituteId: institute_id,
           assessment_id: assessment_id,
         },

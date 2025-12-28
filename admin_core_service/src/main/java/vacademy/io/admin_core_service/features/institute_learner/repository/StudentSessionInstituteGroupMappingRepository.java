@@ -230,4 +230,49 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("userId") String userId);
 
   List<StudentSessionInstituteGroupMapping> findByUserPlanIdAndStatus(String userPlanId, String status);
+
+  /**
+   * Count active members in a sub-organization for a specific package session
+   * Used to validate member count limits against payment plan restrictions
+   */
+  @Query("SELECT COUNT(s) FROM StudentSessionInstituteGroupMapping s " +
+      "WHERE s.subOrg.id = :subOrgId " +
+      "AND s.packageSession.id = :packageSessionId " +
+      "AND s.status = :status")
+  long countBySubOrgIdAndPackageSessionIdAndStatus(
+      @Param("subOrgId") String subOrgId,
+      @Param("packageSessionId") String packageSessionId,
+      @Param("status") String status);
+
+  /**
+   * Find the ROOT_ADMIN user_id for a specific sub-org and package session
+   * ROOT_ADMIN is the user who purchased the plan and owns the member count limit
+   */
+  @Query(value = """
+      SELECT ssigm.user_id
+      FROM student_session_institute_group_mapping ssigm
+      WHERE ssigm.sub_org_id = :subOrgId
+        AND ssigm.package_session_id = :packageSessionId
+        AND ssigm.status = 'ACTIVE'
+        AND ssigm.comma_separated_org_roles LIKE '%ROOT_ADMIN%'
+      LIMIT 1
+      """, nativeQuery = true)
+  Optional<String> findRootAdminUserIdBySubOrgAndPackageSession(
+      @Param("subOrgId") String subOrgId,
+      @Param("packageSessionId") String packageSessionId);
+
+  /**
+   * Find ROOT_ADMIN's complete mapping for a batch to get the user_plan_id
+   */
+  @Query(value = """
+      SELECT * FROM student_session_institute_group_mapping ssigm
+      WHERE ssigm.sub_org_id = :subOrgId
+        AND ssigm.package_session_id = :packageSessionId
+        AND ssigm.status = 'ACTIVE'
+        AND ssigm.comma_separated_org_roles LIKE '%ROOT_ADMIN%'
+      LIMIT 1
+      """, nativeQuery = true)
+  Optional<StudentSessionInstituteGroupMapping> findRootAdminMappingBySubOrgAndPackageSession(
+      @Param("subOrgId") String subOrgId,
+      @Param("packageSessionId") String packageSessionId);
 }

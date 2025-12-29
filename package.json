@@ -158,6 +158,7 @@
     "react-youtube": "^10.1.0",
     "recharts": "^2.15.1",
     "remark-breaks": "^4.0.0",
+    "remark-gfm": "^4.0.1",
     "sonner": "^1.7.1",
     "sweetalert2": "^11.22.2",
     "sweetalert2-react-content": "^5.1.0",

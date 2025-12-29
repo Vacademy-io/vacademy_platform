@@ -2,6 +2,7 @@
 
 import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
+import remarkGfm from "remark-gfm";
 import { StudentReport } from "@/services/student-reports-api";
 import { format } from "date-fns";
 import { Progress } from "@/components/ui/progress";
@@ -17,6 +18,36 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 interface ReportDetailsPageProps {
   report: StudentReport;
 }
+
+const markdownComponents = {
+  h3: ({ ...props }) => (
+    <h3
+      className="mb-5 mt-0 text-[1.2rem] font-bold text-slate-900"
+      {...props}
+    />
+  ),
+  table: ({ ...props }) => (
+    <div className="my-6 overflow-x-auto">
+      <table
+        className="w-full border-collapse border border-slate-200 text-[0.95rem]"
+        {...props}
+      />
+    </div>
+  ),
+  thead: ({ ...props }) => <thead className="bg-slate-50" {...props} />,
+  th: ({ ...props }) => (
+    <th
+      className="border border-slate-200 px-4 py-2.5 text-left font-bold text-slate-900"
+      {...props}
+    />
+  ),
+  td: ({ ...props }) => (
+    <td
+      className="border border-slate-200 px-4 py-2.5 text-slate-800"
+      {...props}
+    />
+  ),
+};
 
 export default function ReportDetailsPage({ report }: ReportDetailsPageProps) {
   const navigate = useNavigate();
@@ -75,13 +106,15 @@ export default function ReportDetailsPage({ report }: ReportDetailsPageProps) {
       setActiveSection(sectionId);
     }
   };
-  const renderSection = (title: string, content: string, sectionId: string) => (
+  const renderSection = (content: string, sectionId: string) => (
     <Card id={sectionId} className="mb-6 p-6">
-      <CardTitle className="text-lg font-semibold text-neutral-800 mb-3">
-        {title}
-      </CardTitle>
       <CardContent className="prose prose-sm max-w-none">
-        <ReactMarkdown remarkPlugins={[remarkBreaks]}>{content}</ReactMarkdown>
+        <ReactMarkdown
+          remarkPlugins={[remarkBreaks, remarkGfm]}
+          components={markdownComponents}
+        >
+          {content}
+        </ReactMarkdown>
       </CardContent>
     </Card>
   );
@@ -241,21 +274,9 @@ export default function ReportDetailsPage({ report }: ReportDetailsPageProps) {
             }`}
           >
             <div className="space-y-6">
-              {renderSection(
-                "Overall Progress",
-                report.report.progress,
-                "progress"
-              )}
-              {renderSection(
-                "Student Efforts",
-                report.report.student_efforts,
-                "efforts"
-              )}
-              {renderSection(
-                "Learning Pattern",
-                report.report.learning_frequency,
-                "pattern"
-              )}
+              {renderSection(report.report.progress, "progress")}
+              {renderSection(report.report.student_efforts, "efforts")}
+              {renderSection(report.report.learning_frequency, "pattern")}
 
               <div className="flex flex-col md:flex-row gap-6 w-full">
                 {Object.keys(report.report.strengths).length > 0 &&
@@ -276,20 +297,11 @@ export default function ReportDetailsPage({ report }: ReportDetailsPageProps) {
               </div>
 
               {renderSection(
-                "Topics of Improvement",
                 report.report.topics_of_improvement,
                 "improvement"
               )}
-              {renderSection(
-                "Topics Needing Attention",
-                report.report.topics_of_degradation,
-                "attention"
-              )}
-              {renderSection(
-                "Recommended Remedial Actions",
-                report.report.remedial_points,
-                "remedial"
-              )}
+              {renderSection(report.report.topics_of_degradation, "attention")}
+              {renderSection(report.report.remedial_points, "remedial")}
             </div>
           </div>
         </div>

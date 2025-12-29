@@ -1,5 +1,17 @@
-import axios from 'axios';
-import { BASE_URL } from '@/constants/urls';
+import { BASE_URL } from "@/constants/urls";
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+import { getUserId } from "@/constants/getUserId";
+
+export interface ReportContent {
+  learning_frequency: string;
+  progress: string;
+  student_efforts: string;
+  topics_of_improvement: string;
+  topics_of_degradation: string;
+  remedial_points: string;
+  strengths: Record<string, number>;
+  weaknesses: Record<string, number>;
+}
 
 export interface StudentReport {
   process_id: string;
@@ -10,15 +22,7 @@ export interface StudentReport {
   status: string;
   created_at: string;
   updated_at: string;
-  report: {
-    learning_frequency: string;
-    progress: string;
-    topics_of_improvement: string;
-    topics_of_degradation: string;
-    remedial_points: string;
-    strengths: Record<string, number>;
-    weaknesses: Record<string, number>;
-  };
+  report: ReportContent;
 }
 
 export interface ReportsResponse {
@@ -29,22 +33,32 @@ export interface ReportsResponse {
   page_size: number;
 }
 
+export interface ReportDetailResponse {
+  process_id: string;
+  status: string;
+  report: ReportContent;
+  error_message: string;
+}
+
 export const fetchStudentReports = async (
-  userId: string,
-  accessToken: string,
   page: number = 0,
   size: number = 10
 ): Promise<ReportsResponse> => {
-  const response = await axios.get<ReportsResponse>(
+  const userId = await getUserId();
+  const response = await authenticatedAxiosInstance.get<ReportsResponse>(
     `${BASE_URL}/admin-core-service/v1/student-analysis/reports/user/${userId}`,
     {
       params: { page, size },
-      headers: {
-        'accept': '*/*',
-        'authorization': `Bearer ${accessToken}`,
-        'content-type': 'application/json',
-      },
     }
+  );
+  return response.data;
+};
+
+export const fetchStudentReportById = async (
+  processId: string
+): Promise<ReportDetailResponse> => {
+  const response = await authenticatedAxiosInstance.get<ReportDetailResponse>(
+    `${BASE_URL}/admin-core-service/v1/student-analysis/report/${processId}`
   );
   return response.data;
 };

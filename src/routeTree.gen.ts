@@ -38,6 +38,7 @@ import { Route as StudyLibraryCoursesIndexRouteImport } from './routes/study-lib
 import { Route as RegisterLiveClassIndexRouteImport } from './routes/register/live-class/index'
 import { Route as PlanningPlanningLogsIndexRouteImport } from './routes/planning/planning-logs/index'
 import { Route as PlanningActivityLogsIndexRouteImport } from './routes/planning/activity-logs/index'
+import { Route as MyReportsProcessIdIndexRouteImport } from './routes/my-reports/$processId/index'
 import { Route as LoginForgotPasswordIndexRouteImport } from './routes/login/forgot-password/index'
 import { Route as LiveClassGuestWaitingRoomIndexRouteImport } from './routes/live-class-guest/waiting-room/index'
 import { Route as LiveClassGuestEmbedIndexRouteImport } from './routes/live-class-guest/embed/index'
@@ -218,6 +219,11 @@ const PlanningActivityLogsIndexRoute =
     path: '/planning/activity-logs/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const MyReportsProcessIdIndexRoute = MyReportsProcessIdIndexRouteImport.update({
+  id: '/my-reports/$processId/',
+  path: '/my-reports/$processId/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginForgotPasswordIndexRoute =
   LoginForgotPasswordIndexRouteImport.update({
     id: '/login/forgot-password/',
@@ -428,6 +434,7 @@ export interface FileRoutesByFullPath {
   '/live-class-guest/embed': typeof LiveClassGuestEmbedIndexRoute
   '/live-class-guest/waiting-room': typeof LiveClassGuestWaitingRoomIndexRoute
   '/login/forgot-password': typeof LoginForgotPasswordIndexRoute
+  '/my-reports/$processId': typeof MyReportsProcessIdIndexRoute
   '/planning/activity-logs': typeof PlanningActivityLogsIndexRoute
   '/planning/planning-logs': typeof PlanningPlanningLogsIndexRoute
   '/register/live-class': typeof RegisterLiveClassIndexRoute
@@ -488,6 +495,7 @@ export interface FileRoutesByTo {
   '/live-class-guest/embed': typeof LiveClassGuestEmbedIndexRoute
   '/live-class-guest/waiting-room': typeof LiveClassGuestWaitingRoomIndexRoute
   '/login/forgot-password': typeof LoginForgotPasswordIndexRoute
+  '/my-reports/$processId': typeof MyReportsProcessIdIndexRoute
   '/planning/activity-logs': typeof PlanningActivityLogsIndexRoute
   '/planning/planning-logs': typeof PlanningPlanningLogsIndexRoute
   '/register/live-class': typeof RegisterLiveClassIndexRoute
@@ -549,6 +557,7 @@ export interface FileRoutesById {
   '/live-class-guest/embed/': typeof LiveClassGuestEmbedIndexRoute
   '/live-class-guest/waiting-room/': typeof LiveClassGuestWaitingRoomIndexRoute
   '/login/forgot-password/': typeof LoginForgotPasswordIndexRoute
+  '/my-reports/$processId/': typeof MyReportsProcessIdIndexRoute
   '/planning/activity-logs/': typeof PlanningActivityLogsIndexRoute
   '/planning/planning-logs/': typeof PlanningPlanningLogsIndexRoute
   '/register/live-class/': typeof RegisterLiveClassIndexRoute
@@ -611,6 +620,7 @@ export interface FileRouteTypes {
     | '/live-class-guest/embed'
     | '/live-class-guest/waiting-room'
     | '/login/forgot-password'
+    | '/my-reports/$processId'
     | '/planning/activity-logs'
     | '/planning/planning-logs'
     | '/register/live-class'
@@ -671,6 +681,7 @@ export interface FileRouteTypes {
     | '/live-class-guest/embed'
     | '/live-class-guest/waiting-room'
     | '/login/forgot-password'
+    | '/my-reports/$processId'
     | '/planning/activity-logs'
     | '/planning/planning-logs'
     | '/register/live-class'
@@ -731,6 +742,7 @@ export interface FileRouteTypes {
     | '/live-class-guest/embed/'
     | '/live-class-guest/waiting-room/'
     | '/login/forgot-password/'
+    | '/my-reports/$processId/'
     | '/planning/activity-logs/'
     | '/planning/planning-logs/'
     | '/register/live-class/'
@@ -792,6 +804,7 @@ export interface RootRouteChildren {
   LiveClassGuestEmbedIndexRoute: typeof LiveClassGuestEmbedIndexRoute
   LiveClassGuestWaitingRoomIndexRoute: typeof LiveClassGuestWaitingRoomIndexRoute
   LoginForgotPasswordIndexRoute: typeof LoginForgotPasswordIndexRoute
+  MyReportsProcessIdIndexRoute: typeof MyReportsProcessIdIndexRoute
   PlanningActivityLogsIndexRoute: typeof PlanningActivityLogsIndexRoute
   PlanningPlanningLogsIndexRoute: typeof PlanningPlanningLogsIndexRoute
   RegisterLiveClassIndexRoute: typeof RegisterLiveClassIndexRoute
@@ -1018,6 +1031,13 @@ declare module '@tanstack/react-router' {
       path: '/planning/activity-logs'
       fullPath: '/planning/activity-logs'
       preLoaderRoute: typeof PlanningActivityLogsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/my-reports/$processId/': {
+      id: '/my-reports/$processId/'
+      path: '/my-reports/$processId'
+      fullPath: '/my-reports/$processId'
+      preLoaderRoute: typeof MyReportsProcessIdIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login/forgot-password/': {
@@ -1264,6 +1284,7 @@ const rootRouteChildren: RootRouteChildren = {
   LiveClassGuestEmbedIndexRoute: LiveClassGuestEmbedIndexRoute,
   LiveClassGuestWaitingRoomIndexRoute: LiveClassGuestWaitingRoomIndexRoute,
   LoginForgotPasswordIndexRoute: LoginForgotPasswordIndexRoute,
+  MyReportsProcessIdIndexRoute: MyReportsProcessIdIndexRoute,
   PlanningActivityLogsIndexRoute: PlanningActivityLogsIndexRoute,
   PlanningPlanningLogsIndexRoute: PlanningPlanningLogsIndexRoute,
   RegisterLiveClassIndexRoute: RegisterLiveClassIndexRoute,

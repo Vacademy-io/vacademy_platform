@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { getAccessToken, getCurrentUserId } from "@/lib/auth/sessionUtility";
 import {
   fetchStudentReports,
   StudentReport,
@@ -20,18 +19,15 @@ import {
 } from "@/components/ui/card";
 import { MyButton } from "@/components/design-system/button";
 import { format } from "date-fns";
-import ReportDetailsDialog from "./report-details-dialog";
+import { useReportStore } from "@/stores/report-store";
 import { X } from "phosphor-react";
 
 export default function MyReportsPage() {
   const navigate = useNavigate();
   const { permissions, isLoading: permissionsLoading } =
     useStudentPermissions();
+  const { setSelectedReport, clearSelectedReport } = useReportStore();
   const [currentPage, setCurrentPage] = useState(0);
-  const [selectedReport, setSelectedReport] = useState<StudentReport | null>(
-    null
-  );
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   // Redirect if user doesn't have permission to view reports
   useEffect(() => {
@@ -40,31 +36,19 @@ export default function MyReportsPage() {
     }
   }, [permissions.canViewReports, permissionsLoading, navigate]);
 
-  const { data: userId } = useQuery({
-    queryKey: ["currentUserId"],
-    queryFn: getCurrentUserId,
-    enabled: !!permissions.canViewReports,
-  });
-
-  const { data: accessToken } = useQuery({
-    queryKey: ["accessToken"],
-    queryFn: getAccessToken,
-    enabled: !!permissions.canViewReports,
-  });
-
   const {
     data: reportsData,
     isLoading,
     error,
   } = useQuery({
-    queryKey: ["studentReports", userId, currentPage],
-    queryFn: () => fetchStudentReports(userId!, accessToken!, currentPage, 20),
-    enabled: !!userId && !!accessToken && !!permissions.canViewReports,
+    queryKey: ["studentReports", currentPage],
+    queryFn: () => fetchStudentReports(currentPage, 20),
+    enabled: !!permissions.canViewReports,
   });
 
   const handleViewDetails = (report: StudentReport) => {
     setSelectedReport(report);
-    setIsDialogOpen(true);
+    navigate({ to: `/my-reports/${report.process_id}` });
   };
 
   const handlePageChange = (page: number) => {
@@ -170,7 +154,10 @@ export default function MyReportsPage() {
                   {report.status}
                 </span>
                 <MyButton
-                  onClick={() => handleViewDetails(report)}
+                  onClick={() => {
+                    clearSelectedReport();
+                    handleViewDetails(report);
+                  }}
                   size="sm"
                   buttonType="secondary"
                 >
@@ -191,12 +178,6 @@ export default function MyReportsPage() {
           />
         </div>
       )}
-
-      <ReportDetailsDialog
-        report={selectedReport}
-        isOpen={isDialogOpen}
-        onClose={() => setIsDialogOpen(false)}
-      />
     </div>
   );
 }

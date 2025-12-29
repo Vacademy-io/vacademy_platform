@@ -17,6 +17,7 @@ import { getTerminology } from "../layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { toTitleCase } from "@/lib/utils";
 import { useStudentPermissions } from "@/hooks/use-student-permissions";
+import ProgressStats from "./progress-stats";
 // import { SessionExpiry } from "./sessionExpiery";
 interface CourseDetails {
   packageName: string;
@@ -35,7 +36,8 @@ export default function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
   const { showForInstitutes } = useInstituteFeatureStore();
-  const { permissions, isLoading: permissionsLoading } = useStudentPermissions();
+  const { permissions, isLoading: permissionsLoading } =
+    useStudentPermissions();
 
   // Redirect if user doesn't have permission to view profile
   useEffect(() => {
@@ -108,7 +110,9 @@ export default function ProfilePage() {
         } else {
           // Try to get fallback data from institute batches
           try {
-            const { value: fallbackValue } = await Preferences.get({ key: "instituteBatchesForSessions" });
+            const { value: fallbackValue } = await Preferences.get({
+              key: "instituteBatchesForSessions",
+            });
 
             if (fallbackValue) {
               const fallbackData = JSON.parse(fallbackValue);
@@ -119,8 +123,12 @@ export default function ProfilePage() {
                   packageName: toTitleCase(
                     fallbackCourse.package_dto?.package_name || "N/A"
                   ),
-                  sessionName: toTitleCase(fallbackCourse.session?.session_name || "N/A"),
-                  levelName: toTitleCase(fallbackCourse.level?.level_name || "N/A"),
+                  sessionName: toTitleCase(
+                    fallbackCourse.session?.session_name || "N/A"
+                  ),
+                  levelName: toTitleCase(
+                    fallbackCourse.level?.level_name || "N/A"
+                  ),
                   startDate: fallbackCourse.session?.start_date || "N/A",
                   status: fallbackCourse.status || "N/A",
                 };
@@ -247,7 +255,9 @@ export default function ProfilePage() {
               >
                 <X size={24} />
               </button>
-              <h1 className="text-xl md:text-2xl font-bold text-gray-900">My Profile</h1>
+              <h1 className="text-xl md:text-2xl font-bold text-gray-900">
+                My Profile
+              </h1>
             </div>
             <div className="hidden md:flex gap-3">
               <MyButton
@@ -301,8 +311,12 @@ export default function ProfilePage() {
 
                   {/* User Info */}
                   <div className="text-center w-full">
-                    <h2 className="text-xl font-bold text-gray-900">{studentData?.full_name || "Student Name"}</h2>
-                    <p className="text-sm text-gray-500 mt-1">@{studentData?.username || "username"}</p>
+                    <h2 className="text-xl font-bold text-gray-900">
+                      {studentData?.full_name || "Student Name"}
+                    </h2>
+                    <p className="text-sm text-gray-500 mt-1">
+                      @{studentData?.username || "username"}
+                    </p>
 
                     <div className="mt-4 flex flex-wrap justify-center gap-2">
                       <div className="px-3 py-1 bg-primary-50 text-primary-700 rounded-full text-xs font-medium border border-primary-200">
@@ -320,9 +334,12 @@ export default function ProfilePage() {
 
               {/* Session Expiry */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                <h3 className="text-sm font-semibold text-gray-900 mb-4">Membership Status</h3>
+                <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                  Membership Status
+                </h3>
                 {studentData && SessionExpiry({ studentData })}
               </div>
+              {studentData && <ProgressStats userId={studentData.user_id} />}
             </div>
 
             {/* Right Column - Details */}
@@ -338,28 +355,45 @@ export default function ProfilePage() {
                     <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
                       {getTerminology(ContentTerms.Course, SystemTerms.Course)}
                     </p>
-                    <p className="text-base font-medium text-gray-900">{toTitleCase(courseDetails?.packageName || "N/A")}</p>
+                    <p className="text-base font-medium text-gray-900">
+                      {toTitleCase(courseDetails?.packageName || "N/A")}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
-                      {getTerminology(ContentTerms.Session, SystemTerms.Session)}
+                      {getTerminology(
+                        ContentTerms.Session,
+                        SystemTerms.Session
+                      )}
                     </p>
-                    <p className="text-base font-medium text-gray-900">{toTitleCase(courseDetails?.sessionName || "N/A")}</p>
+                    <p className="text-base font-medium text-gray-900">
+                      {toTitleCase(courseDetails?.sessionName || "N/A")}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
                       {getTerminology(ContentTerms.Level, SystemTerms.Level)}
                     </p>
-                    <p className="text-base font-medium text-gray-900">{toTitleCase(courseDetails?.levelName || "N/A")}</p>
+                    <p className="text-base font-medium text-gray-900">
+                      {toTitleCase(courseDetails?.levelName || "N/A")}
+                    </p>
                   </div>
                   <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Enrollment No.</p>
-                    <p className="text-base font-medium text-gray-900">{studentData?.institute_enrollment_id || "N/A"}</p>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                      Enrollment No.
+                    </p>
+                    <p className="text-base font-medium text-gray-900">
+                      {studentData?.institute_enrollment_id || "N/A"}
+                    </p>
                   </div>
                   {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
                     <div className="sm:col-span-2">
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">College/School Name</p>
-                      <p className="text-base font-medium text-gray-900">{studentData?.linked_institute_name || "N/A"}</p>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                        College/School Name
+                      </p>
+                      <p className="text-base font-medium text-gray-900">
+                        {studentData?.linked_institute_name || "N/A"}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -373,36 +407,64 @@ export default function ProfilePage() {
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
                   <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Mobile Number</p>
-                    <p className="text-base font-medium text-gray-900">{studentData?.mobile_number || "N/A"}</p>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                      Mobile Number
+                    </p>
+                    <p className="text-base font-medium text-gray-900">
+                      {studentData?.mobile_number || "N/A"}
+                    </p>
                   </div>
                   <div className="sm:col-span-2 xl:col-span-1">
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Email Address</p>
-                    <p className="text-base font-medium text-gray-900 break-words">{studentData?.email || "N/A"}</p>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                      Email Address
+                    </p>
+                    <p className="text-base font-medium text-gray-900 break-words">
+                      {studentData?.email || "N/A"}
+                    </p>
                   </div>
 
                   {showForInstitutes([HOLISTIC_INSTITUTE_ID]) ? (
                     <div className="sm:col-span-2 pt-6 border-t border-gray-100">
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Country</p>
-                      <p className="text-base font-medium text-gray-900">{studentData?.country || "N/A"}</p>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                        Country
+                      </p>
+                      <p className="text-base font-medium text-gray-900">
+                        {studentData?.country || "N/A"}
+                      </p>
                     </div>
                   ) : (
                     <>
                       <div className="sm:col-span-2 xl:col-span-3 pt-6 border-t border-gray-100">
-                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Address</p>
-                        <p className="text-base font-medium text-gray-900">{studentData?.address_line || "N/A"}</p>
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                          Address
+                        </p>
+                        <p className="text-base font-medium text-gray-900">
+                          {studentData?.address_line || "N/A"}
+                        </p>
                       </div>
                       <div>
-                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">City/Village</p>
-                        <p className="text-base font-medium text-gray-900">{studentData?.city || "N/A"}</p>
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                          City/Village
+                        </p>
+                        <p className="text-base font-medium text-gray-900">
+                          {studentData?.city || "N/A"}
+                        </p>
                       </div>
                       <div>
-                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">State</p>
-                        <p className="text-base font-medium text-gray-900">{studentData?.region || "N/A"}</p>
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                          State
+                        </p>
+                        <p className="text-base font-medium text-gray-900">
+                          {studentData?.region || "N/A"}
+                        </p>
                       </div>
                       <div>
-                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Pincode</p>
-                        <p className="text-base font-medium text-gray-900">{studentData?.pin_code || "N/A"}</p>
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                          Pincode
+                        </p>
+                        <p className="text-base font-medium text-gray-900">
+                          {studentData?.pin_code || "N/A"}
+                        </p>
                       </div>
                     </>
                   )}
@@ -418,20 +480,36 @@ export default function ProfilePage() {
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                     <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Father/Male Guardian</p>
-                      <p className="text-base font-medium text-gray-900">{studentData?.father_name || "N/A"}</p>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                        Father/Male Guardian
+                      </p>
+                      <p className="text-base font-medium text-gray-900">
+                        {studentData?.father_name || "N/A"}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Mother/Female Guardian</p>
-                      <p className="text-base font-medium text-gray-900">{studentData?.mother_name || "N/A"}</p>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                        Mother/Female Guardian
+                      </p>
+                      <p className="text-base font-medium text-gray-900">
+                        {studentData?.mother_name || "N/A"}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Guardian's Email</p>
-                      <p className="text-base font-medium text-gray-900 break-words">{studentData?.parents_email || "N/A"}</p>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                        Guardian's Email
+                      </p>
+                      <p className="text-base font-medium text-gray-900 break-words">
+                        {studentData?.parents_email || "N/A"}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Guardian's Mobile</p>
-                      <p className="text-base font-medium text-gray-900">{studentData?.parents_mobile_number || "N/A"}</p>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                        Guardian's Mobile
+                      </p>
+                      <p className="text-base font-medium text-gray-900">
+                        {studentData?.parents_mobile_number || "N/A"}
+                      </p>
                     </div>
                   </div>
                 </div>

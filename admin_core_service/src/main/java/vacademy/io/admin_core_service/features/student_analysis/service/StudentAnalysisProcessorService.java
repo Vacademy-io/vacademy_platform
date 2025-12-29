@@ -14,9 +14,10 @@ import vacademy.io.admin_core_service.features.student_analysis.repository.Stude
 import vacademy.io.admin_core_service.features.student_analysis.repository.UserLinkedDataRepository;
 
 import java.time.Duration;
-import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Async service to process student analysis requests
@@ -67,7 +68,7 @@ public class StudentAnalysisProcessorService {
 
                         // Step 4: Update user_linked_data with strengths and weaknesses
                         log.info("[Student-Analysis-Processor] Updating user linked data");
-                        updateUserLinkedData(process.getUserId(), report);
+                        updateUserLinkedData(process.getUserId(), report.getStrengths(), report.getWeaknesses());
 
                         // Step 5: Mark as COMPLETED
                         process.setStatus("COMPLETED");
@@ -87,42 +88,83 @@ public class StudentAnalysisProcessorService {
 
         /**
          * Update user_linked_data table with strengths and weaknesses
-         * Overwrites existing data for the user
+         * Cleans duplicates and updates or creates entries as needed
          */
         @Transactional
-        protected void updateUserLinkedData(String userId, StudentReportData report) {
-                // Delete existing strength/weakness data for this user
-                userLinkedDataRepository.deleteByUserIdAndTypeIn(userId);
+        protected void updateUserLinkedData(String userId, Map<String, Integer> strengths,
+                        Map<String, Integer> weaknesses) {
+                // Clean duplicates for strengths
+                cleanDuplicates(userId, "strength");
 
-                List<UserLinkedData> dataToSave = new ArrayList<>();
+                // Clean duplicates for weaknesses
+                cleanDuplicates(userId, "weakness");
 
-                // Add strengths
-                if (report.getStrengths() != null) {
-                        for (Map.Entry<String, Integer> entry : report.getStrengths().entrySet()) {
-                                UserLinkedData data = new UserLinkedData(
-                                                userId,
-                                                "strength",
-                                                entry.getKey(),
-                                                entry.getValue());
-                                dataToSave.add(data);
-                        }
+                // Update or add strengths
+                if (strengths != null) {
+                        // Flush any pending changes before processing
+                        userLinkedDataRepository.flush();
+
+                        strengths.forEach((data, percentage) -> {
+                                String trimmedData = data.trim();
+                                UserLinkedData existing = userLinkedDataRepository.findByUserIdAndTypeAndData(userId,
+                                                "strength", trimmedData);
+
+                                if (existing != null) {
+                                        existing.setData(trimmedData);
+                                        existing.setPercentage(percentage);
+                                        userLinkedDataRepository.save(existing);
+                                } else {
+                                        // Create new entry
+                                        UserLinkedData newEntry = new UserLinkedData(userId, "strength", trimmedData,
+                                                        percentage);
+                                        userLinkedDataRepository.save(newEntry);
+                                }
+                        });
                 }
 
-                // Add weaknesses
-                if (report.getWeaknesses() != null) {
-                        for (Map.Entry<String, Integer> entry : report.getWeaknesses().entrySet()) {
-                                UserLinkedData data = new UserLinkedData(
-                                                userId,
-                                                "weakness",
-                                                entry.getKey(),
-                                                entry.getValue());
-                                dataToSave.add(data);
-                        }
-                }
+                // Update or add weaknesses
+                if (weaknesses != null) {
+                        weaknesses.forEach((data, percentage) -> {
+                                String trimmedData = data.trim();
+                                UserLinkedData existing = userLinkedDataRepository.findByUserIdAndTypeAndData(userId,
+                                                "weakness", trimmedData);
 
-                if (!dataToSave.isEmpty()) {
-                        userLinkedDataRepository.saveAll(dataToSave);
-                        log.info("[Student-Analysis-Processor] Saved {} user linked data entries", dataToSave.size());
+                                if (existing != null) {
+                                        existing.setData(trimmedData);
+                                        existing.setPercentage(percentage);
+                                        userLinkedDataRepository.save(existing);
+                                } else {
+                                        UserLinkedData newEntry = new UserLinkedData(userId, "weakness", trimmedData,
+                                                        percentage);
+                                        userLinkedDataRepository.save(newEntry);
+                                }
+                        });
                 }
+        }
+
+        /**
+         * Clean duplicate entries for a given user and type
+         * Keeps the entry with the highest percentage
+         */
+        private void cleanDuplicates(String userId, String type) {
+                List<UserLinkedData> all = userLinkedDataRepository.findByUserIdAndType(userId, type);
+
+                // Group by normalized data (case-insensitive)
+                Map<String, List<UserLinkedData>> grouped = all.stream()
+                                .collect(Collectors.groupingBy(ud -> ud.getData().trim().toLowerCase()));
+
+                // For each group with duplicates, keep the one with max percentage and delete
+                // others
+                grouped.values().stream()
+                                .filter(group -> group.size() > 1)
+                                .forEach(group -> {
+                                        UserLinkedData keep = group.stream()
+                                                        .max(Comparator.comparingInt(UserLinkedData::getPercentage))
+                                                        .orElse(group.get(0));
+
+                                        group.stream()
+                                                        .filter(ud -> !ud.getId().equals(keep.getId()))
+                                                        .forEach(userLinkedDataRepository::delete);
+                                });
         }
 }

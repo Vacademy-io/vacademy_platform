@@ -1548,7 +1548,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
      * Find limited activity logs with only necessary fields for processing
      * Used by LLM analytics scheduler to optimize data fetching
      */
-    @Query(value = "SELECT id, source_type, raw_json, processed_json, status, created_at FROM activity_log WHERE status IN (:statuses) ORDER BY created_at ASC LIMIT :limit", nativeQuery = true)
+    @Query(value = "SELECT id, source_type AS sourceType, raw_json AS rawJson, processed_json AS processedJson, status, created_at AS createdAt FROM activity_log WHERE status IN (:statuses) ORDER BY created_at ASC LIMIT :limit", nativeQuery = true)
     List<ActivityLogProcessingProjection> findProcessingDataByStatusWithLimit(@Param("statuses") List<String> statuses,
             @Param("limit") int limit);
 

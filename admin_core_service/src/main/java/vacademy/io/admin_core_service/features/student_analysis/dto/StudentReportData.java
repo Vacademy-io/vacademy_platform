@@ -17,6 +17,7 @@ import java.util.Map;
 public class StudentReportData {
     private String learningFrequency; // markdown
     private String progress; // markdown
+    private String studentEfforts; // markdown
     private String topicsOfImprovement; // markdown
     private String topicsOfDegradation; // markdown
     private String remedialPoints; // markdown

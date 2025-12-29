@@ -13,6 +13,9 @@ import vacademy.io.admin_core_service.features.student_analysis.dto.*;
 import vacademy.io.admin_core_service.features.student_analysis.entity.StudentAnalysisProcess;
 import vacademy.io.admin_core_service.features.student_analysis.repository.StudentAnalysisProcessRepository;
 import vacademy.io.admin_core_service.features.student_analysis.service.StudentAnalysisProcessorService;
+import vacademy.io.admin_core_service.features.student_analysis.dto.UserLinkedDataUpdateRequest;
+import vacademy.io.admin_core_service.features.student_analysis.entity.UserLinkedData;
+import vacademy.io.admin_core_service.features.student_analysis.repository.UserLinkedDataRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -34,6 +37,7 @@ public class StudentAnalysisController {
         private final StudentAnalysisProcessRepository processRepository;
         private final StudentAnalysisProcessorService processorService;
         private final ObjectMapper objectMapper;
+        private final UserLinkedDataRepository userLinkedDataRepository;
 
         @PostMapping("/initiate")
         @Operation(summary = "Initiate student analysis report generation", description = "Starts async processing of student analysis. Returns a process ID to check status later.")
@@ -185,6 +189,53 @@ public class StudentAnalysisController {
                                                         .totalElements(0L)
                                                         .pageSize(size)
                                                         .build());
+                }
+        }
+
+        @GetMapping("/user-linked-data/{userId}")
+        @Operation(summary = "Get all strengths and weaknesses for a user", description = "Retrieves all user linked data (strengths and weaknesses) for the specified user.")
+        public ResponseEntity<List<UserLinkedData>> getUserLinkedData(@PathVariable String userId) {
+                log.info("[Student-Analysis-API] Fetching user linked data for user: {}", userId);
+                try {
+                        List<UserLinkedData> data = userLinkedDataRepository.findByUserId(userId);
+                        return ResponseEntity.ok(data);
+                } catch (Exception e) {
+                        log.error("[Student-Analysis-API] Error fetching user linked data for user: {}", userId, e);
+                        return ResponseEntity.internalServerError().build();
+                }
+        }
+
+        @PutMapping("/user-linked-data/{userId}")
+        @Operation(summary = "Update user linked data", description = "Add, update, or delete user linked data entries for strengths and weaknesses.")
+        public ResponseEntity<String> updateUserLinkedData(@PathVariable String userId,
+                        @RequestBody List<UserLinkedDataUpdateRequest> updates) {
+                log.info("[Student-Analysis-API] Updating user linked data for user: {}", userId);
+                try {
+                        for (UserLinkedDataUpdateRequest update : updates) {
+                                if ("delete".equals(update.getAction())) {
+                                        userLinkedDataRepository.deleteById(update.getId());
+                                } else if ("add".equals(update.getAction())) {
+                                        UserLinkedData data = new UserLinkedData(userId, update.getType(),
+                                                        update.getData(), update.getPercentage());
+                                        userLinkedDataRepository.save(data);
+                                } else if ("update".equals(update.getAction())) {
+                                        UserLinkedData existing = userLinkedDataRepository.findById(update.getId())
+                                                        .orElse(null);
+                                        if (existing != null) {
+                                                if (update.getData() != null && !update.getData().isEmpty()) {
+                                                        existing.setData(update.getData());
+                                                }
+                                                if (update.getPercentage() != null) {
+                                                        existing.setPercentage(update.getPercentage());
+                                                }
+                                                userLinkedDataRepository.save(existing);
+                                        }
+                                }
+                        }
+                        return ResponseEntity.ok("Updated successfully");
+                } catch (Exception e) {
+                        log.error("[Student-Analysis-API] Error updating user linked data for user: {}", userId, e);
+                        return ResponseEntity.internalServerError().body("Update failed");
                 }
         }
 }

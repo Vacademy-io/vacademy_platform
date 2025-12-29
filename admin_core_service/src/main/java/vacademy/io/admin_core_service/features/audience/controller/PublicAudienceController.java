@@ -6,11 +6,8 @@ import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.audience.dto.AudienceDTO;
 import vacademy.io.admin_core_service.features.audience.dto.SubmitLeadRequestDTO;
 import vacademy.io.admin_core_service.features.audience.service.AudienceService;
-import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
-import vacademy.io.admin_core_service.features.common.enums.CustomFieldTypeEnum;
 import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
 
-import java.util.List;
 
 /**
  * Public REST Controller for Audience Management

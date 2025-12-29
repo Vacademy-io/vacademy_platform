@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.learner.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -9,6 +11,7 @@ import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInviteService;
 import vacademy.io.admin_core_service.features.enroll_invite.service.SubOrgService;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.PaymentOptionOperationFactory;
 import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.PaymentOptionOperationStrategy;
 import vacademy.io.admin_core_service.features.notification.service.DynamicNotificationService;
@@ -77,13 +80,18 @@ public class LearnerEnrollRequestService {
 
     @Autowired
     private ReenrollmentGapValidationService reenrollmentGapValidationService;
+    private InstituteRepository instituteRepository;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Transactional
     public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
         LearnerPackageSessionsEnrollDTO enrollDTO = learnerEnrollRequestDTO.getLearnerPackageSessionEnroll();
         if (!StringUtils.hasText(learnerEnrollRequestDTO.getUser().getId())) {
+            boolean sendCredentials = getSendCredentialsFlag(learnerEnrollRequestDTO.getInstituteId());
             UserDTO user = authService.createUserFromAuthService(learnerEnrollRequestDTO.getUser(),
-                    learnerEnrollRequestDTO.getInstituteId(), true);
+                    learnerEnrollRequestDTO.getInstituteId(), sendCredentials);
             learnerEnrollRequestDTO.setUser(user);
             // Generate coupon code for new learner enrollment
             learnerCouponService.generateCouponCodeForLearner(user.getId());
@@ -186,11 +194,11 @@ public class LearnerEnrollRequestService {
 
         LearnerEnrollResponseDTO response;
         response = enrollLearnerToBatch(
-            learnerEnrollRequestDTO,
-            enrollDTO,
-            enrollInvite,
-            paymentOption,
-            userPlan);
+                learnerEnrollRequestDTO,
+                enrollDTO,
+                enrollInvite,
+                paymentOption,
+                userPlan);
         // Send enrollment notifications ONLY for FREE enrollments (status = ACTIVE)
         // For PAID enrollments, notifications will be sent after webhook confirms
         // payment
@@ -322,6 +330,82 @@ public class LearnerEnrollRequestService {
                 userPlan,
                 Map.of(), // optional extra data,
                 learnerEnrollRequestDTO.getLearnerExtraDetails());
+    }
+
+
+
+    /**
+     * Extract sendCredentials flag from institute's setting_json
+     *
+     * Expected JSON structure:
+     * {
+     *   "setting": {
+     *     "LEARNER_ENROLLMENT_SETTING": {
+     *       "key": "LEARNER_ENROLLMENT_SETTING",
+     *       "name": "Learner Enrollment Settings",
+     *       "data": {
+     *         "sendCredentials": true/false
+     *       }
+     *     }
+     *   }
+     * }
+     *
+     * @param instituteId The institute ID
+     * @return true if credentials should be sent (default), false otherwise
+     */
+    private boolean getSendCredentialsFlag(String instituteId) {
+        try {
+            Optional<Institute> instituteOpt = instituteRepository.findById(instituteId);
+
+            if (instituteOpt.isEmpty()) {
+                log.warn("Institute not found with id: {} - defaulting to sendCredentials=true", instituteId);
+                return true;
+            }
+
+            Institute institute = instituteOpt.get();
+            String settingJson = institute.getSetting();
+
+            if (!StringUtils.hasText(settingJson)) {
+                log.info("No setting_json found for institute: {} - defaulting to sendCredentials=true", instituteId);
+                return true;
+            }
+
+            JsonNode rootNode = objectMapper.readTree(settingJson);
+
+            // Check each level of the path to provide better error messages
+            if (!rootNode.has("setting")) {
+                log.info("'setting' object not found in setting_json for institute: {} - defaulting to sendCredentials=true", instituteId);
+                return true;
+            }
+
+            JsonNode settingNode = rootNode.path("setting");
+            if (!settingNode.has("LEARNER_ENROLLMENT_SETTING")) {
+                log.info("'LEARNER_ENROLLMENT_SETTING' not found in setting_json for institute: {} - defaulting to sendCredentials=true", instituteId);
+                return true;
+            }
+
+            JsonNode enrollmentSettingNode = settingNode.path("LEARNER_ENROLLMENT_SETTING");
+            if (!enrollmentSettingNode.has("data")) {
+                log.info("'data' object not found in LEARNER_ENROLLMENT_SETTING for institute: {} - defaulting to sendCredentials=true", instituteId);
+                return true;
+            }
+
+            JsonNode dataNode = enrollmentSettingNode.path("data");
+            if (!dataNode.has("sendCredentials")) {
+                log.info("'sendCredentials' field not found in LEARNER_ENROLLMENT_SETTING.data for institute: {} - defaulting to sendCredentials=true", instituteId);
+                return true;
+            }
+
+            JsonNode sendCredentialsNode = dataNode.path("sendCredentials");
+            boolean sendCredentials = sendCredentialsNode.asBoolean(true);
+            log.info("Institute {} sendCredentials setting found: {}", instituteId, sendCredentials);
+            return sendCredentials;
+
+        } catch (Exception e) {
+            log.error("Error parsing setting_json for institute: {} - defaulting to sendCredentials=true",
+                    instituteId, e);
+            return true;
+        }
     }
 
 }

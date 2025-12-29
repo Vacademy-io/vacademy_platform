@@ -410,10 +410,7 @@ public class UserPlanService {
                 userPlanFilterDTO.getInstituteId());
         Sort thisSort = ListService.createSortObject(userPlanFilterDTO.getSortColumns());
         Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);
-        List<String> status = userPlanFilterDTO.getStatuses();
-        if (status == null) {
-            status = List.of();
-        }
+        List<String> status = List.of(UserPlanStatusEnum.ACTIVE.name(),UserPlanStatusEnum.PENDING.name(),UserPlanStatusEnum.PENDING_FOR_PAYMENT.name(),UserPlanStatusEnum.CANCELED.name(),UserPlanStatusEnum.EXPIRED.name(),UserPlanStatusEnum.PAYMENT_FAILED.name(),UserPlanStatusEnum.TERMINATED.name());
         Page<UserPlan> userPlansPage = userPlanRepository.findByUserIdAndInstituteIdWithFilters(
                 userPlanFilterDTO.getUserId(), userPlanFilterDTO.getInstituteId(), status, pageable);
 

@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteDTO
 
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
+import java.util.Date;
 import java.util.List;
 
 @Data
@@ -41,8 +42,8 @@ public class UserPlanDTO {
     private LocalDateTime updatedAt;
 
     // --- Added Date Fields ---
-    private Timestamp startDate;
-    private Timestamp endDate;
+    private Date startDate;
+    private Date endDate;
     // -------------------------
 
     private List<PaymentLogDTO> paymentLogs;

@@ -12,7 +12,8 @@ import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
 import vacademy.io.admin_core_service.features.student_analysis.dto.StudentAnalysisData;
 import vacademy.io.admin_core_service.features.student_analysis.dto.StudentReportData;
-
+import vacademy.io.admin_core_service.features.student_analysis.entity.UserLinkedData;
+import vacademy.io.admin_core_service.features.student_analysis.repository.UserLinkedDataRepository;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
@@ -39,9 +40,12 @@ public class StudentReportLLMService {
 
         private final WebClient webClient;
         private final ObjectMapper objectMapper;
+        private final UserLinkedDataRepository userLinkedDataRepository;
 
-        public StudentReportLLMService(@Value("${openrouter.api.key}") String apiKey, ObjectMapper objectMapper) {
+        public StudentReportLLMService(@Value("${openrouter.api.key}") String apiKey, ObjectMapper objectMapper,
+                        UserLinkedDataRepository userLinkedDataRepository) {
                 this.objectMapper = objectMapper;
+                this.userLinkedDataRepository = userLinkedDataRepository;
 
                 this.webClient = WebClient.builder()
                                 .baseUrl(API_URL)
@@ -58,10 +62,13 @@ public class StudentReportLLMService {
                 log.info("[Student-Report-LLM] Generating report for date range: {} to {}",
                                 data.getStartDateIso(), data.getEndDateIso());
 
-                String prompt = createStudentReportPrompt(data);
+                // Fetch existing user-linked data
+                List<UserLinkedData> existingData = userLinkedDataRepository.findByUserId(data.getUserId());
+
+                String prompt = createStudentReportPrompt(data, existingData);
 
                 // Try each model in priority order with retries
-                return tryModelsWithFallback(prompt, 0);
+                return tryModelsWithFallback(prompt, 0, data.getUserId());
         }
 
         /**
@@ -69,18 +76,18 @@ public class StudentReportLLMService {
          * 
          * @param prompt     The prompt to send to LLM
          * @param modelIndex Current model index in priority list
+         * @param userId     The user ID for the report
          * @return Mono containing the report or error
          */
-        private Mono<StudentReportData> tryModelsWithFallback(String prompt, int modelIndex) {
+        private Mono<StudentReportData> tryModelsWithFallback(String prompt, int modelIndex, String userId) {
                 if (modelIndex >= MODEL_PRIORITY.size()) {
                         log.error("[Student-Report-LLM] All models failed after retries");
                         return Mono.error(new RuntimeException("All LLM models failed. Tried: " + MODEL_PRIORITY));
                 }
 
                 String currentModel = MODEL_PRIORITY.get(modelIndex);
-                log.info("[Student-Report-LLM] Attempting with model: {} (priority {})", currentModel, modelIndex + 1);
 
-                return generateWithModel(prompt, currentModel)
+                return generateWithModel(prompt, currentModel, userId)
                                 .retryWhen(Retry.fixedDelay(MAX_RETRIES_PER_MODEL, Duration.ofSeconds(2))
                                                 .doBeforeRetry(signal -> log.warn(
                                                                 "[Student-Report-LLM] Retry {}/{} for model: {}",
@@ -94,14 +101,14 @@ public class StudentReportLLMService {
                                 .onErrorResume(error -> {
                                         log.error("[Student-Report-LLM] Model {} failed: {}. Trying next model...",
                                                         currentModel, error.getMessage());
-                                        return tryModelsWithFallback(prompt, modelIndex + 1);
+                                        return tryModelsWithFallback(prompt, modelIndex + 1, userId);
                                 });
         }
 
         /**
          * Generate report with specific model
          */
-        private Mono<StudentReportData> generateWithModel(String prompt, String model) {
+        private Mono<StudentReportData> generateWithModel(String prompt, String model, String userId) {
                 Map<String, Object> payload = Map.of(
                                 "model", model,
                                 "messages", List.of(
@@ -118,10 +125,10 @@ public class StudentReportLLMService {
                                 .retrieve()
                                 .bodyToMono(String.class)
                                 .timeout(Duration.ofSeconds(RESPONSE_TIMEOUT_SECONDS))
-                                .flatMap(response -> parseResponse(response, model));
+                                .flatMap(response -> parseResponse(response, model, userId));
         }
 
-        private String createStudentReportPrompt(StudentAnalysisData data) {
+        private String createStudentReportPrompt(StudentAnalysisData data, List<UserLinkedData> existingData) {
                 return String.format(
                                 """
                                                 Analyze the following comprehensive student data and generate a detailed performance report.
@@ -140,25 +147,18 @@ public class StudentReportLLMService {
                                                 **Learning Operations Summary:**
                                                 %s
 
+                                                **Existing Strengths and Weaknesses:**
+                                                %s
+
                                                 Generate a JSON response with the following structure:
                                                 {
-                                                  "learning_frequency": "Markdown formatted analysis of student's learning patterns, frequency of engagement, consistency in activities, and peak learning times. Include specific observations about login patterns and activity completion rates.",
-
-                                                  "progress": "Markdown formatted comprehensive analysis of student's progress over the time period. Include improvements in performance, completion rates, engagement trends, and milestone achievements. Compare early vs. recent activities.",
-
-                                                  "topics_of_improvement": "Markdown formatted list of topics where the student showed improvement or mastery. Include specific topics, percentage improvements, and evidence from the data. Use bullet points with explanations.",
-
-                                                  "topics_of_degradation": "Markdown formatted list of topics where performance declined or showed concerning patterns. Include specific topics, areas of struggle, and supporting evidence. Use bullet points with explanations.",
-
-                                                  "remedial_points": "Markdown formatted actionable recommendations for improvement. Include:
-                                                  - Specific learning strategies
-                                                  - Time management suggestions
-                                                  - Topic-specific study plans
-                                                  - Engagement improvement tactics
-                                                  - Practice recommendations
-                                                  Use numbered list format with detailed explanations.",
-
-                                                  "strengths": {
+                                                  "learning_frequency": "Markdown formatted detailed analysis of learning patterns and engagement.",
+                                                  "progress": "Markdown formatted comprehensive analysis of progress and trends.",
+                                                  "student_efforts": "Markdown formatted detailed summary of efforts put in, including time spent and activities completed.",
+                                                  "topics_of_improvement": "Markdown formatted detailed list of improved topics with explanations and evidence.",
+                                                  "topics_of_degradation": "Markdown formatted detailed list of declined topics with explanations and evidence.",
+                                                  "remedial_points": "Markdown formatted detailed actionable recommendations.",
+                                                 "strengths": {
                                                     "topic_name_1": 85,
                                                     "topic_name_2": 90
                                                   },
@@ -175,18 +175,18 @@ public class StudentReportLLMService {
                                                 3. **Topics of Improvement:** Extract topic names from activity data. Score 70-100 for strong performance
                                                 4. **Topics of Degradation:** Identify declining performance areas. Score 0-50 for weak areas
                                                 5. **Remedial Points:** Provide 5-10 specific, actionable recommendations tailored to the student's needs
-                                                6. **Strengths/Weaknesses:** Use actual topic names from the data with percentage scores (0-100)
+                                                6. **Strengths/Weaknesses:** Generate new strengths and weaknesses based on the current data if actually needed. Update existing scores if the topics match exactly or are very similar (e.g., consolidate 'basic_arithmetic' and 'math_execution' into 'arithmetic'). Avoid creating duplicates by merging related topics under consistent names. Use strict naming format: Title Case (e.g., 'Basic Arithmetic', 'Math Execution') for all topic names to ensure consistency and prevent duplicates. Focus on meaningful academic subjects, skills, and topics relevant to student learning, such as Mathematics, Science, Language Arts, History, Algebra, P-block, Motion, Reading Comprehension, Problem Solving, etc. Avoid vague, unrelated, or nonsensical terms (e.g., use 'Spelling' instead of 'Geographic Spelling' or 'Spelling Accuracy'). Ensure topics are specific, educational, and directly related to the student's performance data.
 
-                                                **Analysis Focus:**
-                                                - Base insights on actual activity data and learning operations
-                                                - Look for patterns in video watching, quiz completion, document reading
-                                                - Consider time spent, completion percentages, and marked activities
-                                                - Identify topics from processed activity insights
-                                                - Be specific and data-driven in all recommendations
-                                                - Use straight forward language suitable for students and educators
-                                                - Focus ENTIRELY on the student's learning and performance, NOT on system evaluation or technical aspects
-
-                                                Return ONLY valid JSON. Be thorough, specific, and actionable in your analysis.
+                                                Guidelines:
+                                                - Base on actual data and incorporate existing assessments.
+                                                - Strengths/Weaknesses: Output the new list, updating existing where applicable, ensuring no duplicates and merging similar topics. Generate topics that are meaningful and directly related to student performance in academic areas.
+                                                - Ensure all fields are populated with detailed, descriptive content; do not leave any empty.
+                                                - Be data-driven, specific, and actionable.
+                                                - Identify patterns, trends, and correlations.
+                                                - Provide evidence-based observations.
+                                                - Suggest practical, personalized strategies for improvement.
+                                                - Use straightforward language suitable for educators, students and parents.
+                                                - Return ONLY valid JSON.
                                                 """,
                                 data.getStartDateIso(),
                                 data.getEndDateIso(),
@@ -196,7 +196,8 @@ public class StudentReportLLMService {
                                 data.getTotalActiveTimeMinutes(),
                                 data.getTotalActiveTimeMinutes() / 60.0,
                                 formatActivityLogs(data.getProcessedActivityLogs()),
-                                formatLearnerOperations(data.getLearnerOperations()));
+                                formatLearnerOperations(data.getLearnerOperations()),
+                                formatExistingData(existingData));
         }
 
         private String formatActivityLogs(List<String> logs) {
@@ -225,7 +226,20 @@ public class StudentReportLLMService {
                 return formatted.toString();
         }
 
-        private Mono<StudentReportData> parseResponse(String responseBody, String model) {
+        private String formatExistingData(List<UserLinkedData> existingData) {
+                if (existingData == null || existingData.isEmpty()) {
+                        return "No existing strengths and weaknesses recorded.";
+                }
+
+                StringBuilder formatted = new StringBuilder();
+                for (UserLinkedData data : existingData) {
+                        formatted.append(String.format("- %s: %s (%d%%)\n",
+                                        data.getType(), data.getData(), data.getPercentage()));
+                }
+                return formatted.toString();
+        }
+
+        private Mono<StudentReportData> parseResponse(String responseBody, String model, String userId) {
                 try {
                         JsonNode root = objectMapper.readTree(responseBody);
                         JsonNode contentNode = root.path("choices").path(0).path("message").path("content");
@@ -249,6 +263,7 @@ public class StudentReportLLMService {
                         StudentReportData reportData = StudentReportData.builder()
                                         .learningFrequency(parsedContent.path("learning_frequency").asText())
                                         .progress(parsedContent.path("progress").asText())
+                                        .studentEfforts(parsedContent.path("student_efforts").asText())
                                         .topicsOfImprovement(parsedContent.path("topics_of_improvement").asText())
                                         .topicsOfDegradation(parsedContent.path("topics_of_degradation").asText())
                                         .remedialPoints(parsedContent.path("remedial_points").asText())
@@ -275,4 +290,5 @@ public class StudentReportLLMService {
                 }
                 return result;
         }
+
 }

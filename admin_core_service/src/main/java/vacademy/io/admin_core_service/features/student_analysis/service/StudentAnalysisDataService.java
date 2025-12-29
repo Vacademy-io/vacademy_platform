@@ -75,6 +75,7 @@ public class StudentAnalysisDataService {
                                 loginStats.getAvgSessionDurationMinutes(), loginStats.getTotalActiveTimeMinutes());
 
                 return StudentAnalysisData.builder()
+                                .userId(userId)
                                 .processedActivityLogs(processedLogs)
                                 .totalLogins(loginStats.getTotalLogins())
                                 .lastLoginTime(loginStats.getLastLoginTime())

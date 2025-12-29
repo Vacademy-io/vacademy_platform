@@ -16,6 +16,9 @@ import java.util.List;
 @AllArgsConstructor
 @NoArgsConstructor
 public class StudentAnalysisData {
+        // Student identifier
+        private String userId;
+
         // Processed activity logs (last 5)
         private List<String> processedActivityLogs;
 

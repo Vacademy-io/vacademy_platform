@@ -105,6 +105,7 @@ Authorization: Bearer <your-jwt-token>
   "report": {
     "learning_frequency": "## Learning Frequency Analysis\n\nThe student has been moderately active during this period...",
     "progress": "## Overall Progress\n\nThe student has shown consistent improvement...",
+    "student_efforts": "## Student Efforts\n\nThe student has spent 45 hours actively engaged, completed 120 activities including 50 assessments and 70 video watches...",
     "topics_of_improvement": "## Areas of Improvement\n\n- Mathematics: 85% proficiency\n- Science: 78% proficiency...",
     "topics_of_degradation": "## Areas Needing Attention\n\n- English Literature: Declined from 75% to 65%...",
     "remedial_points": "## Recommended Remedial Actions\n\n1. Focus on grammar fundamentals\n2. Practice more reading comprehension...",
@@ -192,6 +193,7 @@ GET /admin-core-service/v1/student-analysis/reports/user/user-123?page=0&size=10
       "report": {
         "learning_frequency": "## Learning Frequency Analysis\n\nThe student has been moderately active during this period...",
         "progress": "## Overall Progress\n\nThe student has shown consistent improvement...",
+        "student_efforts": "## Student Efforts\n\nThe student has spent 45 hours actively engaged, completed 120 activities including 50 assessments and 70 video watches...",
         "topics_of_improvement": "## Areas of Improvement\n\n- Mathematics: 85% proficiency\n- Science: 78% proficiency...",
         "topics_of_degradation": "## Areas Needing Attention\n\n- English Literature: Declined from 75% to 65%...",
         "remedial_points": "## Recommended Remedial Actions\n\n1. Focus on grammar fundamentals\n2. Practice more reading comprehension...",
@@ -218,6 +220,7 @@ GET /admin-core-service/v1/student-analysis/reports/user/user-123?page=0&size=10
       "report": {
         "learning_frequency": "## Learning Frequency Analysis\n\nThe student showed high engagement during December...",
         "progress": "## Overall Progress\n\nExcellent progress in technical subjects...",
+        "student_efforts": "## Student Efforts\n\nThe student has spent 60 hours actively engaged, completed 150 activities including 60 assessments and 90 video watches...",
         "topics_of_improvement": "## Areas of Improvement\n\n- Computer Science: 92% proficiency\n- Physics: 88% proficiency...",
         "topics_of_degradation": "## Areas Needing Attention\n\n- Social Studies: Declined from 70% to 62%...",
         "remedial_points": "## Recommended Remedial Actions\n\n1. Review social studies fundamentals\n2. Practice current affairs...",
@@ -254,21 +257,161 @@ GET /admin-core-service/v1/student-analysis/reports/user/user-123?page=0&size=10
 
 ---
 
-## Report Data Structure
+### 4. Get User Linked Data (Strengths and Weaknesses)
+
+**Endpoint**: `GET /admin-core-service/v1/student-analysis/user-linked-data/{userId}`
+
+**Description**: Retrieves all strengths and weaknesses linked data for a specific user. This data is used to track curriculum-specific performance metrics.
+
+**Authentication**: Required (JWT Token in Authorization header)
+
+**Path Parameters**:
+
+- `userId` (string, required): The user ID to fetch linked data for
+
+**Request Headers**:
+
+```http
+Authorization: Bearer <your-jwt-token>
+```
+
+**Example Request**:
+
+```
+GET /admin-core-service/v1/student-analysis/user-linked-data/user-123
+```
+
+**Response** (Success - 200 OK):
+
+```json
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "userId": "user-123",
+    "type": "strength",
+    "data": "Algebra",
+    "percentage": 85,
+    "createdAt": "2024-12-01T10:00:00",
+    "updatedAt": "2024-12-01T10:00:00"
+  },
+  {
+    "id": "660e8400-e29b-41d4-a716-446655440111",
+    "userId": "user-123",
+    "type": "weakness",
+    "data": "Geometry",
+    "percentage": 45,
+    "createdAt": "2024-12-01T10:05:00",
+    "updatedAt": "2024-12-01T10:05:00"
+  }
+]
+```
+
+---
+
+### 5. Update User Linked Data (Strengths and Weaknesses)
+
+**Endpoint**: `PUT /admin-core-service/v1/student-analysis/user-linked-data/{userId}`
+
+**Description**: Updates (add, update, or delete) user linked data entries for strengths and weaknesses. Supports batch operations.
+
+**Authentication**: Required (JWT Token in Authorization header)
+
+**Path Parameters**:
+
+- `userId` (string, required): The user ID to update linked data for
+
+**Request Headers**:
+
+```http
+Authorization: Bearer <your-jwt-token>
+Content-Type: application/json
+```
+
+**Request Body** (Array of updates):
+
+```json
+[
+  {
+    "id": "existing-uuid", // Required for update/delete
+    "action": "add", // "add", "update", "delete"
+    "type": "strength", // "strength" or "weakness" (required for add)
+    "data": "Algebra", // Topic name (required for add, optional for update)
+    "percentage": 85 // Score 0-100 (required for add, optional for update)
+  }
+]
+```
+
+**Actions**:
+
+- `add`: Creates a new entry. Requires `type`, `data`, `percentage`.
+- `update`: Updates an existing entry. Requires `id`. Can update `data` and/or `percentage` if provided.
+- `delete`: Deletes an existing entry. Requires `id`.
+
+**Example Request (Add)**:
+
+```json
+[
+  {
+    "action": "add",
+    "type": "strength",
+    "data": "Calculus",
+    "percentage": 90
+  }
+]
+```
+
+**Example Request (Update)**:
+
+```json
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "action": "update",
+    "data": "Advanced Algebra",
+    "percentage": 88
+  }
+]
+```
+
+**Example Request (Delete)**:
+
+```json
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "action": "delete"
+  }
+]
+```
+
+**Response** (Success - 200 OK):
+
+```json
+"Updated successfully"
+```
+
+**Response** (Error - 500 Internal Server Error):
+
+```json
+"Update failed"
+```
+
+---
 
 ### StudentReportData Object
 
-| Field                   | Type              | Description                                                      |
-| ----------------------- | ----------------- | ---------------------------------------------------------------- |
-| `learning_frequency`    | string (markdown) | Analysis of student's learning frequency and engagement patterns |
-| `progress`              | string (markdown) | Overall progress assessment and trends                           |
-| `topics_of_improvement` | string (markdown) | Topics where student has shown improvement                       |
-| `topics_of_degradation` | string (markdown) | Topics where student performance has declined                    |
-| `remedial_points`       | string (markdown) | Recommended remedial actions and focus areas                     |
-| `strengths`             | object            | Map of topic names to proficiency percentages (0-100)            |
-| `weaknesses`            | object            | Map of topic names to proficiency percentages (0-100)            |
+| Field                   | Type              | Description                                                                                                             |
+| ----------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `learning_frequency`    | string (markdown) | Analysis of student's learning frequency and engagement patterns                                                        |
+| `progress`              | string (markdown) | Overall progress assessment and trends                                                                                  |
+| `student_efforts`       | string (markdown) | Summary of efforts put in, including time spent and activities completed                                                |
+| `topics_of_improvement` | string (markdown) | Topics where student has shown improvement                                                                              |
+| `topics_of_degradation` | string (markdown) | Topics where student performance has declined                                                                           |
+| `remedial_points`       | string (markdown) | Recommended remedial actions and focus areas                                                                            |
+| `strengths`             | object            | Map of specific curriculum topics (subjects, modules, chapters, slides, assessments) to proficiency percentages (0-100) |
+| `weaknesses`            | object            | Map of specific curriculum topics (subjects, modules, chapters, slides, assessments) to proficiency percentages (0-100) |
 
-**Note**: All markdown fields support full markdown formatting including headers, lists, bold, italic, etc.
+**Note**: All markdown fields support full markdown formatting including headers, lists, bold, italic, etc. All fields are guaranteed to be populated with meaningful content.
 
 ## Error Handling
 
@@ -286,8 +429,9 @@ GET /admin-core-service/v1/student-analysis/reports/user/user-123?page=0&size=10
 The student analysis report aggregates data from multiple sources:
 
 1. **Activity Logs**: Assessment attempts, video watching, slide interactions
-2. **Login Statistics**: Login frequency, session duration, active time
+2. **Login Statistics**: Login frequency, session duration, active time (used for learning_frequency)
 3. **Learner Operations**: Video progress, chapter completion, module engagement
+4. **User Linked Data**: Manually maintained strengths and weaknesses based on curriculum topics
 
 ---
 
@@ -300,9 +444,10 @@ The student analysis report aggregates data from multiple sources:
 
 ## Changelog
 
-| Version | Date       | Changes                                                                |
-| ------- | ---------- | ---------------------------------------------------------------------- |
-| 1.0.0   | 2024-12-19 | Initial API documentation                                              |
-| 1.1.0   | 2024-12-19 | Added paginated endpoint for fetching all completed reports for a user |
+| Version | Date       | Changes                                                                                                                                                        |
+| ------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.0.0   | 2024-12-19 | Initial API documentation                                                                                                                                      |
+| 1.1.0   | 2024-12-19 | Added paginated endpoint for fetching all completed reports for a user                                                                                         |
+| 1.2.0   | 2024-12-27 | Added student_efforts field to report; updated strengths/weaknesses to curriculum-specific topics; added GET and PUT endpoints for user linked data management |
 
 ---

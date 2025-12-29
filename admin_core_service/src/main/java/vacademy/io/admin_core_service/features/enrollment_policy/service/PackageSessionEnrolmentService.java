@@ -38,8 +38,6 @@ public class PackageSessionEnrolmentService {
     private final AuthService authService;
     private final SubOrgAdminService subOrgAdminService;
 
-    private static final String INSTITUTE_ID = "c5e2ea87-6fc3-44c7-8e42-f38297dff490";
-
     /**
      * Scheduled function to process all ACTIVE UserPlans.
      * Operates on UserPlan entities first, then finds associated mappings.
@@ -49,8 +47,7 @@ public class PackageSessionEnrolmentService {
         log.info("Starting processing of ACTIVE UserPlans");
 
         // Find all ACTIVE UserPlans
-        List<UserPlan> activeUserPlans = userPlanRepository.findById("c1dca08a-ea28-46e6-9386-54edd340a2c9").stream()
-                .toList();
+        List<UserPlan> activeUserPlans = userPlanRepository.findAllByStatusIn(List.of(UserPlanStatusEnum.ACTIVE.name(),UserPlanStatusEnum.CANCELED.name()));
         if (CollectionUtils.isEmpty(activeUserPlans)) {
             log.info("No ACTIVE UserPlans to process");
             return;
@@ -201,38 +198,16 @@ public class PackageSessionEnrolmentService {
      */
     private UserDTO getRepresentativeUser(UserPlan userPlan, List<StudentSessionInstituteGroupMapping> mappings,
             boolean isSubOrg) {
-        if (isSubOrg && StringUtils.hasText(userPlan.getSubOrgId())) {
-            // For SUB_ORG, get ROOT_ADMIN
-            // Use first mapping to get package session ID
-            StudentSessionInstituteGroupMapping firstMapping = mappings.get(0);
-            String packageSessionId = firstMapping.getPackageSession() != null
-                    ? firstMapping.getPackageSession().getId()
-                    : null;
-
-            if (!StringUtils.hasText(packageSessionId)) {
-                log.warn("Package session ID not found for SUB_ORG UserPlan: {}", userPlan.getId());
+        try {
+            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(userPlan.getUserId()));
+            if (CollectionUtils.isEmpty(users)) {
+                log.warn("User not found for UserPlan: {}", userPlan.getId());
                 return null;
             }
-
-            try {
-                return subOrgAdminService.getRootAdminForSubOrg(userPlan.getSubOrgId(), packageSessionId);
-            } catch (Exception e) {
-                log.error("Failed to fetch ROOT_ADMIN for SUB_ORG UserPlan: {}", userPlan.getId(), e);
-                return null;
-            }
-        } else {
-            // For USER, get the individual user
-            try {
-                List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(userPlan.getUserId()));
-                if (CollectionUtils.isEmpty(users)) {
-                    log.warn("User not found for UserPlan: {}", userPlan.getId());
-                    return null;
-                }
-                return users.get(0);
-            } catch (Exception e) {
-                log.error("Failed to fetch user for UserPlan: {}", userPlan.getId(), e);
-                return null;
-            }
+            return users.get(0);
+        } catch (Exception e) {
+            log.error("Failed to fetch user for UserPlan: {}", userPlan.getId(), e);
+            return null;
         }
     }
 

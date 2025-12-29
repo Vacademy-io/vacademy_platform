@@ -274,10 +274,10 @@ public class FinalExpiryProcessor implements IEnrolmentPolicyProcessor {
                     createInvitedEntry(mapping);
                 }
 
-                // Soft delete ACTIVE mapping (mark as TERMINATED)
-                mapping.setStatus(LearnerSessionStatusEnum.TERMINATED.name());
+                // Soft delete ACTIVE mapping (mark as DELETED)
+                mapping.setStatus(LearnerSessionStatusEnum.DELETED.name());
                 mappingRepository.save(mapping);
-                log.info("Marked mapping {} as TERMINATED", mapping.getId());
+                log.info("Marked mapping {} as DELETED", mapping.getId());
 
                 processedCount++;
             } catch (Exception e) {
@@ -422,6 +422,4 @@ public class FinalExpiryProcessor implements IEnrolmentPolicyProcessor {
             log.error("Error notifying ROOT_ADMIN of expiry for sub-org: {}", subOrgId, e);
         }
     }
-
-    // ...existing code for notifications...
 }

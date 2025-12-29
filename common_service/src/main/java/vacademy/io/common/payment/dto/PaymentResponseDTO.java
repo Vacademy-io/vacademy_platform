@@ -13,4 +13,5 @@ public class PaymentResponseDTO {
     private String orderId;
     private String status;
     private String message;
+    private String redirectUrl;
 }

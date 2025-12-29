@@ -80,7 +80,7 @@ public class LearnerEnrollRequestService {
             learnerCouponService.generateCouponCodeForLearner(user.getId());
         }
         EnrollInvite enrollInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
-        PaymentOption paymentOption = getValidatedPaymentOption(enrollDTO.getPaymentOptionId());
+        PaymentOption paymentOption = getValidatedPaymentOption(enrollDTO.getPaymentOptionId(), enrollInvite);
         PaymentPlan paymentPlan = getOptionalPaymentPlan(enrollDTO.getPlanId());
 
         // Determine if this is a SubOrg enrollment and create SubOrg if needed
@@ -201,7 +201,10 @@ public class LearnerEnrollRequestService {
                 .orElseThrow(() -> new IllegalArgumentException("Enroll Invite ID is required."));
     }
 
-    private PaymentOption getValidatedPaymentOption(String paymentOptionId) {
+    private PaymentOption getValidatedPaymentOption(String paymentOptionId, EnrollInvite enrollInvite) {
+        if ("default".equalsIgnoreCase(paymentOptionId)) {
+            return enrollInviteService.getDefaultPaymentOption(enrollInvite);
+        }
         return Optional.ofNullable(paymentOptionId)
                 .map(paymentOptionService::findById)
                 .orElseThrow(() -> new IllegalArgumentException("Payment Option ID is required."));
@@ -222,12 +225,13 @@ public class LearnerEnrollRequestService {
             String source,
             String subOrgId) {
         String userPlanStatus = null;
-        if (paymentOption.getType().equals(PaymentOptionType.SUBSCRIPTION.name())
-                || paymentOption.getType().equals(PaymentOptionType.ONE_TIME.name())) {
+        if (PaymentOptionType.SUBSCRIPTION.name().equalsIgnoreCase(paymentOption.getType())
+                || PaymentOptionType.ONE_TIME.name().equalsIgnoreCase(paymentOption.getType())) {
             userPlanStatus = UserPlanStatusEnum.PENDING_FOR_PAYMENT.name();
         } else {
             userPlanStatus = UserPlanStatusEnum.ACTIVE.name();
-        }        return userPlanService.createUserPlan(
+        }
+        return userPlanService.createUserPlan(
                 userId,
                 paymentPlan,
                 null, // coupon can be handled later if needed

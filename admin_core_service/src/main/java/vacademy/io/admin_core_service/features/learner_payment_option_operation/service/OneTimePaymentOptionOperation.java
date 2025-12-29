@@ -1,5 +1,8 @@
 package vacademy.io.admin_core_service.features.learner_payment_option_operation.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -29,6 +32,8 @@ import java.util.*;
 
 @Service
 public class OneTimePaymentOptionOperation implements PaymentOptionOperationStrategy {
+    private static final Logger log = LoggerFactory.getLogger(OneTimePaymentOptionOperation.class);
+
     @Autowired
     private LearnerBatchEnrollService learnerBatchEnrollService;
 
@@ -79,6 +84,7 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
         }
 
         if (learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest() != null) {
+            log.info("Setting payment amount to {} from plan {}", paymentPlan.getActualPrice(), paymentPlan.getId());
             learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setAmount(paymentPlan.getActualPrice());
         }
         // Process referral request if present
@@ -99,6 +105,7 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
         if (learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest() != null) {
             PaymentInitiationRequestDTO paymentInitiationRequestDTO = learnerPackageSessionsEnrollDTO
                     .getPaymentInitiationRequest();
+            log.info("Initiating payment through PaymentService for user: {}", user.getId());
             PaymentResponseDTO paymentResponseDTO = paymentService.handlePayment(
                     user,
                     learnerPackageSessionsEnrollDTO,
@@ -106,6 +113,12 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
                     enrollInvite,
                     userPlan);
             learnerEnrollResponseDTO.setPaymentResponse(paymentResponseDTO);
+            if (paymentResponseDTO != null && paymentResponseDTO.getResponseData() != null) {
+                Object redirectUrl = paymentResponseDTO.getResponseData().get("redirectUrl");
+                if (redirectUrl != null) {
+                    learnerEnrollResponseDTO.setPaymentRedirectUrl(redirectUrl.toString());
+                }
+            }
         } else {
             throw new VacademyException("PaymentInitiationRequest is null");
         }

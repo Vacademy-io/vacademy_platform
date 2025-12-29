@@ -1396,18 +1396,73 @@ class VideoGenerationPipeline:
     @staticmethod
     def _ensure_fonts(html: str) -> str:
         # Common educational styles (Highlighting, Markers)
-        global_css = (
-            "<style>"
-            ".highlight { "
-            "  background: linear-gradient(120deg, rgba(255, 226, 89, 0.6) 0%, rgba(255, 233, 148, 0.4) 100%); "
-            "  padding: 0 4px; border-radius: 4px; display: inline-block; "
-            "  box-decoration-break: clone; -webkit-box-decoration-break: clone;"
-            "}"
-            ".emphasis { color: #3b82f6; font-weight: bold; }"
-            ".mermaid { display: flex; justify-content: center; width: 100%; margin: 20px auto; }"
-            ":host { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; font-family: 'Lato', sans-serif; }"
-            "</style>"
-        )
+        global_css = """<style>
+            @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&family=Inter:wght@400;600&family=Fira+Code&display=swap');
+            .highlight { 
+              background: linear-gradient(120deg, rgba(255, 226, 89, 0.6) 0%, rgba(255, 233, 148, 0.4) 100%); 
+              padding: 0 4px; border-radius: 4px; display: inline-block; 
+              box-decoration-break: clone; -webkit-box-decoration-break: clone;
+            }
+            .emphasis { color: #3b82f6; font-weight: bold; }
+            .mermaid { display: flex; justify-content: center; width: 100%; margin: 20px auto; }
+
+            /* --- LAYOUT UTILITIES --- */
+            /* 1. Split Layout (Symetric/Asymetric) */
+            .layout-split { 
+              display: grid; grid-template-columns: 1fr 1fr; gap: 60px; 
+              width: 90%; max-width: 1700px; height: 100%; align-items: center; justify-content: center; 
+              text-align: left; 
+            }
+            .layout-split.reverse { direction: rtl; }
+            .layout-split.reverse > * { direction: ltr; }
+            .layout-split.golden-left { grid-template-columns: 1.2fr 0.8fr; }
+            .layout-split.golden-right { grid-template-columns: 0.8fr 1.2fr; }
+            
+            /* 2. Bento Grid */
+            .layout-bento { 
+              display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr); 
+              gap: 24px; width: 90%; max-width: 1700px; height: 80%; align-content: center; 
+            }
+            .bento-card { 
+              background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.08); 
+              backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); 
+              border-radius: 24px; padding: 32px; 
+              display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; 
+              text-align: left; overflow: hidden; position: relative; 
+              box-shadow: 0 4px 20px rgba(0,0,0,0.2); 
+            }
+            .bento-card.dark { background: rgba(0,0,0,0.8); }
+            .bento-card.accent { background: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.3); }
+            .bento-card.center { align-items: center; text-align: center; justify-content: center; }
+            .bento-card.span-2 { grid-column: span 2; }
+            .bento-card.span-row-2 { grid-row: span 2; }
+            
+            /* 3. Hero / Center Focus */
+            .layout-hero { 
+              display: flex; flex-direction: column; align-items: center; justify-content: center; 
+              text-align: center; width: 80%; max-width: 1200px; gap: 32px; 
+            }
+            
+            /* 4. Code Split */
+            .layout-code-split { 
+              display: grid; grid-template-columns: 40% 60%; gap: 40px; 
+              width: 95%; max-width: 1800px; align-items: center; 
+              text-align: left; 
+            }
+            
+            /* Typography Helpers */
+            .text-display { font-family: 'Montserrat', sans-serif; font-size: 64px; font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; }
+            .text-h2 { font-family: 'Montserrat', sans-serif; font-size: 48px; font-weight: 700; margin-bottom: 16px; }
+            .text-body { font-family: 'Inter', sans-serif; font-size: 28px; font-weight: 400; color: #cbd5e1; line-height: 1.5; }
+            .text-label { font-family: 'Fira Code', monospace; font-size: 18px; color: #38bdf8; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; display: block; }
+            
+            .glass-panel { 
+              background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(12px); 
+              border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 40px; 
+            }
+
+            :host { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: 'Inter', sans-serif; }
+            </style>"""
         
         # If the model already imports fonts, trust it.
         # But still inject our global helpers.
@@ -1417,8 +1472,8 @@ class VideoGenerationPipeline:
         # Fallback corporate pairing if none found
         base_style = (
             "<style>"
-            "@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&family=Lato:wght@400;700&display=swap');"
-            ":host { font-family: 'Lato', sans-serif; background: transparent; margin: 0; }"
+            "@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&family=Inter:wght@400;600&display=swap');"
+            ":host { font-family: 'Inter', sans-serif; background: transparent; margin: 0; }"
             "h1, h2, h3, h4, h5, h6 { font-family: 'Montserrat', sans-serif; }"
             "</style>"
         )
@@ -1460,13 +1515,13 @@ class VideoGenerationPipeline:
         snippet = " ".join(words[:22]) + ("..." if len(words) > 22 else "")
         html = (
             "<style>"
-            "@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700&family=Lato:wght@400&display=swap');"
+            "@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700&family=Inter:wght@400;600&display=swap');"
             ".fs-container {"
             "  width: 100vw; height: 100vh;"
             "  display: flex; flex-direction: column; align-items: center; justify-content: center;"
             "  background: #0f172a;"  # Slate 900 solid
             "  color: #f8fafc;"
-            "  font-family: 'Lato', sans-serif;"
+            "  font-family: 'Inter', sans-serif;"
             "  text-align: center;"
             "  padding: 60px;"
             "  box-sizing: border-box;"

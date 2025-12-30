@@ -294,13 +294,13 @@ public class FormWebhookService {
         String lastName = processData.getFormFields().get("last name");
         
         if (StringUtils.hasText(firstName) && StringUtils.hasText(lastName)) {
-            processData.getFormFields().put("full name", firstName + " " + lastName);
+            processData.getFormFields().put("parent name", firstName + " " + lastName);
             logger.debug("Constructed full name from first and last name: {}", firstName + " " + lastName);
         } else if (StringUtils.hasText(firstName)) {
-            processData.getFormFields().put("full name", firstName);
+            processData.getFormFields().put("parent name", firstName);
             logger.debug("Using first name as full name: {}", firstName);
         } else if (StringUtils.hasText(lastName)) {
-            processData.getFormFields().put("full name", lastName);
+            processData.getFormFields().put("parent name", lastName);
             logger.debug("Using last name as full name: {}", lastName);
         }
     }

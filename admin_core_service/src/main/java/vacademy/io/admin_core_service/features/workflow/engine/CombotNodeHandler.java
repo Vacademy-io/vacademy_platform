@@ -142,6 +142,7 @@ public class CombotNodeHandler implements NodeHandler {
 
         // Optional Fields extraction
         String headerImage = (String) data.get("headerImage");
+        String headerVideo = (String) data.get("headerVideo"); // NEW: Extract video link
         String buttonUrlParam = (String) data.get("buttonUrlParam");
         // Default to index "0" (first button) if not provided
         String buttonIndex = (String) data.getOrDefault("buttonIndex", "0");
@@ -155,8 +156,9 @@ public class CombotNodeHandler implements NodeHandler {
 
         List<Map<String, Object>> components = new ArrayList<>();
 
-        // 1. Handle Image Header (Existing Logic)
+        // 1. Handle Header (Image OR Video)
         if (StringUtils.hasText(headerImage)) {
+            // Existing Image Logic
             Map<String, Object> headerComponent = new HashMap<>();
             headerComponent.put("type", "header");
 
@@ -168,6 +170,21 @@ public class CombotNodeHandler implements NodeHandler {
             imageParam.put("image", imageObj);
 
             headerComponent.put("parameters", Collections.singletonList(imageParam));
+            components.add(headerComponent);
+
+        } else if (StringUtils.hasText(headerVideo)) {
+            // NEW: Video Logic (Executed only if headerImage is null/empty)
+            Map<String, Object> headerComponent = new HashMap<>();
+            headerComponent.put("type", "header");
+
+            Map<String, Object> videoObj = new HashMap<>();
+            videoObj.put("link", headerVideo);
+
+            Map<String, Object> videoParam = new HashMap<>();
+            videoParam.put("type", "video");
+            videoParam.put("video", videoObj);
+
+            headerComponent.put("parameters", Collections.singletonList(videoParam));
             components.add(headerComponent);
         }
 
@@ -184,12 +201,12 @@ public class CombotNodeHandler implements NodeHandler {
             components.add(bodyComponent);
         }
 
-        // 3. Handle Dynamic URL Button (NEW LOGIC)
+        // 3. Handle Dynamic URL Button (Existing Logic)
         if (StringUtils.hasText(buttonUrlParam)) {
             Map<String, Object> buttonComponent = new HashMap<>();
             buttonComponent.put("type", "button");
             buttonComponent.put("sub_type", "url");
-            buttonComponent.put("index", buttonIndex); // Dynamic index (e.g., "1" if it is the 2nd button)
+            buttonComponent.put("index", buttonIndex);
 
             Map<String, String> textParam = Map.of("type", "text", "text", buttonUrlParam);
             buttonComponent.put("parameters", Collections.singletonList(textParam));

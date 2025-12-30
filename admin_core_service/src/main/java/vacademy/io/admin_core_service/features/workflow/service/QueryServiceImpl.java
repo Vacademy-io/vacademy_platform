@@ -658,11 +658,11 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
 
     private Map<String, Object> getAudienceResponsesByDayDifference(Map<String, Object> params) {
         String instituteId = (String) params.get("instituteId");
-        String audienceId = (String) params.get("audienceId");
+        String audienceIdParam = (String) params.get("audienceId"); // Renamed to denote it can be multiple
         Integer daysAgo = (Integer) params.get("daysAgo");
 
         // Validate all required params
-        if (instituteId == null || daysAgo == null || audienceId == null) {
+        if (instituteId == null || daysAgo == null || audienceIdParam == null) {
             throw new RuntimeException("Missing parameters: instituteId, audienceId, or daysAgo");
         }
 
@@ -673,26 +673,35 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
         Timestamp startDate = Timestamp.valueOf(startLocal);
         Timestamp endDate = Timestamp.valueOf(endLocal);
 
-        // 2. Fetch Leads (Using the specific Audience repository method)
-        List<AudienceResponse> responses = audienceResponseRepository.findLeadsByAudienceAndDateRange(
-                instituteId, audienceId, startDate, endDate);
+        // 2. Fetch Leads (Looping through comma-separated IDs)
+        List<AudienceResponse> responses = new ArrayList<>();
+
+        // Split by comma and trim whitespace (works for "id1, id2" and just "id1")
+        String[] audienceIds = audienceIdParam.split(",");
+
+        for (String aId : audienceIds) {
+            if (aId != null && !aId.trim().isEmpty()) {
+                List<AudienceResponse> audienceResponses = audienceResponseRepository.findLeadsByAudienceAndDateRange(
+                        instituteId, aId.trim(), startDate, endDate);
+                responses.addAll(audienceResponses);
+            }
+        }
 
         if (responses.isEmpty()) {
             return Map.of("leads", Collections.emptyList());
         }
 
-        // --- START CUSTOM FIELD FETCHING LOGIC ---
+        // --- START CUSTOM FIELD FETCHING LOGIC (Unchanged & Efficient) ---
+        // Since 'responses' now contains leads from ALL audiences, this bulk fetch works perfectly.
 
         // 3. Extract Response IDs to bulk fetch values
         List<String> responseIds = responses.stream().map(AudienceResponse::getId).toList();
 
-        // 4. Fetch Custom Field Values (The actual data: "9198...", "Rahul")
-        // This queries the 'custom_field_values' table
+        // 4. Fetch Custom Field Values
         List<CustomFieldValues> cfValues = customFieldValuesRepository.findBySourceTypeAndSourceIdIn(
                 "AUDIENCE_RESPONSE", responseIds);
 
-        // 5. Fetch Field Definitions (To resolve "cf_123" -> "phone number")
-        // This queries the 'custom_fields' table to get human-readable keys
+        // 5. Fetch Field Definitions
         Set<String> customFieldIds = cfValues.stream()
                 .map(CustomFieldValues::getCustomFieldId)
                 .collect(Collectors.toSet());
@@ -700,14 +709,10 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
         Map<String, String> fieldIdToName = customFieldRepository.findAllById(customFieldIds).stream()
                 .collect(Collectors.toMap(
                         CustomFields::getId,
-                        // Normalize key to lowercase for easy access in SpEL (e.g., "Phone Number" ->
-                        // "phone number")
                         cf -> cf.getFieldName().toLowerCase(),
                         (k1, k2) -> k1));
 
         // 6. Group values by Response ID
-        // Result structure: { "resp_id_1": { "phone number": "999...", "name": "Rahul"
-        // } }
         Map<String, Map<String, String>> responseDataMap = new HashMap<>();
         for (CustomFieldValues cfv : cfValues) {
             String fieldName = fieldIdToName.getOrDefault(cfv.getCustomFieldId(), cfv.getCustomFieldId());
@@ -724,8 +729,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             lead.put("userId", ar.getUserId());
             lead.put("createdAt", ar.getCreatedAt());
 
-            // Merge custom fields into the lead map
-            // This is what makes #this['phone number'] work in your TRANSFORM node
+            // Merge custom fields
             Map<String, String> fields = responseDataMap.getOrDefault(ar.getId(), new HashMap<>());
             lead.putAll(fields);
 
@@ -736,7 +740,6 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
 
         return Map.of("leads", leads);
     }
-
     private Map<String, Object> fetchInstituteSetting(Map<String, Object> params) {
         try {
             String instituteId = (String) params.get("instituteId");

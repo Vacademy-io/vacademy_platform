@@ -133,61 +133,76 @@ public class StudentReportLLMService {
                                 """
                                                 Analyze the following comprehensive student data and generate a detailed performance report.
 
-                                                **Date Range:** %s to %s
+                                                        **Date Range:** %s to %s
 
-                                                **Login Activity:**
-                                                - Total Logins: %d
-                                                - Last Login: %s
-                                                - Average Session Duration: %.1f minutes
-                                                - Total Active Time: %d minutes (%.1f hours)
+                                                        **Login Activity:**
+                                                        - Total Logins: %d
+                                                        - Last Login: %s
+                                                        - Average Session Duration: %.1f minutes
+                                                        - Total Active Time: %d minutes (%.1f hours)
 
-                                                **Processed Activity Insights (Last 5):**
-                                                %s
+                                                        **Processed Activity Insights (Last 5):**
+                                                        %s
 
-                                                **Learning Operations Summary:**
-                                                %s
+                                                        **Learning Operations Summary:**
+                                                        %s
 
-                                                **Existing Strengths and Weaknesses:**
-                                                %s
+                                                        **Existing Strengths and Weaknesses:**
+                                                        %s
 
-                                                Generate a JSON response with the following structure:
-                                                {
-                                                  "learning_frequency": "Markdown formatted detailed analysis of learning patterns and engagement.",
-                                                  "progress": "Markdown formatted comprehensive analysis of progress and trends.",
-                                                  "student_efforts": "Markdown formatted detailed summary of efforts put in, including time spent and activities completed.",
-                                                  "topics_of_improvement": "Markdown formatted detailed list of improved topics with explanations and evidence.",
-                                                  "topics_of_degradation": "Markdown formatted detailed list of declined topics with explanations and evidence.",
-                                                  "remedial_points": "Markdown formatted detailed actionable recommendations.",
-                                                 "strengths": {
-                                                    "topic_name_1": 85,
-                                                    "topic_name_2": 90
-                                                  },
+                                                        Generate a JSON response with the following structure.
 
-                                                  "weaknesses": {
-                                                    "topic_name_1": 35,
-                                                    "topic_name_2": 42
-                                                  }
-                                                }
+                                                        **CRITICAL FORMATTING INSTRUCTION:** The string values inside the JSON must be **Rich Markdown**. To ensure the UI renders this correctly, you must:
+                                                        1. Use **Double Newlines (`\n\n`)** before every Header (`###`), Table, and List. This is mandatory for headers to render with correct sizing.
+                                                        2. Use **Level 3 Headers (`###`)** for section titles inside the text to create a distinct visual hierarchy.
+                                                        3. Ensure Tables have valid Markdown syntax with clear column definitions.
 
-                                                **Important Guidelines:**
-                                                1. **Learning Frequency:** Focus on consistency, engagement patterns, time gaps between activities, and learning habits
-                                                2. **Progress:** Highlight both positive trends and areas needing attention. Be specific with data points
-                                                3. **Topics of Improvement:** Extract topic names from activity data. Score 70-100 for strong performance
-                                                4. **Topics of Degradation:** Identify declining performance areas. Score 0-50 for weak areas
-                                                5. **Remedial Points:** Provide 5-10 specific, actionable recommendations tailored to the student's needs
-                                                6. **Strengths/Weaknesses:** Generate new strengths and weaknesses based on the current data if actually needed. Update existing scores if the topics match exactly or are very similar (e.g., consolidate 'basic_arithmetic' and 'math_execution' into 'arithmetic'). Avoid creating duplicates by merging related topics under consistent names. Use strict naming format: Title Case (e.g., 'Basic Arithmetic', 'Math Execution') for all topic names to ensure consistency and prevent duplicates. Focus on meaningful academic subjects, skills, and topics relevant to student learning, such as Mathematics, Science, Language Arts, History, Algebra, P-block, Motion, Reading Comprehension, Problem Solving, etc. Avoid vague, unrelated, or nonsensical terms (e.g., use 'Spelling' instead of 'Geographic Spelling' or 'Spelling Accuracy'). Ensure topics are specific, educational, and directly related to the student's performance data.
+                                                        {
+                                                          "learning_frequency": "Rich Markdown analysis. Use `### Learning Patterns` as a header. Use tables for session patterns.",
+                                                          "progress": "Rich Markdown analysis. User `### Key Trends`as header. Use comparison tables (Previous vs Current).",
+                                                          "student_efforts": "Rich Markdown summary. Use `### Efforts` as a header. Must include a table: `| Activity 📚 | Time ⏱️ | Status ✅ |`.",
+                                                          "topics_of_improvement": "Rich Markdown list. Use `### Improvements` as a header. Use bullet points.",
+                                                          "topics_of_degradation": "Rich Markdown list. Use `### Need Attention` as a header. Use warning emojis (⚠️).",
+                                                          "remedial_points": "Rich Markdown checklist. Use `### Immediate Actions` and `### Long-term Goals` headers. Use `- [ ]` for items.",
+                                                          "strengths": {
+                                                            "Topic Name 1": 85,
+                                                            "Topic Name 2": 90
+                                                          },
+                                                          "weaknesses": {
+                                                            "Topic Name 1": 35,
+                                                            "Topic Name 2": 42
+                                                          }
+                                                        }
 
-                                                Guidelines:
-                                                - Base on actual data and incorporate existing assessments.
-                                                - Strengths/Weaknesses: Output the new list, updating existing where applicable, ensuring no duplicates and merging similar topics. Generate topics that are meaningful and directly related to student performance in academic areas.
-                                                - Ensure all fields are populated with detailed, descriptive content; do not leave any empty.
-                                                - Be data-driven, specific, and actionable.
-                                                - Identify patterns, trends, and correlations.
-                                                - Provide evidence-based observations.
-                                                - Suggest practical, personalized strategies for improvement.
-                                                - Use straightforward language suitable for educators, students and parents.
-                                                - Return ONLY valid JSON.
-                                                """,
+                                                        **Important Guidelines:**
+
+                                                        **1. Visual Hierarchy & Spacing (Crucial):**
+                                                           - **Headers:** Always use `###` for headers. **ALWAYS** put `\n\n` before a header.
+                                                           - **Tables:** ensure the table syntax is correct (e.g., `|---|---|`). Put `\n\n` before the table starts.
+                                                           - **Spacing:** Do not create dense walls of text. Use newlines generously to separate ideas.
+
+                                                        **2. Visual Presentation:**
+                                                           - **Tables:** Use Markdown tables for comparing data (e.g., Time spent vs. Output).
+                                                           - **Emojis:** Use relevant emojis (🎯, 💡, ✅, 📉) to break up text and add visual cues.
+                                                           - **Styling:** Use **Bold** for key metrics.
+
+                                                        **3. Content Logic:**
+                                                           - **Learning Frequency:** Focus on consistency and gaps.
+                                                           - **Progress:** Specific data points (e.g., 'Score increased by 15%%').
+                                                           - **Topics:** Extract from activity data. 70-100 = Strength, 0-50 = Weakness/Degradation.
+                                                           - **Remedial Points:** 5-10 actionable items in a checklist format.
+
+                                                        **4. Strengths/Weaknesses (Data Structure):**
+                                                           - **Consolidation:** Update existing scores if topics match. Merge similar topics.
+                                                           - **Naming:** Strict **Title Case** (e.g., 'Newtonian Physics'). Meaningful academic topics only.
+                                                           - **No Duplicates.**
+
+                                                        **General Rules:**
+                                                           - Base analysis on actual data.
+                                                           - All fields must be populated; no empty strings.
+                                                           - Be data-driven but easy to read.
+                                                           - **Return ONLY valid JSON.**
+                                                                                                        """,
                                 data.getStartDateIso(),
                                 data.getEndDateIso(),
                                 data.getTotalLogins(),

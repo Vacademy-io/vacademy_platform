@@ -9,9 +9,8 @@ import java.util.Map;
 @Data
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class PaymentResponseDTO {
-    public Map<String,Object> responseData;
+    public Map<String, Object> responseData;
     private String orderId;
     private String status;
     private String message;
-    private String redirectUrl;
 }

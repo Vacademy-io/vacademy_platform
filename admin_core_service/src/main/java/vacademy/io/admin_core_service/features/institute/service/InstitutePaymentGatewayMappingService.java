@@ -21,16 +21,9 @@ public class InstitutePaymentGatewayMappingService {
     private ObjectMapper objectMapper;
 
     public Map<String, Object> findInstitutePaymentGatewaySpecifData(String vendor, String instituteId) {
-        System.out.println("=== PAYMENT GATEWAY CONFIG QUERY ===");
-        System.out.println("Vendor: [" + vendor + "]");
-        System.out.println("Institute ID: [" + instituteId + "]");
-        System.out.println("Status: [" + StatusEnum.ACTIVE.name() + "]");
-        System.out.println("====================================");
-
-        InstitutePaymentGatewayMapping institutePaymentGatewayMapping = institutePaymentGatewayMappingRepository
+       InstitutePaymentGatewayMapping institutePaymentGatewayMapping = institutePaymentGatewayMappingRepository
                 .findByInstituteIdAndVendorAndStatusIn(instituteId, vendor, List.of(StatusEnum.ACTIVE.name()))
                 .orElseThrow(() -> {
-                    System.out.println("!!! QUERY FAILED - No matching record found !!!");
                     return new VacademyException("No configurartion found for this payment gateway type");
                 });
         return convertJsonToMap(institutePaymentGatewayMapping.getPaymentGatewaySpecificData());

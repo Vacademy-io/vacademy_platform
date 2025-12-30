@@ -76,10 +76,6 @@ public class PhonePePaymentManager implements PaymentServiceStrategy {
                 index = parts.length > 1 ? parts[1] : "1";
             }
 
-            logger.info("PhonePe Config - MerchantId: {}, BaseUrl: {}, SaltIndex: {}", merchantId, baseUrl, index);
-            logger.info("PhonePe Config - SaltKey (Masked): {}...",
-                    key.length() > 4 ? key.substring(key.length() - 4) : "****");
-
             // Step 1: Build the Request DTO
             PhonePePaymentRequestDTO payloadDTO = buildPaymentRequest(user, request, merchantId);
 
@@ -134,9 +130,6 @@ public class PhonePePaymentManager implements PaymentServiceStrategy {
                 ? constructWebhookCallbackUrl(request.getInstituteId())
                 : redirectUrl; // Fallback to redirectUrl if instituteId is missing
 
-        logger.info("PhonePe Payment Request - RedirectUrl (frontend): {}", redirectUrl);
-        logger.info("PhonePe Payment Request - CallbackUrl (webhook): {}", callbackUrl);
-
         return PhonePePaymentRequestDTO.builder()
                 .merchantId(merchantId)
                 .merchantTransactionId(request.getOrderId()) // Utilizing orderId as transaction Id
@@ -173,8 +166,6 @@ public class PhonePePaymentManager implements PaymentServiceStrategy {
         // {baseUrl}/admin-core-service/payments/webhook/callback/phonepe?instituteId={instituteId}
         String webhookUrl = baseUrl + "/admin-core-service/payments/webhook/callback/phonepe?instituteId="
                 + instituteId;
-
-        logger.info("Constructed PhonePe webhook callback URL: {}", webhookUrl);
 
         return webhookUrl;
     }
@@ -253,7 +244,6 @@ public class PhonePePaymentManager implements PaymentServiceStrategy {
         PaymentResponseDTO dto = new PaymentResponseDTO();
         dto.setOrderId(request.getOrderId());
         dto.setResponseData(responseData);
-        dto.setRedirectUrl(redirectUrl);
         dto.setMessage(phonePeResponse.getMessage() != null ? phonePeResponse.getMessage() : "Payment Initiated");
 
         return dto;

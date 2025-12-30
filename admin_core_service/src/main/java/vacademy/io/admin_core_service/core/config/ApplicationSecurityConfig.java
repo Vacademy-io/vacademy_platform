@@ -45,7 +45,7 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/api-docs/**",
             "/admin-core-service/learner-invitation-response/**",
             "/admin-core-service/live-session/register-guest-user/**",
-            "admin-core-service/live-session/get-earliest-schedule-id/**",
+            "/admin-core-service/live-session/get-earliest-schedule-id/**",
             "/admin-core-service/live-session/get-registration-data/**",
             "/admin-core-service/live-session/check-email-registration/**",
             "/admin-core-service/live-session/guest/get-session-by-schedule-id/**",
@@ -54,7 +54,9 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/payments/webhook/callback/**",
             "/admin-core-service/v1/learner/enroll/**",
             "/admin-core-service/workflow/schedule/**",
-            // NOTE: Spring's requestMatchers does not resolve path variables like {instituteId},
+            "/admin-core-service/payments/user-plan/**/status/**",
+            // NOTE: Spring's requestMatchers does not resolve path variables like
+            // {instituteId},
             // so you must use a pattern with a wildcard instead.
             "/admin-core-service/tag-management/institutes/*/tags/users",
             // User Resolution APIs for notification service - OPEN for internal
@@ -64,7 +66,7 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/v1/users/by-custom-field-filters",
             "/admin-core-service/v1/users/by-custom-field-filters/**",
             // Centralized recipient resolution API
-            "/admin-core-service/v1/recipient-resolution/centralized"
+            "/admin-core-service/v1/recipient-resolution/centralized",
     };
     @Autowired
     JwtAuthFilter jwtAuthFilter;
@@ -88,7 +90,6 @@ public class ApplicationSecurityConfig {
                         .anyRequest().authenticated())
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .anonymous(anonymous -> anonymous.disable())
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(internalAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

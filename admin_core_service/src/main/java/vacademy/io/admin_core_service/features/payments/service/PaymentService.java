@@ -71,14 +71,6 @@ public class PaymentService {
 
                 PaymentInitiationRequestDTO request = enrollDTO.getPaymentInitiationRequest();
 
-                System.out.println("=== PAYMENT SERVICE - handlePayment ===");
-                System.out.println("EnrollInvite Vendor: [" + enrollInvite.getVendor() + "]");
-                System.out.println("EnrollInvite VendorId: [" + enrollInvite.getVendorId() + "]");
-                System.out.println("Institute ID: [" + instituteId + "]");
-                System.out.println("DEBUG: Incoming Order ID: [" + request.getOrderId() + "]");
-                System.out.println("DEBUG: Full Request Object: [" + request + "]");
-                System.out.println("=======================================");
-
                 String paymentLogId;
                 if (org.springframework.util.StringUtils.hasText(request.getOrderId())) {
                         paymentLogId = paymentLogService.createPaymentLog(

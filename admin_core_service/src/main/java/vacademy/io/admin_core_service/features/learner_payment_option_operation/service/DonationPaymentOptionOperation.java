@@ -130,12 +130,6 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
                     enrollInvite,
                     userPlan);
             learnerEnrollResponseDTO.setPaymentResponse(paymentResponseDTO);
-            if (paymentResponseDTO != null && paymentResponseDTO.getResponseData() != null) {
-                Object redirectUrl = paymentResponseDTO.getResponseData().get("redirectUrl");
-                if (redirectUrl != null) {
-                    learnerEnrollResponseDTO.setPaymentRedirectUrl(redirectUrl.toString());
-                }
-            }
         }
         learnerEnrollResponseDTO.setUser(user);
         return learnerEnrollResponseDTO;

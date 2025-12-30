@@ -110,12 +110,6 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
                     enrollInvite,
                     userPlan);
             learnerEnrollResponseDTO.setPaymentResponse(paymentResponseDTO);
-            if (paymentResponseDTO != null && paymentResponseDTO.getResponseData() != null) {
-                Object redirectUrl = paymentResponseDTO.getResponseData().get("redirectUrl");
-                if (redirectUrl != null) {
-                    learnerEnrollResponseDTO.setPaymentRedirectUrl(redirectUrl.toString());
-                }
-            }
         } else {
             throw new VacademyException("PaymentInitiationRequest is null");
         }

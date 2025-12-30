@@ -4,6 +4,7 @@ import { Progress } from "@/components/ui/progress";
 import { USER_LINKED_DATA } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { MyButton } from "@/components/design-system/button";
+import { cn } from "@/lib/utils";
 
 interface LinkedData {
   id: string;
@@ -72,7 +73,15 @@ const ProgressStats = ({ userId }: { userId: string }) => {
                 {item.data}
               </CardTitle>
               <div className="flex items-center space-x-2">
-                <Progress value={item.percentage} className="flex-1" />
+                <Progress
+                  value={item.percentage}
+                  className={cn(
+                    "flex-1 !bg-gray-200",
+                    title === "Strengths"
+                      ? "[&>div]:bg-green-500"
+                      : "[&>div]:bg-red-500"
+                  )}
+                />
                 <span className="text-xs text-gray-500">
                   {item.percentage}%
                 </span>

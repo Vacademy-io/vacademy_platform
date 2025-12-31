@@ -272,8 +272,8 @@ public class LearnerEnrollRequestService {
                 .orElseThrow(() -> new IllegalArgumentException("Enroll Invite ID is required."));
     }
 
-    private PaymentOption getValidatedPaymentOption(String paymentOptionId) {
-        return Optional.ofNullable(paymentOptionId)
+        private PaymentOption getValidatedPaymentOption(String paymentOptionId) {
+            return Optional.ofNullable(paymentOptionId)
                 .map(paymentOptionService::findById)
                 .orElseThrow(() -> new IllegalArgumentException("Payment Option ID is required."));
     }
@@ -337,15 +337,15 @@ public class LearnerEnrollRequestService {
      *
      * Expected JSON structure:
      * {
-     * "setting": {
-     * "LEARNER_ENROLLMENT_SETTING": {
-     * "key": "LEARNER_ENROLLMENT_SETTING",
-     * "name": "Learner Enrollment Settings",
-     * "data": {
-     * "sendCredentials": true/false
-     * }
-     * }
-     * }
+     *   "setting": {
+     *     "LEARNER_ENROLLMENT_SETTING": {
+     *       "key": "LEARNER_ENROLLMENT_SETTING",
+     *       "name": "Learner Enrollment Settings",
+     *       "data": {
+     *         "sendCredentials": true/false
+     *       }
+     *     }
+     *   }
      * }
      *
      * @param instituteId The institute ID
@@ -372,33 +372,25 @@ public class LearnerEnrollRequestService {
 
             // Check each level of the path to provide better error messages
             if (!rootNode.has("setting")) {
-                log.info(
-                        "'setting' object not found in setting_json for institute: {} - defaulting to sendCredentials=true",
-                        instituteId);
+                log.info("'setting' object not found in setting_json for institute: {} - defaulting to sendCredentials=true", instituteId);
                 return true;
             }
 
             JsonNode settingNode = rootNode.path("setting");
             if (!settingNode.has("LEARNER_ENROLLMENT_SETTING")) {
-                log.info(
-                        "'LEARNER_ENROLLMENT_SETTING' not found in setting_json for institute: {} - defaulting to sendCredentials=true",
-                        instituteId);
+                log.info("'LEARNER_ENROLLMENT_SETTING' not found in setting_json for institute: {} - defaulting to sendCredentials=true", instituteId);
                 return true;
             }
 
             JsonNode enrollmentSettingNode = settingNode.path("LEARNER_ENROLLMENT_SETTING");
             if (!enrollmentSettingNode.has("data")) {
-                log.info(
-                        "'data' object not found in LEARNER_ENROLLMENT_SETTING for institute: {} - defaulting to sendCredentials=true",
-                        instituteId);
+                log.info("'data' object not found in LEARNER_ENROLLMENT_SETTING for institute: {} - defaulting to sendCredentials=true", instituteId);
                 return true;
             }
 
             JsonNode dataNode = enrollmentSettingNode.path("data");
             if (!dataNode.has("sendCredentials")) {
-                log.info(
-                        "'sendCredentials' field not found in LEARNER_ENROLLMENT_SETTING.data for institute: {} - defaulting to sendCredentials=true",
-                        instituteId);
+                log.info("'sendCredentials' field not found in LEARNER_ENROLLMENT_SETTING.data for institute: {} - defaulting to sendCredentials=true", instituteId);
                 return true;
             }
 

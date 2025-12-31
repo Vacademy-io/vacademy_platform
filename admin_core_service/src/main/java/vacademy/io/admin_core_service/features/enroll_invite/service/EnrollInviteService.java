@@ -31,7 +31,6 @@ import vacademy.io.admin_core_service.features.user_subscription.entity.Referral
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentOptionService;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentPlanService;
 import vacademy.io.admin_core_service.features.user_subscription.service.ReferralOptionService;
-import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionTag;
 import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.session.PackageSession;
@@ -172,7 +171,7 @@ public class EnrollInviteService {
     }
 
     public Page<EnrollInviteWithSessionsProjection> getEnrollInvitesByInstituteIdAndFilters(String instituteId,
-            EnrollInviteFilterDTO enrollInviteFilterDTO, int pageNo, int pageSize) {
+                                                                                            EnrollInviteFilterDTO enrollInviteFilterDTO, int pageNo, int pageSize) {
         Sort sortColumns = ListService.createSortObject(enrollInviteFilterDTO.getSortColumns());
         Pageable pageable = PageRequest.of(pageNo, pageSize, sortColumns);
         if (StringUtils.hasText(enrollInviteFilterDTO.getSearchName())) {
@@ -200,10 +199,10 @@ public class EnrollInviteService {
 
     public EnrollInviteDTO findDefaultEnrollInviteByPackageSessionId(String packageSessionId, String instituteId) {
         EnrollInvite enrollInvite = repository.findLatestForPackageSessionWithFilters(
-                packageSessionId,
-                List.of(StatusEnum.ACTIVE.name()),
-                List.of(EnrollInviteTag.DEFAULT.name()),
-                List.of(StatusEnum.ACTIVE.name()))
+                        packageSessionId,
+                        List.of(StatusEnum.ACTIVE.name()),
+                        List.of(EnrollInviteTag.DEFAULT.name()),
+                        List.of(StatusEnum.ACTIVE.name()))
                 .orElseThrow(() -> new VacademyException(
                         "Default EnrollInvite not found for package session: " + packageSessionId));
         return buildFullEnrollInviteDTO(enrollInvite, instituteId);
@@ -211,10 +210,10 @@ public class EnrollInviteService {
 
     public boolean findDefaultEnrollInviteByPackageSessionId(String packageSessionId) {
         EnrollInvite enrollInvite = repository.findLatestForPackageSessionWithFilters(
-                packageSessionId,
-                List.of(StatusEnum.ACTIVE.name()),
-                List.of(EnrollInviteTag.DEFAULT.name()),
-                List.of(StatusEnum.ACTIVE.name()))
+                        packageSessionId,
+                        List.of(StatusEnum.ACTIVE.name()),
+                        List.of(EnrollInviteTag.DEFAULT.name()),
+                        List.of(StatusEnum.ACTIVE.name()))
                 .orElseThrow(() -> new VacademyException(
                         "Default EnrollInvite not found for package session: " + packageSessionId));
         return true;
@@ -226,12 +225,10 @@ public class EnrollInviteService {
      * This method only maps basic fields to avoid LazyInitializationException
      *
      * @param packageSessionId The package session ID
-     * @param instituteId      The institute ID
-     * @return Optional containing EnrollInviteDTO with basic fields if found, empty
-     *         otherwise
+     * @param instituteId The institute ID
+     * @return Optional containing EnrollInviteDTO with basic fields if found, empty otherwise
      */
-    public Optional<EnrollInviteDTO> findDefaultEnrollInviteByPackageSessionIdOptional(String packageSessionId,
-            String instituteId) {
+    public Optional<EnrollInviteDTO> findDefaultEnrollInviteByPackageSessionIdOptional(String packageSessionId, String instituteId) {
         Optional<EnrollInvite> enrollInviteOptional = repository.findLatestForPackageSessionWithFilters(
                 packageSessionId,
                 List.of(StatusEnum.ACTIVE.name()),
@@ -254,7 +251,7 @@ public class EnrollInviteService {
     }
 
     public List<EnrollInviteDTO> findEnrollInvitesByReferralOptionIds(List<String> referralOptionIds,
-            String instituteId) {
+                                                                      String instituteId) {
         List<PackageSessionEnrollInvitePaymentOptionPlanToReferralOption> referralMappings = packageSessionEnrollInvitePaymentOptionPlanToReferralOptionService
                 .findByReferralOptionIds(referralOptionIds);
 
@@ -287,17 +284,6 @@ public class EnrollInviteService {
         return "Enroll invites deleted successfully";
     }
 
-    public PaymentOption getDefaultPaymentOption(EnrollInvite enrollInvite) {
-        List<PackageSessionLearnerInvitationToPaymentOption> mappings = packageSessionEnrollInviteToPaymentOptionService
-                .findByInvite(enrollInvite);
-
-        return mappings.stream()
-                .map(PackageSessionLearnerInvitationToPaymentOption::getPaymentOption)
-                .filter(po -> po != null && PaymentOptionTag.DEFAULT.name().equals(po.getTag()))
-                .findFirst()
-                .orElseThrow(() -> new VacademyException("Default Payment Option not found for this invite."));
-    }
-
     // ===================================================================================
     // PRIVATE HELPER AND DTO BUILDING METHODS
     // ===================================================================================
@@ -309,7 +295,7 @@ public class EnrollInviteService {
     }
 
     private EnrollInviteDTO buildFullEnrollInviteDTO(EnrollInvite enrollInvite, String instituteId,
-            List<PackageSessionLearnerInvitationToPaymentOption> mappings) {
+                                                     List<PackageSessionLearnerInvitationToPaymentOption> mappings) {
         EnrollInviteDTO dto = enrollInvite.toEnrollInviteDTO();
 
         // 1. Fetch and set Custom Fields
@@ -589,7 +575,9 @@ public class EnrollInviteService {
                 instituteId,
                 activeStatuses, // SSIGM statuses
                 activeStatuses, // EnrollInvite statuses
-                activeStatuses);
+                activeStatuses
+        );
+
 
         // Convert to DTOs and populate additional data
         return enrollInvites.stream()
@@ -606,8 +594,7 @@ public class EnrollInviteService {
     }
 
     /**
-     * Builds a basic EnrollInviteDTO with only essential fields to avoid
-     * LazyInitializationException
+     * Builds a basic EnrollInviteDTO with only essential fields to avoid LazyInitializationException
      * This method is safe to use outside of transaction context
      *
      * @param enrollInvite The EnrollInvite entity

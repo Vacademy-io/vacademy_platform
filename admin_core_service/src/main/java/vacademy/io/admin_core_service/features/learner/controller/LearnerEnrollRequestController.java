@@ -22,18 +22,12 @@ public class LearnerEnrollRequestController {
     private OpenLearnerEnrollService openLearnerEnrollService;
 
     @PostMapping
-    public ResponseEntity<LearnerEnrollResponseDTO> enrollLearner(
-            @RequestBody LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
-        LearnerEnrollResponseDTO enrollResponse = learnerEnrollRequestService
-                .recordLearnerRequest(learnerEnrollRequestDTO);
-
-        return ResponseEntity.ok(enrollResponse);
+    public ResponseEntity<LearnerEnrollResponseDTO> enrollLearner(@RequestBody LearnerEnrollRequestDTO learnerEnrollRequestDTO){
+        return ResponseEntity.ok(learnerEnrollRequestService.recordLearnerRequest(learnerEnrollRequestDTO));
     }
 
     @PostMapping("/detail")
-    public ResponseEntity<String> enrollLearnerDetail(
-            @RequestBody OpenLearnerEnrollRequestDTO openLearnerEnrollRequestDTO, String instituteId) {
-        return ResponseEntity
-                .ok(openLearnerEnrollService.enrollUserInPackageSession(openLearnerEnrollRequestDTO, instituteId));
+    public ResponseEntity<String> enrollLearnerDetail(@RequestBody OpenLearnerEnrollRequestDTO openLearnerEnrollRequestDTO,String instituteId){
+        return ResponseEntity.ok(openLearnerEnrollService.enrollUserInPackageSession(openLearnerEnrollRequestDTO,instituteId));
     }
 }

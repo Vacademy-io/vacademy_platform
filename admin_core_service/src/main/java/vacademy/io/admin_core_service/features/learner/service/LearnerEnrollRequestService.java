@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.learner.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -9,6 +11,7 @@ import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInviteService;
 import vacademy.io.admin_core_service.features.enroll_invite.service.SubOrgService;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.PaymentOptionOperationFactory;
 import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.PaymentOptionOperationStrategy;
 import vacademy.io.admin_core_service.features.notification.service.DynamicNotificationService;
@@ -23,11 +26,17 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanS
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentOptionService;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentPlanService;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
+import vacademy.io.admin_core_service.features.enrollment_policy.service.ReenrollmentGapValidationService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollRequestDTO;
 import vacademy.io.common.common.dto.CustomFieldValueDTO;
+import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.institute.entity.Institute;
+import vacademy.io.common.institute.entity.session.PackageSession;
+
+import java.text.SimpleDateFormat;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
@@ -69,18 +78,26 @@ public class LearnerEnrollRequestService {
     @Autowired
     private PackageSessionRepository packageSessionRepository;
 
+    @Autowired
+    private ReenrollmentGapValidationService reenrollmentGapValidationService;
+    private InstituteRepository instituteRepository;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
     @Transactional
     public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
         LearnerPackageSessionsEnrollDTO enrollDTO = learnerEnrollRequestDTO.getLearnerPackageSessionEnroll();
         if (!StringUtils.hasText(learnerEnrollRequestDTO.getUser().getId())) {
+            boolean sendCredentials = getSendCredentialsFlag(learnerEnrollRequestDTO.getInstituteId());
             UserDTO user = authService.createUserFromAuthService(learnerEnrollRequestDTO.getUser(),
-                    learnerEnrollRequestDTO.getInstituteId(), true);
+                    learnerEnrollRequestDTO.getInstituteId(), sendCredentials);
             learnerEnrollRequestDTO.setUser(user);
             // Generate coupon code for new learner enrollment
             learnerCouponService.generateCouponCodeForLearner(user.getId());
         }
         EnrollInvite enrollInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
-        PaymentOption paymentOption = getValidatedPaymentOption(enrollDTO.getPaymentOptionId(), enrollInvite);
+        PaymentOption paymentOption = getValidatedPaymentOption(enrollDTO.getPaymentOptionId());
         PaymentPlan paymentPlan = getOptionalPaymentPlan(enrollDTO.getPlanId());
 
         // Determine if this is a SubOrg enrollment and create SubOrg if needed
@@ -118,6 +135,54 @@ public class LearnerEnrollRequestService {
             }
         }
 
+        // Validate re-enrollment gap before creating UserPlan
+        List<PackageSession> packageSessions = packageSessionRepository
+                .findPackageSessionsByIds(enrollDTO.getPackageSessionIds());
+
+        ReenrollmentGapValidationService.GapValidationResult gapValidationResult = reenrollmentGapValidationService
+                .validateGapForPackageSessions(
+                        learnerEnrollRequestDTO.getUser().getId(),
+                        learnerEnrollRequestDTO.getInstituteId(),
+                        packageSessions,
+                        new java.util.Date());
+
+        // Handle validation results
+        boolean isSinglePackageSession = enrollDTO.getPackageSessionIds().size() == 1;
+
+        if (!gapValidationResult.isAllowed()) {
+            // Some or all package sessions are blocked
+            if (isSinglePackageSession) {
+                // Single package session - throw error with retry date
+                ReenrollmentGapValidationService.GapBlockedPackageSession blocked = gapValidationResult
+                        .getBlockedPackageSessions().get(0);
+                String retryDateStr = new SimpleDateFormat("yyyy-MM-dd").format(blocked.getRetryDate());
+                throw new VacademyException(
+                        String.format("You can retry operation on %s", retryDateStr));
+            } else {
+                // Multiple package sessions - check if at least one is allowed
+                if (gapValidationResult.getAllowedPackageSessionIds().isEmpty()) {
+                    // All are blocked - throw error
+                    // Find the earliest retry date
+                    java.util.Date earliestRetryDate = gapValidationResult.getBlockedPackageSessions().stream()
+                            .map(ReenrollmentGapValidationService.GapBlockedPackageSession::getRetryDate)
+                            .min(java.util.Date::compareTo)
+                            .orElse(new java.util.Date());
+                    String retryDateStr = new SimpleDateFormat("yyyy-MM-dd").format(earliestRetryDate);
+                    throw new VacademyException(
+                            String.format("You can retry operation on %s", retryDateStr));
+                } else {
+                    // At least one is allowed - filter out blocked ones
+                    log.info("Filtering out {} blocked package sessions due to gap violation. " +
+                            "Proceeding with {} allowed package sessions.",
+                            gapValidationResult.getBlockedPackageSessions().size(),
+                            gapValidationResult.getAllowedPackageSessionIds().size());
+
+                    // Update enrollDTO to only include allowed package sessions
+                    enrollDTO.setPackageSessionIds(gapValidationResult.getAllowedPackageSessionIds());
+                }
+            }
+        }
+
         UserPlan userPlan = createUserPlan(
                 learnerEnrollRequestDTO.getUser().getId(),
                 enrollDTO,
@@ -127,7 +192,8 @@ public class LearnerEnrollRequestService {
                 userPlanSource,
                 subOrgId);
 
-        LearnerEnrollResponseDTO response = enrollLearnerToBatch(
+        LearnerEnrollResponseDTO response;
+        response = enrollLearnerToBatch(
                 learnerEnrollRequestDTO,
                 enrollDTO,
                 enrollInvite,
@@ -151,6 +217,11 @@ public class LearnerEnrollRequestService {
                     learnerEnrollRequestDTO.getInstituteId(),
                     learnerEnrollRequestDTO.getUser(),
                     enrollInvite);
+        } else if (UserPlanStatusEnum.PENDING_FOR_PAYMENT.name().equals(userPlan.getStatus())) {
+            log.info(
+                    "Stacked enrollment created with PENDING status for user: {}. Skipping notifications and session mapping.",
+                    learnerEnrollRequestDTO.getUser().getId());
+            // Explicitly do nothing else for PENDING plans
         } else {
             log.info(
                     "PAID enrollment initiated. Notifications will be sent after payment confirmation. UserPlan ID: {}",
@@ -201,10 +272,7 @@ public class LearnerEnrollRequestService {
                 .orElseThrow(() -> new IllegalArgumentException("Enroll Invite ID is required."));
     }
 
-    private PaymentOption getValidatedPaymentOption(String paymentOptionId, EnrollInvite enrollInvite) {
-        if ("default".equalsIgnoreCase(paymentOptionId)) {
-            return enrollInviteService.getDefaultPaymentOption(enrollInvite);
-        }
+    private PaymentOption getValidatedPaymentOption(String paymentOptionId) {
         return Optional.ofNullable(paymentOptionId)
                 .map(paymentOptionService::findById)
                 .orElseThrow(() -> new IllegalArgumentException("Payment Option ID is required."));
@@ -262,6 +330,88 @@ public class LearnerEnrollRequestService {
                 userPlan,
                 Map.of(), // optional extra data,
                 learnerEnrollRequestDTO.getLearnerExtraDetails());
+    }
+
+    /**
+     * Extract sendCredentials flag from institute's setting_json
+     *
+     * Expected JSON structure:
+     * {
+     * "setting": {
+     * "LEARNER_ENROLLMENT_SETTING": {
+     * "key": "LEARNER_ENROLLMENT_SETTING",
+     * "name": "Learner Enrollment Settings",
+     * "data": {
+     * "sendCredentials": true/false
+     * }
+     * }
+     * }
+     * }
+     *
+     * @param instituteId The institute ID
+     * @return true if credentials should be sent (default), false otherwise
+     */
+    private boolean getSendCredentialsFlag(String instituteId) {
+        try {
+            Optional<Institute> instituteOpt = instituteRepository.findById(instituteId);
+
+            if (instituteOpt.isEmpty()) {
+                log.warn("Institute not found with id: {} - defaulting to sendCredentials=true", instituteId);
+                return true;
+            }
+
+            Institute institute = instituteOpt.get();
+            String settingJson = institute.getSetting();
+
+            if (!StringUtils.hasText(settingJson)) {
+                log.info("No setting_json found for institute: {} - defaulting to sendCredentials=true", instituteId);
+                return true;
+            }
+
+            JsonNode rootNode = objectMapper.readTree(settingJson);
+
+            // Check each level of the path to provide better error messages
+            if (!rootNode.has("setting")) {
+                log.info(
+                        "'setting' object not found in setting_json for institute: {} - defaulting to sendCredentials=true",
+                        instituteId);
+                return true;
+            }
+
+            JsonNode settingNode = rootNode.path("setting");
+            if (!settingNode.has("LEARNER_ENROLLMENT_SETTING")) {
+                log.info(
+                        "'LEARNER_ENROLLMENT_SETTING' not found in setting_json for institute: {} - defaulting to sendCredentials=true",
+                        instituteId);
+                return true;
+            }
+
+            JsonNode enrollmentSettingNode = settingNode.path("LEARNER_ENROLLMENT_SETTING");
+            if (!enrollmentSettingNode.has("data")) {
+                log.info(
+                        "'data' object not found in LEARNER_ENROLLMENT_SETTING for institute: {} - defaulting to sendCredentials=true",
+                        instituteId);
+                return true;
+            }
+
+            JsonNode dataNode = enrollmentSettingNode.path("data");
+            if (!dataNode.has("sendCredentials")) {
+                log.info(
+                        "'sendCredentials' field not found in LEARNER_ENROLLMENT_SETTING.data for institute: {} - defaulting to sendCredentials=true",
+                        instituteId);
+                return true;
+            }
+
+            JsonNode sendCredentialsNode = dataNode.path("sendCredentials");
+            boolean sendCredentials = sendCredentialsNode.asBoolean(true);
+            log.info("Institute {} sendCredentials setting found: {}", instituteId, sendCredentials);
+            return sendCredentials;
+
+        } catch (Exception e) {
+            log.error("Error parsing setting_json for institute: {} - defaulting to sendCredentials=true",
+                    instituteId, e);
+            return true;
+        }
     }
 
 }

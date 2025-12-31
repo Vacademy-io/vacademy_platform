@@ -225,8 +225,8 @@ public class LearnerEnrollRequestService {
             String source,
             String subOrgId) {
         String userPlanStatus = null;
-        if (PaymentOptionType.SUBSCRIPTION.name().equalsIgnoreCase(paymentOption.getType())
-                || PaymentOptionType.ONE_TIME.name().equalsIgnoreCase(paymentOption.getType())) {
+        if (paymentOption.getType().equals(PaymentOptionType.SUBSCRIPTION.name())
+                || paymentOption.getType().equals(PaymentOptionType.ONE_TIME.name())) {
             userPlanStatus = UserPlanStatusEnum.PENDING_FOR_PAYMENT.name();
         } else {
             userPlanStatus = UserPlanStatusEnum.ACTIVE.name();

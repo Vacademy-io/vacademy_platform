@@ -13,7 +13,6 @@ import vacademy.io.common.payment.dto.PaymentResponseDTO;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.ResponseCookie;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
@@ -141,49 +140,6 @@ public class OpenPaymentController {
             }
 
             java.util.Map<String, Object> status = paymentService.checkPaymentStatus(vendor, instituteId, orderId);
-
-            // Logic to set tokens if status is COMPLETED
-            if (status != null && "COMPLETED".equalsIgnoreCase(String.valueOf(status.get("status")))) {
-                try {
-                    PaymentLogDTO paymentLog = paymentLogService.getPaymentLog(orderId);
-                    if (paymentLog != null && paymentLog.getUserId() != null) {
-                        UserWithJwtDTO tokens = authService.generateJwtTokensWithUser(paymentLog.getUserId(),
-                                instituteId);
-
-                        String host = request.getHeader("Host");
-                        boolean isLocalhost = host != null
-                                && (host.contains("localhost") || host.contains("127.0.0.1"));
-
-                        ResponseCookie.ResponseCookieBuilder accessCookieBuilder = ResponseCookie
-                                .from("accessToken", tokens.getAccessToken())
-                                .path("/")
-                                .httpOnly(false)
-                                .maxAge(3600 * 24)
-                                .sameSite("Lax");
-
-                        ResponseCookie.ResponseCookieBuilder refreshCookieBuilder = ResponseCookie
-                                .from("refreshToken", tokens.getRefreshToken())
-                                .path("/")
-                                .httpOnly(false)
-                                .maxAge(86400 * 7)
-                                .sameSite("Lax");
-
-                        if (isLocalhost) {
-                            accessCookieBuilder.secure(false);
-                            refreshCookieBuilder.secure(false);
-                        } else {
-                            accessCookieBuilder.secure(true).domain(".vacademy.io");
-                            refreshCookieBuilder.secure(true).domain(".vacademy.io");
-                        }
-
-                        response.addHeader(HttpHeaders.SET_COOKIE, accessCookieBuilder.build().toString());
-                        response.addHeader(HttpHeaders.SET_COOKIE, refreshCookieBuilder.build().toString());
-                        log.info("Auto-login cookies set for user: {} after payment", paymentLog.getUserId());
-                    }
-                } catch (Exception e) {
-                    log.error("Failed to generate auto-login tokens after payment: {}", e.getMessage());
-                }
-            }
 
             return ResponseEntity.ok(status);
         } catch (UnsupportedOperationException e) {

@@ -413,13 +413,20 @@ public class CombotWebhookService {
             // B. Fetch Dynamic Data from Admin Core
             Map<String, Object> userDetails = getUserDetailsByPhoneNumber(userPhone);
             Object userObj = userDetails.get("user");
+            
+            // Handle both existing users and first-time users
+            String userId;
             if (userObj == null) {
-                log.warn("User object missing in details for phone {}", userPhone);
-                return;
+                log.info("First-time user or user not found in system for phone {}. Using anonymous user ID.", userPhone);
+                userId = CombotConstants.ANONYMOUS_USER;
+                // Populate minimal user details for first-time users
+                userDetails.put("phone", userPhone);
+                userDetails.put("mobile_number", userPhone);
+            } else {
+                // Existing user - convert to UserDTO
+                UserDTO user = objectMapper.convertValue(userObj, UserDTO.class);
+                userId = user.getId();
             }
-
-            // Assuming you have imported UserDTO
-            UserDTO user = objectMapper.convertValue(userObj, UserDTO.class);
 
             // C. Send Each Template in Sequence
             Map<String, List<String>> varConfigMap = parseJsonMap(config.getVariableConfig());
@@ -431,10 +438,10 @@ public class CombotWebhookService {
                 // Map Data to Variables
                 List<String> paramValues = resolveVariables(requiredVars, userDetails, userPhone);
 
-                log.info("Triggering Auto-Reply: Template={} Params={}", templateName, paramValues);
+                log.info("Triggering Auto-Reply: Template={} Params={} for userId={}", templateName, paramValues, userId);
 
                 // Send Message
-                sendAutoReply(instituteId, userPhone, templateName, paramValues,user.getId());
+                sendAutoReply(instituteId, userPhone, templateName, paramValues, userId);
 
                 Thread.sleep(CombotConstants.DELAY_BETWEEN_AUTO_REPLIES);
             }

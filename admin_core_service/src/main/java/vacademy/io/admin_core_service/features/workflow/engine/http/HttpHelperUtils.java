@@ -30,6 +30,7 @@ public class HttpHelperUtils {
             Object res = spelEvaluator.evaluate(expression, context);
             return (T) res;
         } catch (Exception e) {
+            e.printStackTrace();
             log.warn("SpEL evaluation failed for '{}': {}", expression, e.getMessage());
             return defaultValue;
         }

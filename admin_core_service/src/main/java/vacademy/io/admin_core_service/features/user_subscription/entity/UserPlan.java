@@ -104,8 +104,8 @@ private String id;
     private List<PaymentLog> paymentLogs;
 
     @Column(name = "start_date")
-    private Timestamp startDate;
+    private Date startDate;
 
     @Column(name = "end_date")
-    private Timestamp endDate;
+    private Date endDate;
 }

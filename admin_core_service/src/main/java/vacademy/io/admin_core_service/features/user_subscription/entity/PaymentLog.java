@@ -13,7 +13,6 @@ import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogD
 import java.time.LocalDateTime;
 import java.util.Date;
 
-
 @AllArgsConstructor
 @NoArgsConstructor
 @Getter
@@ -53,11 +52,28 @@ public class PaymentLog {
     @Column(name = "payment_amount")
     private Double paymentAmount;
 
-    @Column(name = "created_at", insertable = false, updatable = false)
+    @Column(name = "created_at")
     private LocalDateTime createdAt;
 
-    @Column(name = "updated_at", insertable = false, updatable = false)
+    @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @PrePersist
+    protected void onCreate() {
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
+        }
+        if (updatedAt == null) {
+            updatedAt = LocalDateTime.now();
+        }
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        if (updatedAt == null) {
+            updatedAt = LocalDateTime.now();
+        }
+    }
 
     @Column(name = "payment_specific_data")
     private String paymentSpecificData;
@@ -78,12 +94,13 @@ public class PaymentLog {
         if (paymentSpecificData != null) {
             try {
                 JsonNode root = JsonUtil.fromJson(paymentSpecificData, JsonNode.class);
-                // .path() is null-safe: if a node isn't there, you get a “missing” node, not NPE
+                // .path() is null-safe: if a node isn't there, you get a “missing” node, not
+                // NPE
                 String txnId = root
-                    .path("response")
-                    .path("response_data")
-                    .path("transactionId")
-                    .asText(null);   // default to null if missing
+                        .path("response")
+                        .path("response_data")
+                        .path("transactionId")
+                        .asText(null); // default to null if missing
 
                 paymentLogDTO.setTransactionId(txnId);
             } catch (Exception e) {

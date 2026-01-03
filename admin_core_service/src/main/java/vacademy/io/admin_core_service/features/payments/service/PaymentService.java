@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.payments.service;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.institute.service.InstitutePaymentGatewayMappingService;
@@ -10,6 +11,7 @@ import vacademy.io.admin_core_service.features.learner_payment_option_operation.
 import vacademy.io.admin_core_service.features.notification_service.service.PaymentNotificatonService;
 import vacademy.io.admin_core_service.features.payments.manager.PaymentServiceFactory;
 import vacademy.io.admin_core_service.features.payments.manager.PaymentServiceStrategy;
+import vacademy.io.admin_core_service.features.payments.manager.PhonePePaymentManager;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserInstitutePaymentGatewayMapping;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum;
@@ -22,15 +24,11 @@ import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
+import vacademy.io.common.payment.dto.PhonePeStatusResponseDTO;
 import vacademy.io.common.payment.enums.PaymentGateway;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
 
-import vacademy.io.admin_core_service.features.payments.manager.PhonePePaymentManager;
-import vacademy.io.common.payment.dto.PhonePeStatusResponseDTO;
-import vacademy.io.common.auth.dto.learner.UserWithJwtDTO;
-import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogDTO;
 import java.util.HashMap;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -63,6 +61,10 @@ public class PaymentService {
         @Autowired
         private AuthService authService;
 
+        /**
+         * Handles payment during learner enrollment.
+         * Supports OrderId reuse for PhonePe integration.
+         */
         public PaymentResponseDTO handlePayment(UserDTO user,
                         LearnerPackageSessionsEnrollDTO enrollDTO,
                         String instituteId,
@@ -71,8 +73,9 @@ public class PaymentService {
 
                 PaymentInitiationRequestDTO request = enrollDTO.getPaymentInitiationRequest();
 
+                // Create payment log - reuse orderId if provided (PhonePe requirement)
                 String paymentLogId;
-                if (org.springframework.util.StringUtils.hasText(request.getOrderId())) {
+                if (StringUtils.hasText(request.getOrderId())) {
                         paymentLogId = paymentLogService.createPaymentLog(
                                         user.getId(),
                                         request.getAmount(),
@@ -104,6 +107,9 @@ public class PaymentService {
                                 enrollInvite.getVendor(),
                                 request);
 
+                userPlan.setJsonPaymentDetails(JsonUtil.toJson(gatewayMapping));
+                userPlanService.save(userPlan);
+
                 PaymentResponseDTO response = makePayment(
                                 enrollInvite.getVendor(),
                                 instituteId,
@@ -121,6 +127,9 @@ public class PaymentService {
                 return response;
         }
 
+        /**
+         * Handles payment for unknown users (donations, guest payments).
+         */
         public PaymentResponseDTO handlePayment(PaymentInitiationRequestDTO request,
                         String instituteId) {
 
@@ -134,14 +143,12 @@ public class PaymentService {
 
                 request.setOrderId(paymentLogId);
 
-                // Create or get customer for unknown user based on email
                 Map<String, Object> gatewayMapping = createOrGetCustomerForUnknownUser(
                                 instituteId,
                                 request.getEmail(),
                                 request.getVendor(),
                                 request);
 
-                // Extract customer ID from the gateway mapping for payment configuration
                 String customerId = (String) gatewayMapping.get("customerId");
                 if (customerId == null) {
                         throw new RuntimeException("Failed to get customer ID from payment gateway");
@@ -155,7 +162,7 @@ public class PaymentService {
                 PaymentResponseDTO response = makePayment(
                                 request.getVendor(),
                                 instituteId,
-                                null, // No user for unknown donations
+                                null,
                                 request);
 
                 paymentLogService.updatePaymentLog(
@@ -169,6 +176,11 @@ public class PaymentService {
                 return response;
         }
 
+        /**
+         * Handles payment for existing UserPlan (manual payment trigger).
+         * Supports OrderId reuse for PhonePe integration.
+         * Sends payment confirmation notification.
+         */
         public PaymentResponseDTO handleUserPlanPayment(PaymentInitiationRequestDTO request,
                         String instituteId,
                         CustomUserDetails userDetails,
@@ -176,17 +188,15 @@ public class PaymentService {
 
                 String userId = userDetails.getUserId();
 
-                // Validate that user plan exists and belongs to the user
                 UserPlan userPlan = userPlanService.findById(userPlanId);
 
                 if (!userPlan.getUserId().equals(userId)) {
                         throw new RuntimeException("User plan does not belong to the specified user");
                 }
 
-                // Create payment log for the user plan
-                // Create payment log for the user plan. Use frontend Order ID if provided.
+                // Create payment log - reuse orderId if provided (PhonePe requirement)
                 String paymentLogId;
-                if (org.springframework.util.StringUtils.hasText(request.getOrderId())) {
+                if (StringUtils.hasText(request.getOrderId())) {
                         paymentLogId = paymentLogService.createPaymentLog(
                                         userId,
                                         request.getAmount(),
@@ -207,7 +217,6 @@ public class PaymentService {
 
                 request.setOrderId(paymentLogId);
 
-                // Create or get customer for the user
                 UserDTO userDTO = getUserById(userId);
                 UserInstitutePaymentGatewayMapping gatewayMapping = createOrGetCustomer(
                                 instituteId,
@@ -220,21 +229,19 @@ public class PaymentService {
                                 request.getVendor(),
                                 request);
 
-                // Process the payment
                 PaymentResponseDTO response = makePayment(
                                 request.getVendor(),
                                 instituteId,
                                 userDTO,
                                 request);
 
-                // Send payment notification
+                // Send payment confirmation notification (PhonePe feature)
                 paymentNotificatonService.sendPaymentConfirmationNotification(
                                 instituteId,
                                 response,
                                 request,
-                                getUserById(userId));
+                                userDTO);
 
-                // Update payment log with response
                 paymentLogService.updatePaymentLog(
                                 paymentLogId,
                                 PaymentLogStatusEnum.ACTIVE.name(),
@@ -244,6 +251,101 @@ public class PaymentService {
                                                 "originalRequest", request)));
 
                 return response;
+        }
+
+        /**
+         * Handles payment for UserPlan with UserDTO (auto-renewal scenarios).
+         * This method is used when we have both UserDTO and UserPlan available,
+         * such as in subscription auto-renewal flows.
+         * 
+         * NOTE: Does NOT reuse OrderId and does NOT send notifications
+         * as it's for automated backend processes, not user-initiated payments.
+         * 
+         * @param request     Payment initiation request with all payment details
+         * @param instituteId Institute ID for payment processing
+         * @param user        UserDTO of the user making the payment (ROOT_ADMIN for SubOrg)
+         * @param userPlan    UserPlan associated with this payment
+         * @return PaymentResponseDTO with payment result
+         */
+        public PaymentResponseDTO handlePaymentWithUser(PaymentInitiationRequestDTO request,
+                        String instituteId,
+                        UserDTO user,
+                        UserPlan userPlan) {
+
+                // Always create new payment log (no OrderId reuse for auto-renewal)
+                String paymentLogId = paymentLogService.createPaymentLog(
+                                user.getId(),
+                                request.getAmount(),
+                                request.getVendor(),
+                                request.getVendorId(),
+                                request.getCurrency(),
+                                userPlan);
+
+                request.setOrderId(paymentLogId);
+
+                UserInstitutePaymentGatewayMapping gatewayMapping = createOrGetCustomer(
+                                instituteId,
+                                user,
+                                request.getVendor(),
+                                request);
+
+                paymentGatewaySpecificPaymentDetailService.configureCustomerPaymentData(
+                                gatewayMapping,
+                                request.getVendor(),
+                                request);
+
+                PaymentResponseDTO response = makePayment(
+                                request.getVendor(),
+                                instituteId,
+                                user,
+                                request);
+
+                paymentLogService.updatePaymentLog(
+                                paymentLogId,
+                                PaymentLogStatusEnum.ACTIVE.name(),
+                                (String) response.getResponseData().get("paymentStatus"),
+                                JsonUtil.toJson(Map.of(
+                                                "response", response,
+                                                "originalRequest", request)));
+
+                return response;
+        }
+
+        /**
+         * Checks payment status for PhonePe payments.
+         * Updates payment log based on status (COMPLETED/FAILED).
+         * 
+         * @param vendor      Payment gateway vendor
+         * @param instituteId Institute ID
+         * @param orderId     Order/Payment log ID
+         * @return Status map with state and details
+         */
+        public Map<String, Object> checkPaymentStatus(String vendor, String instituteId, String orderId) {
+                Map<String, Object> paymentGatewaySpecificData = institutePaymentGatewayMappingService
+                                .findInstitutePaymentGatewaySpecifData(vendor, instituteId);
+                PaymentServiceStrategy paymentServiceStrategy = paymentServiceFactory
+                                .getStrategy(PaymentGateway.fromString(vendor));
+
+                if (paymentServiceStrategy instanceof PhonePePaymentManager) {
+                        PhonePeStatusResponseDTO status = ((PhonePePaymentManager) paymentServiceStrategy)
+                                        .checkPaymentStatus(orderId, paymentGatewaySpecificData);
+
+                        Map<String, Object> responseMap = new HashMap<>();
+                        responseMap.put("status", status.getState());
+                        responseMap.put("details", status);
+
+                        // Update payment log based on status
+                        if ("COMPLETED".equalsIgnoreCase(status.getState())) {
+                                paymentLogService.updatePaymentLog(orderId, PaymentStatusEnum.PAID.name(), instituteId);
+                        } else if ("FAILED".equalsIgnoreCase(status.getState())) {
+                                paymentLogService.updatePaymentLog(orderId, PaymentStatusEnum.FAILED.name(),
+                                                instituteId);
+                        }
+
+                        return responseMap;
+                }
+
+                throw new UnsupportedOperationException("Status check not supported for " + vendor);
         }
 
         public PaymentResponseDTO makePayment(String vendor, String instituteId, UserDTO user,
@@ -282,57 +384,24 @@ public class PaymentService {
                 Map<String, Object> paymentGatewaySpecificData = institutePaymentGatewayMappingService
                                 .findInstitutePaymentGatewaySpecifData(vendor, instituteId);
 
-                // Check if customer exists directly from payment gateway
                 PaymentServiceStrategy paymentServiceStrategy = paymentServiceFactory
                                 .getStrategy(PaymentGateway.fromString(vendor));
 
-                // First try to find existing customer by email
                 Map<String, Object> existingCustomer = paymentServiceStrategy.findCustomerByEmail(email,
                                 paymentGatewaySpecificData);
                 if (existingCustomer != null && existingCustomer.containsKey("customerId")) {
-                        // Customer exists, return their data
                         return existingCustomer;
                 }
 
-                // Create customer for unknown user if not found
                 return paymentServiceStrategy.createCustomerForUnknownUser(email,
                                 request, paymentGatewaySpecificData);
         }
 
         private UserDTO getUserById(String userId) {
-                // Get user details from auth service
                 List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(userId));
                 if (users.isEmpty()) {
                         throw new RuntimeException("User not found with ID: " + userId);
                 }
                 return users.get(0);
-        }
-
-        public Map<String, Object> checkPaymentStatus(String vendor, String instituteId, String orderId) {
-                Map<String, Object> paymentGatewaySpecificData = institutePaymentGatewayMappingService
-                                .findInstitutePaymentGatewaySpecifData(vendor, instituteId);
-                PaymentServiceStrategy paymentServiceStrategy = paymentServiceFactory
-                                .getStrategy(PaymentGateway.fromString(vendor));
-
-                if (paymentServiceStrategy instanceof PhonePePaymentManager) {
-                        PhonePeStatusResponseDTO status = ((PhonePePaymentManager) paymentServiceStrategy)
-                                        .checkPaymentStatus(orderId, paymentGatewaySpecificData);
-
-                        // Logic to update DB if status is COMPLETED
-                        Map<String, Object> responseMap = new HashMap<>();
-                        responseMap.put("status", status.getState());
-                        responseMap.put("details", status);
-
-                        if ("COMPLETED".equalsIgnoreCase(status.getState())) {
-                                paymentLogService.updatePaymentLog(orderId, PaymentStatusEnum.PAID.name(), instituteId);
-                        } else if ("FAILED".equalsIgnoreCase(status.getState())) {
-                                paymentLogService.updatePaymentLog(orderId, PaymentStatusEnum.FAILED.name(),
-                                                instituteId);
-                        }
-
-                        return responseMap;
-                }
-
-                throw new UnsupportedOperationException("Status check not supported for " + vendor);
         }
 }

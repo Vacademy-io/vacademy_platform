@@ -139,43 +139,94 @@ public class CombotNodeHandler implements NodeHandler {
         String toNumber = (String) data.get("to");
         String templateName = (String) data.get("templateName");
         String languageCode = (String) data.getOrDefault("languageCode", "en");
+
+        // Optional Fields extraction
+        String headerImage = (String) data.get("headerImage");
+        String headerVideo = (String) data.get("headerVideo"); // NEW: Extract video link
+        String buttonUrlParam = (String) data.get("buttonUrlParam");
+        // Default to index "0" (first button) if not provided
+        String buttonIndex = (String) data.getOrDefault("buttonIndex", "0");
+
         List<String> params = (List<String>) data.get("params"); // Body parameters
 
         if (!StringUtils.hasText(userId) || !StringUtils.hasText(toNumber) || !StringUtils.hasText(templateName)) {
-            log.warn("Skipping message: Missing required fields (userId, to, or templateName). Data: {}", data);
+            log.warn("Skipping message: Missing required fields. Data: {}", data);
             return null;
         }
 
-        // Build Parameters List
-        List<Map<String, String>> parameterComponents = new ArrayList<>();
-        if (params != null) {
+        List<Map<String, Object>> components = new ArrayList<>();
+
+        // 1. Handle Header (Image OR Video)
+        if (StringUtils.hasText(headerImage)) {
+            // Existing Image Logic
+            Map<String, Object> headerComponent = new HashMap<>();
+            headerComponent.put("type", "header");
+
+            Map<String, Object> imageObj = new HashMap<>();
+            imageObj.put("link", headerImage);
+
+            Map<String, Object> imageParam = new HashMap<>();
+            imageParam.put("type", "image");
+            imageParam.put("image", imageObj);
+
+            headerComponent.put("parameters", Collections.singletonList(imageParam));
+            components.add(headerComponent);
+
+        } else if (StringUtils.hasText(headerVideo)) {
+            // NEW: Video Logic (Executed only if headerImage is null/empty)
+            Map<String, Object> headerComponent = new HashMap<>();
+            headerComponent.put("type", "header");
+
+            Map<String, Object> videoObj = new HashMap<>();
+            videoObj.put("link", headerVideo);
+
+            Map<String, Object> videoParam = new HashMap<>();
+            videoParam.put("type", "video");
+            videoParam.put("video", videoObj);
+
+            headerComponent.put("parameters", Collections.singletonList(videoParam));
+            components.add(headerComponent);
+        }
+
+        // 2. Handle Body Text (Existing Logic)
+        if (params != null && !params.isEmpty()) {
+            List<Map<String, String>> parameterComponents = new ArrayList<>();
             for (String paramText : params) {
                 parameterComponents.add(Map.of("type", "text", "text", paramText));
             }
-        }
 
-        // Build Inner Payload (Meta Structure)
-        Map<String, Object> templateMap = new HashMap<>();
-        templateMap.put("name", templateName);
-        templateMap.put("language", Map.of("code", languageCode));
-
-        // Add body component only if parameters exist
-        if (!parameterComponents.isEmpty()) {
             Map<String, Object> bodyComponent = new HashMap<>();
             bodyComponent.put("type", "body");
             bodyComponent.put("parameters", parameterComponents);
-            templateMap.put("components", List.of(bodyComponent));
-        } else {
-            templateMap.put("components", Collections.emptyList());
+            components.add(bodyComponent);
         }
 
+        // 3. Handle Dynamic URL Button (Existing Logic)
+        if (StringUtils.hasText(buttonUrlParam)) {
+            Map<String, Object> buttonComponent = new HashMap<>();
+            buttonComponent.put("type", "button");
+            buttonComponent.put("sub_type", "url");
+            buttonComponent.put("index", buttonIndex);
+
+            Map<String, String> textParam = Map.of("type", "text", "text", buttonUrlParam);
+            buttonComponent.put("parameters", Collections.singletonList(textParam));
+
+            components.add(buttonComponent);
+        }
+
+        // Build Template Map
+        Map<String, Object> templateMap = new HashMap<>();
+        templateMap.put("name", templateName);
+        templateMap.put("language", Map.of("code", languageCode));
+        templateMap.put("components", components);
+
+        // Build Final Wrapper
         Map<String, Object> innerPayload = new HashMap<>();
         innerPayload.put("messaging_product", "whatsapp");
         innerPayload.put("to", toNumber);
         innerPayload.put("type", "template");
         innerPayload.put("template", templateMap);
 
-        // Build Wrapper matching the MessageInfo structure in WhatsAppTemplateRequest
         Map<String, Object> messageWrapper = new HashMap<>();
         messageWrapper.put("userId", userId);
         messageWrapper.put("payload", innerPayload);

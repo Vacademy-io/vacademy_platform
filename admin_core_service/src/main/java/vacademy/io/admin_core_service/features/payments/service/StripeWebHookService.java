@@ -10,12 +10,16 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.institute.service.InstitutePaymentGatewayMappingService;
 import vacademy.io.admin_core_service.features.payments.enums.WebHookStatus;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
+import vacademy.io.admin_core_service.features.enrollment_policy.service.RenewalPaymentService;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.payment.enums.PaymentGateway;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
+import vacademy.io.common.logging.SentryLogger;
+import vacademy.io.common.payment.enums.PaymentType;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -33,6 +37,8 @@ public class StripeWebHookService {
     private ObjectMapper objectMapper;
     @Autowired
     private PaymentLogService paymentLogService;
+    @Autowired
+    private RenewalPaymentService renewalPaymentService;
 
     public ResponseEntity<String> processWebHook(String payload, String sigHeader) {
         log.info("Received Stripe webhook payload.");
@@ -40,7 +46,7 @@ public class StripeWebHookService {
 
         try {
             // Log the incoming webhook for auditing purposes
-            webhookId = webHookService.saveWebhook(PaymentGateway.STRIPE.name(), payload,null);
+            webhookId = webHookService.saveWebhook(PaymentGateway.STRIPE.name(), payload, null);
 
             String instituteId = extractInstituteId(payload);
             if (instituteId == null) {
@@ -53,6 +59,12 @@ public class StripeWebHookService {
             String webhookSecret = getWebhookSecret(instituteId);
             if (webhookSecret == null) {
                 log.error("Webhook secret not found for institute: {}", instituteId);
+                SentryLogger.logError(new IllegalStateException("Webhook secret not found"),
+                        "Stripe webhook secret not configured", Map.of(
+                                "payment.vendor", "STRIPE",
+                                "institute.id", instituteId,
+                                "webhook.id", webhookId,
+                                "operation", "getWebhookSecret"));
                 updateWebhookStatus(webhookId, WebHookStatus.FAILED, "Webhook secret not found");
                 return ResponseEntity.status(404).body("Unknown institute");
             }
@@ -68,15 +80,24 @@ public class StripeWebHookService {
             // Extract the PaymentIntent object from the event payload
             PaymentIntent paymentIntent = extractPaymentIntentFromEvent(event);
             if (paymentIntent == null) {
-                // This could be an event we don't handle, like `customer.created`. This is normal.
-                log.info("Event {} does not contain a PaymentIntent object. Acknowledging and skipping.", event.getType());
-                updateWebhookStatus(webhookId, WebHookStatus.PROCESSED, "Event does not contain a PaymentIntent, skipped.");
+                // This could be an event we don't handle, like `customer.created`. This is
+                // normal.
+                log.info("Event {} does not contain a PaymentIntent object. Acknowledging and skipping.",
+                        event.getType());
+                updateWebhookStatus(webhookId, WebHookStatus.PROCESSED,
+                        "Event does not contain a PaymentIntent, skipped.");
                 return ResponseEntity.ok("Webhook acknowledged, no action taken.");
-            }
-
-            String orderId = paymentIntent.getMetadata().get("orderId");
+            }            String orderId = paymentIntent.getMetadata().get("orderId");
             if (orderId == null) {
                 log.error("Missing 'orderId' in PaymentIntent metadata for pi_id: {}", paymentIntent.getId());
+                SentryLogger.logError(new IllegalStateException("Missing orderId in metadata"),
+                        "Stripe webhook missing orderId in PaymentIntent metadata", Map.of(
+                                "payment.vendor", "STRIPE",
+                                "payment.intent.id", paymentIntent.getId(),
+                                "institute.id", instituteId,
+                                "webhook.id", webhookId != null ? webhookId : "unknown",
+                                "payment.webhook.event", event.getType(),
+                                "operation", "extractOrderId"));
                 updateWebhookStatus(webhookId, WebHookStatus.FAILED, "Missing orderId in metadata");
                 return ResponseEntity.status(400).body("Missing orderId in metadata");
             }
@@ -84,19 +105,16 @@ public class StripeWebHookService {
             // Update our internal records with the final event type and order ID
             webHookService.updateWebHook(webhookId, payload, orderId, event.getType());
 
-            // Handle the event based on its type
-            switch (event.getType()) {
-                case "payment_intent.succeeded":
-                    log.info("PaymentIntent succeeded for orderId: {}", orderId);
-                    paymentLogService.updatePaymentLog(orderId, PaymentStatusEnum.PAID.name(), instituteId);
-                    break;
-                case "payment_intent.payment_failed":
-                    log.warn("PaymentIntent failed for orderId: {}", orderId);
-                    paymentLogService.updatePaymentLog(orderId, PaymentStatusEnum.FAILED.name(), instituteId);
-                    break;
-                default:
-                    log.info("Unhandled but valid event type: {}. Acknowledging.", event.getType());
-                    break;
+            // Extract payment_type from metadata
+            String paymentType = paymentIntent.getMetadata().get("payment_type");
+            
+            // Route based on payment_type
+            if (paymentType != null && PaymentType.RENEWAL.name().equals(paymentType)) {
+                log.info("Processing RENEWAL payment webhook for orderId: {}", orderId);
+                handleRenewalPayment(event, paymentIntent, orderId, instituteId);
+            } else {
+                log.info("Processing INITIAL payment webhook for orderId: {}", orderId);
+                handleInitialPayment(event, orderId, instituteId);
             }
 
             updateWebhookStatus(webhookId, WebHookStatus.PROCESSED, null);
@@ -104,6 +122,12 @@ public class StripeWebHookService {
 
         } catch (Exception ex) {
             log.error("Unhandled error during webhook processing", ex);
+            SentryLogger.SentryEventBuilder.error(ex)
+                    .withMessage("Stripe webhook processing failed with unhandled error")
+                    .withTag("payment.vendor", "STRIPE")
+                    .withTag("webhook.id", webhookId != null ? webhookId : "unknown")
+                    .withTag("operation", "processStripeWebhook")
+                    .send();
             if (webhookId != null) {
                 updateWebhookStatus(webhookId, WebHookStatus.FAILED, ex.getMessage());
             }
@@ -129,12 +153,16 @@ public class StripeWebHookService {
             }
         } catch (Exception e) {
             log.error("Failed to parse payload or extract instituteId", e);
+            SentryLogger.logError(e, "Failed to parse Stripe webhook payload", Map.of(
+                    "payment.vendor", "STRIPE",
+                    "operation", "extractInstituteId"));
         }
         return null;
     }
 
     private String getWebhookSecret(String instituteId) {
-        Map<String, Object> gatewayData = institutePaymentGatewayMappingService.findInstitutePaymentGatewaySpecifData(PaymentGateway.STRIPE.name(), instituteId);
+        Map<String, Object> gatewayData = institutePaymentGatewayMappingService
+                .findInstitutePaymentGatewaySpecifData(PaymentGateway.STRIPE.name(), instituteId);
         return gatewayData != null ? (String) gatewayData.get("webhookSecret") : null;
     }
 
@@ -143,11 +171,12 @@ public class StripeWebHookService {
             return Webhook.constructEvent(payload, sigHeader, secret);
         } catch (SignatureVerificationException e) {
             log.error("Stripe signature verification failed.", e);
+            SentryLogger.logError(e, "Stripe webhook signature verification failed", Map.of(
+                    "payment.vendor", "STRIPE",
+                    "operation", "verifySignature"));
             return null;
         }
-    }
-
-    private PaymentIntent extractPaymentIntentFromEvent(Event event) {
+    }    private PaymentIntent extractPaymentIntentFromEvent(Event event) {
         if (!event.getType().startsWith("payment_intent.")) {
             return null; // Not a payment intent event
         }
@@ -160,8 +189,55 @@ public class StripeWebHookService {
             String rawJson = dataObjectDeserializer.getRawJson();
             return PaymentIntent.GSON.fromJson(rawJson, PaymentIntent.class);
         } catch (Exception e) {
-            log.error("Could not deserialize PaymentIntent from raw JSON for event type: {}: {}", event.getType(), e.getMessage());
+            log.error("Could not deserialize PaymentIntent from raw JSON for event type: {}: {}", event.getType(),
+                    e.getMessage());
+            SentryLogger.logError(e, "Could not deserialize Stripe PaymentIntent", Map.of(
+                    "payment.vendor", "STRIPE",
+                    "payment.webhook.event", event.getType(),
+                    "operation", "extractPaymentIntent"));
             throw new VacademyException("Webhook data object could not be parsed as a PaymentIntent.");
+        }
+    }
+
+    private void handleInitialPayment(Event event, String orderId, String instituteId) {
+        // Handle the event based on its type
+        switch (event.getType()) {
+            case "payment_intent.succeeded":
+                log.info("PaymentIntent succeeded for orderId: {}", orderId);
+                paymentLogService.updatePaymentLog(orderId, PaymentStatusEnum.PAID.name(), instituteId);
+                break;
+            case "payment_intent.payment_failed":
+                log.warn("PaymentIntent failed for orderId: {}", orderId);
+                paymentLogService.updatePaymentLog(orderId, PaymentStatusEnum.FAILED.name(), instituteId);
+                break;
+            default:
+                log.info("Unhandled but valid event type: {}. Acknowledging.", event.getType());
+                break;
+        }
+    }
+    
+    private void handleRenewalPayment(Event event, PaymentIntent paymentIntent, String orderId, String instituteId) {
+        try {
+            // Determine payment status
+            PaymentStatusEnum paymentStatus = determinePaymentStatus(paymentIntent.getStatus());
+            
+            log.info("Processing renewal payment: orderId={}, status={}", orderId, paymentStatus);
+            
+            // Call renewal service to handle payment confirmation
+            renewalPaymentService.handleRenewalPaymentConfirmation(orderId, instituteId, paymentStatus, paymentIntent);
+            
+        } catch (Exception e) {
+            log.error("Error processing renewal payment webhook", e);
+        }
+    }
+    
+    private PaymentStatusEnum determinePaymentStatus(String stripeStatus) {
+        if ("succeeded".equals(stripeStatus)) {
+            return PaymentStatusEnum.PAID;
+        } else if ("processing".equals(stripeStatus)) {
+            return PaymentStatusEnum.PAYMENT_PENDING;
+        } else {
+            return PaymentStatusEnum.FAILED;
         }
     }
 }

@@ -56,9 +56,13 @@ public class DomainRoutingService {
                 .allowGithubAuth(mapping.getAllowGithubAuth())
                 .allowEmailOtpAuth(mapping.getAllowEmailOtpAuth())
                 .allowUsernamePasswordAuth(mapping.getAllowUsernamePasswordAuth())
+                .playStoreAppLink(mapping.getPlayStoreAppLink())
+                .appStoreAppLink(mapping.getAppStoreAppLink())
+                .windowsAppLink(mapping.getWindowsAppLink())
+                .macAppLink(mapping.getMacAppLink())
+                .learnerPortalUrl(institute.getLearnerPortalBaseUrl())
+                .instructorPortalUrl(institute.getAdminPortalBaseUrl())
                 .build();
         return Optional.of(response);
     }
 }
-
-

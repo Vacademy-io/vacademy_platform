@@ -15,20 +15,9 @@ public class UserServiceDTO {
     private String userId;
     private boolean enabled;
     private List<String> roles = new ArrayList<>();
-    private List<Authority> authorities = new ArrayList<>();
+    private List<String> authorities = new ArrayList<>();
 
     public UserServiceDTO() {
         // Default constructor
-    }
-
-    @Data
-    @NoArgsConstructor
-    static public class Authority {
-        private String authority;
-
-        public Authority(String authority) {
-            this.authority = authority;
-        }
-
     }
 }

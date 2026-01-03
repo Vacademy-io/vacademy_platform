@@ -106,7 +106,6 @@ jobs:
             DB_USERNAME=${{ secrets.DB_USERNAME }} \
             APP_USERNAME=${{ secrets.APP_USERNAME }} \
             APP_PASSWORD=${{ secrets.APP_PASSWORD }} \
-            AUTH_SERVER_BASE_URL=${{ secrets.AUTH_SERVER_BASE_URL }} \
             CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
             NOTIFICATION_SERVICE_DB_URL=${{ secrets.NOTIFICATION_SERVICE_DB_URL }} \
             MAIL_HOST=${{ secrets.MAIL_HOST }} \

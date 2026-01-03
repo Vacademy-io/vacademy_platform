@@ -42,12 +42,12 @@ public class MultiChannelDeliveryService {
      * Delivers a content benefit to the appropriate user(s) through the specified channels.
      */
     private void deliverContent(BenefitConfigDTO.ContentBenefitValue benefitValue,
-                               UserDTO referrerUser,
-                               UserDTO refereeUser,
-                               String instituteId,
-                               List<FileDetailsDTO> fileDetails,
-                               boolean isForReferee,
-                               ReferralMapping referralMapping) {
+                                UserDTO referrerUser,
+                                UserDTO refereeUser,
+                                String instituteId,
+                                List<FileDetailsDTO> fileDetails,
+                                boolean isForReferee,
+                                ReferralMapping referralMapping) {
         if (benefitValue == null || benefitValue.getDeliveryMediums() == null) {
             log.warn("Cannot deliver content, benefit details or delivery mediums are null.");
             return;
@@ -91,9 +91,26 @@ public class MultiChannelDeliveryService {
 
         log.info("Preparing email for user {} via NotificationService.", targetUser.getEmail());
 
-        String contentLinks = "<ul>" + fileDetails.stream()
-                .map(file -> "<li><a href=\"" + file.getUrl() + "\" target=\"_blank\">" + file.getFileName() + "</a></li>")
-                .collect(Collectors.joining()) + "</ul>";
+        // Build content links from both fileIds and contentUrl
+        StringBuilder contentLinksBuilder = new StringBuilder("<ul>");
+
+        // Add file links from media service
+        fileDetails.forEach(file ->
+                contentLinksBuilder.append("<li><a href=\"").append(file.getUrl())
+                        .append("\" target=\"_blank\">").append(file.getFileName())
+                        .append("</a></li>")
+        );
+
+        // Add external content URL (e.g., YouTube links)
+        if (benefitValue.getContentUrl() != null && !benefitValue.getContentUrl().isBlank()) {
+            String linkText = benefitValue.getContentUrl().contains("youtube") ? "Watch Video" : "View Content";
+            contentLinksBuilder.append("<li><a href=\"").append(benefitValue.getContentUrl())
+                    .append("\" target=\"_blank\">").append(linkText)
+                    .append("</a></li>");
+        }
+
+        contentLinksBuilder.append("</ul>");
+        String contentLinks = contentLinksBuilder.toString();
 
         String defaultBody = isForReferee
                 ? ReferralsEmailBody.REFEREE_EMAIL_BODY

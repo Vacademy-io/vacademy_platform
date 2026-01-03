@@ -180,7 +180,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.comma_separated_tags AS commaSeparetedTags,
                 p.course_depth AS courseDepth,
                 p.course_html_description AS courseHtmlDescriptionHtml,
-                p.drip_condition_json AS dripConditionJson,
                 p.package_type AS packageType,
                 p.created_at AS createdAt,
 
@@ -205,6 +204,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 ), 0.0) AS rating,
 
                 /* 2. Session Identifiers */
+                ps.id AS packageSessionId,
                 MIN(l.id) AS levelId,
                 MIN(l.level_name) AS levelName,
 
@@ -217,6 +217,11 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             JOIN package_session ps ON ps.package_id = p.id
             JOIN level l ON l.id = ps.level_id
             JOIN package_institute pi ON pi.package_id = p.id
+
+            JOIN student_session_institute_group_mapping ssigm
+                ON ssigm.package_session_id = ps.id
+                AND ssigm.user_id = :userId
+                AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
 
             LEFT JOIN learner_operation lo
                 ON lo.source = 'PACKAGE_SESSION'
@@ -316,6 +321,10 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                             JOIN package_session ps ON ps.package_id = p.id
                             JOIN level l ON l.id = ps.level_id
                             JOIN package_institute pi ON pi.package_id = p.id
+                            JOIN student_session_institute_group_mapping ssigm
+                                ON ssigm.package_session_id = ps.id
+                                AND ssigm.user_id = :userId
+                                AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
                             LEFT JOIN learner_operation lo
                                 ON lo.source = 'PACKAGE_SESSION'
                                 AND lo.source_id = ps.id
@@ -373,6 +382,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("questionStatusList") List<String> questionStatusList,
             @Param("slideStatusList") List<String> slideStatusList,
             @Param("chapterPackageStatusList") List<String> chapterPackageStatusList,
+            @Param("mappingStatuses") List<String> mappingStatuses,
             Pageable pageable);
 
     // to do: here I have hard coded the rating of course
@@ -392,7 +402,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.comma_separated_tags AS commaSeparetedTags,
                 p.course_depth AS courseDepth,
                 p.course_html_description AS courseHtmlDescriptionHtml,
-                p.drip_condition_json AS dripConditionJson,
                 p.package_type AS packageType,
                 p.created_at AS createdAt,
 
@@ -427,6 +436,13 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             JOIN package_session ps ON ps.package_id = p.id
             JOIN level l ON l.id = ps.level_id
             JOIN package_institute pi ON pi.package_id = p.id
+
+            JOIN package_institute pi ON pi.package_id = p.id
+
+            JOIN student_session_institute_group_mapping ssigm
+                ON ssigm.package_session_id = ps.id
+                AND ssigm.user_id = :userId
+                AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
 
             LEFT JOIN learner_operation lo
                 ON lo.source = 'PACKAGE_SESSION'
@@ -512,6 +528,10 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                             JOIN package_session ps ON ps.package_id = p.id
                             JOIN level l ON l.id = ps.level_id
                             JOIN package_institute pi ON pi.package_id = p.id
+                            JOIN student_session_institute_group_mapping ssigm
+                                ON ssigm.package_session_id = ps.id
+                                AND ssigm.user_id = :userId
+                                AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
                             LEFT JOIN learner_operation lo ON lo.source = 'PACKAGE_SESSION' AND lo.source_id = ps.id
                                 AND (:userId IS NULL OR lo.user_id = :userId)
                                 AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
@@ -552,6 +572,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("questionStatusList") List<String> questionStatusList,
             @Param("slideStatusList") List<String> slideStatusList,
             @Param("chapterPackageStatusList") List<String> chapterPackageStatusList,
+            @Param("mappingStatuses") List<String> mappingStatuses,
             Pageable pageable);
 
     // to do: here I have hard coded the rating of course
@@ -570,8 +591,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     p.comma_separated_tags AS commaSeparetedTags,
                     p.course_depth AS courseDepth,
                     p.course_html_description AS courseHtmlDescriptionHtml,
-                    p.drip_condition_json AS dripConditionJson,
-                    p.package_type AS packageType,
+            p.package_type AS packageType,
                     p.created_at AS createdAt,
                     COALESCE((
                         SELECT AVG(r.points)
@@ -589,6 +609,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         )
                     ), 0.0) AS rating,
                     COALESCE(ps_read_time.total_read_time_minutes, 0) AS readTimeInMinutes,
+                    MIN(ps.id) AS packageSessionId,
                     MIN(l.id) AS levelId,
                     MIN(l.level_name) AS levelName,
                     ARRAY_REMOVE(
@@ -736,7 +757,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.comma_separated_tags AS commaSeparetedTags,
                 p.course_depth AS courseDepth,
                 p.course_html_description AS courseHtmlDescriptionHtml,
-                p.drip_condition_json AS dripConditionJson,
                 p.package_type AS packageType,
                 p.created_at AS createdAt,
                 SUM(COALESCE(ps_read_time.total_read_time_minutes, 0)) AS readTimeInMinutes,
@@ -935,8 +955,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.comma_separated_tags AS commaSeparetedTags,
                 p.course_depth AS courseDepth,
                 p.course_html_description AS courseHtmlDescriptionHtml,
-                p.drip_condition_json AS dripConditionJson,
-                p.package_type AS packageType,
+                    p.package_type AS packageType,
                 p.created_at AS createdAt,
 
                 -- ✅ Fixed and filtered AVG logic
@@ -1012,7 +1031,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     p.comma_separated_tags AS commaSeparetedTags,
                     p.course_depth AS courseDepth,
                     p.course_html_description AS courseHtmlDescriptionHtml,
-                p.drip_condition_json AS dripConditionJson,
                 p.package_type AS packageType,
                     p.created_at AS createdAt,
                     0.0 AS percentageCompleted,
@@ -1211,8 +1229,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     p.comma_separated_tags AS commaSeparetedTags,
                     p.course_depth AS courseDepth,
                     p.course_html_description AS courseHtmlDescriptionHtml,
-                    p.drip_condition_json AS dripConditionJson,
-                    p.package_type AS packageType,
+            p.package_type AS packageType,
                     p.created_at AS createdAt,
                     COALESCE((
                         SELECT AVG(r.points)
@@ -1228,6 +1245,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         AND (:#{#ratingStatuses == null || #ratingStatuses.isEmpty()} = true OR r.status IN (:ratingStatuses))
                     ), 0.0) AS rating,
                     COALESCE(ps_read_time.total_read_time_minutes, 0) AS readTimeInMinutes,
+                    ps.id AS packageSessionId,
                     MIN(l.id) AS levelId,
                     MIN(l.level_name) AS levelName,
                     ARRAY_REMOVE(
@@ -1405,8 +1423,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.comma_separated_tags AS commaSeparetedTags,
                 p.course_depth AS courseDepth,
                 p.course_html_description AS courseHtmlDescriptionHtml,
-                p.drip_condition_json AS dripConditionJson,
-                p.package_type AS packageType,
+                    p.package_type AS packageType,
                 p.created_at AS createdAt,
 
                 COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
@@ -1426,6 +1443,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     AND (:#{#ratingStatuses == null || #ratingStatuses.isEmpty()} = true OR r.status IN (:ratingStatuses))
                 ), 0.0) AS rating,
 
+                ps.id AS packageSessionId,
                 MIN(l.id) AS levelId,
                 MIN(l.level_name) AS levelName,
 
@@ -1629,8 +1647,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.comma_separated_tags AS commaSeparetedTags,
                 p.course_depth AS courseDepth,
                 p.course_html_description AS courseHtmlDescriptionHtml,
-                p.drip_condition_json AS dripConditionJson,
-                p.package_type AS packageType,
+                    p.package_type AS packageType,
                 p.created_at AS createdAt,
 
                 COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
@@ -1819,7 +1836,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.comma_separated_tags AS commaSeparatedTags,
                 p.course_depth AS courseDepth,
                 p.course_html_description AS courseHtmlDescriptionHtml,
-                p.drip_condition_json AS dripConditionJson,
                 p.package_type AS packageType,
                 p.created_at AS createdAt,
 
@@ -1844,6 +1860,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 ), 0.0) AS rating,
 
                 /* 2. Session/Level Identifiers */
+                ps.id AS packageSessionId,
                 MIN(l.id) AS levelId,
                 MIN(l.level_name) AS levelName,
 
@@ -2022,7 +2039,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.comma_separated_tags AS commaSeparetedTags,
                 p.course_depth AS courseDepth,
                 p.course_html_description AS courseHtmlDescriptionHtml,
-                p.drip_condition_json AS dripConditionJson,
                 p.package_type AS packageType,
                 p.created_at AS createdAt,
 
@@ -2404,8 +2420,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     p.comma_separated_tags AS commaSeparetedTags,
                     p.course_depth AS courseDepth,
                     p.course_html_description AS courseHtmlDescriptionHtml,
-                    p.drip_condition_json AS dripConditionJson,
-                    p.package_type AS packageType,
+                        p.package_type AS packageType,
                     ps.id AS packageSessionId,
                     l.id AS levelId,
                     l.level_name AS levelName,
@@ -2607,8 +2622,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     p.comma_separated_tags AS commaSeparetedTags,
                     p.course_depth AS courseDepth,
                     p.course_html_description AS courseHtmlDescriptionHtml,
-                    p.drip_condition_json AS dripConditionJson,
-                    p.package_type AS packageType,
+                        p.package_type AS packageType,
                     p.created_at AS createdAt,
                     ps.id AS packageSessionId,
                     l.id AS levelId,

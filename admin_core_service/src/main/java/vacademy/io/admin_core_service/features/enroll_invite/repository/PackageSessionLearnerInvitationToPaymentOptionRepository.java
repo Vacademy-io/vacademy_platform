@@ -49,4 +49,9 @@ public interface PackageSessionLearnerInvitationToPaymentOptionRepository
         List<PackageSessionLearnerInvitationToPaymentOption> findByEnrollInviteIdsAndStatusWithPackageSession(
                         @Param("enrollInviteIds") List<String> enrollInviteIds,
                         @Param("statusList") List<String> statusList);
+
+        @Query("SELECT p FROM PackageSessionLearnerInvitationToPaymentOption p JOIN FETCH p.packageSession ps LEFT JOIN FETCH ps.level LEFT JOIN FETCH ps.session LEFT JOIN FETCH ps.packageEntity JOIN FETCH p.paymentOption WHERE p.enrollInvite.id = :enrollInviteId AND p.status IN :statusList")
+        List<PackageSessionLearnerInvitationToPaymentOption> findByEnrollInviteIdAndStatusWithPackageSession(
+                        @Param("enrollInviteId") String enrollInviteId,
+                        @Param("statusList") List<String> statusList);
 }

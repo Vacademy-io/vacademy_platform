@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import asyncio
 from typing import Optional, AsyncGenerator
 
 from ..domain.course_metadata import CourseMetadata
@@ -68,20 +69,31 @@ class CourseOutlineGenerationService:
         # Check if practice problems/solutions are requested and add homework slides
         outline_response = self._add_homework_slides_if_needed(outline_response, request.user_prompt)
 
-        # Generate images if requested
-        if request.generation_options and request.generation_options.generate_images:
-            banner_url, preview_url = await self._image_service.generate_images(
-                course_name=outline_response.course_metadata.course_name,
-                about_course=outline_response.course_metadata.about_the_course_html,
-                course_depth=outline_response.course_metadata.course_depth,
-                image_style=request.generation_options.image_style or "professional"
-            )
-            
-            # Update metadata with image URLs if generation was successful
-            if banner_url:
-                outline_response.course_metadata.banner_image_url = banner_url
-            if preview_url:
-                outline_response.course_metadata.preview_image_url = preview_url
+        # Generate images if requested AND parsing was successful
+        # Skip image generation if course_name is "Error" (indicates parsing failure)
+        if (request.generation_options and 
+            request.generation_options.generate_images and
+            outline_response.course_metadata.course_name and
+            outline_response.course_metadata.course_name.lower() != "error" and
+            len(outline_response.course_metadata.course_name.strip()) > 0):
+            try:
+                banner_url, preview_url, media_url = await self._image_service.generate_images(
+                    course_name=outline_response.course_metadata.course_name,
+                    about_course=outline_response.course_metadata.about_the_course_html,
+                    course_depth=outline_response.course_metadata.course_depth,
+                    image_style=request.generation_options.image_style or "professional"
+                )
+                
+                # Update metadata with image URLs if generation was successful
+                if banner_url:
+                    outline_response.course_metadata.banner_image_url = banner_url
+                if preview_url:
+                    outline_response.course_metadata.preview_image_url = preview_url
+                if media_url:
+                    outline_response.course_metadata.media_image_url = media_url
+            except Exception as e:
+                logger.error(f"Failed to generate course images: {str(e)}. Skipping image generation to save credits.")
+                # Don't fail the entire request if image generation fails
 
         return outline_response
 
@@ -121,8 +133,13 @@ class CourseOutlineGenerationService:
             # Check if practice problems/solutions are requested and add homework slides
             outline_response = self._add_homework_slides_if_needed(outline_response, request.user_prompt)
 
-            # Generate images if requested
-            if request.generation_options and request.generation_options.generate_images:
+            # Generate images if requested AND parsing was successful
+            # Skip image generation if course_name is "Error" (indicates parsing failure)
+            if (request.generation_options and 
+                request.generation_options.generate_images and
+                outline_response.course_metadata.course_name and
+                outline_response.course_metadata.course_name.lower() != "error" and
+                len(outline_response.course_metadata.course_name.strip()) > 0):
                 yield "[Generating...]\nCreating course banner, preview, and media images..."
 
                 try:
@@ -142,7 +159,14 @@ class CourseOutlineGenerationService:
                     if media_url:
                         outline_response.course_metadata.media_image_url = media_url
                 except Exception as e:
-                    logger.warning(f"Image generation failed: {str(e)}, continuing without images")
+                    logger.error(f"Failed to generate course images: {str(e)}. Skipping image generation to save credits.")
+                    # Don't fail the entire request if image generation fails
+            else:
+                # Log why images were skipped
+                if not outline_response.course_metadata.course_name or outline_response.course_metadata.course_name.lower() == "error":
+                    logger.warning("Skipping image generation: Course parsing failed (course_name is 'Error')")
+                elif not request.generation_options or not request.generation_options.generate_images:
+                    logger.debug("Skipping image generation: Not requested by user")
 
             # Yield the final processed outline as JSON (matches media-service pattern)
             try:
@@ -237,28 +261,38 @@ class CourseOutlineGenerationService:
                     logger.warning(f"Failed to parse todo: {str(e)}, skipping")
                     continue
             
-            # Filter todos to only process DOCUMENT, ASSESSMENT, and VIDEO types
+            # Filter todos to only process DOCUMENT, ASSESSMENT, VIDEO, VIDEO_CODE, AI_VIDEO, and AI_VIDEO_CODE types
             content_todos = [
                 todo for todo in todos 
-                if todo.type in ["DOCUMENT", "ASSESSMENT", "VIDEO"]
+                if todo.type in ["DOCUMENT", "ASSESSMENT", "VIDEO", "VIDEO_CODE", "AI_VIDEO", "AI_VIDEO_CODE"]
             ]
             
             if not content_todos:
-                logger.info("No DOCUMENT or ASSESSMENT todos found. Content generation phase skipped.")
+                logger.info("No content todos found. Content generation phase skipped.")
                 yield json.dumps({
                     "type": "INFO",
-                    "message": "No DOCUMENT or ASSESSMENT todos found in coursetree."
+                    "message": "No content generation todos found in coursetree."
                 })
                 return
             
-            logger.info(f"Processing {len(content_todos)} content generation tasks...")
-            
-            # Process todos for content generation
+            # Log the breakdown of todo types
+            todo_types = {}
             for todo in content_todos:
+                todo_types[todo.type] = todo_types.get(todo.type, 0) + 1
+            logger.info(f"Processing {len(content_todos)} content generation tasks: {todo_types}")
+            
+            # Process todos concurrently (non-blocking)
+            async def process_todo_async(todo: Todo, event_queue: asyncio.Queue):
+                """Process a single todo and put all events into the queue."""
                 try:
-                    logger.info(f"Generating content for todo: {todo.path} (Type: {todo.type})")
+                    logger.info(f"Starting async content generation for todo: {todo.path} (Type: {todo.type})")
+                    event_count = 0
                     async for content_update in self._content_generation_service.generate_content_for_todo(todo):
-                        yield content_update
+                        await event_queue.put((todo.path, content_update))
+                        event_count += 1
+                    logger.info(f"Completed async content generation for todo: {todo.path} ({event_count} events)")
+                    # Signal completion
+                    await event_queue.put((todo.path, None))  # None signals completion
                 except Exception as e:
                     logger.error(f"Error processing todo {todo.path}: {str(e)}")
                     error_response = {
@@ -270,7 +304,60 @@ class CourseOutlineGenerationService:
                         "errorMessage": f"Failed to generate content: {str(e)}",
                         "contentData": "Error generating content for this slide. Please try again or contact support.",
                     }
-                    yield json.dumps(error_response)
+                    await event_queue.put((todo.path, json.dumps(error_response)))
+                    await event_queue.put((todo.path, None))  # Signal completion even on error
+            
+            # Create event queue to merge events from all concurrent tasks
+            event_queue = asyncio.Queue()
+            
+            # Create tasks for all todos (they run concurrently)
+            tasks = []
+            for todo in content_todos:
+                task = asyncio.create_task(process_todo_async(todo, event_queue))
+                tasks.append(task)
+            
+            # Track completed todos
+            completed_todos = set()
+            
+            # Stream events as they arrive from any task
+            while len(completed_todos) < len(content_todos):
+                try:
+                    # Wait for next event with a timeout to periodically check task status
+                    try:
+                        todo_path, content_update = await asyncio.wait_for(event_queue.get(), timeout=1.0)
+                    except asyncio.TimeoutError:
+                        # Check if any tasks completed without sending completion signal
+                        for i, task in enumerate(tasks):
+                            todo = content_todos[i]
+                            if task.done() and todo.path not in completed_todos:
+                                completed_todos.add(todo.path)
+                                try:
+                                    await task  # This will raise if task had an exception
+                                except Exception as task_error:
+                                    logger.error(f"Task for {todo.path} failed: {str(task_error)}")
+                        continue
+                    
+                    # Check if this is a completion signal
+                    if content_update is None:
+                        completed_todos.add(todo_path)
+                        logger.debug(f"Todo {todo_path} completed. {len(completed_todos)}/{len(content_todos)} done.")
+                        continue
+                    
+                    # Yield the actual event
+                    yield content_update
+                    
+                except Exception as e:
+                    logger.error(f"Error processing event from queue: {str(e)}")
+                    # Check if tasks are still running
+                    for i, task in enumerate(tasks):
+                        if task.done() and content_todos[i].path not in completed_todos:
+                            try:
+                                await task
+                                completed_todos.add(content_todos[i].path)
+                            except Exception as task_error:
+                                logger.error(f"Task {i} (todo: {content_todos[i].path}) failed: {str(task_error)}")
+                                completed_todos.add(content_todos[i].path)  # Mark as done even on error
+                    continue
             
             logger.info("All 'todo' content generation tasks have completed.")
             

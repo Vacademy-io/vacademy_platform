@@ -86,4 +86,7 @@ public class PackageEntity {
 
     @Column(name = "drip_condition_json", columnDefinition = "TEXT")
     private String dripConditionJson;
+
+    @Column(name = "course_setting", columnDefinition = "TEXT")
+    private String courseSetting;
 }

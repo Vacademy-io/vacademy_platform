@@ -9,6 +9,7 @@ import lombok.NoArgsConstructor;
 import vacademy.io.common.auth.dto.UserDTO;
 
 import java.util.Date;
+import java.util.List;
 
 /**
  * DTO containing student_session_institute_group_mapping row data with user details
@@ -32,4 +33,5 @@ public class StudentMappingWithUserDTO {
     private String userPlanId;
     private String destinationPackageSessionId;
     private UserDTO user;
+    private List<CustomFieldDTO> customFields;
 }

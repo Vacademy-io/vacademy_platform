@@ -24,6 +24,9 @@ spec:
         - name: community-service
           image: {{ .Values.services.community_service.image.repository }}:{{ .Values.services.community_service.image.tag }}
           imagePullPolicy: Always
+          envFrom:
+            - configMapRef:
+                name: myconfigmapv1.0
           resources:
             requests:
               cpu: "100m"

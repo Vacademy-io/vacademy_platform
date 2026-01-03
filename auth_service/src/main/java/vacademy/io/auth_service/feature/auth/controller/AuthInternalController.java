@@ -16,11 +16,9 @@ import vacademy.io.common.auth.service.UserActivityTrackingService;
 
 import jakarta.servlet.http.HttpServletRequest;
 
-
 @RestController
 @RequestMapping("auth-service/v1/internal")
 public class AuthInternalController {
-
 
     @Autowired
     UserActivityTrackingService userActivityTrackingService;
@@ -33,9 +31,9 @@ public class AuthInternalController {
 
     @GetMapping("/user")
     public ResponseEntity<CustomUserDetails> getUserDetails(@RequestParam String userName,
-                                                            @RequestParam(required = false) String serviceName,
-                                                            @RequestParam(required = false) String sessionToken,
-                                                            HttpServletRequest request) {
+            @RequestParam(required = false) String serviceName,
+            @RequestParam(required = false) String sessionToken,
+            HttpServletRequest request) {
         long startTime = System.currentTimeMillis();
 
         String smallCaseUsername = StringUtils.trimAllWhitespace(userName);
@@ -51,7 +49,8 @@ public class AuthInternalController {
             usernameWithoutInstitute = stringUsernameSplit[1];
         }
 
-        CustomUserDetails customUserDetails = userDetailsCacheService.getCustomUserDetails(usernameWithoutInstitute, instituteId);
+        CustomUserDetails customUserDetails = userDetailsCacheService.getCustomUserDetails(usernameWithoutInstitute,
+                instituteId);
 
         // Track user activity asynchronously
         long responseTime = System.currentTimeMillis() - startTime;
@@ -68,8 +67,7 @@ public class AuthInternalController {
                 ipAddress,
                 userAgent,
                 200,
-                responseTime
-        );
+                responseTime);
 
         // Create or update session if session token is provided
         if (sessionToken != null && instituteId != null) {
@@ -78,13 +76,11 @@ public class AuthInternalController {
                     instituteId,
                     sessionToken,
                     ipAddress,
-                    userAgent
-            );
+                    userAgent);
         }
 
         return ResponseEntity.ok(customUserDetails);
     }
-
 
     private String getClientIpAddress(HttpServletRequest request) {
         String xForwardedForHeader = request.getHeader("X-Forwarded-For");
@@ -102,9 +98,8 @@ public class AuthInternalController {
 
     @GetMapping("/generate-token-for-learner")
     public ResponseEntity<UserWithJwtDTO> generateTokenForLearner(@RequestParam String userId,
-                                                                  @RequestParam String instituteId) {
+            @RequestParam String instituteId) {
         return ResponseEntity.ok(learnerAuthManager.generateTokenForUserByUserId(userId, instituteId));
     }
-
 
 }

@@ -30,6 +30,7 @@ import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
+import vacademy.io.common.logging.SentryLogger;
 
 import vacademy.io.admin_core_service.features.user_subscription.dto.UserPlanDTO;
 
@@ -105,6 +106,12 @@ public class PaymentLogService {
 
         PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId).orElseThrow(() -> {
             log.error("Payment log not found with ID: {}", paymentLogId);
+            SentryLogger.logError(new RuntimeException("Payment log not found with ID: " + paymentLogId),
+                    "Payment log not found during update", Map.of(
+                            "payment.log.id", paymentLogId,
+                            "payment.status", status,
+                            "payment.payment.status", paymentStatus != null ? paymentStatus : "unknown",
+                            "operation", "updatePaymentLog"));
             return new RuntimeException("Payment log not found with ID: " + paymentLogId);
         });
 
@@ -148,6 +155,14 @@ public class PaymentLogService {
         // After the loop, if the log is still not found, then we throw the error.
         if (paymentLog == null) {
             log.error("Payment log not found after {} retries: ID={}", maxRetries, paymentLogId);
+            SentryLogger.SentryEventBuilder.error(new RuntimeException("Payment log not found after retries"))
+                    .withMessage("Payment log not found after multiple retries")
+                    .withTag("payment.log.id", paymentLogId)
+                    .withTag("payment.payment.status", paymentStatus)
+                    .withTag("max.retries", String.valueOf(maxRetries))
+                    .withTag("institute.id", instituteId != null ? instituteId : "unknown")
+                    .withTag("operation", "updatePaymentLogWithRetry")
+                    .send();
             throw new RuntimeException("Payment log not found with ID: " + paymentLogId);
         }
         paymentLog.setPaymentStatus(paymentStatus);
@@ -173,6 +188,14 @@ public class PaymentLogService {
 
                 if (paymentData == null) {
                     log.error("Payment specific data is null for payment log ID: {}", paymentLog.getId());
+                    SentryLogger.logError(new IllegalStateException("Payment specific data is null"),
+                            "Failed to parse payment specific data", Map.of(
+                                    "payment.log.id", paymentLog.getId(),
+                                    "payment.status", PaymentStatusEnum.PAID.name(),
+                                    "user.id", paymentLog.getUserId() != null ? paymentLog.getUserId() : "unknown",
+                                    "payment.vendor",
+                                    paymentLog.getVendor() != null ? paymentLog.getVendor() : "unknown",
+                                    "operation", "parsePaymentData"));
                     return;
                 }
 
@@ -239,6 +262,12 @@ public class PaymentLogService {
 
             if (paymentData == null) {
                 log.error("Payment specific data is null for payment log ID: {}", paymentLog.getId());
+                SentryLogger.logError(new IllegalStateException("Payment specific data is null for donation"),
+                        "Failed to parse donation payment specific data", Map.of(
+                                "payment.log.id", paymentLog.getId(),
+                                "payment.type", "DONATION",
+                                "payment.vendor", paymentLog.getVendor() != null ? paymentLog.getVendor() : "unknown",
+                                "operation", "parseDonationPaymentData"));
                 return;
             }
 
@@ -271,6 +300,14 @@ public class PaymentLogService {
 
             if (originalRequest == null || paymentResponseDTO == null) {
                 log.error("Could not parse original request or response for payment log ID: {}", paymentLog.getId());
+                SentryLogger.logError(new IllegalStateException("Failed to parse donation payment response/request"),
+                        "Could not parse donation payment response or request", Map.of(
+                                "payment.log.id", paymentLog.getId(),
+                                "payment.type", "DONATION",
+                                "payment.vendor", paymentLog.getVendor() != null ? paymentLog.getVendor() : "unknown",
+                                "has.response", String.valueOf(paymentResponseDTO != null),
+                                "has.request", String.valueOf(originalRequest != null),
+                                "operation", "parseDonationResponseRequest"));
                 return;
             }
 

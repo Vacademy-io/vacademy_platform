@@ -102,8 +102,6 @@ jobs:
             DB_USERNAME=${{ secrets.DB_USERNAME }} \
             APP_USERNAME=${{ secrets.APP_USERNAME }} \
             APP_PASSWORD=${{ secrets.APP_PASSWORD }} \
-            AUTH_SERVER_BASE_URL=${{ secrets.AUTH_SERVER_BASE_URL }} \
-            ASSESSMENT_SERVER_BASE_URL=${{ secrets.ASSESSMENT_SERVER_BASE_URL }} \
             CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
             MEDIA_SERVICE_DB_URL=${{ secrets.MEDIA_SERVICE_DB_URL }} \
             S3_AWS_ACCESS_KEY=${{ secrets.S3_AWS_ACCESS_KEY }} \

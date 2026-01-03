@@ -22,8 +22,9 @@ public class LearnerPortalAccessController {
     public ResponseEntity<LearnerPortalAccessResponse> getLearnerPortalAccess(
         @RequestAttribute("user") CustomUserDetails userDetails,
         @RequestParam("instituteId") String instituteId,
+        @RequestParam(name = "packageId",required = false) String packageId,
         @RequestParam("userId") String userId) {
-        LearnerPortalAccessResponse response = learnerPortalAccessService.generateLearnerPortalAccessUrl(instituteId,
+        LearnerPortalAccessResponse response = learnerPortalAccessService.generateLearnerPortalAccessUrl(instituteId,packageId,
             userId);
         return ResponseEntity.ok(response);
     }
@@ -32,8 +33,9 @@ public class LearnerPortalAccessController {
     public ResponseEntity<Boolean> sendLearnerPortalCred(
         @RequestAttribute("user") CustomUserDetails userDetails,
         @RequestParam("instituteId") String instituteId,
+        @RequestParam(name = "packageId",required = false)String packageId,
         @RequestParam("userId") String userId) {
-        Boolean response = learnerPortalAccessService.sendCredForLMS(instituteId,
+        Boolean response = learnerPortalAccessService.sendCredForLMS(instituteId,packageId,
             userId);
         return ResponseEntity.ok(response);
     }

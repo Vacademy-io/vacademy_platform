@@ -34,7 +34,7 @@ public interface WorkflowExecutionRepository extends JpaRepository<WorkflowExecu
 
         @Query("SELECT we FROM WorkflowExecution we WHERE we.status = :status AND we.startedAt < :cutoffTime")
         List<WorkflowExecution> findStaleExecutions(@Param("status") WorkflowExecutionStatus status,
-                        @Param("cutoffTime") LocalDateTime cutoffTime);
+                        @Param("cutoffTime") Instant cutoffTime);
 
         long countByWorkflowId(String workflowId);
 

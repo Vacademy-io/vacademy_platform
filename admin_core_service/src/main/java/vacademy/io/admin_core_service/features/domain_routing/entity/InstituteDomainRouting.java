@@ -38,7 +38,7 @@ public class InstituteDomainRouting {
 
     @Column(name = "privacy_policy_url", length = 500)
     private String privacyPolicyUrl;
-    
+
     @Column(name = "after_login_route")
     private String afterLoginRoute;
 
@@ -77,6 +77,16 @@ public class InstituteDomainRouting {
 
     @Column(name = "allow_username_password_auth")
     private Boolean allowUsernamePasswordAuth;
+
+    @Column(name = "play_store_app_link", length = 500)
+    private String playStoreAppLink;
+
+    @Column(name = "app_store_app_link", length = 500)
+    private String appStoreAppLink;
+
+    @Column(name = "windows_app_link", length = 500)
+    private String windowsAppLink;
+
+    @Column(name = "mac_app_link", length = 500)
+    private String macAppLink;
 }
-
-

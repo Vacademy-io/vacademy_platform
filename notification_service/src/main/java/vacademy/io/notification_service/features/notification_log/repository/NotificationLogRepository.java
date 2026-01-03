@@ -144,4 +144,64 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
      * Find all events for a specific source and notification type
      */
     List<NotificationLog> findBySourceAndNotificationType(String source, String notificationType);
+
+    @Query(value = """
+        SELECT DISTINCT anchor.user_id 
+        FROM notification_log anchor
+        INNER JOIN notification_log reaction 
+            ON anchor.channel_id = reaction.channel_id
+        WHERE 
+            -- 1. Match the Anchor (Outgoing Message)
+            anchor.notification_type = :anchorType 
+            AND anchor.body = :anchorBody
+            
+            -- 2. Match the Reaction (Delivered/Incoming)
+            AND reaction.notification_type = :reactionType
+            AND reaction.body = :reactionBody
+            
+            -- 3. Logic: Reaction must be AFTER Anchor
+            AND reaction.created_at > anchor.created_at
+            
+            -- 4. CRITICAL: Strict Adjacency Check
+            -- Ensure NO other 'Anchor' message exists between this Anchor and the Reaction
+            AND NOT EXISTS (
+                SELECT 1 
+                FROM notification_log intermediate
+                WHERE intermediate.channel_id = anchor.channel_id
+                  AND intermediate.notification_type = :anchorType
+                  AND intermediate.created_at > anchor.created_at
+                  AND intermediate.created_at < reaction.created_at
+            )
+            
+            -- 5. Return valid User ID
+            AND anchor.user_id IS NOT NULL
+    """, nativeQuery = true)
+    List<String> findUserIdsByAdjacentMessagePair(
+            @Param("anchorType") String anchorType,
+            @Param("anchorBody") String anchorBody,
+            @Param("reactionType") String reactionType,
+            @Param("reactionBody") String reactionBody
+    );
+    
+    // ==================== ENGAGEMENT TRIGGER METHODS ====================
+    
+    /**
+     * Check if engagement trigger was already executed for a user
+     */
+    boolean existsByNotificationTypeAndUserIdAndSourceAndSourceId(
+            String notificationType,
+            String userId,
+            String source,
+            String sourceId
+    );
+    
+    /**
+     * Find the most recent engagement trigger execution for a user and config
+     */
+    Optional<NotificationLog> findTopByNotificationTypeAndUserIdAndSourceAndSourceIdOrderByCreatedAtDesc(
+            String notificationType,
+            String userId,
+            String source,
+            String sourceId
+    );
 }

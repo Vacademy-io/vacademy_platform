@@ -111,7 +111,7 @@ public class CacheConfiguration {
                 // User Details cache (5 minutes TTL) - for caching auth service calls
                 CaffeineCache userDetails = new CaffeineCache(
                                 "userDetails",
-                                caffeineCache5mBuilder().build());
+                                caffeineCacheUserDetailsBuilder().build());
 
                 cacheManager.setCaches(java.util.List.of(
                                 studyLibraryInit,
@@ -186,6 +186,16 @@ public class CacheConfiguration {
         private Caffeine<Object, Object> caffeineCache5mBuilder() {
                 return Caffeine.newBuilder()
                                 .maximumSize(500)
+                                .expireAfterWrite(5, TimeUnit.MINUTES)
+                                .recordStats();
+        }
+
+        /**
+         * 5-minute TTL cache builder for User Details (High volume).
+         */
+        private Caffeine<Object, Object> caffeineCacheUserDetailsBuilder() {
+                return Caffeine.newBuilder()
+                                .maximumSize(10000) // Support up to 10k active users in memory
                                 .expireAfterWrite(5, TimeUnit.MINUTES)
                                 .recordStats();
         }

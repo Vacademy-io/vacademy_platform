@@ -41,15 +41,18 @@ public interface TemplateRepository extends JpaRepository<Template, String> {
 
     // Search templates by name containing text
     @Query("SELECT t FROM Template t WHERE t.instituteId = :instituteId AND LOWER(t.name) LIKE LOWER(CONCAT('%', :searchText, '%'))")
-    List<Template> findByNameContainingIgnoreCase(@Param("instituteId") String instituteId, @Param("searchText") String searchText);
+    List<Template> findByNameContainingIgnoreCase(@Param("instituteId") String instituteId,
+            @Param("searchText") String searchText);
 
     // Search templates by content containing text
     @Query("SELECT t FROM Template t WHERE t.instituteId = :instituteId AND LOWER(t.content) LIKE LOWER(CONCAT('%', :searchText, '%'))")
-    List<Template> findByContentContainingIgnoreCase(@Param("instituteId") String instituteId, @Param("searchText") String searchText);
+    List<Template> findByContentContainingIgnoreCase(@Param("instituteId") String instituteId,
+            @Param("searchText") String searchText);
 
     // Search templates by subject containing text
     @Query("SELECT t FROM Template t WHERE t.instituteId = :instituteId AND LOWER(t.subject) LIKE LOWER(CONCAT('%', :searchText, '%'))")
-    List<Template> findBySubjectContainingIgnoreCase(@Param("instituteId") String instituteId, @Param("searchText") String searchText);
+    List<Template> findBySubjectContainingIgnoreCase(@Param("instituteId") String instituteId,
+            @Param("searchText") String searchText);
 
     // Count templates by institute ID and type
     long countByInstituteIdAndType(String instituteId, String type);
@@ -63,14 +66,16 @@ public interface TemplateRepository extends JpaRepository<Template, String> {
 
     // Find templates by institute ID and type with pagination support
     @Query("SELECT t FROM Template t WHERE t.instituteId = :instituteId AND t.type = :type ORDER BY t.createdAt DESC")
-    List<Template> findByInstituteIdAndTypeOrderByCreatedAtDesc(@Param("instituteId") String instituteId, @Param("type") String type);
+    List<Template> findByInstituteIdAndTypeOrderByCreatedAtDesc(@Param("instituteId") String instituteId,
+            @Param("type") String type);
 
     // Check if template name exists for institute
     boolean existsByInstituteIdAndName(String instituteId, String name);
 
     // Check if template name exists for institute excluding specific template ID
     @Query("SELECT COUNT(t) > 0 FROM Template t WHERE t.instituteId = :instituteId AND t.name = :name AND t.id != :excludeId")
-    boolean existsByInstituteIdAndNameAndIdNot(@Param("instituteId") String instituteId, @Param("name") String name, @Param("excludeId") String excludeId);
+    boolean existsByInstituteIdAndNameAndIdNot(@Param("instituteId") String instituteId, @Param("name") String name,
+            @Param("excludeId") String excludeId);
 
     // Find templates by institute ID and status
     List<Template> findByInstituteIdAndStatus(String instituteId, String status);
@@ -79,7 +84,8 @@ public interface TemplateRepository extends JpaRepository<Template, String> {
     List<Template> findByInstituteIdAndTemplateCategory(String instituteId, String templateCategory);
 
     // Find templates by institute ID, status, and template category
-    List<Template> findByInstituteIdAndStatusAndTemplateCategory(String instituteId, String status, String templateCategory);
+    List<Template> findByInstituteIdAndStatusAndTemplateCategory(String instituteId, String status,
+            String templateCategory);
 
     // Find templates by status
     List<Template> findByStatus(String status);
@@ -96,6 +102,7 @@ public interface TemplateRepository extends JpaRepository<Template, String> {
     // Count templates by institute ID, status, and template category
     long countByInstituteIdAndStatusAndTemplateCategory(String instituteId, String status, String templateCategory);
 
-    Optional<Template> findByInstituteIdAndNameAndType(String instituteId, String name, String type);
+    Optional<Template> findByInstituteIdAndNameAndTypeAndStatus(String instituteId, String name, String type,String status);
 
+    Optional<Template>findByInstituteIdAndNameAndType(String instituteId,String name,String type);
 }

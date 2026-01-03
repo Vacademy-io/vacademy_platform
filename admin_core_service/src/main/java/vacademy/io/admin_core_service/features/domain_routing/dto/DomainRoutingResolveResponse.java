@@ -30,6 +30,10 @@ public class DomainRoutingResolveResponse {
     private Boolean allowGithubAuth;
     private Boolean allowEmailOtpAuth;
     private Boolean allowUsernamePasswordAuth;
+    private String playStoreAppLink;
+    private String appStoreAppLink;
+    private String windowsAppLink;
+    private String macAppLink;
+    private String learnerPortalUrl;
+    private String instructorPortalUrl;
 }
-
-

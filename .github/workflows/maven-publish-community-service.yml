@@ -93,8 +93,6 @@ jobs:
             DB_USERNAME=${{ secrets.DB_USERNAME }} \
             APP_USERNAME=${{ secrets.APP_USERNAME }} \
             APP_PASSWORD=${{ secrets.APP_PASSWORD }} \
-            AUTH_SERVER_BASE_URL=${{ secrets.AUTH_SERVER_BASE_URL }} \
-            NOTIFICATION_SERVER_BASE_URL=${{ secrets.NOTIFICATION_SERVER_BASE_URL }} \
             CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
             ASSESSMENT_SERVICE_DB_URL=${{ secrets.ASSESSMENT_SERVICE_DB_URL }} \
             SENTRY_DSN=${{ secrets.SENTRY_DSN }} \

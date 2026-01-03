@@ -55,6 +55,9 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/v1/learner/enroll/**",
             "/admin-core-service/workflow/schedule/**",
             "/admin-core-service/payments/user-plan/**/status/**",
+            "/admin-core-service/llm-analytics/**",
+            "/admin-core-service/v1/llm-analytics/**",
+            "/admin-core-service/v1/embedding/api-docs/**",
             // NOTE: Spring's requestMatchers does not resolve path variables like
             // {instituteId},
             // so you must use a pattern with a wildcard instead.
@@ -67,6 +70,10 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/v1/users/by-custom-field-filters/**",
             // Centralized recipient resolution API
             "/admin-core-service/v1/recipient-resolution/centralized",
+            // Agent SSE stream - EventSource doesn't support auth headers, session is
+            // validated internally
+            "/admin-core-service/v1/agent/stream/**",
+            "/admin-core-service/api/v1/audience/webhook/**"
     };
     @Autowired
     JwtAuthFilter jwtAuthFilter;

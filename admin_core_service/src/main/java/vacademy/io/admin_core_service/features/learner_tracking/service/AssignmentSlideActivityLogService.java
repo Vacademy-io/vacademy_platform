@@ -18,7 +18,6 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.List;
 
-
 @RequiredArgsConstructor
 @Service
 public class AssignmentSlideActivityLogService {
@@ -28,30 +27,46 @@ public class AssignmentSlideActivityLogService {
     private final ActivityLogService activityLogService;
     private final LearnerTrackingAsyncService learnerTrackingAsyncService;
 
-
-    public void addAssigmentSlideActivityLog(ActivityLog activityLog, List<AssignmentSlideActivityLogDTO> assignmentSlideActivityLogDTOS) {
+    public void addAssigmentSlideActivityLog(ActivityLog activityLog,
+            List<AssignmentSlideActivityLogDTO> assignmentSlideActivityLogDTOS) {
         assignmentSlideTrackedRepository.deleteByActivityId(activityLog.getId());
-        List<AssignmentSlideTracked>questionSlideTrackeds = assignmentSlideActivityLogDTOS
+        List<AssignmentSlideTracked> questionSlideTrackeds = assignmentSlideActivityLogDTOS
                 .stream()
-                .map(assignmentSlideActivityLogDTO -> new AssignmentSlideTracked(assignmentSlideActivityLogDTO,activityLog))
+                .map(assignmentSlideActivityLogDTO -> new AssignmentSlideTracked(assignmentSlideActivityLogDTO,
+                        activityLog))
                 .toList();
         assignmentSlideTrackedRepository.saveAll(questionSlideTrackeds);
     }
 
-    public String addOrUpdateAssignmentSlideSlideActivityLog(ActivityLogDTO activityLogDTO, String slideId,String chapterId,String moduleId,String subjectId,String packageSessionId, String userId, CustomUserDetails user) {
+    public String addOrUpdateAssignmentSlideSlideActivityLog(ActivityLogDTO activityLogDTO, String slideId,
+            String chapterId, String moduleId, String subjectId, String packageSessionId, String userId,
+            CustomUserDetails user) {
         ActivityLog activityLog = null;
-        if (activityLogDTO.isNewActivity()){
+        if (activityLogDTO.isNewActivity()) {
             activityLog = activityLogService.saveActivityLog(activityLogDTO, userId, slideId);
         } else {
             activityLog = activityLogService.updateActivityLog(activityLogDTO);
         }
-        addAssigmentSlideActivityLog(activityLog,activityLogDTO.getAssignmentSlides());
-        learnerTrackingAsyncService.updateLearnerOperationsForAssignment(user.getUserId(), slideId, chapterId, moduleId,subjectId,packageSessionId,activityLogDTO);
+        addAssigmentSlideActivityLog(activityLog, activityLogDTO.getAssignmentSlides());
+        learnerTrackingAsyncService.updateLearnerOperationsForAssignment(user.getUserId(), slideId, chapterId, moduleId,
+                subjectId, packageSessionId, activityLogDTO);
+
+        // Save raw data for LLM analytics (async, non-blocking)
+        learnerTrackingAsyncService.saveLLMAssignmentDataAsync(
+                activityLog.getId(),
+                slideId,
+                chapterId,
+                packageSessionId,
+                subjectId,
+                activityLogDTO);
+
         return activityLog.getId();
     }
 
-    public Page<ActivityLogDTO> getAssignmentSlideActivityLogs(String userId, String slideId, Pageable pageable, CustomUserDetails userDetails) {
-        Page<ActivityLog> activityLogs = activityLogRepository.findActivityLogsWithAssignmentSlide(userId, slideId, pageable);
+    public Page<ActivityLogDTO> getAssignmentSlideActivityLogs(String userId, String slideId, Pageable pageable,
+            CustomUserDetails userDetails) {
+        Page<ActivityLog> activityLogs = activityLogRepository.findActivityLogsWithAssignmentSlide(userId, slideId,
+                pageable);
         return activityLogs.map(activityLog -> activityLog.toActivityLogDTO());
     }
 }

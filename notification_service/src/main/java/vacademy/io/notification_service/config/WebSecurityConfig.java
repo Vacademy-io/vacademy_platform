@@ -38,7 +38,7 @@ public class WebSecurityConfig {
             "/notification-service/v1/send-email-to-users-public",
             "/internal/**",
             "/verify/id",
-
+            "/notification-service/diagnostic/**",
             // Swagger and documentation
             "/notification-service/swagger-ui.html",
             "/notification-service/api-docs/**",

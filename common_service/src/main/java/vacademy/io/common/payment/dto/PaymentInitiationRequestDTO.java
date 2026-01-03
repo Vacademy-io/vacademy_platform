@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
+import vacademy.io.common.payment.enums.PaymentType;
 
 @Data
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -35,4 +36,5 @@ public class PaymentInitiationRequestDTO {
     private ManualPaymentDTO manualRequest;
     private EwayRequestDTO ewayRequest;
     private PhonePeRequestDTO phonePeRequest;
+    private PaymentType paymentType;
 }

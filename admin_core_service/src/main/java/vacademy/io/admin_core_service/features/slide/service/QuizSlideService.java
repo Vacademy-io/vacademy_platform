@@ -104,10 +104,10 @@ public class QuizSlideService {
         }
 
         // Get existing questions map for efficient lookup
-        Map<String, QuizSlideQuestion> existingQuestionsMap = quizSlide.getQuestions() != null 
-            ? quizSlide.getQuestions().stream()
-                .collect(Collectors.toMap(QuizSlideQuestion::getId, Function.identity()))
-            : new HashMap<>();
+        Map<String, QuizSlideQuestion> existingQuestionsMap = quizSlide.getQuestions() != null
+                ? quizSlide.getQuestions().stream()
+                        .collect(Collectors.toMap(QuizSlideQuestion::getId, Function.identity()))
+                : new HashMap<>();
 
         List<QuizSlideQuestion> updatedQuestions = new ArrayList<>();
 
@@ -167,9 +167,19 @@ public class QuizSlideService {
 
         existingQuestion.setMediaId(dto.getMediaId());
         existingQuestion.setStatus(dto.getStatus());
-        existingQuestion.setQuestionResponseType(dto.getQuestionResponseType());
-        existingQuestion.setQuestionType(dto.getQuestionType());
-        existingQuestion.setAccessLevel(dto.getAccessLevel());
+
+        if (dto.getQuestionResponseType() != null) {
+            existingQuestion.setQuestionResponseType(dto.getQuestionResponseType());
+        }
+
+        if (dto.getQuestionType() != null) {
+            existingQuestion.setQuestionType(dto.getQuestionType());
+        }
+
+        if (dto.getAccessLevel() != null) {
+            existingQuestion.setAccessLevel(dto.getAccessLevel());
+        }
+
         existingQuestion.setAutoEvaluationJson(dto.getAutoEvaluationJson());
         existingQuestion.setEvaluationType(dto.getEvaluationType());
         existingQuestion.setQuestionOrder(dto.getQuestionOrder());
@@ -188,9 +198,9 @@ public class QuizSlideService {
 
         // Get existing options map for efficient lookup
         Map<String, QuizSlideQuestionOption> existingOptionsMap = question.getQuizSlideQuestionOptions() != null
-            ? question.getQuizSlideQuestionOptions().stream()
-                .collect(Collectors.toMap(QuizSlideQuestionOption::getId, Function.identity()))
-            : new HashMap<>();
+                ? question.getQuizSlideQuestionOptions().stream()
+                        .collect(Collectors.toMap(QuizSlideQuestionOption::getId, Function.identity()))
+                : new HashMap<>();
 
         List<QuizSlideQuestionOption> updatedOptions = new ArrayList<>();
 

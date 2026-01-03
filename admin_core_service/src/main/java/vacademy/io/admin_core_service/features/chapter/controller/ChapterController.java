@@ -17,33 +17,46 @@ public class ChapterController {
     private final ChapterService chapterService;
 
     @PostMapping("/add-chapter")
-    public ResponseEntity<ChapterDTO> addChapter(@RequestBody ChapterDTO chapterDTO, @RequestAttribute("user") CustomUserDetails user,@RequestParam("subjectId")String subjectId, @RequestParam("moduleId") String moduleId, @RequestParam("commaSeparatedPackageSessionIds") String commaSeparatedPackageSessionIds) {
-        return ResponseEntity.ok(chapterService.addChapter(chapterDTO, moduleId,subjectId,commaSeparatedPackageSessionIds, user));
+    public ResponseEntity<ChapterDTO> addChapter(@RequestBody ChapterDTO chapterDTO,
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam(value = "subjectId", required = false) String subjectId,
+            @RequestParam("moduleId") String moduleId,
+            @RequestParam("commaSeparatedPackageSessionIds") String commaSeparatedPackageSessionIds) {
+        return ResponseEntity
+                .ok(chapterService.addChapter(chapterDTO, moduleId, subjectId, commaSeparatedPackageSessionIds, user));
     }
 
     @PutMapping("/update-chapter")
-    public ResponseEntity<String> updateChapter(@RequestBody ChapterDTO chapterDTO, @RequestAttribute("user") CustomUserDetails user,
-                                                @RequestParam("chapterId") String chapterId,
-                                                @RequestParam("moduleId") String moduleId,
-                                                @RequestParam("commaSeparatedPackageSessionIds") String commaSeparatedPackageSessionIds) {
-        return ResponseEntity.ok(chapterService.updateChapter(chapterId, moduleId, chapterDTO, commaSeparatedPackageSessionIds, user));
+    public ResponseEntity<String> updateChapter(@RequestBody ChapterDTO chapterDTO,
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam("chapterId") String chapterId,
+            @RequestParam("moduleId") String moduleId,
+            @RequestParam(value = "subjectId", required = false) String subjectId,
+            @RequestParam("commaSeparatedPackageSessionIds") String commaSeparatedPackageSessionIds) {
+        return ResponseEntity.ok(chapterService.updateChapter(chapterId, moduleId, subjectId, chapterDTO,
+                commaSeparatedPackageSessionIds, user));
     }
 
     /**
      * Updates the order of chapters for a session.
      *
-     * @param updateChapterOrderDTOS List of UpdateChapterOrderDTO containing chapter order updates.
+     * @param updateChapterOrderDTOS List of UpdateChapterOrderDTO containing
+     *                               chapter order updates.
      * @return ResponseEntity with success message.
      */
     @PutMapping("/update-chapter-order")
-    public ResponseEntity<String> updateChapterOrder(@RequestBody List<UpdateChapterOrderDTO> updateChapterOrderDTOS, @RequestAttribute("user") CustomUserDetails user) {
+    public ResponseEntity<String> updateChapterOrder(@RequestBody List<UpdateChapterOrderDTO> updateChapterOrderDTOS,
+            @RequestAttribute("user") CustomUserDetails user) {
         String result = chapterService.updateChapterOrder(updateChapterOrderDTOS, user);
         return ResponseEntity.ok(result);
     }
 
     @PostMapping("/delete-chapters")
-    public ResponseEntity<String> deleteChapter(@RequestBody List<String> chapterIds,String moduleId,String subjectId, @RequestParam("packageSessionIds") String packageSessionIds, @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(chapterService.deleteChapter(chapterIds,moduleId,subjectId, packageSessionIds, user));
+    public ResponseEntity<String> deleteChapter(@RequestBody List<String> chapterIds, String moduleId, String subjectId,
+            @RequestParam("packageSessionIds") String packageSessionIds,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity
+                .ok(chapterService.deleteChapter(chapterIds, moduleId, subjectId, packageSessionIds, user));
     }
 
     @PostMapping("/copy")

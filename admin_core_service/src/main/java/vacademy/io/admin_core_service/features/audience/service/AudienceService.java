@@ -23,6 +23,7 @@ import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
 import vacademy.io.admin_core_service.features.common.enums.CustomFieldTypeEnum;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldRepository;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
+import vacademy.io.admin_core_service.features.common.repository.InstituteCustomFieldRepository;
 import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
 import vacademy.io.admin_core_service.features.notification.entity.NotificationEventConfig;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationEventType;
@@ -80,6 +81,9 @@ public class AudienceService {
 
     @Autowired
     private WorkflowTriggerService workflowTriggerService;
+
+    @Autowired
+    private InstituteCustomFieldRepository instituteCustomFieldRepository;
 
     public List<String> getConvertedUserIdsByCampaign(String audienceId, String instituteId) {
         logger.info("Getting converted user IDs for campaign: {} (institute: {})", audienceId, instituteId);
@@ -1156,6 +1160,247 @@ public class AudienceService {
             .user(userDTO)
             .customFields(customFieldsMap)
             .build();
+    }
+
+    /**
+     * Submit a lead from form webhook (Zoho Forms, Google Forms, Microsoft Forms)
+     * Maps field_name to custom_field_id before saving
+     * 
+     * @param audienceId The audience/campaign ID
+     * @param processedData Processed form data containing field names and values
+     * @param formProvider The form provider (ZOHO_FORMS, GOOGLE_FORMS, etc.)
+     * @return Response ID
+     */
+    @Transactional
+    public String submitLeadFromFormWebhook(String audienceId, ProcessedFormDataDTO processedData, String formProvider) {
+        logger.info("Submitting lead from form webhook: provider={}, audienceId={}", formProvider, audienceId);
+        
+        // Validate audience exists
+        Audience audience = audienceRepository.findById(audienceId)
+                .orElseThrow(() -> new VacademyException("Audience not found: " + audienceId));
+        
+        // Validate audience is active
+        if (!"ACTIVE".equals(audience.getStatus())) {
+            throw new VacademyException("Audience campaign is not active");
+        }
+        
+        String instituteId = audience.getInstituteId();
+        
+        // Extract email from processed data
+        String email = processedData.getEmail();
+        if (!StringUtils.hasText(email)) {
+            throw new VacademyException("Email is required for form submission");
+        }
+        
+        // 1. Create/fetch user from auth_service
+        UserDTO userDTO = UserDTO.builder()
+                .email(email)
+                .fullName(StringUtils.hasText(processedData.getFullName()) ? processedData.getFullName() : email)
+                .mobileNumber(processedData.getPhone())
+                .build();
+        
+        UserDTO createdUser = authService.createUserFromAuthService(userDTO, instituteId, false);
+        String userId = createdUser.getId();
+        
+        // Ensure mobile number from form is preserved (auth service might return existing user without mobile)
+        if (!StringUtils.hasText(createdUser.getMobileNumber()) && StringUtils.hasText(processedData.getPhone())) {
+            createdUser.setMobileNumber(processedData.getPhone());
+            logger.info("Set mobile number from form data: {}", processedData.getPhone());
+        }
+        
+        logger.info("User created/fetched: userId={}, email={}, mobile={}", userId, email, createdUser.getMobileNumber());
+        
+        // Duplicate submission guard
+        if (audienceResponseRepository.existsByAudienceIdAndUserId(audienceId, userId)) {
+            logger.warn("Duplicate submission for audienceId={}, userId={}", audienceId, userId);
+            return "You have already submitted your response for this campaign";
+        }
+        
+        // 2. Create audience response
+        AudienceResponse response = AudienceResponse.builder()
+                .audienceId(audienceId)
+                .sourceType(formProvider)  // ZOHO_FORMS, GOOGLE_FORMS, etc.
+                .sourceId(formProvider + "_WEBHOOK")
+                .userId(userId)
+                .build();
+        
+        AudienceResponse savedResponse = audienceResponseRepository.save(response);
+        logger.info("Saved audience response: responseId={}, userId={}", savedResponse.getId(), userId);
+        
+        // 3. Map field_name to custom_field_id and save custom field values
+        if (processedData.getFormFields() != null && !processedData.getFormFields().isEmpty()) {
+            saveCustomFieldValuesByFieldName(
+                    savedResponse.getId(),
+                    processedData.getFormFields(),
+                    instituteId,
+                    audienceId
+            );
+        }
+        
+        // 4. Build custom field map for workflow
+        Map<String, String> customFieldsForEmail = buildCustomFieldMapForEmail(savedResponse.getId());
+        
+        // Get current time with timezone
+        java.time.ZonedDateTime now = java.time.ZonedDateTime.now();
+        java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("MMM dd, yyyy hh:mm a z");
+        String submissionTime = now.format(formatter);
+        
+        // 5. Generate email content
+        String respondentEmailBody = buildDefaultEmailBody(
+                audience.getCampaignName(),
+                createdUser.getFullName(),
+                createdUser.getEmail(),
+                customFieldsForEmail
+        );
+        String respondentEmailSubject = "Thank You for Submitting Your Response for Campaign - " + audience.getCampaignName();
+        
+        String adminEmailBody = buildAdminNotificationBody(
+                audience.getCampaignName(),
+                createdUser.getFullName(),
+                createdUser.getEmail(),
+                customFieldsForEmail
+        );
+        String adminEmailSubject = "New Lead Submitted - " + audience.getCampaignName();
+        
+        logger.info("Generated email bodies for workflow trigger");
+        
+        // 6. Parse admin notification recipients
+        List<String> adminEmails = new ArrayList<>();
+        if (StringUtils.hasText(audience.getToNotify())) {
+            String[] emails = audience.getToNotify().split(",");
+            for (String adminEmail : emails) {
+                String trimmedEmail = adminEmail.trim();
+                if (StringUtils.hasText(trimmedEmail)) {
+                    adminEmails.add(trimmedEmail);
+                }
+            }
+        }
+        
+        // 7. Build audience DTO for workflow
+        AudienceDTO audienceDTO = AudienceDTO.builder()
+                .id(audience.getId())
+                .campaignName(audience.getCampaignName())
+                .instituteId(audience.getInstituteId())
+                .status(audience.getStatus())
+                .toNotify(audience.getToNotify())
+                .sendRespondentEmail(audience.getSendRespondentEmail())
+                .build();
+        
+        // 8. Prepare context data for workflow
+        Map<String, Object> contextData = new HashMap<>();
+        contextData.put("user", createdUser);
+        contextData.put("audience", audienceDTO);
+        contextData.put("audienceId", audienceId);
+        contextData.put("instituteId", instituteId);
+        contextData.put("customFields", customFieldsForEmail);
+        contextData.put("submissionTime", submissionTime);
+        contextData.put("responseId", savedResponse.getId());
+        contextData.put("campaignName", audience.getCampaignName());
+        contextData.put("formProvider", formProvider);
+        contextData.put("sendRespondentEmail", audience.getSendRespondentEmail() == null || audience.getSendRespondentEmail());
+        
+        // Prepare respondent email request
+        List<Map<String, Object>> respondentEmailRequests = new ArrayList<>();
+        Map<String, Object> respondentEmailRequest = new HashMap<>();
+        respondentEmailRequest.put("to", createdUser.getEmail());
+        respondentEmailRequest.put("subject", respondentEmailSubject);
+        respondentEmailRequest.put("body", respondentEmailBody);
+        respondentEmailRequests.add(respondentEmailRequest);
+        contextData.put("respondentEmailRequests", respondentEmailRequests);
+        
+        // Prepare admin email requests
+        List<Map<String, Object>> adminEmailRequests = new ArrayList<>();
+        for (String adminEmail : adminEmails) {
+            Map<String, Object> adminEmailRequest = new HashMap<>();
+            adminEmailRequest.put("to", adminEmail);
+            adminEmailRequest.put("subject", adminEmailSubject);
+            adminEmailRequest.put("body", adminEmailBody);
+            adminEmailRequests.add(adminEmailRequest);
+        }
+        contextData.put("adminEmailRequests", adminEmailRequests);
+        
+        logger.info("Prepared {} admin email requests", adminEmailRequests.size());
+        
+        // 9. Trigger workflow
+        try {
+            workflowTriggerService.handleTriggerEvents(
+                    WorkflowTriggerEvent.AUDIENCE_LEAD_SUBMISSION.name(),
+                    audienceId,
+                    instituteId,
+                    contextData
+            );
+            logger.info("Workflow triggered successfully for form webhook submission");
+        } catch (Exception e) {
+            logger.error("Failed to trigger workflow for form webhook submission", e);
+            // Don't throw exception - response is already saved
+        }
+        
+        return savedResponse.getId();
+    }
+
+    private void saveCustomFieldValuesByFieldName(String responseId, Map<String, String> fieldNameValues, String instituteId, String audienceId) {
+        logger.info("Mapping {} field names to custom field IDs for response: {}", fieldNameValues.size(), responseId);
+        
+        // Fetch institute custom fields for AUDIENCE_FORM type with this specific audience (campaign)
+        List<Object[]> instituteCustomFieldsData = instituteCustomFieldRepository.findInstituteCustomFieldsWithDetails(
+                instituteId,
+                CustomFieldTypeEnum.AUDIENCE_FORM.name(),
+                audienceId
+        );
+        
+        // Create a map: field_name (lowercase) -> custom_field_id
+        Map<String, String> fieldNameToIdMap = new HashMap<>();
+        for (Object[] row : instituteCustomFieldsData) {
+            // row[0] = InstituteCustomField, row[1] = CustomFields
+            CustomFields customField = (CustomFields) row[1];
+            if (StringUtils.hasText(customField.getFieldName())) {
+                fieldNameToIdMap.put(customField.getFieldName().toLowerCase().trim(), customField.getId());
+                logger.debug("Mapped field_name '{}' to custom_field_id: {}", customField.getFieldName(), customField.getId());
+            }
+        }
+        
+        logger.debug("Built field name to ID map with {} entries for audienceId: {}", fieldNameToIdMap.size(), audienceId);
+        
+        // Map field names to IDs and save
+        List<CustomFieldValues> customFieldValuesList = new ArrayList<>();
+        int mappedCount = 0;
+        int unmappedCount = 0;
+        
+        for (Map.Entry<String, String> entry : fieldNameValues.entrySet()) {
+            String fieldName = entry.getKey();
+            String value = entry.getValue();
+            
+            if (!StringUtils.hasText(value)) {
+                continue;
+            }
+            
+            // Try to find custom field ID by field name (case-insensitive)
+            String customFieldId = fieldNameToIdMap.get(fieldName.toLowerCase().trim());
+            
+            if (customFieldId != null) {
+                CustomFieldValues cfValue = CustomFieldValues.builder()
+                        .sourceType("AUDIENCE_RESPONSE")
+                        .sourceId(responseId)
+                        .customFieldId(customFieldId)
+                        .value(value)
+                        .build();
+                
+                customFieldValuesList.add(cfValue);
+                mappedCount++;
+                logger.debug("Mapped field '{}' to custom_field_id: {}", fieldName, customFieldId);
+            } else {
+                logger.warn("No custom field found for field_name: '{}' in audienceId: {} - skipping", fieldName, audienceId);
+                unmappedCount++;
+            }
+        }
+        
+        if (!customFieldValuesList.isEmpty()) {
+            customFieldValuesRepository.saveAll(customFieldValuesList);
+            logger.info("Saved {} custom field values for response {}. Mapped: {}, Unmapped: {}", 
+                    customFieldValuesList.size(), responseId, mappedCount, unmappedCount);
+        } else {
+            logger.warn("No custom field values to save - all {} fields were unmapped for audienceId: {}", unmappedCount, audienceId);
+        }
     }
 }
 

@@ -19,4 +19,9 @@ export const flavorConfig: FlavorConfigs = {
     domain: "vacademy.io",
     subdomain: "7cs",
   },
+  "com.fivesep.app": {
+    appName: "iThinkers by Fivesep",
+    domain: "vacademy.io",
+    subdomain: "fivesep",
+  },
 };

@@ -13,6 +13,9 @@ from .services.image_service import ImageGenerationService
 from .services.content_generation_service import ContentGenerationService
 from .services.youtube_service import YouTubeService
 from .config import get_settings
+from .db import db_dependency
+from sqlalchemy.orm import Session
+from fastapi import Depends
 
 
 @lru_cache(maxsize=1)
@@ -83,10 +86,10 @@ def get_content_generation_service() -> ContentGenerationService:
     return ContentGenerationService(llm_client=llm_client, youtube_service=youtube_service)
 
 
-@lru_cache(maxsize=1)
-def get_course_outline_service() -> CourseOutlineGenerationService:
+def get_course_outline_service(db: Session = Depends(db_dependency)) -> CourseOutlineGenerationService:
     """
     High-level service dependency that wires up all collaborators.
+    Accepts DB session for API key resolution.
     """
     llm_client = get_llm_client()
     metadata_port = get_course_metadata_port()
@@ -101,6 +104,7 @@ def get_course_outline_service() -> CourseOutlineGenerationService:
         parser=parser,
         image_service=image_service,
         content_generation_service=content_generation_service,
+        db_session=db,
     )
 
 

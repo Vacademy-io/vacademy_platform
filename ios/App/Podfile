@@ -26,6 +26,10 @@ target 'App' do
   # Add your Pods here
 end
 
+target 'Five Sep' do
+  capacitor_pods
+end
+
 post_install do |installer|
   assertDeploymentTarget(installer)
 end

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 import uuid
 import json
@@ -44,7 +44,8 @@ async def generate_course_outline(
 async def stream_course_outline(
     institute_id: str,
     payload: CourseUserPromptRequest,
-    model: Optional[str] = None,
+    model: Optional[str] = Query(default=None, description="Optional LLM model to use"),
+    user_id: Optional[str] = Query(default=None, description="Optional user identifier for user-level API key lookup"),
     service: CourseOutlineGenerationService = Depends(get_course_outline_service),
 ) -> StreamingResponse:
     """
@@ -52,13 +53,14 @@ async def stream_course_outline(
     Returns Server-Sent Events stream with outline generation progress.
 
     Args:
-        model: Optional LLM model to use. Defaults to LLM_DEFAULT_MODEL from environment.
+        institute_id: Institute identifier (required, from query parameter).
+        user_id: Optional user identifier for user-level API key lookup (waterfall priority).
+        model: Optional LLM model to use. Defaults to database default or LLM_DEFAULT_MODEL from environment.
         payload: Request containing user prompt, course tree, and course depth.
-        institute_id: Institute identifier.
     """
     # Convert CourseUserPromptRequest to internal CourseOutlineRequest
     # Use provided model or fall back to settings default
-    final_model = model or get_settings().llm_default_model
+    final_model = model or payload.model or get_settings().llm_default_model
 
     internal_request = CourseOutlineRequest(
         institute_id=institute_id,
@@ -66,7 +68,9 @@ async def stream_course_outline(
         existing_course_tree=json.loads(payload.course_tree) if payload.course_tree else None,
         model=final_model,
         course_depth=payload.course_depth,
-        generation_options=payload.generation_options
+        generation_options=payload.generation_options,
+        user_id=user_id  # Extracted from query parameter for waterfall key resolution
+        # NOTE: Keys are NOT accepted from frontend - resolved automatically from DB (user → institute) or env
     )
 
     request_id = str(uuid.uuid4())

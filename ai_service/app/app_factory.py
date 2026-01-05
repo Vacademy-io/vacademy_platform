@@ -8,6 +8,9 @@ from .routers.health import router as health_router
 from .routers.course_outline import router as course_outline_router
 from .routers.content_generation import router as content_generation_router
 from .routers.video_generation import router as video_generation_router
+from .routers.models import router as models_router
+from .routers.api_keys import router as api_keys_router
+from .routers.token_usage import router as token_usage_router
 
 # Configure logging
 logging.basicConfig(
@@ -54,6 +57,9 @@ def create_app() -> FastAPI:
     app.include_router(course_outline_router, prefix=settings.api_base_path)
     app.include_router(content_generation_router, prefix=settings.api_base_path)
     app.include_router(video_generation_router, prefix=settings.api_base_path)
+    app.include_router(models_router, prefix=settings.api_base_path)
+    app.include_router(api_keys_router, prefix=settings.api_base_path)
+    app.include_router(token_usage_router, prefix=settings.api_base_path)
 
 
     return app

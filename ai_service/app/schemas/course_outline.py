@@ -39,6 +39,12 @@ class CourseUserPromptRequest(BaseModel):
         default=None,
         description="Optional generation configuration (slides, chapters, images, etc.)"
     )
+    model: Optional[str] = Field(
+        default=None,
+        description="Optional LLM model to use (overrides database default, falls back to environment if not set)"
+    )
+    # NOTE: openai_key and gemini_key are NOT accepted from frontend for security
+    # Keys are automatically resolved from database (user → institute) or environment variables
 
 
 class CourseOutlineRequest(BaseModel):
@@ -61,7 +67,7 @@ class CourseOutlineRequest(BaseModel):
     )
     model: Optional[str] = Field(
         default=None,
-        description="LLM model identifier; falls back to service default when omitted",
+        description="LLM model identifier; falls back to database default or environment when omitted",
     )
     course_depth: Optional[int] = Field(
         default=None,
@@ -70,6 +76,12 @@ class CourseOutlineRequest(BaseModel):
     generation_options: Optional[GenerationOptions] = Field(
         default=None,
         description="Optional generation configuration (slides, chapters, images, etc.)",
+    )
+    # NOTE: openai_key and gemini_key are NOT accepted from frontend for security
+    # Keys are automatically resolved using waterfall: user → institute → environment
+    user_id: Optional[str] = Field(
+        default=None,
+        description="Optional user identifier for user-level API key lookup (waterfall priority)",
     )
 
 

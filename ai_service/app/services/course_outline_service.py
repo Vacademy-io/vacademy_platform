@@ -13,6 +13,10 @@ from .prompt_builder import CourseOutlinePromptBuilder
 from .parser import CourseOutlineParser
 from .image_service import ImageGenerationService
 from .content_generation_service import ContentGenerationService
+from .api_key_resolver import ApiKeyResolver
+from .token_usage_service import TokenUsageService
+from ..models.ai_token_usage import ApiProvider, RequestType
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +42,7 @@ class CourseOutlineGenerationService:
         parser: CourseOutlineParser,
         image_service: Optional[ImageGenerationService] = None,
         content_generation_service: Optional[ContentGenerationService] = None,
+        db_session: Optional[Session] = None,
     ) -> None:
         self._llm_client = llm_client
         self._metadata_port = metadata_port
@@ -45,6 +50,7 @@ class CourseOutlineGenerationService:
         self._parser = parser
         self._image_service = image_service or ImageGenerationService()
         self._content_generation_service = content_generation_service or ContentGenerationService(llm_client)
+        self._db_session = db_session
 
     async def generate_outline(
         self, request: CourseOutlineRequest
@@ -59,10 +65,66 @@ class CourseOutlineGenerationService:
 
         prompt = self._prompt_builder.build_prompt(request=request, metadata=metadata)
 
-        raw_output = await self._llm_client.generate_outline(
-            prompt=prompt,
-            model=request.model,
-        )
+        # Resolve API keys (request -> database -> defaults)
+        openai_key = None
+        gemini_key = None
+        model = request.model
+        
+        if self._db_session:
+            try:
+                key_resolver = ApiKeyResolver(self._db_session)
+                openai_key, gemini_key, model = key_resolver.resolve_keys(
+                    institute_id=request.institute_id,
+                    user_id=request.user_id,
+                    request_model=request.model
+                )
+            except Exception as e:
+                logger.warning(f"Failed to resolve API keys: {str(e)}, using environment defaults")
+                # Fallback to environment defaults
+                from ..config import get_settings
+                settings = get_settings()
+                openai_key = settings.openrouter_api_key
+                gemini_key = settings.gemini_api_key
+                model = request.model or settings.llm_default_model
+        else:
+            # No DB session, use environment defaults only
+            from ..config import get_settings
+            settings = get_settings()
+            openai_key = settings.openrouter_api_key
+            gemini_key = settings.gemini_api_key
+            model = request.model or settings.llm_default_model
+
+        # Generate outline and capture token usage
+        if hasattr(self._llm_client, 'generate_outline_with_usage'):
+            raw_output, usage_info = await self._llm_client.generate_outline_with_usage(
+                prompt=prompt,
+                model=model,
+                api_key=openai_key,
+            )
+            
+            # Record token usage
+            if self._db_session and usage_info:
+                try:
+                    token_service = TokenUsageService(self._db_session)
+                    token_service.record_usage(
+                        api_provider=ApiProvider.OPENAI,
+                        prompt_tokens=usage_info.get("prompt_tokens", 0),
+                        completion_tokens=usage_info.get("completion_tokens", 0),
+                        total_tokens=usage_info.get("total_tokens", 0),
+                        request_type=RequestType.OUTLINE,
+                        institute_id=request.institute_id,
+                        user_id=request.user_id,
+                        model=model,
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to record token usage: {str(e)}")
+        else:
+            # Fallback for clients that don't support usage tracking
+            raw_output = await self._llm_client.generate_outline(
+                prompt=prompt,
+                model=model,
+                api_key=openai_key,
+            )
 
         outline_response = self._parser.parse(raw_output)
 
@@ -77,12 +139,30 @@ class CourseOutlineGenerationService:
             outline_response.course_metadata.course_name.lower() != "error" and
             len(outline_response.course_metadata.course_name.strip()) > 0):
             try:
-                banner_url, preview_url, media_url = await self._image_service.generate_images(
+                banner_url, preview_url, media_url, image_usage = await self._image_service.generate_images(
                     course_name=outline_response.course_metadata.course_name,
                     about_course=outline_response.course_metadata.about_the_course_html,
                     course_depth=outline_response.course_metadata.course_depth,
-                    image_style=request.generation_options.image_style or "professional"
+                    image_style=request.generation_options.image_style or "professional",
+                    gemini_key=gemini_key
                 )
+                
+                # Record image generation token usage
+                if self._db_session and image_usage and image_usage.get("total_tokens", 0) > 0:
+                    try:
+                        token_service = TokenUsageService(self._db_session)
+                        token_service.record_usage(
+                            api_provider=ApiProvider.GEMINI,
+                            prompt_tokens=image_usage.get("prompt_tokens", 0),
+                            completion_tokens=image_usage.get("completion_tokens", 0),
+                            total_tokens=image_usage.get("total_tokens", 0),
+                            request_type=RequestType.IMAGE,
+                            institute_id=request.institute_id,
+                            user_id=request.user_id,
+                            model="gemini-2.5-flash-image",
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to record image token usage: {str(e)}")
                 
                 # Update metadata with image URLs if generation was successful
                 if banner_url:
@@ -111,16 +191,73 @@ class CourseOutlineGenerationService:
 
         prompt = self._prompt_builder.build_prompt(request=request, metadata=metadata)
 
+        # Resolve API keys (request -> database -> defaults)
+        openai_key = None
+        gemini_key = None
+        model = request.model
+        
+        if self._db_session:
+            try:
+                key_resolver = ApiKeyResolver(self._db_session)
+                openai_key, gemini_key, model = key_resolver.resolve_keys(
+                    institute_id=request.institute_id,
+                    user_id=request.user_id,
+                    request_model=request.model
+                )
+            except Exception as e:
+                logger.warning(f"Failed to resolve API keys: {str(e)}, using environment defaults")
+                # Fallback to environment defaults
+                from ..config import get_settings
+                settings = get_settings()
+                openai_key = settings.openrouter_api_key
+                gemini_key = settings.gemini_api_key
+                model = request.model or settings.llm_default_model
+        else:
+            # No DB session, use environment defaults only
+            from ..config import get_settings
+            settings = get_settings()
+            openai_key = settings.openrouter_api_key
+            gemini_key = settings.gemini_api_key
+            model = request.model or settings.llm_default_model
+
         # Send initial metadata event (matches media-service)
         yield f"```json {{\"requestId\": \"{request_id}\"}}```"
 
         # For now, get the complete response and yield it as a single event
         # This simulates streaming but uses non-streaming API call
         try:
-            full_content = await self._llm_client.generate_outline(
-                prompt=prompt,
-                model=request.model,
-            )
+            # Generate outline and capture token usage
+            if hasattr(self._llm_client, 'generate_outline_with_usage'):
+                full_content, usage_info = await self._llm_client.generate_outline_with_usage(
+                    prompt=prompt,
+                    model=model,
+                    api_key=openai_key,
+                )
+                
+                # Record token usage
+                if self._db_session and usage_info:
+                    try:
+                        token_service = TokenUsageService(self._db_session)
+                        token_service.record_usage(
+                            api_provider=ApiProvider.OPENAI,
+                            prompt_tokens=usage_info.get("prompt_tokens", 0),
+                            completion_tokens=usage_info.get("completion_tokens", 0),
+                            total_tokens=usage_info.get("total_tokens", 0),
+                            request_type=RequestType.OUTLINE,
+                            institute_id=request.institute_id,
+                            user_id=request.user_id,
+                            model=model,
+                            request_id=request_id,
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to record token usage: {str(e)}")
+            else:
+                # Fallback for clients that don't support usage tracking
+                full_content = await self._llm_client.generate_outline(
+                    prompt=prompt,
+                    model=model,
+                    api_key=openai_key,
+                )
 
             # Yield some thinking-like events to simulate streaming
             yield "[Thinking...]\nPlanning the course structure based on your requirements..."
@@ -144,12 +281,31 @@ class CourseOutlineGenerationService:
 
                 try:
                     # Generate images (timeouts handled individually in image service)
-                    banner_url, preview_url, media_url = await self._image_service.generate_images(
+                    banner_url, preview_url, media_url, image_usage = await self._image_service.generate_images(
                         course_name=outline_response.course_metadata.course_name,
                         about_course=outline_response.course_metadata.about_the_course_html,
                         course_depth=outline_response.course_metadata.course_depth,
-                        image_style=request.generation_options.image_style or "professional"
+                        image_style=request.generation_options.image_style or "professional",
+                        gemini_key=gemini_key
                     )
+                    
+                    # Record image generation token usage
+                    if self._db_session and image_usage and image_usage.get("total_tokens", 0) > 0:
+                        try:
+                            token_service = TokenUsageService(self._db_session)
+                            token_service.record_usage(
+                                api_provider=ApiProvider.GEMINI,
+                                prompt_tokens=image_usage.get("prompt_tokens", 0),
+                                completion_tokens=image_usage.get("completion_tokens", 0),
+                                total_tokens=image_usage.get("total_tokens", 0),
+                                request_type=RequestType.IMAGE,
+                                institute_id=request.institute_id,
+                                user_id=request.user_id,
+                                model="gemini-2.5-flash-image",
+                                request_id=request_id,
+                            )
+                        except Exception as e:
+                            logger.warning(f"Failed to record image token usage: {str(e)}")
 
                     # Update metadata with image URLs if generation was successful
                     if banner_url:

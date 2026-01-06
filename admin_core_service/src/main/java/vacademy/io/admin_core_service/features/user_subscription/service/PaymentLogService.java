@@ -66,19 +66,10 @@ public class PaymentLogService {
 
     public String createPaymentLog(String userId, double paymentAmount, String vendor, String vendorId, String currency,
             UserPlan userPlan) {
-        return createPaymentLog(userId, paymentAmount, vendor, vendorId, currency, userPlan, null);
-    }
-
-    public String createPaymentLog(String userId, double paymentAmount, String vendor, String vendorId, String currency,
-            UserPlan userPlan, String customId) {
-        log.info("Creating payment log for userId={}, amount={}, vendor={}, currency={}, customId={}", userId,
-                paymentAmount,
-                vendor, currency, customId);
+        log.info("Creating payment log for userId={}, amount={}, vendor={}, currency={}", userId, paymentAmount,
+                vendor, currency);
 
         PaymentLog paymentLog = new PaymentLog();
-        if (StringUtils.hasText(customId)) {
-            paymentLog.setId(customId);
-        }
         paymentLog.setStatus(PaymentLogStatusEnum.INITIATED.name());
         paymentLog.setPaymentAmount(paymentAmount);
         paymentLog.setUserId(userId);
@@ -231,6 +222,15 @@ public class PaymentLogService {
                 if (paymentResponseDTO == null || paymentInitiationRequestDTO == null) {
                     log.error("Could not parse response or original request for payment log ID: {}",
                             paymentLog.getId());
+                    SentryLogger.logError(new IllegalStateException("Failed to parse payment response/request"),
+                            "Could not parse payment response or request data", Map.of(
+                                    "payment.log.id", paymentLog.getId(),
+                                    "user.id", paymentLog.getUserId() != null ? paymentLog.getUserId() : "unknown",
+                                    "payment.vendor",
+                                    paymentLog.getVendor() != null ? paymentLog.getVendor() : "unknown",
+                                    "has.response", String.valueOf(paymentResponseDTO != null),
+                                    "has.request", String.valueOf(paymentInitiationRequestDTO != null),
+                                    "operation", "parsePaymentResponseRequest"));
                     return;
                 }
 
@@ -334,6 +334,14 @@ public class PaymentLogService {
         } catch (Exception e) {
             log.error("Error sending donation payment confirmation notification for payment log ID: {}",
                     paymentLog.getId(), e);
+            SentryLogger.SentryEventBuilder.error(e)
+                    .withMessage("Failed to send donation payment confirmation notification")
+                    .withTag("payment.log.id", paymentLog.getId())
+                    .withTag("payment.type", "DONATION")
+                    .withTag("payment.vendor", paymentLog.getVendor() != null ? paymentLog.getVendor() : "unknown")
+                    .withTag("payment.amount", String.valueOf(paymentLog.getPaymentAmount()))
+                    .withTag("operation", "sendDonationNotification")
+                    .send();
         }
     }
 

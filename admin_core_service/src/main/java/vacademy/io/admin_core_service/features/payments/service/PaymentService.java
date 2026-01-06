@@ -7,7 +7,6 @@ import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.institute.service.InstitutePaymentGatewayMappingService;
 import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.PaymentGatewaySpecificPaymentDetailService;
-import vacademy.io.admin_core_service.features.notification_service.service.PaymentNotificatonService;
 import vacademy.io.admin_core_service.features.payments.manager.PaymentServiceFactory;
 import vacademy.io.admin_core_service.features.payments.manager.PaymentServiceStrategy;
 import vacademy.io.admin_core_service.features.payments.manager.PhonePePaymentManager;
@@ -47,9 +46,6 @@ public class PaymentService {
 
         @Autowired
         private PaymentLogService paymentLogService;
-
-        @Autowired
-        private PaymentNotificatonService paymentNotificatonService;
 
         @Autowired
         private PaymentGatewaySpecificPaymentDetailService paymentGatewaySpecificPaymentDetailService;
@@ -130,7 +126,7 @@ public class PaymentService {
                                 request);
 
                 // Extract customer ID from the gateway mapping for payment configuration
-               
+
                 String customerId = (String) gatewayMapping.get("customerId");
                 if (customerId == null) {
                         throw new RuntimeException("Failed to get customer ID from payment gateway");
@@ -200,13 +196,6 @@ public class PaymentService {
                                 userDTO,
                                 request);
 
-                // Send payment notification
-                paymentNotificatonService.sendPaymentConfirmationNotification(
-                                instituteId,
-                                response,
-                                request,
-                                userDTO);
-
                 // Update payment log with response
                 updatePaymentLogHelper(paymentLogId, response, request);
 
@@ -220,7 +209,8 @@ public class PaymentService {
          * 
          * @param request     Payment initiation request with all payment details
          * @param instituteId Institute ID for payment processing
-         * @param user        UserDTO of the user making the payment (ROOT_ADMIN for SubOrg)
+         * @param user        UserDTO of the user making the payment (ROOT_ADMIN for
+         *                    SubOrg)
          * @param userPlan    UserPlan associated with this payment
          * @return PaymentResponseDTO with payment result
          */

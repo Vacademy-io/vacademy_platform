@@ -49,6 +49,30 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
     Double getPercentageVideoWatched(@Param("slideId") String slideId, @Param("userId") String userId);
 
     @Query(value = """
+            SELECT
+                CASE
+                    WHEN v.video_length IS NULL OR v.video_length = 0 THEN 0
+                    ELSE
+                        EXTRACT(EPOCH FROM (MAX(vt.end_time) - MIN(vt.start_time))) * 1000
+                        / v.video_length * 100
+                END AS percentage_watched
+            FROM
+                activity_log a
+            JOIN
+                video_tracked vt ON vt.activity_id = a.id
+            JOIN
+                slide s ON s.id = a.slide_id
+            JOIN
+                html_video_slide v ON s.source_id = v.id
+            WHERE
+                a.user_id = :userId
+                AND a.slide_id = :slideId
+            GROUP BY
+                v.id, a.user_id, a.slide_id, v.video_length
+            """, nativeQuery = true)
+    Double getPercentageHtmlVideoWatched(@Param("slideId") String slideId, @Param("userId") String userId);
+
+    @Query(value = """
             WITH quiz_slide_data AS (
                 SELECT qz.id AS quiz_slide_id, COUNT(DISTINCT qq.id) AS total_questions
                 FROM slide s

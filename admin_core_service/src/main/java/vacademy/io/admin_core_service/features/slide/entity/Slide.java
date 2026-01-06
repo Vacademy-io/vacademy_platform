@@ -5,6 +5,9 @@ import lombok.Getter;
 import lombok.Setter;
 import vacademy.io.admin_core_service.features.slide.dto.AddDocumentSlideDTO;
 import vacademy.io.admin_core_service.features.slide.dto.AddVideoSlideDTO;
+import vacademy.io.admin_core_service.features.slide.dto.AddHtmlVideoSlideDTO;
+import vacademy.io.admin_core_service.features.slide.dto.AddScormSlideDTO;
+import vacademy.io.admin_core_service.features.slide.entity.HtmlVideoSlide;
 import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 
 import java.sql.Timestamp;
@@ -48,6 +51,10 @@ public class Slide {
     @JoinColumn(name = "id", referencedColumnName = "id", insertable = false, updatable = false)
     private VideoSlide videoSlide;
 
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "id", referencedColumnName = "id", insertable = false, updatable = false)
+    private HtmlVideoSlide htmlVideoSlide;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
 
@@ -84,6 +91,26 @@ public class Slide {
         if (status.equals(SlideStatus.PUBLISHED.name())) {
             this.lastSyncDate = new Timestamp(System.currentTimeMillis());
         }
+    }
+
+    public Slide(AddHtmlVideoSlideDTO addHtmlVideoSlideDTO, String sourceId, String sourceType, String status) {
+        this.sourceId = sourceId;
+        this.sourceType = sourceType;
+        this.title = addHtmlVideoSlideDTO.getTitle();
+        this.imageFileId = addHtmlVideoSlideDTO.getImageFileId();
+        this.description = addHtmlVideoSlideDTO.getDescription();
+        this.status = status;
+        this.id = addHtmlVideoSlideDTO.getId();
+    }
+
+    public Slide(AddScormSlideDTO addScormSlideDTO, String sourceId, String sourceType, String status) {
+        this.sourceId = sourceId;
+        this.sourceType = sourceType;
+        this.title = addScormSlideDTO.getTitle();
+        this.imageFileId = addScormSlideDTO.getImageFileId();
+        this.description = addScormSlideDTO.getDescription();
+        this.status = status;
+        this.id = addScormSlideDTO.getId();
     }
 
     public Slide() {

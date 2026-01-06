@@ -1,0 +1,19 @@
+package vacademy.io.admin_core_service.features.slide.dto;
+
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import lombok.Data;
+
+@Data
+@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+public class AddHtmlVideoSlideDTO {
+    private String title;
+    private String imageFileId;
+    private String description;
+    private Integer slideOrder;
+    private HtmlVideoSlideDTO htmlVideoSlide;
+    private String status;
+    private boolean newSlide;
+    private String id;
+    private boolean notify;
+}

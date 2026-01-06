@@ -20,8 +20,10 @@ import vacademy.io.common.notification.dto.GenericEmailRequest;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.HashMap;
 
 @Service
 public class MediaService {
@@ -41,14 +43,14 @@ public class MediaService {
         if (fileId == null || fileId.isEmpty()) {
             return null;
         }
-        // Removed the redundant 'clientName' parameter, we can use the injected clientName field here
+        // Removed the redundant 'clientName' parameter, we can use the injected
+        // clientName field here
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                 clientName, // Directly use the injected 'clientName'
                 HttpMethod.GET.name(),
                 mediaServerBaseUrl,
-                MediaServiceConstants.GET_FILE_URL_BY_ID_ROUTE+"?fileId="+fileId+"&expiryDays=1",
-                null
-        );
+                MediaServiceConstants.GET_FILE_URL_BY_ID_ROUTE + "?fileId=" + fileId + "&expiryDays=1",
+                null);
         return response.getBody();
     }
 
@@ -56,14 +58,14 @@ public class MediaService {
         if (fileId == null || fileId.isEmpty()) {
             return null;
         }
-        // Removed the redundant 'clientName' parameter, we can use the injected clientName field here
+        // Removed the redundant 'clientName' parameter, we can use the injected
+        // clientName field here
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                 clientName, // Directly use the injected 'clientName'
                 HttpMethod.GET.name(),
                 mediaServerBaseUrl,
-                MediaServiceConstants.GET_FILE_PUBLIC_URL_BY_ID_ROUTE+"?fileId="+fileId+"&expiryDays=1",
-                null
-        );
+                MediaServiceConstants.GET_FILE_PUBLIC_URL_BY_ID_ROUTE + "?fileId=" + fileId + "&expiryDays=1",
+                null);
         return response.getBody();
     }
 
@@ -71,14 +73,14 @@ public class MediaService {
         if (multipartFile == null) {
             return null;
         }
-        // Removed the redundant 'clientName' parameter, we can use the injected clientName field here
+        // Removed the redundant 'clientName' parameter, we can use the injected
+        // clientName field here
         ResponseEntity<String> response = internalClientUtils.makeHmacRequestForMultipartFile(
                 clientName, // Directly use the injected 'clientName'
                 HttpMethod.PUT.name(),
                 mediaServerBaseUrl,
                 MediaServiceConstants.GET_FILE_UPLOAD_ENDPOINT,
-                multipartFile
-        );
+                multipartFile);
         return response.getBody();
     }
 
@@ -86,14 +88,33 @@ public class MediaService {
         if (multipartFile == null) {
             return null;
         }
-        // Removed the redundant 'clientName' parameter, we can use the injected clientName field here
+        // Removed the redundant 'clientName' parameter, we can use the injected
+        // clientName field here
         ResponseEntity<String> response = internalClientUtils.makeHmacRequestForMultipartFile(
                 clientName, // Directly use the injected 'clientName'
                 HttpMethod.POST.name(),
                 mediaServerBaseUrl,
                 MediaServiceConstants.GET_FILE_UPLOAD_ENDPOINT_V2,
-                multipartFile
-        );
+                multipartFile);
+        String body = response.getBody();
+        return objectMapper.readValue(body, FileDetailsDTO.class);
+    }
+
+    public FileDetailsDTO uploadFileToKey(MultipartFile multipartFile, String key) throws IOException {
+        if (multipartFile == null) {
+            return null;
+        }
+
+        Map<String, Object> params = new HashMap<>();
+        params.put("key", key);
+
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequestForMultipartFile(
+                clientName,
+                HttpMethod.POST.name(),
+                mediaServerBaseUrl,
+                "/media-service/internal/upload-file-custom-key",
+                multipartFile,
+                params);
         String body = response.getBody();
         return objectMapper.readValue(body, FileDetailsDTO.class);
     }
@@ -107,19 +128,21 @@ public class MediaService {
 
         try {
             ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
-                clientName,
-                HttpMethod.GET.name(),
-                mediaServerBaseUrl,
-                MediaServiceConstants.GET_MULTIPLE_FILES_BY_ID_ROUTE + "?fileIds=" + commaSeparatedFileIds + "&expiryDays=1",
-                null
-            );
+                    clientName,
+                    HttpMethod.GET.name(),
+                    mediaServerBaseUrl,
+                    MediaServiceConstants.GET_MULTIPLE_FILES_BY_ID_ROUTE + "?fileIds=" + commaSeparatedFileIds
+                            + "&expiryDays=1",
+                    null);
 
             String body = response.getBody();
             if (body == null || body.isBlank()) {
                 return List.of();
             }
 
-            return objectMapper.readValue(body, new com.fasterxml.jackson.core.type.TypeReference<List<FileDetailsDTO>>() {});
+            return objectMapper.readValue(body,
+                    new com.fasterxml.jackson.core.type.TypeReference<List<FileDetailsDTO>>() {
+                    });
         } catch (Exception e) {
             e.printStackTrace();
             return List.of();

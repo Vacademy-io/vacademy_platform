@@ -6,5 +6,7 @@ public enum SlideTypeEnum {
     QUESTION,
     ASSIGNMENT,
     VIDEO_QUESTION,
-    QUIZ
+    QUIZ,
+    HTML_VIDEO,
+    SCORM
 }

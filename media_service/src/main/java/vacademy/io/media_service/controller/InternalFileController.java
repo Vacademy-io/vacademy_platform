@@ -21,8 +21,8 @@ public class InternalFileController {
 
     @GetMapping("/get-url/id")
     public ResponseEntity<String> getFileUrlById(@RequestParam String fileId,
-                                                 @RequestParam Integer expiryDays,
-                                                 @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) throws FileDownloadException {
+            @RequestParam Integer expiryDays,
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) throws FileDownloadException {
         String url = fileService.getUrlWithExpiryAndId(fileId, expiryDays);
 
         String etag = "W/\"" + fileId + ":" + expiryDays + "\"";
@@ -39,8 +39,8 @@ public class InternalFileController {
 
     @GetMapping("/public-url")
     public ResponseEntity<String> getPublicFileUrlById(@RequestParam("fileId") String fileId,
-                                                       @RequestParam("expiryDays") Integer expiryDays,
-                                                       @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) throws FileDownloadException {
+            @RequestParam("expiryDays") Integer expiryDays,
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) throws FileDownloadException {
         String url = fileService.getPublicBucketUrl(fileId, expiryDays);
 
         String etag = "W/\"" + fileId + ":" + expiryDays + "\"";
@@ -56,7 +56,8 @@ public class InternalFileController {
     }
 
     @GetMapping("/get-details/id")
-    public ResponseEntity<FileDetailsDTO> getFileDetailsById(@RequestParam String fileId, @RequestParam Integer expiryDays) throws FileDownloadException {
+    public ResponseEntity<FileDetailsDTO> getFileDetailsById(@RequestParam String fileId,
+            @RequestParam Integer expiryDays) throws FileDownloadException {
         FileDetailsDTO fileDetailsDTO = fileService.getFileDetailsWithExpiryAndId(fileId, expiryDays);
         HttpHeaders headers = new HttpHeaders();
         headers.set("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
@@ -66,7 +67,8 @@ public class InternalFileController {
     }
 
     @GetMapping("/get-details/ids")
-    public ResponseEntity<List<FileDetailsDTO>> getFileDetailsByIds(@RequestParam String fileIds, @RequestParam Integer expiryDays) throws FileDownloadException {
+    public ResponseEntity<List<FileDetailsDTO>> getFileDetailsByIds(@RequestParam String fileIds,
+            @RequestParam Integer expiryDays) throws FileDownloadException {
         List<FileDetailsDTO> fileDetailsDTO = fileService.getMultipleFileDetailsWithExpiryAndId(fileIds, expiryDays);
         HttpHeaders headers = new HttpHeaders();
         headers.set("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
@@ -76,7 +78,8 @@ public class InternalFileController {
     }
 
     @GetMapping("/get-url/id/many")
-    public ResponseEntity<List<Map<String, String>>> getMultipleFileUrlById(@RequestParam String fileIds, @RequestParam Integer expiryDays) throws FileDownloadException {
+    public ResponseEntity<List<Map<String, String>>> getMultipleFileUrlById(@RequestParam String fileIds,
+            @RequestParam Integer expiryDays) throws FileDownloadException {
         List<Map<String, String>> url = fileService.getMultipleUrlWithExpiryAndId(fileIds, expiryDays);
         HttpHeaders headers = new HttpHeaders();
         headers.set("Cache-Control", "public, max-age=3600, stale-while-revalidate=60");
@@ -86,7 +89,8 @@ public class InternalFileController {
     }
 
     @GetMapping("/get-public-url/id/many")
-    public ResponseEntity<List<Map<String, String>>> getMultipleFilePublicUrlById(@RequestParam String fileIds) throws FileDownloadException {
+    public ResponseEntity<List<Map<String, String>>> getMultipleFilePublicUrlById(@RequestParam String fileIds)
+            throws FileDownloadException {
         List<Map<String, String>> url = fileService.getMultiplePublicUrlWithExpiryAndId(fileIds);
         HttpHeaders headers = new HttpHeaders();
         headers.set("Cache-Control", "public, max-age=3600, stale-while-revalidate=60");
@@ -96,7 +100,8 @@ public class InternalFileController {
     }
 
     @GetMapping("/get-public-url/source")
-    public ResponseEntity<String> getFileUrlBySource(@RequestParam String source, @RequestParam String sourceId, @RequestParam Integer expiryDays) throws FileDownloadException {
+    public ResponseEntity<String> getFileUrlBySource(@RequestParam String source, @RequestParam String sourceId,
+            @RequestParam Integer expiryDays) throws FileDownloadException {
         String url = fileService.getPublicUrlWithExpiryAndSource(source, sourceId, expiryDays);
         HttpHeaders headers = new HttpHeaders();
         headers.set("Cache-Control", "public, max-age=3600, stale-while-revalidate=60");
@@ -119,6 +124,17 @@ public class InternalFileController {
     public ResponseEntity<FileDetailsDTO> uploadFileToAws(@RequestParam("file") MultipartFile file) {
         try {
             return ResponseEntity.ok(fileService.uploadFileWithDetails(file));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new FileDetailsDTO());
+        }
+    }
+
+    @PostMapping("/upload-file-custom-key")
+    public ResponseEntity<FileDetailsDTO> uploadFileToAwsCustomKey(@RequestParam("file") MultipartFile file,
+            @RequestParam("key") String key) {
+        try {
+            return ResponseEntity.ok(fileService.uploadFileToKey(file, key));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(new FileDetailsDTO());

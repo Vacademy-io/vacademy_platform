@@ -47,7 +47,8 @@ public class LearnerTrackingController {
             @RequestParam String moduleId,
             @RequestParam String subjectId,
             @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(learnerTrackingService.addOrUpdateVideoActivityLog(activityLogDTO, slideId, chapterId,moduleId, subjectId, packageSessionId, user));
+        return ResponseEntity.ok(learnerTrackingService.addOrUpdateVideoActivityLog(activityLogDTO, slideId, chapterId,
+                moduleId, subjectId, packageSessionId, user));
     }
 
     @GetMapping("/get-learner-document-activity-logs")
@@ -58,9 +59,9 @@ public class LearnerTrackingController {
             @RequestParam(value = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE, required = false) int pageSize,
             @RequestAttribute("user") CustomUserDetails userDetails) {
 
-        return learnerTrackingService.getDocumentActivityLogs(userId, slideId, PageRequest.of(pageNo, pageSize), userDetails);
+        return learnerTrackingService.getDocumentActivityLogs(userId, slideId, PageRequest.of(pageNo, pageSize),
+                userDetails);
     }
-
 
     @GetMapping("/get-learner-video-activity-logs")
     public Page<ActivityLogDTO> getVideoActivityLogs(
@@ -70,6 +71,32 @@ public class LearnerTrackingController {
             @RequestParam(value = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE, required = false) int pageSize,
             @RequestAttribute("user") CustomUserDetails userDetails) {
 
-        return learnerTrackingService.getDocumentActivityLogs(userId, slideId, PageRequest.of(pageNo, pageSize), userDetails);
+        return learnerTrackingService.getVideoActivityLogs(userId, slideId, PageRequest.of(pageNo, pageSize),
+                userDetails);
+    }
+
+    @PostMapping("/add-or-update-html-video-activity")
+    public ResponseEntity<ActivityLogDTO> addHtmlVideoActivityLog(
+            @RequestBody ActivityLogDTO activityLogDTO,
+            @RequestParam String slideId,
+            @RequestParam String chapterId,
+            @RequestParam String packageSessionId,
+            @RequestParam String moduleId,
+            @RequestParam String subjectId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(learnerTrackingService.addOrUpdateHtmlVideoActivityLog(activityLogDTO, slideId,
+                chapterId, moduleId, subjectId, packageSessionId, user));
+    }
+
+    @GetMapping("/get-learner-html-video-activity-logs")
+    public Page<ActivityLogDTO> getHtmlVideoActivityLogs(
+            @RequestParam("userId") String userId,
+            @RequestParam("slideId") String slideId,
+            @RequestParam(value = "pageNo", defaultValue = PageConstants.DEFAULT_PAGE_NUMBER, required = false) int pageNo,
+            @RequestParam(value = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE, required = false) int pageSize,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+
+        return learnerTrackingService.getVideoActivityLogs(userId, slideId, PageRequest.of(pageNo, pageSize),
+                userDetails);
     }
 }

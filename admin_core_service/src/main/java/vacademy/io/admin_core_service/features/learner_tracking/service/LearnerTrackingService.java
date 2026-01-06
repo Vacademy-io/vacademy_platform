@@ -46,28 +46,46 @@ public class LearnerTrackingService {
         this.concentrationScoreService = concentrationScoreService;
     }
 
-
-    public ActivityLogDTO addOrUpdateDocumentActivityLog(ActivityLogDTO activityLogDTO, String slideId, String chapterId,String packageSessionId,String moduleId,String subjectId, CustomUserDetails user) {
+    public ActivityLogDTO addOrUpdateDocumentActivityLog(ActivityLogDTO activityLogDTO, String slideId,
+            String chapterId, String packageSessionId, String moduleId, String subjectId, CustomUserDetails user) {
         activityLogDTO.setUserId(user.getUserId());
         validateActivityLogDTO(activityLogDTO, true); // Validate for documents
-        ActivityLog activityLog = activityLogDTO.isNewActivity() ?
-                saveActivityLog(activityLogDTO, slideId, user.getUserId()) :
-                updateActivityLog(activityLogDTO, activityLogDTO.getUserId());
+        ActivityLog activityLog = activityLogDTO.isNewActivity()
+                ? saveActivityLog(activityLogDTO, slideId, user.getUserId())
+                : updateActivityLog(activityLogDTO, activityLogDTO.getUserId());
         saveDocumentTracking(activityLogDTO, activityLog);
-        learnerTrackingAsyncService.updateLearnerOperationsForDocument(user.getUserId(), slideId, chapterId, moduleId,subjectId,packageSessionId,activityLogDTO);
+        learnerTrackingAsyncService.updateLearnerOperationsForDocument(user.getUserId(), slideId, chapterId, moduleId,
+                subjectId, packageSessionId, activityLogDTO);
         concentrationScoreService.addConcentrationScore(activityLogDTO.getConcentrationScore(), activityLog);
         return activityLog.toActivityLogDTO();
     }
-//
-//    @Transactional
-    public ActivityLogDTO addOrUpdateVideoActivityLog(ActivityLogDTO activityLogDTO, String slideId, String chapterId,String moduleId,String subjectId,String packageSessionId, CustomUserDetails user) {
+
+    //
+    // @Transactional
+    public ActivityLogDTO addOrUpdateVideoActivityLog(ActivityLogDTO activityLogDTO, String slideId, String chapterId,
+            String moduleId, String subjectId, String packageSessionId, CustomUserDetails user) {
         validateActivityLogDTO(activityLogDTO, false); // Validate for videos
-        ActivityLog activityLog = activityLogDTO.isNewActivity() ?
-                saveActivityLog(activityLogDTO, slideId, user.getUserId()) :
-                updateActivityLog(activityLogDTO, activityLogDTO.getId());
+        ActivityLog activityLog = activityLogDTO.isNewActivity()
+                ? saveActivityLog(activityLogDTO, slideId, user.getUserId())
+                : updateActivityLog(activityLogDTO, activityLogDTO.getId());
 
         saveVideoTracking(activityLogDTO, activityLog);
-        learnerTrackingAsyncService.updateLearnerOperationsForVideo(user.getUserId(), slideId, chapterId,moduleId,subjectId,packageSessionId, activityLogDTO);
+        learnerTrackingAsyncService.updateLearnerOperationsForVideo(user.getUserId(), slideId, chapterId, moduleId,
+                subjectId, packageSessionId, activityLogDTO);
+        concentrationScoreService.addConcentrationScore(activityLogDTO.getConcentrationScore(), activityLog);
+        return activityLog.toActivityLogDTO();
+    }
+
+    public ActivityLogDTO addOrUpdateHtmlVideoActivityLog(ActivityLogDTO activityLogDTO, String slideId,
+            String chapterId, String moduleId, String subjectId, String packageSessionId, CustomUserDetails user) {
+        validateActivityLogDTO(activityLogDTO, false); // Reuse validation for videos
+        ActivityLog activityLog = activityLogDTO.isNewActivity()
+                ? saveActivityLog(activityLogDTO, slideId, user.getUserId())
+                : updateActivityLog(activityLogDTO, activityLogDTO.getId());
+
+        saveVideoTracking(activityLogDTO, activityLog); // Reuse VideoTracking entity
+        learnerTrackingAsyncService.updateLearnerOperationsForHtmlVideo(user.getUserId(), slideId, chapterId, moduleId,
+                subjectId, packageSessionId, activityLogDTO);
         concentrationScoreService.addConcentrationScore(activityLogDTO.getConcentrationScore(), activityLog);
         return activityLog.toActivityLogDTO();
     }
@@ -123,12 +141,14 @@ public class LearnerTrackingService {
         }
     }
 
-    public Page<ActivityLogDTO> getDocumentActivityLogs(String userId, String slideId, Pageable pageable, CustomUserDetails userDetails) {
+    public Page<ActivityLogDTO> getDocumentActivityLogs(String userId, String slideId, Pageable pageable,
+            CustomUserDetails userDetails) {
         Page<ActivityLog> activityLogs = activityLogRepository.findActivityLogsWithDocuments(userId, slideId, pageable);
         return activityLogs.map(ActivityLog::toActivityLogDTO);
     }
 
-    public Page<ActivityLogDTO> getVideoActivityLogs(String userId, String slideId, Pageable pageable, CustomUserDetails userDetails) {
+    public Page<ActivityLogDTO> getVideoActivityLogs(String userId, String slideId, Pageable pageable,
+            CustomUserDetails userDetails) {
         Page<ActivityLog> activityLogs = activityLogRepository.findActivityLogsWithVideos(userId, slideId, pageable);
         return activityLogs.map(ActivityLog::toActivityLogDTO);
     }

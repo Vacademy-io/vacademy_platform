@@ -47,6 +47,8 @@ public class LearnerTrackingAsyncService {
         @Autowired
         private VideoSlideRepository videoSlideRepository;
         @Autowired
+        private vacademy.io.admin_core_service.features.slide.repository.HtmlVideoSlideRepository htmlVideoSlideRepository;
+        @Autowired
         private LLMActivityAnalyticsService llmActivityAnalyticsService;
 
         // ==== Document Slide Tracking ====
@@ -266,6 +268,55 @@ public class LearnerTrackingAsyncService {
                 updateLearnerOperationsForChapter(userId, chapterId, moduleId, subjectId, packageSessionId);
         }
 
+        // ==== HTML Video Slide Tracking ====
+
+        @Async
+        @Transactional
+        public void updateLearnerOperationsForHtmlVideo(String userId, String slideId, String chapterId,
+                        String moduleId, String subjectId, String packageSessionId,
+                        ActivityLogDTO activityLogDTO) {
+                learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(
+                                userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
+                                LearnerOperationEnum.PERCENTAGE_VIDEO_WATCHED.name());
+
+                learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(
+                                userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
+                                LearnerOperationEnum.VIDEO_LAST_TIMESTAMP.name());
+
+                // STEP 1: Get endTime for timestamp metric
+                Long maxEndTime = activityLogDTO.getVideos().stream()
+                                .map(VideoActivityLogDTO::getEndTimeInMillis)
+                                .max(Long::compareTo)
+                                .orElse(null);
+
+                // STEP 2: Fetch all start-end time intervals for this slide + user
+                List<Object[]> trackedTimes = activityLogRepository.getVideoTrackedIntervals(slideId, userId);
+                List<VideoInterval> intervals = trackedTimes.stream()
+                                .map(row -> new VideoInterval(((Timestamp) row[0]).toInstant(),
+                                                ((Timestamp) row[1]).toInstant()))
+                                .collect(Collectors.toCollection(ArrayList::new));
+
+                // STEP 3: Calculate actual watched milliseconds
+                long actualWatchedMillis = getUniqueWatchedDurationMillis(intervals);
+
+                // STEP 4: Fetch published video length
+                Long videoLength = htmlVideoSlideRepository.getVideoLength(slideId);
+
+                Double percentageWatched = null;
+                if (videoLength != null && videoLength > 0) {
+                        percentageWatched = (actualWatchedMillis * 100.0) / videoLength;
+                }
+
+                // STEP 5: Save learner operations
+                addOrUpdatePercentageOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
+                                LearnerOperationEnum.PERCENTAGE_VIDEO_WATCHED.name(), percentageWatched);
+
+                learnerOperationService.addOrUpdateOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
+                                LearnerOperationEnum.VIDEO_LAST_TIMESTAMP.name(), String.valueOf(maxEndTime));
+
+                updateLearnerOperationsForChapter(userId, chapterId, moduleId, subjectId, packageSessionId);
+        }
+
         public long getUniqueWatchedDurationMillis(List<VideoInterval> intervals) {
                 if (intervals.isEmpty())
                         return 0;
@@ -317,7 +368,8 @@ public class LearnerTrackingAsyncService {
                                 userId, chapterId, operationList, slideStatusList,
                                 List.of(SlideTypeEnum.VIDEO.name(), SlideTypeEnum.DOCUMENT.name(),
                                                 SlideTypeEnum.ASSIGNMENT.name(),
-                                                SlideTypeEnum.QUESTION.name(), SlideTypeEnum.QUIZ.name()));
+                                                SlideTypeEnum.QUESTION.name(), SlideTypeEnum.QUIZ.name(),
+                                                SlideTypeEnum.HTML_VIDEO.name()));
 
                 addOrUpdatePercentageOperation(
                                 userId,
@@ -405,13 +457,19 @@ public class LearnerTrackingAsyncService {
         public void updateLearnerOperationsForSlideTrigger(String userId, String slideId, String slideType,
                         String chapterId, String moduleId,
                         String subjectId, String packageSessionId) {
-                Double percentageWatched = slideType.equals(SlideTypeEnum.VIDEO.name())
-                                ? activityLogRepository.getPercentageVideoWatched(slideId, userId)
-                                : activityLogRepository.getPercentageDocumentWatched(slideId, userId);
+                Double percentageWatched;
+                if (SlideTypeEnum.VIDEO.name().equals(slideType)) {
+                        percentageWatched = activityLogRepository.getPercentageVideoWatched(slideId, userId);
+                } else if (SlideTypeEnum.HTML_VIDEO.name().equals(slideType)) {
+                        percentageWatched = activityLogRepository.getPercentageHtmlVideoWatched(slideId, userId);
+                } else {
+                        percentageWatched = activityLogRepository.getPercentageDocumentWatched(slideId, userId);
+                }
 
-                LearnerOperationEnum operation = slideType.equals(SlideTypeEnum.VIDEO.name())
-                                ? LearnerOperationEnum.PERCENTAGE_VIDEO_WATCHED
-                                : LearnerOperationEnum.PERCENTAGE_DOCUMENT_COMPLETED;
+                LearnerOperationEnum operation = (SlideTypeEnum.VIDEO.name().equals(slideType)
+                                || SlideTypeEnum.HTML_VIDEO.name().equals(slideType))
+                                                ? LearnerOperationEnum.PERCENTAGE_VIDEO_WATCHED
+                                                : LearnerOperationEnum.PERCENTAGE_DOCUMENT_COMPLETED;
 
                 addOrUpdatePercentageOperation(
                                 userId,

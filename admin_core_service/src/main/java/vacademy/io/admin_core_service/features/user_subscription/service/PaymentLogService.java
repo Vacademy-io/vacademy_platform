@@ -69,6 +69,7 @@ public class PaymentLogService {
         log.info("Creating payment log for userId={}, amount={}, vendor={}, currency={}", userId, paymentAmount,
                 vendor, currency);
 
+                
         PaymentLog paymentLog = new PaymentLog();
         paymentLog.setStatus(PaymentLogStatusEnum.INITIATED.name());
         paymentLog.setPaymentAmount(paymentAmount);

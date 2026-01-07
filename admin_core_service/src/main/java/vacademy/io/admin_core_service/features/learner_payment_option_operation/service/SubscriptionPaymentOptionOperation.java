@@ -43,7 +43,9 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
     private ReferralBenefitOrchestrator referralBenefitOrchestrator;
 
     @Autowired
-    private AuthService authService;    @Override
+    private AuthService authService;
+
+    @Override
     public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
             LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
             String instituteId,
@@ -52,10 +54,10 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
             UserPlan userPlan,
             Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
         // Use startDate from DTO if provided, otherwise default to current date
-        Date enrollmentDate = learnerPackageSessionsEnrollDTO.getStartDate() != null 
-                ? learnerPackageSessionsEnrollDTO.getStartDate() 
+        Date enrollmentDate = learnerPackageSessionsEnrollDTO.getStartDate() != null
+                ? learnerPackageSessionsEnrollDTO.getStartDate()
                 : new Date();
-        
+
         String learnerSessionStatus = null;
         if (paymentOption.isRequireApproval()) {
             learnerSessionStatus = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();
@@ -113,7 +115,9 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
         }
 
         return learnerEnrollResponseDTO;
-    }    private List<InstituteStudentDetails> buildInstituteStudentDetails(String instituteId,
+    }
+
+    private List<InstituteStudentDetails> buildInstituteStudentDetails(String instituteId,
             List<String> packageSessionIds,
             Integer accessDays, String learnerSessionStatus, UserPlan userPlan, Date enrollmentDate) {
         List<InstituteStudentDetails> detailsList = new ArrayList<>();

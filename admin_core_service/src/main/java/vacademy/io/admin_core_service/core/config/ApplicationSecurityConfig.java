@@ -45,7 +45,7 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/api-docs/**",
             "/admin-core-service/learner-invitation-response/**",
             "/admin-core-service/live-session/register-guest-user/**",
-            "admin-core-service/live-session/get-earliest-schedule-id/**",
+            "/admin-core-service/live-session/get-earliest-schedule-id/**",
             "/admin-core-service/live-session/get-registration-data/**",
             "/admin-core-service/live-session/check-email-registration/**",
             "/admin-core-service/live-session/guest/get-session-by-schedule-id/**",
@@ -54,6 +54,7 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/payments/webhook/callback/**",
             "/admin-core-service/v1/learner/enroll/**",
             "/admin-core-service/workflow/schedule/**",
+            "/admin-core-service/payments/user-plan/**/status/**",
             "/admin-core-service/llm-analytics/**",
             "/admin-core-service/v1/llm-analytics/**",
             "/admin-core-service/v1/embedding/api-docs/**",
@@ -96,7 +97,7 @@ public class ApplicationSecurityConfig {
                         .anyRequest().authenticated())
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .anonymous(anonymous -> anonymous.disable())
+                        .anonymous(anonymous -> anonymous.disable())
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(internalAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

@@ -26,7 +26,7 @@ import vacademy.io.assessment_service.features.learner_assessment.service.Restar
 import vacademy.io.assessment_service.features.assessment.service.StudentAttemptService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.utils.DateUtil;
-import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.assessment_service.core.exception.VacademyException;
 import vacademy.io.common.logging.SentryLogger;
 
 import java.time.ZoneOffset;

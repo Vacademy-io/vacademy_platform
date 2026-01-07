@@ -50,6 +50,9 @@ public class QuestionDTO {
     private List<String> errors = new ArrayList<>();
     private List<String> warnings = new ArrayList<>();
 
+    private String evaluationCriteriaJson;
+    private String criteriaTemplateId;
+
     // Default constructor
     public QuestionDTO() {
     }
@@ -64,10 +67,14 @@ public class QuestionDTO {
         this.questionType = question.getQuestionType();
         this.accessLevel = question.getAccessLevel();
         this.optionsJson = question.getOptionsJson();
+        this.evaluationCriteriaJson = question.getEvaluationCriteriaJson();
+        this.criteriaTemplateId = question.getCriteriaTemplateId();
+
         if (provideSolution) {
             this.autoEvaluationJson = question.getAutoEvaluationJson();
             this.evaluationType = question.getEvaluationType();
-            this.parsedEvaluationObject = EvaluationJsonToMapConverter.convertJsonToMap(question.getAutoEvaluationJson());
+            this.parsedEvaluationObject = EvaluationJsonToMapConverter
+                    .convertJsonToMap(question.getAutoEvaluationJson());
         }
         this.defaultQuestionTimeMins = question.getDefaultQuestionTimeMins();
 
@@ -90,7 +97,6 @@ public class QuestionDTO {
             }
         }
     }
-
 
     public QuestionDTO(String questionNumber) {
         this.previewId = questionNumber;

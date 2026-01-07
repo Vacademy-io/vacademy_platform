@@ -24,10 +24,16 @@ import vacademy.io.common.auth.filter.InternalAuthFilter;
 @EnableMethodSecurity
 public class ApplicationSecurityConfig {
 
+    private static final String[] INTERNAL_PATHS = { "/assessment-service/internal/**" };
 
-    private static final String[] INTERNAL_PATHS = {"/assessment-service/internal/**"};
-
-    private static final String[] ALLOWED_PATHS = {"/assessment-service/open-registrations/register/v1/**", "/assessment-service/question-paper/upload/docx/v1/**", "/assessment-service/actuator/**", "/assessment-service/swagger-ui.html", "/assessment-service/v1/report/alert/**", "/assessment-service/v3/api-docs/**", "/assessment-service/swagger-ui/**", "/assessment-service/webjars/swagger-ui/**", "/assessment-service/api-docs/**", "/assessment-service/open-registrations/v1/assessment-page", "/assessment-service/evaluation-tool/**","/assessment-service/scheduler/test/**"};
+    private static final String[] ALLOWED_PATHS = { "/assessment-service/open-registrations/register/v1/**",
+            "/assessment-service/question-paper/upload/docx/v1/**", "/assessment-service/actuator/**",
+            "/assessment-service/swagger-ui.html", "/assessment-service/v1/report/alert/**",
+            "/assessment-service/v3/api-docs/**", "/assessment-service/swagger-ui/**",
+            "/assessment-service/webjars/swagger-ui/**", "/assessment-service/api-docs/**",
+            "/assessment-service/open-registrations/v1/assessment-page", "/assessment-service/evaluation-tool/**",
+            "/assessment-service/scheduler/test/**", "/assessment-service/assessment/evaluation-criteria/**",
+            "/assessment-service/assessment/evaluation-ai/**" };
 
     @Autowired
     AssessmentJwtAuthFilter jwtAuthFilter;
@@ -43,17 +49,14 @@ public class ApplicationSecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .csrf().disable()
-                .cors()
-                .and()
-                .authorizeHttpRequests()
-                .requestMatchers(ALLOWED_PATHS).permitAll()
-                .requestMatchers(INTERNAL_PATHS).authenticated()
-                .anyRequest().authenticated()
-                .and()
-                .sessionManagement()
-                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-                .and()
+                .csrf(csrf -> csrf.disable()) // Modern Spring Security 6 syntax
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(ALLOWED_PATHS).permitAll()
+                        .requestMatchers(INTERNAL_PATHS).authenticated()
+                        .anyRequest().authenticated())
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(internalAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
@@ -65,12 +68,10 @@ public class ApplicationSecurityConfig {
         return new RestTemplate();
     }
 
-
     @Bean
     public PasswordEncoder passwordEncoder() {
         return NoOpPasswordEncoder.getInstance();
     }
-
 
     @Bean
     public AuthenticationProvider authenticationProvider() {
@@ -79,7 +80,6 @@ public class ApplicationSecurityConfig {
         authenticationProvider.setPasswordEncoder(passwordEncoder());
         return authenticationProvider;
     }
-
 
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {

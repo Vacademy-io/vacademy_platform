@@ -62,6 +62,16 @@ public class QuestionWiseMarks {
     @Column(name = "section_id", insertable = false, updatable = false)
     private String sectionId;
 
+    // AI Evaluation fields
+    @Column(name = "ai_evaluated_at")
+    private Date aiEvaluatedAt;
+
+    @Column(name = "ai_evaluation_details_json", columnDefinition = "TEXT")
+    private String aiEvaluationDetailsJson;
+
+    @Column(name = "evaluator_feedback", columnDefinition = "TEXT")
+    private String evaluatorFeedback;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 

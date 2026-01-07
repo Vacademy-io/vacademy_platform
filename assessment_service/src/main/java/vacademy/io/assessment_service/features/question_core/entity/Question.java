@@ -78,9 +78,15 @@ public class Question {
     @JoinColumn(name = "explanation_text_id", referencedColumnName = "id", insertable = true, updatable = true)
     private AssessmentRichTextData explanationTextData;
 
+    // AI Evaluation criteria fields
+    @Column(name = "evaluation_criteria_json", columnDefinition = "TEXT")
+    private String evaluationCriteriaJson;
+
+    @Column(name = "criteria_template_id", length = 36)
+    private String criteriaTemplateId;
+
     @OneToMany(mappedBy = "question", fetch = FetchType.LAZY)
     private List<Option> options = new ArrayList<>();
-
 
     public Question(QuestionDTO questionDTO) {
         this.id = questionDTO.getId();
@@ -97,6 +103,8 @@ public class Question {
         this.explanationTextData = AssessmentRichTextData.fromDTO(questionDTO.getExplanationText());
         this.parentRichText = AssessmentRichTextData.fromDTO(questionDTO.getParentRichText());
         this.optionsJson = questionDTO.getOptionsJson();
+        this.evaluationCriteriaJson = questionDTO.getEvaluationCriteriaJson();
+        this.criteriaTemplateId = questionDTO.getCriteriaTemplateId();
     }
 
     public Question(String id) {

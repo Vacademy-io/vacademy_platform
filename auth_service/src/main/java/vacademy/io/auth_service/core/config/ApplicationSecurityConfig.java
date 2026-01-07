@@ -30,6 +30,8 @@ import org.springframework.security.oauth2.client.web.AuthorizationRequestReposi
 import org.springframework.security.oauth2.client.web.HttpSessionOAuth2AuthorizationRequestRepository;
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
 
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+
 @Configuration
 @EnableMethodSecurity
 public class ApplicationSecurityConfig {
@@ -150,10 +152,17 @@ public class ApplicationSecurityConfig {
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(authz -> authz
-                        .requestMatchers(ALLOWED_PATHS).permitAll()
-                        .requestMatchers(INTERNAL_PATHS).authenticated()
-                        .anyRequest().authenticated())
+                .authorizeHttpRequests(authz -> {
+                    // Use AntPathRequestMatcher for Ant-style pattern matching (compatible with
+                    // Spring 6)
+                    for (String path : ALLOWED_PATHS) {
+                        authz.requestMatchers(AntPathRequestMatcher.antMatcher(path)).permitAll();
+                    }
+                    for (String path : INTERNAL_PATHS) {
+                        authz.requestMatchers(AntPathRequestMatcher.antMatcher(path)).authenticated();
+                    }
+                    authz.anyRequest().authenticated();
+                })
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(internalAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

@@ -79,6 +79,7 @@
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/exceptions/OwnerNotFoundException.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/exceptions/DatabaseException.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/entity/UserActivityLog.java
+/Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/payment/enums/PaymentType.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/notification/dto/GenericEmailRequest.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/core/internal_api_wrapper/UrlUtils.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/institute/entity/student/Subject.java

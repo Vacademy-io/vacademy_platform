@@ -111,6 +111,7 @@ vacademy/io/common/institute/entity/session/PackageSession.class
 vacademy/io/common/notification/dto/AttachmentUsersDTO.class
 vacademy/io/common/core/utils/CaseHandlerUserClient.class
 vacademy/io/common/auth/entity/UserActivity.class
+vacademy/io/common/payment/enums/PaymentType.class
 vacademy/io/common/auth/dto/UserActivityAnalyticsDto$DeviceUsageDto$DeviceUsageDtoBuilder.class
 vacademy/io/common/ai/dto/AiEvaluationMetadata.class
 vacademy/io/common/notification/dto/AttachmentNotificationDTO$AttachmentNotificationDTOBuilder.class

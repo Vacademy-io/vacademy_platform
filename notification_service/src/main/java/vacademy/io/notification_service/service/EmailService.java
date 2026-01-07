@@ -163,8 +163,9 @@ public class EmailService {
                     }
                 }
             } catch (Exception e) {
-                logger.error("Error parsing institute email settings", e);
-                throw new VacademyException("Error parsing JSON object for email settings");
+                logger.error("Error parsing institute email settings for instituteId: {}. Using default SMTP.",
+                        instituteId, e);
+                // Continue with default settings instead of throwing
             }
         } else {
             logger.info("No instituteId provided, using default SMTP");

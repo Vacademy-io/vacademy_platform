@@ -15,6 +15,7 @@ import org.springframework.security.crypto.password.NoOpPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.cors.CorsConfigurationSource;
 import vacademy.io.common.auth.filter.InternalAuthFilter;
@@ -45,7 +46,7 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/api-docs/**",
             "/admin-core-service/learner-invitation-response/**",
             "/admin-core-service/live-session/register-guest-user/**",
-            "admin-core-service/live-session/get-earliest-schedule-id/**",
+            "/admin-core-service/live-session/get-earliest-schedule-id/**",
             "/admin-core-service/live-session/get-registration-data/**",
             "/admin-core-service/live-session/check-email-registration/**",
             "/admin-core-service/live-session/guest/get-session-by-schedule-id/**",
@@ -90,10 +91,17 @@ public class ApplicationSecurityConfig {
         http
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
-                .authorizeHttpRequests(authz -> authz
-                        .requestMatchers(ALLOWED_PATHS).permitAll()
-                        .requestMatchers(INTERNAL_PATHS).authenticated()
-                        .anyRequest().authenticated())
+                .authorizeHttpRequests(authz -> {
+                    // Use AntPathRequestMatcher for Ant-style pattern matching (compatible with
+                    // Spring 6)
+                    for (String path : ALLOWED_PATHS) {
+                        authz.requestMatchers(AntPathRequestMatcher.antMatcher(path)).permitAll();
+                    }
+                    for (String path : INTERNAL_PATHS) {
+                        authz.requestMatchers(AntPathRequestMatcher.antMatcher(path)).authenticated();
+                    }
+                    authz.anyRequest().authenticated();
+                })
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .anonymous(anonymous -> anonymous.disable())

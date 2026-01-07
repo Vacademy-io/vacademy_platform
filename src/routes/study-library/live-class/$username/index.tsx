@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { AuthPageBranding } from "@/components/common/institute-branding";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { getTokenFromStorage } from "@/lib/auth/axiosInstance";
+import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { Preferences } from "@capacitor/preferences";

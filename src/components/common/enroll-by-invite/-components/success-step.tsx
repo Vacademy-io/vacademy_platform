@@ -7,12 +7,14 @@ interface SuccessStepProps {
     courseName: string;
     approvalRequired: boolean;
     email: string;
+    isAutoLoggingIn?: boolean;
 }
 
 const SuccessStep = ({
     courseName,
     approvalRequired,
     email,
+    isAutoLoggingIn,
 }: SuccessStepProps) => {
     const navigate = useNavigate();
     return (
@@ -58,18 +60,25 @@ const SuccessStep = ({
 
                     {/* Check Email Status Button */}
                     <div className="mt-6">
-                        <MyButton
-                            type="button"
-                            buttonType="primary"
-                            scale="large"
-                            layoutVariant="default"
-                            className="w-full sm:w-auto text-white font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
-                            onClick={() => {
-                                navigate({ to: "/login" });
-                            }}
-                        >
-                            Login Now
-                        </MyButton>
+                        {isAutoLoggingIn ? (
+                            <div className="flex flex-col items-center gap-3">
+                                <div className="w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
+                                <p className="text-primary-600 font-medium italic">Redirecting to Dashboard...</p>
+                            </div>
+                        ) : (
+                            <MyButton
+                                type="button"
+                                buttonType="primary"
+                                scale="large"
+                                layoutVariant="default"
+                                className="w-full sm:w-auto text-white font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
+                                onClick={() => {
+                                    navigate({ to: "/login" });
+                                }}
+                            >
+                                Login Now
+                            </MyButton>
+                        )}
                     </div>
                 </CardContent>
             </Card>

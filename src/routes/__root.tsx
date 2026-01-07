@@ -66,8 +66,8 @@ const isAuthenticated = async () => {
   });
 
   const hasToken = !isNullOrEmptyOrUndefined(token);
-  const hasStudentDetails = !isNullOrEmptyOrUndefined(studentDetails);
-  const hasInstituteDetails = !isNullOrEmptyOrUndefined(instituteDetails);
+  const hasStudentDetails = !isNullOrEmptyOrUndefined(studentDetails?.value);
+  const hasInstituteDetails = !isNullOrEmptyOrUndefined(instituteDetails?.value);
 
   console.log(`🔍 Authentication check:`, {
     hasToken,
@@ -423,6 +423,43 @@ export const Route = createRootRouteWithContext<{
   beforeLoad: async ({ location }) => {
     console.log("[__root] Checking route:", location.pathname);
     console.log("[__root] Is public route:", isPublicRoute(location.pathname));
+
+    // Global Auto-Login Support via URL Tokens
+    const urlParams = new URL(window.location.href).searchParams;
+    const urlAccessToken = urlParams.get("accessToken");
+    const urlRefreshToken = urlParams.get("refreshToken");
+
+    if (urlAccessToken && urlRefreshToken) {
+      console.log("[__root] Detected tokens in URL, performing auto-login...");
+      try {
+        const { performFullAuthCycle } = await import("@/services/auth-cycle-service");
+        // We'll need the instituteId. We can try to decode it from the token first.
+        const { getTokenDecodedData } = await import("@/lib/auth/sessionUtility");
+        const decoded = getTokenDecodedData(urlAccessToken);
+        const instituteId = decoded?.authorities ? Object.keys(decoded.authorities)[0] : undefined;
+
+        if (instituteId) {
+          await performFullAuthCycle(
+            { accessToken: urlAccessToken, refreshToken: urlRefreshToken },
+            instituteId
+          );
+
+          // Remove tokens from URL and reload/redirect
+          const newUrl = new URL(window.location.href);
+          newUrl.searchParams.delete("accessToken");
+          newUrl.searchParams.delete("refreshToken");
+          window.history.replaceState({}, document.title, newUrl.toString());
+
+          console.log("[__root] Auto-login complete, reloading route...");
+          // We can't easily "continue" here without a redirect or reload
+          // For now, let's just let the rest of the logic proceed or throw a redirect
+          throw redirect({ to: location.pathname as never, search: Object.fromEntries(newUrl.searchParams) as any });
+        }
+      } catch (error) {
+        if (error instanceof Response) throw error;
+        console.error("[__root] Auto-login via URL failed:", error);
+      }
+    }
 
     // Skip all logic for public routes - they should work without any redirects
     if (isPublicRoute(location.pathname)) {

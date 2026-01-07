@@ -1,5 +1,5 @@
 import axios from "axios";
-import { getTokenFromStorage } from "@/lib/auth/axiosInstance";
+import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { BASE_URL } from "@/constants/urls";
 
@@ -87,7 +87,7 @@ export const processDonationPayment = async (
     };
 
 
-    
+
     const response = await axios.post(
       `${DONATION_PAYMENT_URL}?instituteId=${instituteId}&userPlanId=${userPlanId}`,
       payload,
@@ -132,7 +132,7 @@ export const getUserPlanId = async (instituteId: string): Promise<string | null>
     }
 
 
-    
+
     const response = await axios.get(
       `${BASE_URL}/admin-core-service/learner/info/v1/details?instituteId=${instituteId}`,
       {
@@ -155,11 +155,11 @@ export const getUserPlanId = async (instituteId: string): Promise<string | null>
 
     const learnerInfo = response.data;
 
-    
+
     if (learnerInfo && learnerInfo.length > 0) {
       // Find the first learner record with a user_plan_id
-      const learnerWithPlan = learnerInfo.find(learner => learner.user_plan_id);
-      
+      const learnerWithPlan = learnerInfo.find((learner: any) => learner.user_plan_id);
+
       if (learnerWithPlan) {
         return learnerWithPlan.user_plan_id;
       } else {

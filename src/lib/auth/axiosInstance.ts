@@ -1,23 +1,11 @@
 import { Preferences } from "@capacitor/preferences";
 import { TokenKey } from "@/constants/auth/tokens";
 import axios from "axios";
-import { isTokenExpired, removeTokensAndLogout } from "./sessionUtility"; // Utility for JWT expiration checks
+import { isTokenExpired, removeTokensAndLogout, getTokenFromStorage } from "./sessionUtility"; // Utility for JWT expiration checks
 import { REFRESH_TOKEN_URL } from "@/constants/urls";
 import { maybeServeFromCache, maybeStoreInCache } from "@/lib/http/clientCache";
 import { toast } from "sonner";
 import * as Sentry from "@sentry/react";
-
-// Helper functions to interact with Capacitor Preferences
-export const getTokenFromStorage = async (
-  key: string
-): Promise<string | null> => {
-  try {
-    const { value } = await Preferences.get({ key });
-    return value;
-  } catch {
-    return null;
-  }
-};
 
 const removeTokensAndInstituteId = async () => {
   await Preferences.remove({ key: TokenKey.accessToken });
@@ -181,11 +169,7 @@ authenticatedAxiosInstance.interceptors.response.use(
       error.response &&
       error.response.status === 401
     ) {
-      // Remove tokens and institute ID
-      await removeTokensAndInstituteId();
-
-      // Optionally, you can add logic to redirect to login page
-      // This might involve using a navigation library or window.location
+      console.warn("[Axios] Received 401 Unauthorized. Not performing auto-logout to avoid session recovery race conditions. Route guards will handle redirection if needed.");
     }
 
     // Handle forbidden errors (403) - might be token issues

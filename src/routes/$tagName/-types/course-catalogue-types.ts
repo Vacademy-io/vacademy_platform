@@ -338,6 +338,7 @@ export interface CartComponentProps {
     roundedEdges?: boolean;
     backgroundColor?: string;
   };
+  onlyLogic?: boolean;
 }
 
 export interface CartSummaryProps {

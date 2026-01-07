@@ -1,5 +1,5 @@
 import axios, { type AxiosResponse } from "axios";
-import { Storage } from "@capacitor/storage";
+import { Preferences as Storage } from "@capacitor/preferences";
 import { jwtDecode } from "jwt-decode";
 import { REFRESH_TOKEN_URL } from "@/constants/urls";
 import { UnauthorizedResponse } from "@/constants/auth/unauthorizeresponse";
@@ -10,7 +10,15 @@ import { clearStudentDisplaySettingsCache } from "@/services/student-display-set
 
 // Set token in cookie with domain support for cross-subdomain access
 export const setAuthorizationCookie = (key: string, token: string): void => {
-  Cookies.set(key, token);
+  const hostname = window.location.hostname;
+
+  // If we are on a .vacademy.io subdomain, set cookie for the entire domain
+  if (hostname.endsWith(".vacademy.io")) {
+    Cookies.set(key, token, { domain: ".vacademy.io", expires: 7 });
+  } else {
+    // Fallback for localhost or other domains
+    Cookies.set(key, token, { expires: 7 });
+  }
 };
 
 // Get token from cookie
@@ -22,40 +30,122 @@ export const getTokenFromCookie = (tokenKey: string): string | null => {
 const getTokenFromStorage = async (
   tokenKey: string
 ): Promise<string | null> => {
+  // Try Capacitor Storage first
   const { value } = await Storage.get({ key: tokenKey });
-  return value; // Directly return the value without JSON parsing
+  if (value) return value;
+
+  // Fallback to cookies if not in storage
+  const cookieValue = Cookies.get(tokenKey);
+  if (cookieValue) {
+    console.log(`[SessionUtility] Token ${tokenKey} recovered from cookies`);
+    return cookieValue;
+  }
+
+  // Final fallback to localStorage
+  try {
+    const localStorageValue = localStorage.getItem(tokenKey);
+    if (localStorageValue) {
+      console.log(`[SessionUtility] Token ${tokenKey} recovered from localStorage`);
+      return localStorageValue;
+    }
+  } catch (error) {
+    console.warn(`[SessionUtility] Failed to read from localStorage:`, error);
+  }
+
+  return null;
 };
 
 // Helper function to set a token in Capacitor Storage
 const setTokenInStorage = async (key: string, token: string): Promise<void> => {
+  // Store in Capacitor Preferences
   await Storage.set({
     key,
-    value: token, // Directly store the token without stringifying
+    value: token,
   });
+
+  // Store in cookies for cross-subdomain access
+  setAuthorizationCookie(key, token);
+
+  // Also store in localStorage for synchronous access
+  try {
+    localStorage.setItem(key, token);
+  } catch (error) {
+    console.warn(`[SessionUtility] Failed to write to localStorage:`, error);
+  }
 };
 
-// Helper function to remove a token from Capacitor Storage
+// Helper function to remove a token from all storage locations
 const removeTokenFromStorage = async (key: string): Promise<void> => {
+  // Remove from Capacitor Storage
   await Storage.remove({ key });
+
+  // Remove from cookies
+  try {
+    Cookies.remove(key);
+    // Also try with domain for cross-subdomain cookies
+    const hostname = window.location.hostname;
+    if (hostname.endsWith(".vacademy.io")) {
+      Cookies.remove(key, { domain: ".vacademy.io" });
+    }
+  } catch (error) {
+    console.warn(`[SessionUtility] Failed to remove cookie:`, error);
+  }
+
+  // Remove from localStorage
+  try {
+    localStorage.removeItem(key);
+  } catch (error) {
+    console.warn(`[SessionUtility] Failed to remove from localStorage:`, error);
+  }
 };
 
-// Helper function to get a token from Capacitor Storage
+// Helper function to get institute ID from Capacitor Storage with localStorage fallback
 const getInstituteIdFromStorage = async (
   tokenKey: string
 ): Promise<string | null> => {
+  // Try Capacitor Storage first
   const { value } = await Storage.get({ key: tokenKey });
-  return value; // Directly return the value without JSON parsing
+  if (value) return value;
+
+  // Fallback to localStorage
+  try {
+    const localStorageValue = localStorage.getItem(tokenKey);
+    if (localStorageValue) {
+      console.log(`[SessionUtility] InstituteId ${tokenKey} recovered from localStorage`);
+      return localStorageValue;
+    }
+  } catch (error) {
+    console.warn(`[SessionUtility] Failed to read InstituteId from localStorage:`, error);
+  }
+
+  return null;
 };
 
-// Helper function to set a token in Capacitor Storage
+// Helper function to set institute ID in Capacitor Storage, Cookies, and localStorage
 const setInstituteIdInStorage = async (
   key: string,
-  token: string
+  id: string
 ): Promise<void> => {
+  // Store in Capacitor Preferences
   await Storage.set({
     key,
-    value: token, // Directly store the token without stringifying
+    value: id,
   });
+
+  // Also store in cookies for cross-subdomain recovery
+  const hostname = window.location.hostname;
+  if (hostname.endsWith(".vacademy.io")) {
+    Cookies.set(key, id, { domain: ".vacademy.io", expires: 7 });
+  } else {
+    Cookies.set(key, id, { expires: 7 });
+  }
+
+  // Also store in localStorage for synchronous access
+  try {
+    localStorage.setItem(key, id);
+  } catch (error) {
+    console.warn(`[SessionUtility] Failed to write InstituteId to localStorage:`, error);
+  }
 };
 
 // function to remove institute ID from Capacitor Storage
@@ -119,19 +209,42 @@ async function refreshTokens(
 
 // Remove tokens from storage and log out
 const removeTokensAndLogout = async (): Promise<void> => {
-  // Remove tokens
+  // Remove tokens from all storage locations
   await removeTokenFromStorage(TokenKey.accessToken);
   await removeTokenFromStorage(TokenKey.refreshToken);
   clearStudentDisplaySettingsCache();
   // Don't remove institute ID - keep it for comparison in courses
   // await removeInstituteIdFromStorage();
 
-  // Remove all other items from storage except InstituteId
+  // Remove all other items from Capacitor Storage except InstituteId
   const keys = await Storage.keys();
   for (const key of keys.keys) {
     if (key !== "InstituteId") {
       await Storage.remove({ key });
     }
+  }
+
+  // Also clear localStorage except InstituteId
+  try {
+    const keysToRemove = [
+      "StudentDetails",
+      "InstituteDetails",
+      "students",
+      "sessionList",
+      "instituteBatchesForSessions",
+      TokenKey.accessToken,
+      TokenKey.refreshToken,
+    ];
+
+    keysToRemove.forEach(key => {
+      try {
+        localStorage.removeItem(key);
+      } catch (error) {
+        console.warn(`Failed to remove ${key} from localStorage:`, error);
+      }
+    });
+  } catch (error) {
+    console.warn("Failed to clear localStorage during logout:", error);
   }
 
   // Redirect to login or handle logout logic

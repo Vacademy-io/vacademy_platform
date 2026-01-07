@@ -66,7 +66,7 @@ const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }
 
     //api call to store the courses details
 
-const fetchPackages = async (search = "") => {
+    const fetchPackages = async (search = "") => {
         try {
             const response = await axios.post(
                 urlCourseDetails,
@@ -204,6 +204,14 @@ const fetchPackages = async (search = "") => {
 
     useEffect(() => {
         const redirectToDashboardIfAuthenticated = async () => {
+            // CRITICAL FIX: If pending payment exists, do not redirect.
+            // Let CartComponent handle the flow.
+            const pendingOrderId = localStorage.getItem("pendingOrderId");
+            if (pendingOrderId) {
+                console.log("[CourseCataloguePage] Pending payment detected. Skipping auto-redirect.");
+                return;
+            }
+
             const token = await getTokenFromStorage(TokenKey.accessToken);
             const studentDetails = await Preferences.get({
                 key: "StudentDetails",

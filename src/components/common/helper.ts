@@ -1,6 +1,5 @@
 import { TokenKey } from "@/constants/auth/tokens";
-import { getTokenDecodedData } from "@/lib/auth/sessionUtility";
-import { getTokenFromStorage } from "@/lib/auth/axiosInstance";
+import { getTokenDecodedData, getTokenFromStorage } from "@/lib/auth/sessionUtility";
 
 export async function getInstituteIdSync() {
     try {

@@ -3,8 +3,7 @@ import { getInstituteId } from "@/constants/helper";
 import { GET_USER_ROLES_DETAILS, urlInstituteDetails } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { Preferences } from "@capacitor/preferences";
-import { getTokenDecodedData } from "@/lib/auth/sessionUtility";
-import { getTokenFromStorage } from "@/lib/auth/axiosInstance";
+import { getTokenDecodedData, getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import axios from "axios";
 
@@ -31,7 +30,7 @@ export const handleFetchInstituteDetails = () => {
 export const fetchUserRolesDetails = async () => {
     try {
         const instituteId = await getInstituteIdSync();
-        
+
         // Try to get userId from token first (more reliable)
         let userId = "";
         try {
@@ -43,7 +42,7 @@ export const fetchUserRolesDetails = async () => {
         } catch (error) {
             // Failed to get userId from token
         }
-        
+
         // Fallback: try to get userId from StudentDetails if not available from token
         if (!userId) {
             const StudentDetails = await Preferences.get({ key: "StudentDetails" });
@@ -57,17 +56,17 @@ export const fetchUserRolesDetails = async () => {
                 }
             }
         }
-        
+
         if (!userId) {
             throw new Error("Could not determine userId from token or StudentDetails");
         }
-        
+
         if (!instituteId) {
             throw new Error("Could not determine instituteId");
         }
-        
+
         // Making API call with userId and instituteId
-        
+
         const response = await authenticatedAxiosInstance({
             method: "GET",
             url: GET_USER_ROLES_DETAILS,

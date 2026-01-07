@@ -13,6 +13,9 @@ import { handleGetInstituteCustomFields } from "./-services/custom-fields-setup"
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { GraduationCap } from "lucide-react";
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
+import { loginEnrolledUser } from "@/services/signup-api";
+import { performFullAuthCycle } from "@/services/auth-cycle-service";
+import { BASE_URL_LEARNER_DASHBOARD } from "@/constants/urls";
 import {
   convertInviteCustomFields,
   convertInstituteCustomFields,
@@ -26,6 +29,7 @@ import z from "zod";
 import { AssessmentCustomFieldOpenRegistration } from "@/types/assessment-open-registration";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 import { MyButton } from "@/components/design-system/button";
 import { RazorpayCheckoutFormRef } from "./-components/razorpay-checkout-form";
 import {
@@ -69,11 +73,11 @@ type BundledSessionMeta = {
 
 type InvitePackageSession =
   | {
-      package_session_id?: string;
-      payment_option?: {
-        name?: string;
-      } | null;
-    }
+    package_session_id?: string;
+    payment_option?: {
+      name?: string;
+    } | null;
+  }
   | null
   | undefined;
 
@@ -94,12 +98,13 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
       expiryYear: string;
     };
   } | null>(null);
+  const [isAutoLoggingIn, setIsAutoLoggingIn] = useState(false);
   const [stripePaymentProcessor, setStripePaymentProcessor] = useState<
     | (() => Promise<{
-        success: boolean;
-        paymentMethodId?: string;
-        error?: string;
-      }>)
+      success: boolean;
+      paymentMethodId?: string;
+      error?: string;
+    }>)
     | null
   >(null);
   const [razorpayPaymentData, setRazorpayPaymentData] = useState<{
@@ -424,9 +429,9 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
       ...prev,
       selectedPayment: prev.selectedPayment
         ? {
-            ...prev.selectedPayment,
-            amount: amount,
-          }
+          ...prev.selectedPayment,
+          amount: amount,
+        }
         : null,
     }));
   };
@@ -475,6 +480,55 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
     }
   };
 
+  const handleAutoLogin = async (response: any) => {
+    // Check for direct tokens first (most automatic flow)
+    const directAccessToken = response?.payment_response?.response_data?.accessToken;
+    const directRefreshToken = response?.payment_response?.response_data?.refreshToken;
+
+    if (directAccessToken && directRefreshToken) {
+      try {
+        setIsAutoLoggingIn(true);
+        console.log("[EnrollByInvite] Using direct tokens from response");
+        await performFullAuthCycle({ accessToken: directAccessToken, refreshToken: directRefreshToken }, instituteId);
+
+        toast.success("Enrollment successful! Redirecting to dashboard...");
+        setTimeout(() => {
+          window.location.href = `${BASE_URL_LEARNER_DASHBOARD}/study-library/courses`;
+        }, 1500);
+        return;
+      } catch (error) {
+        console.error("[EnrollByInvite] Auth cycle with direct tokens failed:", error);
+        // Fallback to credential-based login if token login fails
+      }
+    }
+
+    const userEmail = response?.user?.email;
+    const userPassword = response?.user?.password;
+
+    if (userEmail && userPassword) {
+      try {
+        setIsAutoLoggingIn(true);
+        console.log("[EnrollByInvite] Performing auto-login using credentials");
+        const loginResponse = await loginEnrolledUser(userEmail, userPassword, instituteId);
+        await performFullAuthCycle(loginResponse, instituteId);
+
+        toast.success("Login successful! Redirecting to dashboard...");
+        setTimeout(() => {
+          window.location.href = `${BASE_URL_LEARNER_DASHBOARD}/study-library/courses`;
+        }, 1500);
+      } catch (error) {
+        console.error("[EnrollByInvite] Auto-login failed:", error);
+        setIsAutoLoggingIn(false);
+      }
+    } else {
+      // If no credentials, user might be already logged in or it's an existing user
+      // We still wait a bit then redirect
+      setTimeout(() => {
+        window.location.href = `${BASE_URL_LEARNER_DASHBOARD}/study-library/courses`;
+      }, 2000);
+    }
+  };
+
   const handleSubmitEnrollment = async () => {
     // For FREE payments, skip payment processing and go directly to success
     if (paymentType === "FREE") {
@@ -501,6 +555,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         });
         setPaymentCompletionResponse(paymentResponse);
         setCurrentStep(5); // Go directly to success for FREE payments
+        // handleAutoLogin(paymentResponse);
       } catch (err) {
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-expect-error
@@ -551,6 +606,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
             "PAID"
           ) {
             setCurrentStep(5);
+            // handleAutoLogin(paymentResponse);
           } else setCurrentStep(4);
         }, 100);
       } catch (err) {
@@ -682,6 +738,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
           "PAID"
         ) {
           setCurrentStep(5);
+          // handleAutoLogin(paymentResponse);
         } else setCurrentStep(4);
       }, 100);
     } catch (err) {
@@ -740,6 +797,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
                 ?.paymentStatus === "PAID"
             ) {
               setCurrentStep(5);
+              // handleAutoLogin(paymentResponse);
             } else {
               setCurrentStep(4);
             }
@@ -792,8 +850,8 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
               unit === "days"
                 ? `${defaultPaymentPlan.validity_in_days} days`
                 : `${Math.floor(
-                    defaultPaymentPlan.validity_in_days / 30
-                  )} months`;
+                  defaultPaymentPlan.validity_in_days / 30
+                )} months`;
 
             // @ts-expect-error // TODO:fix this
             const preselectedPayment: SelectedPayment = {
@@ -1027,6 +1085,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
                 ?.require_approval || false
             }
             email={enrollmentData?.registrationData?.email?.value || ""}
+            isAutoLoggingIn={isAutoLoggingIn}
           />
         );
       default:
@@ -1191,11 +1250,10 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
             {/* Left Side: Course Info and Enroll Button */}
             <div
-              className={`text-white flex flex-col ${
-                courseData.description
-                  ? "justify-start"
-                  : "justify-center items-start"
-              }`}
+              className={`text-white flex flex-col ${courseData.description
+                ? "justify-start"
+                : "justify-center items-start"
+                }`}
             >
               <h1 className="text-4xl md:text-5xl font-bold leading-tight">
                 {inviteData?.name || courseData.course}
@@ -1265,15 +1323,13 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         <div className="w-11/12 mx-auto space-y-8">
           {/* Main Grid Layout - Full width if no right section content */}
           <div
-            className={`grid grid-cols-1 ${
-              hasRightSectionContent ? "lg:grid-cols-3" : ""
-            } gap-8`}
+            className={`grid grid-cols-1 ${hasRightSectionContent ? "lg:grid-cols-3" : ""
+              } gap-8`}
           >
             {/* Left: Course Structure Preview & Step Content (Subscription Model) */}
             <div
-              className={`${
-                hasRightSectionContent ? "lg:col-span-2" : "w-full"
-              } space-y-4 sm:space-y-6`}
+              className={`${hasRightSectionContent ? "lg:col-span-2" : "w-full"
+                } space-y-4 sm:space-y-6`}
             >
               {/* Course Structure Section - Above Subscription - Only show on step 0 */}
 
@@ -1336,7 +1392,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
                             className="focus-visible:outline-none focus-visible:ring-0"
                           >
                             {activePackageSessionId ===
-                            session.packageSessionId ? (
+                              session.packageSessionId ? (
                               (() => {
                                 const sessionDetails =
                                   getDetailsFromPackageSessionId({
@@ -1450,10 +1506,10 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
                         ? getPaymentVendor(inviteData) === "EWAY"
                           ? !!ewayEncryptedData
                           : getPaymentVendor(inviteData) === "STRIPE"
-                          ? !!stripePaymentProcessor
-                          : getPaymentVendor(inviteData) === "RAZORPAY"
-                          ? !!razorpayPaymentData
-                          : false
+                            ? !!stripePaymentProcessor
+                            : getPaymentVendor(inviteData) === "RAZORPAY"
+                              ? !!razorpayPaymentData
+                              : false
                         : false
                     }
                   />

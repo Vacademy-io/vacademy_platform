@@ -6,6 +6,7 @@ import { getTerminology } from "@/components/common/layout-container/sidebar/uti
 import { Button } from "@/components/ui/button";
 import { CoursesDonationDialog } from "./CoursesDonationDialog";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { CartComponent } from "../../$tagName/-components/components/CartComponent";
 
 const CourseListHeader = ({
   fileId,
@@ -105,7 +106,7 @@ const CourseListHeader = ({
               onClick={homeIconClickRoute ? handleLogoClick : undefined}
               className={`h-full w-full object-contain rounded-md ${
                 logoLoading ? "opacity-0" : "opacity-100"
-              }${homeIconClickRoute ? " cursor-pointer" : ""}`}
+                }${homeIconClickRoute ? " cursor-pointer" : ""}`}
             />
           )}
         </div>
@@ -166,8 +167,8 @@ const CourseListHeader = ({
               </Button>
             }
           />
-          <Button 
-            size="sm" 
+          <Button
+            size="sm"
             className="text-xs text-white sm:text-sm"
             onClick={() => setIsDonationDialogOpen(true)}
           >
@@ -213,8 +214,8 @@ const CourseListHeader = ({
             >
               Login
             </Button>
-            <Button 
-              size="sm" 
+            <Button
+              size="sm"
               className="text-xs text-white sm:text-sm"
               onClick={() => {
                 closeMobileMenu();
@@ -234,6 +235,13 @@ const CourseListHeader = ({
           onOpenChange={setIsDonationDialogOpen}
           instituteId={instituteId}
         />
+      )}
+
+      {/* Hidden CartComponent to handle payment verification and auto-login */}
+      {instituteId && (
+        <div style={{ display: 'none' }}>
+          <CartComponent instituteId={instituteId} onlyLogic={true} />
+        </div>
       )}
     </nav>
   );

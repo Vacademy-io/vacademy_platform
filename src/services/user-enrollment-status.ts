@@ -1,5 +1,5 @@
 import axios from "axios";
-import { getTokenFromStorage } from "@/lib/auth/axiosInstance";
+import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { BASE_URL } from "@/constants/urls";
 
@@ -121,25 +121,25 @@ export const hasUserDonated = async (instituteId: string): Promise<boolean> => {
   try {
     // Get learner info to find user_plan_id
     const learnerInfo = await getLearnerInfo(instituteId);
-    
+
     if (!learnerInfo || learnerInfo.length === 0) {
       return false;
     }
-    
+
     // Find the first learner record with a user_plan_id
     const learnerWithPlan = learnerInfo.find(learner => learner.user_plan_id);
     const userPlanId = learnerWithPlan?.user_plan_id;
-    
+
     if (!userPlanId) {
       return false;
     }
 
     // Get user plan details to check payment logs
     const userPlan = await getUserPlanDetails(userPlanId);
-    
+
     // Check if any payment log has "Paid" status
     const hasDonated = userPlan.paymentLogs?.some(log => log.payment_status === "Paid") || false;
-    
+
     return hasDonated;
   } catch (error) {
     return false;
@@ -155,14 +155,14 @@ export const isUserEnrolledInCourse = async (
 ): Promise<boolean> => {
   try {
     const learnerInfo = await getLearnerInfo(instituteId);
-    
+
     if (!learnerInfo || learnerInfo.length === 0) {
       return false;
     }
 
     // Check if any of the enrolled sessions match the course
     // This is a simplified check - you might need to enhance this based on your data structure
-    return learnerInfo.some(learner => 
+    return learnerInfo.some(learner =>
       learner.package_session_id && learner.institute_enrollment_id
     );
   } catch (error) {

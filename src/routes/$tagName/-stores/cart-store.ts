@@ -16,10 +16,12 @@ export interface CartItem {
 }
 
 export interface MembershipPlan {
-  id: string;
+  id: string; // This will store the enrollInviteId
   title: string;
   price: number;
-  numberOfBooks?: number; // Number of books allowed in the plan
+  numberOfBooks?: number;
+  packageSessionId?: string;
+  enrollInviteId?: string;
 }
 
 interface CartStore {
@@ -99,7 +101,12 @@ const saveCartToStorage = async (items: CartItem[], mode?: 'buy' | 'rent') => {
 const syncCartWithMode = async () => {
   const mode = getCartMode();
   const items = await loadCartFromStorage(mode);
-  useCartStore.setState({ items });
+
+  // Only update if items have actually changed to avoid unnecessary re-renders
+  const currentItems = useCartStore.getState().items;
+  if (JSON.stringify(items) !== JSON.stringify(currentItems)) {
+    useCartStore.setState({ items });
+  }
 };
 
 
@@ -134,10 +141,10 @@ export const useCartStore = create<CartStore>((set, get) => ({
     }
 
     const mode = getCartMode();
-    
+
     // IMPORTANT: Load the correct cart for the current mode to ensure separation
     const currentItemsForMode = await loadCartFromStorage(mode);
-    
+
     const existingItem = currentItemsForMode.find((i) => i.enrollInviteId === item.enrollInviteId);
 
     if (existingItem) {
@@ -210,12 +217,18 @@ export const useCartStore = create<CartStore>((set, get) => ({
   },
 
   getTotal: () => {
+    const mode = getCartMode();
+
+    if (mode === 'rent') {
+      return get().membershipPlan?.price || 0;
+    }
+
+    // Default to 'buy' mode logic: sum of items
     const itemTotal = get().items.reduce(
       (total, item) => total + item.price * item.quantity,
       0
     );
-    const planPrice = get().membershipPlan?.price || 0;
-    return itemTotal + planPrice;
+    return itemTotal;
   },
 
   getItemCount: () => {
@@ -228,10 +241,9 @@ export const useCartStore = create<CartStore>((set, get) => ({
     const items = await loadCartFromStorage(mode);
     return items.reduce((count, item) => count + item.quantity, 0);
   },
-  
+
   getItemCountForCurrentMode: () => {
     // Get count from current store state (reactive, for current mode)
-    const mode = getCartMode();
     // If store items match current mode, use them; otherwise return 0 (will be updated by sync)
     return get().items.reduce((count, item) => count + item.quantity, 0);
   },
@@ -255,7 +267,7 @@ if (typeof window !== 'undefined') {
     }
   };
   window.addEventListener('storage', handleStorageChange);
-  
+
   // Also listen for custom events (for same-tab changes)
   window.addEventListener('levelFilterChanged', () => {
     syncCartWithMode();

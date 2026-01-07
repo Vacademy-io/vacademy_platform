@@ -4,8 +4,8 @@ import { INIT_STUDY_LIBRARY } from "@/constants/urls";
 import { useStudyLibraryStore } from "@/stores/study-library/use-study-library-store";
 import {
     getTokenDecodedData,
+    getTokenFromStorage,
 } from "@/lib/auth/sessionUtility";
-import { getTokenFromStorage } from "@/lib/auth/axiosInstance";
 import { TokenKey } from "@/constants/auth/tokens";
 
 export const fetchStudyLibraryDetails = async () => {

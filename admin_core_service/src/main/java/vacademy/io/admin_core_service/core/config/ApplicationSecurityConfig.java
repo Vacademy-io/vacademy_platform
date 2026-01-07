@@ -55,6 +55,7 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/payments/webhook/callback/**",
             "/admin-core-service/v1/learner/enroll/**",
             "/admin-core-service/workflow/schedule/**",
+            "/admin-core-service/payments/user-plan/**/status/**",
             "/admin-core-service/llm-analytics/**",
             "/admin-core-service/v1/llm-analytics/**",
             "/admin-core-service/v1/embedding/api-docs/**",
@@ -104,7 +105,7 @@ public class ApplicationSecurityConfig {
                 })
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .anonymous(anonymous -> anonymous.disable())
+                        .anonymous(anonymous -> anonymous.disable())
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(internalAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

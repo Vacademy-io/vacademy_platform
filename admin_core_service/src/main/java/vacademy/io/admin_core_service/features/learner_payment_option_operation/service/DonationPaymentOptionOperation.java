@@ -51,7 +51,9 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
     private ReferralBenefitOrchestrator referralBenefitOrchestrator;
 
     @Autowired
-    private AuthService authService;    @Override
+    private AuthService authService;
+
+    @Override
     public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
             LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
             String instituteId,
@@ -60,10 +62,10 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
             UserPlan userPlan,
             Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
         // Use startDate from DTO if provided, otherwise default to current date
-        Date enrollmentDate = learnerPackageSessionsEnrollDTO.getStartDate() != null 
-                ? learnerPackageSessionsEnrollDTO.getStartDate() 
+        Date enrollmentDate = learnerPackageSessionsEnrollDTO.getStartDate() != null
+                ? learnerPackageSessionsEnrollDTO.getStartDate()
                 : new Date();
-        
+
         List<InstituteStudentDetails> instituteStudentDetails = new ArrayList<>();
         if (paymentOption.isRequireApproval()) {
             String status = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();

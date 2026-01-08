@@ -107,5 +107,53 @@ public interface AudienceRepository extends JpaRepository<Audience, String> {
             @Param("startDateTo") Timestamp startDateTo,
             @Param("startDateToProvided") boolean startDateToProvided
     );
+
+    /**
+     * Get center heatmap data by fetching audience campaigns and their response counts
+     * 
+     * @param instituteId Institute ID to filter audiences
+     * @param startDate Optional start date filter (empty string for no filter)
+     * @param endDate Optional end date filter (empty string for no filter)
+     * @param status Optional status filter (empty string for all statuses)
+     * @return List of Object arrays containing:
+     *         [0] audience_id (String)
+     *         [1] campaign_name (String)
+     *         [2] campaign_type (String)
+     *         [3] description (String)
+     *         [4] campaign_objective (String)
+     *         [5] status (String)
+     *         [6] start_date (Timestamp)
+     *         [7] end_date (Timestamp)
+     *         [8] unique_users (Long)
+     *         [9] total_responses (Long)
+     */
+    @Query(value = """
+        SELECT 
+            a.id,
+            a.campaign_name,
+            a.campaign_type,
+            a.description,
+            a.campaign_objective,
+            a.status,
+            a.start_date,
+            a.end_date,
+            COUNT(DISTINCT ar.user_id) as unique_users,
+            COUNT(ar.id) as total_responses
+        FROM audience a
+        LEFT JOIN audience_response ar ON ar.audience_id = a.id
+            AND (COALESCE(:startDate, '') = '' OR ar.created_at >= CAST(:startDate AS TIMESTAMP))
+            AND (COALESCE(:endDate, '') = '' OR ar.created_at <= CAST(:endDate AS TIMESTAMP))
+        WHERE a.institute_id = :instituteId
+            AND (COALESCE(:status, '') = '' OR a.status = :status)
+        GROUP BY a.id, a.campaign_name, a.campaign_type, a.description, 
+                 a.campaign_objective, a.status, a.start_date, a.end_date
+        ORDER BY COUNT(ar.id) DESC
+        """, nativeQuery = true)
+    List<Object[]> getCenterHeatmapByInstitute(
+            @Param("instituteId") String instituteId,
+            @Param("startDate") String startDate,
+            @Param("endDate") String endDate,
+            @Param("status") String status
+    );
 }
 

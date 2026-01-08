@@ -1,0 +1,2 @@
+ALTER TABLE notification_template_day_map
+DROP CONSTRAINT IF EXISTS notification_template_day_map_unique_key;

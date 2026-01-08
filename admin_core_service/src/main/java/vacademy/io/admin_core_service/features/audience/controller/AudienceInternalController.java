@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.audience.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.audience.dto.BatchPhoneNumberRequest;
 import vacademy.io.admin_core_service.features.audience.dto.UserWithCustomFieldsDTO;
 import vacademy.io.admin_core_service.features.audience.service.AudienceService;
 
@@ -41,6 +42,14 @@ public class AudienceInternalController {
             @RequestParam("phoneNumber") String phoneNumber) {
         
         UserWithCustomFieldsDTO response = audienceService.getUserByPhoneNumber(phoneNumber);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/users/by-phones")
+    public ResponseEntity<List<UserWithCustomFieldsDTO>> getUsersByPhoneNumbers(
+            @RequestBody BatchPhoneNumberRequest request) {
+        
+        List<UserWithCustomFieldsDTO> response = audienceService.getUsersByPhoneNumbers(request.getPhoneNumbers());
         return ResponseEntity.ok(response);
     }
 

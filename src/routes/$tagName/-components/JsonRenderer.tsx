@@ -14,6 +14,7 @@ import { CartComponent } from "./components/CartComponent";
 import { BuyRentSectionComponent } from "./components/BuyRentSectionComponent";
 import { BookCatalogueComponent } from "./components/BookCatalogueComponent";
 import { BookDetailsComponent } from "./components/BookDetailsComponent";
+import { Policy } from "./components/Policy";
 
 interface JsonRendererProps {
   page: Page;
@@ -149,6 +150,8 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
         return <CartComponent key={id} {...props} instituteId={instituteId} />;
       case "buyRentSection":
         return <BuyRentSectionComponent key={id} {...props} tagName={tagName} />;
+      case "policyRenderer":
+        return <Policy key={id} {...props} />;
       default:
         console.warn(`Unknown component type: ${type}`);
         return null;

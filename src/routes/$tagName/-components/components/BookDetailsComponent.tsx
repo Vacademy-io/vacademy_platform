@@ -113,7 +113,7 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
     const authorName = extractTextFromHtml(courseData.course_html_description_html) || "Unknown Author";
 
     // Get about book content from about_the_course_html
-    const aboutBook = courseData.about_the_course_html || courseData.aboutCourse || "";
+    const aboutBook = courseData.about_the_course_html || "";
 
     // Parse comma-separated tags from comma_separeted_tags
     const parseCommaSeparatedTags = (tagsString: string | undefined | null): string[] => {

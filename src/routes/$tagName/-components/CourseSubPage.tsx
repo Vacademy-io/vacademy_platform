@@ -133,7 +133,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
     // Apply font exactly as specified in JSON
     document.body.style.fontFamily = fontFamily;
     document.documentElement.style.setProperty("--app-font-family", fontFamily);
-    
+
     console.log("[CourseSubPage] Applied font:", fontFamily, "Primary font:", primaryFont);
   }, [catalogueData]);
 
@@ -198,7 +198,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
     // Show lead collection if enabled and not already shown and not already submitted
     const leadCollectionSubmittedKey = `leadCollectionSubmitted_${instituteId}_${tagName}`;
     const hasSubmittedLeadCollection = localStorage.getItem(leadCollectionSubmittedKey) === 'true';
-    
+
     if (catalogueData?.globalSettings.leadCollection.enabled && !showLeadCollection && !hasSubmittedLeadCollection) {
       setShowLeadCollection(true);
     }
@@ -212,6 +212,11 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
     const introPageSeenKey = `introPageSeen_${instituteId}_${tagName}`;
     localStorage.setItem(introPageSeenKey, 'true');
   };
+
+  // Scroll to top when page changes
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [page]);
 
   if (isLoading || isCheckingAuth) {
     return <DashboardLoader />;

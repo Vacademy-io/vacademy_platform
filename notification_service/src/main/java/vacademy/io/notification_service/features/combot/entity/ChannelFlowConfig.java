@@ -31,6 +31,9 @@ public class ChannelFlowConfig {
     @Column(name = "variable_config", columnDefinition = "TEXT")
     private String variableConfig;
 
+    @Column(name = "fixed_variables_config", columnDefinition = "TEXT")
+    private String fixedVariablesConfig;
+
     @Column(name = "is_active")
     private boolean isActive = true;
 

@@ -44,4 +44,5 @@ public class PackageDetailV2DTO {
     private String paymentOptionStatus;
     private Double minPlanActualPrice;
     private String currency;
+    private Integer availableSlots;
 }

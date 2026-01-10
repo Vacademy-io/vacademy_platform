@@ -37,6 +37,7 @@ public class DailyParticipationService {
     @Value("${spring.application.name:notification_service}")
     private String clientName;
 
+    @org.springframework.cache.annotation.Cacheable(value = "dailyParticipation", key = "#instituteId + '_' + #startDate + '_' + #endDate")
     public DailyParticipationResponseDTO getDailyParticipation(
             String instituteId,
             Timestamp startDate,
@@ -194,7 +195,9 @@ public class DailyParticipationService {
 
     /**
      * Get Engagement Leaderboard - Feature 7
+     * Cached for 5 minutes
      */
+    @org.springframework.cache.annotation.Cacheable(value = "engagementLeaderboard", key = "#instituteId + '_' + #startDate + '_' + #endDate + '_' + #page + '_' + #pageSize")
     public EngagementLeaderboardResponseDTO getEngagementLeaderboard(
             String instituteId,
             Timestamp startDate,
@@ -277,7 +280,9 @@ public class DailyParticipationService {
 
     /**
      * Get Completion Cohort - Feature 8
+     * Cached for 5 minutes
      */
+    @org.springframework.cache.annotation.Cacheable(value = "completionCohort", key = "#instituteId + '_' + #completionTemplateIdentifiers + '_' + #startDate + '_' + #endDate + '_' + #page + '_' + #pageSize")
     public CompletionCohortResponseDTO getCompletionCohort(
             String instituteId,
             List<String> completionTemplateIdentifiers,
@@ -422,7 +427,9 @@ public class DailyParticipationService {
 
     /**
      * Get Outgoing Templates - List all outgoing template identifiers grouped by day
+     * Cached for 10 minutes
      */
+    @org.springframework.cache.annotation.Cacheable(value = "outgoingTemplates", key = "#instituteId")
     public TemplateIdentifiersResponseDTO getOutgoingTemplates(String instituteId) {
         log.info("Fetching outgoing templates for institute: {}", instituteId);
 

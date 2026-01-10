@@ -312,5 +312,43 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             @Param("startDate") String startDate,
             @Param("endDate") String endDate
     );
+
+    /**
+     * Find inactive users who received a template but didn't respond within X days
+     * Returns list of unique mobile numbers (channel_id)
+     */
+    @Query(value = """
+        WITH outgoing_users AS (
+            SELECT DISTINCT ON (channel_id)
+                channel_id,
+                notification_date,
+                sender_business_channel_id
+            FROM notification_log
+            WHERE notification_type = :messageType
+              AND sender_business_channel_id = :senderBusinessChannelId
+              AND body = :templateName
+            ORDER BY channel_id, notification_date DESC
+        ),
+        users_who_responded AS (
+            SELECT DISTINCT o.channel_id
+            FROM outgoing_users o
+            INNER JOIN notification_log i 
+                ON i.channel_id = o.channel_id
+                AND i.sender_business_channel_id = o.sender_business_channel_id
+            WHERE i.notification_type = 'WHATSAPP_MESSAGE_INCOMING'
+              AND i.notification_date > o.notification_date
+              AND i.notification_date <= o.notification_date + CAST(:days || ' days' AS INTERVAL)
+        )
+        SELECT DISTINCT o.channel_id
+        FROM outgoing_users o
+        LEFT JOIN users_who_responded r ON o.channel_id = r.channel_id
+        WHERE r.channel_id IS NULL
+        """, nativeQuery = true)
+    List<String> findInactiveUsers(
+            @Param("messageType") String messageType,
+            @Param("senderBusinessChannelId") String senderBusinessChannelId,
+            @Param("templateName") String templateName,
+            @Param("days") Integer days
+    );
 }
 

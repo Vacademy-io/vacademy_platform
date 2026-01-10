@@ -9,14 +9,12 @@
 # Note: Specific routes MUST be placed before the general /* rule
 
 /audience-response
-  X-Frame-Options: ALLOWALL
-  Content-Security-Policy: frame-ancestors 'self' https: http:
+  !X-Frame-Options
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
 
 /audience-response/*
-  X-Frame-Options: ALLOWALL
-  Content-Security-Policy: frame-ancestors 'self' https: http:
+  !X-Frame-Options
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
 

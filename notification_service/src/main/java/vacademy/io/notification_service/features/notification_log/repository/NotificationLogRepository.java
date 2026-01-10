@@ -314,7 +314,9 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
     );
 
     /**
-     * Find inactive users who received a template but didn't respond within X days
+     * Find inactive users who received a template but didn't respond
+     * Excludes users who replied at any time after receiving the template (within or after the day window)
+     * Used for daily workflow to send follow-up only once
      * Returns list of unique mobile numbers (channel_id)
      */
     @Query(value = """
@@ -327,6 +329,7 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             WHERE notification_type = :messageType
               AND sender_business_channel_id = :senderBusinessChannelId
               AND body = :templateName
+              AND notification_date >= NOW() - CAST(:days || ' days' AS INTERVAL)
             ORDER BY channel_id, notification_date DESC
         ),
         users_who_responded AS (
@@ -337,7 +340,6 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
                 AND i.sender_business_channel_id = o.sender_business_channel_id
             WHERE i.notification_type = 'WHATSAPP_MESSAGE_INCOMING'
               AND i.notification_date > o.notification_date
-              AND i.notification_date <= o.notification_date + CAST(:days || ' days' AS INTERVAL)
         )
         SELECT DISTINCT o.channel_id
         FROM outgoing_users o

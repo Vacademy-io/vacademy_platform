@@ -1,43 +1,49 @@
-# HTTP Headers for Cloudflare Pages
-# This file configures HTTP headers for the frontend application
+# Cloudflare Pages Headers Configuration
+# ========================================
+# 
+# IMPORTANT: For SPAs, Cloudflare matches headers against the REQUEST URL path,
+# NOT the file being served. So /audience-response matches even though index.html is served.
+#
+# The simplest solution for iframe embedding is to NOT set any frame restrictions globally,
+# and ONLY set them on routes that should be protected (if needed).
 
 # ============================================
-# Iframe Embedding Configuration for Forms
+# EMBEDDABLE ROUTES - Allow iframe embedding from anywhere
 # ============================================
-# Allow audience response forms to be embedded in iframes
-# This is required for the "Embed Code" feature in Admin Dashboard
-# Note: Specific routes MUST be placed before the general /* rule
+# These routes should be embeddable on external websites
 
 /audience-response
-  X-Frame-Options: ALLOWALL
-  Content-Security-Policy: frame-ancestors 'self' https: http:
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
 
 /audience-response/*
-  X-Frame-Options: ALLOWALL
-  Content-Security-Policy: frame-ancestors 'self' https: http:
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+/live-class-guest/embed
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+/live-class-guest/embed/*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
 
 # ============================================
-# Security Headers for All Other Pages
+# ALL OTHER ROUTES - Basic security headers only
 # ============================================
-# Keep strict security for all other pages
+# NOTE: We deliberately do NOT set X-Frame-Options or frame-ancestors here
+# to avoid conflicts with embeddable routes.
+# If you need iframe protection on specific routes, add them individually above.
 
 /*
-  X-Frame-Options: SAMEORIGIN
   X-Content-Type-Options: nosniff
   X-XSS-Protection: 1; mode=block
   Referrer-Policy: no-referrer-when-downgrade
-  Cross-Origin-Opener-Policy: same-origin-allow-popups
 
-# Additional security headers for HTML pages
-/*.html
-  Cache-Control: no-cache, no-store, must-revalidate
-  Pragma: no-cache
+# ============================================
+# STATIC ASSET CACHING
+# ============================================
 
-# Static assets caching
 /*.js
   Cache-Control: public, max-age=31536000, immutable
 
@@ -77,23 +83,15 @@
 /*.eot
   Cache-Control: public, max-age=31536000, immutable
 
-# Service worker and manifest - no cache
+# Service workers - no cache
 /sw.js
   Cache-Control: no-cache, no-store, must-revalidate
-  Pragma: no-cache
 
 /service-worker.js
   Cache-Control: no-cache, no-store, must-revalidate
-  Pragma: no-cache
 
 /firebase-messaging-sw.js
   Cache-Control: no-cache, no-store, must-revalidate
-  Pragma: no-cache
-
-/firebase-messaging-sw.seven_cs.js
-  Cache-Control: no-cache, no-store, must-revalidate
-  Pragma: no-cache
 
 /manifest.webmanifest
   Cache-Control: no-cache, no-store, must-revalidate
-  Pragma: no-cache

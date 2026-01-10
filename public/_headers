@@ -1,78 +1,49 @@
-# HTTP Headers for Cloudflare Pages
-# This file configures HTTP headers for the frontend application
-# STRATEGY: Do NOT set restrictive CSP on global /* to avoid merging issues.
-# Instead, explicitly protect the Application Routes.
+# Cloudflare Pages Headers Configuration
+# ========================================
+# 
+# IMPORTANT: For SPAs, Cloudflare matches headers against the REQUEST URL path,
+# NOT the file being served. So /audience-response matches even though index.html is served.
+#
+# The simplest solution for iframe embedding is to NOT set any frame restrictions globally,
+# and ONLY set them on routes that should be protected (if needed).
 
 # ============================================
-# Global Default Headers (Assets, etc.)
+# EMBEDDABLE ROUTES - Allow iframe embedding from anywhere
 # ============================================
+# These routes should be embeddable on external websites
+
+/audience-response
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+/audience-response/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+/live-class-guest/embed
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+/live-class-guest/embed/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+# ============================================
+# ALL OTHER ROUTES - Basic security headers only
+# ============================================
+# NOTE: We deliberately do NOT set X-Frame-Options or frame-ancestors here
+# to avoid conflicts with embeddable routes.
+# If you need iframe protection on specific routes, add them individually above.
+
 /*
   X-Content-Type-Options: nosniff
   X-XSS-Protection: 1; mode=block
   Referrer-Policy: no-referrer-when-downgrade
-  Cross-Origin-Opener-Policy: same-origin-allow-popups
 
 # ============================================
-# PROTECTED ROUTES (CSP: 'self')
+# STATIC ASSET CACHING
 # ============================================
-# Explicitly protect standard app routes against embedding
-# Note: Cloudflare headers match Request URL. We must list top-level paths.
 
-/
-  Content-Security-Policy: frame-ancestors 'self'
-
-/index.html
-  Content-Security-Policy: frame-ancestors 'self'
-
-/login*
-  Content-Security-Policy: frame-ancestors 'self'
-
-/dashboard*
-  Content-Security-Policy: frame-ancestors 'self'
-
-/courses*
-  Content-Security-Policy: frame-ancestors 'self'
-
-/study-library*
-  Content-Security-Policy: frame-ancestors 'self'
-
-/assessment*
-  Content-Security-Policy: frame-ancestors 'self'
-
-/user-profile*
-  Content-Security-Policy: frame-ancestors 'self'
-
-/planning*
-  Content-Security-Policy: frame-ancestors 'self'
-
-/register*
-  Content-Security-Policy: frame-ancestors 'self'
-
-/signup*
-  Content-Security-Policy: frame-ancestors 'self'
-
-/my-reports*
-  Content-Security-Policy: frame-ancestors 'self'
-
-/my-files*
-  Content-Security-Policy: frame-ancestors 'self'
-
-# ============================================
-# OPEN ROUTES (CSP: *)
-# ============================================
-# These routes are explicitly designed to be embedded.
-
-/audience-response*
-  Content-Security-Policy: frame-ancestors * https: http:
-  Referrer-Policy: strict-origin-when-cross-origin
-
-/live-class-guest/embed*
-  Content-Security-Policy: frame-ancestors * https: http:
-  Referrer-Policy: strict-origin-when-cross-origin
-
-# ============================================
-# Static Assets Caching
-# ============================================
 /*.js
   Cache-Control: public, max-age=31536000, immutable
 
@@ -81,3 +52,46 @@
 
 /*.png
   Cache-Control: public, max-age=31536000, immutable
+
+/*.jpg
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.jpeg
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.gif
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.ico
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.svg
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.webp
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.woff
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.woff2
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.ttf
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.eot
+  Cache-Control: public, max-age=31536000, immutable
+
+# Service workers - no cache
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/service-worker.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/firebase-messaging-sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/manifest.webmanifest
+  Cache-Control: no-cache, no-store, must-revalidate

@@ -1,49 +1,78 @@
 # HTTP Headers for Cloudflare Pages
 # This file configures HTTP headers for the frontend application
+# STRATEGY: Do NOT set restrictive CSP on global /* to avoid merging issues.
+# Instead, explicitly protect the Application Routes.
 
 # ============================================
-# Global Configuration (Secure Default)
+# Global Default Headers (Assets, etc.)
 # ============================================
-# Use CSP frame-ancestors 'self' to restrict embedding globally.
-# This replaces X-Frame-Options: SAMEORIGIN and allows us to override it for specific routes.
-
 /*
-  Content-Security-Policy: frame-ancestors 'self'
   X-Content-Type-Options: nosniff
   X-XSS-Protection: 1; mode=block
   Referrer-Policy: no-referrer-when-downgrade
   Cross-Origin-Opener-Policy: same-origin-allow-popups
 
 # ============================================
-# Allow Embedding for Audience Response
+# PROTECTED ROUTES (CSP: 'self')
 # ============================================
-# Override the global CSP to allow embedding from ANY origin (*)
-# We explicitly include https: and http: to ensure broader compatibility
+# Explicitly protect standard app routes against embedding
+# Note: Cloudflare headers match Request URL. We must list top-level paths.
 
-/audience-response
+/
+  Content-Security-Policy: frame-ancestors 'self'
+
+/index.html
+  Content-Security-Policy: frame-ancestors 'self'
+
+/login*
+  Content-Security-Policy: frame-ancestors 'self'
+
+/dashboard*
+  Content-Security-Policy: frame-ancestors 'self'
+
+/courses*
+  Content-Security-Policy: frame-ancestors 'self'
+
+/study-library*
+  Content-Security-Policy: frame-ancestors 'self'
+
+/assessment*
+  Content-Security-Policy: frame-ancestors 'self'
+
+/user-profile*
+  Content-Security-Policy: frame-ancestors 'self'
+
+/planning*
+  Content-Security-Policy: frame-ancestors 'self'
+
+/register*
+  Content-Security-Policy: frame-ancestors 'self'
+
+/signup*
+  Content-Security-Policy: frame-ancestors 'self'
+
+/my-reports*
+  Content-Security-Policy: frame-ancestors 'self'
+
+/my-files*
+  Content-Security-Policy: frame-ancestors 'self'
+
+# ============================================
+# OPEN ROUTES (CSP: *)
+# ============================================
+# These routes are explicitly designed to be embedded.
+
+/audience-response*
   Content-Security-Policy: frame-ancestors * https: http:
   Referrer-Policy: strict-origin-when-cross-origin
 
-/audience-response/*
-  Content-Security-Policy: frame-ancestors * https: http:
-  Referrer-Policy: strict-origin-when-cross-origin
-
-# ============================================
-# Allow Embedding for Guest Live Class
-# ============================================
-
-/live-class-guest/embed
-  Content-Security-Policy: frame-ancestors * https: http:
-  Referrer-Policy: strict-origin-when-cross-origin
-
-/live-class-guest/embed/*
+/live-class-guest/embed*
   Content-Security-Policy: frame-ancestors * https: http:
   Referrer-Policy: strict-origin-when-cross-origin
 
 # ============================================
 # Static Assets Caching
 # ============================================
-
 /*.js
   Cache-Control: public, max-age=31536000, immutable
 
@@ -52,57 +81,3 @@
 
 /*.png
   Cache-Control: public, max-age=31536000, immutable
-
-/*.jpg
-  Cache-Control: public, max-age=31536000, immutable
-
-/*.jpeg
-  Cache-Control: public, max-age=31536000, immutable
-
-/*.gif
-  Cache-Control: public, max-age=31536000, immutable
-
-/*.ico
-  Cache-Control: public, max-age=31536000, immutable
-
-/*.svg
-  Cache-Control: public, max-age=31536000, immutable
-
-/*.webp
-  Cache-Control: public, max-age=31536000, immutable
-
-/*.woff
-  Cache-Control: public, max-age=31536000, immutable
-
-/*.woff2
-  Cache-Control: public, max-age=31536000, immutable
-
-/*.ttf
-  Cache-Control: public, max-age=31536000, immutable
-
-/*.eot
-  Cache-Control: public, max-age=31536000, immutable
-
-# ============================================
-# Service Workers and Manifest (no cache)
-# ============================================
-
-/sw.js
-  Cache-Control: no-cache, no-store, must-revalidate
-  Pragma: no-cache
-
-/service-worker.js
-  Cache-Control: no-cache, no-store, must-revalidate
-  Pragma: no-cache
-
-/firebase-messaging-sw.js
-  Cache-Control: no-cache, no-store, must-revalidate
-  Pragma: no-cache
-
-/firebase-messaging-sw.seven_cs.js
-  Cache-Control: no-cache, no-store, must-revalidate
-  Pragma: no-cache
-
-/manifest.webmanifest
-  Cache-Control: no-cache, no-store, must-revalidate
-  Pragma: no-cache

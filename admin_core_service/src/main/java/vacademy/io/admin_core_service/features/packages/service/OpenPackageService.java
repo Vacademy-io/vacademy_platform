@@ -294,7 +294,8 @@ public class OpenPackageService {
                                         projection.getPaymentOptionType(),
                                         null, // Corrected: paymentOptionStatus is not in the projection
                                         projection.getMinPlanActualPrice(),
-                                        projection.getCurrency());
+                                        projection.getCurrency(),
+                                        projection.getAvailableSlots());
                 }).toList();
 
                 return new PageImpl<>(dtos, pageable, learnerPackageDetail.getTotalElements());

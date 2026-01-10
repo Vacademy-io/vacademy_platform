@@ -2665,7 +2665,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     payment_info.payment_option_type AS paymentOptionType,
                     payment_info.payment_plan_id AS paymentPlanId,
                     payment_info.actual_price AS minPlanActualPrice, -- FIXED ALIAS
-                    payment_info.currency AS currency                -- FIXED ALIAS
+                    payment_info.currency AS currency,                -- FIXED ALIAS
+                    ps.available_slots AS availableSlots
 
                 FROM package p
                 JOIN package_session ps ON ps.package_id = p.id

@@ -64,4 +64,6 @@ public interface PackageDetailV2Projection {
     Double getMinPlanActualPrice();
 
     String getCurrency();
+
+    Integer getAvailableSlots();
 }

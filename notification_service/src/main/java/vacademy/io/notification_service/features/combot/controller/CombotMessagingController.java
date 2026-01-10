@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.notification_service.features.combot.dto.InactiveUsersRequest;
 import vacademy.io.notification_service.features.combot.dto.LogSequenceRequest;
 import vacademy.io.notification_service.features.combot.dto.WhatsAppTemplateRequest;
 import vacademy.io.notification_service.features.combot.dto.WhatsAppTemplateResponse;
@@ -34,6 +35,12 @@ public class CombotMessagingController {
     public ResponseEntity<List<String>> filterUsersByAdjacentSequence(@RequestBody LogSequenceRequest request) {
         List<String> userIds = combotMessagingService.filterUsersByStrictSequence(request);
         return ResponseEntity.ok(userIds);
+    }
+
+    @PostMapping("/filter-inactive-users")
+    public ResponseEntity<List<String>> filterInactiveUsers(@RequestBody InactiveUsersRequest request) {
+        List<String> channelIds = combotMessagingService.findInactiveUsers(request);
+        return ResponseEntity.ok(channelIds);
     }
 
 }

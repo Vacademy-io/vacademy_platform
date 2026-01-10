@@ -13,6 +13,7 @@ import org.springframework.web.client.RestTemplate;
 import vacademy.io.notification_service.constants.NotificationConstants;
 import vacademy.io.notification_service.features.announcements.service.UserAnnouncementPreferenceService;
 import vacademy.io.notification_service.features.combot.constants.CombotWebhookKeys;
+import vacademy.io.notification_service.features.combot.dto.InactiveUsersRequest;
 import vacademy.io.notification_service.features.combot.dto.LogSequenceRequest;
 import vacademy.io.notification_service.features.combot.dto.WhatsAppTemplateRequest;
 import vacademy.io.notification_service.features.combot.dto.WhatsAppTemplateResponse;
@@ -266,6 +267,46 @@ public class CombotMessagingService {
                 request.getReactionMessageType(),
                 request.getReactionMessageBody()
         );
+    }
+
+    /**
+     * Find inactive users who received a template but didn't respond within X days
+     * @param request Contains messageType, senderBusinessChannelId, days, templateName
+     * @return List of mobile numbers (channel_id) who didn't respond
+     */
+    public List<String> findInactiveUsers(InactiveUsersRequest request) {
+        log.info("Finding inactive users for template: {} within {} days on channel: {}",
+                request.getTemplateName(), request.getDays(), request.getSenderBusinessChannelId());
+
+        // Validate request
+        if (request.getMessageType() == null || request.getMessageType().isEmpty()) {
+            log.warn("Invalid request: messageType is required");
+            return Collections.emptyList();
+        }
+        if (request.getSenderBusinessChannelId() == null || request.getSenderBusinessChannelId().isEmpty()) {
+            log.warn("Invalid request: senderBusinessChannelId is required");
+            return Collections.emptyList();
+        }
+        if (request.getDays() == null || request.getDays() <= 0) {
+            log.warn("Invalid request: days must be positive");
+            return Collections.emptyList();
+        }
+        if (request.getTemplateName() == null || request.getTemplateName().isEmpty()) {
+            log.warn("Invalid request: templateName is required");
+            return Collections.emptyList();
+        }
+
+        List<String> inactiveUsers = notificationLogRepository.findInactiveUsers(
+                request.getMessageType(),
+                request.getSenderBusinessChannelId(),
+                request.getTemplateName(),
+                request.getDays()
+        );
+
+        log.info("Found {} inactive users for template: {}",
+                inactiveUsers.size(), request.getTemplateName());
+
+        return inactiveUsers;
     }
 
     /**

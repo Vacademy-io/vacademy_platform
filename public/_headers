@@ -2,40 +2,48 @@
 # This file configures HTTP headers for the frontend application
 
 # ============================================
-# Iframe Embedding Configuration for Forms
+# Global Configuration (Secure Default)
 # ============================================
-# Allow audience response forms to be embedded in iframes
-# This is required for the "Embed Code" feature in Admin Dashboard
-# Note: Specific routes MUST be placed before the general /* rule
-
-/audience-response
-  !X-Frame-Options
-  X-Content-Type-Options: nosniff
-  Referrer-Policy: strict-origin-when-cross-origin
-
-/audience-response/*
-  !X-Frame-Options
-  X-Content-Type-Options: nosniff
-  Referrer-Policy: strict-origin-when-cross-origin
-
-# ============================================
-# Security Headers for All Other Pages
-# ============================================
-# Keep strict security for all other pages
+# Use CSP frame-ancestors 'self' to restrict embedding globally.
+# This replaces X-Frame-Options: SAMEORIGIN and allows us to override it for specific routes.
 
 /*
-  X-Frame-Options: SAMEORIGIN
+  Content-Security-Policy: frame-ancestors 'self'
   X-Content-Type-Options: nosniff
   X-XSS-Protection: 1; mode=block
   Referrer-Policy: no-referrer-when-downgrade
   Cross-Origin-Opener-Policy: same-origin-allow-popups
 
-# Additional security headers for HTML pages
-/*.html
-  Cache-Control: no-cache, no-store, must-revalidate
-  Pragma: no-cache
+# ============================================
+# Allow Embedding for Audience Response
+# ============================================
+# Override the global CSP to allow embedding from ANY origin (*)
+# We explicitly include https: and http: to ensure broader compatibility
 
-# Static assets caching
+/audience-response
+  Content-Security-Policy: frame-ancestors * https: http:
+  Referrer-Policy: strict-origin-when-cross-origin
+
+/audience-response/*
+  Content-Security-Policy: frame-ancestors * https: http:
+  Referrer-Policy: strict-origin-when-cross-origin
+
+# ============================================
+# Allow Embedding for Guest Live Class
+# ============================================
+
+/live-class-guest/embed
+  Content-Security-Policy: frame-ancestors * https: http:
+  Referrer-Policy: strict-origin-when-cross-origin
+
+/live-class-guest/embed/*
+  Content-Security-Policy: frame-ancestors * https: http:
+  Referrer-Policy: strict-origin-when-cross-origin
+
+# ============================================
+# Static Assets Caching
+# ============================================
+
 /*.js
   Cache-Control: public, max-age=31536000, immutable
 
@@ -75,7 +83,10 @@
 /*.eot
   Cache-Control: public, max-age=31536000, immutable
 
-# Service worker and manifest - no cache
+# ============================================
+# Service Workers and Manifest (no cache)
+# ============================================
+
 /sw.js
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache

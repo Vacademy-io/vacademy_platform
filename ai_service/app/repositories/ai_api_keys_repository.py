@@ -208,6 +208,55 @@ class AiApiKeysRepository:
             self._session.add(new_keys)
             self._session.commit()
             return new_keys
+    
+    def delete_institute_keys(
+        self,
+        institute_id: UUID
+    ) -> bool:
+        """
+        Permanently delete institute-level API keys.
+        
+        Args:
+            institute_id: Institute UUID
+        
+        Returns:
+            True if keys were found and deleted, False otherwise
+        """
+        existing = self.get_keys_for_institute(institute_id)
+        
+        if not existing:
+            return False
+        
+        self._session.delete(existing)
+        self._session.commit()
+        return True
+    
+    def delete_user_keys(
+        self,
+        user_id: UUID
+    ) -> bool:
+        """
+        Permanently delete user-level API keys.
+        
+        Args:
+            user_id: User UUID
+        
+        Returns:
+            True if keys were found and deleted, False otherwise
+        """
+        existing = self._session.query(AiApiKeys).filter(
+            and_(
+                AiApiKeys.user_id == user_id,
+                AiApiKeys.is_active == True
+            )
+        ).first()
+        
+        if not existing:
+            return False
+        
+        self._session.delete(existing)
+        self._session.commit()
+        return True
 
 
 __all__ = ["AiApiKeysRepository"]

@@ -87,3 +87,24 @@ class VideoStatusResponse(BaseModel):
             }
         }
 
+
+class VideoUrlsResponse(BaseModel):
+    """Response for video HTML and audio URLs."""
+    
+    video_id: str
+    html_url: Optional[str] = Field(None, description="URL to HTML timeline file (time_based_frame.json)")
+    audio_url: Optional[str] = Field(None, description="URL to audio file (narration.mp3)")
+    status: str = Field(..., description="Current video generation status")
+    current_stage: str = Field(..., description="Current generation stage")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "video_id": "quantum-entanglement-101",
+                "html_url": "https://bucket.s3.amazonaws.com/ai-videos/quantum-entanglement-101/timeline/time_based_frame.json",
+                "audio_url": "https://bucket.s3.amazonaws.com/ai-videos/quantum-entanglement-101/audio/narration.mp3",
+                "status": "COMPLETED",
+                "current_stage": "HTML"
+            }
+        }
+

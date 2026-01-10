@@ -11,6 +11,7 @@ from .routers.video_generation import router as video_generation_router
 from .routers.models import router as models_router
 from .routers.api_keys import router as api_keys_router
 from .routers.token_usage import router as token_usage_router
+from .routers.validation import router as validation_router
 
 # Configure logging
 logging.basicConfig(
@@ -60,6 +61,7 @@ def create_app() -> FastAPI:
     app.include_router(models_router, prefix=settings.api_base_path)
     app.include_router(api_keys_router, prefix=settings.api_base_path)
     app.include_router(token_usage_router, prefix=settings.api_base_path)
+    app.include_router(validation_router, prefix=settings.api_base_path)
 
 
     return app

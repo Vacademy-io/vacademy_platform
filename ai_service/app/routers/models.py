@@ -32,8 +32,13 @@ class ModelResponse(BaseModel):
     category: str
     description: str
     max_tokens: Optional[int] = None
+    context_window: Optional[int] = None
     supports_streaming: bool = True
     supports_images: bool = False
+    input_price_per_1m: Optional[float] = None
+    output_price_per_1m: Optional[float] = None
+    input_token_price: Optional[float] = None
+    output_token_price: Optional[float] = None
 
 
 class ModelsListResponse(BaseModel):

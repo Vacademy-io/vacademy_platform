@@ -18,6 +18,9 @@ class TokenUsageRecord(BaseModel):
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
+    input_token_price: Optional[float] = None
+    output_token_price: Optional[float] = None
+    total_price: Optional[float] = None
     request_type: str
     request_id: Optional[str] = None
     request_metadata: Optional[str] = None
@@ -62,6 +65,42 @@ class DailyUsageResponse(BaseModel):
     days: int
 
 
+class ValidationResponse(BaseModel):
+    """Response for entity validation."""
+    entity_type: str
+    entity_id: str
+    exists: bool
+
+
+class ActivityLogResponse(BaseModel):
+    """Paginated response for activity log."""
+    records: List[TokenUsageRecord]
+    page: int
+    page_size: int
+    total_count: int
+    total_pages: int
+
+
+class UserActivitySummary(BaseModel):
+    """User activity summary within an institute."""
+    user_id: Optional[str] = None
+    operation_count: int
+    total_prompt_tokens: int
+    total_completion_tokens: int
+    total_tokens: int
+    total_price: Optional[float] = None
+    last_activity: Optional[str] = None
+
+
+class UserActivityLogResponse(BaseModel):
+    """Paginated response for activity log grouped by user."""
+    user_activities: List[UserActivitySummary]
+    page: int
+    page_size: int
+    total_count: int
+    total_pages: int
+
+
 __all__ = [
     "TokenUsageRecord",
     "TokenUsageSummary",
@@ -69,6 +108,8 @@ __all__ = [
     "TokenUsageListResponse",
     "TokenUsageSummaryResponse",
     "DailyUsageResponse",
+    "ValidationResponse",
+    "ActivityLogResponse",
 ]
 
 

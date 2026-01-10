@@ -25,8 +25,13 @@ class ContentGenerationRequest(BaseModel):
         default=None,
         description="Institute identifier (optional, for logging/context)"
     )
+    user_id: Optional[str] = Field(
+        default=None,
+        description="User identifier (optional, for logging/context)"
+    )
 
 
 __all__ = ["ContentGenerationRequest"]
+
 
 

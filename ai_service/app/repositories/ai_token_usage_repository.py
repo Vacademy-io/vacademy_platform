@@ -33,6 +33,9 @@ class AiTokenUsageRepository:
         model: Optional[str] = None,
         request_id: Optional[str] = None,
         metadata: Optional[str] = None,
+        input_token_price: Optional[float] = None,
+        output_token_price: Optional[float] = None,
+        total_price: Optional[float] = None,
     ) -> AiTokenUsage:
         """
         Create a new token usage record.
@@ -48,26 +51,53 @@ class AiTokenUsageRepository:
             model: Optional model name
             request_id: Optional request identifier
             metadata: Optional JSON string with additional context
+            input_token_price: Optional price per input token
+            output_token_price: Optional price per output token
+            total_price: Optional total price (calculated or provided)
         
         Returns:
             Created AiTokenUsage object
         """
+        # Explicitly convert enums to their values to ensure lowercase strings
+        # This is a safeguard in case TypeDecorator doesn't catch it
+        if hasattr(api_provider, 'value'):
+            api_provider_value = api_provider.value
+        elif isinstance(api_provider, str):
+            api_provider_value = api_provider.lower()
+        else:
+            api_provider_value = api_provider
+            
+        if hasattr(request_type, 'value'):
+            request_type_value = request_type.value
+        elif isinstance(request_type, str):
+            request_type_value = request_type.lower()
+        else:
+            request_type_value = request_type
+        
         usage = AiTokenUsage(
             institute_id=institute_id,
             user_id=user_id,
-            api_provider=api_provider,
+            api_provider=api_provider_value,  # Explicitly use enum value (lowercase)
             model=model,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
-            request_type=request_type,
+            request_type=request_type_value,  # Explicitly use enum value (lowercase)
             request_id=request_id,
             request_metadata=metadata,
+            input_token_price=input_token_price,
+            output_token_price=output_token_price,
+            total_price=total_price,
         )
-        self._session.add(usage)
-        self._session.commit()
-        self._session.refresh(usage)
-        return usage
+        try:
+            self._session.add(usage)
+            self._session.commit()
+            self._session.refresh(usage)
+            return usage
+        except Exception as e:
+            # Rollback on error to allow future operations
+            self._session.rollback()
+            raise
     
     def get_usage_by_institute(
         self,
@@ -96,6 +126,116 @@ class AiTokenUsageRepository:
             query = query.filter(AiTokenUsage.created_at <= end_date)
         
         return query.order_by(AiTokenUsage.created_at.desc()).all()
+    
+    def get_institute_activity_log(
+        self,
+        institute_id: UUID,
+        page: int = 1,
+        page_size: int = 20,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        request_type: Optional[RequestType] = None,
+    ) -> tuple[List[AiTokenUsage], int]:
+        """
+        Get paginated activity log for an institute with token usage and pricing.
+        
+        Args:
+            institute_id: Institute UUID
+            page: Page number (1-indexed)
+            page_size: Number of records per page
+            start_date: Optional start date filter
+            end_date: Optional end date filter
+            request_type: Optional request type filter
+        
+        Returns:
+            Tuple of (list of AiTokenUsage records, total count)
+        """
+        query = self._session.query(AiTokenUsage).filter(
+            AiTokenUsage.institute_id == institute_id
+        )
+        
+        if start_date:
+            query = query.filter(AiTokenUsage.created_at >= start_date)
+        if end_date:
+            query = query.filter(AiTokenUsage.created_at <= end_date)
+        if request_type:
+            query = query.filter(AiTokenUsage.request_type == request_type)
+        
+        # Get total count
+        total_count = query.count()
+        
+        # Apply pagination
+        offset = (page - 1) * page_size
+        records = query.order_by(AiTokenUsage.created_at.desc()).offset(offset).limit(page_size).all()
+        
+        return records, total_count
+    
+    def get_institute_activity_log_by_user(
+        self,
+        institute_id: UUID,
+        page: int = 1,
+        page_size: int = 20,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        request_type: Optional[RequestType] = None,
+    ) -> tuple[List[Dict[str, Any]], int]:
+        """
+        Get paginated activity log for an institute grouped by user with aggregated stats.
+        
+        Args:
+            institute_id: Institute UUID
+            page: Page number (1-indexed)
+            page_size: Number of records per page
+            start_date: Optional start date filter
+            end_date: Optional end date filter
+            request_type: Optional request type filter
+        
+        Returns:
+            Tuple of (list of user activity records with aggregated stats, total count)
+        """
+        query = self._session.query(AiTokenUsage).filter(
+            AiTokenUsage.institute_id == institute_id
+        )
+        
+        if start_date:
+            query = query.filter(AiTokenUsage.created_at >= start_date)
+        if end_date:
+            query = query.filter(AiTokenUsage.created_at <= end_date)
+        if request_type:
+            query = query.filter(AiTokenUsage.request_type == request_type)
+        
+        # Group by user_id and aggregate
+        user_stats = query.with_entities(
+            AiTokenUsage.user_id,
+            func.count(AiTokenUsage.id).label('operation_count'),
+            func.sum(AiTokenUsage.prompt_tokens).label('total_prompt_tokens'),
+            func.sum(AiTokenUsage.completion_tokens).label('total_completion_tokens'),
+            func.sum(AiTokenUsage.total_tokens).label('total_tokens'),
+            func.sum(AiTokenUsage.total_price).label('total_price'),
+            func.max(AiTokenUsage.created_at).label('last_activity'),
+        ).group_by(AiTokenUsage.user_id).order_by(func.max(AiTokenUsage.created_at).desc())
+        
+        # Get total count of unique users
+        total_count = user_stats.count()
+        
+        # Apply pagination
+        offset = (page - 1) * page_size
+        user_results = user_stats.offset(offset).limit(page_size).all()
+        
+        # Format results
+        result = []
+        for user_id, op_count, prompt_tokens, completion_tokens, total_tokens, total_price, last_activity in user_results:
+            result.append({
+                "user_id": str(user_id) if user_id else None,
+                "operation_count": op_count or 0,
+                "total_prompt_tokens": prompt_tokens or 0,
+                "total_completion_tokens": completion_tokens or 0,
+                "total_tokens": total_tokens or 0,
+                "total_price": float(total_price) if total_price is not None else None,
+                "last_activity": last_activity.isoformat() if last_activity else None,
+            })
+        
+        return result, total_count
     
     def get_usage_by_user(
         self,

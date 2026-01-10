@@ -49,8 +49,10 @@ class CourseOutlineGenerationService:
         self._prompt_builder = prompt_builder
         self._parser = parser
         self._image_service = image_service or ImageGenerationService()
-        self._content_generation_service = content_generation_service or ContentGenerationService(llm_client)
+        self._content_generation_service = content_generation_service
         self._db_session = db_session
+        self._llm_client = llm_client  # Store for content generation service
+        # Note: content_generation_service will be initialized later in generate_content_from_coursetree if needed
 
     async def generate_outline(
         self, request: CourseOutlineRequest
@@ -365,7 +367,7 @@ class CourseOutlineGenerationService:
             yield f"[Error] Failed to generate outline: {str(e)}"
 
     async def generate_content_from_coursetree(
-        self, course_tree: dict, request_id: str
+        self, course_tree: dict, request_id: str, institute_id: Optional[str] = None, user_id: Optional[str] = None
     ) -> AsyncGenerator[str, None]:
         """
         Generate content for todos in an existing coursetree.
@@ -436,6 +438,31 @@ class CourseOutlineGenerationService:
             for todo in content_todos:
                 todo_types[todo.type] = todo_types.get(todo.type, 0) + 1
             logger.info(f"Processing {len(content_todos)} content generation tasks: {todo_types}")
+            
+            # Extract institute_id and user_id from course_tree if not provided
+            extracted_institute_id = institute_id
+            extracted_user_id = user_id
+            if not extracted_institute_id and isinstance(course_tree, dict):
+                # Try to get from courseMetadata or request metadata
+                course_metadata = course_tree.get("courseMetadata", {})
+                if isinstance(course_metadata, dict):
+                    extracted_institute_id = extracted_institute_id or course_metadata.get("instituteId") or course_metadata.get("institute_id")
+                    extracted_user_id = extracted_user_id or course_metadata.get("userId") or course_metadata.get("user_id")
+            
+            # Create or update content generation service with DB session and IDs
+            if not self._content_generation_service:
+                from .content_generation_service import ContentGenerationService
+                self._content_generation_service = ContentGenerationService(
+                    llm_client=self._llm_client,
+                    db_session=self._db_session,
+                    institute_id=extracted_institute_id,
+                    user_id=extracted_user_id,
+                )
+            else:
+                # Update existing service with IDs and DB session
+                self._content_generation_service._institute_id = extracted_institute_id or self._content_generation_service._institute_id
+                self._content_generation_service._user_id = extracted_user_id or self._content_generation_service._user_id
+                self._content_generation_service._db_session = self._db_session or self._content_generation_service._db_session
             
             # Process todos concurrently (non-blocking)
             async def process_todo_async(todo: Todo, event_queue: asyncio.Queue):

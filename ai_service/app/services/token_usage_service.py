@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..repositories.ai_token_usage_repository import AiTokenUsageRepository
 from ..models.ai_token_usage import ApiProvider, RequestType, AiTokenUsage
+from ..constants.models import get_model_pricing
 
 
 class TokenUsageService:
@@ -34,6 +35,9 @@ class TokenUsageService:
         model: Optional[str] = None,
         request_id: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        input_token_price: Optional[float] = None,
+        output_token_price: Optional[float] = None,
+        total_price: Optional[float] = None,
     ) -> AiTokenUsage:
         """
         Record token usage for an API call.
@@ -49,6 +53,9 @@ class TokenUsageService:
             model: Optional model name
             request_id: Optional request identifier
             metadata: Optional metadata dictionary (will be JSON stringified)
+            input_token_price: Optional price per input token
+            output_token_price: Optional price per output token
+            total_price: Optional total price (if not provided, will be calculated)
         
         Returns:
             Created AiTokenUsage record
@@ -75,6 +82,23 @@ class TokenUsageService:
             import json
             metadata_str = json.dumps(metadata)
         
+        # Auto-fetch pricing from model if not provided
+        final_input_price = input_token_price
+        final_output_price = output_token_price
+        
+        if model and (final_input_price is None or final_output_price is None):
+            model_pricing = get_model_pricing(model)
+            if model_pricing:
+                if final_input_price is None:
+                    final_input_price = model_pricing.get("input_token_price")
+                if final_output_price is None:
+                    final_output_price = model_pricing.get("output_token_price")
+        
+        # Calculate total price if not provided but pricing is available
+        calculated_total_price = total_price
+        if calculated_total_price is None and final_input_price is not None and final_output_price is not None:
+            calculated_total_price = (final_input_price * prompt_tokens) + (final_output_price * completion_tokens)
+        
         return self._repository.create_usage_record(
             api_provider=api_provider,
             prompt_tokens=prompt_tokens,
@@ -86,6 +110,9 @@ class TokenUsageService:
             model=model,
             request_id=request_id,
             metadata=metadata_str,
+            input_token_price=final_input_price,
+            output_token_price=final_output_price,
+            total_price=calculated_total_price,
         )
     
     def get_institute_usage(
@@ -227,6 +254,80 @@ class TokenUsageService:
             institute_id=institute_uuid,
             user_id=user_uuid,
             days=days,
+        )
+    
+    def get_institute_activity_log(
+        self,
+        institute_id: str,
+        page: int = 1,
+        page_size: int = 20,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        request_type: Optional[RequestType] = None,
+    ) -> tuple[List[AiTokenUsage], int]:
+        """
+        Get paginated activity log for an institute.
+        
+        Args:
+            institute_id: Institute ID (string UUID)
+            page: Page number (1-indexed)
+            page_size: Number of records per page
+            start_date: Optional start date filter
+            end_date: Optional end date filter
+            request_type: Optional request type filter
+        
+        Returns:
+            Tuple of (list of records, total count)
+        """
+        try:
+            institute_uuid = UUID(institute_id)
+        except (ValueError, AttributeError):
+            return [], 0
+        
+        return self._repository.get_institute_activity_log(
+            institute_id=institute_uuid,
+            page=page,
+            page_size=page_size,
+            start_date=start_date,
+            end_date=end_date,
+            request_type=request_type,
+        )
+    
+    def get_institute_activity_log_by_user(
+        self,
+        institute_id: str,
+        page: int = 1,
+        page_size: int = 20,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        request_type: Optional[RequestType] = None,
+    ) -> tuple[List[Dict[str, Any]], int]:
+        """
+        Get paginated activity log for an institute grouped by user.
+        
+        Args:
+            institute_id: Institute ID (string UUID)
+            page: Page number (1-indexed)
+            page_size: Number of records per page
+            start_date: Optional start date filter
+            end_date: Optional end date filter
+            request_type: Optional request type filter
+        
+        Returns:
+            Tuple of (list of user activity records with aggregated stats, total count)
+        """
+        try:
+            institute_uuid = UUID(institute_id)
+        except (ValueError, AttributeError):
+            return [], 0
+        
+        return self._repository.get_institute_activity_log_by_user(
+            institute_id=institute_uuid,
+            page=page,
+            page_size=page_size,
+            start_date=start_date,
+            end_date=end_date,
+            request_type=request_type,
         )
 
 

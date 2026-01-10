@@ -1,6 +1,30 @@
 # HTTP Headers for Cloudflare Pages
 # This file configures HTTP headers for the frontend application
 
+# ============================================
+# Iframe Embedding Configuration for Forms
+# ============================================
+# Allow audience response forms to be embedded in iframes
+# This is required for the "Embed Code" feature in Admin Dashboard
+# Note: Specific routes MUST be placed before the general /* rule
+
+/audience-response
+  X-Frame-Options: ALLOWALL
+  Content-Security-Policy: frame-ancestors 'self' https://*.vacademy.io https://admin.vacademy.io https://admin-stage.vacademy.io *
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+/audience-response/*
+  X-Frame-Options: ALLOWALL
+  Content-Security-Policy: frame-ancestors 'self' https://*.vacademy.io https://admin.vacademy.io https://admin-stage.vacademy.io *
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+# ============================================
+# Security Headers for All Other Pages
+# ============================================
+# Keep strict security for all other pages
+
 /*
   X-Frame-Options: SAMEORIGIN
   X-Content-Type-Options: nosniff
